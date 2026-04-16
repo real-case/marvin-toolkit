@@ -1,0 +1,8 @@
+{
+  "name": "marvin-core-pack",
+  "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
+  "version": "0.1.0-alpha.1",
+  "author": {
+    "name": "Yurii Anichkin"
+  }
+}

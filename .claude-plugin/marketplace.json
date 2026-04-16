@@ -1,0 +1,38 @@
+{
+  "name": "marvin-toolkit",
+  "owner": {
+    "name": "Yurii Anichkin",
+    "email": "personal@yurii-anichkin.dev"
+  },
+  "metadata": {
+    "description": "Open plugin marketplace for Claude Code AI-driven development",
+    "version": "0.1.0-alpha.1",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "marvin-core-pack",
+      "source": "marvin-core-pack",
+      "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
+      "version": "0.1.0-alpha.1",
+      "category": "productivity",
+      "keywords": ["core", "commit", "pr", "review", "debug", "adr", "changelog", "readme", "migration", "onboarding"]
+    },
+    {
+      "name": "marvin-security-pack",
+      "source": "marvin-security-pack",
+      "description": "Security-focused development tools: OWASP scanning, threat modeling, secret scanning, dependency audits, IaC review, CI/CD security, compliance checks, pentest planning, and security fix generation",
+      "version": "0.1.0-alpha.1",
+      "category": "security",
+      "keywords": ["security", "security-scan", "owasp", "threat-model", "secrets", "dependencies", "compliance", "pentest", "iac", "ci-cd", "fix", "gate", "stride"]
+    },
+    {
+      "name": "marvin-taskmaster-pack",
+      "source": "marvin-taskmaster-pack",
+      "description": "Spec-driven task pipeline: interactive spec co-creation, batch dispatch to headless agents, and PR review fixing",
+      "version": "0.1.0-alpha.1",
+      "category": "productivity",
+      "keywords": ["taskmaster", "spec", "dispatch", "pipeline", "verify", "fix-pr", "batch", "worktree"]
+    }
+  ]
+}
