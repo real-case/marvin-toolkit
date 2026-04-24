@@ -1,5 +1,6 @@
 ---
-description: Generate and verify fixes for security vulnerabilities. Takes a finding from any scanner or manual review and produces a minimal, tested patch. Use when user asks to "fix vulnerability", "patch security issue", "remediate finding", or after running any mn.sec.* scan.
+name: security-fix
+description: Generate and verify minimal, tested patches for security vulnerabilities. Takes a finding from any scanner (Semgrep, Bandit, Snyk, Trivy, Gitleaks) or manual review and produces a focused diff plus a verification plan. Use when the user says "fix this vulnerability", "patch security issue", "remediate finding", "close the CVE", or right after running any mn.sec.* scan and needing to act on the output.
 ---
 
 # Security Fix Generator

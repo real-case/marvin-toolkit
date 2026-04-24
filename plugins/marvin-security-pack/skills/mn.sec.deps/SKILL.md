@@ -1,5 +1,6 @@
 ---
-description: Audit dependencies for known vulnerabilities, license risks, and maintenance health. Use when user asks to "check dependencies", "audit packages", "find vulnerable libraries", "license check", or before releases and compliance reviews.
+name: security-deps-audit
+description: Audit project dependencies for known CVEs, license risks, unmaintained packages, typosquats, and transitive risk across package.json, requirements.txt, Gemfile, go.mod, Cargo.toml, pom.xml, and similar manifests. Use when the user says "check dependencies", "audit packages", "find vulnerable libraries", "npm audit", "pip-audit", "license check", "SBOM", or before releases and compliance reviews. Produces a prioritized findings report with upgrade paths.
 ---
 
 # Dependency Security Audit

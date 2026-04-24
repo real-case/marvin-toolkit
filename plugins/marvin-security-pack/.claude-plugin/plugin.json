@@ -1,7 +1,7 @@
 {
   "name": "marvin-security-pack",
   "description": "Security-focused development tools: OWASP scanning, threat modeling, secret scanning, dependency audits, IaC review, CI/CD security, compliance checks, pentest planning, and security fix generation",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "author": {
     "name": "Yurii Anichkin"
   }

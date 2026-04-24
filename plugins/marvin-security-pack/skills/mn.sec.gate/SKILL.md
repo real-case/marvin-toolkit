@@ -1,5 +1,6 @@
 ---
-description: Fast security check on staged or recent changes. Lightweight pre-commit gate — scoped to the diff, not the full codebase. Use before committing, as a quick security sanity check, or when user asks to "check my changes for security issues".
+name: security-diff-gate
+description: Fast security sanity-check scoped to the diff rather than the full codebase — scans staged or recent changes for injected secrets, obvious injections, unsafe deserialization, hard-coded credentials, and risky new dependencies. Use as a pre-commit gate, when the user says "check my changes for security issues", "quick sec check", "secure this diff", "gate this commit", or before pushing any branch touching auth, crypto, input handling, or infra.
 ---
 
 # Security Gate

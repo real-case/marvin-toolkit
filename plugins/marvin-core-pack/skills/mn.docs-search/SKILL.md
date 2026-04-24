@@ -1,5 +1,6 @@
 ---
-description: Search and retrieve relevant documentation from the codebase and external sources. Use whenever the user asks "where is this documented?", "how does X work?", "what's the API for Y?", needs to understand project architecture, conventions, or onboarding context, or asks about ADRs, README, changelog, API specs, or internal docs. Also triggers when the user needs to find configuration docs, migration guides, runbooks, or style guides within a project.
+name: docs-search
+description: Search and retrieve relevant documentation from the codebase and external sources. Use whenever the user asks "where is this documented?", "how does X work?", "what's the API for Y?", "find docs on", "point me to the runbook", or needs to understand project architecture, conventions, or onboarding context. Also triggers for questions about ADRs, README, CHANGELOG, API specs, configuration docs, migration guides, runbooks, or style guides, and when preparing onboarding summaries for a repo.
 ---
 
 # Docs Search

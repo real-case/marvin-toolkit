@@ -1,5 +1,6 @@
 ---
-description: Deep scan for leaked secrets, credentials, and API keys across code, config, and git history. Use when user asks to "scan for secrets", "find leaked keys", "check for credentials", "secret detection", or before any production deployment.
+name: security-secret-scan
+description: Deep scan for leaked secrets, credentials, API keys, tokens, and private keys across source code, configuration files, environment files, and the full git history. Use when the user says "scan for secrets", "find leaked keys", "check for credentials", "secret detection", "gitleaks", "trufflehog", "did I commit a key?", or before a production deployment, open-sourcing a repo, or post-incident triage. Produces a deduplicated list of findings with remediation and rotation guidance.
 ---
 
 # Secret & Credential Scanning

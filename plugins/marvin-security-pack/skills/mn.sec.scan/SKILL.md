@@ -1,5 +1,6 @@
 ---
-description: Comprehensive security audit of the codebase aligned with OWASP Top 10:2025. Orchestrates specialized scans (secrets, dependencies) and adds deep static analysis. Use when user asks to "security scan", "full audit", "OWASP audit", or when reviewing code for production readiness.
+name: security-scan
+description: Comprehensive security audit of the codebase aligned with OWASP Top 10:2025 — orchestrates specialized scans (secrets, dependencies, IaC) and adds deep static analysis for injection, authz flaws, crypto misuse, SSRF, deserialization, and logic bugs. Use when the user says "security scan", "full audit", "OWASP audit", "pre-prod security review", "harden this service", or when preparing code for production release, acquisition due diligence, or audit.
 ---
 
 # Full Security Scan

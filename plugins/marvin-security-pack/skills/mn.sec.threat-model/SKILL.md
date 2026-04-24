@@ -1,5 +1,6 @@
 ---
-description: Generate STRIDE-based threat models for features, systems, or the entire application. Use when user asks to "model threats", "threat analysis", "attack surface", "security architecture review", or during design reviews for new features.
+name: security-threat-model
+description: Generate STRIDE-based threat models for a feature, service, or full application — data flows, trust boundaries, assets, threats per category (Spoofing, Tampering, Repudiation, Info disclosure, DoS, Elevation of privilege), existing mitigations, and residual risk. Use when the user says "threat model", "STRIDE analysis", "attack surface", "security architecture review", "what can go wrong?", or during design reviews for new features, integrations, or infrastructure. Produces a markdown threat-model document.
 ---
 
 # Threat Modeling

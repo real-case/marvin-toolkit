@@ -1,5 +1,6 @@
 ---
-description: Thorough code review for bugs, security, performance, and style
+name: code-review
+description: Thorough code review covering bugs, logic errors, security issues, performance, readability, and style conformance. Use when the user says "review this code", "code review", "review my diff", "review this PR", "look at this change", or asks for a second opinion before committing or merging. Works on staged changes, a branch diff, a specific file, or an explicit snippet; reports findings grouped by severity with suggested fixes.
 disable-model-invocation: true
 ---
 

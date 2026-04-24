@@ -1,5 +1,6 @@
 ---
-description: Create an Architecture Decision Record documenting a technical decision
+name: architecture-decision-record
+description: Create a structured Architecture Decision Record (ADR) capturing context, alternatives considered, the decision, and consequences in MADR / Nygard format. Use when the user says "write ADR", "record this decision", "document architecture choice", "capture the rationale", "create decision log", or right after committing to a significant technical choice (framework, database, protocol, pattern, migration). Produces numbered markdown files under docs/adr/.
 disable-model-invocation: true
 ---
 

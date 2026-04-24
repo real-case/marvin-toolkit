@@ -1,5 +1,6 @@
 ---
-description: Commit changes and create a pull request, delegating to core-pack skills. Refuses to deliver if verification failed. Final phase of taskmaster pipelines.
+name: taskmaster-deliver
+description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the core-pack mn.commit and mn.pr skills, and refuses to proceed if the preceding mn.verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
 ---
 
 # Deliver

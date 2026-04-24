@@ -1,5 +1,6 @@
 ---
-description: Security review of Infrastructure-as-Code — Terraform, CloudFormation, Kubernetes, Docker, and Helm. Use when user asks to "check infrastructure", "review Terraform", "scan Dockerfile", "Kubernetes security", or before deploying infrastructure changes.
+name: security-iac-review
+description: Security review of Infrastructure-as-Code across Terraform, CloudFormation, Pulumi, Kubernetes manifests, Helm charts, Dockerfiles, and docker-compose — IAM over-permissioning, exposed endpoints, weak encryption defaults, network boundaries, privileged containers, root filesystems. Use when the user says "check infrastructure", "review Terraform", "scan Dockerfile", "Kubernetes security", "harden cluster", "IaC review", or before deploying infrastructure changes or promoting modules across environments.
 ---
 
 # Infrastructure-as-Code Security Review

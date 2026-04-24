@@ -1,5 +1,6 @@
 ---
-description: Apply PR review comments as code fixes — fetch review feedback, classify comments, apply changes, commit, push, and reply. Phase 3 of the task pipeline.
+name: taskmaster-fix-pr
+description: Apply pull-request review feedback as code changes — fetch reviewer comments via gh, classify each as actionable / discussion / out-of-scope, make the code changes, commit, push, and reply to each thread with outcome. Use when the user says "address PR comments", "fix the review feedback", "apply reviewer suggestions", "resolve this PR's comments", "/mn.fix-pr", or when a PR has new review activity that needs turning into commits.
 ---
 
 # Fix PR
