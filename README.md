@@ -98,8 +98,11 @@ Phase 1: Spec Co-creation    Phase 2: Dispatch           Phase 3: Review & Fix
 | `/mn.deliver` | Commit + PR (delegates to core-pack), gates on verification |
 
 **Agents:**
-- `spec-writer` — conversational requirements exploration (Phase 1 companion)
-- `executor` — headless execution agent (read by dispatch.sh for Phase 2)
+- `marvin-tm-writer` — conversational requirements exploration (Phase 1 companion)
+- `marvin-tm-executor` — headless execution agent (read by dispatch.sh for Phase 2)
+- `marvin-tm-spec-critic` — red-team review of a drafted spec before the DoR gate (Phase 1)
+- `marvin-tm-diff-critic` — red-team review of a diff before PR creation (Phase 2)
+- `marvin-tm-review-fixer` — autonomous Phase 3 agent that applies PR review comments
 
 ## Development lifecycle
 

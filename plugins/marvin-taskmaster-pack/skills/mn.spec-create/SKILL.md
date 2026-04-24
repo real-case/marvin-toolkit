@@ -173,7 +173,17 @@ Before finalizing, suggest notes for the Future Considerations section based on:
 
 Present suggestions. The user decides what to include.
 
-### Step 7F: Definition of Ready Gate
+### Step 7F: Critic Review
+
+Before running the DoR checklist, invoke the `marvin-tm-spec-critic` agent via Task-tool, passing the drafted spec content.
+
+- **Verdict `BLOCK`** — present blockers to the user, loop back to the relevant step (usually 2F, 3F, or 5F). Do not proceed to DoR.
+- **Verdict `PASS WITH WARNINGS`** — show warnings to the user; they decide whether to revise or proceed. If proceeding, record the override in the spec (e.g., a "Critic override" note in Future Considerations).
+- **Verdict `PASS`** — proceed to the DoR gate.
+
+If Task-tool is unavailable, skip this step and note it in the spec's audit trail.
+
+### Step 8F: Definition of Ready Gate
 
 Validate the spec against this checklist. **Every item must pass.**
 
@@ -265,7 +275,15 @@ Fill in all sections. The **Regression Test Specification** section is mandatory
 
 Present to user. Iterate until approved.
 
-### Step 7B: Definition of Ready Gate
+### Step 7B: Critic Review
+
+Before running the DoR checklist, invoke the `marvin-tm-spec-critic` agent via Task-tool, passing the drafted bugfix spec content. Apply the same verdict rules as in the feature flow (Step 7F):
+
+- `BLOCK` → loop back (usually 3B root-cause or 5B fix-approach)
+- `PASS WITH WARNINGS` → user decides; record override if proceeding
+- `PASS` → proceed to DoR
+
+### Step 8B: Definition of Ready Gate
 
 Validate against this checklist. **Every item must pass.**
 

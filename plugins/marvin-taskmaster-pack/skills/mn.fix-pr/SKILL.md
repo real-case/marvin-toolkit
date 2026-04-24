@@ -10,6 +10,12 @@ Read review comments on a pull request, apply requested changes, answer question
 
 **Fix what the reviewer asked, nothing more.** This is not a refactoring opportunity. Apply the minimum change to satisfy each review comment. If a comment conflicts with the original spec, note it rather than silently deviating.
 
+## Interactive vs. autonomous path
+
+This skill is the **interactive** path — the user invokes `/mn.fix-pr`, stays in the main conversation, and sees each classification and fix as it happens. Use it when the user wants to review decisions inline.
+
+For the **autonomous** path — a one-shot dispatch where the whole fix-cycle runs to completion without interactive feedback — delegate to the `marvin-tm-review-fixer` agent via Task-tool. The agent implements the same contract but surfaces blockers in its final report instead of asking the user mid-flow. Good fit for batch PR triage, scheduled runs, or delegation from another agent.
+
 ## Input
 
 `$ARGUMENTS` — optional PR number (e.g., `42`). If omitted, detect from the current branch: `gh pr view --json number -q .number`.
