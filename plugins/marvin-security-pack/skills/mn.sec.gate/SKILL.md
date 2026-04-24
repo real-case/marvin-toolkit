@@ -1,4 +1,4 @@
- ---
+---
 description: Fast security check on staged or recent changes. Lightweight pre-commit gate — scoped to the diff, not the full codebase. Use before committing, as a quick security sanity check, or when user asks to "check my changes for security issues".
 ---
 

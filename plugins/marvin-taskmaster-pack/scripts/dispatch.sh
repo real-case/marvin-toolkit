@@ -97,7 +97,7 @@ build_prompt() {
   local claude_md=""
 
   spec_content=$(cat "$spec_file")
-  executor_instructions=$(cat "$PACK_DIR/agents/executor.md")
+  executor_instructions=$(cat "$PACK_DIR/agents/marvin-tm-executor.md")
 
   # Read CLAUDE.md if it exists (project conventions)
   if [[ -f "CLAUDE.md" ]]; then

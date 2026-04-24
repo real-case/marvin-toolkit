@@ -1,5 +1,5 @@
 ---
-name: spec-writer
+name: marvin-tm-writer
 description: Conversational exploration of requirements — helps identify missing requirements, define acceptance criteria, and set scope boundaries
 model: opus
 color: purple

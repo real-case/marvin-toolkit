@@ -44,7 +44,7 @@ Three packs in `plugins/`:
 
 - **marvin-core-pack** (v0.1.0-alpha.1) — 10 skills, 2 agents, 2 MCP servers. Core dev workflows: commits, PRs, reviews, debugging, ADRs, changelogs, migration planning.
 - **marvin-security-pack** (v0.1.0-alpha.1) — 10 skills (+1 deprecated alias `mn.security-scan`), 1 agent. OWASP audits, secret scanning, dependency checks, threat modeling, compliance.
-- **marvin-taskmaster-pack** (v0.1.0-alpha.1) — 4 skills, 2 agents, 1 shell script (`dispatch.sh`). Spec-driven pipeline: spec co-creation → batch dispatch to worktrees → PR fix.
+- **marvin-taskmaster-pack** (v0.1.0-alpha.2) — 4 skills, 5 agents (`marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`), 1 shell script (`dispatch.sh`). Spec-driven pipeline: spec co-creation → batch dispatch to worktrees → PR fix, with red-team spec and diff critics.
 
 ## Adding a new skill
 
