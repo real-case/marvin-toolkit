@@ -12,7 +12,7 @@ Run project quality gates and record results.
 
 ## Instructions
 
-**Read `skills/mn.verify/SKILL.md`** and follow its full workflow.
+**Read `skills/mn.taskmaster-verify/SKILL.md`** and follow its full workflow.
 
 Pass `$ARGUMENTS` as the pipeline context if provided.
 
@@ -20,7 +20,7 @@ Pass `$ARGUMENTS` as the pipeline context if provided.
 
 | Command | Behavior |
 |---------|----------|
-| `/mn.verify` | Run all quality gates, report results |
-| `/mn.verify feature` | Run with feature pipeline checks (new tests required) |
-| `/mn.verify refactor` | Run with refactor pipeline checks (compare against baseline) |
-| `/mn.verify baseline` | Capture pre-refactor test state |
+| `/mn.taskmaster-verify` | Run all quality gates, report results |
+| `/mn.taskmaster-verify feature` | Run with feature pipeline checks (new tests required) |
+| `/mn.taskmaster-verify refactor` | Run with refactor pipeline checks (compare against baseline) |
+| `/mn.taskmaster-verify baseline` | Capture pre-refactor test state |

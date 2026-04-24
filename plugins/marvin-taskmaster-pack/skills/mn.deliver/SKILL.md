@@ -1,6 +1,6 @@
 ---
 name: taskmaster-deliver
-description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the core-pack mn.commit and mn.pr skills, and refuses to proceed if the preceding mn.verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
+description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the core-pack mn.commit and mn.pr skills, and refuses to proceed if the preceding mn.taskmaster-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
 ---
 
 # Deliver
@@ -19,9 +19,9 @@ Look for verification report:
 1. Check `.taskmaster/current-task/verification.md`
 2. If not found, check if verification results exist in conversation context
 
-**If no verification found:** stop and tell the user — "Verification has not been run. Run `/mn.verify` before delivering."
+**If no verification found:** stop and tell the user — "Verification has not been run. Run `/mn.taskmaster-verify` before delivering."
 
-**If the verdict is FAIL:** stop and tell the user — "Verification failed. Fix the issues and re-run `/mn.verify` before delivering." Show the failing checks from the verification report.
+**If the verdict is FAIL:** stop and tell the user — "Verification failed. Fix the issues and re-run `/mn.taskmaster-verify` before delivering." Show the failing checks from the verification report.
 
 **If the verdict is PASS or PASS WITH WARNINGS:** proceed. If there are warnings, show them to the user and confirm they want to proceed.
 

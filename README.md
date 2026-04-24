@@ -78,7 +78,8 @@ Spec-driven task pipeline — separates human decisions from automated execution
 Phase 1: Spec Co-creation    Phase 2: Dispatch           Phase 3: Review & Fix
 (interactive, sequential)     (automated, batch)          (human-led)
 
-/mn.spec-create → spec.md    dispatch.sh → worktrees     /mn.fix-pr → apply fixes
+/mn.taskmaster-start         dispatch.sh → worktrees     /mn.taskmaster-fix-pr
+  → spec.md                    → headless agents → PRs     → apply fixes
                               → headless agents → PRs
 ```
 
@@ -86,16 +87,17 @@ Phase 1: Spec Co-creation    Phase 2: Dispatch           Phase 3: Review & Fix
 
 | Command | Phase | Description |
 |---------|-------|-------------|
-| `/mn.spec-create` | 1 | Interactive spec co-creation (feature/bugfix flows, solution variants, DoR gate) |
+| `/mn.taskmaster-start` | 1 | Start work on a task — interactive spec co-creation (feature/bugfix flows, solution variants, DoR gate) |
+| `/mn.taskmaster-run` | 2 | Execute a ready spec interactively in the current session |
 | `dispatch.sh` | 2 | Batch dispatch specs to headless agents in isolated git worktrees |
-| `/mn.fix-pr` | 3 | Apply PR review comments as code fixes |
+| `/mn.taskmaster-fix-pr` | 3 | Apply PR review comments as code fixes |
 
 **Standalone commands** (reusable outside the pipeline):
 
 | Command | Description |
 |---------|-------------|
-| `/mn.verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
-| `/mn.deliver` | Commit + PR (delegates to core-pack), gates on verification |
+| `/mn.taskmaster-verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
+| `/mn.taskmaster-deliver` | Commit + PR (delegates to core-pack), gates on verification |
 
 **Agents:**
 - `marvin-tm-writer` — conversational requirements exploration (Phase 1 companion)
@@ -108,11 +110,11 @@ Phase 1: Spec Co-creation    Phase 2: Dispatch           Phase 3: Review & Fix
 
 ```
 Plan            Code            Review          Secure           Document         Ship             Pipeline
-├─ mn.adr       ├─ mn.debug     └─ mn.review    ├─ mn.sec.scan   ├─ mn.readme     ├─ mn.commit     ├─ mn.spec-create
+├─ mn.adr       ├─ mn.debug     └─ mn.review    ├─ mn.sec.scan   ├─ mn.readme     ├─ mn.commit     ├─ mn.taskmaster-start
 └─ mn.migration ├─ mn.explaining                ├─ mn.sec.secrets├─ mn.changelog  └─ mn.pr         ├─ dispatch.sh
-   -plan        │  -code                        ├─ mn.sec.deps   └─ mn.docs                       ├─ mn.fix-pr
-                └─ mn.docs                      ├─ mn.sec.gate      -search                       ├─ mn.verify
-                   -search                      ├─ mn.sec.iac                                     └─ mn.deliver
+   -plan        │  -code                        ├─ mn.sec.deps   └─ mn.docs                       ├─ mn.taskmaster-fix-pr
+                └─ mn.docs                      ├─ mn.sec.gate      -search                       ├─ mn.taskmaster-verify
+                   -search                      ├─ mn.sec.iac                                     └─ mn.taskmaster-deliver
                                                 ├─ mn.sec.ci
                                                 └─ ...
 ```
@@ -125,7 +127,7 @@ All commands use a dot-separated namespace to prevent collisions with other plug
 |------|--------|---------|
 | Core | `mn.` | `/mn.commit`, `/mn.review` |
 | Security | `mn.sec.` | `/mn.sec.scan`, `/mn.sec.deps` |
-| Taskmaster | `mn.` | `/mn.spec-create`, `/mn.verify` |
+| Taskmaster | `mn.taskmaster-` | `/mn.taskmaster-start`, `/mn.taskmaster-run`, `/mn.taskmaster-verify` |
 
 ## Project structure
 
