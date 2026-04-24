@@ -1,5 +1,6 @@
 ---
-description: 'Git commit workflow: state check, staging, sensitive file detection, conventional commit format, user confirmation, pre-commit hook handling. No AI attribution.'
+name: git-commit
+description: Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files (.env, keys, tokens), drafts a Conventional Commits message, confirms with the user, and handles pre-commit hook failures cleanly. No AI attribution in messages. Use when the user says "commit", "commit this", "git commit", "stage and commit", "make a commit", "/mn.commit", or when ready to persist changes after finishing a unit of work.
 ---
 
 Analyze staged git changes and generate a conventional commit message. Follow the full workflow below.

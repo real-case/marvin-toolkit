@@ -1,5 +1,6 @@
 ---
-description: Interactive spec co-creation — structured dialogue producing immutable, testable specs for features and bugfixes. Supports VISION.md integration, solution variants with stack/future markers, and Definition of Ready gate. Output lands in specs/ directory.
+name: taskmaster-spec-create
+description: Interactive spec co-creation — a structured dialogue that produces immutable, testable specs for features and bug fixes, with VISION.md integration, solution variants flagged by stack/future, acceptance criteria, and a Definition-of-Ready gate before dispatch. Use when the user says "create a spec", "write a spec", "spec this out", "define the task", "turn this idea into a spec", "/mn.spec-create", or before dispatching work to headless taskmaster agents. Output lands under specs/.
 ---
 
 # Spec Create

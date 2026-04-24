@@ -1,5 +1,6 @@
 ---
-description: Plan a migration or major refactoring with dependency analysis, steps, risks, and rollback strategy
+name: migration-planning
+description: Plan a migration or large-scale refactor with explicit dependency analysis, phased steps, risk inventory, rollback strategy, and verification checkpoints. Use when the user says "plan the migration", "migration strategy", "refactor plan", "upgrade plan", "rollout plan", "break this change into steps", or before touching cross-cutting code (framework upgrades, database swaps, API versioning, monorepo splits, module renames). Produces a markdown plan the user can review before execution.
 disable-model-invocation: true
 ---
 

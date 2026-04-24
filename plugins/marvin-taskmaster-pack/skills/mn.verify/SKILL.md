@@ -1,5 +1,6 @@
 ---
-description: Run project quality gates (tests, lint, type-check, build) with automatic stack detection. Creates the verification.md artifact that gates delivery. Use after code execution to validate changes, or standalone to check project health.
+name: taskmaster-verify
+description: Run project quality gates — tests, lint, type-check, and build — with automatic stack detection (Node, Python, Go, Rust, Ruby, Java) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/mn.verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify
