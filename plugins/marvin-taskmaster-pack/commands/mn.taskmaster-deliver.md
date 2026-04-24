@@ -12,7 +12,7 @@ Commit and create a pull request for verified changes.
 
 ## Instructions
 
-**Read `skills/mn.deliver/SKILL.md`** and follow its full workflow.
+**Read `skills/mn.taskmaster-deliver/SKILL.md`** and follow its full workflow.
 
 Pass `$ARGUMENTS` as additional delivery context if provided.
 
@@ -20,5 +20,5 @@ Pass `$ARGUMENTS` as additional delivery context if provided.
 
 | Command | Behavior |
 |---------|----------|
-| `/mn.deliver` | Check verification, commit, create PR |
-| `/mn.deliver closes #42` | Deliver with issue reference for PR |
+| `/mn.taskmaster-deliver` | Check verification, commit, create PR |
+| `/mn.taskmaster-deliver closes #42` | Deliver with issue reference for PR |

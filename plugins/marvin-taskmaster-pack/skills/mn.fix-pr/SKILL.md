@@ -1,6 +1,6 @@
 ---
 name: taskmaster-fix-pr
-description: Apply pull-request review feedback as code changes — fetch reviewer comments via gh, classify each as actionable / discussion / out-of-scope, make the code changes, commit, push, and reply to each thread with outcome. Use when the user says "address PR comments", "fix the review feedback", "apply reviewer suggestions", "resolve this PR's comments", "/mn.fix-pr", or when a PR has new review activity that needs turning into commits.
+description: Apply pull-request review feedback as code changes — fetch reviewer comments via gh, classify each as actionable / discussion / out-of-scope, make the code changes, commit, push, and reply to each thread with outcome. Use when the user says "address PR comments", "fix the review feedback", "apply reviewer suggestions", "resolve this PR's comments", "/mn.taskmaster-fix-pr", or when a PR has new review activity that needs turning into commits.
 ---
 
 # Fix PR
@@ -13,7 +13,7 @@ Read review comments on a pull request, apply requested changes, answer question
 
 ## Interactive vs. autonomous path
 
-This skill is the **interactive** path — the user invokes `/mn.fix-pr`, stays in the main conversation, and sees each classification and fix as it happens. Use it when the user wants to review decisions inline.
+This skill is the **interactive** path — the user invokes `/mn.taskmaster-fix-pr`, stays in the main conversation, and sees each classification and fix as it happens. Use it when the user wants to review decisions inline.
 
 For the **autonomous** path — a one-shot dispatch where the whole fix-cycle runs to completion without interactive feedback — delegate to the `marvin-tm-review-fixer` agent via Task-tool. The agent implements the same contract but surfaces blockers in its final report instead of asking the user mid-flow. Good fit for batch PR triage, scheduled runs, or delegation from another agent.
 
@@ -31,7 +31,7 @@ For the **autonomous** path — a one-shot dispatch where the whole fix-cycle ru
 gh pr view --json number,headRefName,url -q '{number: .number, branch: .headRefName, url: .url}'
 ```
 
-If no PR found, tell the user — "No open PR found for the current branch. Provide a PR number: `/mn.fix-pr 42`"
+If no PR found, tell the user — "No open PR found for the current branch. Provide a PR number: `/mn.taskmaster-fix-pr 42`"
 
 ### 2. Fetch review comments
 

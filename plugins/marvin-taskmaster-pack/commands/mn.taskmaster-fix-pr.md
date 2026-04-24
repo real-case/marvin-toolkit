@@ -12,7 +12,7 @@ Address review comments on a pull request — Phase 3 of the task pipeline.
 
 ## Instructions
 
-**Read `skills/mn.fix-pr/SKILL.md`** and follow its full workflow.
+**Read `skills/mn.taskmaster-fix-pr/SKILL.md`** and follow its full workflow.
 
 Pass `$ARGUMENTS` as the PR number if provided.
 
@@ -20,5 +20,5 @@ Pass `$ARGUMENTS` as the PR number if provided.
 
 | Command | Behavior |
 |---------|----------|
-| `/mn.fix-pr` | Detects PR from current branch, fetches comments, applies fixes |
-| `/mn.fix-pr 42` | Fetches comments on PR #42, applies fixes |
+| `/mn.taskmaster-fix-pr` | Detects PR from current branch, fetches comments, applies fixes |
+| `/mn.taskmaster-fix-pr 42` | Fetches comments on PR #42, applies fixes |

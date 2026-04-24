@@ -1,6 +1,6 @@
 ---
 name: marvin-tm-spec-critic
-description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports weaknesses before the Definition of Ready gate. Invoked from mn.spec-create Step 7F/7B immediately before writing specs/<slug>.md. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
+description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports weaknesses before the Definition of Ready gate. Invoked from mn.taskmaster-start Step 7F/7B immediately before writing specs/<slug>.md. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
 model: sonnet
 color: magenta
 memory: project
@@ -25,7 +25,7 @@ You do not write files. You do not edit the spec. You return a structured report
 
 ## Integration point
 
-Invoked from `mn.spec-create` Step 7F/7B **before** the DoR gate runs:
+Invoked from `/mn.taskmaster-start` Step 7F/7B **before** the DoR gate runs:
 
 ```
 Crystallization → marvin-tm-spec-critic → DoR gate → write specs/<slug>.md
