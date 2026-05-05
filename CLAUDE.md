@@ -68,10 +68,12 @@ Three packs in `plugins/`:
 
 ## Version bumping
 
-Bump version in the pack's `plugin.json` on every change. Follow semver:
+Each pack has its own independent version. When changing a pack, bump only that pack's `plugin.json` — do not touch other packs' versions. Follow semver:
 - **Patch** (0.1.x): prompt tweaks, bug fixes
 - **Minor** (0.x.0): new skills, commands, agents, or MCP servers
 - **Major** (x.0.0): breaking changes, renamed commands
+
+After bumping a pack version, mirror it into the matching pack entry in `.claude-plugin/marketplace.json`. The top-level `metadata.version` in `marketplace.json` versions the marketplace manifest itself and is independent of pack versions — bump it only when the manifest schema, owner data, or pack list changes.
 
 ## Key files
 

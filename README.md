@@ -11,9 +11,9 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 /plugin marketplace add real-case/marvin-toolkit
 
 # Install the packs you need
-/plugin install marvin-core-pack@marvin-plugins
-/plugin install marvin-security-pack@marvin-plugins
-/plugin install marvin-taskmaster-pack@marvin-plugins
+/plugin install marvin-core-pack@marvin-toolkit
+/plugin install marvin-security-pack@marvin-toolkit
+/plugin install marvin-taskmaster-pack@marvin-toolkit
 ```
 
 ## What's included
