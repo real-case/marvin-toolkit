@@ -12,7 +12,7 @@
   "plugins": [
     {
       "name": "marvin-core-pack",
-      "source": "marvin-core-pack",
+      "source": "./plugins/marvin-core-pack",
       "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
       "version": "0.1.0-alpha.1",
       "category": "productivity",
@@ -20,7 +20,7 @@
     },
     {
       "name": "marvin-security-pack",
-      "source": "marvin-security-pack",
+      "source": "./plugins/marvin-security-pack",
       "description": "Security-focused development tools: OWASP scanning, threat modeling, secret scanning, dependency audits, IaC review, CI/CD security, compliance checks, pentest planning, and security fix generation",
       "version": "0.1.0-alpha.1",
       "category": "security",
@@ -28,7 +28,7 @@
     },
     {
       "name": "marvin-taskmaster-pack",
-      "source": "marvin-taskmaster-pack",
+      "source": "./plugins/marvin-taskmaster-pack",
       "description": "Spec-driven task pipeline: interactive spec co-creation, batch dispatch to headless agents, red-team spec and diff critics, and PR review fixing",
       "version": "0.1.0-alpha.1",
       "category": "productivity",
