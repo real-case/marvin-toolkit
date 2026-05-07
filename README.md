@@ -2,7 +2,7 @@
 
 > Claude Code toolkit for those who don't panic.
 
-Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin marketplace shipping skills, agents, and MCP servers that cover the full development lifecycle. Three packs, 24 skills, 5 agents, 2 MCP servers — install what you need and get structured, repeatable workflows inside Claude Code.
+Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin marketplace shipping skills, agents, and MCP servers that cover the full development lifecycle. Three packs, 25 skills, 5 agents, 2 MCP servers — install what you need and get structured, repeatable workflows inside Claude Code.
 
 ## Quick start
 
@@ -20,7 +20,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 
 | Pack | Skills | Agents | MCP Servers | Prefix |
 |------|--------|--------|-------------|--------|
-| [marvin-core-pack](#marvin-core-pack) | 10 | 2 | 2 | `mn.` |
+| [marvin-core-pack](#marvin-core-pack) | 11 | 2 | 2 | `mn.` |
 | [marvin-security-pack](#marvin-security-pack) | 10 | 1 | — | `mn.sec.` |
 | [marvin-taskmaster-pack](#marvin-taskmaster-pack) | 4 | 2 | — | `mn.` |
 
@@ -40,6 +40,7 @@ Core developer tools — language-agnostic, used by every engineer.
 | `/mn.migration-plan` | Plan migrations with risks and rollback strategy |
 | `/mn.explaining-code` | Explain code, architecture, and execution flow |
 | `/mn.docs-search` | Search and synthesize project documentation |
+| `/mn.eject` | Scaffold pack skills, commands, and agents into the project's `.claude/` (re-run to update) |
 
 **Agents:**
 - `onboarding-guide` — helps new developers navigate the codebase
