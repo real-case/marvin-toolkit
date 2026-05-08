@@ -1,21 +1,23 @@
 // `marvinx init <target> [--only kinds] [--source <path>] [--target claude]
-//                       [--dry-run] [--json] [--yes] [--offline]`
+//                       [--dry-run] [--offline]`
 //
-// Default behaviour: applies. Pass --dry-run for a plan only. The CLI surface
-// keeps `<target>` shape compatible with /mn.eject (<pack> | <pack>/<kind>/<name>).
+// Default behaviour: applies. Pass --dry-run for a plan only. Target paths
+// and content rendering go through the adapter registry — this file is
+// adapter-agnostic and must not embed target-specific path literals.
 
 import { run as runEject } from "../lib/eject-core.mjs";
 import { resolveSource } from "../source-resolver.mjs";
-
-const SUPPORTED_TARGETS = new Set(["claude"]);
+import { getAdapter, listTargets, DEFAULT_TARGET } from "../adapters/index.mjs";
 
 export async function init(opts) {
   const target = opts.target;
   if (!target) return error(`marvinx init: <target> is required.\n${usage()}`, 2);
 
-  const adapter = opts.adapter ?? "claude";
-  if (!SUPPORTED_TARGETS.has(adapter)) {
-    return error(`marvinx init: --target=${adapter} not supported in this version. Supported: ${[...SUPPORTED_TARGETS].join(", ")}`, 2);
+  const adapterName = opts.adapter ?? DEFAULT_TARGET;
+  let adapter;
+  try { adapter = getAdapter(adapterName); }
+  catch {
+    return error(`marvinx init: --target=${adapterName} not supported. Available: ${listTargets().join(", ")}`, 2);
   }
 
   const packName = target.split("/")[0];
@@ -28,25 +30,25 @@ export async function init(opts) {
     return error(`marvinx init: ${err.message}`, 2);
   }
 
-  // Pre-apply dry-run for the human summary.
+  // Pre-apply dry-run for surfacing errors cleanly when the plan can't be built.
   const planRes = await runEject(buildEjectArgs(opts, resolved.path, false), {
-    cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd, stdout: silent(), stderr: silent(),
+    cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd, adapter,
+    stdout: silent(), stderr: silent(),
   });
   if (planRes !== 0) {
-    // Re-run the dry-run with real stderr so the error surfaces.
     return runEject(buildEjectArgs(opts, resolved.path, false), {
-      cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd,
+      cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd, adapter,
     });
   }
 
   if (opts.dryRun) {
     return runEject(buildEjectArgs(opts, resolved.path, false), {
-      cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd,
+      cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd, adapter,
     });
   }
 
   return runEject(buildEjectArgs(opts, resolved.path, true), {
-    cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd,
+    cwd: opts.cwd, projectRoot: opts.projectRoot ?? opts.cwd, adapter,
   });
 }
 
@@ -69,13 +71,13 @@ function silent() {
 
 function usage() {
   return [
-    "usage: marvinx init <target> [--only kinds] [--source <path>] [--target claude]",
+    "usage: marvinx init <target> [--only kinds] [--source <path>] [--target <name>]",
     "                             [--dry-run] [--offline]",
     "",
     "  <target>           <pack> | <pack>/skills/<name> | <pack>/commands/<name> | <pack>/agents/<name>",
     "  --only kinds       comma-separated subset: skills,commands,agents (whole-pack only)",
     "  --source <path>    explicit local clone of marvin-toolkit (skips tarball download)",
-    "  --target <name>    only `claude` is supported in this phase",
+    `  --target <name>    one of: ${listTargets().join(", ")}`,
     "  --dry-run          print the plan and exit; do not write anything",
     "  --offline          skip the GitHub tarball fallback resolver",
   ].join("\n");

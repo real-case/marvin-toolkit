@@ -1,25 +1,28 @@
-// `marvinx status [--source <path>] [--offline] [--json]`
+// `marvinx status [--source <path>] [--offline] [--json] [--target <name>]`
 //
-// Reads `.claude/.marvin-eject.json`, resolves each pack against the
-// configured source, and prints a table of installed-vs-latest.
+// Reads the adapter's manifest, resolves each pack against the configured
+// source, and prints a table of installed-vs-latest. Manifest path comes
+// from the adapter — this file is adapter-agnostic.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { readManifest, readPackManifest } from "../lib/eject-core.mjs";
 import { resolveSource } from "../source-resolver.mjs";
+import { getAdapter, DEFAULT_TARGET } from "../adapters/index.mjs";
 
 export async function status(opts) {
   const cwd = opts.cwd ?? process.cwd();
   const projectRoot = opts.projectRoot ?? cwd;
-  const manifestPath = path.join(projectRoot, ".claude", ".marvin-eject.json");
+  const adapter = getAdapter(opts.adapter ?? DEFAULT_TARGET);
+  const manifestPath = path.join(projectRoot, adapter.manifestPath());
   if (!existsSync(manifestPath)) {
     if (opts.json) process.stdout.write(JSON.stringify({ entries: [], note: "no manifest" }) + "\n");
     else process.stdout.write("no marvin manifest in this project (run `marvinx init` first)\n");
     return 0;
   }
 
-  const manifest = await readManifest(projectRoot);
+  const manifest = await readManifest(projectRoot, adapter);
   const entries = manifest.ejected ?? [];
   const packLatest = new Map();
 
@@ -48,7 +51,7 @@ export async function status(opts) {
   });
 
   if (opts.json) {
-    process.stdout.write(JSON.stringify({ entries: rows }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ target: adapter.name, entries: rows }, null, 2) + "\n");
     return 0;
   }
   process.stdout.write(formatTable(rows) + "\n");

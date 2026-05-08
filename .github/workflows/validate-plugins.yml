@@ -93,6 +93,25 @@ jobs:
       - name: Test marvinx CLI
         run: node --test cli/src/marvinx.test.mjs
 
+      - name: Test adapter contract
+        run: node --test cli/src/adapters/adapters.test.mjs
+
+      - name: Lint adapter boundary in cli/src/commands/
+        run: |
+          set -e
+          # No target-specific path literals in command files.
+          if grep -nE '\.claude/|\.codex/|\.cursor/' cli/src/commands/*.mjs; then
+            echo "ERROR: cli/src/commands/ must not embed target-specific path literals."
+            echo "Resolve paths via getAdapter(name).pathFor() / .manifestPath()."
+            exit 1
+          fi
+          # No direct adapter-impl imports — must go through the registry.
+          if grep -nE 'from "\.\./adapters/(claude|codex|cursor)\.mjs"|from "\./adapters/(claude|codex|cursor)\.mjs"' cli/src/commands/*.mjs; then
+            echo "ERROR: cli/src/commands/ must import via cli/src/adapters/index.mjs (registry)."
+            exit 1
+          fi
+          echo "ok: adapter boundary clean"
+
       - name: Smoke-test marvinx init against all packs
         run: |
           set -euo pipefail
