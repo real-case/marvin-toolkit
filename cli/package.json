@@ -1,6 +1,6 @@
 {
   "name": "marvinx",
-  "version": "0.2.0-alpha.1",
+  "version": "0.3.0-alpha.1",
   "description": "Tool-agnostic installer for Marvin Toolkit packs. Materialises skills, commands, and agents into a project's .claude/ (and, in future phases, other targets). Reuses the same deterministic backend as /mn.eject.",
   "type": "module",
   "bin": {

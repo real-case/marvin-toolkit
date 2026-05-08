@@ -21,6 +21,18 @@ export async function init(opts) {
   }
 
   const packName = target.split("/")[0];
+
+  // Whole-pack gate: adapter may refuse a pack outright (exit 3).
+  if (typeof adapter.unsupportedPack === "function") {
+    const warn = adapter.unsupportedPack(packName);
+    if (warn) {
+      const lines = [`marvinx init: pack "${packName}" is not supported on --target=${adapter.name}.`];
+      lines.push(`  reason: ${warn.reason}`);
+      if (warn.suggestion) lines.push(`  suggestion: ${warn.suggestion}`);
+      return error(lines.join("\n"), 3);
+    }
+  }
+
   let resolved;
   try {
     resolved = await resolveSource(packName, {

@@ -360,7 +360,8 @@ test("run: pack with .mcp.json surfaces hint in plan, never copies it", async ()
   );
   assert.equal(code, 0);
   const report = JSON.parse(stdout);
-  assert.deepEqual(report.mcpHint, { servers: ["foo", "bar"] });
+  assert.deepEqual(report.mcpHint.servers, ["foo", "bar"]);
+  assert.ok(report.mcpHint.config?.mcpServers, "raw config must accompany the hint for adapter postWrite hooks");
   // .mcp.json must NOT have been copied to the project.
   assert.equal(existsSync(path.join(sb.projectRoot, ".mcp.json")), false);
 });

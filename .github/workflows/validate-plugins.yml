@@ -96,6 +96,26 @@ jobs:
       - name: Test adapter contract
         run: node --test cli/src/adapters/adapters.test.mjs
 
+      - name: Test Codex adapter (fixture-diff + unit)
+        run: node --test cli/src/adapters/codex.test.mjs
+
+      - name: Smoke-test marvinx init --target=codex
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_WORKSPACE"
+          # marvin-core-pack: must succeed and match committed fixture (acceptance #1)
+          scratch=$(mktemp -d)
+          (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" init marvin-core-pack --target=codex --source "$REPO" --offline >/dev/null)
+          test -f "$scratch/.codex/.marvin-eject.json" || { echo "codex manifest missing"; exit 1; }
+          # marvin-taskmaster-pack: must exit 3 (acceptance #3)
+          if (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" init marvin-taskmaster-pack --target=codex --source "$REPO" --offline 2>/dev/null); then
+            echo "ERROR: codex+taskmaster should have exited 3 but succeeded"; exit 1
+          else
+            code=$?
+            if [ "$code" != "3" ]; then echo "ERROR: expected exit 3, got $code"; exit 1; fi
+          fi
+          echo "codex smoke: ok (core-pack succeeded, taskmaster refused with exit 3)"
+
       - name: Lint adapter boundary in cli/src/commands/
         run: |
           set -e

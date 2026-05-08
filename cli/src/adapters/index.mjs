@@ -7,9 +7,11 @@
 // only) extend the per-target docs.
 
 import claudeAdapter from "./claude.mjs";
+import codexAdapter from "./codex.mjs";
 
 const REGISTRY = new Map();
 REGISTRY.set("claude", claudeAdapter);
+REGISTRY.set("codex", codexAdapter);
 
 /**
  * Returns the adapter for a given target name.

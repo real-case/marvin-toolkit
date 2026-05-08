@@ -133,14 +133,15 @@ test("init: --dry-run prints plan and writes nothing", async () => {
   assert.equal(existsSync(path.join(sb.project, ".claude")), false);
 });
 
-test("init: rejects unsupported --target", async () => {
+test("init: rejects unknown --target with available list", async () => {
   const sb = await setupClone();
   const { code, err } = await withCapturedOutput(() =>
     init({ target: "marvin-core-pack/skills/mn.demo", source: sb.repo, offline: true,
-           adapter: "codex", cwd: sb.project, projectRoot: sb.project }),
+           adapter: "definitely-not-a-real-target", cwd: sb.project, projectRoot: sb.project }),
   );
   assert.equal(code, 2);
   assert.match(err, /not supported/);
+  assert.match(err, /Available:.*claude/);
 });
 
 test("init: missing target exits 2", async () => {

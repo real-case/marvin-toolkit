@@ -126,7 +126,20 @@ Tag-like refs (`v1.2.3`, `1.2.3`) are treated as immutable and cached forever. B
 
 ## Targets
 
-The `--target` flag is forward-compatible scaffolding for non-Claude editors. Phase 1 supports only `--target=claude` (the default). Codex CLI support is planned for a later phase.
+| `--target` | Status | Use |
+| --- | --- | --- |
+| `claude` (default) | Stable | Full pack support — skills, commands, agents, MCP hint. Writes to `.claude/`. |
+| `codex` | PoC | `marvin-core-pack` only. Skills become `.codex/prompts/<name>.md`; commands and agents are skipped (with explanation); MCP config printed as TOML for manual paste. See [docs/codex-target.md](../docs/codex-target.md). |
+
+```shell
+# Claude (default)
+marvinx init marvin-core-pack
+
+# Codex
+marvinx init marvin-core-pack --target=codex
+```
+
+`marvinx init marvin-taskmaster-pack --target=codex` exits with code 3 — taskmaster relies on Claude subagents.
 
 ## Manifest format
 

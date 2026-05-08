@@ -387,7 +387,9 @@ export async function extractMcpHint(packRoot) {
     if (!servers || typeof servers !== "object") return null;
     const names = Object.keys(servers);
     if (names.length === 0) return null;
-    return { servers: names };
+    // `config` carries the raw mcpServers object so adapters' postWrite hooks
+    // can render it into target-native config formats (e.g. TOML for Codex).
+    return { servers: names, config: { mcpServers: servers } };
   } catch { return null; }
 }
 
@@ -450,24 +452,30 @@ export async function executePlan(plan, projectRoot) {
 
 // ─── plan / report builders ─────────────────────────────────────────────────
 
-export async function buildPlan({ target, only, source, projectRoot, cwd, adapter = claudeAdapter }) {
+export async function buildPlan({ target, only, source, projectRoot, cwd, adapter = claudeAdapter, today: todayOverride }) {
   const { pack: packName } = parseTarget(target);
   const packRoot = await resolvePackRoot(packName, source, cwd ?? projectRoot);
   const { version: packVersion } = await readPackManifest(packRoot);
   const artifacts = await enumerateArtifacts(target, packRoot, only);
   if (artifacts.length === 0) throw new ValidationError(`no artifacts matched target "${target}"`);
   const mcpHint = await extractMcpHint(packRoot);
-  const today = todayUtc();
+  const today = todayOverride ?? todayUtc();
   const existingManifest = await readManifest(projectRoot, adapter);
 
   // Resolve destination paths via adapter, dropping artifacts that aren't supported.
+  // pathFor() may return null to filter out an individual file (e.g. Codex skips
+  // non-SKILL.md files inside skill folders).
   const supported = [];
   const skipped = [];
   for (const a of artifacts) {
     const warn = adapter.unsupported(a);
     if (warn) { skipped.push({ artifact: a, warning: warn }); continue; }
-    for (const f of a.files) {
-      f.toRel = adapter.pathFor(a, f.relPath);
+    a.files = a.files
+      .map((f) => ({ ...f, toRel: adapter.pathFor(a, f.relPath) }))
+      .filter((f) => f.toRel !== null);
+    if (a.files.length === 0) {
+      skipped.push({ artifact: a, warning: { reason: "adapter filtered out all files" } });
+      continue;
     }
     supported.push(a);
   }
@@ -544,7 +552,7 @@ export async function run(argv, opts = {}) {
   try {
     plan = await buildPlan({
       target: parsed.target, only: parsed.only, source: parsed.source,
-      projectRoot, cwd, adapter,
+      projectRoot, cwd, adapter, today: opts.today,
     });
   } catch (err) {
     if (err instanceof ValidationError) { stderr.write(`error: ${err.message}\n`); return 2; }
