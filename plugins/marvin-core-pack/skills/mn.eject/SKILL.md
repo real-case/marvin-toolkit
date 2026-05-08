@@ -4,7 +4,10 @@ description: Copy Marvin pack artifacts (skills, commands, agents) from the inst
 disable-model-invocation: true
 ---
 
-Scaffold (or update) Marvin pack artifacts into `<project>/.claude/`. Follow the full workflow below.
+Scaffold (or update) Marvin pack artifacts into `<project>/.claude/`. The
+real logic lives in `eject.mjs` next to this file — this skill only
+parses `$ARGUMENTS`, calls the script, presents the plan, and re-invokes
+on confirmation. **Do not reproduce the script's behaviour in prose.**
 
 ## Argument parsing
 
@@ -15,120 +18,80 @@ Scaffold (or update) Marvin pack artifacts into `<project>/.claude/`. Follow the
   - `<pack>/skills/<name>` — single skill (folder)
   - `<pack>/commands/<name>` — single command (file, no `.md` suffix in arg)
   - `<pack>/agents/<name>` — single agent (file, no `.md` suffix in arg)
-- `--only <kinds>` — only valid with whole-pack target. Comma-separated subset of `skills`, `commands`, `agents`.
+- `--only <kinds>` — comma-separated subset of `skills`, `commands`, `agents`. Whole-pack target only.
 
-`<pack>` must be one of the three Marvin packs: `marvin-core-pack`, `marvin-security-pack`, `marvin-taskmaster-pack`. Reject anything else with a clear error.
+`<pack>` must be one of the three Marvin packs: `marvin-core-pack`,
+`marvin-security-pack`, `marvin-taskmaster-pack`. The script enforces
+this; do not duplicate the check here.
 
-If `$ARGUMENTS` is empty: ask the user which pack and which artifacts to eject — do not guess.
+If `$ARGUMENTS` is empty, ask the user which pack and which artifacts
+to eject — do not guess and do not call the script.
 
 ## Workflow
 
-### 1. Resolve the pack source
+### 1. Locate the script
 
-The pack source root must be located in one of two modes:
+The script lives at `<this-skill-dir>/eject.mjs`. Resolve its absolute
+path. In **dev mode** (the marvin-toolkit repo itself) it is at
+`./plugins/marvin-core-pack/skills/mn.eject/eject.mjs`. In **installed
+mode** (a user project) it is at
+`~/.claude/plugins/<...>/marvin-core-pack/skills/mn.eject/eject.mjs`.
 
-**Dev mode** — if CWD looks like the marvin-toolkit repo itself (has `.claude-plugin/marketplace.json` whose `name` field is `"marvin-toolkit"`), use `./plugins/<pack>`.
+If you cannot locate it, abort with a clear error — do not improvise
+a fallback.
 
-**Installed mode** — otherwise, locate the installed pack:
+### 2. Dry-run
+
+Run, **without `--apply`**:
 
 ```bash
-find ~/.claude/plugins -type d -name '<pack>' -path '*marvin-toolkit*' 2>/dev/null | head -1
+node <eject.mjs> "<target>" [--only <kinds>]
 ```
 
-If neither resolves, abort with a helpful error: "Pack `<pack>` not found. Install it first: `/plugin install <pack>@marvin-toolkit`".
+The script prints a JSON plan to stdout. Parse it:
 
-Read `<pack-root>/.claude-plugin/plugin.json` to get the pack's `version` — it will be embedded in the header comment and manifest.
+- `creates` — list of files that will be newly written.
+- `overwrites` — list of files that will be replaced.
+- `mcpHint` — `{ servers: [...] }` if the pack ships MCP servers; `null` otherwise.
 
-### 2. Build the artifact list
-
-Based on `<target>` and `--only`, enumerate source paths and target paths:
-
-| Target spec                          | Source                                  | Destination                              |
-| ------------------------------------ | --------------------------------------- | ---------------------------------------- |
-| `<pack>` (whole)                     | `<pack-root>/{commands,skills,agents}/` | `.claude/{commands,skills,agents}/`      |
-| `<pack>/skills/<name>`               | `<pack-root>/skills/<name>/` (folder)   | `.claude/skills/<name>/`                 |
-| `<pack>/commands/<name>`             | `<pack-root>/commands/<name>.md`        | `.claude/commands/<name>.md`             |
-| `<pack>/agents/<name>`               | `<pack-root>/agents/<name>.md`          | `.claude/agents/<name>.md`               |
-
-Skill folders may contain nested files (not only `SKILL.md`) — copy the entire folder recursively.
-
-If a source path doesn't exist, abort with `<pack>/<artifact>` not found.
-
-`.mcp.json` is **never** copied. If the pack has a non-empty `.mcp.json`, remember its contents to print as a hint in the final report (Step 7).
+If the script exits with a non-zero code, surface its stderr verbatim
+and stop.
 
 ### 3. Confirm with the user
 
 Present a summary:
+
 - Which pack + version is being ejected.
-- List of files to be created vs. overwritten (check existence in `.claude/` before confirming).
-- Note that overwrites are full replacements — any local edits to those files will be lost.
-- If applicable: note that pack's `.mcp.json` will not be touched.
+- Files that will be created vs overwritten (use the `creates` and `overwrites` arrays).
+- Note that overwrites are full replacements — local edits will be lost.
+- If `mcpHint` is non-null: note that the pack's MCP config will not be touched and list the server names.
 
-Ask: **Proceed**, **Cancel**. Do not start writing until explicit "yes".
+Ask: **Proceed**, **Cancel**. Wait for explicit "yes" before continuing.
 
-### 4. Copy files with header injection
+### 4. Apply
 
-For every `.md` file, inject a header comment recording the source. Behaviour depends on whether the file has YAML frontmatter:
+Re-run the same command with `--apply`:
 
-**With frontmatter** — insert header on a blank line directly after the closing `---`:
-
-```markdown
----
-name: ...
-description: ...
----
-
-<!-- marvin-eject: source=<pack>@<version> ejected-at=<YYYY-MM-DD> -->
-
-...rest of file...
+```bash
+node <eject.mjs> "<target>" [--only <kinds>] --apply
 ```
 
-**Without frontmatter** — insert header at the very top of the file, followed by a blank line.
+Surface the script's stdout (a JSON apply report) and stderr to the user.
 
-If a header for the same `<pack>` already exists in the destination file (e.g. previous eject), replace that header line in-place rather than stacking duplicates. Match by the literal prefix `<!-- marvin-eject: source=<pack>@`.
+If the script exits non-zero (mid-run failure), report which files
+landed and which failed using the `written` and `failures` arrays from
+its stdout. The script has already written a partial manifest reflecting
+what succeeded; do not attempt to clean up or roll back.
 
-Use today's date for `ejected-at` in `YYYY-MM-DD` format.
+### 5. Final report
 
-For non-`.md` files inside skill folders (e.g. shell scripts, JSON, templates): copy as-is, no header. The manifest still records them.
-
-### 5. Update the manifest
-
-Read `.claude/.marvin-eject.json` if it exists; otherwise initialise:
-
-```json
-{ "version": 1, "ejected": [] }
-```
-
-For each ejected artifact, upsert an entry keyed by `(source, artifact)`:
-
-```json
-{
-  "source": "<pack>",
-  "sourceVersion": "<version-from-plugin.json>",
-  "ejectedAt": "<YYYY-MM-DD>",
-  "artifact": "skills/<name>" | "commands/<name>" | "agents/<name>",
-  "files": [".claude/skills/<name>/SKILL.md", "..."]
-}
-```
-
-If the same `(source, artifact)` is already present, replace it (update version, date, file list). Never append a duplicate.
-
-Write the file with two-space indentation and a trailing newline.
-
-### 6. (Skipped) MCP servers
-
-Do not modify `.mcp.json` in either pack or project. Just remember the pack's MCP config for the report.
-
-### 7. Report
-
-Print a concise summary:
+Print a concise human-friendly summary built from the JSON report:
 
 ```
 Ejected <pack>@<version> into .claude/
 
 Created (N):
   - .claude/skills/mn.commit/SKILL.md
-  - .claude/commands/mn.commit.md
   ...
 
 Overwritten (M):
@@ -137,64 +100,58 @@ Overwritten (M):
 Manifest: .claude/.marvin-eject.json (N entries total)
 ```
 
-If the pack has MCP servers, append:
+If `mcpHint` is non-null:
 
 ```
-Note: <pack> ships MCP servers (<name1>, <name2>) which were NOT ejected.
+Note: <pack> ships MCP servers (<server1>, <server2>) which were NOT ejected.
 If you want them, copy the relevant entries from <pack-root>/.mcp.json
 into your project's .mcp.json manually.
 ```
 
-Tell the user they can re-run the same command later to update files when the pack is upgraded.
+Tell the user they can re-run the same command later to update files
+when the pack is upgraded.
 
 ## Rules
 
-- **Pure overwrite.** Never attempt 3-way merge or skip-on-modified. The header + manifest exist so users can `git diff` and `git revert` themselves if they had local edits.
-- **Marvin packs only.** Reject `<pack>` values not in the three known names. Eject is intentionally not a generic plugin-copy tool.
-- **Atomicity is best-effort.** If a copy fails mid-run, report which files were already written; do NOT roll back. Manifest still gets written for what succeeded.
-- **No MCP merging.** Project `.mcp.json` is sacred — only the user edits it.
-- **Header line is single-source-of-truth for origin.** Format: `<!-- marvin-eject: source=<pack>@<version> ejected-at=<YYYY-MM-DD> -->`. Tooling (future `--status` flag) will rely on this exact prefix.
-- **Manifest is single-source-of-truth for inventory.** Don't ship a `--status` command that scans the filesystem; future versions will read the manifest.
+- **The script is the source of truth.** Do not re-implement header
+  injection, manifest upsert, frontmatter detection, or overwrite
+  decisions in prose. If behaviour seems wrong, fix `eject.mjs` and its
+  tests — not this skill.
+- **Marvin packs only.** The script enforces the allowlist; if it
+  rejects a pack, surface that message verbatim.
+- **No MCP merging.** Project `.mcp.json` is sacred. The script never
+  touches it; neither do you.
+- **No rollbacks.** Mid-run failures leave behind whatever was already
+  written. Surface the script's failure list and stop.
 
 ## Examples
 
 ```
 $ /mn.eject marvin-core-pack/skills/mn.commit
 
-About to eject marvin-core-pack@0.1.0-alpha.2 into .claude/
-  Skill: skills/mn.commit/
+# Step 2 (dry-run output):
+{
+  "mode": "dry-run",
+  "pack": "marvin-core-pack",
+  "version": "0.1.0-alpha.2",
+  "creates": [".claude/skills/mn.commit/SKILL.md"],
+  "overwrites": [],
+  "mcpHint": { "servers": ["context7", "gitmcp"] }
+}
 
-Will create:
+# Step 3 (you, to user):
+About to eject marvin-core-pack@0.1.0-alpha.2 into .claude/
+
+Will create (1):
   .claude/skills/mn.commit/SKILL.md
 
-Manifest will be created at .claude/.marvin-eject.json
+marvin-core-pack ships MCP servers (context7, gitmcp) — these will NOT be ejected.
+
 Proceed? [y/N]
 ```
 
 ```
-$ /mn.eject marvin-core-pack/skills/mn.commit   # second run, after pack upgraded to alpha.3
+$ /mn.eject marvin-core-pack --only skills,commands
 
-About to eject marvin-core-pack@0.1.0-alpha.3 into .claude/
-  Skill: skills/mn.commit/
-
-Will overwrite (1):
-  .claude/skills/mn.commit/SKILL.md  (currently @0.1.0-alpha.2)
-
-Any local edits to that file will be lost.
-Proceed? [y/N]
-```
-
-```
-$ /mn.eject marvin-core-pack --only skills
-
-About to eject marvin-core-pack@0.1.0-alpha.2 into .claude/
-  10 skills (commands and agents skipped due to --only)
-
-Will create (10):
-  .claude/skills/mn.adr/SKILL.md
-  .claude/skills/mn.changelog/SKILL.md
-  ...
-
-Note: marvin-core-pack ships MCP servers (context7, gitmcp) which were NOT ejected.
-Proceed? [y/N]
+# Same shape — script returns a longer creates/overwrites list, which you summarise.
 ```

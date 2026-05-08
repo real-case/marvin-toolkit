@@ -84,6 +84,9 @@ jobs:
           done
           exit $error
 
+      - name: Test mn.eject deterministic backend
+        run: node --test plugins/marvin-core-pack/skills/mn.eject/eject.test.mjs
+
       - name: Run claude plugin validate (if available)
         continue-on-error: true
         run: |
