@@ -177,6 +177,16 @@ plugins/
 
 See [CLAUDE.md](./CLAUDE.md) for development guidelines.
 
+## Architecture decisions
+
+Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./docs/adr/):
+
+- [ADR 0001 — Source format: keep `plugins/` Claude-native](./docs/adr/0001-source-format.md). Adopt Option A (status quo); other targets render via adapters. Includes a playbook for adding a new adapter.
+
+Target-specific docs:
+- [Adapter contract](./docs/adapter-contract.md) — what every `--target` adapter must implement.
+- [`--target=codex`](./docs/codex-target.md) — Codex CLI rendering, mappings, and limitations.
+
 ## License
 
 [WTFPL](./LICENSE)
