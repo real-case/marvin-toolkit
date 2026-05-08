@@ -1,0 +1,45 @@
+name: Publish marvinx CLI
+
+on:
+  push:
+    tags:
+      - "marvinx-v*"
+  pull_request:
+    paths:
+      - "cli/**"
+      - "plugins/marvin-core-pack/skills/mn.eject/eject-core.mjs"
+      - ".github/workflows/publish-cli.yml"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify core is in sync
+        run: node cli/scripts/sync-core.mjs --check
+
+      - name: Run CLI tests
+        run: node --test cli/src/marvinx.test.mjs
+
+      - name: Pack (dry-run, always)
+        working-directory: cli
+        run: |
+          npm pack --dry-run > /tmp/marvinx-pack.txt
+          cat /tmp/marvinx-pack.txt
+
+      - name: Publish to npm (only on tag push)
+        if: startsWith(github.ref, 'refs/tags/marvinx-v')
+        working-directory: cli
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

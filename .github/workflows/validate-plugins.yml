@@ -87,6 +87,33 @@ jobs:
       - name: Test mn.eject deterministic backend
         run: node --test plugins/marvin-core-pack/skills/mn.eject/eject.test.mjs
 
+      - name: Verify cli/src/lib/eject-core.mjs is in sync with canonical
+        run: node cli/scripts/sync-core.mjs --check
+
+      - name: Test marvinx CLI
+        run: node --test cli/src/marvinx.test.mjs
+
+      - name: Smoke-test marvinx init against all packs
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_WORKSPACE"
+          for pack in marvin-core-pack marvin-security-pack marvin-taskmaster-pack; do
+            scratch=$(mktemp -d)
+            echo "::group::marvinx init $pack -> $scratch"
+            (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" init "$pack" --source "$REPO" --offline)
+            test -f "$scratch/.claude/.marvin-eject.json" || { echo "manifest missing for $pack"; exit 1; }
+            (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" status --source "$REPO" --offline --json | node -e "
+              const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+              if (!d.entries.length) { console.error('status returned no entries'); process.exit(1); }
+              if (d.entries.some(e => e.upToDate !== true)) {
+                console.error('status reports outdated entries immediately after init');
+                process.exit(1);
+              }
+            ")
+            (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" update --source "$REPO" --offline >/dev/null)
+            echo "::endgroup::"
+          done
+
       - name: Run claude plugin validate (if available)
         continue-on-error: true
         run: |
