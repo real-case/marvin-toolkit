@@ -4,17 +4,41 @@
 
 Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin marketplace shipping skills, agents, and MCP servers that cover the full development lifecycle. Three packs, 25 skills, 5 agents, 2 MCP servers — install what you need and get structured, repeatable workflows inside Claude Code.
 
-## Quick start
+## Two ways to install
+
+### A. Marketplace (Claude Code users)
+
+Live tools — skills are invoked via slash commands inside Claude Code.
 
 ```shell
-# Add the Marvin marketplace
 /plugin marketplace add real-case/marvin-toolkit
 
-# Install the packs you need
 /plugin install marvin-core-pack@marvin-toolkit
 /plugin install marvin-security-pack@marvin-toolkit
 /plugin install marvin-taskmaster-pack@marvin-toolkit
 ```
+
+### B. `marvin` CLI (any project, no Claude Code required)
+
+Tool-agnostic installer. Materialises pack artifacts into your project's
+`.claude/` directory so they're committed and version-controlled with your
+code. Reuses the same deterministic backend as `/mn.eject`.
+
+```shell
+# Install the whole core pack
+npx marvin init marvin-core-pack
+
+# Or just one skill
+npx marvin init marvin-core-pack/skills/mn.commit
+
+# Check status of ejected artifacts
+npx marvin status
+
+# Pull the latest version of everything previously ejected
+npx marvin update
+```
+
+The CLI is published from this repo to npm as [`marvin`](https://www.npmjs.com/package/marvin). Source: [`cli/`](./cli/). See [cli/README.md](./cli/README.md) for the full surface.
 
 ## What's included
 
@@ -152,6 +176,16 @@ plugins/
 5. Create a PR — CI validates manifests, frontmatter, and structure automatically
 
 See [CLAUDE.md](./CLAUDE.md) for development guidelines.
+
+## Architecture decisions
+
+Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./docs/adr/):
+
+- [ADR 0001 — Source format: keep `plugins/` Claude-native](./docs/adr/0001-source-format.md). Adopt Option A (status quo); other targets render via adapters. Includes a playbook for adding a new adapter.
+
+Target-specific docs:
+- [Adapter contract](./docs/adapter-contract.md) — what every `--target` adapter must implement.
+- [`--target=codex`](./docs/codex-target.md) — Codex CLI rendering, mappings, and limitations.
 
 ## License
 

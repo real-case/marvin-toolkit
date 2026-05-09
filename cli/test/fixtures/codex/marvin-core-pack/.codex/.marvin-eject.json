@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "ejected": [
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.adr",
+      "files": [
+        ".codex/prompts/mn.adr.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.changelog",
+      "files": [
+        ".codex/prompts/mn.changelog.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.commit",
+      "files": [
+        ".codex/prompts/mn.commit.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.debug",
+      "files": [
+        ".codex/prompts/mn.debug.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.docs-search",
+      "files": [
+        ".codex/prompts/mn.docs-search.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.eject",
+      "files": [
+        ".codex/prompts/mn.eject.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.explaining-code",
+      "files": [
+        ".codex/prompts/mn.explaining-code.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.migration-plan",
+      "files": [
+        ".codex/prompts/mn.migration-plan.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.pr",
+      "files": [
+        ".codex/prompts/mn.pr.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.readme",
+      "files": [
+        ".codex/prompts/mn.readme.md"
+      ]
+    },
+    {
+      "source": "marvin-core-pack",
+      "sourceVersion": "0.1.0-alpha.3",
+      "ejectedAt": "2026-05-08",
+      "artifact": "skills/mn.review",
+      "files": [
+        ".codex/prompts/mn.review.md"
+      ]
+    }
+  ]
+}

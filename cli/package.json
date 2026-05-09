@@ -1,0 +1,44 @@
+{
+  "name": "@real-case/marvin",
+  "version": "0.3.0-alpha.1",
+  "description": "Tool-agnostic installer for Marvin Toolkit packs. Materialises skills, commands, and agents into a project's .claude/ (and, in future phases, other targets). Reuses the same deterministic backend as /mn.eject.",
+  "type": "module",
+  "bin": {
+    "marvin": "bin/marvin.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test src/**/*.test.mjs",
+    "sync-core": "node scripts/sync-core.mjs",
+    "sync-core:check": "node scripts/sync-core.mjs --check",
+    "prepack": "node scripts/sync-core.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "marvin",
+    "scaffold",
+    "skills",
+    "marketplace"
+  ],
+  "author": {
+    "name": "Yurii Anichkin",
+    "email": "personal@yurii-anichkin.dev"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/real-case/marvin-toolkit.git",
+    "directory": "cli"
+  }
+}

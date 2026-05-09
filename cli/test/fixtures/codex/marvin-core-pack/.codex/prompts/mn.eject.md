@@ -1,8 +1,4 @@
----
-name: marvin-eject
-description: Copy Marvin pack artifacts (skills, commands, agents) from the installed plugin into the project's local .claude/ directory so they can be committed, customised, and versioned alongside the codebase. Supports per-artifact and whole-pack granularity. Re-running on the same target overwrites existing files — this is also the update mechanism. Tracks origin via header comment and .claude/.marvin-eject.json manifest. Skips MCP servers (printed as a hint instead). Use when the user says "eject", "scaffold marvin into project", "copy plugin skills into .claude/", "/mn.eject", "update ejected skills", or wants to fork a Marvin pack into the project repo.
-disable-model-invocation: true
----
+<!-- marvin-eject: source=marvin-core-pack@0.1.0-alpha.3 ejected-at=2026-05-08 -->
 
 Scaffold (or update) Marvin pack artifacts into `<project>/.claude/`. The
 real logic lives in `eject.mjs` next to this file — this skill only

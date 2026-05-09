@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Open plugin marketplace for Claude Code AI-driven development",
-    "version": "0.1.0-alpha.1",
+    "version": "0.2.0-alpha.1",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "marvin-core-pack",
       "source": "./plugins/marvin-core-pack",
       "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
-      "version": "0.1.0-alpha.2",
+      "version": "0.1.0-alpha.3",
       "category": "productivity",
       "keywords": ["core", "commit", "pr", "review", "debug", "adr", "changelog", "readme", "migration", "onboarding", "eject", "scaffold"]
     },

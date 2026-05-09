@@ -84,6 +84,75 @@ jobs:
           done
           exit $error
 
+      - name: Test mn.eject deterministic backend
+        run: node --test plugins/marvin-core-pack/skills/mn.eject/eject.test.mjs
+
+      - name: Verify cli/src/lib/eject-core.mjs is in sync with canonical
+        run: node cli/scripts/sync-core.mjs --check
+
+      - name: Test marvin CLI
+        run: node --test cli/src/marvin.test.mjs
+
+      - name: Test adapter contract
+        run: node --test cli/src/adapters/adapters.test.mjs
+
+      - name: Test Codex adapter (fixture-diff + unit)
+        run: node --test cli/src/adapters/codex.test.mjs
+
+      - name: Smoke-test marvin init --target=codex
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_WORKSPACE"
+          # marvin-core-pack: must succeed and match committed fixture (acceptance #1)
+          scratch=$(mktemp -d)
+          (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" init marvin-core-pack --target=codex --source "$REPO" --offline >/dev/null)
+          test -f "$scratch/.codex/.marvin-eject.json" || { echo "codex manifest missing"; exit 1; }
+          # marvin-taskmaster-pack: must exit 3 (acceptance #3)
+          if (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" init marvin-taskmaster-pack --target=codex --source "$REPO" --offline 2>/dev/null); then
+            echo "ERROR: codex+taskmaster should have exited 3 but succeeded"; exit 1
+          else
+            code=$?
+            if [ "$code" != "3" ]; then echo "ERROR: expected exit 3, got $code"; exit 1; fi
+          fi
+          echo "codex smoke: ok (core-pack succeeded, taskmaster refused with exit 3)"
+
+      - name: Lint adapter boundary in cli/src/commands/
+        run: |
+          set -e
+          # No target-specific path literals in command files.
+          if grep -nE '\.claude/|\.codex/|\.cursor/' cli/src/commands/*.mjs; then
+            echo "ERROR: cli/src/commands/ must not embed target-specific path literals."
+            echo "Resolve paths via getAdapter(name).pathFor() / .manifestPath()."
+            exit 1
+          fi
+          # No direct adapter-impl imports — must go through the registry.
+          if grep -nE 'from "\.\./adapters/(claude|codex|cursor)\.mjs"|from "\./adapters/(claude|codex|cursor)\.mjs"' cli/src/commands/*.mjs; then
+            echo "ERROR: cli/src/commands/ must import via cli/src/adapters/index.mjs (registry)."
+            exit 1
+          fi
+          echo "ok: adapter boundary clean"
+
+      - name: Smoke-test marvin init against all packs
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_WORKSPACE"
+          for pack in marvin-core-pack marvin-security-pack marvin-taskmaster-pack; do
+            scratch=$(mktemp -d)
+            echo "::group::marvin init $pack -> $scratch"
+            (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" init "$pack" --source "$REPO" --offline)
+            test -f "$scratch/.claude/.marvin-eject.json" || { echo "manifest missing for $pack"; exit 1; }
+            (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" status --source "$REPO" --offline --json | node -e "
+              const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+              if (!d.entries.length) { console.error('status returned no entries'); process.exit(1); }
+              if (d.entries.some(e => e.upToDate !== true)) {
+                console.error('status reports outdated entries immediately after init');
+                process.exit(1);
+              }
+            ")
+            (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" update --source "$REPO" --offline >/dev/null)
+            echo "::endgroup::"
+          done
+
       - name: Run claude plugin validate (if available)
         continue-on-error: true
         run: |
