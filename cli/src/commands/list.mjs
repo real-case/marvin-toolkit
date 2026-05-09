@@ -1,4 +1,4 @@
-// `marvinx list [--source <path>] [--offline] [--json]`
+// `marvin list [--source <path>] [--offline] [--json]`
 //
 // Lists all artifacts in all known marvin packs, resolved from the
 // configured source.

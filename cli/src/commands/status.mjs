@@ -1,4 +1,4 @@
-// `marvinx status [--source <path>] [--offline] [--json] [--target <name>]`
+// `marvin status [--source <path>] [--offline] [--json] [--target <name>]`
 //
 // Reads the adapter's manifest, resolves each pack against the configured
 // source, and prints a table of installed-vs-latest. Manifest path comes
@@ -18,7 +18,7 @@ export async function status(opts) {
   const manifestPath = path.join(projectRoot, adapter.manifestPath());
   if (!existsSync(manifestPath)) {
     if (opts.json) process.stdout.write(JSON.stringify({ entries: [], note: "no manifest" }) + "\n");
-    else process.stdout.write("no marvin manifest in this project (run `marvinx init` first)\n");
+    else process.stdout.write("no marvin manifest in this project (run `marvin init` first)\n");
     return 0;
   }
 

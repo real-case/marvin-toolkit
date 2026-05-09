@@ -21,7 +21,7 @@ node eject.mjs <target> [--only kinds] [--apply] [--source path]
 | `<target>`        | `<pack>` or `<pack>/<skills\|commands\|agents>/<name>`                              |
 | `--only kinds`    | Comma-separated subset of `skills,commands,agents`. Whole-pack targets only.        |
 | `--apply`         | Execute. Without it, the script emits a JSON dry-run plan to stdout and exits 0.    |
-| `--source path`   | Override pack-root resolution. Used by tests and (Phase 1) by the `marvinx` CLI.    |
+| `--source path`   | Override pack-root resolution. Used by tests and (Phase 1) by the `marvin` CLI.    |
 | `--help`, `-h`    | Print usage.                                                                        |
 
 ### Exit codes

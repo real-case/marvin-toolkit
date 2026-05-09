@@ -1,5 +1,5 @@
 // GitHub-tarball source resolver: downloads + extracts a snapshot of the
-// marvin-toolkit repo from GitHub, caches it under ~/.cache/marvinx/, and
+// marvin-toolkit repo from GitHub, caches it under ~/.cache/marvin/, and
 // returns the absolute path to the requested pack root within that cache.
 //
 // Defaults:
@@ -24,7 +24,7 @@ const CACHE_TTL_BRANCH_MS = 60 * 60 * 1000; // 1h for branches
 const HTTP_TIMEOUT_MS = 30_000;
 
 export function getCacheRoot() {
-  return path.join(os.homedir(), ".cache", "marvinx");
+  return path.join(os.homedir(), ".cache", "marvin");
 }
 
 function repoSpec() {
@@ -41,7 +41,7 @@ function isTagLike(ref) {
 
 // TODO(user): pick the cache invalidation strategy.
 //
-// PURPOSE: decide when the cached tarball at ~/.cache/marvinx/<ref>/ is
+// PURPOSE: decide when the cached tarball at ~/.cache/marvin/<ref>/ is
 // stale and must be re-fetched. Acceptance criterion 5: "content-addressed
 // by version; corrupted downloads detected via simple size+checksum gate
 // and re-fetched".
@@ -73,7 +73,7 @@ export async function resolveTarball(packName, opts = {}) {
   const { repo, ref } = { ...repoSpec(), ...(opts.override ?? {}) };
   const cacheRoot = opts.cacheRoot ?? getCacheRoot();
   const entryDir = path.join(cacheRoot, sanitize(ref));
-  const metaPath = path.join(entryDir, ".marvinx-meta.json");
+  const metaPath = path.join(entryDir, ".marvin-meta.json");
   const repoSlug = repo.split("/")[1];
 
   let meta = await readMeta(metaPath);

@@ -1,10 +1,10 @@
 {
-  "name": "marvinx",
+  "name": "@real-case/marvin",
   "version": "0.3.0-alpha.1",
   "description": "Tool-agnostic installer for Marvin Toolkit packs. Materialises skills, commands, and agents into a project's .claude/ (and, in future phases, other targets). Reuses the same deterministic backend as /mn.eject.",
   "type": "module",
   "bin": {
-    "marvinx": "bin/marvinx.mjs"
+    "marvin": "bin/marvin.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -19,6 +19,9 @@
     "sync-core": "node scripts/sync-core.mjs",
     "sync-core:check": "node scripts/sync-core.mjs --check",
     "prepack": "node scripts/sync-core.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "claude",
@@ -35,6 +38,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/real-case/marvin-toolkit.git"
+    "url": "https://github.com/real-case/marvin-toolkit.git",
+    "directory": "cli"
   }
 }

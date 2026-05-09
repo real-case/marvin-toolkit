@@ -10,7 +10,7 @@
 
 ## Context
 
-The marvin-toolkit repo grew a CLI installer (`marvinx`) with a
+The marvin-toolkit repo grew a CLI installer (`marvin`) with a
 target-adapter abstraction that lets non-Claude editors render its
 plugin packs. PR-3 shipped a Codex adapter as a deliberately narrow
 proof of concept. With a real second target on disk, we now have
@@ -222,11 +222,11 @@ Add three lines to [validate-plugins.yml](../../.github/workflows/validate-plugi
 - name: Test <name> adapter
   run: node --test cli/src/adapters/<name>.test.mjs
 
-- name: Smoke-test marvinx init --target=<name>
+- name: Smoke-test marvin init --target=<name>
   run: |
     REPO="$GITHUB_WORKSPACE"
     scratch=$(mktemp -d)
-    (cd "$scratch" && node "$REPO/cli/bin/marvinx.mjs" init <pack> --target=<name> --source "$REPO" --offline >/dev/null)
+    (cd "$scratch" && node "$REPO/cli/bin/marvin.mjs" init <pack> --target=<name> --source "$REPO" --offline >/dev/null)
     # Plus exit-code-3 check for any unsupportedPack rejection if applicable.
 ```
 

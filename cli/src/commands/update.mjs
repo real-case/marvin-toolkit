@@ -1,4 +1,4 @@
-// `marvinx update [--pack <name>] [--source <path>] [--offline] [--target <name>]`
+// `marvin update [--pack <name>] [--source <path>] [--offline] [--target <name>]`
 //
 // Re-ejects every entry in the adapter's manifest against the latest
 // available source. With `--pack`, restricts to a single pack. Manifest
@@ -19,7 +19,7 @@ export async function update(opts) {
   const manifestRel = adapter.manifestPath();
   const manifestPath = path.join(projectRoot, manifestRel);
   if (!existsSync(manifestPath)) {
-    process.stderr.write(`marvinx update: no manifest at ${path.relative(cwd, manifestPath)}; run \`marvinx init\` first.\n`);
+    process.stderr.write(`marvin update: no manifest at ${path.relative(cwd, manifestPath)}; run \`marvin init\` first.\n`);
     return 2;
   }
 
@@ -27,7 +27,7 @@ export async function update(opts) {
   let entries = manifest.ejected ?? [];
   if (opts.pack) entries = entries.filter((e) => e.source === opts.pack);
   if (entries.length === 0) {
-    process.stderr.write("marvinx update: nothing to update.\n");
+    process.stderr.write("marvin update: nothing to update.\n");
     return 0;
   }
 
@@ -39,7 +39,7 @@ export async function update(opts) {
       const r = await resolveSource(e.source, { source: opts.source, cwd, offline: opts.offline });
       packSources.set(e.source, r.path);
     } catch (err) {
-      process.stderr.write(`marvinx update: ${err.message}\n`);
+      process.stderr.write(`marvin update: ${err.message}\n`);
       return 2;
     }
   }

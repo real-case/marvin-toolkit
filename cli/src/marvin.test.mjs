@@ -1,4 +1,4 @@
-// Tests for the marvinx CLI surface. Run with: node --test cli/src/marvinx.test.mjs
+// Tests for the marvin CLI surface. Run with: node --test cli/src/marvin.test.mjs
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ import { list } from "./commands/list.mjs";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-async function mkTemp() { return fs.mkdtemp(path.join(os.tmpdir(), "marvinx-test-")); }
+async function mkTemp() { return fs.mkdtemp(path.join(os.tmpdir(), "marvin-test-")); }
 
 /**
  * Build a fake marvin-toolkit clone at <root>/repo with one pack.
@@ -272,11 +272,11 @@ test("list: enumerates artifacts per pack", async () => {
   assert.deepEqual(core.artifacts.skills, ["mn.demo"]);
 });
 
-// ─── byte-identical: marvinx init vs /mn.eject (acceptance #4) ─────────────
+// ─── byte-identical: marvin init vs /mn.eject (acceptance #4) ─────────────
 
 test("init: produces byte-identical output with eject-core run() (acceptance #4)", async () => {
   const sb = await setupClone();
-  // Path A: marvinx init
+  // Path A: marvin init
   await withCapturedOutput(() => init({
     target: "marvin-core-pack/skills/mn.demo", source: sb.repo, offline: true,
     cwd: sb.project, projectRoot: sb.project,

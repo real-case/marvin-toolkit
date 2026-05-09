@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// marvinx — tool-agnostic installer for Marvin Toolkit packs.
+// marvin — tool-agnostic installer for Marvin Toolkit packs.
 // Subcommands: init | update | status | list
 
 import { promises as fs } from "node:fs";
@@ -12,16 +12,16 @@ import { status } from "../src/commands/status.mjs";
 import { list } from "../src/commands/list.mjs";
 
 const HELP = `\
-marvinx — install Marvin Toolkit packs into a project
+marvin — install Marvin Toolkit packs into a project
 
 usage:
-  marvinx init <target> [--only kinds] [--source <path>] [--target claude]
+  marvin init <target> [--only kinds] [--source <path>] [--target claude]
                         [--dry-run] [--offline]
-  marvinx update [--pack <name>] [--source <path>] [--offline]
-  marvinx status [--source <path>] [--offline] [--json]
-  marvinx list [--source <path>] [--offline] [--json]
-  marvinx --version
-  marvinx --help
+  marvin update [--pack <name>] [--source <path>] [--offline]
+  marvin status [--source <path>] [--offline] [--json]
+  marvin list [--source <path>] [--offline] [--json]
+  marvin --version
+  marvin --help
 
 flags common to most commands:
   --source <path>   explicit local clone of marvin-toolkit (skips tarball)

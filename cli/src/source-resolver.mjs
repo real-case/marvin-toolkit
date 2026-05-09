@@ -4,7 +4,7 @@
 //   1. opts.source           explicit --source flag
 //   2. MARVIN_SOURCE          env override
 //   3. local clone walk-up    .claude-plugin/marketplace.json with name=marvin-toolkit
-//   4. GitHub tarball         downloaded + cached under ~/.cache/marvinx/
+//   4. GitHub tarball         downloaded + cached under ~/.cache/marvin/
 //   5. installed              ~/.claude/plugins/<…>/<packName>/
 //
 // `opts.offline=true` skips step 4 (useful for tests + offline use).

@@ -18,7 +18,7 @@ Live tools — skills are invoked via slash commands inside Claude Code.
 /plugin install marvin-taskmaster-pack@marvin-toolkit
 ```
 
-### B. `marvinx` CLI (any project, no Claude Code required)
+### B. `marvin` CLI (any project, no Claude Code required)
 
 Tool-agnostic installer. Materialises pack artifacts into your project's
 `.claude/` directory so they're committed and version-controlled with your
@@ -26,19 +26,19 @@ code. Reuses the same deterministic backend as `/mn.eject`.
 
 ```shell
 # Install the whole core pack
-npx marvinx init marvin-core-pack
+npx marvin init marvin-core-pack
 
 # Or just one skill
-npx marvinx init marvin-core-pack/skills/mn.commit
+npx marvin init marvin-core-pack/skills/mn.commit
 
 # Check status of ejected artifacts
-npx marvinx status
+npx marvin status
 
 # Pull the latest version of everything previously ejected
-npx marvinx update
+npx marvin update
 ```
 
-The CLI is published from this repo to npm as [`marvinx`](https://www.npmjs.com/package/marvinx). Source: [`cli/`](./cli/). See [cli/README.md](./cli/README.md) for the full surface.
+The CLI is published from this repo to npm as [`marvin`](https://www.npmjs.com/package/marvin). Source: [`cli/`](./cli/). See [cli/README.md](./cli/README.md) for the full surface.
 
 ## What's included
 

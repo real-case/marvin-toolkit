@@ -1,9 +1,9 @@
-name: Publish marvinx CLI
+name: Publish marvin CLI
 
 on:
   push:
     tags:
-      - "marvinx-v*"
+      - "marvin-v*"
   pull_request:
     paths:
       - "cli/**"
@@ -29,16 +29,16 @@ jobs:
         run: node cli/scripts/sync-core.mjs --check
 
       - name: Run CLI tests
-        run: node --test cli/src/marvinx.test.mjs
+        run: node --test cli/src/marvin.test.mjs
 
       - name: Pack (dry-run, always)
         working-directory: cli
         run: |
-          npm pack --dry-run > /tmp/marvinx-pack.txt
-          cat /tmp/marvinx-pack.txt
+          npm pack --dry-run > /tmp/marvin-pack.txt
+          cat /tmp/marvin-pack.txt
 
       - name: Publish to npm (only on tag push)
-        if: startsWith(github.ref, 'refs/tags/marvinx-v')
+        if: startsWith(github.ref, 'refs/tags/marvin-v')
         working-directory: cli
         run: npm publish --provenance --access public
         env:

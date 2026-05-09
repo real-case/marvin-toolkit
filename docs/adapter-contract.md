@@ -122,7 +122,7 @@ import cursorAdapter from "./cursor.mjs";
 REGISTRY.set("cursor", cursorAdapter);
 ```
 
-Ship a fixture (`cli/test/fixtures/cursor/`) and a small test that runs `marvinx init <pack> --target=cursor` and diffs against the fixture. Done.
+Ship a fixture (`cli/test/fixtures/cursor/`) and a small test that runs `marvin init <pack> --target=cursor` and diffs against the fixture. Done.
 
 ## What adapters must NOT do
 

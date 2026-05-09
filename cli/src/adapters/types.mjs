@@ -57,7 +57,7 @@
  *   config-file rewrites, or printing manual follow-up steps. The Claude adapter is a no-op.
  *
  * @property {(packName: string) => Warning|null} [unsupportedPack]
- *   Optional whole-pack gate, called by `marvinx init` BEFORE planning. Return
+ *   Optional whole-pack gate, called by `marvin init` BEFORE planning. Return
  *   non-null to refuse the entire pack with exit code 3 and a pointer to docs.
  *   Use this for packs that depend on target features the adapter can't emulate
  *   (e.g. Codex has no subagents, so marvin-taskmaster-pack is unsupported).

@@ -1,8 +1,8 @@
-# marvinx
+# marvin
 
 Tool-agnostic installer for [Marvin Toolkit](https://github.com/real-case/marvin-toolkit) plugin packs.
 
-`marvinx` materialises a pack's skills, commands, and agents into your
+`marvin` materialises a pack's skills, commands, and agents into your
 project's `.claude/` directory so they can be committed, customised, and
 versioned alongside your code. It reuses the same deterministic backend
 as Claude Code's `/mn.eject` slash command — same files, same headers,
@@ -12,8 +12,8 @@ same manifest.
                        plugins/<pack>/
                 ┌─────────┴─────────┐
                 ▼                   ▼
-        Marketplace channel    CLI channel (marvinx)
-        (/plugin install)      (npx marvinx init)
+        Marketplace channel    CLI channel (marvin)
+        (/plugin install)      (npx marvin init)
                 │                   │
                 ▼                   ▼
           ~/.claude/            <project>/.claude/
@@ -25,14 +25,14 @@ same manifest.
 No install needed. Use via `npx`:
 
 ```shell
-npx marvinx init marvin-core-pack
+npx marvin init marvin-core-pack
 ```
 
 Or globally:
 
 ```shell
-npm install -g marvinx
-marvinx init marvin-core-pack
+npm install -g marvin
+marvin init marvin-core-pack
 ```
 
 Requires **Node.js 20+** and `tar` in PATH (default on macOS, Linux, and GitHub Actions runners).
@@ -40,49 +40,49 @@ Requires **Node.js 20+** and `tar` in PATH (default on macOS, Linux, and GitHub 
 ## Commands
 
 ```
-marvinx init <target> [--only kinds] [--source <path>] [--target claude]
+marvin init <target> [--only kinds] [--source <path>] [--target claude]
                       [--dry-run] [--offline]
-marvinx update [--pack <name>] [--source <path>] [--offline]
-marvinx status [--source <path>] [--offline] [--json]
-marvinx list [--source <path>] [--offline] [--json]
+marvin update [--pack <name>] [--source <path>] [--offline]
+marvin status [--source <path>] [--offline] [--json]
+marvin list [--source <path>] [--offline] [--json]
 ```
 
-### `marvinx init`
+### `marvin init`
 
 Materialise pack artifacts into the project's `.claude/`. Default mode is **apply** (writes files). Pass `--dry-run` to inspect the plan first.
 
 ```shell
 # Whole pack
-marvinx init marvin-core-pack
+marvin init marvin-core-pack
 
 # Single artifact
-marvinx init marvin-core-pack/skills/mn.commit
-marvinx init marvin-core-pack/commands/mn.pr
-marvinx init marvin-core-pack/agents/onboarding-guide
+marvin init marvin-core-pack/skills/mn.commit
+marvin init marvin-core-pack/commands/mn.pr
+marvin init marvin-core-pack/agents/onboarding-guide
 
 # Subset by kind (whole-pack only)
-marvinx init marvin-security-pack --only skills,agents
+marvin init marvin-security-pack --only skills,agents
 
 # Inspect without writing
-marvinx init marvin-core-pack --dry-run
+marvin init marvin-core-pack --dry-run
 ```
 
-### `marvinx update`
+### `marvin update`
 
 Re-eject every entry in `.claude/.marvin-eject.json` against the latest version of the source. Use after upgrading the marvin-toolkit version you depend on.
 
 ```shell
-marvinx update                    # everything
-marvinx update --pack marvin-core-pack  # one pack only
+marvin update                    # everything
+marvin update --pack marvin-core-pack  # one pack only
 ```
 
-### `marvinx status`
+### `marvin status`
 
 Read the manifest and report installed-vs-latest per artifact.
 
 ```shell
-marvinx status         # human table
-marvinx status --json  # machine-readable
+marvin status         # human table
+marvin status --json  # machine-readable
 ```
 
 Output looks like:
@@ -94,23 +94,23 @@ marvin-core-pack  skills/mn.commit  0.1.0-alpha.2  0.1.0-alpha.3  tarball   OUTD
 marvin-core-pack  commands/mn.pr    0.1.0-alpha.3  0.1.0-alpha.3  tarball   ok
 ```
 
-### `marvinx list`
+### `marvin list`
 
 Enumerate all artifacts in all known marvin packs from the configured source.
 
 ```shell
-marvinx list
-marvinx list --json
+marvin list
+marvin list --json
 ```
 
 ## Source resolution
 
-`marvinx` finds the marvin-toolkit source in this priority:
+`marvin` finds the marvin-toolkit source in this priority:
 
 1. `--source <path>` — explicit local clone or pack root
 2. `MARVIN_SOURCE` env var — same as `--source`
 3. **Local clone** — walks up from cwd looking for a `marvin-toolkit` repo
-4. **GitHub tarball** — downloads + caches under `~/.cache/marvinx/`
+4. **GitHub tarball** — downloads + caches under `~/.cache/marvin/`
 5. **Installed pack** — falls back to `~/.claude/plugins/.../marvin-toolkit/...`
 
 Pass `--offline` to skip step 4. Useful in CI and air-gapped environments.
@@ -133,13 +133,13 @@ Tag-like refs (`v1.2.3`, `1.2.3`) are treated as immutable and cached forever. B
 
 ```shell
 # Claude (default)
-marvinx init marvin-core-pack
+marvin init marvin-core-pack
 
 # Codex
-marvinx init marvin-core-pack --target=codex
+marvin init marvin-core-pack --target=codex
 ```
 
-`marvinx init marvin-taskmaster-pack --target=codex` exits with code 3 — taskmaster relies on Claude subagents.
+`marvin init marvin-taskmaster-pack --target=codex` exits with code 3 — taskmaster relies on Claude subagents.
 
 ## Manifest format
 
@@ -166,19 +166,19 @@ Each ejected `.md` file gets a single header comment recording origin:
 <!-- marvin-eject: source=marvin-core-pack@0.1.0-alpha.2 ejected-at=2026-05-08 -->
 ```
 
-`marvinx update` rewrites both the header and the manifest in-place — never stacks duplicates.
+`marvin update` rewrites both the header and the manifest in-place — never stacks duplicates.
 
 ## Project layout (for contributors)
 
 ```
 cli/
-├─ bin/marvinx.mjs          # entry point
+├─ bin/marvin.mjs          # entry point
 ├─ src/
 │  ├─ commands/             # init, update, status, list
 │  ├─ sources/              # local, installed, tarball resolvers
 │  ├─ source-resolver.mjs   # priority chain
 │  ├─ lib/eject-core.mjs    # auto-synced from plugins/.../mn.eject/
-│  └─ marvinx.test.mjs      # node:test suite
+│  └─ marvin.test.mjs      # node:test suite
 └─ scripts/sync-core.mjs    # plugin → cli/src/lib sync (run pre-publish)
 ```
 

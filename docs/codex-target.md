@@ -12,7 +12,7 @@ as expected, not a bug.
 | --- | --- | --- |
 | `marvin-core-pack` | ✅ supported | Skills are language-agnostic prompts. |
 | `marvin-security-pack` | ⚠️ unvalidated | Allowed but not exercised in CI. Some skills assume Claude tool affordances. |
-| `marvin-taskmaster-pack` | ❌ rejected | Pipeline depends on Claude subagents (writer/critics/executor). `marvinx init` exits with **code 3**. |
+| `marvin-taskmaster-pack` | ❌ rejected | Pipeline depends on Claude subagents (writer/critics/executor). `marvin init` exits with **code 3**. |
 
 ## Mappings
 
@@ -29,13 +29,13 @@ as expected, not a bug.
 
 ```shell
 # Whole pack
-npx marvinx init marvin-core-pack --target=codex
+npx marvin init marvin-core-pack --target=codex
 
 # Single skill
-npx marvinx init marvin-core-pack/skills/mn.commit --target=codex
+npx marvin init marvin-core-pack/skills/mn.commit --target=codex
 
 # Inspect first
-npx marvinx init marvin-core-pack --target=codex --dry-run
+npx marvin init marvin-core-pack --target=codex --dry-run
 ```
 
 The end-of-run JSON report includes a `skipped` array enumerating every
@@ -67,7 +67,7 @@ command = "..."
 
 The serializer in [`cli/src/adapters/codex.mjs`](../cli/src/adapters/codex.mjs)
 handles strings, numbers, booleans, arrays, and a single `env` sub-table. If
-your pack adds more exotic fields, `marvinx init` will throw — open an issue.
+your pack adds more exotic fields, `marvin init` will throw — open an issue.
 
 ## Manual smoke transcript
 
@@ -77,7 +77,7 @@ your pack adds more exotic fields, `marvinx init` will throw — open an issue.
 > deterministic; what's left to verify is *prompt behaviour* under Codex.
 
 ```
-$ npx marvinx init marvin-core-pack --target=codex
+$ npx marvin init marvin-core-pack --target=codex
 {
   "mode": "apply",
   "target": "codex",

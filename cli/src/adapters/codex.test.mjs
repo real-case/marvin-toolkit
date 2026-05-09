@@ -107,7 +107,7 @@ test("codexAdapter.manifestPath: lives under .codex/", () => {
 
 // ─── integration: byte-identical with committed fixture (acceptance #1) ────
 
-test("codexAdapter: marvinx init marvin-core-pack --target=codex matches committed fixture", async () => {
+test("codexAdapter: marvin init marvin-core-pack --target=codex matches committed fixture", async () => {
   const scratch = await fs.mkdtemp(path.join(repoRoot, ".tmp-codex-fixture-test-"));
   try {
     const code = await runEject(

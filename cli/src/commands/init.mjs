@@ -1,4 +1,4 @@
-// `marvinx init <target> [--only kinds] [--source <path>] [--target claude]
+// `marvin init <target> [--only kinds] [--source <path>] [--target claude]
 //                       [--dry-run] [--offline]`
 //
 // Default behaviour: applies. Pass --dry-run for a plan only. Target paths
@@ -11,13 +11,13 @@ import { getAdapter, listTargets, DEFAULT_TARGET } from "../adapters/index.mjs";
 
 export async function init(opts) {
   const target = opts.target;
-  if (!target) return error(`marvinx init: <target> is required.\n${usage()}`, 2);
+  if (!target) return error(`marvin init: <target> is required.\n${usage()}`, 2);
 
   const adapterName = opts.adapter ?? DEFAULT_TARGET;
   let adapter;
   try { adapter = getAdapter(adapterName); }
   catch {
-    return error(`marvinx init: --target=${adapterName} not supported. Available: ${listTargets().join(", ")}`, 2);
+    return error(`marvin init: --target=${adapterName} not supported. Available: ${listTargets().join(", ")}`, 2);
   }
 
   const packName = target.split("/")[0];
@@ -26,7 +26,7 @@ export async function init(opts) {
   if (typeof adapter.unsupportedPack === "function") {
     const warn = adapter.unsupportedPack(packName);
     if (warn) {
-      const lines = [`marvinx init: pack "${packName}" is not supported on --target=${adapter.name}.`];
+      const lines = [`marvin init: pack "${packName}" is not supported on --target=${adapter.name}.`];
       lines.push(`  reason: ${warn.reason}`);
       if (warn.suggestion) lines.push(`  suggestion: ${warn.suggestion}`);
       return error(lines.join("\n"), 3);
@@ -39,7 +39,7 @@ export async function init(opts) {
       source: opts.source, cwd: opts.cwd, offline: opts.offline,
     });
   } catch (err) {
-    return error(`marvinx init: ${err.message}`, 2);
+    return error(`marvin init: ${err.message}`, 2);
   }
 
   // Pre-apply dry-run for surfacing errors cleanly when the plan can't be built.
@@ -83,7 +83,7 @@ function silent() {
 
 function usage() {
   return [
-    "usage: marvinx init <target> [--only kinds] [--source <path>] [--target <name>]",
+    "usage: marvin init <target> [--only kinds] [--source <path>] [--target <name>]",
     "                             [--dry-run] [--offline]",
     "",
     "  <target>           <pack> | <pack>/skills/<name> | <pack>/commands/<name> | <pack>/agents/<name>",
