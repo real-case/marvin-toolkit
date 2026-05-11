@@ -1,0 +1,102 @@
+// Tests for tarball-source security gates: MARVIN_REPO/MARVIN_REF validation
+// and the post-extract path-traversal walk.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { _internals } from "./tarball.mjs";
+
+const { repoSpec, assertNoPathTraversal } = _internals;
+
+async function mkTemp() {
+  return fs.mkdtemp(path.join(os.tmpdir(), "marvin-tarball-test-"));
+}
+
+// --- repoSpec ---------------------------------------------------------------
+
+test("repoSpec: returns defaults when env is empty", () => {
+  assert.deepEqual(repoSpec({}), { repo: "real-case/marvin-toolkit", ref: "main" });
+});
+
+test("repoSpec: accepts a well-formed owner/name and ref", () => {
+  assert.deepEqual(
+    repoSpec({ MARVIN_REPO: "anthropics/marvin", MARVIN_REF: "release/v1.2.3" }),
+    { repo: "anthropics/marvin", ref: "release/v1.2.3" },
+  );
+});
+
+test("repoSpec: rejects MARVIN_REPO with no slash", () => {
+  assert.throws(() => repoSpec({ MARVIN_REPO: "missingslash" }), /MARVIN_REPO invalid/);
+});
+
+test("repoSpec: rejects MARVIN_REPO with path-traversal", () => {
+  // Without this, ${repo} interpolation into codeload URL would let URL
+  // normalisation rewrite the host.
+  assert.throws(() => repoSpec({ MARVIN_REPO: "../../etc/passwd" }), /MARVIN_REPO invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REPO: "../foo/bar" }), /MARVIN_REPO invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REPO: "owner/..name" }), /MARVIN_REPO invalid/);
+});
+
+test("repoSpec: rejects MARVIN_REPO with disallowed characters", () => {
+  assert.throws(() => repoSpec({ MARVIN_REPO: "owner/name#frag" }), /MARVIN_REPO invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REPO: "owner with space/name" }), /MARVIN_REPO invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REPO: "owner/name%2e%2e" }), /MARVIN_REPO invalid/);
+});
+
+test("repoSpec: rejects MARVIN_REPO components starting with non-alphanumeric", () => {
+  assert.throws(() => repoSpec({ MARVIN_REPO: ".dotstart/name" }), /MARVIN_REPO invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REPO: "-hyphenstart/name" }), /MARVIN_REPO invalid/);
+});
+
+test("repoSpec: rejects MARVIN_REF with path-traversal", () => {
+  assert.throws(() => repoSpec({ MARVIN_REF: "release/../../etc" }), /MARVIN_REF invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REF: "..main" }), /MARVIN_REF invalid/);
+});
+
+test("repoSpec: rejects MARVIN_REF with control characters", () => {
+  assert.throws(() => repoSpec({ MARVIN_REF: "main\nrm -rf /" }), /MARVIN_REF invalid/);
+  assert.throws(() => repoSpec({ MARVIN_REF: "main\x00null" }), /MARVIN_REF invalid/);
+});
+
+// --- assertNoPathTraversal --------------------------------------------------
+
+test("assertNoPathTraversal: accepts a clean tree", async () => {
+  const root = await mkTemp();
+  await fs.mkdir(path.join(root, "sub"), { recursive: true });
+  await fs.writeFile(path.join(root, "sub", "file.txt"), "ok");
+  await assertNoPathTraversal(root);
+});
+
+test("assertNoPathTraversal: rejects a symlink whose target escapes root", async () => {
+  const root = await mkTemp();
+  const outside = await mkTemp();
+  await fs.symlink(outside, path.join(root, "escape"));
+  await assert.rejects(() => assertNoPathTraversal(root), /tar-slip detected/);
+});
+
+test("assertNoPathTraversal: rejects a symlink nested inside a subdir", async () => {
+  const root = await mkTemp();
+  const outside = await mkTemp();
+  await fs.mkdir(path.join(root, "deep"), { recursive: true });
+  await fs.symlink(outside, path.join(root, "deep", "escape"));
+  await assert.rejects(() => assertNoPathTraversal(root), /tar-slip detected/);
+});
+
+test("assertNoPathTraversal: rejects a dangling symlink whose target escapes root", async () => {
+  // Tarballs can carry symlinks whose targets don't (yet) exist on disk —
+  // realpath() throws ENOENT in that case. We still need to catch the escape.
+  const root = await mkTemp();
+  await fs.symlink("/nonexistent/escape-target", path.join(root, "dangling"));
+  await assert.rejects(() => assertNoPathTraversal(root), /tar-slip detected/);
+});
+
+test("assertNoPathTraversal: accepts a symlink whose target is inside root", async () => {
+  const root = await mkTemp();
+  await fs.mkdir(path.join(root, "real"), { recursive: true });
+  await fs.writeFile(path.join(root, "real", "f.txt"), "x");
+  await fs.symlink(path.join(root, "real"), path.join(root, "alias"));
+  await assertNoPathTraversal(root);
+});
