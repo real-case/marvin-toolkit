@@ -22,16 +22,34 @@ const DEFAULT_REPO = "real-case/marvin-toolkit";
 const DEFAULT_REF = "main";
 const CACHE_TTL_BRANCH_MS = 60 * 60 * 1000; // 1h for branches
 const HTTP_TIMEOUT_MS = 30_000;
+const TAR_EXTRACT_TIMEOUT_MS = 60_000;
+
+// `owner/name`. Each component must start with an alphanumeric and contain only
+// [A-Za-z0-9._-]. We also forbid ".." anywhere — without it, an attacker-set
+// MARVIN_REPO like "../../evil/path" would be interpolated raw into the codeload
+// URL and silently rewrite the host once the client normalises path segments.
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+// Refs may contain "/" (e.g. release/v1). Same alphanumeric-start rule.
+const REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 export function getCacheRoot() {
   return path.join(os.homedir(), ".cache", "marvin");
 }
 
-function repoSpec() {
-  return {
-    repo: process.env.MARVIN_REPO || DEFAULT_REPO,
-    ref: process.env.MARVIN_REF || DEFAULT_REF,
-  };
+function repoSpec(env = process.env) {
+  const repo = env.MARVIN_REPO || DEFAULT_REPO;
+  const ref = env.MARVIN_REF || DEFAULT_REF;
+  if (!REPO_RE.test(repo) || repo.includes("..")) {
+    throw new Error(
+      `MARVIN_REPO invalid (expected "owner/name" with alphanumeric/._- characters, no ".."): ${JSON.stringify(repo)}`,
+    );
+  }
+  if (!REF_RE.test(ref) || ref.includes("..")) {
+    throw new Error(
+      `MARVIN_REF invalid (alphanumeric/._-/\\/ only, no ".."): ${JSON.stringify(ref)}`,
+    );
+  }
+  return { repo, ref };
 }
 
 function isTagLike(ref) {
@@ -113,11 +131,43 @@ async function fetchAndExtract({ repo, ref, repoSlug, entryDir, metaPath, fetche
   // Clean and re-extract.
   if (existsSync(extracted)) await fs.rm(extracted, { recursive: true, force: true });
   await fs.mkdir(extracted, { recursive: true });
-  await execFileAsync("tar", ["-xzf", tarPath, "-C", extracted]);
+  await execFileAsync(
+    "tar",
+    ["-xzf", tarPath, "-C", extracted, "--no-same-owner", "--no-same-permissions"],
+    { timeout: TAR_EXTRACT_TIMEOUT_MS },
+  );
+  // Defense-in-depth: bsdtar (macOS) and modern GNU tar refuse entries with
+  // ".." prefixes, but symlink-then-write tarball attacks can still slip past
+  // older toolchains. Confirm nothing under extracted/ resolves outside it.
+  await assertNoPathTraversal(extracted);
 
   const meta = { repo, ref, repoSlug, sha256, size, fetchedAt: Date.now() };
   await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
   return meta;
+}
+
+async function assertNoPathTraversal(rootDir) {
+  const root = await fs.realpath(rootDir);
+  const walk = async (dir) => {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      let resolved;
+      try {
+        resolved = await fs.realpath(full);
+      } catch (err) {
+        if (err.code !== "ENOENT") throw err;
+        // Dangling symlink — resolve the link target lexically against its dirname.
+        const target = await fs.readlink(full);
+        resolved = path.resolve(path.dirname(full), target);
+      }
+      if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+        throw new Error(`tar-slip detected: ${full} resolves to ${resolved} (outside ${root})`);
+      }
+      if (e.isDirectory()) await walk(full);
+    }
+  };
+  await walk(rootDir);
 }
 
 async function defaultFetch(url) {
@@ -160,3 +210,6 @@ async function findInnerDir(extractedDir, repoSlug) {
 function sanitize(ref) {
   return ref.replace(/[^A-Za-z0-9._-]/g, "_");
 }
+
+// Exposed for tests; not part of the public API.
+export const _internals = { repoSpec, assertNoPathTraversal };
