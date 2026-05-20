@@ -4,79 +4,145 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-Marvin is a Claude Code plugin marketplace. It ships curated packs of skills, commands, agents, and MCP servers covering the full development lifecycle. Each pack is a self-contained plugin that users install via the Claude Code CLI.
+Marvin is a Claude Code plugin marketplace. Each pack is a self-contained plugin that ships an **MCP server** (per ADR-0002). Skills, slash-commands, and tools are exposed by that server — there are no SKILL.md files, no `commands/<name>.md` shims, and no eject/scaffold step.
+
+## Architecture
+
+Each pack delivers **one MCP server**, plus `skills/<name>/SKILL.md` and `agents/*.md` files (both auto-discovered by Claude Code on `/plugin install`):
+
+```
+plugins/<pack>/
+├── .claude-plugin/plugin.json
+├── .mcp.json                          # registers the pack server
+├── CHANGELOG.md
+├── skills/<name>/SKILL.md             # source of truth for prompt bodies
+├── agents/*.md                        # optional, Claude Code subagents
+└── mcp/server/
+    ├── package.json
+    ├── tsconfig.json
+    ├── tsup.config.ts
+    ├── src/
+    │   ├── server.ts                  # entry: registers prompts + tools
+    │   ├── prompts/
+    │   │   └── index.ts               # prompt metadata, ref skills by name
+    │   ├── tools/                     # deterministic operations (optional)
+    │   └── lib/                       # pack-local helpers
+    └── dist/server.js                 # COMMITTED build artefact
+```
+
+### Two doors, one room
+
+The same `SKILL.md` is used by **two independent entry points**:
+
+1. **Claude Code auto-discovery.** Skills live under `plugins/<pack>/skills/<name>/SKILL.md`. Their YAML frontmatter (`description`, optional `disable-model-invocation`) is what Claude Code matches against user prose like "сделай коммит" — the skill loads automatically.
+2. **MCP slash commands.** Each prompt entry in `plugins/<pack>/mcp/server/src/prompts/index.ts` declares `skill: "<dir-name>"`. At request time, the server reads the corresponding `SKILL.md`, strips its frontmatter, and returns the prose as a prompt body. Users see the prompt in the slash menu as `/<server>:<name>`.
+
+Both doors lead to the same prose. Editing `SKILL.md` updates both without requiring a server rebuild (the file is read at runtime).
+
+### Instrument types
+
+- **Skills** (`plugins/<pack>/skills/<name>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content.
+- **MCP prompts** — Thin server-side registration that exposes a skill (or, for marvin-tasks-pack, an inline body) under `/<server>:<name>`.
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters (git ops, file CRUD, validation).
+- **Agents** (`plugins/<pack>/agents/*.md`) — Claude Code subagents with constrained tool access. Picked up automatically on `/plugin install`.
+
+> Exception: **marvin-tasks-pack** has no `skills/` directory. Its 13 prompts are thin tool-invocation wrappers with inline `body:` text — there is no standalone workflow content to share.
+
+### Server keys and slash prefixes
+
+| Pack | Server key | Slash prefix |
+|------|-----------|--------------|
+| marvin-core-pack | `marvin-core` | `/marvin-core:*` |
+| marvin-security-pack | `marvin-sec` | `/marvin-sec:*` |
+| marvin-taskmaster-pack | `marvin-tm` | `/marvin-tm:*` |
+| marvin-tasks-pack | `marvin-tasks` | `/marvin-tasks:*` |
+
+## Shared library
+
+`packages/marvin-mcp-shared/` provides:
+
+- typed `PromptDef` / `ToolDef` interfaces and `defineTool` helper
+- `runPackServer({ name, version, promptsDir, build })` — the standard server entry
+- `elicit(server, message, zodSchema)` — typed MCP elicitation wrapper
+- `resolvePromptBody`, `promptsDirFromMeta`, `interpolateArgs` — body loaders
+
+Each pack server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//, ...]`) into a single self-contained `dist/server.js`.
 
 ## Validation
 
 ```shell
-# Local validation (requires claude CLI)
-claude plugin validate .
+# Lint manifests + structure
+node scripts/lint-manifests.mjs
 
-# CI runs automatically on push/PR to main — validates:
-# - JSON syntax of marketplace.json and all plugin.json files
-# - YAML frontmatter presence and description field in all SKILL.md and agent files
-# - Plugin directory structure matches marketplace.json entries
+# Build all packs
+npm run build
+
+# Test all packs
+npm run test
+
+# Verify committed dist/ is in sync with source
+node scripts/verify-dist.mjs
+
+# Local plugin validation
+claude plugin validate .
 ```
 
-## Architecture
+CI (`.github/workflows/validate-plugins.yml`) runs the same four checks plus a stdio smoke-test that sends `initialize` to each pack server and verifies a valid response.
 
-Four instrument types, in order of complexity:
+## Adding a new prompt to an existing pack
 
-**Commands** (`plugins/<pack>/commands/<name>.md`) — lightweight entry points. Each command file has YAML frontmatter with `description` and a body that points to its corresponding skill. This is what users invoke via `/mn.<name>`.
+The canonical path is **skill-backed** — same content, two doors:
 
-**Skills** (`plugins/<pack>/skills/<name>/SKILL.md`) — the actual logic. Multi-step workflows with phases, guidelines, examples, and edge cases. A command delegates to exactly one skill. Skills are the core of the toolkit.
+1. Create `plugins/<pack>/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`). The `description` is the auto-discovery trigger Claude Code matches in chat.
+2. Add an entry to `plugins/<pack>/mcp/server/src/prompts/index.ts`:
+   ```ts
+   {
+     name: "<slash-name>",         // becomes /<server>:<slash-name>
+     description: "...",           // short, slash-menu blurb
+     skill: "<skill-name>",        // points to skills/<skill-name>/SKILL.md
+   }
+   ```
+3. Run `npm run build` inside the pack server to refresh `dist/server.js`.
+4. Commit `src/`, `dist/`, and the new `SKILL.md` together — CI verifies dist is in sync and that SKILL.md has valid frontmatter.
+5. Bump the pack version in `plugin.json` and `marketplace.json`.
 
-**Agents** (`plugins/<pack>/agents/<name>.md`) — autonomous subagents with constrained tool access for specialized domains (onboarding, security review, spec writing).
+For prompts with **no skill** (e.g. thin tool wrappers in marvin-tasks-pack), use `body: "..."` inline. Skip step 1.
 
-**MCP Servers** (`plugins/<pack>/.mcp.json`) — external tool integrations bundled with a pack. Auto-started on plugin install. Currently only marvin-core-pack ships MCP servers (context7, gitmcp).
+## Adding a new MCP tool
 
-### Relationship: command → skill
-
-Every skill has a matching command. The command file is the entry point (`/mn.commit`), the SKILL.md contains the full workflow. When adding a new skill, always create both files.
-
-### Namespace convention
-
-All commands use `mn.` prefix. Security pack uses `mn.sec.` sub-prefix.
-
-## Plugin packs
-
-Three packs in `plugins/`:
-
-- **marvin-core-pack** (v0.1.0-alpha.2) — 11 skills, 2 agents, 2 MCP servers. Core dev workflows: commits, PRs, reviews, debugging, ADRs, changelogs, migration planning, and `mn.eject` (scaffold/update pack artifacts into a project's `.claude/`).
-- **marvin-security-pack** (v0.1.0-alpha.1) — 10 skills (+1 deprecated alias `mn.security-scan`), 1 agent. OWASP audits, secret scanning, dependency checks, threat modeling, compliance.
-- **marvin-taskmaster-pack** (v0.1.0-alpha.5) — 5 skills (`mn.start`, `mn.run`, `mn.verify`, `mn.deliver`, `mn.fix-pr`), 5 agents (`marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`), 1 shell script (`dispatch.sh`). Commands use the `mn.taskmaster-` prefix (e.g. `/mn.taskmaster-start`, `/mn.taskmaster-run`). Spec-driven pipeline: `/mn.taskmaster-start` (spec co-creation) → `/mn.taskmaster-run` (interactive execution) or `dispatch.sh` (headless batch) → `/mn.taskmaster-fix-pr` (PR fixes), with red-team spec and diff critics.
-
-## Adding a new skill
-
-1. Create `plugins/<pack>/skills/<skill-name>/SKILL.md` with YAML frontmatter containing `description`
-2. Create matching `plugins/<pack>/commands/<command-name>.md` with YAML frontmatter containing `description`
-3. Command body should reference the skill path and describe argument handling
-4. Bump version in `plugins/<pack>/.claude-plugin/plugin.json`
+1. Create `plugins/<pack>/mcp/server/src/tools/<name>.ts` with a `defineTool({...})` export.
+2. Wire it into `src/server.ts` (the `build` factory returns it under `tools`).
+3. Tool input schemas use `zod`. Use `elicit(server, message, schema)` for interactive forms inside handlers.
+4. Rebuild and commit `dist/`.
 
 ## Adding a new agent
 
-1. Create `plugins/<pack>/agents/<agent-name>.md` with YAML frontmatter containing `description`
-2. Specify available tools and domain constraints in the agent body
-3. Bump version in `plugins/<pack>/.claude-plugin/plugin.json`
+1. Create `plugins/<pack>/agents/<agent-name>.md` with YAML frontmatter containing `description`.
+2. Specify available tools and domain constraints in the body.
+3. Bump the pack version.
 
 ## Adding a new pack
 
-1. Create `plugins/<pack-name>/.claude-plugin/plugin.json` with name, description, version, author
-2. Add skills, commands, and/or agents
-3. Add the pack entry to `.claude-plugin/marketplace.json` plugins array
-4. Optionally add `.mcp.json` in the pack root for MCP servers
+1. Create `plugins/<pack>/.claude-plugin/plugin.json`.
+2. Create `plugins/<pack>/.mcp.json` registering a server key matching `marvin-*`.
+3. Scaffold `plugins/<pack>/mcp/server/` with the standard layout (copy from `marvin-tasks-pack` for the canonical reference).
+4. Add the pack entry to `.claude-plugin/marketplace.json`.
 
 ## Version bumping
 
-Each pack has its own independent version. When changing a pack, bump only that pack's `plugin.json` — do not touch other packs' versions. Follow semver:
-- **Patch** (0.1.x): prompt tweaks, bug fixes
-- **Minor** (0.x.0): new skills, commands, agents, or MCP servers
-- **Major** (x.0.0): breaking changes, renamed commands
+Each pack has its own version. Bump only the affected pack's `plugin.json` and mirror the new value to the matching entry in `.claude-plugin/marketplace.json`. The top-level `metadata.version` is independent — bump it only when the marketplace manifest schema or pack list changes.
 
-After bumping a pack version, mirror it into the matching pack entry in `.claude-plugin/marketplace.json`. The top-level `metadata.version` in `marketplace.json` versions the marketplace manifest itself and is independent of pack versions — bump it only when the manifest schema, owner data, or pack list changes.
+- **Patch** — prompt body tweaks, bug fixes
+- **Minor** — new prompts, tools, or agents
+- **Major** — breaking changes (server key rename, prompt name removal, schema break)
 
 ## Key files
 
 - `.claude-plugin/marketplace.json` — marketplace manifest, lists all packs
 - `plugins/<pack>/.claude-plugin/plugin.json` — pack manifest
-- `.github/workflows/validate-plugins.yml` — CI validation pipeline
+- `plugins/<pack>/.mcp.json` — MCP server registration (the slash prefix lives here)
+- `packages/marvin-mcp-shared/` — shared TypeScript library consumed by every pack server
+- `docs/adr/0002-mcp-first-architecture.md` — architectural decision for the current layout
+- `scripts/lint-manifests.mjs` — manifest + structure linter
+- `scripts/verify-dist.mjs` — committed-dist freshness guard
+- `.github/workflows/validate-plugins.yml` — CI pipeline

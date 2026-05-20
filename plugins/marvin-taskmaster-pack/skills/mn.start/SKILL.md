@@ -1,6 +1,6 @@
 ---
 name: taskmaster-start
-description: Start work on a task through a structured dialogue that produces immutable, testable specs for features and bug fixes, with VISION.md integration, solution variants flagged by stack/future, acceptance criteria, and a Definition-of-Ready gate before dispatch. Use when the user says "start a task", "begin work on", "spec this out", "define the task", "/mn.taskmaster-start", or before dispatching work to headless taskmaster agents. Output lands under specs/.
+description: Start work on a task through a structured dialogue that produces immutable, testable specs for features and bug fixes, with VISION.md integration, solution variants flagged by stack/future, acceptance criteria, and a Definition-of-Ready gate before dispatch. Use when the user says "start a task", "begin work on", "spec this out", "define the task", "/marvin-tm:start", or before dispatching work to headless taskmaster agents. Output lands under specs/.
 ---
 
 # Spec Create
@@ -153,7 +153,7 @@ Record the selected approach and rationale for rejected alternatives.
 
 ### Step 5F: Crystallization
 
-Produce the full spec using the template from **Read `skills/mn.taskmaster-start/feature-spec-template.md`**.
+Produce the full spec using the template from **Read `skills/marvin-tm:start/feature-spec-template.md`**.
 
 Fill in all sections from the dialogue context:
 - **Goal** — from intake
@@ -270,7 +270,7 @@ Determine the fix:
 
 ### Step 6B: Crystallization
 
-Produce the full spec using the template from **Read `skills/mn.taskmaster-start/bugfix-spec-template.md`**.
+Produce the full spec using the template from **Read `skills/marvin-tm:start/bugfix-spec-template.md`**.
 
 Fill in all sections. The **Regression Test Specification** section is mandatory — it is a required acceptance criterion.
 

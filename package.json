@@ -1,0 +1,26 @@
+{
+  "name": "marvin-toolkit",
+  "private": true,
+  "version": "1.0.0-alpha.1",
+  "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "plugins/*/mcp/server"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "verify-dist": "node scripts/verify-dist.mjs",
+    "lint:manifests": "node scripts/lint-manifests.mjs"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  },
+  "license": "WTFPL"
+}

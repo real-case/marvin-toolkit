@@ -1,6 +1,6 @@
 ---
 name: marvin-tm-diff-critic
-description: Red-team diff reviewer — reads a staged or branch diff with a fresh context (did not write the code), grounds it in the spec, and reports scope-creep, out-of-scope changes, missing acceptance-criteria coverage, and smells before a PR is opened. Invoked by marvin-tm-executor before the Create-PR step in headless runs, or standalone via Task-tool before /mn.pr. Read-only.
+description: Red-team diff reviewer — reads a staged or branch diff with a fresh context (did not write the code), grounds it in the spec, and reports scope-creep, out-of-scope changes, missing acceptance-criteria coverage, and smells before a PR is opened. Invoked by marvin-tm-executor before the Create-PR step in headless runs, or standalone via Task-tool before /marvin-core:pr. Read-only.
 model: sonnet
 color: yellow
 memory: project
@@ -30,7 +30,7 @@ Invoked in two places:
 | Context | Trigger |
 |---|---|
 | Headless execution (`marvin-tm-executor`, Phase 2) | Called via Task-tool after Self-Test, before Self-Review + PR — **only if Task-tool is permitted in the headless run**. If not permitted, `marvin-tm-executor` performs its built-in Self-Review inline and skips this critic. |
-| Interactive pre-PR | Called standalone before `/mn.pr` on a feature/bugfix branch |
+| Interactive pre-PR | Called standalone before `/marvin-core:pr` on a feature/bugfix branch |
 
 The critic replaces neither Self-Test (tests/lint/build) nor the human reviewer — it sits between them. It is additive: if unavailable, `marvin-tm-executor`'s own Self-Review is the fallback.
 

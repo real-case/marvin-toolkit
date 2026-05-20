@@ -20,6 +20,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Build output
+# Build output — ignored everywhere by default
 dist/
 build/
+
+# Exceptions: pack MCP server builds MUST be committed
+# (Claude Code plugin install does not run npm install)
+!plugins/*/mcp/server/dist/
+!plugins/*/mcp/server/dist/**
+
+# tsup caches and incremental TS output
+.tsbuildinfo
+*.tsbuildinfo

@@ -1,7 +1,7 @@
 {
   "name": "marvin-core-pack",
-  "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
-  "version": "0.1.0-alpha.3",
+  "description": "Core developer tools as MCP prompts: commits, PRs, code review, debugging, ADRs, changelogs, READMEs, migration plans, code explanation, docs search.",
+  "version": "1.0.0-alpha.1",
   "author": {
     "name": "Yurii Anichkin"
   }

@@ -19,15 +19,15 @@ Look for verification report:
 1. Check `.taskmaster/current-task/verification.md`
 2. If not found, check if verification results exist in conversation context
 
-**If no verification found:** stop and tell the user — "Verification has not been run. Run `/mn.taskmaster-verify` before delivering."
+**If no verification found:** stop and tell the user — "Verification has not been run. Run `/marvin-tm:verify` before delivering."
 
-**If the verdict is FAIL:** stop and tell the user — "Verification failed. Fix the issues and re-run `/mn.taskmaster-verify` before delivering." Show the failing checks from the verification report.
+**If the verdict is FAIL:** stop and tell the user — "Verification failed. Fix the issues and re-run `/marvin-tm:verify` before delivering." Show the failing checks from the verification report.
 
 **If the verdict is PASS or PASS WITH WARNINGS:** proceed. If there are warnings, show them to the user and confirm they want to proceed.
 
 ### 2. Commit
 
-Follow the `/mn.commit` workflow.
+Follow the `/marvin-core:commit` workflow.
 
 When composing the commit:
 - Use the spec title as the commit scope/subject
@@ -36,7 +36,7 @@ When composing the commit:
 
 ### 3. Create pull request
 
-Follow the `/mn.pr` workflow.
+Follow the `/marvin-core:pr` workflow.
 
 When composing the PR:
 - Include the spec summary in the PR body

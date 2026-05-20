@@ -109,7 +109,7 @@ For requirements that need human judgment, present the requirement and the relev
 
 ### Verification approach per requirement
 
-1. **Read the requirement** from the ASVS checklist (`skills/mn.sec.compliance/asvs-4.0-checklist.md`)
+1. **Read the requirement** from the ASVS checklist (`skills/marvin-sec:compliance/asvs-4.0-checklist.md`)
 2. **Find relevant code**: Use Grep/Glob to locate implementation
 3. **Assess compliance**: Does the code satisfy the requirement?
 4. **Record evidence**: File path, line number, configuration value, or test result
@@ -178,13 +178,13 @@ For each Fail finding, produce a prioritized remediation item:
    Gap: No check against known breached passwords
    Fix: Integrate HaveIBeenPwned API during registration and password change
    Effort: ~1 day
-   Reference: /mn.sec.fix V2.1.7
+   Reference: /marvin-sec:fix V2.1.7
 
 2. [HIGH] V5.3.1 — Output encoding
    Gap: dangerouslySetInnerHTML in src/views/profile.tsx:42
    Fix: Replace with DOMPurify-sanitized output
    Effort: ~2 hours
-   Reference: /mn.sec.fix XSS in src/views/profile.tsx:42
+   Reference: /marvin-sec:fix XSS in src/views/profile.tsx:42
 ```
 
 ## Output format

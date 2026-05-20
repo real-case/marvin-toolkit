@@ -2,11 +2,16 @@
 
 | Field         | Value                                                |
 | ------------- | ---------------------------------------------------- |
-| Status        | **Accepted** (solo maintainer sign-off — see below)  |
+| Status        | **Superseded** by [ADR-0002](./0002-mcp-first-architecture.md) on 2026-05-19 |
 | Date          | 2026-05-08                                           |
 | Phase         | Phase 4 of the multi-target scaffolder plan          |
 | Supersedes    | —                                                    |
-| Superseded by | —                                                    |
+| Superseded by | [ADR-0002 — MCP-first architecture](./0002-mcp-first-architecture.md) |
+
+> **Note (2026-05-19):** This ADR's conclusion no longer holds. The marvin-toolkit
+> has migrated to per-pack MCP servers; the Claude-native source layout
+> (`SKILL.md` + `commands/<name>.md`) has been replaced with TypeScript MCP
+> servers per pack. See ADR-0002 for the current architecture.
 
 ## Context
 
