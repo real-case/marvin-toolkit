@@ -10,7 +10,6 @@ Pair with:
 - `/mn.taskmaster-start` to produce the spec
 - `/mn.taskmaster-verify` to run full quality gates after implementation
 - `/mn.taskmaster-deliver` to commit and open a PR
-- `scripts/dispatch.sh` if you prefer headless execution across multiple specs
 
 ## Arguments
 

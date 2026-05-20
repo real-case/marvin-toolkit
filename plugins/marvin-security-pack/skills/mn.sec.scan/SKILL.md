@@ -19,13 +19,13 @@ Run all phases in order. Skip phases that don't apply to the project.
 
 ## Phase 1 — Secrets detection (delegated)
 
-**Read `skills/mn.sec.secrets/SKILL.md`** and follow its full workflow (Phases 1–4).
+**Read `skills/marvin-sec:secrets/SKILL.md`** and follow its full workflow (Phases 1–4).
 
 Incorporate all findings into the unified report at the end.
 
 ## Phase 2 — Dependency vulnerabilities (delegated)
 
-**Read `skills/mn.sec.deps/SKILL.md`** and follow its full workflow (Phases 1–5).
+**Read `skills/marvin-sec:deps/SKILL.md`** and follow its full workflow (Phases 1–5).
 
 Incorporate all findings into the unified report at the end.
 

@@ -1,7 +1,7 @@
 {
   "name": "marvin-taskmaster-pack",
-  "description": "Spec-driven task pipeline: interactive spec co-creation, batch dispatch to headless agents, red-team spec and diff critics, and PR review fixing",
-  "version": "0.1.0-alpha.1",
+  "description": "Spec-driven task pipeline as MCP prompts: interactive spec co-creation, interactive execution, verification gates, delivery, and PR review fixing. Batch dispatch deferred to a future feature.",
+  "version": "1.0.0-alpha.1",
   "author": {
     "name": "Yurii Anichkin"
   }

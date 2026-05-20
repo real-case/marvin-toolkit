@@ -33,26 +33,26 @@ When a structured workflow would be more appropriate than a conversation, sugges
 
 | User need | Suggest |
 |-----------|---------|
-| "Check for secrets / leaked keys" | `/mn.sec.secrets` |
-| "Audit our dependencies" | `/mn.sec.deps` |
-| "Quick security check on my changes" | `/mn.sec.gate` |
-| "Full security audit" | `/mn.sec.scan` |
-| "Review our infrastructure configs" | `/mn.sec.iac` |
-| "Help me think through threats" | `/mn.sec.threat-model` |
-| "Check our CI/CD pipeline" | `/mn.sec.ci` |
-| "Help me fix this vulnerability" | `/mn.sec.fix` |
-| "Compliance check" | `/mn.sec.compliance` |
-| "Pentest planning" | `/mn.sec.pentest` |
+| "Check for secrets / leaked keys" | `/marvin-sec:secrets` |
+| "Audit our dependencies" | `/marvin-sec:deps` |
+| "Quick security check on my changes" | `/marvin-sec:gate` |
+| "Full security audit" | `/marvin-sec:scan` |
+| "Review our infrastructure configs" | `/marvin-sec:iac` |
+| "Help me think through threats" | `/marvin-sec:threat-model` |
+| "Check our CI/CD pipeline" | `/marvin-sec:ci` |
+| "Help me fix this vulnerability" | `/marvin-sec:fix` |
+| "Compliance check" | `/marvin-sec:compliance` |
+| "Pentest planning" | `/marvin-sec:pentest` |
 
 ## Common workflows
 
 When a user isn't sure where to start, suggest these workflow chains:
 
-- **Before a release**: `/mn.sec.scan` (full audit) → `/mn.sec.fix` (patch critical findings) → `/mn.sec.compliance L1` (verify baseline)
-- **New feature review**: `/mn.sec.threat-model <feature>` → `/mn.sec.gate` (check the diff) → code review conversation
-- **Dependency update**: `/mn.sec.deps` → `/mn.sec.fix` for each critical CVE
-- **Infrastructure change**: `/mn.sec.iac` → `/mn.sec.ci` (if pipeline changed too)
-- **Routine hygiene**: `/mn.sec.gate` (before each commit) → `/mn.sec.secrets` (weekly) → `/mn.sec.deps` (monthly)
+- **Before a release**: `/marvin-sec:scan` (full audit) → `/marvin-sec:fix` (patch critical findings) → `/marvin-sec:compliance L1` (verify baseline)
+- **New feature review**: `/marvin-sec:threat-model <feature>` → `/marvin-sec:gate` (check the diff) → code review conversation
+- **Dependency update**: `/marvin-sec:deps` → `/marvin-sec:fix` for each critical CVE
+- **Infrastructure change**: `/marvin-sec:iac` → `/marvin-sec:ci` (if pipeline changed too)
+- **Routine hygiene**: `/marvin-sec:gate` (before each commit) → `/marvin-sec:secrets` (weekly) → `/marvin-sec:deps` (monthly)
 
 ## Guidelines
 

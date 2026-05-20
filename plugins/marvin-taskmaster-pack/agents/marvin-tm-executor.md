@@ -1,6 +1,6 @@
 ---
 name: marvin-tm-executor
-description: Headless execution agent for Phase 2 dispatch — implements specs autonomously in isolated worktrees, creates PRs. Not directly invocable as a subagent; read by dispatch.sh to construct claude -p prompts.
+description: Headless execution agent for batch Phase 2 — implements specs autonomously in isolated worktrees, creates PRs. Designed to be invoked by future batch-dispatch tooling that feeds a spec into a `claude -p` session.
 model: opus
 color: orange
 memory: project
@@ -36,7 +36,7 @@ READ SPEC → IMPLEMENT → SELF-TEST → SELF-REVIEW → CREATE PR
 
 ### 1. Read Spec
 
-The spec is provided inline below (injected by dispatch.sh). Read it fully. Identify:
+The spec is provided inline below (injected by the batch-dispatch caller). Read it fully. Identify:
 - Goal and acceptance criteria
 - Chosen approach and implementation sketch
 - Affected files

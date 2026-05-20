@@ -130,7 +130,7 @@ Critical issues found. The commit should not proceed. Output:
   - [CRITICAL] <file>:<line> — <description>
 
   Fix these issues before committing.
-  Run /mn.sec.fix for help generating fixes.
+  Run /marvin-sec:fix for help generating fixes.
 ```
 
 ## Guidelines
@@ -140,4 +140,4 @@ Critical issues found. The commit should not proceed. Output:
 - **False positive tolerance is low.** Since this runs frequently, false positives create alert fatigue. Only flag patterns with high confidence. When in doubt, downgrade to WARN instead of FAIL.
 - **No OWASP mapping.** This is a quick gate, not a compliance report. Keep the output compact.
 - **Suggest next steps.** On FAIL, point to `mn.sec.fix`. On WARN with dependency issues, point to `mn.sec.deps`.
-- **Don't block on missing tools.** If `npm audit` isn't available, skip the dependency check and add a line to the verdict: "Note: Dependency check skipped — `npm audit` not available. Run `/mn.sec.deps` for manual analysis." The gate should never fail because a tool is missing.
+- **Don't block on missing tools.** If `npm audit` isn't available, skip the dependency check and add a line to the verdict: "Note: Dependency check skipped — `npm audit` not available. Run `/marvin-sec:deps` for manual analysis." The gate should never fail because a tool is missing.

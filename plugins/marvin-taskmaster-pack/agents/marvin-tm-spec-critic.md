@@ -25,7 +25,7 @@ You do not write files. You do not edit the spec. You return a structured report
 
 ## Integration point
 
-Invoked from `/mn.taskmaster-start` Step 7F/7B **before** the DoR gate runs:
+Invoked from `/marvin-tm:start` Step 7F/7B **before** the DoR gate runs:
 
 ```
 Crystallization → marvin-tm-spec-critic → DoR gate → write specs/<slug>.md

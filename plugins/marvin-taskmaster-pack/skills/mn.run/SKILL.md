@@ -1,15 +1,15 @@
 ---
 name: taskmaster-run
-description: Execute a ready spec interactively in the current session — implements the spec following its Chosen Approach (feature) or fix approach with regression test (bugfix), then auto-chains into /mn.taskmaster-verify and /mn.taskmaster-deliver. Use when the user says "run the task", "execute the spec", "implement this spec", "/mn.taskmaster-run", or after /mn.taskmaster-start produced a spec and they want to implement it without dispatching to a worktree.
+description: Execute a ready spec interactively in the current session — implements the spec following its Chosen Approach (feature) or fix approach with regression test (bugfix), then auto-chains into /marvin-tm:verify and /marvin-tm:deliver. Use when the user says "run the task", "execute the spec", "implement this spec", "/marvin-tm:run", or after /marvin-tm:start produced a spec and they want to implement it without dispatching to a worktree.
 ---
 
 # Run
 
-Execute a spec that passed the Definition-of-Ready gate. Runs interactively in the current session on the current branch — you see every step and can intervene. On success, the skill auto-chains into `/mn.taskmaster-verify` and `/mn.taskmaster-deliver`.
+Execute a spec that passed the Definition-of-Ready gate. Runs interactively in the current session on the current branch — you see every step and can intervene. On success, the skill auto-chains into `/marvin-tm:verify` and `/marvin-tm:deliver`.
 
 ## Core principle
 
-**The spec is the instruction set.** This skill is the interactive sibling of `marvin-tm-executor` (which runs headless via `dispatch.sh`). Same contract, same pipelines — but the human is in the loop and the result stays on the current branch until `/mn.taskmaster-deliver` opens the PR.
+**The spec is the instruction set.** This skill is the interactive sibling of `marvin-tm-executor` (which runs headless via `dispatch.sh`). Same contract, same pipelines — but the human is in the loop and the result stays on the current branch until `/marvin-tm:deliver` opens the PR.
 
 ## Input
 
@@ -35,12 +35,12 @@ Resolution order:
 3. **No branch match — prompt user:**
    - List files in `specs/` that have `Status: ready` in their frontmatter.
    - Ask the user to choose one.
-   - If `specs/` is empty or missing, tell the user to run `/mn.taskmaster-start` first and stop.
+   - If `specs/` is empty or missing, tell the user to run `/marvin-tm:start` first and stop.
 
 ### 2. Validate Definition of Ready
 
 Read the resolved spec. Confirm:
-- Frontmatter contains `Status: ready` — if not, stop. The spec has not passed DoR; run `/mn.taskmaster-start` to finish authoring.
+- Frontmatter contains `Status: ready` — if not, stop. The spec has not passed DoR; run `/marvin-tm:start` to finish authoring.
 - Frontmatter contains `Type: feature` or `Type: bugfix` — if missing, stop and report the malformed spec.
 
 ### 3. Read context
@@ -85,7 +85,7 @@ If Task-tool is unavailable, skip this step.
 
 ### Step 7F: Verify
 
-Invoke `/mn.taskmaster-verify feature` (see `skills/mn.taskmaster-verify/SKILL.md`).
+Invoke `/marvin-tm:verify feature` (see `skills/marvin-tm:verify/SKILL.md`).
 
 - **PASS** — continue to delivery.
 - **PASS WITH WARNINGS** — show warnings to the user; continue to delivery.
@@ -93,7 +93,7 @@ Invoke `/mn.taskmaster-verify feature` (see `skills/mn.taskmaster-verify/SKILL.m
 
 ### Step 8F: Deliver
 
-Invoke `/mn.taskmaster-deliver` (see `skills/mn.taskmaster-deliver/SKILL.md`), passing any spec-gap notes and self-review findings as additional context for the PR body.
+Invoke `/marvin-tm:deliver` (see `skills/marvin-tm:deliver/SKILL.md`), passing any spec-gap notes and self-review findings as additional context for the PR body.
 
 The skill ends when the PR is open. Report the PR URL to the user.
 
@@ -134,7 +134,7 @@ Same as Step 6F — invoke `marvin-tm-diff-critic` if Task-tool is available.
 
 ### Step 10B: Verify + Deliver
 
-Same as Steps 7F and 8F — invoke `/mn.taskmaster-verify` (with `bug` context) then `/mn.taskmaster-deliver`.
+Same as Steps 7F and 8F — invoke `/marvin-tm:verify` (with `bug` context) then `/marvin-tm:deliver`.
 
 ---
 
@@ -143,8 +143,8 @@ Same as Steps 7F and 8F — invoke `/mn.taskmaster-verify` (with `bug` context) 
 - **Watch, don't race.** Show the user each major step before executing. Interactive is the whole point of this skill versus `dispatch.sh`.
 - **Never skip the regression test step for bugs.** Red→green is the proof the fix works.
 - **Respect retries.** 2 is the budget. After that, stop — don't silently flail.
-- **No AI attribution** in any commit or PR text (inherited from `/mn.commit` and `/mn.pr`).
-- **SPEC GAPs are first-class.** Record them inline as you work; `/mn.taskmaster-deliver` will surface them in the PR body.
+- **No AI attribution** in any commit or PR text (inherited from `/marvin-core:commit` and `/marvin-core:pr`).
+- **SPEC GAPs are first-class.** Record them inline as you work; `/marvin-tm:deliver` will surface them in the PR body.
 - **Current branch, current session.** This skill does not create worktrees. For multi-task or hands-off execution, use `scripts/dispatch.sh`.
 
 ## SPEC GAP protocol
@@ -166,6 +166,6 @@ Rationale: {why this was the minimal reasonable choice}
 
 If you truly cannot proceed (missing dependency, broken environment, infrastructure unavailable):
 
-1. Stop. Do not attempt `/mn.taskmaster-verify` or `/mn.taskmaster-deliver`.
+1. Stop. Do not attempt `/marvin-tm:verify` or `/marvin-tm:deliver`.
 2. Summarize for the user: what you tried, what blocked you, what you recommend they do.
 3. Leave the working tree as-is so the user can inspect or continue manually.

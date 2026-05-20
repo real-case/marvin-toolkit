@@ -8,9 +8,9 @@ Create an Architecture Decision Record (ADR) to document a significant technical
 
 ## Argument handling
 
-- `/mn.adr <title>` — use the provided title as the decision topic
-- `/mn.adr <title> --context <path>` — use research notes from the given file as additional input
-- `/mn.adr` — ask the user what decision they want to document
+- `/marvin-core:adr <title>` — use the provided title as the decision topic
+- `/marvin-core:adr <title> --context <path>` — use research notes from the given file as additional input
+- `/marvin-core:adr` — ask the user what decision they want to document
 
 ## Phase 1: Discover existing ADRs and project conventions
 

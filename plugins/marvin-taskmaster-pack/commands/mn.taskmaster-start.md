@@ -15,7 +15,7 @@ Begin work on a task. This is Phase 1 of the task pipeline — a structured dial
 6. Runs a red-team critic pass, then the Definition-of-Ready gate
 7. Writes the final spec to `specs/<slug>.md`
 
-After this, run `/mn.taskmaster-run` to execute the spec interactively, or `scripts/dispatch.sh` to dispatch to headless agents.
+After this, run `/mn.taskmaster-run` to execute the spec interactively.
 
 ## Arguments
 

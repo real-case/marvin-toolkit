@@ -5,34 +5,42 @@
     "email": "personal@yurii-anichkin.dev"
   },
   "metadata": {
-    "description": "Open plugin marketplace for Claude Code AI-driven development",
-    "version": "0.2.0-alpha.1",
+    "description": "Open plugin marketplace for Claude Code — MCP-first packs covering the development lifecycle",
+    "version": "1.0.0-alpha.1",
     "pluginRoot": "./plugins"
   },
   "plugins": [
     {
       "name": "marvin-core-pack",
       "source": "./plugins/marvin-core-pack",
-      "description": "Core developer tools: commits, PRs, code review, debugging, ADRs, changelogs, and onboarding",
-      "version": "0.1.0-alpha.3",
+      "description": "Core developer tools as MCP prompts: commits, PRs, code review, debugging, ADRs, changelogs, READMEs, migration plans, code explanation, docs search",
+      "version": "1.0.0-alpha.1",
       "category": "productivity",
-      "keywords": ["core", "commit", "pr", "review", "debug", "adr", "changelog", "readme", "migration", "onboarding", "eject", "scaffold"]
+      "keywords": ["core", "mcp", "commit", "pr", "review", "debug", "adr", "changelog", "readme", "migration", "onboarding"]
     },
     {
       "name": "marvin-security-pack",
       "source": "./plugins/marvin-security-pack",
-      "description": "Security-focused development tools: OWASP scanning, threat modeling, secret scanning, dependency audits, IaC review, CI/CD security, compliance checks, pentest planning, and security fix generation",
-      "version": "0.1.0-alpha.1",
+      "description": "Security-focused MCP prompts: OWASP scanning, threat modeling, secret/dependency/IaC scans, CI/CD security, compliance checks, pentest planning, security fix generation",
+      "version": "1.0.0-alpha.1",
       "category": "security",
-      "keywords": ["security", "security-scan", "owasp", "threat-model", "secrets", "dependencies", "compliance", "pentest", "iac", "ci-cd", "fix", "gate", "stride"]
+      "keywords": ["security", "mcp", "owasp", "threat-model", "secrets", "dependencies", "compliance", "pentest", "iac", "ci-cd", "fix", "gate", "stride"]
     },
     {
       "name": "marvin-taskmaster-pack",
       "source": "./plugins/marvin-taskmaster-pack",
-      "description": "Spec-driven task pipeline: interactive spec co-creation, batch dispatch to headless agents, red-team spec and diff critics, and PR review fixing",
-      "version": "0.1.0-alpha.1",
+      "description": "Spec-driven task pipeline as MCP prompts: interactive spec co-creation, interactive execution, verification gates, delivery, and PR review fixing",
+      "version": "1.0.0-alpha.1",
       "category": "productivity",
-      "keywords": ["taskmaster", "spec", "dispatch", "pipeline", "verify", "fix-pr", "batch", "worktree"]
+      "keywords": ["taskmaster", "mcp", "spec", "pipeline", "verify", "fix-pr"]
+    },
+    {
+      "name": "marvin-tasks-pack",
+      "source": "./plugins/marvin-tasks-pack",
+      "description": "Lightweight per-project task tracker with interactive MCP-elicit forms — inquirer-style speed inside Claude Code",
+      "version": "1.0.0-alpha.1",
+      "category": "productivity",
+      "keywords": ["tasks", "kanban", "elicit", "mcp", "tracker", "git", "branch", "pr"]
     }
   ]
 }

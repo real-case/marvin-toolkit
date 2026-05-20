@@ -1,9 +1,9 @@
 ---
 name: security-scan-legacy
-description: "[Deprecated — use mn.sec.scan] Legacy alias for the comprehensive OWASP Top 10:2025 security audit. Use only when an older invocation path calls /mn.security-scan; always delegate to the current mn.sec.scan skill. New calls should say \"security scan\", \"full audit\", or \"OWASP audit\" and be routed to mn.sec.scan instead."
+description: "[Deprecated — use mn.sec.scan] Legacy alias for the comprehensive OWASP Top 10:2025 security audit. Use only when an older invocation path calls /marvin-sec:security-scan; always delegate to the current mn.sec.scan skill. New calls should say \"security scan\", \"full audit\", or \"OWASP audit\" and be routed to mn.sec.scan instead."
 ---
 
-**This skill has been replaced by `mn.sec.scan`.** Read `skills/mn.sec.scan/SKILL.md` and follow its full workflow instead.
+**This skill has been replaced by `mn.sec.scan`.** Read `skills/marvin-sec:scan/SKILL.md` and follow its full workflow instead.
 
 The content below is kept for reference only during the transition period.
 
