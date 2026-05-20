@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-Marvin is a Claude Code plugin marketplace. Each pack is a self-contained plugin that ships an **MCP server** (per ADR-0002). Skills, slash-commands, and tools are exposed by that server — there are no SKILL.md files, no `commands/<name>.md` shims, and no eject/scaffold step.
+Marvin is a Claude Code plugin marketplace. Each pack is a self-contained plugin that ships an **MCP server** (per ADR-0002), plus auto-discovered `SKILL.md` files and short markdown slash commands under `commands/`. There is no eject/scaffold step — packs work as installed by `/plugin install`.
 
 ## Architecture
 
-Each pack delivers **one MCP server**, plus `skills/<name>/SKILL.md` and `agents/*.md` files (both auto-discovered by Claude Code on `/plugin install`):
+Each pack delivers **one MCP server**, plus `skills/<name>/SKILL.md`, markdown slash commands under `commands/`, and `agents/*.md` files (all three auto-loaded by Claude Code on `/plugin install`):
 
 ```
 plugins/<pack>/
@@ -16,6 +16,7 @@ plugins/<pack>/
 ├── .mcp.json                          # registers the pack server
 ├── CHANGELOG.md
 ├── skills/<name>/SKILL.md             # source of truth for prompt bodies
+├── commands/<name>.md                 # short /mn.* slash entries
 ├── agents/*.md                        # optional, Claude Code subagents
 └── mcp/server/
     ├── package.json
@@ -30,23 +31,25 @@ plugins/<pack>/
     └── dist/server.js                 # COMMITTED build artefact
 ```
 
-### Two doors, one room
+### Three doors, one room
 
-The same `SKILL.md` is used by **two independent entry points**:
+The same `SKILL.md` is reached through **three independent entry points**:
 
 1. **Claude Code auto-discovery.** Skills live under `plugins/<pack>/skills/<name>/SKILL.md`. Their YAML frontmatter (`description`, optional `disable-model-invocation`) is what Claude Code matches against user prose like "сделай коммит" — the skill loads automatically.
-2. **MCP slash commands.** Each prompt entry in `plugins/<pack>/mcp/server/src/prompts/index.ts` declares `skill: "<dir-name>"`. At request time, the server reads the corresponding `SKILL.md`, strips its frontmatter, and returns the prose as a prompt body. Users see the prompt in the slash menu as `/<server>:<name>`.
+2. **Short markdown slash commands.** Each `plugins/<pack>/commands/<name>.md` is a thin Claude Code slash command that instructs the model to read its matching `SKILL.md` and pass `$ARGUMENTS`. Users see them as `/mn.*` (e.g. `/mn.commit`, `/mn.sec.scan`, `/mn.taskmaster-start`).
+3. **MCP slash commands.** Each prompt entry in `plugins/<pack>/mcp/server/src/prompts/index.ts` declares `skill: "<dir-name>"`. At request time, the server reads the corresponding `SKILL.md`, strips its frontmatter, and returns the prose as a prompt body. Users see the prompt in the slash menu as `/<server>:<name>` (e.g. `/marvin-core:commit`).
 
-Both doors lead to the same prose. Editing `SKILL.md` updates both without requiring a server rebuild (the file is read at runtime).
+All three doors lead to the same prose. Editing `SKILL.md` updates all three paths without requiring a server rebuild (the file is read at runtime by doors 2 and 3, and by door 1 on next auto-discovery).
 
 ### Instrument types
 
 - **Skills** (`plugins/<pack>/skills/<name>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content.
+- **Markdown commands** (`plugins/<pack>/commands/<name>.md`) — Short `/mn.*` slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
 - **MCP prompts** — Thin server-side registration that exposes a skill (or, for marvin-tasks-pack, an inline body) under `/<server>:<name>`.
 - **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters (git ops, file CRUD, validation).
 - **Agents** (`plugins/<pack>/agents/*.md`) — Claude Code subagents with constrained tool access. Picked up automatically on `/plugin install`.
 
-> Exception: **marvin-tasks-pack** has no `skills/` directory. Its 13 prompts are thin tool-invocation wrappers with inline `body:` text — there is no standalone workflow content to share.
+> Exception: **marvin-tasks-pack** has no `skills/` or `commands/` directories. Its 13 prompts are thin tool-invocation wrappers registered only as MCP prompts (`/marvin-tasks:*`).
 
 ### Server keys and slash prefixes
 
@@ -91,10 +94,11 @@ CI (`.github/workflows/validate-plugins.yml`) runs the same four checks plus a s
 
 ## Adding a new prompt to an existing pack
 
-The canonical path is **skill-backed** — same content, two doors:
+The canonical path is **skill-backed** — same content, three doors:
 
 1. Create `plugins/<pack>/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`). The `description` is the auto-discovery trigger Claude Code matches in chat.
-2. Add an entry to `plugins/<pack>/mcp/server/src/prompts/index.ts`:
+2. Optionally create `plugins/<pack>/commands/<command-name>.md` with frontmatter `description` and a body that instructs Claude to read the new SKILL.md and pass `$ARGUMENTS`. Use the existing `mn.commit.md` / `mn.sec.scan.md` as templates.
+3. Add an entry to `plugins/<pack>/mcp/server/src/prompts/index.ts`:
    ```ts
    {
      name: "<slash-name>",         // becomes /<server>:<slash-name>
@@ -102,11 +106,11 @@ The canonical path is **skill-backed** — same content, two doors:
      skill: "<skill-name>",        // points to skills/<skill-name>/SKILL.md
    }
    ```
-3. Run `npm run build` inside the pack server to refresh `dist/server.js`.
-4. Commit `src/`, `dist/`, and the new `SKILL.md` together — CI verifies dist is in sync and that SKILL.md has valid frontmatter.
-5. Bump the pack version in `plugin.json` and `marketplace.json`.
+4. Run `npm run build` inside the pack server to refresh `dist/server.js`.
+5. Commit `src/`, `dist/`, and the new `SKILL.md` (+ optional command file) together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
+6. Bump the pack version in `plugin.json` and `marketplace.json`.
 
-For prompts with **no skill** (e.g. thin tool wrappers in marvin-tasks-pack), use `body: "..."` inline. Skip step 1.
+For prompts with **no skill** (e.g. thin tool wrappers in marvin-tasks-pack), use `body: "..."` inline. Skip step 1 and step 2.
 
 ## Adding a new MCP tool
 

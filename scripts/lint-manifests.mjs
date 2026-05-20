@@ -87,14 +87,21 @@ for (const entry of marketplace.plugins) {
     }
   }
   const skillsDir = join(repoRoot, "plugins", entry.name, "skills");
-  if (!existsSync(skillsDir)) continue;
-  for (const skill of readdirSync(skillsDir)) {
-    const skillFile = join(skillsDir, skill, "SKILL.md");
-    if (!existsSync(skillFile)) {
-      failures.push(`${entry.name}/skills/${skill}: missing SKILL.md`);
-      continue;
+  if (existsSync(skillsDir)) {
+    for (const skill of readdirSync(skillsDir)) {
+      const skillFile = join(skillsDir, skill, "SKILL.md");
+      if (!existsSync(skillFile)) {
+        failures.push(`${entry.name}/skills/${skill}: missing SKILL.md`);
+        continue;
+      }
+      checkFrontmatter(`${entry.name}/skills/${skill}/SKILL.md`, skillFile);
     }
-    checkFrontmatter(`${entry.name}/skills/${skill}/SKILL.md`, skillFile);
+  }
+  const commandsDir = join(repoRoot, "plugins", entry.name, "commands");
+  if (!existsSync(commandsDir)) continue;
+  for (const file of readdirSync(commandsDir)) {
+    if (!file.endsWith(".md")) continue;
+    checkFrontmatter(`${entry.name}/commands/${file}`, join(commandsDir, file));
   }
 }
 

@@ -14,16 +14,16 @@ follows semver independently of the surrounding marketplace.
 
 ### Changed
 
-- Slash commands renamed from `/mn.<name>` to `/marvin-core:<name>` (10 commands).
-- `commands/` directory removed — slash UX now comes from MCP server prompts.
-- `SKILL.md` files now serve **two doors**: Claude Code auto-discovery (as before) **and** MCP prompt body (read at request time, frontmatter stripped).
+- MCP prompts exposed as `/marvin-core:<name>` (new slash entry, 10 prompts).
+- `SKILL.md` files now serve **three doors**: Claude Code auto-discovery, the short `/mn.<name>` markdown command, and the MCP prompt (frontmatter stripped at request time).
 
 ### Removed
 
-- `mn.eject` skill and the entire scaffold/eject mechanism (the `marvin` CLI is gone).
+- `mn.eject` skill and command, and the entire scaffold/eject mechanism (the `marvin` CLI is gone).
 
 ### Kept
 
-- All 10 skills (`mn.commit`, `mn.pr`, `mn.review`, `mn.debug`, `mn.adr`, `mn.changelog`, `mn.readme`, `mn.migration-plan`, `mn.explaining-code`, `mn.docs-search`) in `skills/<name>/SKILL.md` — Claude Code still auto-discovers them via frontmatter.
+- All 10 skills in `skills/<name>/SKILL.md` (`mn.commit`, `mn.pr`, `mn.review`, `mn.debug`, `mn.adr`, `mn.changelog`, `mn.readme`, `mn.migration-plan`, `mn.explaining-code`, `mn.docs-search`).
+- All 10 `/mn.*` markdown slash commands under `commands/` — short aliases that delegate to the same SKILL.md.
 - Agents (`onboarding-guide`, `research`) — unchanged.
 - External MCP servers (`context7`, `gitmcp`) — registered alongside `marvin-core`.

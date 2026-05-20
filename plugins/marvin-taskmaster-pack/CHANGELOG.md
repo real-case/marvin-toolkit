@@ -14,11 +14,11 @@ follows semver independently of the surrounding marketplace.
 
 ### Changed
 
-- Slash commands renamed from `/mn.taskmaster-<name>` to `/marvin-tm:<name>` (5 commands).
-- `commands/` directory removed — slash UX now comes from MCP server prompts.
-- `SKILL.md` files now serve both Claude Code auto-discovery and MCP prompt resolution.
-- Cross-pack references in skill bodies updated (`/mn.commit` → `/marvin-core:commit`, etc).
+- MCP prompts exposed as `/marvin-tm:<name>` (new slash entry, 5 prompts).
+- `SKILL.md` files now serve **three doors**: Claude Code auto-discovery, the short `/mn.taskmaster-<name>` markdown command, and the MCP prompt.
+- Cross-pack references inside skill bodies updated (`/mn.commit` → `/marvin-core:commit`, etc).
 - `marvin-tm-executor` frontmatter updated to reference future batch-dispatch tooling instead of the removed shell script.
+- `commands/mn.taskmaster-start.md` and `commands/mn.taskmaster-run.md` lost their `scripts/dispatch.sh` mention (the script is gone).
 
 ### Removed
 
@@ -27,4 +27,5 @@ follows semver independently of the surrounding marketplace.
 ### Kept
 
 - All 5 skills (`mn.start`, `mn.run`, `mn.verify`, `mn.deliver`, `mn.fix-pr`) in `skills/<name>/SKILL.md`.
+- All 5 `/mn.taskmaster-*` markdown slash commands under `commands/`.
 - All 5 agents (`marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`) — unchanged.

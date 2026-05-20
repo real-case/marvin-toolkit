@@ -14,12 +14,11 @@ follows semver independently of the surrounding marketplace.
 
 ### Changed
 
-- Slash commands renamed from `/mn.sec.<name>` to `/marvin-sec:<name>` (10 commands).
-- Deprecated alias `mn.security-scan` rewired to `/marvin-sec:security-scan` (kept for backward compatibility, scheduled for removal in 2.0).
-- `commands/` directory removed — slash UX now comes from MCP server prompts.
-- `SKILL.md` files now serve both Claude Code auto-discovery and MCP prompt resolution.
+- MCP prompts exposed as `/marvin-sec:<name>` (new slash entry, 11 prompts including `security-scan` deprecated alias).
+- `SKILL.md` files now serve **three doors**: Claude Code auto-discovery, the short `/mn.sec.<name>` (or `/mn.security-scan`) markdown command, and the MCP prompt.
 
 ### Kept
 
-- All 11 skills in `skills/<name>/SKILL.md` (including `mn.security-scan` deprecated alias).
+- All 11 skills in `skills/<name>/SKILL.md`, including `mn.security-scan` deprecated alias.
+- All 11 `/mn.sec.*` and `/mn.security-scan` markdown slash commands under `commands/`.
 - Agent `security-reviewer` — unchanged.

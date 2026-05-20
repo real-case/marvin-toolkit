@@ -4,7 +4,13 @@
 
 Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin marketplace shipping **MCP-first** packs that cover the full development lifecycle. Four packs, one MCP server per pack — install what you need and get structured, repeatable workflows inside Claude Code.
 
-**Two doors, one room.** Each skill lives once at `plugins/<pack>/skills/<name>/SKILL.md`. Claude Code auto-discovers it from the file's `description` frontmatter when you describe what you want in chat ("сделай коммит"); the matching MCP prompt offers an explicit slash entry to the same content (`/marvin-core:commit`). The slash route runs deterministically; the chat route is more flexible. Pick whichever feels right — both use the same workflow body.
+**Three doors, one room.** Each skill lives once at `plugins/<pack>/skills/<name>/SKILL.md`. Three entry points reach the same workflow body:
+
+1. **Chat auto-discovery** — describe what you want ("сделай коммит") and Claude Code matches the skill via its frontmatter `description`.
+2. **Short markdown slash command** — `/mn.commit`, `/mn.sec.scan`, `/mn.taskmaster-start`. Thin wrappers under `plugins/<pack>/commands/`. Same workflow, terser invocation.
+3. **MCP prompt slash command** — `/marvin-core:commit`, `/marvin-sec:scan`, `/marvin-tm:start`. Served by each pack's bundled MCP server.
+
+Pick whichever feels right — they all use the same `SKILL.md`.
 
 ## Install
 
@@ -21,14 +27,14 @@ Each pack registers one MCP server. Slash commands appear as `/<server>:<prompt>
 
 ## What's included
 
-| Pack | Server | Skills | Prompts | Agents | Slash prefix |
-|------|--------|--------|---------|--------|--------------|
-| [marvin-core-pack](#marvin-core-pack) | `marvin-core` | 10 | 10 | 2 | `/marvin-core:` |
-| [marvin-security-pack](#marvin-security-pack) | `marvin-sec` | 11 | 11 | 1 | `/marvin-sec:` |
-| [marvin-taskmaster-pack](#marvin-taskmaster-pack) | `marvin-tm` | 5 | 5 | 5 | `/marvin-tm:` |
-| [marvin-tasks-pack](#marvin-tasks-pack) | `marvin-tasks` | — | 13 | — | `/marvin-tasks:` |
+| Pack | Server | Skills | Markdown `/mn.*` | MCP prompts | Agents | MCP prefix |
+|------|--------|--------|------------------|-------------|--------|------------|
+| [marvin-core-pack](#marvin-core-pack) | `marvin-core` | 10 | 10 | 10 | 2 | `/marvin-core:` |
+| [marvin-security-pack](#marvin-security-pack) | `marvin-sec` | 11 | 11 | 11 | 1 | `/marvin-sec:` |
+| [marvin-taskmaster-pack](#marvin-taskmaster-pack) | `marvin-tm` | 5 | 5 | 5 | 5 | `/marvin-tm:` |
+| [marvin-tasks-pack](#marvin-tasks-pack) | `marvin-tasks` | — | — | 13 | — | `/marvin-tasks:` |
 
-Skills count = files under `plugins/<pack>/skills/<name>/SKILL.md` (source of truth, auto-discovered by Claude Code). Prompts count = entries in `mcp/server/src/prompts/index.ts` (slash entries). For core/security/taskmaster they are 1:1 — each skill has a matching prompt. **marvin-tasks-pack** is MCP-only by design: its 13 prompts are thin tool wrappers without a skill counterpart.
+Skills count = `plugins/<pack>/skills/<name>/SKILL.md` (source of truth, auto-discovered by Claude Code). Markdown `/mn.*` count = thin slash wrappers under `commands/`. MCP prompt count = `mcp/server/src/prompts/index.ts` entries. For core/security/taskmaster they line up 1:1:1 — every workflow has all three doors. **marvin-tasks-pack** is MCP-only by design: its 13 prompts are thin tool wrappers, no SKILL.md or markdown command counterpart.
 
 ### marvin-core-pack
 

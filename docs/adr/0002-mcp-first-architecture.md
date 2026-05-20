@@ -45,11 +45,14 @@ resources), not a tree of SKILL.md files and slash-command shims.
 Old (ADR-0001)                 New (this ADR)
 ─────────────────              ───────────────────────────────────────────────
 SKILL.md (markdown)            Stays. Used as (a) auto-discovery source for
-                               Claude Code and (b) body source for the matching
-                               MCP prompt. Frontmatter stripped at MCP request
-                               time. Single source of truth.
-commands/<name>.md             Removed. Slash UX comes from MCP prompts —
-                               registered as `/<server>:<name>`.
+                               Claude Code, (b) body for the matching MCP
+                               prompt (frontmatter stripped), and (c) the
+                               workflow the `commands/<name>.md` slash
+                               delegates to. Single source of truth.
+commands/<name>.md             Kept as `/mn.*` markdown slash entry —
+                               short alias alongside the MCP prompt's
+                               `/<server>:<name>` form. Both reach the
+                               same SKILL.md.
 agents/<name>.md               Unchanged — Claude Code subagent.
 .mcp.json (external servers)   Plus the pack's own MCP server.
 ```
@@ -64,7 +67,7 @@ agents/<name>.md               Unchanged — Claude Code subagent.
 | C4 | **`SKILL.md` files are the single source of truth for prompt bodies.** Each pack server reads the corresponding `SKILL.md` at request time, strips its YAML frontmatter, and returns the prose. Claude Code continues to auto-discover the same `SKILL.md` through its frontmatter `description`. Prompts can also use inline `body:` (used by marvin-tasks-pack for thin tool wrappers). |
 | C5 | **`dispatch.sh` is removed.** Batch dispatch will return as a dedicated feature later, designed against the MCP server boundary. |
 | C6 | **`cli/` is removed.** `@real-case/marvin` (npm) is deprecated; scaffold/eject/init/update/status are not part of the MCP-first model. |
-| C7 | **Slash-command names are breaking-renamed.** No backwards-compatibility shims — the project has no installed users to migrate. |
+| C7 | **MCP prompts use new names `/marvin-<pack>:<cmd>`.** The original `/mn.*` markdown slash commands remain available as short aliases (`plugins/<pack>/commands/<name>.md`). Both routes delegate to the same `SKILL.md`. |
 | C8 | **Migration happens in one release.** All four packs land MCP-first in marketplace `v1.0.0`; per-pack versions `1.0.0-alpha.1`. |
 
 ## Repository layout (per pack)
@@ -89,7 +92,7 @@ plugins/<pack>/
     └── dist/server.js             # built artefact, COMMITTED to repo
 ```
 
-> **marvin-tasks-pack exception.** This pack has no `skills/` directory. Its 13 prompts are thin wrappers around the pack's MCP tools (`task`/`git`/`help`) and use inline `body:` text. They have no standalone workflow content worth duplicating into a skill.
+> **marvin-tasks-pack exception.** This pack has no `skills/` or `commands/` directories. Its 13 prompts are thin wrappers around the pack's MCP tools (`task`/`git`/`help`) and use inline `body:` text. They have no standalone workflow content worth duplicating into a skill, and there is no short-alias use case beyond the MCP slash.
 
 `dist/server.js` is committed because `/plugin install` does not run
 `npm install` or any post-install hook — the server must be runnable as
