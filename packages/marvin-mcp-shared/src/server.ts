@@ -38,7 +38,7 @@ export interface RunPackOptions {
  *   import { runPackServer, promptsDirFromMeta } from "@marvin-toolkit/mcp-shared";
  *
  *   await runPackServer({
- *     name: "marvin-tasks",
+ *     name: "marvin",
  *     version: "1.0.0",
  *     promptsDir: promptsDirFromMeta(import.meta.url),
  *     build: (server) => buildPack(server, env),
@@ -100,14 +100,10 @@ function registerPrompt(
   );
 }
 
-function registerTool<TInput extends z.ZodTypeAny>(
-  server: McpServer,
-  def: ToolDef<TInput>,
-): void {
+function registerTool<TInput extends z.ZodTypeAny>(server: McpServer, def: ToolDef<TInput>): void {
   // Tool input schemas in our contract are zod ObjectS — extract their raw
   // shape so registerTool can compose the JSON Schema itself.
-  const shape =
-    def.inputSchema instanceof z.ZodObject ? def.inputSchema.shape : undefined;
+  const shape = def.inputSchema instanceof z.ZodObject ? def.inputSchema.shape : undefined;
   server.registerTool(
     def.name,
     {

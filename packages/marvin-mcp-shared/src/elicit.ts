@@ -53,7 +53,9 @@ export function zodToElicitSchema(schema: z.ZodObject<z.ZodRawShape>): ElicitObj
 function zodTypeToJsonSchema(field: ZodTypeAny): ElicitProperty {
   if (field instanceof z.ZodString) {
     const result: ElicitProperty = { type: "string" };
-    const checks = (field._def as { checks?: Array<{ kind: string; value?: number; regex?: RegExp }> }).checks;
+    const checks = (
+      field._def as { checks?: Array<{ kind: string; value?: number; regex?: RegExp }> }
+    ).checks;
     for (const check of checks ?? []) {
       if (check.kind === "min" && typeof check.value === "number") result.minLength = check.value;
       if (check.kind === "max" && typeof check.value === "number") result.maxLength = check.value;

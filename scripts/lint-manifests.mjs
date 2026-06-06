@@ -45,10 +45,10 @@ for (const entry of marketplace.plugins) {
   if (existsSync(mcpJsonPath)) {
     const mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf8"));
     const keys = Object.keys(mcpJson);
-    const ownServer = keys.find((k) => k.startsWith("marvin-"));
+    const ownServer = keys.find((k) => k === "marvin" || k.startsWith("marvin-"));
     if (!ownServer) {
       failures.push(
-        `${entry.name}: .mcp.json does not register a server with key 'marvin-<suffix>'`,
+        `${entry.name}: .mcp.json does not register a server with key 'marvin' or 'marvin-<suffix>'`,
       );
     }
   }

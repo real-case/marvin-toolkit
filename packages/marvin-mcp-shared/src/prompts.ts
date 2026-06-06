@@ -24,14 +24,10 @@ export function resolvePromptBody(
 ): string {
   const sources = [def.body, def.skill, def.bodyFile].filter((s) => s !== undefined);
   if (sources.length === 0) {
-    throw new Error(
-      `Prompt '${def.name}': one of 'body', 'skill', or 'bodyFile' is required`,
-    );
+    throw new Error(`Prompt '${def.name}': one of 'body', 'skill', or 'bodyFile' is required`);
   }
   if (sources.length > 1) {
-    throw new Error(
-      `Prompt '${def.name}': 'body', 'skill', 'bodyFile' are mutually exclusive`,
-    );
+    throw new Error(`Prompt '${def.name}': 'body', 'skill', 'bodyFile' are mutually exclusive`);
   }
 
   if (def.body !== undefined) return def.body;
@@ -83,10 +79,7 @@ export function packRootFromMeta(metaUrl: string): string {
  * with the value the user supplied via the slash UI. Unknown
  * placeholders are left untouched so they're visible during authoring.
  */
-export function interpolateArgs(
-  body: string,
-  args: Record<string, string | undefined>,
-): string {
+export function interpolateArgs(body: string, args: Record<string, string | undefined>): string {
   return body.replace(/\{\{(\w+)\}\}/g, (match, key: string) => {
     const value = args[key];
     return value === undefined ? match : value;

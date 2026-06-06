@@ -1,8 +1,0 @@
-{
-  "name": "marvin-security-pack",
-  "description": "Security-focused MCP prompts: OWASP scanning, threat modeling, secret/dependency/IaC scans, CI/CD security, compliance checks, pentest planning, security fix generation.",
-  "version": "1.0.0-alpha.1",
-  "author": {
-    "name": "Yurii Anichkin"
-  }
-}

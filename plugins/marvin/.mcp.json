@@ -1,0 +1,17 @@
+{
+  "marvin": {
+    "command": "node",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server/dist/server.js"],
+    "env": {
+      "MARVIN_TASKS_DIR": "${CLAUDE_PROJECT_DIR}/marvin/tasks",
+      "MARVIN_TASKS_CONFIG": "${CLAUDE_PROJECT_DIR}/marvin/config.json"
+    }
+  },
+  "context7": {
+    "command": "npx",
+    "args": ["-y", "@upstash/context7-mcp"]
+  },
+  "gitmcp": {
+    "url": "https://gitmcp.io/docs"
+  }
+}

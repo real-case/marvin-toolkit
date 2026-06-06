@@ -5,42 +5,47 @@
     "email": "personal@yurii-anichkin.dev"
   },
   "metadata": {
-    "description": "Open plugin marketplace for Claude Code — MCP-first packs covering the development lifecycle",
-    "version": "1.0.0-alpha.1",
+    "description": "Open plugin marketplace for Claude Code — the Marvin toolkit as a single MCP-first plugin covering the development lifecycle",
+    "version": "2.0.0-alpha.1",
     "pluginRoot": "./plugins"
   },
   "plugins": [
     {
-      "name": "marvin-core-pack",
-      "source": "./plugins/marvin-core-pack",
-      "description": "Core developer tools as MCP prompts: commits, PRs, code review, debugging, ADRs, changelogs, READMEs, migration plans, code explanation, docs search",
-      "version": "1.0.0-alpha.1",
+      "name": "marvin",
+      "source": "./plugins/marvin",
+      "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools, the task-* spec pipeline, sec-* security scanners, and a kanban-* task tracker",
+      "version": "2.0.0-alpha.1",
       "category": "productivity",
-      "keywords": ["core", "mcp", "commit", "pr", "review", "debug", "adr", "changelog", "readme", "migration", "onboarding"]
-    },
-    {
-      "name": "marvin-security-pack",
-      "source": "./plugins/marvin-security-pack",
-      "description": "Security-focused MCP prompts: OWASP scanning, threat modeling, secret/dependency/IaC scans, CI/CD security, compliance checks, pentest planning, security fix generation",
-      "version": "1.0.0-alpha.1",
-      "category": "security",
-      "keywords": ["security", "mcp", "owasp", "threat-model", "secrets", "dependencies", "compliance", "pentest", "iac", "ci-cd", "fix", "gate", "stride"]
-    },
-    {
-      "name": "marvin-taskmaster-pack",
-      "source": "./plugins/marvin-taskmaster-pack",
-      "description": "Spec-driven task pipeline as MCP prompts: interactive spec co-creation, interactive execution, verification gates, delivery, and PR review fixing",
-      "version": "1.0.0-alpha.1",
-      "category": "productivity",
-      "keywords": ["taskmaster", "mcp", "spec", "pipeline", "verify", "fix-pr"]
-    },
-    {
-      "name": "marvin-tasks-pack",
-      "source": "./plugins/marvin-tasks-pack",
-      "description": "Lightweight per-project task tracker with interactive MCP-elicit forms — inquirer-style speed inside Claude Code",
-      "version": "1.0.0-alpha.1",
-      "category": "productivity",
-      "keywords": ["tasks", "kanban", "elicit", "mcp", "tracker", "git", "branch", "pr"]
+      "keywords": [
+        "marvin",
+        "mcp",
+        "commit",
+        "pr",
+        "review",
+        "debug",
+        "adr",
+        "changelog",
+        "readme",
+        "migration",
+        "explain",
+        "docs-search",
+        "taskmaster",
+        "spec",
+        "verify",
+        "deliver",
+        "security",
+        "owasp",
+        "threat-model",
+        "secrets",
+        "dependencies",
+        "compliance",
+        "pentest",
+        "iac",
+        "ci-cd",
+        "kanban",
+        "tasks",
+        "tracker"
+      ]
     }
   ]
 }

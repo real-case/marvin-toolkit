@@ -2,13 +2,17 @@
 
 > Claude Code toolkit for those who don't panic.
 
-Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin marketplace shipping **MCP-first** packs that cover the full development lifecycle. Four packs, one MCP server per pack — install what you need and get structured, repeatable workflows inside Claude Code.
+[![CI](https://github.com/real-case/marvin-toolkit/actions/workflows/validate-plugins.yml/badge.svg)](https://github.com/real-case/marvin-toolkit/actions/workflows/validate-plugins.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Node.js >= 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
-**Three doors, one room.** Each skill lives once at `plugins/<pack>/skills/<name>/SKILL.md`. Three entry points reach the same workflow body:
+Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin shipping **MCP-first** workflows that cover the full development lifecycle. One plugin, one MCP server, one slash prefix — `/marvin:` — install it and get structured, repeatable workflows inside Claude Code.
+
+**Three doors, one room.** Each skill lives once at `plugins/marvin/skills/<command>/SKILL.md`. Three entry points reach the same workflow body:
 
 1. **Chat auto-discovery** — describe what you want ("сделай коммит") and Claude Code matches the skill via its frontmatter `description`.
-2. **Short markdown slash command** — `/mn.commit`, `/mn.sec.scan`, `/mn.taskmaster-start`. Thin wrappers under `plugins/<pack>/commands/`. Same workflow, terser invocation.
-3. **MCP prompt slash command** — `/marvin-core:commit`, `/marvin-sec:scan`, `/marvin-tm:start`. Served by each pack's bundled MCP server.
+2. **Markdown slash command** — `/commit`, `/sec-scan`, `/task-start`. Thin wrappers under `plugins/marvin/commands/`. Same workflow, terser invocation.
+3. **MCP prompt slash command** — `/marvin:commit`, `/marvin:sec-scan`, `/marvin:task-start`. Served by the bundled MCP server.
 
 Pick whichever feels right — they all use the same `SKILL.md`.
 
@@ -16,134 +20,145 @@ Pick whichever feels right — they all use the same `SKILL.md`.
 
 ```shell
 /plugin marketplace add real-case/marvin-toolkit
-
-/plugin install marvin-core-pack@marvin-toolkit
-/plugin install marvin-security-pack@marvin-toolkit
-/plugin install marvin-taskmaster-pack@marvin-toolkit
-/plugin install marvin-tasks-pack@marvin-toolkit
+/plugin install marvin@marvin-toolkit
 ```
 
-Each pack registers one MCP server. Slash commands appear as `/<server>:<prompt>`.
+The plugin registers one MCP server (`marvin`). Commands appear as `/marvin:<group>-<command>`.
 
-## What's included
+## Command naming
 
-| Pack | Server | Skills | Markdown `/mn.*` | MCP prompts | Agents | MCP prefix |
-|------|--------|--------|------------------|-------------|--------|------------|
-| [marvin-core-pack](#marvin-core-pack) | `marvin-core` | 10 | 10 | 10 | 2 | `/marvin-core:` |
-| [marvin-security-pack](#marvin-security-pack) | `marvin-sec` | 11 | 11 | 11 | 1 | `/marvin-sec:` |
-| [marvin-taskmaster-pack](#marvin-taskmaster-pack) | `marvin-tm` | 5 | 5 | 5 | 5 | `/marvin-tm:` |
-| [marvin-tasks-pack](#marvin-tasks-pack) | `marvin-tasks` | — | — | 13 | — | `/marvin-tasks:` |
+Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
-Skills count = `plugins/<pack>/skills/<name>/SKILL.md` (source of truth, auto-discovered by Claude Code). Markdown `/mn.*` count = thin slash wrappers under `commands/`. MCP prompt count = `mcp/server/src/prompts/index.ts` entries. For core/security/taskmaster they line up 1:1:1 — every workflow has all three doors. **marvin-tasks-pack** is MCP-only by design: its 13 prompts are thin tool wrappers, no SKILL.md or markdown command counterpart.
+| Group | What | Count |
+|-------|------|-------|
+| _(bare)_ | core developer tools | 8 |
+| `pr-*` | pull-request operations | 2 |
+| `task-*` | spec-driven task pipeline | 5 |
+| `sec-*` | security scanners | 10 |
+| `kanban-*` | lightweight task tracker | 13 |
 
-### marvin-core-pack
+38 prompts total, all under `/marvin:`. The skill-backed groups (core, `pr-*`, `task-*`, `sec-*`) have all three doors; the `kanban-*` group is MCP-only (thin tool wrappers, no SKILL.md).
 
-Core developer tools — language-agnostic, used by every engineer.
+### Core developer tools
+
+Language-agnostic, used by every engineer.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin-core:commit` | Generate conventional commit messages with sensitive file detection |
-| `/marvin-core:pr` | Create PRs with structured descriptions and pre-flight checks |
-| `/marvin-core:review` | Code review by severity (critical, warning, suggestion) |
-| `/marvin-core:debug` | Systematic root-cause analysis with hypotheses |
-| `/marvin-core:adr` | Create Architecture Decision Records |
-| `/marvin-core:changelog` | Generate changelog from git history |
-| `/marvin-core:readme` | Generate or update README.md |
-| `/marvin-core:migration-plan` | Plan migrations with risks and rollback strategy |
-| `/marvin-core:explaining-code` | Explain code, architecture, and execution flow |
-| `/marvin-core:docs-search` | Search and synthesize project documentation |
+| `/marvin:commit` | Generate conventional commit messages with sensitive file detection |
+| `/marvin:pr-create` | Create PRs with structured descriptions and pre-flight checks |
+| `/marvin:pr-review` | Code review by severity (critical, warning, suggestion) |
+| `/marvin:debug` | Systematic root-cause analysis with hypotheses |
+| `/marvin:adr` | Create Architecture Decision Records |
+| `/marvin:changelog` | Generate changelog from git history |
+| `/marvin:readme` | Generate or update README.md |
+| `/marvin:migration-plan` | Plan migrations with risks and rollback strategy |
+| `/marvin:explain` | Explain code, architecture, and execution flow |
+| `/marvin:docs-search` | Search and synthesize project documentation |
 
 **Agents:** `onboarding-guide`, `research`.
 
 **External MCP servers also registered:** `context7` (library docs lookup), `gitmcp` (GitHub repository docs).
 
-### marvin-security-pack
+### Security — `sec-*`
 
-Security-focused tools — OWASP Top 10, dependency audits, compliance checks.
+OWASP Top 10, dependency audits, compliance checks.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin-sec:scan` | Comprehensive OWASP Top 10:2025 audit (orchestrates secrets + deps + static analysis) |
-| `/marvin-sec:secrets` | Deep scan for leaked secrets across code, config, and git history |
-| `/marvin-sec:deps` | Audit dependencies for vulnerabilities, license risks, and maintenance health |
-| `/marvin-sec:gate` | Fast pre-commit security check — scoped to staged changes only |
-| `/marvin-sec:threat-model` | STRIDE-based threat modeling for features or systems |
-| `/marvin-sec:iac` | Infrastructure-as-Code security (Terraform, K8s, Docker, CloudFormation) |
-| `/marvin-sec:ci` | CI/CD pipeline security audit (GitHub Actions, GitLab CI, Jenkins) |
-| `/marvin-sec:fix` | Generate and verify fixes for vulnerabilities with regression tests |
-| `/marvin-sec:compliance` | OWASP ASVS compliance checking (L1/L2/L3) |
-| `/marvin-sec:pentest` | Generate application-specific penetration testing checklist |
+| `/marvin:sec-scan` | Comprehensive OWASP Top 10:2025 audit (orchestrates secrets + deps + static analysis) |
+| `/marvin:sec-secrets` | Deep scan for leaked secrets across code, config, and git history |
+| `/marvin:sec-deps` | Audit dependencies for vulnerabilities, license risks, and maintenance health |
+| `/marvin:sec-gate` | Fast pre-commit security check — scoped to staged changes only |
+| `/marvin:sec-threat-model` | STRIDE-based threat modeling for features or systems |
+| `/marvin:sec-iac` | Infrastructure-as-Code security (Terraform, K8s, Docker, CloudFormation) |
+| `/marvin:sec-ci` | CI/CD pipeline security audit (GitHub Actions, GitLab CI, Jenkins) |
+| `/marvin:sec-fix` | Generate and verify fixes for vulnerabilities with regression tests |
+| `/marvin:sec-compliance` | OWASP ASVS compliance checking (L1/L2/L3) |
+| `/marvin:sec-pentest` | Generate application-specific penetration testing checklist |
 
 **Agent:** `security-reviewer`.
 
-### marvin-taskmaster-pack
+### Task pipeline — `task-*`
 
-Spec-driven task pipeline — separates human decisions from automated execution.
+Spec-driven pipeline — separates human decisions from automated execution.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin-tm:start` | Interactive spec co-creation (feature/bugfix flows, solution variants, DoR gate) |
-| `/marvin-tm:run` | Execute a ready spec interactively in the current session |
-| `/marvin-tm:verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
-| `/marvin-tm:deliver` | Commit + PR, gated on verification passing |
-| `/marvin-tm:fix-pr` | Apply PR review comments as code fixes |
+| `/marvin:task-start` | Interactive spec co-creation (feature/bugfix flows, solution variants, DoR gate) |
+| `/marvin:task-implement` | Execute a ready spec interactively in the current session |
+| `/marvin:task-verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
+| `/marvin:task-deliver` | Commit + PR, gated on verification passing |
+| `/marvin:task-fix-pr` | Apply PR review comments as code fixes |
 
 **Agents:** `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`.
 
 > Batch dispatch (the old `dispatch.sh`) was removed; it will return as a dedicated feature later, designed against the MCP boundary.
 
-### marvin-tasks-pack
+### Kanban tracker — `kanban-*`
 
 Lightweight per-project task tracker with interactive MCP-elicit forms — inquirer-style speed inside Claude Code.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin-tasks:menu` | Main menu |
-| `/marvin-tasks:bug` / `:feature` / `:chore` / `:spike` | Quick-create a task of the given type |
-| `/marvin-tasks:start` | Pick a todo task, branch off, mark WIP |
-| `/marvin-tasks:review` | Move current task to review |
-| `/marvin-tasks:done` | Mark current task done |
-| `/marvin-tasks:list` | List all tasks grouped by status |
-| `/marvin-tasks:status` | Current branch + WIP tasks |
-| `/marvin-tasks:help` | Project dashboard |
-| `/marvin-tasks:commit` | Commit with task context |
-| `/marvin-tasks:create-pr` | Open PR with task context |
+| `/marvin:kanban-menu` | Main menu |
+| `/marvin:kanban-bug` / `-feature` / `-chore` / `-spike` | Quick-create a task of the given type |
+| `/marvin:kanban-start` | Pick a todo task, branch off, mark WIP |
+| `/marvin:kanban-review` | Move current task to review |
+| `/marvin:kanban-done` | Mark current task done |
+| `/marvin:kanban-list` | List all tasks grouped by status |
+| `/marvin:kanban-status` | Current branch + WIP tasks |
+| `/marvin:kanban-help` | Project dashboard |
+| `/marvin:kanban-commit` | Commit with task context |
+| `/marvin:kanban-create-pr` | Open PR with task context |
 
 Storage: `marvin/tasks/<seq>[-<tracker>]--<slug>.md`, optional `marvin/config.json` (`base_branch`, `tracker_url_template`).
+
+`task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 
 ## Development lifecycle
 
 ```
-Plan                     Code                      Review                Secure                 Document                  Ship                  Pipeline
-├─ marvin-core:adr       ├─ marvin-core:debug      └─ marvin-core:review ├─ marvin-sec:scan     ├─ marvin-core:readme    ├─ marvin-core:commit ├─ marvin-tm:start
-└─ marvin-core:           ├─ marvin-core:                                ├─ marvin-sec:secrets ├─ marvin-core:changelog  └─ marvin-core:pr     ├─ marvin-tm:run
-   migration-plan       │  explaining-code                              ├─ marvin-sec:deps    └─ marvin-core:                                ├─ marvin-tm:verify
-                        └─ marvin-core:                                  ├─ marvin-sec:gate      docs-search                                  ├─ marvin-tm:deliver
-                           docs-search                                   ├─ marvin-sec:iac                                                    └─ marvin-tm:fix-pr
-                                                                         ├─ marvin-sec:ci
-                                                                         └─ ...
+Plan                  Code               Review            Secure              Document             Ship                Pipeline
+├─ marvin:adr         ├─ marvin:debug    └─ marvin:        ├─ marvin:sec-scan  ├─ marvin:readme     ├─ marvin:commit    ├─ marvin:task-start
+└─ marvin:            ├─ marvin:explain     pr-review      ├─ marvin:sec-      ├─ marvin:changelog  └─ marvin:pr-create ├─ marvin:task-implement
+   migration-plan     └─ marvin:                              secrets          └─ marvin:                              ├─ marvin:task-verify
+                         docs-search                       ├─ marvin:sec-deps     docs-search                          ├─ marvin:task-deliver
+                                                            ├─ marvin:sec-gate                                          └─ marvin:task-fix-pr
+                                                            └─ ...
 ```
 
-For day-to-day task tracking, layer `marvin-tasks-pack` on top of either workflow.
+For day-to-day task tracking, layer the `kanban-*` commands on top of either workflow.
 
 ## Architecture decisions
 
 Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./docs/adr/):
 
 - [ADR 0001](./docs/adr/0001-source-format.md) — superseded by ADR-0002
-- [ADR 0002 — MCP-first architecture](./docs/adr/0002-mcp-first-architecture.md)
+- [ADR 0002 — MCP-first architecture](./docs/adr/0002-mcp-first-architecture.md) — superseded by ADR-0003
+- [ADR 0003 — Single-plugin consolidation](./docs/adr/0003-single-plugin-consolidation.md) — current
 
 ## Contributing
 
-1. Create a branch for your changes.
-2. Add or modify packs under `plugins/`.
-3. Build affected pack server (`cd plugins/<pack>/mcp/server && npm run build`) and commit `dist/` together with `src/`.
-4. Update `marketplace.json` if adding a new pack; bump the pack's `plugin.json` version.
-5. Run `node scripts/lint-manifests.mjs` and `node scripts/verify-dist.mjs` before pushing.
-6. Open a PR — CI validates manifests, builds, smoke-tests every MCP server, and rejects stale `dist/` commits.
+Contributions are welcome. The quality gates every change must pass:
 
-See [CLAUDE.md](./CLAUDE.md) for development guidelines.
+```shell
+npm run lint              # ESLint (TypeScript source)
+npm run format:check      # Prettier
+npm run lint:manifests    # marketplace + plugin manifest structure
+npm run build             # build every workspace
+npm run test              # Node.js native test suites
+npm run verify-dist       # committed dist/ matches a fresh build
+```
+
+CI runs the same checks plus a stdio smoke-test of the MCP server. See
+[CONTRIBUTING.md](./CONTRIBUTING.md) for setup and the full workflow, and
+[CLAUDE.md](./CLAUDE.md) for the architecture reference.
+
+## Security
+
+Found a vulnerability? Please report it privately — see [SECURITY.md](./SECURITY.md).
 
 ## License
 
-[WTFPL](./LICENSE)
+[MIT](./LICENSE) © Yurii Anichkin

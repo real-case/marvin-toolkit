@@ -1,0 +1,24 @@
+---
+description: Commit changes and create a pull request. Refuses if verification failed. Delegates to core-pack commit and pr-create.
+---
+
+# Deliver
+
+Commit and create a pull request for verified changes.
+
+## Arguments
+
+- `$ARGUMENTS` — Optional: additional context for commit message or PR body
+
+## Instructions
+
+**Read `skills/task-deliver/SKILL.md`** and follow its full workflow.
+
+Pass `$ARGUMENTS` as additional delivery context if provided.
+
+## Examples
+
+| Command | Behavior |
+|---------|----------|
+| `/task-deliver` | Check verification, commit, create PR |
+| `/task-deliver closes #42` | Deliver with issue reference for PR |
