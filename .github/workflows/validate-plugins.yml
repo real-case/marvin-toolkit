@@ -19,13 +19,7 @@ jobs:
           cache: "npm"
 
       - name: Install workspace dependencies
-        # Use `npm install` (not `npm ci`): npm records platform-specific
-        # optional deps (e.g. rollup's native binary, pulled in by tsup) only
-        # for the lockfile's generating platform. `npm ci` would then skip the
-        # Linux binary and the build fails with "Cannot find module
-        # @rollup/rollup-linux-x64-gnu". `npm install` resolves the runner's
-        # native optional at install time. See npm/cli#4828.
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
