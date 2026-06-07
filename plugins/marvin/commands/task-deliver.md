@@ -1,5 +1,5 @@
 ---
-description: Commit changes and create a pull request. Refuses if verification failed. Delegates to core-pack commit and pr-create.
+description: Commit changes and create a pull request. Refuses if verification failed. Delegates to commit and pr-create.
 ---
 
 # Deliver

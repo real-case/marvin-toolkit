@@ -1,15 +1,15 @@
 ---
 name: task-deliver
-description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the core-pack commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
+description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
 ---
 
 # Deliver
 
-Commit changes and create a pull request. This is the final phase — it gates on successful verification and delegates the actual commit/PR creation to core-pack skills.
+Commit changes and create a pull request. This is the final phase — it gates on successful verification and delegates the actual commit/PR creation to the commit and pr-create skills.
 
 ## Core principle
 
-**Don't ship unverified code.** Delivery is the last gate. It checks that verification passed, then delegates to the battle-tested commit and PR workflows from core-pack.
+**Don't ship unverified code.** Delivery is the last gate. It checks that verification passed, then delegates to the battle-tested commit and PR workflows.
 
 ## Workflow
 
@@ -73,6 +73,6 @@ Do NOT delete `.taskmaster/current-task/` artifacts. They serve as documentation
 ## Guidelines
 
 - **Never bypass the verification gate.** If verification wasn't run or failed, refuse to deliver. This is the whole point of the pipeline.
-- **Delegate, don't duplicate.** The commit and PR workflows are in core-pack — use them via command invocation. Don't re-implement commit message generation or PR body formatting.
-- **Enrich, don't replace.** Add spec/plan/verification context to the commit and PR, but let the core-pack workflows handle their standard checks (sensitive files, pre-flight, etc.).
+- **Delegate, don't duplicate.** The commit and PR workflows already exist (`/marvin:commit`, `/marvin:pr-create`) — use them via command invocation. Don't re-implement commit message generation or PR body formatting.
+- **Enrich, don't replace.** Add spec/plan/verification context to the commit and PR, but let those workflows handle their standard checks (sensitive files, pre-flight, etc.).
 - **Artifacts are documentation.** After delivery, the `.taskmaster/` directory is a record of the decision process. Users can archive or clean up at their discretion.

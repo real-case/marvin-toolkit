@@ -85,7 +85,7 @@ If Task-tool is unavailable, skip this step.
 
 ### Step 7F: Verify
 
-Invoke `/marvin:task-verify feature` (see `skills/marvin:task-verify/SKILL.md`).
+Invoke `/marvin:task-verify feature` (see `skills/task-verify/SKILL.md`).
 
 - **PASS** — continue to delivery.
 - **PASS WITH WARNINGS** — show warnings to the user; continue to delivery.
@@ -93,7 +93,7 @@ Invoke `/marvin:task-verify feature` (see `skills/marvin:task-verify/SKILL.md`).
 
 ### Step 8F: Deliver
 
-Invoke `/marvin:task-deliver` (see `skills/marvin:task-deliver/SKILL.md`), passing any spec-gap notes and self-review findings as additional context for the PR body.
+Invoke `/marvin:task-deliver` (see `skills/task-deliver/SKILL.md`), passing any spec-gap notes and self-review findings as additional context for the PR body.
 
 The skill ends when the PR is open. Report the PR URL to the user.
 
