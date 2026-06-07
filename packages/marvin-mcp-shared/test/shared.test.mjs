@@ -67,16 +67,17 @@ test("resolvePromptBody reads skill SKILL.md and strips frontmatter", async () =
 
 test("resolvePromptBody with skill but no packRoot throws", () => {
   assert.throws(() =>
-    resolvePromptBody(
-      { name: "x", description: "x", skill: "mn.x" },
-      { promptsDir: "/tmp" },
-    ),
+    resolvePromptBody({ name: "x", description: "x", skill: "mn.x" }, { promptsDir: "/tmp" }),
   );
 });
 
 test("zodToElicitSchema handles strings, enums, optional, regex", () => {
   const schema = z.object({
-    title: z.string().min(3).max(120).regex(/^[\x20-\x7E]+$/),
+    title: z
+      .string()
+      .min(3)
+      .max(120)
+      .regex(/^[\x20-\x7E]+$/),
     type: z.enum(["bug", "feature"]),
     tracker_id: z.string().optional(),
   });

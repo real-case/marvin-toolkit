@@ -2,11 +2,11 @@
 
 | Field         | Value                                                |
 | ------------- | ---------------------------------------------------- |
-| Status        | **Accepted** (solo maintainer sign-off)              |
+| Status        | **Superseded** by ADR 0003                           |
 | Date          | 2026-05-19                                           |
 | Phase         | Phase 0 of the MCP-first migration                   |
 | Supersedes    | ADR 0001 (source-format) — Claude-native source dropped |
-| Superseded by | —                                                    |
+| Superseded by | ADR 0003 (single-plugin consolidation) — sub-decisions C1 (per-pack servers) and C3 (`marvin-<pack>:` prefixes) reversed |
 
 ## Context
 

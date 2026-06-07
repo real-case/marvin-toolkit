@@ -8,7 +8,7 @@ import type { z } from "zod";
  * time the loader resolves the filename to its content.
  */
 export interface PromptDef {
-  /** Slash-command suffix. e.g. `commit` → `/marvin-core:commit` */
+  /** Slash-command suffix. e.g. `commit` → `/marvin:commit` */
   name: string;
   /** Short, human-facing description shown in the slash menu */
   description: string;
@@ -33,7 +33,7 @@ export interface PromptDef {
    * Filename (relative to the server's `src/prompts/` directory)
    * whose content is the prompt body. Used for inline prompt files
    * that have no frontmatter and no equivalent skill — e.g. thin
-   * tool-wrapper prompts in marvin-tasks-pack. Mutually exclusive
+   * tool-wrapper prompts in the kanban group. Mutually exclusive
    * with `body` and `skill`.
    */
   bodyFile?: string;
@@ -79,4 +79,3 @@ export interface ToolResult {
   /** Optional flag — true if the tool call failed at the application level. */
   isError?: boolean;
 }
-

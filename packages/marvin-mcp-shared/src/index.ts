@@ -1,10 +1,4 @@
-export type {
-  PromptDef,
-  PromptArgumentDef,
-  ToolDef,
-  AnyToolDef,
-  ToolResult,
-} from "./types.js";
+export type { PromptDef, PromptArgumentDef, ToolDef, AnyToolDef, ToolResult } from "./types.js";
 export { defineTool } from "./types.js";
 export type { PackBundle, RunPackOptions } from "./server.js";
 export {

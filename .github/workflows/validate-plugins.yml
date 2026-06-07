@@ -24,6 +24,12 @@ jobs:
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
 
+      - name: Lint source (ESLint)
+        run: npm run lint
+
+      - name: Check formatting (Prettier)
+        run: npm run format:check
+
       - name: Build all workspaces
         run: npm run build
 

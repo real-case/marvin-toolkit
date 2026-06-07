@@ -1,8 +1,0 @@
-{
-  "name": "marvin-tasks-pack",
-  "description": "Lightweight per-project task tracker with interactive MCP-elicit forms. Inquirer-style speed inside Claude Code — kanban statuses, git-aware branch/PR helpers.",
-  "version": "1.0.0-alpha.1",
-  "author": {
-    "name": "Yurii Anichkin"
-  }
-}
