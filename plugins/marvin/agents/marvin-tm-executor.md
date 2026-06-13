@@ -29,10 +29,13 @@ Read the spec's `Type:` field in the frontmatter:
 ## Feature Pipeline
 
 ```
-READ SPEC → IMPLEMENT → SELF-TEST → SELF-REVIEW → CREATE PR
-                ↑              |
+READ SPEC → IMPLEMENT → ( SELF-TEST ‖ SELF-REVIEW ) → merge → CREATE PR
+                ↑            |
                 └── retry (2x) ┘
 ```
+
+Self-test (quality gates) and self-review (diff-critic) are independent and slow — run them
+**concurrently** and merge both results before creating the PR.
 
 ### 1. Read Spec
 
@@ -55,33 +58,45 @@ If something is ambiguous:
 - Make the simplest reasonable choice
 - Record it as a SPEC GAP (you'll include it in the PR description)
 
-### 3. Self-Test
+### 3. Self-Test ‖ Self-Review (concurrent)
 
-Run the project's quality gates:
-- **Tests:** run the project test suite. All tests must pass.
-- **Lint:** run the project linter if configured.
-- **Type-check:** run type checking if applicable.
-- **Build:** run the build if applicable.
+Self-test (quality gates) and self-review (diff-critic, §4) are independent and slow. **Start the
+diff-critic first (in the background), then run the gates** so the two overlap; merge both before
+the PR step.
 
-Detect the test/lint/build commands from project config:
+**Launch the critic (background).** If Task-tool is available, dispatch `marvin-tm-diff-critic`
+(with `run_in_background`) with the spec path and diff range — see §4 for how to use its verdict.
 
-| Indicator | Test | Lint | Type-check | Build |
-|-----------|------|------|------------|-------|
-| `go.mod` | `go test ./...` | `golangci-lint run` | — | `go build ./...` |
-| `pyproject.toml` | `pytest` | `ruff check .` | `mypy .` | — |
-| `tsconfig.json` | `npm test` | `npx eslint .` | `npx tsc --noEmit` | `npm run build` |
-| `Cargo.toml` | `cargo test` | `cargo clippy` | — | `cargo build` |
-| `pom.xml` | `mvn test` | — | — | `mvn package` |
+**Run the gates.**
+- **Preferred — the `verify` tool.** If the `marvin` MCP `verify` tool is available, call it
+  (`mode: feature`, `execution: parallel`). It runs the independent gates concurrently, records
+  every result at one merge point, computes the verdict, and writes `verification.md`.
+- **Fallback — inline Bash.** If the tool is **not** available in this headless run, run the gates
+  yourself, detecting commands from project config (never silently skip):
 
-Fallback: check `package.json` scripts, `Makefile` targets, CI config.
+  | Indicator | Test | Lint | Type-check | Build |
+  |-----------|------|------|------------|-------|
+  | `go.mod` | `go test ./...` | `golangci-lint run` | — | `go build ./...` |
+  | `pyproject.toml` | `pytest` | `ruff check .` | `mypy .` | — |
+  | `tsconfig.json` | `npm test` | `npx eslint .` | `npx tsc --noEmit` | `npm run build` |
+  | `Cargo.toml` | `cargo test` | `cargo clippy` | — | `cargo build` |
+  | `pom.xml` | `mvn test` | — | — | `mvn package` |
 
-**On failure:** read the error, fix it, retry. Up to 2 retries. If still failing after retries, proceed to Self-Review and note failures in the PR.
+  Fallback detection: `package.json` scripts, `Makefile` targets, CI config.
 
-### 4. Self-Review
+**On gate failure:** read the error, fix it, then re-confirm by re-running **only the failed gate**
+(`only: ["<gate>"]` with the tool, or that single command in fallback). Up to 2 retries, then one
+final full pass. If still failing, proceed to PR as **draft** and note the failures. If a fix
+changed the diff, **re-run the critic against the final diff** — its earlier report is stale.
 
-**Preferred path — delegate to `marvin-tm-diff-critic`:**
+### 4. Self-Review (merge point)
 
-If Task-tool is available in this run, invoke `marvin-tm-diff-critic` with the spec path and diff range. Use its structured report as your self-review:
+Collect the `marvin-tm-diff-critic` result that was launched in the background in §3, together with
+the gate results, **before** creating the PR — never decide on one alone.
+
+**Preferred path — the `marvin-tm-diff-critic` report:**
+
+Use its structured report as your self-review:
 - **`BLOCK`** verdict — attempt to fix blockers (up to 2 retries on failed test/lint loops). If still blocked, proceed to PR as **draft** and include the critic report in Self-Review Notes.
 - **`PASS WITH WARNINGS`** — keep the code, include warnings and out-of-scope inventory in Self-Review Notes.
 - **`PASS`** — proceed to PR with a clean self-review.
@@ -225,7 +240,12 @@ Run the regression test again. It **MUST pass** now.
 
 ### 6–8. Self-Test, Self-Review, Create PR
 
-Same as Feature Pipeline steps 3–5. The PR description should include:
+Same as Feature Pipeline steps 3–5, with `mode: bug`: launch `marvin-tm-diff-critic` in the
+background and run the gates (via the `verify` tool, or inline-Bash fallback) **concurrently**;
+merge both before the PR. On a gate failure, retry only the failed gate then a final full pass;
+if a fix changed the diff, **re-run the critic against the final diff** (its earlier report is
+stale); a critic `BLOCK` still gates delivery (PR opens as draft). The PR description should
+include:
 - Root cause summary (from spec)
 - Confirmation that regression test fails before fix and passes after
 

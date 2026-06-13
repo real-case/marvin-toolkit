@@ -10,8 +10,9 @@ import { loadEnv } from "./lib/env.js";
 import { buildTaskTool } from "./tools/task.js";
 import { buildGitTool } from "./tools/git.js";
 import { buildHelpTool } from "./tools/help.js";
+import { buildVerifyTool } from "./tools/verify.js";
 
-const VERSION = "2.0.0-alpha.1";
+const VERSION = "2.0.0-alpha.2";
 
 await runPackServer({
   name: "marvin",
@@ -27,6 +28,7 @@ await runPackServer({
         buildTaskTool(server, env, config),
         buildGitTool(server, env, config),
         buildHelpTool(env, config, VERSION),
+        buildVerifyTool(env),
       ],
     };
   },

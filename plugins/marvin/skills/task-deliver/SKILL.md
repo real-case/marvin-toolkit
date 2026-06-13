@@ -32,7 +32,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Read spec for context: check `specs/` directory first (match by slug from conversation), fall back to `.taskmaster/current-task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: check `specs/` first (match by slug from conversation), fall back to `.taskmaster/current-task/spec.md`
 
 ### 3. Create pull request
 

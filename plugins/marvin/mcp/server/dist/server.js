@@ -1,8 +1,9 @@
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { execFileSync, spawnSync } from 'child_process';
+import { spawn, spawnSync, execFileSync } from 'child_process';
+import { performance } from 'perf_hooks';
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -22083,9 +22084,281 @@ function renderHelp(env, config2, version2) {
   for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` \u2014 ${p.desc}`);
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
+var GATE_NAMES = ["test", "lint", "typecheck", "build"];
+var STACK_TABLE = {
+  "go.mod": {
+    marker: "Go",
+    gates: { test: "go test ./...", lint: "golangci-lint run", build: "go build ./..." }
+  },
+  "pyproject.toml": {
+    marker: "Python",
+    gates: { test: "pytest", lint: "ruff check .", typecheck: "mypy ." }
+  },
+  "tsconfig.json": {
+    marker: "TypeScript",
+    gates: {
+      test: "npm test",
+      lint: "npx eslint .",
+      typecheck: "npx tsc --noEmit",
+      build: "npm run build"
+    }
+  },
+  "Cargo.toml": {
+    marker: "Rust",
+    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" }
+  },
+  "pom.xml": {
+    marker: "Java",
+    gates: { test: "mvn test", build: "mvn package" }
+  }
+};
+var VerifyInput = external_exports.object({
+  mode: external_exports.enum(["feature", "bug", "standalone"]).default("standalone").describe("Pipeline mode. feature: warn if no new tests. bug: warn if no regression test."),
+  execution: external_exports.enum(["parallel", "sequential", "fail-fast"]).default("parallel").describe(
+    "parallel: all gates concurrently (default). sequential: one at a time, all run (verdict parity with parallel). fail-fast: one at a time, stop at first failure (resource-constrained / fast feedback)."
+  ),
+  only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe("Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix)."),
+  stack: external_exports.string().optional().describe("Pre-detected stack key (e.g. 'tsconfig.json') to skip detection in a chained run."),
+  gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
+  projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
+  write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.taskmaster/current-task/."),
+  dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything.")
+});
+function buildVerifyTool(env) {
+  return defineTool({
+    name: "verify",
+    description: "Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test.",
+    inputSchema: VerifyInput,
+    handler: (input) => runVerify(input, env)
+  });
+}
+async function runVerify(input, env) {
+  const projectRoot = input.projectRoot ?? env.projectDir;
+  const detected = resolvePlan(input, projectRoot);
+  if (detected.gates.length === 0) {
+    return ok3(
+      `No quality gates detected for \`${projectRoot}\`.
+No recognised stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml) and no explicit \`gates\` provided.`
+    );
+  }
+  let gates = detected.gates;
+  if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
+  if (gates.length === 0) {
+    return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
+  }
+  if (input.dryRun) {
+    const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
+    return ok3(
+      `# Verify Plan (dry run)
+
+**Stacks:** ${detected.stacks.join(", ") || "explicit"}
+**Execution:** ${input.execution}
+
+${plan}`
+    );
+  }
+  const wallStart = performance.now();
+  const results = await executeGates(gates, input.execution, projectRoot);
+  const wallClockMs = Math.round(performance.now() - wallStart);
+  const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
+  const warnings = modeWarnings(input.mode, projectRoot);
+  const verdict = computeVerdict(results, warnings);
+  const markdown = renderMarkdown({
+    verdict,
+    mode: input.mode,
+    execution: input.execution,
+    results,
+    warnings,
+    stacks: detected.stacks,
+    wallClockMs,
+    sumOfGatesMs
+  });
+  let artifactPath = null;
+  if (input.write) {
+    artifactPath = join(projectRoot, ".taskmaster", "current-task", "verification.md");
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, markdown, "utf8");
+  }
+  const machine = JSON.stringify({
+    verdict,
+    gates: results.map((r) => ({
+      name: r.name,
+      status: r.status,
+      code: r.code,
+      durationMs: r.durationMs
+    })),
+    detectedStacks: detected.stacks,
+    warnings,
+    wallClockMs,
+    sumOfGatesMs,
+    artifactPath
+  });
+  return {
+    content: [
+      { type: "text", text: `${markdown}
+
+\`\`\`json verify-result
+${machine}
+\`\`\`` }
+    ],
+    isError: verdict === "FAIL"
+  };
+}
+function resolvePlan(input, projectRoot) {
+  if (input.gates && input.gates.length > 0) {
+    return { stacks: ["explicit"], gates: input.gates };
+  }
+  const keys = input.stack && STACK_TABLE[input.stack] ? [input.stack] : Object.keys(STACK_TABLE).filter((file) => existsSync(join(projectRoot, file)));
+  const stacks = [];
+  const gates = [];
+  for (const key of keys) {
+    const entry = STACK_TABLE[key];
+    if (!entry) continue;
+    stacks.push(entry.marker);
+    for (const name of GATE_NAMES) {
+      const command = entry.gates[name];
+      if (command) gates.push({ name, command });
+    }
+  }
+  return { stacks, gates };
+}
+async function executeGates(gates, execution, cwd) {
+  if (execution === "parallel") {
+    const settled = await Promise.allSettled(gates.map((g) => runGate(g, cwd)));
+    return settled.map(
+      (s, i) => s.status === "fulfilled" ? s.value : crashResult(gates[i], s.reason)
+    );
+  }
+  const results = [];
+  for (const g of gates) {
+    let r;
+    try {
+      r = await runGate(g, cwd);
+    } catch (err) {
+      r = crashResult(g, err);
+    }
+    results.push(r);
+    if (execution === "fail-fast" && r.status !== "pass") break;
+  }
+  return results;
+}
+function runGate(gate, cwd) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const child = spawn(gate.command, { cwd, shell: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d) => stdout += d.toString());
+    child.stderr?.on("data", (d) => stderr += d.toString());
+    child.on("error", (err) => {
+      resolve(crashResult(gate, err, Math.round(performance.now() - start)));
+    });
+    child.on("close", (code, signal) => {
+      const durationMs = Math.round(performance.now() - start);
+      const status = code === 0 ? "pass" : code === null ? "error" : "fail";
+      const tail = (stderr || stdout).trim().split("\n").slice(-12).join("\n");
+      const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${signal})` : `exit ${code}`;
+      resolve({
+        name: gate.name,
+        command: gate.command,
+        status,
+        code,
+        durationMs,
+        summary,
+        details: tail
+      });
+    });
+  });
+}
+function crashResult(gate, reason, durationMs = 0) {
+  return {
+    name: gate.name,
+    command: gate.command,
+    status: "error",
+    code: null,
+    durationMs,
+    summary: "failed to run",
+    details: reason instanceof Error ? reason.message : String(reason)
+  };
+}
+function modeWarnings(mode, cwd) {
+  if (mode === "standalone") return [];
+  const changed = changedFiles(cwd);
+  if (changed === null) return [];
+  const hasTestChange = changed.some(
+    (f) => /(^|\/)(test|tests|spec|specs)\//i.test(f) || /[._-](test|spec)\./i.test(f)
+  );
+  if (!hasTestChange) {
+    return mode === "feature" ? ["No new or modified test files detected \u2014 a feature should add tests."] : ["No regression test detected \u2014 a bugfix should add a test reproducing the bug."];
+  }
+  return [];
+}
+function changedFiles(cwd) {
+  try {
+    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], { cwd, encoding: "utf8" });
+    if (diff.status !== 0) return null;
+    const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
+      cwd,
+      encoding: "utf8"
+    });
+    const lines = `${diff.stdout || ""}
+${untracked.status === 0 ? untracked.stdout || "" : ""}`;
+    return lines.split("\n").map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+function computeVerdict(results, warnings) {
+  if (results.some((r) => r.status !== "pass")) return "FAIL";
+  if (warnings.length > 0) return "PASS WITH WARNINGS";
+  return "PASS";
+}
+function renderMarkdown(o) {
+  const section = (title, n) => {
+    const rs = o.results.filter((r) => r.name === n);
+    if (rs.length === 0)
+      return `## ${title} Results
+- **Status:** N/A \u2014 not configured for this stack`;
+    const body = rs.map((r) => {
+      const head = `- **Command:** \`${r.command}\`
+- **Status:** ${r.status} (${r.summary}, ${r.durationMs}ms)`;
+      return r.status === "pass" || !r.details ? head : `${head}
+- **Details:**
+
+\`\`\`
+${r.details}
+\`\`\``;
+    }).join("\n");
+    return `## ${title} Results
+${body}`;
+  };
+  return [
+    `# Verification Report`,
+    ``,
+    `**Pipeline:** ${o.mode}`,
+    `**Execution:** ${o.execution} (wall-clock ${o.wallClockMs}ms vs sum-of-gates ${o.sumOfGatesMs}ms)`,
+    `**Stacks:** ${o.stacks.join(", ") || "explicit"}`,
+    `**Verdict:** ${o.verdict}`,
+    ``,
+    section("Test", "test"),
+    ``,
+    section("Lint", "lint"),
+    ``,
+    section("Type-check", "typecheck"),
+    ``,
+    section("Build", "build"),
+    ``,
+    `## Warnings`,
+    o.warnings.length ? o.warnings.map((w) => `- ${w}`).join("\n") : "- none",
+    ``
+  ].join("\n");
+}
+function ok3(text) {
+  return { content: [{ type: "text", text }] };
+}
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.1";
+var VERSION = "2.0.0-alpha.2";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -22099,7 +22372,8 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env, config2),
         buildGitTool(server, env, config2),
-        buildHelpTool(env, config2, VERSION)
+        buildHelpTool(env, config2, VERSION),
+        buildVerifyTool(env)
       ]
     };
   }

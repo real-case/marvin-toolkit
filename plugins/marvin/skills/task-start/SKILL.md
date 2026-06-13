@@ -83,7 +83,9 @@ Present the context map to the user. Let them correct if you're off target.
 
 ### Step 3F: Solution Variants
 
-Generate **3–5 solution variants**. Each variant must be genuinely different — no strawmen.
+Generate **3 solution variants by default** — expand to 5 only for high-uncertainty or
+high-blast-radius tasks (e.g. wide solution space, hard-to-reverse decisions, security/data
+surfaces). Each variant must be genuinely different — no strawmen.
 
 **Variant generation rules:**
 - Variant 1 — always the most conservative: current stack, proven patterns

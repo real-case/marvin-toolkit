@@ -1,6 +1,6 @@
 ---
 name: task-verify
-description: Run project quality gates — tests, lint, type-check, and build — with automatic stack detection (Node, Python, Go, Rust, Ruby, Java) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
+description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Node, Python, Go, Rust, Java) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify
@@ -26,51 +26,35 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 
 ## Workflow
 
-### 1. Detect stack
+### 1. Run the gates via the `verify` tool
 
-Identify the project's tech stack from config files:
+Call the **`verify` MCP tool** (`mcp__plugin_marvin_marvin__verify`). It owns stack detection and
+gate execution — there is a single source of truth in TypeScript, not a table duplicated in prose.
 
-| Indicator | Stack | Test | Lint | Type-check | Build |
-|-----------|-------|------|------|------------|-------|
-| `go.mod` | Go | `go test ./...` | `golangci-lint run` | — | `go build ./...` |
-| `pyproject.toml` | Python | `pytest` | `ruff check .` | `mypy .` | — |
-| `tsconfig.json` | TypeScript | `npm test` | `eslint .` | `tsc --noEmit` | `npm run build` |
-| `Cargo.toml` | Rust | `cargo test` | `cargo clippy` | — | `cargo build` |
-| `pom.xml` | Java | `mvn test` | — | — | `mvn package` |
+- It auto-detects the stack from config files (`go.mod` → Go, `pyproject.toml` → Python,
+  `tsconfig.json` → TypeScript, `Cargo.toml` → Rust, `pom.xml` → Java) and builds the gate set
+  (test / lint / type-check / build, whichever apply).
+- It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
+  every result at a single merge point, then computes one verdict. A failing gate never discards
+  the others — every gate's result is recorded.
 
-**Fallback detection** (if none of the above match):
-- Check `package.json` for `scripts.test`, `scripts.lint`, `scripts.build`
-- Check `Makefile` for `test`, `lint`, `check`, `build` targets
-- Check CI config (`.github/workflows/`, `.gitlab-ci.yml`) for commands
+**Pass-through arguments:**
 
-For monorepos with multiple stacks, run verification for each detected stack.
+- `mode`: `"feature"` | `"bug"` | `"standalone"` — set from the pipeline context (see Input). In a
+  **chained** run (called straight after `/marvin:task-implement`), pass the `mode` and, if known,
+  the `stack` forward so the tool skips re-detection. Standalone invocation lets it auto-detect.
+- `execution`: default `"parallel"`. Offer **`"sequential"`** (all gates, one at a time — same
+  verdict, lower peak CPU/RAM) or **`"fail-fast"`** (stop at first failure, fast feedback) when the
+  user asks or the machine is resource-constrained. The default is parallel because the common
+  PASS path is the largest single latency win.
+- `only`: e.g. `["test"]` — used by `/marvin:task-implement` for targeted retries; not normally set here.
 
-### 2. Run quality gates
+If `verify` is unavailable, fall back to running the gates yourself: detect the stack from the
+config files above (plus `package.json` scripts, `Makefile` targets, or CI config), run each gate,
+and record all results. For monorepos with multiple stacks, the tool runs each detected stack's
+gates; in the manual fallback, do the same.
 
-Run in order (stop early on critical failures):
-
-#### 2.1 Tests
-Run the detected test command. Capture:
-- Total tests, passed, failed, skipped
-- Names of failing tests
-- Test output/error messages for failures
-
-#### 2.2 Lint
-Run the detected lint command. Capture:
-- Number of warnings and errors
-- File paths and descriptions of errors (not warnings, unless relevant)
-
-#### 2.3 Type-check
-Run the detected type-check command (if applicable). Capture:
-- Number of type errors
-- File paths and descriptions
-
-#### 2.4 Build
-Run the detected build command (if applicable). Capture:
-- Success or failure
-- Error messages on failure
-
-### 3. Apply pipeline-specific checks
+### 2. Apply pipeline-specific checks
 
 #### Feature pipeline
 - **New tests must exist**: check `git diff --name-only` for new or modified test files. If no test changes, flag as WARNING.
@@ -83,42 +67,29 @@ Run the detected build command (if applicable). Capture:
 #### Standalone (no pipeline context)
 - Run all checks, report results. No pipeline-specific assertions.
 
-### 4. Write verification artifact
+The feature/bug warnings above are also emitted by the tool's `mode` argument (it inspects
+`git diff` for new/modified test files). Setting `mode` correctly is what turns those WARNINGs on.
 
-Write results to `.taskmaster/current-task/verification.md`:
+### 3. Relay the verdict
+
+The `verify` tool **writes the artifact itself** to
+`<projectRoot>/.taskmaster/current-task/verification.md` — the exact path `/marvin:task-deliver`
+reads, so the delivery gate finds it unchanged. The tool returns a `verify-result` JSON block
+(verdict, per-gate status/duration, `wallClockMs` vs `sumOfGatesMs`, `artifactPath`).
+
+Relay to the user: the **verdict** (PASS / FAIL / PASS WITH WARNINGS), which gates ran
+concurrently and each result as it came back (preserve the "show each major step" principle),
+and the latency (`wallClockMs` vs `sumOfGatesMs`). Do **not** hand-write the artifact — only
+reproduce its structure in the manual fallback when the tool is unavailable:
 
 ```markdown
 # Verification Report
-
-**Date:** {ISO date}
-**Pipeline:** {feature | bug | refactor | spike | standalone}
+**Pipeline:** {feature | bug | standalone}
 **Verdict:** PASS | FAIL | PASS WITH WARNINGS
-
-## Test Results
-- **Command:** {test command}
-- **Total:** {N} | **Passed:** {N} | **Failed:** {N} | **Skipped:** {N}
-- **Failing tests:** {list or "none"}
-
-## Lint Results
-- **Command:** {lint command}
-- **Errors:** {N} | **Warnings:** {N}
-- **Details:** {error descriptions or "clean"}
-
-## Type-check Results
-- **Command:** {type-check command}
-- **Errors:** {N}
-- **Details:** {error descriptions or "clean"}
-
-## Build Results
-- **Command:** {build command}
-- **Status:** success | failure
-- **Details:** {error messages or "clean"}
-
-## Pipeline Checks
-{pipeline-specific assertions and their results}
-
+## Test Results / Lint Results / Type-check Results / Build Results
+- **Command / Status / Details** per gate
 ## Warnings
-{any non-blocking issues}
+{non-blocking issues, e.g. missing new tests}
 ```
 
 ## Guidelines
