@@ -37,7 +37,7 @@ plugins/marvin/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
     │   ├── prompts/
     │   │   └── index.ts              # 38 prompt entries (skill-backed + inline kanban)
-    │   ├── tools/                    # kanban tool server: task / git / help
+    │   ├── tools/                    # MCP tools: kanban task / git / help + verify (task pipeline)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
 ```
@@ -72,7 +72,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - **Skills** (`plugins/marvin/skills/<command>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content. Dir name, `name:`, and command all match.
 - **Markdown commands** (`plugins/marvin/commands/<command>.md`) — Short slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
 - **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `kanban-*` group, an inline `body:`) under `/marvin:<command>`.
-- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters (the kanban `task`/`git`/`help` tools: file CRUD, git ops, dashboards).
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`git`/`help` tools (file CRUD, git ops, dashboards) and `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, writes `verification.md`; see ADR-0004).
 - **Agents** (`plugins/marvin/agents/*.md`) — Claude Code subagents with constrained tool access. Picked up automatically on `/plugin install`.
 
 > The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 13 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`git`/`help` MCP tools. There is no standalone workflow prose to duplicate into a skill.
