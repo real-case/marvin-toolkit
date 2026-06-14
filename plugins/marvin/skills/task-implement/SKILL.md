@@ -33,15 +33,17 @@ Resolution order:
    - Read current branch with `git rev-parse --abbrev-ref HEAD`.
    - If it matches `task/<slug>`, try `specs/<slug>.md`.
 3. **No branch match — prompt user:**
-   - List files in `specs/` that have `Status: ready` in their frontmatter.
+   - List files in `specs/` whose frontmatter `status` is `ready`.
    - Ask the user to choose one.
    - If `specs/` is empty or missing, tell the user to run `/marvin:task-start` first and stop.
 
 ### 2. Validate Definition of Ready
 
 Read the resolved spec. Confirm:
-- Frontmatter contains `Status: ready` — if not, stop. The spec has not passed DoR; run `/marvin:task-start` to finish authoring.
-- Frontmatter contains `Type: feature` or `Type: bugfix` — if missing, stop and report the malformed spec.
+- Frontmatter `status` is `ready` or `in-progress` — if it is `draft`, stop (the spec has not passed DoR; run `/marvin:task-start` to finish authoring); if it is `shipped` or `superseded`, stop (already delivered).
+- Frontmatter `type` is `feature` or `bugfix` — if missing, stop and report the malformed spec.
+
+Then set the spec's `status: in-progress` — the lifecycle carve-out (content stays immutable) so a resumed or concurrent run sees the task is being worked.
 
 ### 3. Read context
 
@@ -53,8 +55,8 @@ Summarize back to the user in 2–4 lines: the goal, the chosen approach (or fix
 
 ### 4. Select pipeline
 
-- `Type: feature` → **Feature Pipeline** (Step 5F)
-- `Type: bugfix` → **Bugfix Pipeline** (Step 5B)
+- `type: feature` → **Feature Pipeline** (Step 5F)
+- `type: bugfix` → **Bugfix Pipeline** (Step 5B)
 
 ---
 
@@ -64,7 +66,7 @@ Summarize back to the user in 2–4 lines: the goal, the chosen approach (or fix
 
 Follow the spec's **Chosen Approach** section. Rules:
 
-- Modify only the files listed in the spec's Context and Approach sections.
+- Modify only the files in the spec's **File Change Plan** (the authoritative allowlist).
 - Write code that satisfies each acceptance criterion.
 - Write tests for the acceptance criteria.
 - Respect project conventions from `CLAUDE.md`.

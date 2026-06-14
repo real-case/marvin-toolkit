@@ -20,9 +20,9 @@ You are an autonomous execution agent. You receive a spec and implement it exact
 
 ## Pipeline Selection
 
-Read the spec's `Type:` field in the frontmatter:
-- `Type: feature` → **Feature Pipeline**
-- `Type: bugfix` → **Bugfix Pipeline**
+Read the spec's `type` field in the frontmatter:
+- `type: feature` → **Feature Pipeline**
+- `type: bugfix` → **Bugfix Pipeline**
 
 ---
 
@@ -40,16 +40,16 @@ Self-test (quality gates) and self-review (diff-critic) are independent and slow
 ### 1. Read Spec
 
 The spec is provided inline below (injected by the batch-dispatch caller). Read it fully. Identify:
-- Goal and acceptance criteria
+- Goal and acceptance criteria (each with its `verified_by` proof)
 - Chosen approach and implementation sketch
-- Affected files
+- File Change Plan — the authoritative allowlist of files you may touch
 - Non-goals (what NOT to do)
 - Design notes (nuances and warnings)
 
 ### 2. Implement
 
 Follow the chosen approach from the spec:
-- Create/modify only the files mentioned in the spec's context and approach sections
+- Create/modify only the files in the spec's **File Change Plan** (the authoritative allowlist)
 - Write code that satisfies each acceptance criterion
 - Write tests for the acceptance criteria
 - Respect project conventions from CLAUDE.md (injected below)

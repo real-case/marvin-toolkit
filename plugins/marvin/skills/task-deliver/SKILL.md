@@ -63,7 +63,16 @@ When composing the PR:
 - [ ] All existing tests pass
 ```
 
-### 4. Preserve artifacts
+### 4. Record delivery on the spec
+
+If the spec lives under `specs/` (v2.0 format) and the PR was created, update its lifecycle
+metadata — the only mutable part of an otherwise-immutable spec:
+- Set frontmatter `status: shipped`.
+- Append a `## Delivery` section with the PR URL and today's date.
+
+Skip silently when there is no `specs/<slug>.md` (e.g. a legacy `.taskmaster/current-task/spec.md`).
+
+### 5. Preserve artifacts
 
 Do NOT delete `.taskmaster/current-task/` artifacts. They serve as documentation:
 - `spec.md` — what was intended
