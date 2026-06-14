@@ -1,7 +1,7 @@
 ---
 name: marvin-tm-spec-critic
 description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports semantic weaknesses the mechanical gate cannot. Invoked from task-start Step 8F/8B, after the `spec` tool passes and before specs/<slug>.md is written. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
-model: sonnet
+model: opus
 color: magenta
 memory: project
 ---
