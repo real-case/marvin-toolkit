@@ -4,6 +4,28 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.5] — 2026-06-14
+
+`spec` DoR gate hardened to **fail closed** — Phase 1 of the portable spec contract
+(see [ADR-0007](../../docs/adr/0007-portable-spec-contract.md)).
+
+### Changed
+
+- **Traceability is now mandatory, not additive.** A spec whose File Change Plan lacks an `ID`
+  column, or whose Acceptance Criteria lack an `Implemented by` column, now **FAILS** the gate
+  (`traceability`) instead of passing with a warning. A renamed or omitted linking column can no
+  longer silently disable the AC ⇄ files ⇄ tests graph — the strongest guarantee in the gate. This
+  matters most in a headless run inside a foreign repo, where the semantic critic is unavailable and
+  the mechanical gate is the only arbiter.
+- **`breaking` is now required on features.** Omitting the `breaking` frontmatter flag now **FAILS**
+  the gate (`fm-breaking`) instead of warning — public-surface impact must be a conscious call, not
+  an omission.
+
+### Fixed
+
+- Server `serverInfo.version` drift: `src/server.ts` reported `2.0.0-alpha.3` while the package was
+  `alpha.4`; both now track the plugin version.
+
 ## [2.0.0-alpha.4] — 2026-06-14
 
 Traceable spec contract and gate reordering for `/marvin:task-start`

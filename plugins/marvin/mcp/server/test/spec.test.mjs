@@ -338,6 +338,20 @@ test("a File Change Plan row satisfying an unknown criterion blocks", async () =
   assert.equal(find(parsed, "fcp-traceability").status, "fail");
 });
 
+test("a File Change Plan without an ID column blocks (traceability unverifiable)", async () => {
+  // Rename the ID header so the linking graph cannot be resolved. Pre-0007 this
+  // degraded to a passing WARN; it must now fail closed — a renamed or omitted
+  // column may not silently disable the AC ⇄ files ⇄ tests guarantee.
+  const content = VALID_FEATURE.replace(
+    "| ID | Path | Action | Intent | Satisfies | Anchor |",
+    "| Ref | Path | Action | Intent | Satisfies | Anchor |",
+  );
+  const { parsed, isError } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(isError, true);
+  assert.equal(find(parsed, "traceability").status, "fail");
+});
+
 test("all-prose-review acceptance criteria block", async () => {
   const content = VALID_FEATURE.replace("test/sample.test.mjs::exists", "prose-review")
     .replace("test/sample.test.mjs::linked", "prose-review")
@@ -373,9 +387,10 @@ test("a prose Interface/Contract warns but does not block", async () => {
   assert.equal(find(parsed, "contract-code").status, "warn");
 });
 
-test("a missing breaking declaration warns but does not block", async () => {
+test("a missing breaking declaration blocks", async () => {
   const content = VALID_FEATURE.replace("breaking: false\n", "");
-  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
-  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
-  assert.equal(find(parsed, "fm-breaking").status, "warn");
+  const { parsed, isError } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(isError, true);
+  assert.equal(find(parsed, "fm-breaking").status, "fail");
 });
