@@ -4,6 +4,21 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.14] — 2026-06-14
+
+Door-robust delegation in `sec-scan`.
+
+### Fixed
+
+- **`sec-scan` now invokes its sub-scans by command, not by file path.** Phases 1–2 previously said
+  "Read `skills/sec-secrets/SKILL.md`" / "Read `skills/sec-deps/SKILL.md`" — a plugin-relative path
+  that does not resolve through the `/marvin:sec-scan` MCP door (the server returns the prose verbatim
+  while the model's working directory is the user's project, not the plugin root), silently dropping the
+  "delegate, don't duplicate" contract and letting the model improvise the sub-scan from memory. They
+  now invoke `/marvin:sec-secrets` and `/marvin:sec-deps`, which resolve by name through all three doors
+  — matching the command-invocation convention already used by `task-implement` → `task-verify` /
+  `task-deliver`.
+
 ## [2.0.0-alpha.13] — 2026-06-14
 
 Prompt-injection hardening for the security scanners.
