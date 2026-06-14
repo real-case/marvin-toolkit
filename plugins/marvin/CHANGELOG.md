@@ -4,6 +4,22 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.15] — 2026-06-14
+
+Door-robust spec templates in `task-start`.
+
+### Fixed
+
+- **`task-start` now carries its spec templates inline instead of reading them by path.** Steps 5F
+  (feature) and 6B (bugfix) previously said "Read `skills/task-start/feature-spec-template.md`" /
+  "…bugfix-spec-template.md" — plugin-relative paths that don't resolve through the `/marvin:task-start`
+  MCP door (the server returns the skill prose verbatim while the model's working directory is the
+  user's project), so the model improvised the spec format from memory. The two templates are now
+  inlined verbatim into `SKILL.md` (fenced blocks), and the standalone `feature-spec-template.md` /
+  `bugfix-spec-template.md` files — read by nothing else — are removed, keeping a single source. Same
+  bug class as the `sec-scan` delegation fix (alpha.14); inlining is used here because these are the
+  skill's own resource files, not sibling skills to invoke.
+
 ## [2.0.0-alpha.14] — 2026-06-14
 
 Door-robust delegation in `sec-scan`.
