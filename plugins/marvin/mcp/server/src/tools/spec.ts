@@ -221,10 +221,16 @@ function checkFrontmatter(fm: Record<string, string>, type: string | null): Chec
   }
 
   // Backward-compat must be a conscious declaration on features, not an omission.
+  // An omitted flag is a FAIL, not a lenient WARN: a "ready" spec that never
+  // states its public-surface impact lets the executor ship a breaking change blind.
   if (type === "feature") {
     if (!present("breaking")) {
       checks.push(
-        warn("fm-breaking", "Frontmatter", "declare breaking: true|false (public-surface impact)"),
+        fail(
+          "fm-breaking",
+          "Frontmatter",
+          "feature requires breaking: true|false (public-surface impact)",
+        ),
       );
     } else if (!["true", "false"].includes((fm.breaking ?? "").trim().toLowerCase())) {
       checks.push(
@@ -418,14 +424,16 @@ function checkTraceability(fcpSection: string | undefined, acSection: string | u
 
   const checks: Check[] = [];
 
-  // Pre-traceable specs lack the ID/link columns. Treat as a single WARN rather
-  // than failing — the base section/AC/FCP checks already ran. Traceability is additive.
+  // The linking columns are load-bearing: without them the AC⇄files⇄tests graph
+  // cannot be verified, so the spec is not ready to dispatch. Their absence is a
+  // FAIL, not a lenient WARN — a renamed or omitted column must never silently
+  // disable the strongest guarantee in the gate. Fail closed, never open.
   if (fcpIdIdx === -1 || acIdIdx === -1 || acImplIdx === -1) {
     return [
-      warn(
+      fail(
         "traceability",
         "Traceability",
-        "add ID + Implemented-by/Satisfies columns to trace AC ⇄ files ⇄ tests",
+        "File Change Plan needs an ID column and Acceptance Criteria need ID + Implemented-by — without them the AC ⇄ files ⇄ tests graph cannot be verified",
       ),
     ];
   }

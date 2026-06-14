@@ -22505,7 +22505,11 @@ function checkFrontmatter(fm, type) {
   if (type === "feature") {
     if (!present("breaking")) {
       checks.push(
-        warn("fm-breaking", "Frontmatter", "declare breaking: true|false (public-surface impact)")
+        fail(
+          "fm-breaking",
+          "Frontmatter",
+          "feature requires breaking: true|false (public-surface impact)"
+        )
       );
     } else if (!["true", "false"].includes((fm.breaking ?? "").trim().toLowerCase())) {
       checks.push(
@@ -22661,10 +22665,10 @@ function checkTraceability(fcpSection, acSection) {
   const checks = [];
   if (fcpIdIdx === -1 || acIdIdx === -1 || acImplIdx === -1) {
     return [
-      warn(
+      fail(
         "traceability",
         "Traceability",
-        "add ID + Implemented-by/Satisfies columns to trace AC \u21C4 files \u21C4 tests"
+        "File Change Plan needs an ID column and Acceptance Criteria need ID + Implemented-by \u2014 without them the AC \u21C4 files \u21C4 tests graph cannot be verified"
       )
     ];
   }
@@ -22897,7 +22901,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.3";
+var VERSION = "2.0.0-alpha.5";
 await runPackServer({
   name: "marvin",
   version: VERSION,
