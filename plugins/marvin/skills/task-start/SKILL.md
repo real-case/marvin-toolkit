@@ -243,9 +243,11 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section. If Task
 
    If any item fails, loop back (and re-run Step 7F after editing). Do not write the spec.
 
-2. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). If `specs/{slug}.md` already exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
+2. **Choose the location.** The spec lands in the user's tree, so it follows the **host's** layout, not marvin's. Detect an existing convention — `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`, or a directory named in the host's `CONTRIBUTING` — and propose it; fall back to `specs/` only when none exists. Confirm the directory with the user. If a non-`specs/` location is chosen, note that `/marvin:task-implement` and `/marvin:task-deliver` currently resolve `specs/` by default, so the explicit path must be passed until those commands are made location-aware.
 
-3. **Write.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `specs/{slug}.md`. Confirm the path to the user.
+3. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). If `<chosen-dir>/{slug}.md` already exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
+
+4. **Write.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/{slug}.md`. Confirm the path to the user.
 
 **Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one.
 
@@ -349,8 +351,8 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    - [ ] No dependency on an incomplete sibling spec
 
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
-2. **Slug collision** — same handling as 9F.
-3. **Write** — `status: ready`, write to `specs/{slug}.md`, confirm path.
+2. **Location & slug collision** — same handling as 9F (discover the host's convention; default `specs/`).
+3. **Write** — `status: ready`, write to `<chosen-dir>/{slug}.md`, confirm path.
 
 **Immutability** — same carve-out as the feature flow.
 

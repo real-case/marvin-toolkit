@@ -70,8 +70,8 @@ A test path named in `verified_by` MUST also appear as a File Change Plan row.
 ## Definition of Done
 - [ ] regression test red before fix, green after
 - [ ] {test_command} green
-- [ ] lint / type-check / build green
-- [ ] repo-specific obligations (e.g. version bump + dist rebuild) — or "none"
+- [ ] lint / type-check / build green (whichever the host runs)
+- [ ] host-specific merge obligations (e.g. a version bump, a committed build artefact) — or "none"
 
 ## Non-goals
 - {what we explicitly do NOT fix in this task}

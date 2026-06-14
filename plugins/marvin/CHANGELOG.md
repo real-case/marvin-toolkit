@@ -4,6 +4,22 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.7] — 2026-06-14
+
+Portable spec output location and host-neutral Definition of Done — completes M1 of
+[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+
+### Changed
+
+- **`task-start` writes where the host keeps specs.** The finalize step detects an existing
+  convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`, or a `CONTRIBUTING`-named directory)
+  and proposes it, defaulting to `specs/` only when none exists — the spec follows the host's
+  layout, not marvin's. (Consumers still resolve `specs/` by default; made location-aware in M2.)
+- **Definition-of-Done templates are host-neutral.** The examples no longer assume marvin's own
+  obligations ("version bump + dist rebuild"); they point at whatever the host's `CONTRIBUTING` / CI
+  requires, with the marvin-specific examples generalised to "a version bump, a committed build
+  artefact, a generated file — or none".
+
 ## [2.0.0-alpha.6] — 2026-06-14
 
 Open stack detection for `/marvin:task-verify` and the spec authoring flow — M1 of
