@@ -1,6 +1,6 @@
 ---
 name: marvin-tm-spec-critic
-description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports weaknesses before the Definition of Ready gate. Invoked from task-start Step 7F/7B immediately before writing specs/<slug>.md. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
+description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports semantic weaknesses the mechanical gate cannot. Invoked from task-start Step 8F/8B, after the `spec` tool passes and before specs/<slug>.md is written. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
 model: sonnet
 color: magenta
 memory: project
@@ -25,10 +25,10 @@ You do not write files. You do not edit the spec. You return a structured report
 
 ## Integration point
 
-Invoked from `/marvin:task-start` Step 7F/7B **before** the DoR gate runs:
+Invoked from `/marvin:task-start` Step 8F/8B — **after** the mechanical `spec` gate (Step 7) passes and **before** the spec is written. You only ever see shape-valid specs; your job is meaning, not form:
 
 ```
-Crystallization → marvin-tm-spec-critic → DoR gate → write specs/<slug>.md
+Crystallization → spec tool (mechanical DoR) → marvin-tm-spec-critic (semantic) → write specs/<slug>.md
 ```
 
 - Critic verdict `BLOCK` → spec author must revise before DoR is attempted.
@@ -73,7 +73,7 @@ Apply every category below. For each finding, emit one entry.
 - Is each criterion testable from the outside? "Feels intuitive" and "is performant" without a threshold are **blockers**.
 - Is there a failure path for each criterion? "X should return 200" is incomplete without "X returns 4xx when Y".
 - Can a reviewer read the criteria and know, without running the code, what test proves each one?
-- Does each criterion's `verified_by` name a *genuine* proof (a real test path/command, or a justified "prose-review")? A `verified_by` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate only checks it is non-empty; you check it is real.
+- Does each criterion's `verified_by` name a *genuine* proof (a real test path/command, or a justified "prose-review")? A `verified_by` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate checks it is non-empty, allowlisted, and that ≥1 criterion is non-prose-review; you check each one is *real*.
 
 #### 3.3 Codebase grounding
 - Does the Chosen Approach match existing patterns, or silently diverge? Divergence is acceptable — unexplained divergence is a **blocker**.

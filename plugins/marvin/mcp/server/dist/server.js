@@ -22368,6 +22368,7 @@ var FEATURE_REQUIRED = [
   "chosen approach",
   "acceptance criteria",
   "test plan",
+  "definition of done",
   "non goals",
   "open questions",
   "security nfr"
@@ -22388,6 +22389,7 @@ var BUGFIX_REQUIRED = [
   "fix approach",
   "acceptance criteria",
   "regression test specification",
+  "definition of done",
   "non goals",
   "open questions"
 ];
@@ -22409,7 +22411,7 @@ var SpecInput = external_exports.object({
 function buildSpecTool(env) {
   return defineTool({
     name: "spec",
-    description: "Validate a task spec against the Definition of Ready mechanically \u2014 frontmatter + enums, required sections, File Change Plan path existence, acceptance-criteria proofs (verified_by), resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
+    description: "Validate a task spec against the Definition of Ready mechanically \u2014 frontmatter + enums (incl. breaking / spike_required), required sections (incl. Definition of Done), File Change Plan path existence + size, acceptance-criteria proofs (verified_by), the AC\u21C4files\u21C4tests traceability triple (every criterion maps to plan files, every verified_by test is allowlisted, \u22651 real proof), resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
     inputSchema: SpecInput,
     handler: (input) => runSpec(input, env)
   });
@@ -22444,6 +22446,12 @@ function validateSpec(raw, projectRoot) {
     checks.push(...checkFileChangePlan(sections.get("file change plan"), projectRoot));
     checks.push(...checkAcceptanceCriteria(sections.get("acceptance criteria"), MIN_AC[type]));
     checks.push(checkOpenQuestions(sections.get("open questions")));
+    checks.push(
+      ...checkTraceability(sections.get("file change plan"), sections.get("acceptance criteria"))
+    );
+    if (type === "feature") {
+      checks.push(checkContract(sections.get("interface contract")));
+    }
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
@@ -22484,6 +22492,26 @@ function checkFrontmatter(fm, type) {
           `severity "${fm.severity}" is not ${SEVERITY_VALUES.join("|")}`
         )
       );
+  }
+  if ((fm.spike_required ?? "").trim().toLowerCase() === "true") {
+    checks.push(
+      fail(
+        "spike-required",
+        "Frontmatter",
+        "spike_required: true \u2014 resolve the unknown (e.g. /marvin:kanban-spike) before DoR"
+      )
+    );
+  }
+  if (type === "feature") {
+    if (!present("breaking")) {
+      checks.push(
+        warn("fm-breaking", "Frontmatter", "declare breaking: true|false (public-surface impact)")
+      );
+    } else if (!["true", "false"].includes((fm.breaking ?? "").trim().toLowerCase())) {
+      checks.push(
+        fail("fm-breaking", "Frontmatter", `breaking "${fm.breaking}" is not true|false`)
+      );
+    }
   }
   const softMissing = ["tracker", "supersedes", "stack", "test_command"].filter((k) => !present(k));
   if (softMissing.length) {
@@ -22562,6 +22590,15 @@ function checkFileChangePlan(section, projectRoot) {
   checks.push(
     valid === 0 ? fail("file-change-plan", "File Change Plan", "no rows with a valid action") : pass("file-change-plan", "File Change Plan", `${valid} file(s) planned`)
   );
+  if (valid > 12) {
+    checks.push(
+      warn(
+        "fcp-size",
+        "File Change Plan",
+        `${valid} files planned \u2014 confirm this is one PR, not several (scope gate)`
+      )
+    );
+  }
   if (missing.length) {
     checks.push(
       fail(
@@ -22607,6 +22644,142 @@ function checkAcceptanceCriteria(section, min) {
     empty.length ? fail("ac-verified-by", "Acceptance Criteria", `empty verified_by in: ${empty.join(", ")}`) : pass("ac-verified-by", "Acceptance Criteria", "every criterion has a verified_by")
   );
   return checks;
+}
+function checkTraceability(fcpSection, acSection) {
+  if (fcpSection === void 0 || acSection === void 0) return [];
+  const fcp = parseTable(fcpSection);
+  const ac = parseTable(acSection);
+  if (!fcp || !ac || fcp.rows.length === 0 || ac.rows.length === 0) return [];
+  const col = (t, pred) => t.headers.findIndex(pred);
+  const cell = (row, i) => i === -1 ? "" : (row[i] ?? "").replace(/`/g, "").trim();
+  const fcpIdIdx = col(fcp, (h) => h === "id");
+  const fcpPathIdx = col(fcp, (h) => h.includes("path"));
+  const fcpSatIdx = col(fcp, (h) => h.includes("satisf"));
+  const acIdIdx = col(ac, (h) => h === "id");
+  const acImplIdx = col(ac, (h) => h.includes("implement"));
+  const acVerIdx = col(ac, (h) => h.includes("verified"));
+  const checks = [];
+  if (fcpIdIdx === -1 || acIdIdx === -1 || acImplIdx === -1) {
+    return [
+      warn(
+        "traceability",
+        "Traceability",
+        "add ID + Implemented-by/Satisfies columns to trace AC \u21C4 files \u21C4 tests"
+      )
+    ];
+  }
+  const refs = (s) => s.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => x && !["-", "\u2014", "N/A", "NONE"].includes(x));
+  const fcpIds = new Set(fcp.rows.map((r) => cell(r, fcpIdIdx).toUpperCase()).filter(Boolean));
+  const acIds = new Set(ac.rows.map((r) => cell(r, acIdIdx).toUpperCase()).filter(Boolean));
+  const fcpPaths = new Set(fcp.rows.map((r) => cell(r, fcpPathIdx)).filter(Boolean));
+  const acNoImpl = [];
+  const acBadImpl = [];
+  ac.rows.forEach((r) => {
+    const id = cell(r, acIdIdx).toUpperCase() || "?";
+    const named = refs(cell(r, acImplIdx));
+    if (named.length === 0) {
+      acNoImpl.push(id);
+      return;
+    }
+    const dangling = named.filter((n) => !fcpIds.has(n));
+    if (dangling.length) acBadImpl.push(`${id}\u2192${dangling.join("/")}`);
+  });
+  if (acBadImpl.length) {
+    checks.push(
+      fail(
+        "ac-traceability",
+        "Traceability",
+        `criteria reference unknown File-Change-Plan IDs: ${acBadImpl.join(", ")}`
+      )
+    );
+  } else if (acNoImpl.length) {
+    checks.push(
+      warn(
+        "ac-traceability",
+        "Traceability",
+        `criteria with no Implemented-by file: ${acNoImpl.join(", ")}`
+      )
+    );
+  } else {
+    checks.push(pass("ac-traceability", "Traceability", "every criterion maps to plan files"));
+  }
+  if (fcpSatIdx !== -1) {
+    const badSat = [];
+    fcp.rows.forEach((r) => {
+      const fid = cell(r, fcpIdIdx).toUpperCase() || "?";
+      const dangling = refs(cell(r, fcpSatIdx)).filter((n) => !acIds.has(n));
+      if (dangling.length) badSat.push(`${fid}\u2192${dangling.join("/")}`);
+    });
+    if (badSat.length) {
+      checks.push(
+        fail(
+          "fcp-traceability",
+          "Traceability",
+          `File-Change-Plan rows satisfy unknown criteria: ${badSat.join(", ")}`
+        )
+      );
+    }
+  }
+  if (acVerIdx !== -1) {
+    let realProofs = 0;
+    const testsOutsidePlan = [];
+    ac.rows.forEach((r) => {
+      const v = cell(r, acVerIdx);
+      const low = v.toLowerCase();
+      if (!v || low === "prose-review" || low === "prose review") return;
+      realProofs += 1;
+      for (const token of v.split(/[;,]+/)) {
+        const path = testPath(token);
+        if (path && !fcpPaths.has(path)) testsOutsidePlan.push(path);
+      }
+    });
+    checks.push(
+      realProofs === 0 ? fail(
+        "ac-verified-real",
+        "Acceptance Criteria",
+        "every criterion is prose-review \u2014 at least one needs a real test or command"
+      ) : pass(
+        "ac-verified-real",
+        "Acceptance Criteria",
+        `${realProofs} criterion(s) with a real proof`
+      )
+    );
+    if (testsOutsidePlan.length) {
+      checks.push(
+        fail(
+          "ac-test-in-plan",
+          "Acceptance Criteria",
+          `verified_by test(s) not in the File Change Plan allowlist: ${[...new Set(testsOutsidePlan)].join(", ")}`
+        )
+      );
+    }
+  }
+  return checks;
+}
+function testPath(token) {
+  let t = token.replace(/`/g, "").trim();
+  if (/^cmd:/i.test(t)) return null;
+  t = t.replace(/^test:/i, "");
+  const file = (t.split("::")[0] ?? "").trim();
+  if (!file || /\s/.test(file)) return null;
+  if (!file.includes("/")) return null;
+  if (!/\.[A-Za-z0-9]+$/.test(file)) return null;
+  return file;
+}
+function checkContract(section) {
+  const body = (section ?? "").trim();
+  const low = body.toLowerCase();
+  if (body === "" || low === "n/a" || low.startsWith("n/a")) {
+    return pass("contract-code", "Interface / Contract", "no callable surface (N/A)");
+  }
+  if (body.includes("```")) {
+    return pass("contract-code", "Interface / Contract", "literal code block present");
+  }
+  return warn(
+    "contract-code",
+    "Interface / Contract",
+    "prose contract \u2014 prefer a literal code block the implementer copies"
+  );
 }
 function checkOpenQuestions(section) {
   if (section === void 0) {

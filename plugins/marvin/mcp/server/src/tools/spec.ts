@@ -6,17 +6,20 @@ import { parseFrontmatter } from "../storage/frontmatter.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
- * Deterministic Definition-of-Ready gate (ADR-0005). Validates a task spec
- * against the contract that Phase 2 (task-implement / marvin-tm-executor)
- * relies on: required frontmatter + valid enums, all required sections
- * present, a File Change Plan whose edit/delete targets exist on disk, every
- * acceptance criterion bound to a non-empty `verified_by`, open questions
- * resolved, and no leftover `{…}` template placeholders.
+ * Deterministic Definition-of-Ready gate (ADR-0005, extended by ADR-0006).
+ * Validates a task spec against the contract that Phase 2 (task-implement /
+ * marvin-tm-executor) relies on: required frontmatter + valid enums (incl.
+ * `breaking`, `spike_required`), all required sections present (incl. Definition
+ * of Done), a File Change Plan whose edit/delete targets exist on disk, the
+ * AC⇄files⇄tests traceability triple (every criterion maps to real plan IDs,
+ * every `Satisfies` points at a real criterion, every `verified_by` test is an
+ * allowlisted plan row, and ≥1 criterion carries a non-prose-review proof),
+ * open questions resolved, and no leftover `{…}` template placeholders.
  *
  * The point mirrors ADR-0004: these are properties checked by code, not by a
  * model re-reading its own markdown checklist. The critic (marvin-tm-spec-critic)
  * remains the *semantic* complement — it judges whether a verified_by is genuine;
- * this tool only proves the contract's shape is complete.
+ * this tool only proves the contract's shape and internal references are complete.
  */
 
 type CheckStatus = "pass" | "fail" | "warn";
@@ -47,6 +50,7 @@ const FEATURE_REQUIRED = [
   "chosen approach",
   "acceptance criteria",
   "test plan",
+  "definition of done",
   "non goals",
   "open questions",
   "security nfr",
@@ -67,6 +71,7 @@ const BUGFIX_REQUIRED = [
   "fix approach",
   "acceptance criteria",
   "regression test specification",
+  "definition of done",
   "non goals",
   "open questions",
 ];
@@ -102,7 +107,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      "Validate a task spec against the Definition of Ready mechanically — frontmatter + enums, required sections, File Change Plan path existence, acceptance-criteria proofs (verified_by), resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
+      "Validate a task spec against the Definition of Ready mechanically — frontmatter + enums (incl. breaking / spike_required), required sections (incl. Definition of Done), File Change Plan path existence + size, acceptance-criteria proofs (verified_by), the AC⇄files⇄tests traceability triple (every criterion maps to plan files, every verified_by test is allowlisted, ≥1 real proof), resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
     inputSchema: SpecInput,
     handler: (input) => runSpec(input, env),
   });
@@ -147,6 +152,12 @@ function validateSpec(raw: string, projectRoot: string): { type: string | null; 
     checks.push(...checkFileChangePlan(sections.get("file change plan"), projectRoot));
     checks.push(...checkAcceptanceCriteria(sections.get("acceptance criteria"), MIN_AC[type]!));
     checks.push(checkOpenQuestions(sections.get("open questions")));
+    checks.push(
+      ...checkTraceability(sections.get("file change plan"), sections.get("acceptance criteria")),
+    );
+    if (type === "feature") {
+      checks.push(checkContract(sections.get("interface contract")));
+    }
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)"),
@@ -196,6 +207,30 @@ function checkFrontmatter(fm: Record<string, string>, type: string | null): Chec
           `severity "${fm.severity}" is not ${SEVERITY_VALUES.join("|")}`,
         ),
       );
+  }
+
+  // Off-ramp: a spec that still needs investigation is not ready to dispatch.
+  if ((fm.spike_required ?? "").trim().toLowerCase() === "true") {
+    checks.push(
+      fail(
+        "spike-required",
+        "Frontmatter",
+        "spike_required: true — resolve the unknown (e.g. /marvin:kanban-spike) before DoR",
+      ),
+    );
+  }
+
+  // Backward-compat must be a conscious declaration on features, not an omission.
+  if (type === "feature") {
+    if (!present("breaking")) {
+      checks.push(
+        warn("fm-breaking", "Frontmatter", "declare breaking: true|false (public-surface impact)"),
+      );
+    } else if (!["true", "false"].includes((fm.breaking ?? "").trim().toLowerCase())) {
+      checks.push(
+        fail("fm-breaking", "Frontmatter", `breaking "${fm.breaking}" is not true|false`),
+      );
+    }
   }
 
   const softMissing = ["tracker", "supersedes", "stack", "test_command"].filter((k) => !present(k));
@@ -292,6 +327,15 @@ function checkFileChangePlan(section: string | undefined, projectRoot: string): 
       ? fail("file-change-plan", "File Change Plan", "no rows with a valid action")
       : pass("file-change-plan", "File Change Plan", `${valid} file(s) planned`),
   );
+  if (valid > 12) {
+    checks.push(
+      warn(
+        "fcp-size",
+        "File Change Plan",
+        `${valid} files planned — confirm this is one PR, not several (scope gate)`,
+      ),
+    );
+  }
   if (missing.length) {
     checks.push(
       fail(
@@ -346,6 +390,179 @@ function checkAcceptanceCriteria(section: string | undefined, min: number): Chec
   );
 
   return checks;
+}
+
+/**
+ * The traceability triple: every acceptance criterion is implemented by named
+ * File-Change-Plan rows and proven by a real verifier, and every test it names
+ * lives inside the allowlist. This is the property that lets Phase 2 execute
+ * without inferring the AC→file→test mapping. Shape only — the critic still
+ * judges whether a proof is genuine.
+ */
+function checkTraceability(fcpSection: string | undefined, acSection: string | undefined): Check[] {
+  if (fcpSection === undefined || acSection === undefined) return [];
+  const fcp = parseTable(fcpSection);
+  const ac = parseTable(acSection);
+  if (!fcp || !ac || fcp.rows.length === 0 || ac.rows.length === 0) return [];
+
+  const col = (t: ParsedTable, pred: (h: string) => boolean) => t.headers.findIndex(pred);
+  const cell = (row: string[], i: number) =>
+    i === -1 ? "" : (row[i] ?? "").replace(/`/g, "").trim();
+
+  const fcpIdIdx = col(fcp, (h) => h === "id");
+  const fcpPathIdx = col(fcp, (h) => h.includes("path"));
+  const fcpSatIdx = col(fcp, (h) => h.includes("satisf"));
+  const acIdIdx = col(ac, (h) => h === "id");
+  const acImplIdx = col(ac, (h) => h.includes("implement"));
+  const acVerIdx = col(ac, (h) => h.includes("verified"));
+
+  const checks: Check[] = [];
+
+  // Pre-traceable specs lack the ID/link columns. Treat as a single WARN rather
+  // than failing — the base section/AC/FCP checks already ran. Traceability is additive.
+  if (fcpIdIdx === -1 || acIdIdx === -1 || acImplIdx === -1) {
+    return [
+      warn(
+        "traceability",
+        "Traceability",
+        "add ID + Implemented-by/Satisfies columns to trace AC ⇄ files ⇄ tests",
+      ),
+    ];
+  }
+
+  const refs = (s: string) =>
+    s
+      .split(/[,\s]+/)
+      .map((x) => x.trim().toUpperCase())
+      .filter((x) => x && !["-", "—", "N/A", "NONE"].includes(x));
+
+  const fcpIds = new Set(fcp.rows.map((r) => cell(r, fcpIdIdx).toUpperCase()).filter(Boolean));
+  const acIds = new Set(ac.rows.map((r) => cell(r, acIdIdx).toUpperCase()).filter(Boolean));
+  const fcpPaths = new Set(fcp.rows.map((r) => cell(r, fcpPathIdx)).filter(Boolean));
+
+  // 1. Every AC names ≥1 implementing file; each named file exists in the plan.
+  const acNoImpl: string[] = [];
+  const acBadImpl: string[] = [];
+  ac.rows.forEach((r) => {
+    const id = cell(r, acIdIdx).toUpperCase() || "?";
+    const named = refs(cell(r, acImplIdx));
+    if (named.length === 0) {
+      acNoImpl.push(id);
+      return;
+    }
+    const dangling = named.filter((n) => !fcpIds.has(n));
+    if (dangling.length) acBadImpl.push(`${id}→${dangling.join("/")}`);
+  });
+  if (acBadImpl.length) {
+    checks.push(
+      fail(
+        "ac-traceability",
+        "Traceability",
+        `criteria reference unknown File-Change-Plan IDs: ${acBadImpl.join(", ")}`,
+      ),
+    );
+  } else if (acNoImpl.length) {
+    checks.push(
+      warn(
+        "ac-traceability",
+        "Traceability",
+        `criteria with no Implemented-by file: ${acNoImpl.join(", ")}`,
+      ),
+    );
+  } else {
+    checks.push(pass("ac-traceability", "Traceability", "every criterion maps to plan files"));
+  }
+
+  // 2. Every Satisfies link on a file points at a real AC.
+  if (fcpSatIdx !== -1) {
+    const badSat: string[] = [];
+    fcp.rows.forEach((r) => {
+      const fid = cell(r, fcpIdIdx).toUpperCase() || "?";
+      const dangling = refs(cell(r, fcpSatIdx)).filter((n) => !acIds.has(n));
+      if (dangling.length) badSat.push(`${fid}→${dangling.join("/")}`);
+    });
+    if (badSat.length) {
+      checks.push(
+        fail(
+          "fcp-traceability",
+          "Traceability",
+          `File-Change-Plan rows satisfy unknown criteria: ${badSat.join(", ")}`,
+        ),
+      );
+    }
+  }
+
+  // 3. Every test named in a verified_by is allowlisted, and ≥1 criterion
+  //    carries a real (non-prose-review) proof.
+  if (acVerIdx !== -1) {
+    let realProofs = 0;
+    const testsOutsidePlan: string[] = [];
+    ac.rows.forEach((r) => {
+      const v = cell(r, acVerIdx);
+      const low = v.toLowerCase();
+      if (!v || low === "prose-review" || low === "prose review") return;
+      realProofs += 1;
+      for (const token of v.split(/[;,]+/)) {
+        const path = testPath(token);
+        if (path && !fcpPaths.has(path)) testsOutsidePlan.push(path);
+      }
+    });
+    checks.push(
+      realProofs === 0
+        ? fail(
+            "ac-verified-real",
+            "Acceptance Criteria",
+            "every criterion is prose-review — at least one needs a real test or command",
+          )
+        : pass(
+            "ac-verified-real",
+            "Acceptance Criteria",
+            `${realProofs} criterion(s) with a real proof`,
+          ),
+    );
+    if (testsOutsidePlan.length) {
+      checks.push(
+        fail(
+          "ac-test-in-plan",
+          "Acceptance Criteria",
+          `verified_by test(s) not in the File Change Plan allowlist: ${[...new Set(testsOutsidePlan)].join(", ")}`,
+        ),
+      );
+    }
+  }
+
+  return checks;
+}
+
+/** Extract a file path from a verified_by token, or null if it is a command or
+ * prose-review. `test/x.test.ts::name` → `test/x.test.ts`; `npm run build` → null. */
+function testPath(token: string): string | null {
+  let t = token.replace(/`/g, "").trim();
+  if (/^cmd:/i.test(t)) return null;
+  t = t.replace(/^test:/i, "");
+  const file = (t.split("::")[0] ?? "").trim();
+  if (!file || /\s/.test(file)) return null; // commands have spaces
+  if (!file.includes("/")) return null; // bare word, not a path
+  if (!/\.[A-Za-z0-9]+$/.test(file)) return null; // needs a file extension
+  return file;
+}
+
+/** The Interface/Contract should be a literal code block the implementer copies,
+ * not prose to interpret. "N/A" (no callable surface) is fine. */
+function checkContract(section: string | undefined): Check {
+  const body = (section ?? "").trim();
+  const low = body.toLowerCase();
+  if (body === "" || low === "n/a" || low.startsWith("n/a")) {
+    return pass("contract-code", "Interface / Contract", "no callable surface (N/A)");
+  }
+  if (body.includes("```")) {
+    return pass("contract-code", "Interface / Contract", "literal code block present");
+  }
+  return warn(
+    "contract-code",
+    "Interface / Contract",
+    "prose contract — prefer a literal code block the implementer copies",
+  );
 }
 
 function checkOpenQuestions(section: string | undefined): Check {

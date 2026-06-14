@@ -12,7 +12,7 @@ Begin work on a task. This is Phase 1 of the task pipeline — a structured dial
 3. Asks domain-specific clarifying questions
 4. For features: maps affected files, generates 3–5 solution variants, helps you choose
 5. For bugs: helps establish reproduction, performs root-cause analysis, defines regression test
-6. Runs a red-team critic pass, then the Definition-of-Ready gate
+6. Runs the tool-backed Definition-of-Ready gate, then a red-team critic pass
 7. Writes the final spec to `specs/<slug>.md`
 
 After this, run `/task-implement` to execute the spec interactively.

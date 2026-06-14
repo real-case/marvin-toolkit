@@ -4,6 +4,34 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.4] — 2026-06-14
+
+Traceable spec contract and gate reordering for `/marvin:task-start`
+(see [ADR-0006](../../docs/adr/0006-traceable-spec-contract.md)).
+
+### Added
+
+- **Traceability triple** in the `spec` DoR tool: the File Change Plan gains `ID` + `Satisfies`
+  columns and Acceptance Criteria gain `Implemented by`, and the tool now verifies the closed
+  graph — every criterion maps to real plan IDs, every `Satisfies` points at a real criterion,
+  every `verified_by` test is an allowlisted plan row, and ≥1 criterion carries a non-`prose-review`
+  proof (`ac-traceability`, `fcp-traceability`, `ac-test-in-plan`, `ac-verified-real`).
+- New required **Definition of Done** section (feature + bugfix templates and the tool).
+- Frontmatter `breaking` (feature, warns if omitted) and `spike_required` (the tool **fails** on
+  `spike_required: true` — an off-ramp so unknowns are spiked, not laundered into Assumptions).
+- Interface/Contract as a literal code block — the tool warns on a prose contract (`contract-code`).
+- File-Change-Plan size warning (`fcp-size`) for sprawling plans.
+- Intake sweep dimensions: callers / reverse-deps, backward-compat / public surface, merge
+  obligations; the feature flow now reads caller graphs, recent churn, and neighboring tests.
+
+### Changed
+
+- **Gate order reversed.** `task-start` runs the mechanical `spec` tool **first** (Step 7), then
+  the semantic `marvin-tm-spec-critic` only on shape-valid specs (Step 8), then finalize/write
+  (Step 9). A skipped critic is recorded and surfaced in the PR, never silent.
+- `task-implement` and `marvin-tm-executor` use the traceability graph as their work list.
+- `stack` frontmatter may be comma-separated for polyglot tasks.
+
 ## [2.0.0-alpha.1] — 2026-06-06
 
 **Breaking:** consolidated the four packs (`marvin-core-pack`, `marvin-security-pack`,

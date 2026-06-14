@@ -50,6 +50,7 @@ The spec is provided inline below (injected by the batch-dispatch caller). Read 
 
 Follow the chosen approach from the spec:
 - Create/modify only the files in the spec's **File Change Plan** (the authoritative allowlist)
+- **Use the traceability graph as your work list.** For each acceptance criterion, change exactly the File-Change-Plan rows named in its *Implemented by* column and prove it with its `verified_by` — the mapping is given, do not infer it
 - Write code that satisfies each acceptance criterion
 - Write tests for the acceptance criteria
 - Respect project conventions from CLAUDE.md (injected below)
