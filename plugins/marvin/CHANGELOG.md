@@ -4,6 +4,27 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.6] — 2026-06-14
+
+Open stack detection for `/marvin:task-verify` and the spec authoring flow — M1 of
+[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+
+### Added
+
+- **Declared-command fallback in the `verify` tool.** When no tabled stack (Go/Python/TypeScript/
+  Rust/Java) is present, `verify` now builds its gate set from the commands the project declares
+  itself — `package.json` scripts, then `Makefile` targets — instead of leaving an untabled
+  ecosystem (PHP, Ruby, .NET, Elixir, Swift, Dart, …) silently unverified. A project that declares
+  nothing returns an explicit "no gates detected" message naming what to pass, never a silent pass.
+
+### Changed
+
+- `task-start` intake detects the dependency manifest by what the host actually has (not a fixed
+  five), and when discovering the test harness it prefers the command the project **declares** (CI
+  job, `Makefile` target, manifest script) over a guessed ecosystem default — asking the user about
+  an unrecognised stack rather than guessing a `test_command` that would poison every gate.
+- `task-verify` documents the fallback; its description reflects the wider coverage.
+
 ## [2.0.0-alpha.5] — 2026-06-14
 
 `spec` DoR gate hardened to **fail closed** — Phase 1 of the portable spec contract
