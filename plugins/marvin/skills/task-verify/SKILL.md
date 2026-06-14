@@ -1,6 +1,6 @@
 ---
 name: task-verify
-description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Node, Python, Go, Rust, Java) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
+description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Python, TypeScript, Rust, Java, plus an npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify
@@ -34,6 +34,11 @@ gate execution — there is a single source of truth in TypeScript, not a table 
 - It auto-detects the stack from config files (`go.mod` → Go, `pyproject.toml` → Python,
   `tsconfig.json` → TypeScript, `Cargo.toml` → Rust, `pom.xml` → Java) and builds the gate set
   (test / lint / type-check / build, whichever apply).
+- For any stack **outside** that table (PHP, Ruby, .NET, Elixir, Swift, Dart, …) it falls back to
+  the commands the project **declares itself** — `package.json` scripts, then `Makefile` targets —
+  instead of guessing an ecosystem default. A project with no recognised stack and no declared
+  commands returns an explicit "no gates detected" message, never a silent pass; in that case pass
+  the spec's `test_command` as an explicit gate.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
   every result at a single merge point, then computes one verdict. A failing gate never discards
   the others — every gate's result is recorded.

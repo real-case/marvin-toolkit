@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { z } from "zod";
@@ -125,7 +125,10 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   const detected = resolvePlan(input, projectRoot);
   if (detected.gates.length === 0) {
     return ok(
-      `No quality gates detected for \`${projectRoot}\`.\nNo recognised stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml) and no explicit \`gates\` provided.`,
+      `No quality gates detected for \`${projectRoot}\`.\n` +
+        `Looked for a known stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml), ` +
+        `then for declared commands (package.json scripts, Makefile targets) — found none. ` +
+        `Pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`,
     );
   }
 
@@ -207,6 +210,14 @@ function resolvePlan(
       ? [input.stack]
       : Object.keys(STACK_TABLE).filter((file) => existsSync(join(projectRoot, file)));
 
+  if (keys.length === 0) {
+    // No tabled stack matched. Rather than leave an untabled ecosystem (PHP, Ruby,
+    // .NET, Elixir, Swift, Dart, …) silently unverified, fall back to the commands
+    // the project declares itself — npm scripts, then Makefile targets. A declared
+    // command beats a guessed ecosystem default: the project knows how it is built.
+    return detectGeneric(projectRoot);
+  }
+
   const stacks: string[] = [];
   const gates: GateSpec[] = [];
   for (const key of keys) {
@@ -219,6 +230,72 @@ function resolvePlan(
     }
   }
   return { stacks, gates };
+}
+
+/** Gate name → the declared script/target names that satisfy it, in priority order. */
+const DECLARED_GATE_ALIASES: Array<[GateName, string[]]> = [
+  ["test", ["test"]],
+  ["lint", ["lint"]],
+  ["typecheck", ["typecheck", "type-check", "tsc"]],
+  ["build", ["build"]],
+];
+
+/**
+ * Evidence-based fallback for ecosystems outside STACK_TABLE: build the gate set
+ * from the commands the project declares itself (npm scripts, then Makefile
+ * targets). Returns no gates when the project declares none — an unknown stack is
+ * surfaced to the caller, never papered over with a guessed command.
+ */
+function detectGeneric(projectRoot: string): { stacks: string[]; gates: GateSpec[] } {
+  const npm = detectNpmScripts(projectRoot);
+  if (npm.gates.length) return npm;
+  const make = detectMakefile(projectRoot);
+  if (make.gates.length) return make;
+  return { stacks: [], gates: [] };
+}
+
+/** Map a project's npm `scripts` to gates: `npm run <name>` per declared gate. */
+function detectNpmScripts(projectRoot: string): { stacks: string[]; gates: GateSpec[] } {
+  const pkgPath = join(projectRoot, "package.json");
+  if (!existsSync(pkgPath)) return { stacks: [], gates: [] };
+  let scripts: Record<string, unknown> = {};
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { scripts?: Record<string, unknown> };
+    scripts = pkg.scripts ?? {};
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  const gates: GateSpec[] = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find(
+      (a) => typeof scripts[a] === "string" && (scripts[a] as string).trim(),
+    );
+    if (name) gates.push({ name: gate, command: `npm run ${name}` });
+  }
+  return gates.length ? { stacks: ["package.json scripts"], gates } : { stacks: [], gates: [] };
+}
+
+/** Map a project's Makefile targets to gates: `make <target>` per declared gate. */
+function detectMakefile(projectRoot: string): { stacks: string[]; gates: GateSpec[] } {
+  const mkPath = join(projectRoot, "Makefile");
+  if (!existsSync(mkPath)) return { stacks: [], gates: [] };
+  let text: string;
+  try {
+    text = readFileSync(mkPath, "utf8");
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  // A real target is a name at line start followed by ':' — but not ':=' (which
+  // is a variable assignment, not a rule).
+  const targets = new Set(
+    [...text.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):(?!=)/gm)].map((m) => m[1]!.toLowerCase()),
+  );
+  const gates: GateSpec[] = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find((a) => targets.has(a));
+    if (name) gates.push({ name: gate, command: `make ${name}` });
+  }
+  return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
 
 /**

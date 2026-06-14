@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = join(here, "..", "dist", "server.js");
@@ -152,6 +154,55 @@ test("dryRun reports a plan and runs nothing", async () => {
   });
   assert.match(res, /Verify Plan \(dry run\)/);
   assert.doesNotMatch(res, /verify-result/);
+});
+
+// ── open stack detection: declared-command fallback for untabled ecosystems ──
+
+test("an untabled project gets gates from its package.json scripts", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-npm-"));
+  try {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "jest", lint: "eslint .", build: "tsup" } }),
+    );
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(res, /package\.json scripts/);
+    assert.match(res, /npm run test/);
+    assert.match(res, /npm run lint/);
+    assert.match(res, /npm run build/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an untabled project gets gates from its Makefile targets", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-make-"));
+  try {
+    // VERSION:=1 is a variable, not a target — it must not become a gate.
+    writeFileSync(
+      join(dir, "Makefile"),
+      "VERSION:=1\n\ntest:\n\tgo test ./...\nbuild:\n\tgo build\n",
+    );
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(res, /Makefile/);
+    assert.match(res, /make test/);
+    assert.match(res, /make build/);
+    assert.doesNotMatch(res, /make version/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a truly unknown stack is surfaced, not silently empty", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-unknown-"));
+  try {
+    writeFileSync(join(dir, "README.md"), "# just docs\n");
+    const res = await callVerifyRaw({ projectRoot: dir, write: false });
+    assert.match(res, /No quality gates detected/);
+    assert.match(res, /Pass an explicit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // Raw variant for dryRun (no verify-result block expected).

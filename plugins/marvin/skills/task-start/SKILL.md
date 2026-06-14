@@ -51,7 +51,7 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - `CLAUDE.md` — project conventions, architecture rules
 - `README.md` — project overview
 - `git log --oneline -10` — recent activity
-- **Dependency manifest** — `package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` / `pom.xml`. You will **verify** the stack-compliance marker against this, not guess it.
+- **Dependency manifest** — whatever the host actually uses: `package.json`, `pyproject.toml` / `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml` / `build.gradle`, `composer.json`, `Gemfile`, `*.csproj`, `mix.exs`, `pubspec.yaml`, … and a root `Makefile`. Detect by what is present — do not assume one of a fixed five. You will **verify** the stack-compliance marker against this, not guess it.
 - **CI config** — `.github/workflows/*`, `.gitlab-ci.yml`, etc. — to learn which gates actually run, so acceptance criteria align with enforcement.
 - **`specs/`** — list existing specs (`ls specs/` + read frontmatter). Detect duplication and any sibling spec this task would depend on. The DoR gate forbids depending on an incomplete sibling, so you must know what exists.
 - `VISION.md` if present — future direction (informs variant evaluation).
@@ -102,7 +102,7 @@ Analyze the codebase and present findings to the user:
 
 **Verify the stack.** From the dependency manifest read in 1.3, confirm whether the work is solvable with the current stack (→ `NATIVE`), needs a new dependency (→ `EXTENSION`, list it), or is non-standard (→ `EXPERIMENTAL`). The marker must reflect the manifest, not an assumption.
 
-**Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command`, Test Plan, and the convention the executor follows. Knowing the command is not knowing the patterns. If you cannot determine them, that is an Open Question — resolve it before DoR.
+**Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command`, Test Plan, and the convention the executor follows. Knowing the command is not knowing the patterns. **Prefer the command the project declares** — a CI job, a `Makefile` target, a manifest script — over a guessed ecosystem default; for a stack you don't recognise, **ask the user** for the test command rather than guessing, since a wrong `test_command` poisons every downstream gate. If you cannot determine them, that is an Open Question — resolve it before DoR.
 
 If `VISION.md` exists, note future-direction intent — it informs variant evaluation.
 

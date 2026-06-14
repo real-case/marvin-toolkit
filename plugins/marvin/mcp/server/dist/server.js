@@ -22138,7 +22138,7 @@ async function runVerify(input, env) {
   if (detected.gates.length === 0) {
     return ok3(
       `No quality gates detected for \`${projectRoot}\`.
-No recognised stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml) and no explicit \`gates\` provided.`
+Looked for a known stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
   }
   let gates = detected.gates;
@@ -22209,6 +22209,9 @@ function resolvePlan(input, projectRoot) {
     return { stacks: ["explicit"], gates: input.gates };
   }
   const keys = input.stack && STACK_TABLE[input.stack] ? [input.stack] : Object.keys(STACK_TABLE).filter((file) => existsSync(join(projectRoot, file)));
+  if (keys.length === 0) {
+    return detectGeneric(projectRoot);
+  }
   const stacks = [];
   const gates = [];
   for (const key of keys) {
@@ -22221,6 +22224,57 @@ function resolvePlan(input, projectRoot) {
     }
   }
   return { stacks, gates };
+}
+var DECLARED_GATE_ALIASES = [
+  ["test", ["test"]],
+  ["lint", ["lint"]],
+  ["typecheck", ["typecheck", "type-check", "tsc"]],
+  ["build", ["build"]]
+];
+function detectGeneric(projectRoot) {
+  const npm = detectNpmScripts(projectRoot);
+  if (npm.gates.length) return npm;
+  const make = detectMakefile(projectRoot);
+  if (make.gates.length) return make;
+  return { stacks: [], gates: [] };
+}
+function detectNpmScripts(projectRoot) {
+  const pkgPath = join(projectRoot, "package.json");
+  if (!existsSync(pkgPath)) return { stacks: [], gates: [] };
+  let scripts = {};
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    scripts = pkg.scripts ?? {};
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  const gates = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find(
+      (a) => typeof scripts[a] === "string" && scripts[a].trim()
+    );
+    if (name) gates.push({ name: gate, command: `npm run ${name}` });
+  }
+  return gates.length ? { stacks: ["package.json scripts"], gates } : { stacks: [], gates: [] };
+}
+function detectMakefile(projectRoot) {
+  const mkPath = join(projectRoot, "Makefile");
+  if (!existsSync(mkPath)) return { stacks: [], gates: [] };
+  let text;
+  try {
+    text = readFileSync(mkPath, "utf8");
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  const targets = new Set(
+    [...text.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):(?!=)/gm)].map((m) => m[1].toLowerCase())
+  );
+  const gates = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find((a) => targets.has(a));
+    if (name) gates.push({ name: gate, command: `make ${name}` });
+  }
+  return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
 async function executeGates(gates, execution, cwd) {
   if (execution === "parallel") {
@@ -22901,7 +22955,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.5";
+var VERSION = "2.0.0-alpha.6";
 await runPackServer({
   name: "marvin",
   version: VERSION,
