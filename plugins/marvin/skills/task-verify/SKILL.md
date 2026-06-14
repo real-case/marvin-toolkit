@@ -17,7 +17,7 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 - Pipeline context determines verification mode. If not set explicitly in conversation, **infer from spec**:
   1. Look for spec in `specs/` directory (match by slug from conversation context or most recent spec)
   2. Fall back to `.taskmaster/current-task/spec.md`
-  3. Detect type from spec structure: presence of "Root Cause Analysis" section → bugfix; presence of "Chosen Approach" section → feature
+  3. Detect type: prefer the spec's frontmatter `type` (`feature`/`bugfix`); else infer from structure — a "Root Cause Analysis" section → bugfix, a "Chosen Approach" section → feature
   4. If no spec found → standalone mode
 - Verification modes:
   - **Feature**: new tests must exist and pass

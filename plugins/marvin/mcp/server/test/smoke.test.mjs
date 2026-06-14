@@ -99,8 +99,9 @@ async function listTools() {
   });
 }
 
-test("tools/list enumerates the verify tool", async () => {
+test("tools/list enumerates the verify and spec tools", async () => {
   const msg = await listTools();
   const names = (msg.result.tools ?? []).map((t) => t.name);
   assert.ok(names.includes("verify"), `expected 'verify' in tools/list, got: ${names.join(", ")}`);
+  assert.ok(names.includes("spec"), `expected 'spec' in tools/list, got: ${names.join(", ")}`);
 });

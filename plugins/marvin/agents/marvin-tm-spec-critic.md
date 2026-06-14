@@ -73,10 +73,11 @@ Apply every category below. For each finding, emit one entry.
 - Is each criterion testable from the outside? "Feels intuitive" and "is performant" without a threshold are **blockers**.
 - Is there a failure path for each criterion? "X should return 200" is incomplete without "X returns 4xx when Y".
 - Can a reviewer read the criteria and know, without running the code, what test proves each one?
+- Does each criterion's `verified_by` name a *genuine* proof (a real test path/command, or a justified "prose-review")? A `verified_by` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate only checks it is non-empty; you check it is real.
 
 #### 3.3 Codebase grounding
 - Does the Chosen Approach match existing patterns, or silently diverge? Divergence is acceptable — unexplained divergence is a **blocker**.
-- Are the affected files actually the right ones? Spec-writer sometimes names the obvious file and misses the real integration point.
+- Does the **File Change Plan** name the real integration points, or just the obvious file? A plan that misses the true integration point — or omits a caller that must change — is a **blocker**.
 - Are there sibling patterns (the same logic elsewhere) the spec ignores?
 
 #### 3.4 Hidden dependencies
@@ -84,12 +85,12 @@ Apply every category below. For each finding, emit one entry.
 - Are there callers of the modified surface that the spec does not mention?
 - Does the spec require work in another repo, pack, or service?
 
-#### 3.5 Bugfix specifics (only if `Type: bugfix`)
+#### 3.5 Bugfix specifics (only if `type: bugfix`)
 - Is the root cause supported by evidence, or is it a guess?
 - Does the regression test actually fail on current code, based on your read? (You cannot run it — reason from the code.)
 - Is the fix truly minimal, or does it sneak in refactoring?
 
-#### 3.6 Feature specifics (only if `Type: feature`)
+#### 3.6 Feature specifics (only if `type: feature`)
 - Were alternatives genuinely explored, or is "Variant 2" a strawman?
 - Is the rationale for rejecting alternatives grounded in project constraints, or generic?
 - Does the approach contradict VISION.md (if present)?
