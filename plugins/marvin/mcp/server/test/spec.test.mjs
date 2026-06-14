@@ -505,3 +505,20 @@ test("a host-bindings block is accepted (advisory)", async () => {
   assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
   assert.equal(find(parsed, "host-bindings").status, "pass");
 });
+
+test("the gate emits a stable contract hash that changes with the block", async () => {
+  const a = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed;
+  assert.ok(a.contractSha, "contractSha present on a valid spec");
+  const b = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed;
+  assert.equal(a.contractSha, b.contractSha, "stable for an identical block");
+  // Editing the block changes the hash; editing prose outside the block does not.
+  const editedBlock = VALID_FEATURE.replace("intent: document the sample", "intent: changed here");
+  const c = (await callSpec({ specContent: editedBlock, projectRoot: repoRoot })).parsed;
+  assert.notEqual(a.contractSha, c.contractSha, "changes when the block changes");
+  const editedProse = VALID_FEATURE.replace(
+    "Write a sample doc and reference it.",
+    "Different prose.",
+  );
+  const d = (await callSpec({ specContent: editedProse, projectRoot: repoRoot })).parsed;
+  assert.equal(a.contractSha, d.contractSha, "stable when only prose outside the block changes");
+});

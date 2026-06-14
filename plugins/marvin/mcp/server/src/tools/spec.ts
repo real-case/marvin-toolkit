@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
@@ -184,11 +185,14 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
 
-  const { type, checks } = validateSpec(raw, projectRoot);
-  return result(computeVerdict(checks), type, checks);
+  const { type, checks, contractSha } = validateSpec(raw, projectRoot);
+  return result(computeVerdict(checks), type, checks, contractSha);
 }
 
-function validateSpec(raw: string, projectRoot: string): { type: string | null; checks: Check[] } {
+function validateSpec(
+  raw: string,
+  projectRoot: string,
+): { type: string | null; checks: Check[]; contractSha: string | null } {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const checks: Check[] = [];
@@ -214,7 +218,8 @@ function validateSpec(raw: string, projectRoot: string): { type: string | null; 
     );
   }
 
-  return { type, checks };
+  const blockText = extractContractBlock(body);
+  return { type, checks, contractSha: blockText ? contractHash(blockText) : null };
 }
 
 // ── frontmatter (identity + lifecycle + scalar markers) ──────────────────────
@@ -778,7 +783,19 @@ function computeVerdict(checks: Check[]): Verdict {
   return "PASS";
 }
 
-function result(verdict: Verdict, type: string | null, checks: Check[]): ToolResult {
+/** A short, stable fingerprint of the spec-contract block — stamped into the
+ * spec's frontmatter at write so later tampering of the immutable contract is
+ * detectable by re-hashing. */
+function contractHash(blockText: string): string {
+  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
+}
+
+function result(
+  verdict: Verdict,
+  type: string | null,
+  checks: Check[],
+  contractSha: string | null = null,
+): ToolResult {
   const icon = (s: CheckStatus) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
   const lines = [
     `# Spec Readiness Report`,
@@ -801,6 +818,7 @@ function result(verdict: Verdict, type: string | null, checks: Check[]): ToolRes
   const machine = JSON.stringify({
     verdict,
     type,
+    contractSha,
     checks: checks.map((c) => ({ id: c.id, status: c.status, detail: c.detail })),
   });
   return {

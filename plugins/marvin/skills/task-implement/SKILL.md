@@ -46,6 +46,7 @@ Resolution order:
 Read the resolved spec. Confirm:
 - Frontmatter `status` is `ready` or `in-progress` — if it is `draft`, stop (the spec has not passed DoR; run `/marvin:task-start` to finish authoring); if it is `shipped` or `superseded`, stop (already delivered).
 - Frontmatter `type` is `feature` or `bugfix` — if missing, stop and report the malformed spec.
+- **Immutability check** — if the frontmatter carries `contract_sha`, re-hash the `spec-contract` block (SHA-256, first 16 hex of the trimmed block) and compare. A mismatch means the contract was edited after DoR sealed it — stop and report; do not execute a tampered spec.
 
 Then set the spec's `status: in-progress` — the lifecycle carve-out (content stays immutable) so a resumed or concurrent run sees the task is being worked.
 

@@ -4,6 +4,28 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.10] — 2026-06-14
+
+Coverage, archetype router, and an enforceable immutability seal — M4 (final) of
+[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+
+### Added
+
+- **`contract_sha` immutability seal.** The `spec` tool emits a SHA-256 fingerprint of the
+  spec-contract block; `task-start` re-gates the **written** file (not just the inline draft) and
+  stamps `contract_sha` into the frontmatter, and `task-implement` re-hashes the block on read and
+  refuses a spec whose contract was edited after sealing. The immutability rule is now enforced, not
+  merely conventional.
+- **Archetype router** in `task-start` intake — API / data-migration / CLI / library / UI / infra /
+  AI, each with 2–3 must-pin questions on top of the general sweep, so questioning deepens by task
+  shape instead of running one flat checklist.
+- **Coverage dimensions** added to the intake sweep: concurrency/idempotency, external-dependency
+  failure/timeout, test-environment availability, cost/quota, and new-dependency licence.
+
+This completes ADR-0007 (M1–M4): the spec contract is portable (host-discovered, open-stack,
+location-aware), fail-closed (a schema-validated YAML block with mechanical traceability + sibling
+gate), and sealed (a tamper-evident hash binds the written artifact to a passing gate).
+
 ## [2.0.0-alpha.9] — 2026-06-14
 
 Host bindings + mechanical sibling-dependency gate — M3 of
