@@ -53,8 +53,9 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - `git log --oneline -10` — recent activity
 - **Dependency manifest** — whatever the host actually uses: `package.json`, `pyproject.toml` / `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml` / `build.gradle`, `composer.json`, `Gemfile`, `*.csproj`, `mix.exs`, `pubspec.yaml`, … and a root `Makefile`. Detect by what is present — do not assume one of a fixed five. You will **verify** the stack-compliance marker against this, not guess it.
 - **CI config** — `.github/workflows/*`, `.gitlab-ci.yml`, etc. — to learn which gates actually run, so acceptance criteria align with enforcement.
-- **`specs/`** — list existing specs (`ls specs/` + read frontmatter). Detect duplication and any sibling spec this task would depend on. The DoR gate forbids depending on an incomplete sibling, so you must know what exists.
+- **`specs/`** — list existing specs (`ls specs/` + read frontmatter). Detect duplication and any sibling spec this task would depend on. The DoR gate now **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status.
 - `VISION.md` if present — future direction (informs variant evaluation).
+- **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. These populate the spec's **host-bindings** block (`spec_location`, `decision_record`, `merge_obligations`, `gates`) so the artifact conforms to the host instead of importing marvin's layout.
 
 ### 1.4 Clarifying questions & dimension sweep
 
@@ -200,6 +201,8 @@ Fill **every** section from the dialogue context — write "N/A" / "none" delibe
   - `criteria` — minimum 3, each with an `id` (AC1…), a `statement`, `implemented_by` (the `files` ids), a typed `oracle` (`kind: test | command | prose-review`, plus a `ref` for the first two) and a `failure` path. **At least one criterion must carry a non-prose-review oracle.**
   - `contract` — the exact callable surface as `kind` (function/route/schema/cli/event) + a literal `signature` the implementer copies; `kind: none` if there is no callable surface.
   - `build_order` (optional) — the order the executor applies the files.
+  - `depends_on` (optional) — sibling spec slugs this task depends on; the gate **fails** unless each is `status: shipped`.
+- **Host Bindings** (the ` ```yaml host-bindings ` block) — discovered, not assumed: `spec_location` (where this host keeps specs), `decision_record` (its ADR/RFC convention), `merge_obligations` (from CONTRIBUTING/CI), `gates` (the host's commands). Advisory — it conforms the artifact to the host, and `spec_location` resolves `depends_on`.
 - **Data & Config** — migrations/env/flags, or "N/A"
 - **Chosen Approach** + **Why this over alternatives** (rejected variants with reasons)
 - **Test Plan** — harness, test locations, fixture/mocking conventions from neighboring tests

@@ -4,6 +4,31 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.9] — 2026-06-14
+
+Host bindings + mechanical sibling-dependency gate — M3 of
+[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+
+### Added
+
+- **`depends_on` is now mechanically enforced.** The spec-contract block gains an optional
+  `depends_on` list of sibling slugs; the gate resolves each (via the host's `spec_location`, then
+  conventional dirs) and **FAILS** unless the dependency exists and is `status: shipped` — closing
+  the gap where the prose claimed the gate forbade incomplete-sibling dependencies but nothing
+  checked it (`depends-on`).
+- **`host-bindings` block (Contract B).** An optional ` ```yaml host-bindings ` block records what
+  the spec discovers about the host — `spec_location`, `decision_record` (ADR/RFC convention),
+  `merge_obligations`, `gates` — so the artifact conforms to the host instead of importing marvin's
+  layout. Advisory: a malformed block warns, never blocks (`host-bindings`).
+
+### Changed
+
+- `task-start` intake discovers host conventions (ADR/RFC dir + style, `CONTRIBUTING`, PR template,
+  pre-commit) and populates the host-bindings block; crystallization emits it.
+- `task-implement` and `task-deliver` resolve a spec across the spec directories (`specs/`,
+  `docs/specs/`, `docs/rfcs/`, `rfcs/`), not just `specs/` — the location-aware tail of M1's
+  discoverable output location.
+
 ## [2.0.0-alpha.8] — 2026-06-14
 
 The spec contract is now an authoritative, schema-validated YAML block — M2 of

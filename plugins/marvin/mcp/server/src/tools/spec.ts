@@ -121,8 +121,24 @@ const SpecContract = z.object({
   build_order: z.array(z.union([z.string(), z.number()])).optional(),
   contract: ContractObj.optional(),
   criteria: z.array(Criterion).min(1),
+  depends_on: z.array(z.string()).optional(),
 });
 type SpecContract = z.infer<typeof SpecContract>;
+
+/** Discovered, host-specific bindings (ADR-0007 Contract B). Optional and
+ * advisory — populated by task-start's pre-draft discovery, not load-bearing for
+ * execution. `passthrough` keeps any extra host keys the author records;
+ * `spec_location` is what lets depends_on resolve sibling specs. */
+const HostBindings = z
+  .object({
+    spec_location: z.string().optional(),
+    decision_record: z
+      .object({ style: z.string().optional(), path: z.string().optional() })
+      .optional(),
+    merge_obligations: z.array(z.string()).optional(),
+    gates: z.record(z.string()).optional(),
+  })
+  .passthrough();
 
 const SpecInput = z.object({
   specPath: z
@@ -189,7 +205,9 @@ function validateSpec(raw: string, projectRoot: string): { type: string | null; 
         : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required, recommended));
     checks.push(checkOpenQuestions(sections.get("open questions")));
-    checks.push(...checkContractBlock(body, type, projectRoot));
+    const hb = checkHostBindings(body);
+    checks.push(...hb.checks);
+    checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)"),
@@ -320,7 +338,12 @@ function extractContractBlock(body: string): string | null {
   return m ? m[1]! : null;
 }
 
-function checkContractBlock(body: string, type: string, projectRoot: string): Check[] {
+function checkContractBlock(
+  body: string,
+  type: string,
+  projectRoot: string,
+  specLocation: string | undefined,
+): Check[] {
   const blockText = extractContractBlock(body);
   if (blockText === null) {
     return [
@@ -360,6 +383,102 @@ function checkContractBlock(body: string, type: string, projectRoot: string): Ch
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
+  checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot));
+  return checks;
+}
+
+// ── host-bindings + sibling dependencies (Contract B) ────────────────────────
+
+/** Extract the first fenced block whose info string mentions `host-bindings`. */
+function extractHostBindings(body: string): string | null {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1]! : null;
+}
+
+/** The host-bindings block is optional and advisory (discovered, not load-bearing
+ * for execution). Validate it lightly when present and surface its `spec_location`
+ * so depends_on can resolve siblings; a malformed block warns, never blocks. */
+function checkHostBindings(body: string): { checks: Check[]; specLocation: string | undefined } {
+  const text = extractHostBindings(body);
+  if (text === null) return { checks: [], specLocation: undefined };
+  let doc: unknown;
+  try {
+    doc = parseYaml(text);
+  } catch (err) {
+    return {
+      checks: [
+        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err)}`),
+      ],
+      specLocation: undefined,
+    };
+  }
+  const parsed = HostBindings.safeParse(doc);
+  if (!parsed.success) {
+    return {
+      checks: [warn("host-bindings", "Host bindings", "block does not match the expected shape")],
+      specLocation: undefined,
+    };
+  }
+  return {
+    checks: [pass("host-bindings", "Host bindings", "present")],
+    specLocation: parsed.data.spec_location,
+  };
+}
+
+/**
+ * Mechanical sibling-dependency gate (audit finding B1): a spec may not depend on
+ * an incomplete sibling. Each `depends_on` slug is resolved against the host's
+ * spec location (then conventional dirs); the dependency must exist and be
+ * `status: shipped`, or DoR fails.
+ */
+function checkDependsOn(
+  deps: string[] | undefined,
+  specLocation: string | undefined,
+  projectRoot: string,
+): Check[] {
+  if (!deps || deps.length === 0) {
+    return [pass("depends-on", "Dependencies", "no sibling dependencies")];
+  }
+  const dirs = [specLocation, "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
+    (d): d is string => !!d,
+  );
+  const notFound: string[] = [];
+  const notShipped: string[] = [];
+  for (const slug of deps) {
+    let resolved: string | null = null;
+    for (const dir of dirs) {
+      const p = join(projectRoot, dir, `${slug}.md`);
+      if (existsSync(p)) {
+        resolved = p;
+        break;
+      }
+    }
+    if (!resolved) {
+      notFound.push(slug);
+      continue;
+    }
+    const { frontmatter } = parseFrontmatter(readFileSync(resolved, "utf8"));
+    const status = (frontmatter.status ?? "").trim();
+    if (status !== "shipped") notShipped.push(`${slug}(${status || "?"})`);
+  }
+  const checks: Check[] = [];
+  if (notFound.length) {
+    checks.push(
+      fail("depends-on", "Dependencies", `sibling spec(s) not found: ${notFound.join(", ")}`),
+    );
+  }
+  if (notShipped.length) {
+    checks.push(
+      fail(
+        "depends-on",
+        "Dependencies",
+        `depends on incomplete sibling(s): ${notShipped.join(", ")} — a dependency must be shipped`,
+      ),
+    );
+  }
+  if (!checks.length) {
+    checks.push(pass("depends-on", "Dependencies", `${deps.length} sibling(s) shipped`));
+  }
   return checks;
 }
 

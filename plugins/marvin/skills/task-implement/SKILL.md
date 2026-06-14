@@ -24,18 +24,22 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 
 ### 1. Resolve the spec
 
+**Spec directories.** A spec lives where the host keeps it, not only `specs/`. Search, in order:
+`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/` (the same set the DoR gate uses to resolve
+`depends_on`). "the spec directories" below means this set; use the first that contains the target.
+
 Resolution order:
 
 1. **Argument provided:**
    - If it ends in `.md` and the file exists — use it.
-   - Else treat as a slug: try `specs/<arg>.md`. If not found, fail with a list of available specs.
+   - Else treat as a slug: try `<dir>/<arg>.md` across the spec directories. If not found, fail with a list of available specs.
 2. **No argument — match current branch:**
    - Read current branch with `git rev-parse --abbrev-ref HEAD`.
-   - If it matches `task/<slug>`, try `specs/<slug>.md`.
+   - If it matches `task/<slug>`, try `<slug>.md` across the spec directories.
 3. **No branch match — prompt user:**
-   - List files in `specs/` whose frontmatter `status` is `ready`.
+   - List specs across the spec directories whose frontmatter `status` is `ready`.
    - Ask the user to choose one.
-   - If `specs/` is empty or missing, tell the user to run `/marvin:task-start` first and stop.
+   - If none exist, tell the user to run `/marvin:task-start` first and stop.
 
 ### 2. Validate Definition of Ready
 

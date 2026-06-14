@@ -50,6 +50,7 @@ files:
     intent: tests for the criteria below
     satisfies: [AC1, AC2]
 build_order: [F1, F2, F3]   # optional — deterministic order the executor applies the files
+depends_on: []              # sibling spec slugs this depends on; each MUST be status: shipped (or [])
 contract:
   kind: function            # function | route | schema | cli | event | none
   signature: |
@@ -75,6 +76,22 @@ criteria:
     oracle:
       kind: prose-review    # at least one criterion must carry a non-prose-review oracle
     failure: <how it fails>
+```
+
+## Host Bindings
+Discovered from **this repo**, not assumed (task-start populates these from the host's conventions).
+Optional and advisory — the gate uses `spec_location` to resolve `depends_on`; the rest records where
+the spec lives and what the host requires to merge. Fill with `<…>`, never `{…}`.
+
+```yaml host-bindings
+spec_location: specs/            # where this host keeps specs/RFCs (discovered, not assumed)
+decision_record:                 # the host's ADR/RFC convention, if any
+  style: <madr | nygard | none>
+  path: docs/adr/
+merge_obligations:               # what THIS host needs to merge (from CONTRIBUTING / CI)
+  - <e.g. "ruff + mypy green (.pre-commit-config)">
+gates:                           # the host's actual gate commands
+  test: <the test command>
 ```
 
 ## Data & Config

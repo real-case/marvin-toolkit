@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = join(here, "..", "dist", "server.js");
@@ -436,4 +438,70 @@ test("a missing breaking declaration blocks", async () => {
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "fm-breaking").status, "fail");
+});
+
+// ── host-bindings + sibling dependencies (Contract B) ────────────────────────
+
+function tempProject() {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-spec-dep-"));
+  writeFileSync(join(dir, "CLAUDE.md"), "# host\n");
+  mkdirSync(join(dir, "specs"), { recursive: true });
+  const sib = (slug, status) =>
+    `---\nslug: ${slug}\ntype: feature\nstatus: ${status}\ncreated: 2026-06-14\n---\n# ${slug}\n`;
+  writeFileSync(join(dir, "specs", "shipped-sib.md"), sib("shipped-sib", "shipped"));
+  writeFileSync(join(dir, "specs", "draft-sib.md"), sib("draft-sib", "draft"));
+  return dir;
+}
+
+const withDependsOn = (slug) =>
+  VALID_FEATURE.replace("criteria:", `depends_on: [${slug}]\ncriteria:`);
+
+test("a spec depending on a shipped sibling passes", async () => {
+  const dir = tempProject();
+  try {
+    const { parsed } = await callSpec({
+      specContent: withDependsOn("shipped-sib"),
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(find(parsed, "depends-on").status, "pass");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a spec depending on a draft (unshipped) sibling blocks", async () => {
+  const dir = tempProject();
+  try {
+    const { parsed } = await callSpec({
+      specContent: withDependsOn("draft-sib"),
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(find(parsed, "depends-on").status, "fail");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a spec depending on a missing sibling blocks", async () => {
+  const dir = tempProject();
+  try {
+    const { parsed } = await callSpec({
+      specContent: withDependsOn("ghost-sib"),
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(find(parsed, "depends-on").status, "fail");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a host-bindings block is accepted (advisory)", async () => {
+  const hb = "```yaml host-bindings\nspec_location: specs/\ngates:\n  test: npm test\n```\n\n";
+  const content = VALID_FEATURE.replace("## Data & Config", hb + "## Data & Config");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  assert.equal(find(parsed, "host-bindings").status, "pass");
 });
