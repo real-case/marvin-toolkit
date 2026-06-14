@@ -29743,8 +29743,15 @@ var SpecContract = external_exports.object({
   files: external_exports.array(FileRow).min(1),
   build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
   contract: ContractObj.optional(),
-  criteria: external_exports.array(Criterion).min(1)
+  criteria: external_exports.array(Criterion).min(1),
+  depends_on: external_exports.array(external_exports.string()).optional()
 });
+var HostBindings = external_exports.object({
+  spec_location: external_exports.string().optional(),
+  decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
+  merge_obligations: external_exports.array(external_exports.string()).optional(),
+  gates: external_exports.record(external_exports.string()).optional()
+}).passthrough();
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
   specContent: external_exports.string().optional().describe("Inline spec content \u2014 the draft at DoR time, before it is written to specs/."),
@@ -29788,7 +29795,9 @@ function validateSpec(raw, projectRoot) {
     const [required2, recommended] = type === "feature" ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required2, recommended));
     checks.push(checkOpenQuestions(sections.get("open questions")));
-    checks.push(...checkContractBlock(body, type, projectRoot));
+    const hb = checkHostBindings(body);
+    checks.push(...hb.checks);
+    checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
@@ -29889,7 +29898,7 @@ function extractContractBlock(body) {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
   return m ? m[1] : null;
 }
-function checkContractBlock(body, type, projectRoot) {
+function checkContractBlock(body, type, projectRoot, specLocation) {
   const blockText = extractContractBlock(body);
   if (blockText === null) {
     return [
@@ -29923,6 +29932,83 @@ function checkContractBlock(body, type, projectRoot) {
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
+  checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot));
+  return checks;
+}
+function extractHostBindings(body) {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+function checkHostBindings(body) {
+  const text = extractHostBindings(body);
+  if (text === null) return { checks: [], specLocation: void 0 };
+  let doc;
+  try {
+    doc = (0, import_yaml2.parse)(text);
+  } catch (err) {
+    return {
+      checks: [
+        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err)}`)
+      ],
+      specLocation: void 0
+    };
+  }
+  const parsed = HostBindings.safeParse(doc);
+  if (!parsed.success) {
+    return {
+      checks: [warn("host-bindings", "Host bindings", "block does not match the expected shape")],
+      specLocation: void 0
+    };
+  }
+  return {
+    checks: [pass("host-bindings", "Host bindings", "present")],
+    specLocation: parsed.data.spec_location
+  };
+}
+function checkDependsOn(deps, specLocation, projectRoot) {
+  if (!deps || deps.length === 0) {
+    return [pass("depends-on", "Dependencies", "no sibling dependencies")];
+  }
+  const dirs = [specLocation, "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
+    (d) => !!d
+  );
+  const notFound = [];
+  const notShipped = [];
+  for (const slug of deps) {
+    let resolved = null;
+    for (const dir of dirs) {
+      const p = join(projectRoot, dir, `${slug}.md`);
+      if (existsSync(p)) {
+        resolved = p;
+        break;
+      }
+    }
+    if (!resolved) {
+      notFound.push(slug);
+      continue;
+    }
+    const { frontmatter } = parseFrontmatter(readFileSync(resolved, "utf8"));
+    const status = (frontmatter.status ?? "").trim();
+    if (status !== "shipped") notShipped.push(`${slug}(${status || "?"})`);
+  }
+  const checks = [];
+  if (notFound.length) {
+    checks.push(
+      fail("depends-on", "Dependencies", `sibling spec(s) not found: ${notFound.join(", ")}`)
+    );
+  }
+  if (notShipped.length) {
+    checks.push(
+      fail(
+        "depends-on",
+        "Dependencies",
+        `depends on incomplete sibling(s): ${notShipped.join(", ")} \u2014 a dependency must be shipped`
+      )
+    );
+  }
+  if (!checks.length) {
+    checks.push(pass("depends-on", "Dependencies", `${deps.length} sibling(s) shipped`));
+  }
   return checks;
 }
 function checkFiles(c, projectRoot) {
@@ -30198,7 +30284,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.8";
+var VERSION = "2.0.0-alpha.9";
 await runPackServer({
   name: "marvin",
   version: VERSION,

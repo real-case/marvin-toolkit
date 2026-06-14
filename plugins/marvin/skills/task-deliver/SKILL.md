@@ -32,7 +32,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: check `specs/` first (match by slug from conversation), fall back to `.taskmaster/current-task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation, fall back to `.taskmaster/current-task/spec.md`
 
 ### 3. Create pull request
 
@@ -65,12 +65,13 @@ When composing the PR:
 
 ### 4. Record delivery on the spec
 
-If the spec lives under `specs/` (v2.0 format) and the PR was created, update its lifecycle
-metadata — the only mutable part of an otherwise-immutable spec:
+If the spec lives under one of the spec directories (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`)
+and the PR was created, update its lifecycle metadata — the only mutable part of an
+otherwise-immutable spec:
 - Set frontmatter `status: shipped`.
 - Append a `## Delivery` section with the PR URL and today's date.
 
-Skip silently when there is no `specs/<slug>.md` (e.g. a legacy `.taskmaster/current-task/spec.md`).
+Skip silently when no spec file is found (e.g. a legacy `.taskmaster/current-task/spec.md`).
 
 ### 5. Preserve artifacts
 

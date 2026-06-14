@@ -55,6 +55,7 @@ files:
     action: new
     intent: regression test (see Regression Test Specification)
     satisfies: [AC1, AC2]
+depends_on: []              # sibling spec slugs this depends on; each MUST be status: shipped (or [])
 criteria:
   - id: AC1
     statement: Given the trigger, when run after the fix, then correct behaviour
@@ -71,6 +72,22 @@ criteria:
       kind: test
       ref: test/path.test.ts::the test name
     failure: passes before the fix → the test does not exercise the bug
+```
+
+## Host Bindings
+Discovered from **this repo**, not assumed. Optional and advisory — the gate uses `spec_location` to
+resolve `depends_on`; the rest records where the spec lives and what the host requires to merge. Fill
+with `<…>`, never `{…}`.
+
+```yaml host-bindings
+spec_location: specs/            # where this host keeps specs/RFCs (discovered, not assumed)
+decision_record:
+  style: <madr | nygard | none>
+  path: docs/adr/
+merge_obligations:
+  - <e.g. "ruff + mypy green (.pre-commit-config)">
+gates:
+  test: <the test command>
 ```
 
 ## Fix Approach
