@@ -23,26 +23,58 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 - Constraints: {tech-debt, architectural boundaries, performance budgets}
 - Sibling specs: {related entries under specs/, or "none"}
 
-## File Change Plan
-Authoritative allowlist. The implementer/executor MUST NOT touch files not listed here.
-Every test named in an acceptance criterion's `verified_by` MUST appear here as a row.
-`Satisfies` links a file to the acceptance criteria it implements — or "—" for infra rows
-(docs, changelog, version bump) that satisfy no single criterion.
+## Spec Contract
+The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
+block). The implementer/executor may touch **only** the files listed in `files`; each criterion is
+implemented by exactly its `implemented_by` rows and proven by its `oracle`. A test named in a
+`kind: test` oracle MUST also appear as a `files` row — the allowlist forbids an unlisted file.
+Use `<…>` for prose to fill; never leave a `{…}` placeholder (it parses as a YAML map and fails the
+gate).
 
-| ID | Path | Action | Intent | Satisfies | Anchor |
-|----|------|--------|--------|-----------|--------|
-| F1 | {path/to/existing/file} | edit | {what changes and why} | AC-1 | {file:line} |
-| F2 | {path/to/new/file} | new | {why this file exists} | AC-2 | — |
-| F3 | {path/to/test} | new | tests for AC-1, AC-2 | AC-1, AC-2 | — |
-
-## Interface / Contract
-The exact callable surface this introduces or changes — as a literal code block the implementer
-copies, not prose to interpret. Function: signature + input/output types + thrown errors. API:
-method, path, request/response shape, status codes. Schema: fields + types + constraints.
-Write "N/A" only if the change adds no callable surface.
-
-```{lang}
-{exact signature(s) / route(s) / schema}
+```yaml spec-contract
+files:
+  - id: F1
+    path: path/to/existing/file.ts
+    action: edit          # new | edit | delete
+    intent: what changes and why
+    satisfies: [AC1]      # the criteria this file implements, or "—" for infra rows
+    anchor: path/to/existing/file.ts:42
+  - id: F2
+    path: path/to/new/file.ts
+    action: new
+    intent: why this file exists
+    satisfies: [AC2]
+  - id: F3
+    path: test/path.test.ts
+    action: new
+    intent: tests for the criteria below
+    satisfies: [AC1, AC2]
+build_order: [F1, F2, F3]   # optional — deterministic order the executor applies the files
+contract:
+  kind: function            # function | route | schema | cli | event | none
+  signature: |
+    exactName(arg: ArgType): ReturnType   // throws WhichError
+criteria:
+  - id: AC1
+    statement: Given <state>, when <action>, then <result>
+    implemented_by: [F1, F3]
+    oracle:
+      kind: test            # test | command | prose-review
+      ref: test/path.test.ts::the test name
+    failure: what the wrong behaviour looks like
+  - id: AC2
+    statement: <observable behaviour>
+    implemented_by: [F2, F3]
+    oracle:
+      kind: command
+      ref: npm run build
+    failure: <how it fails>
+  - id: AC3
+    statement: <observable behaviour>
+    implemented_by: [F1]
+    oracle:
+      kind: prose-review    # at least one criterion must carry a non-prose-review oracle
+    failure: <how it fails>
 ```
 
 ## Data & Config
@@ -61,18 +93,6 @@ Write "N/A" only if the change adds no callable surface.
 - Variant {N} (rejected): {reason grounded in a project constraint, not generic}
 - Variant {N} (rejected): {reason}
 
-## Acceptance Criteria
-Each criterion is observable from the outside, traced to the File-Change-Plan rows that implement
-it, and bound to the proof that verifies it. Minimum 3. **At least one `verified_by` must be a real
-test or command** — not every row may be "prose-review". A test path named here MUST also appear as
-a File Change Plan row (the allowlist forbids the implementer from creating an unlisted file).
-
-| ID | Given / When / Then | Implemented by | verified_by | Failure path |
-|----|---------------------|----------------|-------------|--------------|
-| AC-1 | Given {state}, when {action}, then {result} | F1, F3 | {test/path.ts::name \| npm run X \| prose-review} | {what the wrong behavior looks like} |
-| AC-2 | {…} | {…} | {…} | {…} |
-| AC-3 | {…} | {…} | {…} | {…} |
-
 ## Test Plan
 - Harness: {test runner + command — matches frontmatter test_command}
 - Test locations: {directory/convention where new tests live — grounded in existing neighbors}
@@ -81,7 +101,7 @@ a File Change Plan row (the allowlist forbids the implementer from creating an u
 ## Definition of Done
 Merge-readiness beyond the acceptance criteria. Host-specific obligations are whatever **this repo**
 requires to merge — discovered from its `CONTRIBUTING`, CI config, or `CLAUDE.md`/equivalent — and
-must appear as File Change Plan rows if they touch files.
+must appear as `files` rows in the contract if they touch files.
 
 - [ ] {test_command} green
 - [ ] lint / type-check / build green (whichever the host runs)

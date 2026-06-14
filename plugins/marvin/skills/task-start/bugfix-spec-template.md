@@ -35,15 +35,43 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 ## Severity & Impact
 {Severity from frontmatter, plus blast radius: how many users / flows are affected.}
 
-## File Change Plan
-Authoritative allowlist. The implementer/executor MUST NOT touch files not listed here.
-A minimal fix touches few files; a long list is a signal the fix is not minimal. The regression
-test MUST appear here as a row, and `Satisfies` links each file to the criteria it serves.
+## Spec Contract
+The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
+block). The implementer/executor may touch **only** the files in `files`; a minimal fix touches
+few. The regression test MUST be a `files` row, and **one criterion MUST carry `regression: true`**
+(it asserts the test fails on pre-fix code and passes after). Use `<…>` for prose to fill; never
+leave a `{…}` placeholder (it parses as a YAML map and fails the gate).
 
-| ID | Path | Action | Intent | Satisfies | Anchor |
-|----|------|--------|--------|-----------|--------|
-| F1 | {path/to/file} | edit | {the minimal change that fixes the root cause} | AC-1 | {file:line} |
-| F2 | {path/to/test} | new | regression test (see Regression Test Specification) | AC-1, AC-2 | — |
+```yaml spec-contract
+files:
+  - id: F1
+    path: path/to/file.ts
+    action: edit          # new | edit | delete
+    intent: the minimal change that fixes the root cause
+    satisfies: [AC1]
+    anchor: path/to/file.ts:42
+  - id: F2
+    path: test/path.test.ts
+    action: new
+    intent: regression test (see Regression Test Specification)
+    satisfies: [AC1, AC2]
+criteria:
+  - id: AC1
+    statement: Given the trigger, when run after the fix, then correct behaviour
+    implemented_by: [F1, F2]
+    oracle:
+      kind: test
+      ref: test/path.test.ts::the test name
+    failure: reproduces as before
+  - id: AC2
+    statement: The regression test fails on pre-fix code and passes after the fix
+    implemented_by: [F2]
+    regression: true        # mandatory for a bugfix — the red→green proof
+    oracle:
+      kind: test
+      ref: test/path.test.ts::the test name
+    failure: passes before the fix → the test does not exercise the bug
+```
 
 ## Fix Approach
 {The minimal change that addresses the root cause — nothing else. No adjacent refactoring.}
@@ -51,19 +79,9 @@ test MUST appear here as a row, and `Satisfies` links each file to the criteria 
 **Why this over alternatives:** (if alternatives existed)
 - {alternative}: {reason for rejection}
 
-## Acceptance Criteria
-Each criterion is traced to the File-Change-Plan rows that implement it and bound to a proof.
-A test path named in `verified_by` MUST also appear as a File Change Plan row.
-
-| ID | Given / When / Then | Implemented by | verified_by | Failure path |
-|----|---------------------|----------------|-------------|--------------|
-| AC-1 | Given the trigger, when run after the fix, then correct behavior | F1, F2 | {test/path::name} | {reproduces as before} |
-| AC-2 | Regression test fails on pre-fix code, passes after | F2 | {test/path::name} | {passes before fix → test is wrong} |
-| AC-3 | {additional behavioral criterion} | {…} | {…} | {…} |
-
 ## Regression Test Specification
 **Test type:** unit | integration | e2e
-**Test location:** {path to test file — MUST match its File Change Plan row}
+**Test location:** {path to test file — MUST match its `files` row in the contract}
 **What test verifies:** {specific behavior}
 **Test must fail before fix:** yes (mandatory)
 

@@ -49,7 +49,7 @@ If no spec is provided, operate in "standalone mode" — skip coverage checks, k
 ### 1. Load context
 
 In parallel:
-- Read the spec (Goal, Acceptance Criteria, Chosen Approach, Non-goals, Affected Files)
+- Read the spec (Goal, the `spec-contract` block — `files` + `criteria`, Chosen Approach, Non-goals)
 - `git diff` to get the change set
 - `git diff --stat` to see the change surface at a glance
 - `CLAUDE.md` for project conventions

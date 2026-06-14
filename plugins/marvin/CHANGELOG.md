@@ -4,6 +4,34 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.8] — 2026-06-14
+
+The spec contract is now an authoritative, schema-validated YAML block — M2 of
+[ADR-0007](../../docs/adr/0007-portable-spec-contract.md). **Breaking spec-format change.**
+
+### Changed
+
+- **`spec-contract` YAML block replaces the markdown tables.** The File Change Plan, Acceptance
+  Criteria, and Interface/Contract sections move into one ` ```yaml spec-contract ` block (`files`,
+  `criteria`, `build_order`, `contract`) parsed by `yaml` and validated by a `zod` schema. The gate
+  now **fails closed**: a missing field, a dangling `implemented_by` / `satisfies` reference, an
+  unfilled `{…}` placeholder (which parses as a YAML map), an empty contract `signature`, an
+  all-`prose-review` proof set, or a bugfix with no `regression: true` criterion is a typed FAIL —
+  none can be silently downgraded the way a renamed table column could.
+- **`oracle` replaces `verified_by`.** Each criterion carries a typed `oracle` (`kind: test |
+  command | prose-review` + `ref`); a `kind: test` ref must be an allowlisted `files` path.
+- **Hard cutover.** Legacy single-table specs now FAIL with a migrate message. The format consumers
+  (`task-implement`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`) read the
+  block; the templates and `task-start` crystallization emit it.
+- **`frontmatter.ts` consolidated onto the `yaml` library** (failsafe schema — strings stay strings),
+  replacing the hand-rolled parser; a round-trip test guards kanban task files.
+
+### Added
+
+- Runtime dependency `yaml`, bundled into `dist` (with a `createRequire` banner for the ESM/CJS
+  require shim). New tests: spec-contract schema + traceability, malformed YAML, placeholder-as-map,
+  empty signature, bugfix regression, and a kanban frontmatter round-trip.
+
 ## [2.0.0-alpha.7] — 2026-06-14
 
 Portable spec output location and host-neutral Definition of Done — completes M1 of

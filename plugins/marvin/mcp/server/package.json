@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/server",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.8",
   "private": true,
   "description": "Unified MCP server for the marvin plugin — core dev tools, security, taskmaster pipeline, and kanban tracker under one /marvin: slash prefix.",
   "type": "module",
@@ -12,11 +12,12 @@
   "dependencies": {
     "@marvin-toolkit/mcp-shared": "*",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "yaml": "^2.9.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "typescript": "^5.4.0"
   }
 }

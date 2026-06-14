@@ -94,10 +94,14 @@ analysis and the full sequencing live with the PR series.
 
 ### Negative / accepted trade-offs
 
-- A new runtime dependency (`yaml`), bundled into `dist`; ADR-0005's committed-`dist` + rebuild
-  discipline continues, and DoR-logic changes still require a server rebuild.
-- Hard cutover breaks pre-0007 specs with no auto-migration. Accepted: the only in-repo spec is
-  migrated in M2, and the plugin has no external installed base of authored specs.
+- A new runtime dependency (`yaml`), bundled into `dist` — which surfaced the esbuild "Dynamic
+  require of process is not supported" trap (yaml's CJS `require` in an ESM bundle); resolved with a
+  `createRequire` banner in `tsup.config.ts`. ADR-0005's committed-`dist` + rebuild discipline
+  continues, and DoR-logic changes still require a server rebuild. The frontmatter codec parses with
+  the YAML **failsafe** schema so kanban task files keep string semantics (a round-trip test guards it).
+- Hard cutover breaks pre-0007 specs with no auto-migration. Accepted: the only in-repo spec predates
+  ADR-0006 and is a frozen, shipped historical record (`status: shipped`, never re-executed), so it
+  stays as-is rather than being rewritten; the plugin has no external installed base of authored specs.
 - More required structure raises the authoring bar for trivial specs — accepted for the same reason
   as ADR-0006: the pipeline targets headless dispatch, where under-specification dominates.
 - The `spec` tool's (and now `yaml`'s) availability inside a headless `claude -p` run is still not
