@@ -40,17 +40,17 @@ Self-test (quality gates) and self-review (diff-critic) are independent and slow
 ### 1. Read Spec
 
 The spec is provided inline below (injected by the batch-dispatch caller). Read it fully. Identify:
-- Goal and acceptance criteria (each with its `verified_by` proof)
+- Goal and criteria (each with its `oracle` proof)
 - Chosen approach and implementation sketch
-- File Change Plan — the authoritative allowlist of files you may touch
+- The `spec-contract` block's `files` — the authoritative allowlist of files you may touch
 - Non-goals (what NOT to do)
 - Design notes (nuances and warnings)
 
 ### 2. Implement
 
 Follow the chosen approach from the spec:
-- Create/modify only the files in the spec's **File Change Plan** (the authoritative allowlist)
-- **Use the traceability graph as your work list.** For each acceptance criterion, change exactly the File-Change-Plan rows named in its *Implemented by* column and prove it with its `verified_by` — the mapping is given, do not infer it
+- Create/modify only the files in the spec's `spec-contract` `files` list (the authoritative allowlist)
+- **Use the traceability graph as your work list.** For each criterion, change exactly the `files` ids named in its `implemented_by` and prove it with its `oracle` — the mapping is given, do not infer it
 - Write code that satisfies each acceptance criterion
 - Write tests for the acceptance criteria
 - Respect project conventions from CLAUDE.md (injected below)

@@ -66,8 +66,8 @@ Summarize back to the user in 2–4 lines: the goal, the chosen approach (or fix
 
 Follow the spec's **Chosen Approach** section. Rules:
 
-- Modify only the files in the spec's **File Change Plan** (the authoritative allowlist).
-- **Use the traceability graph as your work list.** For each acceptance criterion, change exactly the File-Change-Plan rows named in its *Implemented by* column and prove it with its `verified_by`. The mapping is given — do not infer it.
+- Modify only the files in the spec's `spec-contract` block `files` list (the authoritative allowlist).
+- **Use the traceability graph as your work list.** For each criterion, change exactly the `files` ids named in its `implemented_by` and prove it with its `oracle`. The mapping is given — do not infer it.
 - Write code that satisfies each acceptance criterion.
 - Write tests for the acceptance criteria.
 - Respect project conventions from `CLAUDE.md`.

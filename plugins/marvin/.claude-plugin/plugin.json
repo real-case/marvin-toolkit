@@ -1,7 +1,7 @@
 {
   "name": "marvin",
   "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools (commit, pr-create, pr-review, debug, adr, changelog, readme, migration-plan, explain, docs-search), the task-* spec pipeline, sec-* security scanners, and a kanban-* task tracker.",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.8",
   "author": {
     "name": "Yurii Anichkin"
   },
