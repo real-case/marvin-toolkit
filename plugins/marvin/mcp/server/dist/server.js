@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import process2 from 'process';
 import { spawn, spawnSync, execFileSync } from 'child_process';
 import { performance } from 'perf_hooks';
+import { createHash } from 'crypto';
 
 const require$1 = createRequire(import.meta.url);
 var __create = Object.create;
@@ -29781,8 +29782,8 @@ async function runSpec(input, env) {
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
-  const { type, checks } = validateSpec(raw, projectRoot);
-  return result(computeVerdict2(checks), type, checks);
+  const { type, checks, contractSha } = validateSpec(raw, projectRoot);
+  return result(computeVerdict2(checks), type, checks, contractSha);
 }
 function validateSpec(raw, projectRoot) {
   const { frontmatter, body } = parseFrontmatter(raw);
@@ -29803,7 +29804,8 @@ function validateSpec(raw, projectRoot) {
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
     );
   }
-  return { type, checks };
+  const blockText = extractContractBlock(body);
+  return { type, checks, contractSha: blockText ? contractHash(blockText) : null };
 }
 function checkFrontmatter(fm, type) {
   const checks = [];
@@ -30238,7 +30240,10 @@ function computeVerdict2(checks) {
   if (checks.some((c) => c.status === "warn")) return "PASS WITH WARNINGS";
   return "PASS";
 }
-function result(verdict, type, checks) {
+function contractHash(blockText) {
+  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
+}
+function result(verdict, type, checks, contractSha = null) {
   const icon = (s) => s === "pass" ? "\u2705" : s === "warn" ? "\u26A0\uFE0F" : "\u274C";
   const lines = [
     `# Spec Readiness Report`,
@@ -30261,6 +30266,7 @@ function result(verdict, type, checks) {
   const machine = JSON.stringify({
     verdict,
     type,
+    contractSha,
     checks: checks.map((c) => ({ id: c.id, status: c.status, detail: c.detail }))
   });
   return {
@@ -30284,7 +30290,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.9";
+var VERSION = "2.0.0-alpha.10";
 await runPackServer({
   name: "marvin",
   version: VERSION,

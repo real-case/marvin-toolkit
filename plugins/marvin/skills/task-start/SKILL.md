@@ -67,17 +67,34 @@ Bad: "Can you provide more details about the requirements?"
 
 **One question at a time.** Get an answer, then proceed.
 
-Before leaving intake, **consciously sweep these dimensions** and ask about any that are relevant and not yet settled (don't interrogate on irrelevant ones — name the ones you're skipping and why):
+**First, identify the task archetype(s)** and ask its 2–3 must-pin questions on top of the general sweep below. Archetypes are not exclusive — a task can be several (an API route that also runs a migration):
+
+| Archetype | Must pin down |
+|-----------|---------------|
+| API / endpoint | auth & authz, request/response contract + error codes, idempotency & rate limits, version/back-compat |
+| Data migration | forward + rollback, online vs locking, backfill of existing rows, dual-write/read window |
+| CLI | argument/flag contract, exit codes, stdout vs stderr, non-TTY / piped behavior |
+| Library / public API | public surface + semver impact, runtime/peer-dep range, tree-shakeability |
+| UI | states (loading / empty / error), a11y (keyboard/ARIA), i18n, responsive breakpoints |
+| Infra / IaC | blast radius, least-privilege, secret handling, rollout/rollback + drift |
+| AI / prompt | model + token budget/cost, eval/regression harness, failure/refusal handling, latency |
+
+Then, before leaving intake, **consciously sweep these dimensions** and ask about any that are relevant and not yet settled (don't interrogate on irrelevant ones — name the ones you're skipping and why):
 
 | Dimension | What to pin down |
 |-----------|------------------|
 | Interface / contract | new or changed signatures, routes, schemas, error cases |
-| Callers / reverse-deps | who invokes or consumes the surface you change — grep for callers **now**, so the File Change Plan is complete before the critic, not after |
+| Callers / reverse-deps | who invokes or consumes the surface you change — grep for callers **now**, so the contract's `files` are complete before the critic, not after |
 | Data & config | migrations, env vars, feature flags, config keys |
 | Error handling | expected behavior on bad input / failure paths |
+| Concurrency / idempotency | behavior under parallel calls, retries, partial failure; is the operation idempotent? |
+| External dependencies | failure / timeout / retry semantics of network or 3rd-party calls; circuit-breaking |
 | Security | auth, crypto, PII, input parsing, infra exposure — if touched, suggest a follow-up `/marvin:sec-threat-model` |
 | Backward-compat / public surface | does this change a consumed signature, route, schema, prompt name, or CLI? Sets the `breaking` flag; a breaking change may force a major version |
 | Non-functional | performance budget, observability, rollout/rollback, a11y/i18n |
+| Test environment | does running the new tests need seed/fixture data, a DB/staging, or credentials? (a headless executor has none) |
+| Cost / quota | compute, API quota, or token budget this consumes (especially AI features) |
+| New-dependency licence | for an EXTENSION: is the dependency's licence compatible with this repo's policy? |
 | Merge obligations | docs, CHANGELOG, version bump, committed build artefacts this repo requires (from CLAUDE.md) — each becomes a `files` entry |
 | Scope boundaries | what is explicitly out |
 
@@ -252,9 +269,9 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section. If Task
 
 3. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). If `<chosen-dir>/{slug}.md` already exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
 
-4. **Write.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/{slug}.md`. Confirm the path to the user.
+4. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — it must still PASS), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
 
-**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one.
+**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-hashes the block on read and refuses a spec whose contract was edited after sealing.
 
 ---
 
@@ -357,7 +374,7 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
 
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
 2. **Location & slug collision** — same handling as 9F (discover the host's convention; default `specs/`).
-3. **Write** — `status: ready`, write to `<chosen-dir>/{slug}.md`, confirm path.
+3. **Write & seal** — `status: ready`, write to `<chosen-dir>/{slug}.md`, re-run the `spec` tool on the written file (must PASS), stamp `contract_sha` from the result, confirm path.
 
 **Immutability** — same carve-out as the feature flow.
 
