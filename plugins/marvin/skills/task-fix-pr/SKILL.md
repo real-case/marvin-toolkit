@@ -79,7 +79,7 @@ For each **suggestion** (non-blocking):
 For each **question**:
 - Read the relevant code context
 - Draft a concise, factual response
-- If the answer requires reading the spec, read it from `specs/` directory
+- If the answer requires reading the spec, read it from `.marvin/task/` (or the host's spec directory)
 
 For each **spec gap discussion**:
 - Read the original spec

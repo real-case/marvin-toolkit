@@ -131,6 +131,10 @@ File: <suggested test file path>
 - **IDOR**: Test accessing resource with different user's ID and verify 403/404
 - **Path traversal**: Test with `../../etc/passwd` and verify it's rejected
 
+## Output location
+
+The fix is meant to be applied to the code, so the primary output is the diff and regression test inline. If the user asks for a written record, save it to `.marvin/security/fix-<slug>.md` (create the `.marvin/security/` directory if needed), where `<slug>` names the vulnerability.
+
 ## Output format
 
 ```

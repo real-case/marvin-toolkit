@@ -158,6 +158,10 @@ Map findings to relevant benchmarks:
 
 Include the benchmark reference in findings when applicable. If the specific benchmark is unknown, note the general category.
 
+## Output location
+
+Write the report to `.marvin/security/iac-report.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

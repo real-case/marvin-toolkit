@@ -24,7 +24,7 @@ commands under `commands/`, and `agents/*.md` files (all auto-loaded by Claude C
 ```
 plugins/marvin/
 ├── .claude-plugin/plugin.json        # name: "marvin"
-├── .mcp.json                         # registers server key "marvin" (+ context7, gitmcp, MARVIN_TASKS_* env)
+├── .mcp.json                         # registers server key "marvin" (+ context7, gitmcp; MARVIN_TASKS_* default to .marvin/kanban + .marvin/config.json)
 ├── CHANGELOG.md
 ├── skills/<command>/SKILL.md         # source of truth for prompt bodies (dir name == command)
 ├── commands/<command>.md             # short markdown slash entries
@@ -41,6 +41,24 @@ plugins/marvin/
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
 ```
+
+### Working directory (`.marvin/`)
+
+Every **service file** marvin generates lives under a single hidden `.marvin/` directory at the
+project root, one subdirectory per command group (ADR-0009):
+
+| Path | Written by | Contents |
+|------|-----------|----------|
+| `.marvin/task/` | `task-*` pipeline | spec `<slug>.md` files + the current `verification.md` |
+| `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
+| `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
+| `.marvin/config.json` | `kanban-*` tracker | `base_branch`, `tracker_url_template` (the `MARVIN_TASKS_CONFIG` default) |
+
+Spec location stays **host-adaptive** (ADR-0007): `.marvin/task/` is the default, but an existing
+host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
+`task-implement` / `task-deliver` / the `spec` gate search `.marvin/task/` first, then those. The
+`MARVIN_TASKS_*` env vars in `.mcp.json` can repoint the kanban paths. Project **deliverables** are
+deliberately *not* swept in — ADRs stay under `docs/adr/`, `CHANGELOG.md` and `README.md` at the root.
 
 ### Command naming scheme
 
@@ -166,6 +184,7 @@ The plugin has one version. Bump `plugins/marvin/.claude-plugin/plugin.json`, mi
 - `docs/adr/0003-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0004-tool-backed-verification.md` — `verify` gate moved from prose to a tool
 - `docs/adr/0005-tool-backed-dor.md` — Definition-of-Ready moved from prose to the `spec` tool
+- `docs/adr/0009-marvin-working-directory.md` — the unified `.marvin/` working-directory convention
 - `docs/adr/0002-mcp-first-architecture.md` — superseded; the prior four-pack design
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard

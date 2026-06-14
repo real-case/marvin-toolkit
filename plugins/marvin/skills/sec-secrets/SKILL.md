@@ -204,6 +204,10 @@ For each confirmed secret, provide:
    - Warn that all collaborators must re-clone after history rewriting
    - Emphasize: **rotation comes first** — history cleanup is defense-in-depth, not a substitute for rotation
 
+## Output location
+
+Write the report to `.marvin/security/secrets-report.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

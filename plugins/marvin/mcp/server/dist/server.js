@@ -28699,8 +28699,8 @@ function trackerUrl(config2, trackerId) {
 }
 function loadEnv(env = process.env) {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, "marvin", "tasks");
-  const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, "marvin", "config.json");
+  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   return { projectDir, tasksDir, configPath };
 }
 
@@ -29249,7 +29249,7 @@ async function runCreatePr(_server, env, config2) {
   const trackerLink = task ? trackerUrl(config2, task.frontmatter.tracker_id) : null;
   const bodyLines = [];
   if (task) {
-    bodyLines.push(`Task: \`marvin/tasks/${task.filename}\``);
+    bodyLines.push(`Task: \`.marvin/kanban/${task.filename}\``);
     if (trackerLink) bodyLines.push(`Tracker: ${trackerLink}`);
   } else {
     bodyLines.push("_No marvin task linked to this branch._");
@@ -29383,7 +29383,7 @@ var VerifyInput = external_exports.object({
   stack: external_exports.string().optional().describe("Pre-detected stack key (e.g. 'tsconfig.json') to skip detection in a chained run."),
   gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
-  write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.taskmaster/current-task/."),
+  write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.marvin/task/."),
   dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything.")
 });
 function buildVerifyTool(env) {
@@ -29437,7 +29437,7 @@ ${plan}`
   });
   let artifactPath = null;
   if (input.write) {
-    artifactPath = join(projectRoot, ".taskmaster", "current-task", "verification.md");
+    artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
     mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(artifactPath, markdown, "utf8");
   }
@@ -29755,7 +29755,9 @@ var HostBindings = external_exports.object({
 }).passthrough();
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
-  specContent: external_exports.string().optional().describe("Inline spec content \u2014 the draft at DoR time, before it is written to specs/."),
+  specContent: external_exports.string().optional().describe(
+    "Inline spec content \u2014 the draft at DoR time, before it is written to .marvin/task/."
+  ),
   projectRoot: external_exports.string().optional().describe(
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   )
@@ -29971,7 +29973,7 @@ function checkDependsOn(deps, specLocation, projectRoot) {
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
+  const dirs = [specLocation, ".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
     (d) => !!d
   );
   const notFound = [];

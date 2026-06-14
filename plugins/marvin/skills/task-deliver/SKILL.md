@@ -16,7 +16,7 @@ Commit changes and create a pull request. This is the final phase — it gates o
 ### 1. Check verification
 
 Look for verification report:
-1. Check `.taskmaster/current-task/verification.md`
+1. Check `.marvin/task/verification.md`
 2. If not found, check if verification results exist in conversation context
 
 **If no verification found:** stop and tell the user — "Verification has not been run. Run `/marvin:task-verify` before delivering."
@@ -32,7 +32,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation, fall back to `.taskmaster/current-task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation, fall back to `.marvin/task/spec.md`
 
 ### 3. Create pull request
 
@@ -42,14 +42,14 @@ When composing the PR:
 - Include the spec summary in the PR body
 - Include the verification results summary
 - Reference the original issue/ticket if one was identified during intake
-- If spec is v2.0 format (from `specs/`), use the v2.0 PR body structure:
+- If spec is v2.0 format (from `.marvin/task/` or a host spec dir), use the v2.0 PR body structure:
 
 ```markdown
 ## Summary
 {from spec goal/problem statement}
 
 ## Spec Reference
-`specs/{slug}.md`
+`.marvin/task/{slug}.md`
 
 ## Changes
 {key changes grouped by area}
@@ -65,17 +65,17 @@ When composing the PR:
 
 ### 4. Record delivery on the spec
 
-If the spec lives under one of the spec directories (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`)
+If the spec lives under one of the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`)
 and the PR was created, update its lifecycle metadata — the only mutable part of an
 otherwise-immutable spec:
 - Set frontmatter `status: shipped`.
 - Append a `## Delivery` section with the PR URL and today's date.
 
-Skip silently when no spec file is found (e.g. a legacy `.taskmaster/current-task/spec.md`).
+Skip silently when no spec file is found (e.g. when only a verification artifact exists, no named spec).
 
 ### 5. Preserve artifacts
 
-Do NOT delete `.taskmaster/current-task/` artifacts. They serve as documentation:
+Do NOT delete `.marvin/task/` artifacts. They serve as documentation:
 - `spec.md` — what was intended
 - `plan.md` — how it was implemented
 - `verification.md` — that it was verified
@@ -85,4 +85,4 @@ Do NOT delete `.taskmaster/current-task/` artifacts. They serve as documentation
 - **Never bypass the verification gate.** If verification wasn't run or failed, refuse to deliver. This is the whole point of the pipeline.
 - **Delegate, don't duplicate.** The commit and PR workflows already exist (`/marvin:commit`, `/marvin:pr-create`) — use them via command invocation. Don't re-implement commit message generation or PR body formatting.
 - **Enrich, don't replace.** Add spec/plan/verification context to the commit and PR, but let those workflows handle their standard checks (sensitive files, pre-flight, etc.).
-- **Artifacts are documentation.** After delivery, the `.taskmaster/` directory is a record of the decision process. Users can archive or clean up at their discretion.
+- **Artifacts are documentation.** After delivery, the `.marvin/task/` directory is a record of the decision process. Users can archive or clean up at their discretion.

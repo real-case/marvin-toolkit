@@ -133,6 +133,10 @@ Critical issues found. The commit should not proceed. Output:
   Run /marvin:sec-fix for help generating fixes.
 ```
 
+## Output location
+
+The gate reports its verdict inline by default — it runs on the commit path and should stay quiet. If the user asks to keep a record, write it to `.marvin/security/gate-report.md` (create the `.marvin/security/` directory if needed).
+
 ## Guidelines
 
 - **Keep it fast.** This skill should complete in under 30 seconds. If a check is slow, skip it and suggest running the full `sec-scan` instead.

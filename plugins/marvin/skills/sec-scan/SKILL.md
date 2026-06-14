@@ -144,6 +144,10 @@ Framework-specific: Next.js — check `next.config.js` for `poweredByHeader: tru
 
 If the project uses a stack not covered above, research current best practices for that language/framework before proceeding. Identify the primary SAST tool, dependency auditor, and top vulnerability patterns for the stack. Apply the same OWASP Top 10 categories.
 
+## Output location
+
+Write the report to `.marvin/security/scan-report.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

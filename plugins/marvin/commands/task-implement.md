@@ -13,7 +13,7 @@ Pair with:
 
 ## Arguments
 
-- `$ARGUMENTS` — spec file path (`specs/<slug>.md`) or slug (`<slug>`). If omitted, the skill resolves which spec to run per its spec-resolution policy.
+- `$ARGUMENTS` — spec file path (`.marvin/task/<slug>.md`) or slug (`<slug>`). If omitted, the skill resolves which spec to run per its spec-resolution policy.
 
 ## Instructions
 
@@ -26,5 +26,5 @@ Pass `$ARGUMENTS` as the spec reference if provided.
 | Command | Behavior |
 |---------|----------|
 | `/task-implement` | Resolves the current task's spec and executes it |
-| `/task-implement specs/add-health-check.md` | Executes the given spec |
-| `/task-implement add-health-check` | Resolves slug to `specs/add-health-check.md` and executes |
+| `/task-implement .marvin/task/add-health-check.md` | Executes the given spec |
+| `/task-implement add-health-check` | Resolves slug to `.marvin/task/add-health-check.md` and executes |

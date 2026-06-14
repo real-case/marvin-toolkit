@@ -21,7 +21,7 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 - Related patterns: {existing code this builds on — file:line}
 - Callers / reverse-deps: {who calls or depends on the surface you change — file:line, or "none"}
 - Constraints: {tech-debt, architectural boundaries, performance budgets}
-- Sibling specs: {related entries under specs/, or "none"}
+- Sibling specs: {related entries under .marvin/task/ (or the host's spec dir), or "none"}
 
 ## Spec Contract
 The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
@@ -84,7 +84,7 @@ Optional and advisory — the gate uses `spec_location` to resolve `depends_on`;
 the spec lives and what the host requires to merge. Fill with `<…>`, never `{…}`.
 
 ```yaml host-bindings
-spec_location: specs/            # where this host keeps specs/RFCs (discovered, not assumed)
+spec_location: .marvin/task/     # where specs/RFCs live (default .marvin/task/, or the host's own convention)
 decision_record:                 # the host's ADR/RFC convention, if any
   style: <madr | nygard | none>
   path: docs/adr/

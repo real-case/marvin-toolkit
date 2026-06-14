@@ -153,7 +153,7 @@ gh pr create --title "<short imperative title>" --body "$(cat <<'EOF'
 <from spec goal/problem statement>
 
 ## Spec Reference
-`specs/<slug>.md`
+`.marvin/task/<slug>.md`
 
 ## Changes
 <key changes grouped by area — what files were modified and why>
