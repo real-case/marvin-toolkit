@@ -79,13 +79,14 @@ a File Change Plan row (the allowlist forbids the implementer from creating an u
 - Conventions: {fixture/mocking/setup patterns observed in sibling tests, or "none"}
 
 ## Definition of Done
-Merge-readiness beyond the acceptance criteria. Repo-specific obligations come from CLAUDE.md and
+Merge-readiness beyond the acceptance criteria. Host-specific obligations are whatever **this repo**
+requires to merge — discovered from its `CONTRIBUTING`, CI config, or `CLAUDE.md`/equivalent — and
 must appear as File Change Plan rows if they touch files.
 
 - [ ] {test_command} green
-- [ ] lint / type-check / build green
-- [ ] docs / CHANGELOG updated (required if `breaking: true`) — or "N/A"
-- [ ] repo-specific obligations (e.g. version bump + dist rebuild) — or "none"
+- [ ] lint / type-check / build green (whichever the host runs)
+- [ ] docs / changelog updated if the host expects them (required if `breaking: true`) — or "N/A"
+- [ ] host-specific merge obligations (e.g. a version bump, a committed build artefact, a generated file) — or "none"
 
 ## Non-goals
 - {what is explicitly NOT in scope}
