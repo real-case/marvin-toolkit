@@ -92,11 +92,32 @@ function registerPrompt(
         messages: [
           {
             role: "user" as const,
-            content: { type: "text" as const, text: rendered },
+            content: { type: "text" as const, text: withPluginResourceContext(rendered, ctx) },
           },
         ],
       };
     },
+  );
+}
+
+/**
+ * Door-3 (MCP) resource resolution. A skill body is returned to the client
+ * verbatim, but the model's working directory is the *user's* project, not the
+ * plugin root — so a bare `skills/...` path in the prose (a template the skill
+ * fills in, a reference checklist it reads) cannot resolve, and the model
+ * silently improvises from memory. Doors 1 (auto-discovery) and 2 (command
+ * wrapper) load the skill from the plugin and resolve such paths natively;
+ * only the MCP door lacks that context. When the body references a `skills/...`
+ * path, prepend the absolute plugin root so the path resolves. No-op when
+ * packRoot is unknown or the body references no such path. See ADR-0010.
+ */
+function withPluginResourceContext(text: string, ctx: { packRoot?: string }): string {
+  if (!ctx.packRoot) return text;
+  if (!/skills\/[\w.-]+/.test(text)) return text;
+  return (
+    `> Plugin resources: this prompt is served from a plugin installed at \`${ctx.packRoot}\`. ` +
+    `Any file path written below as \`skills/…\` is relative to that plugin root — read it from ` +
+    `there (e.g. \`${ctx.packRoot}/skills/…\`), not from the current working directory.\n\n${text}`
   );
 }
 

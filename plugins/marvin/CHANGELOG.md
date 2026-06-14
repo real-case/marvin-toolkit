@@ -4,6 +4,27 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.16] — 2026-06-14
+
+General door-3 fix: the MCP door now resolves plugin-relative resource paths.
+
+### Fixed
+
+- **The MCP door (`/marvin:*`) now resolves `skills/...` paths referenced in skill prose.** When a
+  skill tells the model to read a plugin resource by a plugin-relative path (e.g. `sec-compliance`
+  → `skills/sec-compliance/asvs-4.0-checklist.md`), the server prepends the absolute plugin root to
+  the returned prompt body so the path resolves regardless of the model's working directory.
+  Previously such a read silently failed through the MCP door (the body is returned verbatim while
+  the cwd is the user's project) and the model improvised from memory. This is the general fix for
+  the bare-path bug class — the safety net behind the per-resource patterns: invoke sibling skills by
+  command (`sec-scan`, alpha.14) and inline a skill's own scaffolding (`task-start` templates,
+  alpha.15). See [ADR-0010](../../docs/adr/0010-mcp-door-resource-resolution.md).
+
+### Changed
+
+- Server `serverInfo.version` and `mcp/server/package.json` resynced to the plugin version (were
+  lagging at alpha.11 / alpha.12 across the preceding prose-only releases).
+
 ## [2.0.0-alpha.15] — 2026-06-14
 
 Door-robust spec templates in `task-start`.

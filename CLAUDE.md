@@ -185,6 +185,7 @@ The plugin has one version. Bump `plugins/marvin/.claude-plugin/plugin.json`, mi
 - `docs/adr/0004-tool-backed-verification.md` — `verify` gate moved from prose to a tool
 - `docs/adr/0005-tool-backed-dor.md` — Definition-of-Ready moved from prose to the `spec` tool
 - `docs/adr/0009-marvin-working-directory.md` — the unified `.marvin/` working-directory convention
+- `docs/adr/0010-mcp-door-resource-resolution.md` — the MCP door resolves `skills/...` resource paths; per-resource delegation convention
 - `docs/adr/0002-mcp-first-architecture.md` — superseded; the prior four-pack design
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard

@@ -28407,11 +28407,20 @@ function registerPrompt(server, def, ctx) {
       messages: [
         {
           role: "user",
-          content: { type: "text", text: rendered }
+          content: { type: "text", text: withPluginResourceContext(rendered, ctx) }
         }
       ]
     };
   });
+}
+function withPluginResourceContext(text, ctx) {
+  if (!ctx.packRoot)
+    return text;
+  if (!/skills\/[\w.-]+/.test(text))
+    return text;
+  return `> Plugin resources: this prompt is served from a plugin installed at \`${ctx.packRoot}\`. Any file path written below as \`skills/\u2026\` is relative to that plugin root \u2014 read it from there (e.g. \`${ctx.packRoot}/skills/\u2026\`), not from the current working directory.
+
+${text}`;
 }
 function registerTool(server, def) {
   const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
@@ -30292,7 +30301,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.11";
+var VERSION = "2.0.0-alpha.16";
 await runPackServer({
   name: "marvin",
   version: VERSION,
