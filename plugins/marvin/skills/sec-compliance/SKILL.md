@@ -187,6 +187,10 @@ For each Fail finding, produce a prioritized remediation item:
    Reference: /marvin:sec-fix XSS in src/views/profile.tsx:42
 ```
 
+## Output location
+
+Write the compliance report to `.marvin/security/compliance-asvs.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

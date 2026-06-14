@@ -100,7 +100,7 @@ const VerifyInput = z.object({
   write: z
     .boolean()
     .default(true)
-    .describe("Write verification.md to <projectRoot>/.taskmaster/current-task/."),
+    .describe("Write verification.md to <projectRoot>/.marvin/task/."),
   dryRun: z
     .boolean()
     .default(false)
@@ -167,7 +167,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
 
   let artifactPath: string | null = null;
   if (input.write) {
-    artifactPath = join(projectRoot, ".taskmaster", "current-task", "verification.md");
+    artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
     mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(artifactPath, markdown, "utf8");
   }

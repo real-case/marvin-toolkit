@@ -149,7 +149,9 @@ const SpecInput = z.object({
   specContent: z
     .string()
     .optional()
-    .describe("Inline spec content — the draft at DoR time, before it is written to specs/."),
+    .describe(
+      "Inline spec content — the draft at DoR time, before it is written to .marvin/task/.",
+    ),
   projectRoot: z
     .string()
     .optional()
@@ -444,7 +446,7 @@ function checkDependsOn(
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
+  const dirs = [specLocation, ".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
     (d): d is string => !!d,
   );
   const notFound: string[] = [];

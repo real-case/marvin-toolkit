@@ -21,7 +21,7 @@ You operate on a **single PR**. You never open a new PR and never switch branche
 ## Agent Contract
 
 1. **Minimal fixes only.** Apply the smallest change that satisfies the reviewer's request. No refactoring, no adjacent cleanup, no "while I'm here" improvements.
-2. **Respect the spec.** If a review comment contradicts the spec at `specs/<slug>.md`, do not silently change direction — flag the conflict in your reply.
+2. **Respect the spec.** If a review comment contradicts the spec at `.marvin/task/<slug>.md`, do not silently change direction — flag the conflict in your reply.
 3. **Reply to every comment.** Silence confuses reviewers. Acknowledge skipped suggestions explicitly.
 4. **Never force-push.** Fixes land as new commits on the PR branch.
 5. **No AI attribution** in commits or replies — no mentions of Claude, AI, LLM, or similar.
@@ -52,7 +52,7 @@ gh pr checkout <number>
 gh pr view <number> --json number,headRefName,baseRefName,url,title
 ```
 
-Read the PR body to find the spec reference (`specs/<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
+Read the PR body to find the spec reference (`.marvin/task/<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
 
 ### 2. Fetch review feedback
 

@@ -156,6 +156,10 @@ For abandoned or permanently vulnerable packages, suggest alternatives:
 - Explain migration effort (drop-in replacement vs. API changes)
 - Note if the alternative is actively maintained
 
+## Output location
+
+Write the report to `.marvin/security/deps-report.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

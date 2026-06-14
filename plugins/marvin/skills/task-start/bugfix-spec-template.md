@@ -80,7 +80,7 @@ resolve `depends_on`; the rest records where the spec lives and what the host re
 with `<…>`, never `{…}`.
 
 ```yaml host-bindings
-spec_location: specs/            # where this host keeps specs/RFCs (discovered, not assumed)
+spec_location: .marvin/task/     # where specs/RFCs live (default .marvin/task/, or the host's own convention)
 decision_record:
   style: <madr | nygard | none>
   path: docs/adr/

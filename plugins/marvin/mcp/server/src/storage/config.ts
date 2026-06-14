@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { Config, type Config as ConfigType } from "./schema.js";
 
 /**
- * Load `marvin/config.json` if it exists; otherwise return defaults
+ * Load `.marvin/config.json` if it exists; otherwise return defaults
  * (base_branch="dev", tracker_url_template=null). Bad JSON falls back
  * to defaults — the user sees a warning via the dashboard.
  */

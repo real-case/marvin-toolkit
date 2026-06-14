@@ -107,7 +107,7 @@ async function runCreatePr(
   const trackerLink = task ? trackerUrl(config, task.frontmatter.tracker_id) : null;
   const bodyLines: string[] = [];
   if (task) {
-    bodyLines.push(`Task: \`marvin/tasks/${task.filename}\``);
+    bodyLines.push(`Task: \`.marvin/kanban/${task.filename}\``);
     if (trackerLink) bodyLines.push(`Tracker: ${trackerLink}`);
   } else {
     bodyLines.push("_No marvin task linked to this branch._");

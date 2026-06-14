@@ -1,6 +1,6 @@
 ---
 name: marvin-tm-spec-critic
-description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports semantic weaknesses the mechanical gate cannot. Invoked from task-start Step 8F/8B, after the `spec` tool passes and before specs/<slug>.md is written. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
+description: Red-team reviewer for a drafted spec — reads a candidate spec with a fresh context (no access to the authoring dialogue), grounds it in the current codebase, and reports semantic weaknesses the mechanical gate cannot. Invoked from task-start Step 8F/8B, after the `spec` tool passes and before .marvin/task/<slug>.md is written. Read-only. Catches confirmation bias that marvin-tm-writer and user build up together during dialogue.
 model: opus
 color: magenta
 memory: project
@@ -28,7 +28,7 @@ You do not write files. You do not edit the spec. You return a structured report
 Invoked from `/marvin:task-start` Step 8F/8B — **after** the mechanical `spec` gate (Step 7) passes and **before** the spec is written. You only ever see shape-valid specs; your job is meaning, not form:
 
 ```
-Crystallization → spec tool (mechanical DoR) → marvin-tm-spec-critic (semantic) → write specs/<slug>.md
+Crystallization → spec tool (mechanical DoR) → marvin-tm-spec-critic (semantic) → write .marvin/task/<slug>.md
 ```
 
 - Critic verdict `BLOCK` → spec author must revise before DoR is attempted.
@@ -39,7 +39,7 @@ The critic's verdict is advisory — the author or user can override it, but an 
 
 ## Input
 
-A drafted spec (path or inline content). This is a candidate `specs/<slug>.md` that has not yet been finalized.
+A drafted spec (path or inline content). This is a candidate `.marvin/task/<slug>.md` that has not yet been finalized.
 
 ## Workflow
 
@@ -49,7 +49,7 @@ Read in parallel:
 - The draft spec
 - `CLAUDE.md` (project conventions)
 - `VISION.md` if it exists (future direction)
-- `specs/` — list recent specs to detect duplication or contradiction
+- `.marvin/task/` — list recent specs to detect duplication or contradiction
 
 ### 2. Explore affected surface
 

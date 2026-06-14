@@ -173,6 +173,10 @@ Prioritize mitigations:
 
 For MEDIUM and LOW risks, list the mitigation briefly without the full structure.
 
+## Output location
+
+Write the threat model to `.marvin/security/threat-model.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
+
 ## Output format
 
 ```

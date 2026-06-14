@@ -4,6 +4,32 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.12] — 2026-06-14
+
+Unified `.marvin/` working directory — every service file marvin generates now lives under one
+hidden root, one subdirectory per command group (see
+[ADR-0009](../../docs/adr/0009-marvin-working-directory.md)).
+
+### Changed
+
+- **Kanban storage moves `marvin/tasks/` → `.marvin/kanban/` and `marvin/config.json` →
+  `.marvin/config.json`.** The `MARVIN_TASKS_DIR` / `MARVIN_TASKS_CONFIG` env vars keep their names
+  but default to the new hidden paths; `.mcp.json` and `lib/env.ts` updated in lockstep.
+- **Verification artifact moves `.taskmaster/current-task/verification.md` →
+  `.marvin/task/verification.md`.** `task-verify` and `task-deliver` read the new path.
+- **Specs default to `.marvin/task/`** while staying host-adaptive (ADR-0007): an existing
+  `specs/` / `docs/specs/` / `docs/rfcs/` / `rfcs/` convention is still discovered and preferred, and
+  the `spec` gate / `task-implement` / `task-deliver` search `.marvin/task/` first, then those.
+
+### Added
+
+- **`sec-*` reports persist to `.marvin/security/`.** The eight report-producing scanners (scan,
+  secrets, deps, threat-model, iac, ci, compliance, pentest) write their report there by default;
+  `sec-gate` and `sec-fix` persist on request.
+
+Project deliverables (`docs/adr/`, `CHANGELOG.md`, `README.md`) are deliberately left in their
+conventional locations.
+
 ## [2.0.0-alpha.11] — 2026-06-14
 
 All subagents run on Opus (see [ADR-0008](../../docs/adr/0008-all-subagents-opus.md)).

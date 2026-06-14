@@ -15,8 +15,8 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 
 - None required (operates on current project state)
 - Pipeline context determines verification mode. If not set explicitly in conversation, **infer from spec**:
-  1. Look for spec in `specs/` directory (match by slug from conversation context or most recent spec)
-  2. Fall back to `.taskmaster/current-task/spec.md`
+  1. Look for spec in `.marvin/task/` (then `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) — match by slug from conversation context or most recent spec
+  2. Fall back to `.marvin/task/spec.md`
   3. Detect type: prefer the spec's frontmatter `type` (`feature`/`bugfix`); else infer from structure — a "Root Cause Analysis" section → bugfix, a "Chosen Approach" section → feature
   4. If no spec found → standalone mode
 - Verification modes:
@@ -78,7 +78,7 @@ The feature/bug warnings above are also emitted by the tool's `mode` argument (i
 ### 3. Relay the verdict
 
 The `verify` tool **writes the artifact itself** to
-`<projectRoot>/.taskmaster/current-task/verification.md` — the exact path `/marvin:task-deliver`
+`<projectRoot>/.marvin/task/verification.md` — the exact path `/marvin:task-deliver`
 reads, so the delivery gate finds it unchanged. The tool returns a `verify-result` JSON block
 (verdict, per-gate status/duration, `wallClockMs` vs `sumOfGatesMs`, `artifactPath`).
 

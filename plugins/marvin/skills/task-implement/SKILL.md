@@ -14,8 +14,8 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 ## Input
 
 `$ARGUMENTS` — one of:
-- A spec file path (`specs/<slug>.md`)
-- A slug (`<slug>` → resolves to `specs/<slug>.md`)
+- A spec file path (`.marvin/task/<slug>.md`)
+- A slug (`<slug>` → resolves to `.marvin/task/<slug>.md`)
 - Empty — the skill resolves the spec per Step 1
 
 ---
@@ -24,8 +24,8 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 
 ### 1. Resolve the spec
 
-**Spec directories.** A spec lives where the host keeps it, not only `specs/`. Search, in order:
-`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/` (the same set the DoR gate uses to resolve
+**Spec directories.** A spec lives where the host keeps it. Search, in order:
+`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/` (the same set the DoR gate uses to resolve
 `depends_on`). "the spec directories" below means this set; use the first that contains the target.
 
 Resolution order:
