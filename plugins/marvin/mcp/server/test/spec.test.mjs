@@ -78,8 +78,10 @@ function callSpec(args) {
 
 const find = (parsed, id) => parsed.checks.find((c) => c.id === id);
 
-// A complete, valid feature spec. `CLAUDE.md` is an `edit` path that exists at
-// repoRoot; `docs/sample-new.md` is a `new` path that does not.
+// A complete, valid feature spec in the traceable format. `CLAUDE.md` is an
+// `edit` path that exists at repoRoot; `docs/sample-new.md` and
+// `test/sample.test.mjs` are `new` paths that do not. The verified_by test
+// `test/sample.test.mjs` is allowlisted as plan row F3.
 const VALID_FEATURE = `---
 slug: sample-valid-spec
 type: feature
@@ -89,6 +91,8 @@ tracker: none
 supersedes: none
 stack: typescript
 risk: low
+breaking: false
+spike_required: false
 test_command: "npm test"
 ---
 
@@ -99,14 +103,16 @@ Add a sample to prove the spec gate passes.
 
 ## Context
 - Related patterns: existing tools
+- Callers / reverse-deps: none
 - Sibling specs: none
 
 ## File Change Plan
 
-| Path | Action | Intent | Anchor |
-|------|--------|--------|--------|
-| CLAUDE.md | edit | document the sample | — |
-| docs/sample-new.md | new | the sample doc | — |
+| ID | Path | Action | Intent | Satisfies | Anchor |
+|----|------|--------|--------|-----------|--------|
+| F1 | CLAUDE.md | edit | document the sample | AC-2 | — |
+| F2 | docs/sample-new.md | new | the sample doc | AC-1 | — |
+| F3 | test/sample.test.mjs | new | tests for AC-1, AC-2 | AC-1, AC-2 | — |
 
 ## Interface / Contract
 N/A
@@ -122,16 +128,22 @@ Write a sample doc and reference it.
 
 ## Acceptance Criteria
 
-| ID | Criterion | verified_by | Failure path |
-|----|-----------|-------------|--------------|
-| AC-1 | Sample doc exists | test/sample.test.mjs::exists | file missing |
-| AC-2 | It is linked from the index | test/sample.test.mjs::linked | no link |
-| AC-3 | Build still passes | npm run build | build breaks |
+| ID | Given / When / Then | Implemented by | verified_by | Failure path |
+|----|---------------------|----------------|-------------|--------------|
+| AC-1 | Given the repo, when built, then the sample doc exists | F2, F3 | test/sample.test.mjs::exists | file missing |
+| AC-2 | Given the index, then it links the sample | F1, F3 | test/sample.test.mjs::linked | no link |
+| AC-3 | Given the change, when built, then build passes | F1 | npm run build | build breaks |
 
 ## Test Plan
 - Harness: node --test, npm test
 - Test locations: test/
-- Fixtures / setup: none
+- Conventions: none
+
+## Definition of Done
+- [ ] npm test green
+- [ ] lint / type-check / build green
+- [ ] docs / CHANGELOG updated (N/A)
+- [ ] repo-specific obligations (none)
 
 ## Non-goals
 - No runtime behavior change.
@@ -164,6 +176,7 @@ tracker: none
 supersedes: none
 stack: typescript
 severity: high
+spike_required: false
 test_command: "npm test"
 ---
 
@@ -184,6 +197,7 @@ It returns an empty result.
 ## Root Cause Analysis
 - Affected code: src/x.ts:10
 - Cause: missing guard
+- Callers / blast radius: empty-input callers
 - Impact scope: empty-input callers
 
 ## Severity & Impact
@@ -191,26 +205,32 @@ High — all empty-input callers crash.
 
 ## File Change Plan
 
-| Path | Action | Intent | Anchor |
-|------|--------|--------|--------|
-| CLAUDE.md | edit | guard empty input | — |
-| test/x.test.mjs | new | regression test | — |
+| ID | Path | Action | Intent | Satisfies | Anchor |
+|----|------|--------|--------|-----------|--------|
+| F1 | CLAUDE.md | edit | guard empty input | AC-1 | — |
+| F2 | test/x.test.mjs | new | regression test | AC-1, AC-2 | — |
 
 ## Fix Approach
 Add an early return for empty input.
 
 ## Acceptance Criteria
 
-| ID | Criterion | verified_by | Failure path |
-|----|-----------|-------------|--------------|
-| AC-1 | Empty input returns empty | test/x.test.mjs::empty | throws |
-| AC-2 | Regression test fails pre-fix, passes after | test/x.test.mjs::empty | passes pre-fix |
+| ID | Given / When / Then | Implemented by | verified_by | Failure path |
+|----|---------------------|----------------|-------------|--------------|
+| AC-1 | Given empty input, when called, then returns empty | F1, F2 | test/x.test.mjs::empty | throws |
+| AC-2 | Regression test fails pre-fix, passes after | F2 | test/x.test.mjs::empty | passes pre-fix |
 
 ## Regression Test Specification
 **Test type:** unit
 **Test location:** test/x.test.mjs
 **What test verifies:** empty input returns empty
 **Test must fail before fix:** yes (mandatory)
+
+## Definition of Done
+- [ ] regression test red before fix, green after
+- [ ] npm test green
+- [ ] lint / type-check / build green
+- [ ] repo-specific obligations (none)
 
 ## Non-goals
 - No API change.
@@ -241,8 +261,8 @@ test("a complete bugfix spec passes the DoR gate", async () => {
 
 test("empty verified_by and an open question both block", async () => {
   const content = VALID_FEATURE.replace(
-    "| AC-2 | It is linked from the index | test/sample.test.mjs::linked | no link |",
-    "| AC-2 | It is linked from the index |  | no link |",
+    "| AC-2 | Given the index, then it links the sample | F1, F3 | test/sample.test.mjs::linked | no link |",
+    "| AC-2 | Given the index, then it links the sample | F1, F3 |  | no link |",
   ).replace("## Open Questions\nnone", "## Open Questions\n- Should we also handle X?");
   const { parsed, isError } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
@@ -253,8 +273,8 @@ test("empty verified_by and an open question both block", async () => {
 
 test("a File Change Plan edit target that does not exist blocks", async () => {
   const content = VALID_FEATURE.replace(
-    "| CLAUDE.md | edit | document the sample | — |",
-    "| does/not/exist.ts | edit | document the sample | — |",
+    "| F1 | CLAUDE.md | edit | document the sample | AC-2 | — |",
+    "| F1 | does/not/exist.ts | edit | document the sample | AC-2 | — |",
   );
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
@@ -284,4 +304,78 @@ test("missing input is reported, not crashed", async () => {
   const { parsed } = await callSpec({ projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "input").status, "fail");
+});
+
+// ── traceability triple ──────────────────────────────────────────────────
+
+test("a verified_by test outside the File Change Plan blocks", async () => {
+  const content = VALID_FEATURE.replace(
+    "test/sample.test.mjs::exists",
+    "test/orphan.test.mjs::exists",
+  );
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "ac-test-in-plan").status, "fail");
+});
+
+test("an acceptance criterion referencing an unknown plan ID blocks", async () => {
+  const content = VALID_FEATURE.replace(
+    "| AC-1 | Given the repo, when built, then the sample doc exists | F2, F3 |",
+    "| AC-1 | Given the repo, when built, then the sample doc exists | F9 |",
+  );
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "ac-traceability").status, "fail");
+});
+
+test("a File Change Plan row satisfying an unknown criterion blocks", async () => {
+  const content = VALID_FEATURE.replace(
+    "| F2 | docs/sample-new.md | new | the sample doc | AC-1 | — |",
+    "| F2 | docs/sample-new.md | new | the sample doc | AC-9 | — |",
+  );
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "fcp-traceability").status, "fail");
+});
+
+test("all-prose-review acceptance criteria block", async () => {
+  const content = VALID_FEATURE.replace("test/sample.test.mjs::exists", "prose-review")
+    .replace("test/sample.test.mjs::linked", "prose-review")
+    .replace("npm run build", "prose-review");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "ac-verified-real").status, "fail");
+});
+
+// ── off-ramp + new sections/frontmatter ────────────────────────────────────
+
+test("spike_required: true blocks dispatch", async () => {
+  const content = VALID_FEATURE.replace("spike_required: false", "spike_required: true");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "spike-required").status, "fail");
+});
+
+test("a missing Definition of Done section blocks", async () => {
+  const content = VALID_FEATURE.replace("## Definition of Done", "## Implementation Notes");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "sections-required").status, "fail");
+});
+
+test("a prose Interface/Contract warns but does not block", async () => {
+  const content = VALID_FEATURE.replace(
+    "## Interface / Contract\nN/A",
+    "## Interface / Contract\nA new function that paginates results.",
+  );
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(parsed, "contract-code").status, "warn");
+});
+
+test("a missing breaking declaration warns but does not block", async () => {
+  const content = VALID_FEATURE.replace("breaking: false\n", "");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(parsed, "fm-breaking").status, "warn");
 });
