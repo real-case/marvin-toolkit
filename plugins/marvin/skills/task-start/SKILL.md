@@ -235,7 +235,7 @@ Suggest notes based on dialogue context (deliberately-excluded scope), VISION.md
 
 ### Step 7F: Definition of Ready — mechanical gate (tool first)
 
-Run the deterministic gate **before** the critic. It is free, fast, and catches shape errors the expensive sonnet critic should not burn a pass on. The critic only ever sees shape-valid specs.
+Run the deterministic gate **before** the critic. It is free, fast, and catches shape errors the expensive opus critic should not burn a pass on. The critic only ever sees shape-valid specs.
 
 Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the drafted spec as `specContent` and the project root. It deterministically verifies: required frontmatter keys + valid enums (including `breaking` and `spike_required: false`), all required prose sections present (including **Definition of Done**), and the **`spec-contract` YAML block** — parsed by `yaml` and schema-validated **fail-closed**: every `files` `edit`/`delete` path exists on disk, ≥3 criteria each with a typed `oracle`, the **traceability triple** (every criterion's `implemented_by` names real `files` ids, every `satisfies` points at a real criterion, every `kind: test` oracle's path is an allowlisted `files` entry, ≥1 non-prose-review oracle), a bugfix carries a `regression: true` criterion, Open Questions resolved to "none", and no leftover `{…}` placeholders (which parse as YAML maps and trip the schema).
 

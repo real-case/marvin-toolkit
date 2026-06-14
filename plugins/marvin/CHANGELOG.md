@@ -4,6 +4,18 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.11] — 2026-06-14
+
+All subagents run on Opus (see [ADR-0008](../../docs/adr/0008-all-subagents-opus.md)).
+
+### Changed
+
+- **`marvin-tm-spec-critic` and `marvin-tm-diff-critic` move `sonnet` → `opus`.** Every subagent
+  now runs on the top tier, and new agents default to opus. Token economy comes from the
+  deterministic MCP tools (`spec`, `verify`, `task`/`git`) carrying the load-bearing work so the
+  model does *less* — not from running the model at a *lower tier*. The free `spec` gate still runs
+  before the now-opus critic, so the critic is spent only on shape-valid specs.
+
 ## [2.0.0-alpha.10] — 2026-06-14
 
 Coverage, archetype router, and an enforceable immutability seal — M4 (final) of

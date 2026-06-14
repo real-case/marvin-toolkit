@@ -30290,7 +30290,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.10";
+var VERSION = "2.0.0-alpha.11";
 await runPackServer({
   name: "marvin",
   version: VERSION,
