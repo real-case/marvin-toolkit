@@ -46,10 +46,16 @@ Every change must pass the same checks CI runs. Run them locally before pushing:
 npm run lint              # ESLint (TypeScript source)
 npm run format:check      # Prettier (run `npm run format` to auto-fix)
 npm run lint:manifests    # marketplace + plugin manifest structure
+npm run lint:docs         # README/docs ADR coverage + working-dir paths
 npm run build             # build every workspace
 npm run test              # Node.js native test suites
+npm run coverage          # tests with c8 coverage (text + lcov)
 npm run verify-dist       # committed dist/server.js matches a fresh build
 ```
+
+A [husky](https://typicode.github.io/husky/) pre-commit hook runs `lint-staged`
+(Prettier + ESLint on staged files) automatically — it installs itself via the
+`prepare` script when you run `npm ci`.
 
 `dist/server.js` is a **committed build artefact** — after changing any MCP
 server source, rebuild and commit `dist/` together with `src/`. CI rejects a
@@ -80,6 +86,19 @@ mirror it into the `.claude-plugin/marketplace.json` entry, and bump the server
 - **Patch** — prompt body tweaks, bug fixes
 - **Minor** — new prompts, tools, or agents
 - **Major** — breaking changes (server-key rename, prompt removal, schema break)
+
+## Releasing
+
+Marvin installs via the Claude Code marketplace (git), so a release is a tag plus a
+GitHub Release — there is no npm publish.
+
+1. Bump the version (`plugin.json` + `marketplace.json` + server `package.json`) and
+   update both changelogs (`plugins/marvin/CHANGELOG.md` for the plugin, root
+   `CHANGELOG.md` for marketplace-level changes).
+2. Tag and push: `git tag v<version> && git push origin v<version>`.
+3. The [release workflow](./.github/workflows/release.yml) opens a GitHub Release,
+   pulling its notes from `plugins/marvin/CHANGELOG.md`. Pre-1.0 tags
+   (`-alpha` / `-beta` / `-rc`) are marked as pre-releases automatically.
 
 ## License
 

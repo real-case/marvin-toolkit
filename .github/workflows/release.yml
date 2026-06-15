@@ -1,0 +1,45 @@
+name: Release
+
+# The marvin plugin is installed via the Claude Code marketplace (git), not npm.
+# A release is therefore a tag plus a GitHub Release whose notes come straight from
+# the plugin changelog. Tag a version to publish:
+#   git tag v2.0.0-alpha.17 && git push origin v2.0.0-alpha.17
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog notes for this tag
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Pull the section for this version out of the plugin changelog.
+          notes=$(awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' plugins/marvin/CHANGELOG.md)
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            notes="See [plugins/marvin/CHANGELOG.md](../blob/main/plugins/marvin/CHANGELOG.md) for details."
+          fi
+          {
+            echo "body<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: marvin ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}

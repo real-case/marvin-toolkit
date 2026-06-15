@@ -18,14 +18,30 @@
     "lint:manifests": "node scripts/lint-manifests.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify-dist": "node scripts/verify-dist.mjs"
+    "verify-dist": "node scripts/verify-dist.mjs",
+    "lint:docs": "node scripts/check-docs-drift.mjs",
+    "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,mjs,js}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": "prettier --write"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "^20.0.0",
+    "c8": "^11.0.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
