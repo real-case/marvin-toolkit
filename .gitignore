@@ -32,3 +32,7 @@ build/
 # tsup caches and incremental TS output
 .tsbuildinfo
 *.tsbuildinfo
+
+# Coverage output (c8 / nyc)
+coverage/
+.nyc_output/

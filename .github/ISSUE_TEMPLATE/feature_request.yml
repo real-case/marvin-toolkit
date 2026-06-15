@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a new command, capability, or improvement.
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what's getting in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        What would you like to happen? Which command group does it fit —
+        core, `pr-*`, `task-*`, `sec-*`, or `kanban-*`?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the existing commands and the ADRs under `docs/adr/`, and this isn't already covered.
+          required: true

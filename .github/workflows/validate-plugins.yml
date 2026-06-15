@@ -6,16 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node }}
           cache: "npm"
 
       - name: Install workspace dependencies
@@ -23,6 +31,9 @@ jobs:
 
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
+
+      - name: Check docs for drift (ADR coverage + working-dir paths)
+        run: npm run lint:docs
 
       - name: Lint source (ESLint)
         run: npm run lint
@@ -36,7 +47,12 @@ jobs:
       - name: Test all workspaces
         run: npm run test
 
+      - name: Coverage (text summary + lcov)
+        if: matrix.node == '20'
+        run: npm run coverage
+
       - name: Verify committed dist/ is in sync with source
+        if: matrix.node == '20'
         run: node scripts/verify-dist.mjs
 
       - name: Smoke-test each pack MCP server
@@ -64,6 +80,7 @@ jobs:
           done
 
       - name: Run claude plugin validate (if available)
+        if: matrix.node == '20'
         continue-on-error: true
         run: |
           if command -v claude &> /dev/null; then
