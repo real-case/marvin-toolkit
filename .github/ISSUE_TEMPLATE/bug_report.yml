@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a defect in the Marvin plugin, its MCP server, or a command.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. For a **security vulnerability**, do not use this
+        form — open a private [security advisory](https://github.com/real-case/marvin-toolkit/security/advisories/new) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `/marvin:...`
+        2. ...
+        3. See unexpected result
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Affected command / area
+      placeholder: "/marvin:task-start, the MCP server, a sec-* skill, ..."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Claude Code version, OS, Node.js (`node -v`), and Marvin plugin version.
+      placeholder: |
+        - Claude Code:
+        - OS:
+        - Node.js:
+        - Marvin version:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant error output. Rendered as code — no backticks needed.
+      render: shell
