@@ -42,17 +42,17 @@
     "globals": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "prettier": "^3.2.0",
+    "prettier": "^3.8.4",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.61.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-arm64": "4.60.4",
-    "@rollup/rollup-darwin-x64": "4.60.4",
-    "@rollup/rollup-linux-arm64-gnu": "4.60.4",
-    "@rollup/rollup-linux-x64-gnu": "4.60.4",
-    "@rollup/rollup-win32-x64-msvc": "4.60.4"
+    "@rollup/rollup-darwin-arm64": "4.62.0",
+    "@rollup/rollup-darwin-x64": "4.62.0",
+    "@rollup/rollup-linux-arm64-gnu": "4.62.0",
+    "@rollup/rollup-linux-x64-gnu": "4.62.0",
+    "@rollup/rollup-win32-x64-msvc": "4.62.0"
   },
   "license": "MIT"
 }
