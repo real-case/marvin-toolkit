@@ -3,11 +3,11 @@
 ## Supported versions
 
 Marvin is pre-1.0. Security fixes are applied to the latest released version of
-each pack only. There are no long-term support branches yet.
+the plugin only. There are no long-term support branches yet.
 
 | Version            | Supported |
 | ------------------ | --------- |
-| `1.0.0-alpha.x`    | ✅        |
+| `2.0.0-alpha.x`    | ✅        |
 | earlier pre-alpha  | ❌        |
 
 ## Reporting a vulnerability
@@ -19,7 +19,7 @@ Please report security issues **privately** — do not open a public issue.
 
 Include where possible:
 
-- the affected pack and version,
+- the affected command or area and the plugin version,
 - a description of the issue and its impact,
 - steps to reproduce or a proof of concept.
 

@@ -112,7 +112,7 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 | `/marvin:kanban-commit` | Commit with task context |
 | `/marvin:kanban-create-pr` | Open PR with task context |
 
-Storage: `marvin/tasks/<seq>[-<tracker>]--<slug>.md`, optional `marvin/config.json` (`base_branch`, `tracker_url_template`).
+Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`) — the default working directory per [ADR-0009](./docs/adr/0009-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars.
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 
@@ -132,11 +132,24 @@ For day-to-day task tracking, layer the `kanban-*` commands on top of either wor
 
 ## Architecture decisions
 
-Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./docs/adr/):
+A visual architecture tour — diagrams of the three doors, the task pipeline, and
+the `.marvin/` layout — lives in **[docs/architecture.md](./docs/architecture.md)**
+(the [docs/](./docs/) folder is the documentation home).
 
-- [ADR 0001](./docs/adr/0001-source-format.md) — superseded by ADR-0002
-- [ADR 0002 — MCP-first architecture](./docs/adr/0002-mcp-first-architecture.md) — superseded by ADR-0003
-- [ADR 0003 — Single-plugin consolidation](./docs/adr/0003-single-plugin-consolidation.md) — current
+Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./docs/adr/). Superseded entries are kept for the audit trail.
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0001](./docs/adr/0001-source-format.md) | Source format — keep `plugins/` Claude-native | superseded by 0002 |
+| [0002](./docs/adr/0002-mcp-first-architecture.md) | MCP-first architecture | superseded by 0003 |
+| [0003](./docs/adr/0003-single-plugin-consolidation.md) | Single-plugin consolidation under one `/marvin:` prefix | active |
+| [0004](./docs/adr/0004-tool-backed-verification.md) | Tool-backed verification gate | active |
+| [0005](./docs/adr/0005-tool-backed-dor.md) | Tool-backed Definition-of-Ready gate | active |
+| [0006](./docs/adr/0006-traceable-spec-contract.md) | Traceable spec contract and gate reordering | active |
+| [0007](./docs/adr/0007-portable-spec-contract.md) | Portable, host-adaptive spec contract | active |
+| [0008](./docs/adr/0008-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | active |
+| [0009](./docs/adr/0009-marvin-working-directory.md) | Unified `.marvin/` working directory | active |
+| [0010](./docs/adr/0010-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | active |
 
 ## Contributing
 
@@ -146,6 +159,7 @@ Contributions are welcome. The quality gates every change must pass:
 npm run lint              # ESLint (TypeScript source)
 npm run format:check      # Prettier
 npm run lint:manifests    # marketplace + plugin manifest structure
+npm run lint:docs         # README/docs ADR coverage + working-dir paths
 npm run build             # build every workspace
 npm run test              # Node.js native test suites
 npm run verify-dist       # committed dist/ matches a fresh build
