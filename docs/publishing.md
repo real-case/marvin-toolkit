@@ -69,13 +69,16 @@ across sites — publish once, list everywhere.
 ### 2.4 Security self-audit — _eat your own dog food_
 
 The official directory has a security bar, and a security toolkit that fails its
-own scanners is the worst possible first impression. Run Marvin against Marvin:
+own scanners is the worst possible first impression. Ran Marvin against Marvin on
+2026-06-16 (`sec-scan` umbrella) — **0 critical / 0 high**; findings were
+supply-chain hardening, fixed in [#33](https://github.com/real-case/marvin-toolkit/pull/33):
 
-- [ ] `/marvin:sec-secrets` — scan the **full git history** for leaked credentials/keys
-- [ ] `/marvin:sec-scan` — OWASP pass over the MCP server source
-- [ ] `/marvin:sec-deps` (or `npm audit`) — dependency CVEs + license risk (Dependabot already watches)
-- [ ] `/marvin:sec-ci` — audit the workflows. **Pin GitHub Actions by commit SHA** — `actions/checkout@v4`, `actions/setup-node@v4`, `softprops/action-gh-release@v2` are tag-pinned today; your own `sec-ci` flags this as a supply-chain risk
-- [ ] Add explicit least-privilege `permissions:` to `validate-plugins.yml` (`contents: read`); `release.yml` already scopes `contents: write`
+- [x] `/marvin:sec-secrets` — full git history + tracked files: **no secrets**
+- [x] `/marvin:sec-scan` — OWASP pass over the MCP server: clean (safe `yaml.parse` / `JSON.parse`, git via arg-arrays, no `eval`); the only exec is `verify`'s `shell:true` gate runner — a documented trust boundary (`SECURITY.md`)
+- [x] `/marvin:sec-deps` (`npm audit`) — **0 vulnerabilities**
+- [x] `/marvin:sec-ci` — workflows audited; **Actions SHA-pinned** (`checkout` / `setup-node` @v4, `action-gh-release` @v2) — #33
+- [x] Least-privilege `permissions: contents: read` added to `validate-plugins.yml` (`release.yml` already scoped `contents: write`) — #33
+- [x] Bonus finding: the bundled **context7** MCP pinned to `@upstash/context7-mcp@3.2.1` (was an unpinned `npx -y`) — #33
 
 ### 2.5 Discoverability metadata — the promotion lever for auto-indexers
 
