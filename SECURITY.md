@@ -35,3 +35,10 @@ the user's machine. Of particular interest:
 - handling of untrusted input in the kanban MCP tools (`plugins/marvin/mcp/server/src/tools/`),
 - git and shell operations performed by tools and skills,
 - secret-handling guidance in the `sec-*` and core skills (`plugins/marvin/skills/`).
+
+**Trust boundary.** The `verify` tool and the task pipeline execute the **commands a project
+declares** — `.marvin/config.json` `gates`, `package.json` scripts, and `Makefile` targets — through a
+shell, to run that project's tests / lint / build. Running marvin against a repository therefore runs
+that repository's declared commands; treat an untrusted repo's build commands as you would treat
+running `npm test` in it. marvin also registers two external MCP servers — `context7` (run via `npx`)
+and `gitmcp` (a remote service) — see `plugins/marvin/.mcp.json`.
