@@ -79,9 +79,9 @@ own scanners is the worst possible first impression. Run Marvin against Marvin:
 
 ### 2.5 Discoverability metadata — the promotion lever for auto-indexers
 
-- [ ] **GitHub topics** — currently **none**. Add (drives the community aggregators):
+- [x] **GitHub topics** — 13 set (drives the community aggregators):
       `claude`, `claude-code`, `claude-code-plugin`, `claude-plugin`, `claude-code-marketplace`, `mcp`, `model-context-protocol`, `anthropic`, `ai`, `developer-tools`, `devsecops`, `security`, `devops`
-- [ ] **Homepage URL** — currently empty; set it (repo URL, or a docs/Pages URL if you publish one)
+- [x] **Homepage URL** — set to the repo URL as a placeholder; upgrade to a GitHub Pages / docs site when one exists
 - [x] GitHub repo description set
 - [ ] **Demo asset** — a short GIF / asciinema / screenshot in the README. None today; high-leverage for both humans and aggregator ranking. Show one flow end-to-end (e.g. `/marvin:task-start` or `/marvin:commit`)
 - [x] README has badges, copy-paste install, command tables, security + contributing links
