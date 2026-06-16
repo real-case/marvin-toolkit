@@ -4,6 +4,112 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.21] — 2026-06-16
+
+Tool-backed delivery gate (see
+[ADR-0014](../../docs/adr/0014-tool-backed-delivery-gate.md)).
+
+### Added
+
+- **The `verify` tool gains `action: "gate"` — a deterministic delivery gate.** It reads
+  `.marvin/task/verification.md`, parses the machine-readable `verify-result` verdict, and returns a
+  `deliver-gate` decision: ALLOW (PASS / PASS WITH WARNINGS) or BLOCK (FAIL, missing file, or
+  unparseable verdict). Because the same tool writes and reads the `verify-result` format, the
+  delivery decision cannot drift from what verify recorded.
+
+### Changed
+
+- **`task-deliver` no longer reads the verdict in prose.** Its verification check (Step 1) now calls
+  `verify` with `action: "gate"` instead of "look for the verdict… if FAIL stop" — an eyeballing step
+  the model could get wrong on the pipeline's last gate. With seal (alpha.19) and scope (alpha.20),
+  this completes moving the three implementation-time prose checks to deterministic tools.
+
+## [2.0.0-alpha.20] — 2026-06-16
+
+Tool-backed scope-allowlist gate (see
+[ADR-0013](../../docs/adr/0013-tool-backed-scope-gate.md)).
+
+### Added
+
+- **The `spec` tool gains `mode: "scope"` — a deterministic scope-creep gate.** It compares the
+  working-tree diff (`git diff --name-only`, default base HEAD, plus untracked) against the
+  spec-contract `files` allowlist and FAILs listing any changed file outside it. marvin's own
+  `.marvin/` artifacts and the spec file are excluded; intentional out-of-allowlist files are passed
+  in `allow: [...]` as recorded SPEC GAPs — fail-closed with an explicit, auditable override. Outside
+  a git repo it returns PASS WITH WARNINGS.
+
+### Changed
+
+- **`task-implement` (Step 6F) and `marvin-tm-executor` (§3) run the scope gate before the merge
+  point.** The mechanical "is every changed file in the allowlist?" check is now tool-backed;
+  `marvin-tm-diff-critic` keeps the _semantic_ half (is an in-allowlist change doing something out of
+  scope?). The prose "modify only the files in the allowlist" instruction is now enforced, not merely
+  stated.
+
+## [2.0.0-alpha.19] — 2026-06-16
+
+Tool-backed contract-seal verification (see
+[ADR-0012](../../docs/adr/0012-tool-backed-contract-seal.md)).
+
+### Added
+
+- **The `spec` tool gains `mode: "seal"` — a deterministic contract-immutability check.** It
+  recomputes the spec-contract hash and compares it to the stamped `contract_sha`, returning PASS
+  (intact) / FAIL (`TAMPERED`) / PASS WITH WARNINGS (unsealed) / FAIL (no block), reusing the exact
+  `contractHash` the DoR gate stamps so seal and stamp cannot drift.
+
+### Changed
+
+- **`task-implement` no longer asks the model to compute SHA-256.** Its immutability check (Step 2)
+  now calls `spec` with `mode: "seal"` instead of the prose "re-hash the block and compare" — an
+  operation an LLM cannot perform reliably. The seal becomes a real tamper gate rather than
+  "determinism by name"; `task-start`'s description of the check is updated to match.
+
+## [2.0.0-alpha.18] — 2026-06-16
+
+Built-in stack detection broadened to the top ~10 ecosystems.
+
+### Added
+
+- **`verify` now recognises 11 stacks out of the box, up from 5.** Added canonical gate sets for
+  **C#/.NET** (`*.sln` / `*.csproj` / `*.fsproj` or `global.json` → `dotnet test` / `build` /
+  `format`), **JVM via Gradle** (`build.gradle[.kts]` → `./gradlew test` / `build`), **Swift**
+  (`Package.swift` → `swift test` / `build`), **Ruby** (`Gemfile` → `bundle exec rspec` / `rubocop`),
+  **PHP** (`composer.json` → `composer test`), and **C/C++ via CMake** (`CMakeLists.txt` → a
+  self-contained `cmake` build), alongside the existing Go, Rust, Python, TypeScript, and
+  Java/Maven. Python detection now also picks up `setup.py` / `setup.cfg`. Canonical commands are
+  best-effort defaults — override any of them per gate via `.marvin/config.json`
+  ([ADR-0011](../../docs/adr/0011-config-first-gate-resolution.md)); a genuinely unrecognised stack
+  still falls back to declared npm / Makefile commands, then the honest "no gates detected" message.
+
+### Changed
+
+- **Stack detection moved from exact-filename matching to per-stack predicates.** This lets globbed
+  markers (`*.csproj`) and alternative manifests (`build.gradle.kts`, `setup.cfg`) be recognised. The
+  `stack` hint argument now names a stack **id** (`go`, `dotnet`, …) rather than a marker filename; an
+  unrecognised hint is ignored and normal detection runs. The headless `marvin-tm-executor`
+  inline-Bash fallback (used only when the `verify` tool is unavailable) mirrors the same 11 stacks
+  and honours `.marvin/config.json` `gates`.
+
+## [2.0.0-alpha.17] — 2026-06-16
+
+Config-first gate resolution for `verify` (see
+[ADR-0011](../../docs/adr/0011-config-first-gate-resolution.md)).
+
+### Added
+
+- **`gates` in `.marvin/config.json` — durable, per-project quality-gate commands.** `verify` now
+  resolves its gate plan **config-first**: an explicit per-call `gates` argument still wins, then any
+  `gates` declared in `.marvin/config.json` (e.g. `"gates": { "test": "vitest run", "lint": "biome
+  check ." }`) override the detected commands **per gate**, then stack auto-detection (`STACK_TABLE`
+  → declared-command fallback) fills the rest. This closes the toolchain-coupling gap left by
+  [ADR-0007](../../docs/adr/0007-portable-spec-contract.md)'s open stack detection: a project on a
+  non-canonical toolchain (Python `tox`/`uv`, TypeScript `vitest`/`bun`, Rust `cargo nextest`, …) can
+  pin exactly how it is built **once**, instead of re-passing `gates` on every call. The report's
+  `Stacks:` line appends `.marvin/config.json` when an override applies; a malformed config warns and
+  falls back to detection. Backwards-compatible — no `gates` key means byte-identical behaviour
+  (parity test added).
+
 ## [2.0.0-alpha.16] — 2026-06-14
 
 General door-3 fix: the MCP door now resolves plugin-relative resource paths.

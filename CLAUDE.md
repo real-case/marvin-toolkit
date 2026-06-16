@@ -52,7 +52,7 @@ project root, one subdirectory per command group (ADR-0009):
 | `.marvin/task/` | `task-*` pipeline | spec `<slug>.md` files + the current `verification.md` |
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
-| `.marvin/config.json` | `kanban-*` tracker | `base_branch`, `tracker_url_template` (the `MARVIN_TASKS_CONFIG` default) |
+| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch`, `tracker_url_template`, and `verify` gate overrides (`gates`, ADR-0011) — the `MARVIN_TASKS_CONFIG` default |
 
 Spec location stays **host-adaptive** (ADR-0007): `.marvin/task/` is the default, but an existing
 host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
@@ -90,7 +90,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - **Skills** (`plugins/marvin/skills/<command>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content. Dir name, `name:`, and command all match.
 - **Markdown commands** (`plugins/marvin/commands/<command>.md`) — Short slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
 - **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `kanban-*` group, an inline `body:`) under `/marvin:<command>`.
-- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`git`/`help` tools (file CRUD, git ops, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, writes `verification.md`; see ADR-0004) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0005/0006/0007).
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`git`/`help` tools (file CRUD, git ops, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0004/0011) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0005/0006/0007).
 - **Agents** (`plugins/marvin/agents/*.md`) — Claude Code subagents with constrained tool access. Picked up automatically on `/plugin install`.
 
 > The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 13 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`git`/`help` MCP tools. There is no standalone workflow prose to duplicate into a skill.

@@ -65,6 +65,12 @@ Self-test (quality gates) and self-review (diff-critic, §4) are independent and
 diff-critic first (in the background), then run the gates** so the two overlap; merge both before
 the PR step.
 
+**Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
+`mode: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
+the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
+re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
+unavailable.)
+
 **Launch the critic (background).** If Task-tool is available, dispatch `marvin-tm-diff-critic`
 (with `run_in_background`) with the spec path and diff range — see §4 for how to use its verdict.
 
@@ -78,12 +84,21 @@ the PR step.
   | Indicator | Test | Lint | Type-check | Build |
   |-----------|------|------|------------|-------|
   | `go.mod` | `go test ./...` | `golangci-lint run` | — | `go build ./...` |
-  | `pyproject.toml` | `pytest` | `ruff check .` | `mypy .` | — |
-  | `tsconfig.json` | `npm test` | `npx eslint .` | `npx tsc --noEmit` | `npm run build` |
   | `Cargo.toml` | `cargo test` | `cargo clippy` | — | `cargo build` |
-  | `pom.xml` | `mvn test` | — | — | `mvn package` |
+  | `pyproject.toml` / `setup.py` | `pytest` | `ruff check .` | `mypy .` | — |
+  | `tsconfig.json` | `npm test` | `npx eslint .` | `npx tsc --noEmit` | `npm run build` |
+  | `pom.xml` (Maven) | `mvn test` | — | — | `mvn package` |
+  | `build.gradle[.kts]` | `./gradlew test` | — | — | `./gradlew build` |
+  | `*.sln` / `*.csproj` (.NET) | `dotnet test` | `dotnet format --verify-no-changes` | — | `dotnet build` |
+  | `Package.swift` | `swift test` | — | — | `swift build` |
+  | `Gemfile` (Ruby) | `bundle exec rspec` | `bundle exec rubocop` | — | — |
+  | `composer.json` (PHP) | `composer test` | — | — | — |
+  | `CMakeLists.txt` (C/C++) | — | — | — | `cmake -B build && cmake --build build` |
 
-  Fallback detection: `package.json` scripts, `Makefile` targets, CI config.
+  This table mirrors the `verify` tool's built-in defaults — prefer the tool when available.
+  Detection order: honor `.marvin/config.json` `gates` if present (project override), else the table
+  above, else `package.json` scripts / `Makefile` targets / CI config. Canonical commands are
+  best-effort — a non-standard toolchain is declared in `.marvin/config.json`.
 
 **On gate failure:** read the error, fix it, then re-confirm by re-running **only the failed gate**
 (`only: ["<gate>"]` with the tool, or that single command in fallback). Up to 2 retries, then one

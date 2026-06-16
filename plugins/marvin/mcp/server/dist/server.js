@@ -28670,9 +28670,16 @@ var TaskFrontmatter = external_exports.object({
   created: external_exports.string().datetime(),
   updated: external_exports.string().datetime()
 });
+var GateCommands = external_exports.object({
+  test: external_exports.string().min(1).optional(),
+  lint: external_exports.string().min(1).optional(),
+  typecheck: external_exports.string().min(1).optional(),
+  build: external_exports.string().min(1).optional()
+});
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
-  tracker_url_template: external_exports.string().nullable().default(null)
+  tracker_url_template: external_exports.string().nullable().default(null),
+  gates: GateCommands.optional()
 });
 
 // src/storage/config.ts
@@ -29360,17 +29367,39 @@ function renderHelp(env, config2, version2) {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
-var STACK_TABLE = {
-  "go.mod": {
+function hasFile(root, ...names) {
+  return names.some((n) => existsSync(join(root, n)));
+}
+function hasFileMatching(root, re) {
+  try {
+    return readdirSync(root).some((f) => re.test(f));
+  } catch {
+    return false;
+  }
+}
+var STACK_DETECTORS = [
+  {
+    id: "go",
     marker: "Go",
+    detect: (r) => hasFile(r, "go.mod"),
     gates: { test: "go test ./...", lint: "golangci-lint run", build: "go build ./..." }
   },
-  "pyproject.toml": {
+  {
+    id: "rust",
+    marker: "Rust",
+    detect: (r) => hasFile(r, "Cargo.toml"),
+    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" }
+  },
+  {
+    id: "python",
     marker: "Python",
+    detect: (r) => hasFile(r, "pyproject.toml", "setup.py", "setup.cfg"),
     gates: { test: "pytest", lint: "ruff check .", typecheck: "mypy ." }
   },
-  "tsconfig.json": {
+  {
+    id: "typescript",
     marker: "TypeScript",
+    detect: (r) => hasFile(r, "tsconfig.json"),
     gates: {
       test: "npm test",
       lint: "npx eslint .",
@@ -29378,42 +29407,90 @@ var STACK_TABLE = {
       build: "npm run build"
     }
   },
-  "Cargo.toml": {
-    marker: "Rust",
-    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" }
-  },
-  "pom.xml": {
-    marker: "Java",
+  {
+    id: "maven",
+    marker: "Java (Maven)",
+    detect: (r) => hasFile(r, "pom.xml"),
     gates: { test: "mvn test", build: "mvn package" }
+  },
+  {
+    id: "gradle",
+    marker: "JVM (Gradle)",
+    detect: (r) => hasFile(r, "build.gradle", "build.gradle.kts"),
+    gates: { test: "./gradlew test", build: "./gradlew build" }
+  },
+  {
+    id: "dotnet",
+    marker: "C#/.NET",
+    detect: (r) => hasFileMatching(r, /\.(sln|csproj|fsproj)$/i) || hasFile(r, "global.json"),
+    gates: {
+      test: "dotnet test",
+      lint: "dotnet format --verify-no-changes",
+      build: "dotnet build"
+    }
+  },
+  {
+    id: "swift",
+    marker: "Swift",
+    detect: (r) => hasFile(r, "Package.swift"),
+    gates: { test: "swift test", build: "swift build" }
+  },
+  {
+    id: "ruby",
+    marker: "Ruby",
+    detect: (r) => hasFile(r, "Gemfile"),
+    gates: { test: "bundle exec rspec", lint: "bundle exec rubocop" }
+  },
+  {
+    id: "php",
+    marker: "PHP",
+    detect: (r) => hasFile(r, "composer.json"),
+    gates: { test: "composer test" }
+  },
+  {
+    id: "cpp",
+    marker: "C/C++ (CMake)",
+    detect: (r) => hasFile(r, "CMakeLists.txt"),
+    // test/lint vary too much across C/C++ to default safely — declare them in
+    // `.marvin/config.json`. The build gate configures then builds, so it is
+    // self-contained (no dependence on a sibling gate running first).
+    gates: { build: "cmake -B build && cmake --build build" }
   }
-};
+];
 var VerifyInput = external_exports.object({
   mode: external_exports.enum(["feature", "bug", "standalone"]).default("standalone").describe("Pipeline mode. feature: warn if no new tests. bug: warn if no regression test."),
   execution: external_exports.enum(["parallel", "sequential", "fail-fast"]).default("parallel").describe(
     "parallel: all gates concurrently (default). sequential: one at a time, all run (verdict parity with parallel). fail-fast: one at a time, stop at first failure (resource-constrained / fast feedback)."
   ),
   only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe("Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix)."),
-  stack: external_exports.string().optional().describe("Pre-detected stack key (e.g. 'tsconfig.json') to skip detection in a chained run."),
+  stack: external_exports.string().optional().describe("Pre-detected stack id (e.g. 'go', 'dotnet') to skip detection in a chained run."),
   gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
   write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.marvin/task/."),
-  dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything.")
+  dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything."),
+  action: external_exports.enum(["run", "gate"]).default("run").describe(
+    "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver."
+  )
 });
 function buildVerifyTool(env) {
   return defineTool({
     name: "verify",
-    description: "Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test.",
+    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver.`,
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env)
   });
 }
 async function runVerify(input, env) {
   const projectRoot = input.projectRoot ?? env.projectDir;
-  const detected = resolvePlan(input, projectRoot);
+  if (input.action === "gate") return deliverGate(projectRoot);
+  const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env.configPath;
+  const { config: config2, warning: configWarning } = loadConfig(configPath);
+  const configGates = gateSpecsFromConfig(config2.gates);
+  const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
     return ok3(
       `No quality gates detected for \`${projectRoot}\`.
-Looked for a known stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
+Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
   }
   let gates = detected.gates;
@@ -29423,13 +29500,16 @@ Looked for a known stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom
   }
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
+    const warn2 = configWarning ? `
+
+> \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
     return ok3(
       `# Verify Plan (dry run)
 
 **Stacks:** ${detected.stacks.join(", ") || "explicit"}
 **Execution:** ${input.execution}
 
-${plan}`
+${plan}${warn2}`
     );
   }
   const wallStart = performance.now();
@@ -29437,6 +29517,9 @@ ${plan}`
   const wallClockMs = Math.round(performance.now() - wallStart);
   const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
   const warnings = modeWarnings(input.mode, projectRoot);
+  if (configWarning) {
+    warnings.push(`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`);
+  }
   const verdict = computeVerdict(results, warnings);
   const markdown = renderMarkdown({
     verdict,
@@ -29479,26 +29562,54 @@ ${machine}
     isError: verdict === "FAIL"
   };
 }
-function resolvePlan(input, projectRoot) {
+function resolvePlan(input, projectRoot, configGates) {
   if (input.gates && input.gates.length > 0) {
     return { stacks: ["explicit"], gates: input.gates };
   }
-  const keys = input.stack && STACK_TABLE[input.stack] ? [input.stack] : Object.keys(STACK_TABLE).filter((file) => existsSync(join(projectRoot, file)));
-  if (keys.length === 0) {
+  const base = detectBase(input, projectRoot);
+  if (configGates.length === 0) return base;
+  return mergeConfigGates(base, configGates);
+}
+function detectBase(input, projectRoot) {
+  if (input.stack) {
+    const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
+    if (hinted) return gatesFromStacks([hinted]);
+  }
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  if (matched.length === 0) {
     return detectGeneric(projectRoot);
   }
+  return gatesFromStacks(matched);
+}
+function gatesFromStacks(detectors) {
   const stacks = [];
   const gates = [];
-  for (const key of keys) {
-    const entry = STACK_TABLE[key];
-    if (!entry) continue;
-    stacks.push(entry.marker);
+  for (const d of detectors) {
+    stacks.push(d.marker);
     for (const name of GATE_NAMES) {
-      const command = entry.gates[name];
+      const command = d.gates[name];
       if (command) gates.push({ name, command });
     }
   }
   return { stacks, gates };
+}
+function mergeConfigGates(base, configGates) {
+  const gates = [];
+  for (const name of GATE_NAMES) {
+    const override = configGates.find((g) => g.name === name);
+    if (override) gates.push(override);
+    else gates.push(...base.gates.filter((g) => g.name === name));
+  }
+  return { stacks: [...base.stacks, ".marvin/config.json"], gates };
+}
+function gateSpecsFromConfig(gates) {
+  if (!gates) return [];
+  const out = [];
+  for (const name of GATE_NAMES) {
+    const command = gates[name];
+    if (command) out.push({ name, command });
+  }
+  return out;
 }
 var DECLARED_GATE_ALIASES = [
   ["test", ["test"]],
@@ -29682,6 +29793,82 @@ ${body}`;
     ``
   ].join("\n");
 }
+function deliverGate(projectRoot) {
+  const artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
+  if (!existsSync(artifactPath)) {
+    return gateResult(
+      "BLOCK",
+      null,
+      "no verification.md found \u2014 run /marvin:task-verify before delivering"
+    );
+  }
+  let text;
+  try {
+    text = readFileSync(artifactPath, "utf8");
+  } catch (err) {
+    return gateResult(
+      "BLOCK",
+      null,
+      `could not read verification.md: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
+  if (!m) {
+    return gateResult(
+      "BLOCK",
+      null,
+      "verification.md has no machine-readable verify-result block \u2014 re-run /marvin:task-verify"
+    );
+  }
+  let verdict;
+  try {
+    verdict = JSON.parse(m[1]).verdict;
+  } catch {
+    return gateResult(
+      "BLOCK",
+      null,
+      "verify-result block is not valid JSON \u2014 re-run /marvin:task-verify"
+    );
+  }
+  if (verdict === "PASS") return gateResult("ALLOW", "PASS", "verification passed");
+  if (verdict === "PASS WITH WARNINGS") {
+    return gateResult(
+      "ALLOW",
+      "PASS WITH WARNINGS",
+      "verification passed with warnings \u2014 review them before delivering"
+    );
+  }
+  if (verdict === "FAIL") {
+    return gateResult(
+      "BLOCK",
+      "FAIL",
+      "verification FAILED \u2014 fix the failing gates and re-run /marvin:task-verify"
+    );
+  }
+  return gateResult(
+    "BLOCK",
+    typeof verdict === "string" ? verdict : null,
+    "unrecognised verdict \u2014 re-run /marvin:task-verify"
+  );
+}
+function gateResult(decision, verdict, reason) {
+  const machine = JSON.stringify({ decision, verdict, reason });
+  const md = [
+    `# Delivery Gate`,
+    ``,
+    `**Decision:** ${decision}`,
+    `**Verdict:** ${verdict ?? "\u2014"}`,
+    `**Reason:** ${reason}`,
+    ``
+  ].join("\n");
+  return {
+    content: [{ type: "text", text: `${md}
+\`\`\`json deliver-gate
+${machine}
+\`\`\`` }],
+    isError: decision === "BLOCK"
+  };
+}
 function ok3(text) {
   return { content: [{ type: "text", text }] };
 }
@@ -29773,12 +29960,21 @@ var SpecInput = external_exports.object({
   ),
   projectRoot: external_exports.string().optional().describe(
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
+  ),
+  mode: external_exports.enum(["dor", "seal", "scope"]).default("dor").describe(
+    "dor: the full Definition-of-Ready gate (default). seal: verify only the spec-contract immutability hash against the frontmatter contract_sha (the deterministic tamper check for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate)."
+  ),
+  allow: external_exports.array(external_exports.string()).optional().describe(
+    "mode: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs)."
+  ),
+  base: external_exports.string().optional().describe(
+    "mode: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
   )
 });
 function buildSpecTool(env) {
   return defineTool({
     name: "spec",
-    description: "Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha \u2014 the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
     inputSchema: SpecInput,
     handler: (input) => runSpec(input, env)
   });
@@ -29797,8 +29993,142 @@ async function runSpec(input, env) {
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
+  if (input.mode === "seal") return verifySeal(raw);
+  if (input.mode === "scope") {
+    return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
+  }
   const { type, checks, contractSha } = validateSpec(raw, projectRoot);
   return result(computeVerdict2(checks), type, checks, contractSha);
+}
+function verifySeal(raw) {
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const type = frontmatter.type ?? null;
+  const sealed = (frontmatter.contract_sha ?? "").trim();
+  const blockText = extractContractBlock(body);
+  if (blockText === null) {
+    return result("FAIL", type, [
+      fail(
+        "seal",
+        "Contract seal",
+        "no ```yaml spec-contract block found \u2014 cannot verify the seal"
+      )
+    ]);
+  }
+  const actual = contractHash(blockText);
+  if (!sealed) {
+    return result(
+      "PASS WITH WARNINGS",
+      type,
+      [
+        warn(
+          "seal",
+          "Contract seal",
+          `spec is unsealed \u2014 no contract_sha in frontmatter (current block hash is ${actual}). Re-run /marvin:task-start to stamp it and enable tamper detection.`
+        )
+      ],
+      actual
+    );
+  }
+  if (sealed === actual) {
+    return result(
+      "PASS",
+      type,
+      [pass("seal", "Contract seal", `intact \u2014 contract_sha matches (${actual})`)],
+      actual
+    );
+  }
+  return result(
+    "FAIL",
+    type,
+    [
+      fail(
+        "seal",
+        "Contract seal",
+        `TAMPERED \u2014 the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`
+      )
+    ],
+    actual
+  );
+}
+function verifyScope(raw, projectRoot, allow, base, specPath) {
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const type = frontmatter.type ?? null;
+  const blockText = extractContractBlock(body);
+  if (blockText === null) {
+    return result("FAIL", type, [
+      fail(
+        "scope",
+        "Scope",
+        "no ```yaml spec-contract block found \u2014 cannot resolve the file allowlist"
+      )
+    ]);
+  }
+  let doc;
+  try {
+    doc = (0, import_yaml2.parse)(blockText);
+  } catch (err) {
+    return result("FAIL", type, [
+      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err)}`)
+    ]);
+  }
+  const parsed = SpecContract.safeParse(doc);
+  if (!parsed.success) {
+    return result("FAIL", type, [
+      fail(
+        "scope",
+        "Scope",
+        "contract block failed schema validation \u2014 run the DoR gate (mode: dor) first"
+      )
+    ]);
+  }
+  if (!inGitRepo(projectRoot)) {
+    return result("PASS WITH WARNINGS", type, [
+      warn(
+        "scope",
+        "Scope",
+        "not a git repository \u2014 cannot compute the diff; scope left unchecked"
+      )
+    ]);
+  }
+  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizePath));
+  const specRel = specPath ? normalizePath(relativeToRoot(specPath, projectRoot)) : null;
+  const ignored = (p) => p.startsWith(".marvin/") || p === specRel;
+  const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
+  const violations = changed.filter((p) => !allowed.has(p));
+  if (violations.length === 0) {
+    return result("PASS", type, [
+      pass(
+        "scope",
+        "Scope",
+        `all ${changed.length} in-scope changed file(s) are within the contract allowlist`
+      )
+    ]);
+  }
+  return result("FAIL", type, [
+    fail(
+      "scope",
+      "Scope",
+      `${violations.length} changed file(s) outside the contract allowlist (scope creep): ${violations.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or \u2014 if intentional \u2014 re-run with allow: [...] as a recorded SPEC GAP.`
+    )
+  ]);
+}
+function changedFilesForScope(projectRoot, base) {
+  const ref = base && base.trim() ? base.trim() : "HEAD";
+  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
+  const lines = [
+    ...diff.ok ? diff.value.split("\n") : [],
+    ...untracked.ok ? untracked.value.split("\n") : []
+  ];
+  return [...new Set(lines.map(normalizePath).filter(Boolean))];
+}
+function normalizePath(p) {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+function relativeToRoot(p, root) {
+  const np = normalizePath(p);
+  const nr = normalizePath(root).replace(/\/$/, "");
+  return np.startsWith(nr + "/") ? np.slice(nr.length + 1) : np;
 }
 function validateSpec(raw, projectRoot) {
   const { frontmatter, body } = parseFrontmatter(raw);
@@ -30305,7 +30635,7 @@ function warn(id, label, detail) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.16";
+var VERSION = "2.0.0-alpha.21";
 await runPackServer({
   name: "marvin",
   version: VERSION,

@@ -13,17 +13,14 @@ Commit changes and create a pull request. This is the final phase — it gates o
 
 ## Workflow
 
-### 1. Check verification
+### 1. Check verification (tool-backed gate)
 
-Look for verification report:
-1. Check `.marvin/task/verification.md`
-2. If not found, check if verification results exist in conversation context
+Call the **`verify` MCP tool** with `action: "gate"`. It reads `.marvin/task/verification.md`, parses the machine-readable `verify-result` verdict, and returns a `deliver-gate` decision — do **not** eyeball the prose verdict yourself.
 
-**If no verification found:** stop and tell the user — "Verification has not been run. Run `/marvin:task-verify` before delivering."
+- **BLOCK** — no `verification.md`, no parseable verdict, or verdict **FAIL**. **Stop.** Relay the gate's reason and tell the user to run or fix `/marvin:task-verify` before delivering. Do not deliver.
+- **ALLOW** — verdict **PASS** or **PASS WITH WARNINGS**. Proceed. On PASS WITH WARNINGS, surface the warnings and confirm the user wants to proceed.
 
-**If the verdict is FAIL:** stop and tell the user — "Verification failed. Fix the issues and re-run `/marvin:task-verify` before delivering." Show the failing checks from the verification report.
-
-**If the verdict is PASS or PASS WITH WARNINGS:** proceed. If there are warnings, show them to the user and confirm they want to proceed.
+In a **chained** run (invoked straight after `/marvin:task-verify` in the same session) you may reuse the verdict already in context. If the `verify` tool is unavailable, fall back to reading `.marvin/task/verification.md` yourself and refusing on a FAIL or a missing/unparseable verdict — never deliver unverified.
 
 ### 2. Commit
 

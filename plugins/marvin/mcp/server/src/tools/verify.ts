@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { ServerEnv } from "../lib/env.js";
+import { loadConfig } from "../storage/config.js";
 
 /**
  * Deterministic quality-gate runner (ADR-0004). Runs the project's
@@ -39,20 +40,63 @@ interface GateResult {
 
 type Verdict = "PASS" | "FAIL" | "PASS WITH WARNINGS";
 
-/** Stack → gate commands. Single source of truth (was duplicated in
- * `task-verify/SKILL.md` and `marvin-tm-executor.md`). Five stacks, matching
- * the prior tables exactly — no behaviour change. */
-const STACK_TABLE: Record<string, { marker: string; gates: Partial<Record<GateName, string>> }> = {
-  "go.mod": {
+/** True when `root` directly contains any of the named marker files. */
+function hasFile(root: string, ...names: string[]): boolean {
+  return names.some((n) => existsSync(join(root, n)));
+}
+
+/** True when any entry directly under `root` matches `re` (e.g. `*.csproj`). */
+function hasFileMatching(root: string, re: RegExp): boolean {
+  try {
+    return readdirSync(root).some((f) => re.test(f));
+  } catch {
+    return false;
+  }
+}
+
+interface StackDetector {
+  /** Stable id; also accepted as the `stack` hint to skip detection. */
+  id: string;
+  /** Human-readable name shown on the report's `Stacks:` line. */
+  marker: string;
+  /** Does this project use the stack? A root-level marker-file / glob check. */
+  detect: (root: string) => boolean;
+  gates: Partial<Record<GateName, string>>;
+}
+
+/**
+ * Built-in stack detectors with canonical gate commands — the zero-config default
+ * (single source of truth; was duplicated in `task-verify/SKILL.md` and
+ * `marvin-tm-executor.md`). The table is a *convenience*, not authoritative:
+ * `.marvin/config.json` `gates` overrides any of these per gate (ADR-0011).
+ * Canonical commands are best-effort defaults — a project on a non-standard
+ * toolchain (`gotestsum`, `minitest`, a custom lint) pins its own via config.
+ * Anything outside this set falls back to the project's declared commands
+ * (npm scripts → Makefile targets).
+ */
+const STACK_DETECTORS: StackDetector[] = [
+  {
+    id: "go",
     marker: "Go",
+    detect: (r) => hasFile(r, "go.mod"),
     gates: { test: "go test ./...", lint: "golangci-lint run", build: "go build ./..." },
   },
-  "pyproject.toml": {
+  {
+    id: "rust",
+    marker: "Rust",
+    detect: (r) => hasFile(r, "Cargo.toml"),
+    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" },
+  },
+  {
+    id: "python",
     marker: "Python",
+    detect: (r) => hasFile(r, "pyproject.toml", "setup.py", "setup.cfg"),
     gates: { test: "pytest", lint: "ruff check .", typecheck: "mypy ." },
   },
-  "tsconfig.json": {
+  {
+    id: "typescript",
     marker: "TypeScript",
+    detect: (r) => hasFile(r, "tsconfig.json"),
     gates: {
       test: "npm test",
       lint: "npx eslint .",
@@ -60,15 +104,56 @@ const STACK_TABLE: Record<string, { marker: string; gates: Partial<Record<GateNa
       build: "npm run build",
     },
   },
-  "Cargo.toml": {
-    marker: "Rust",
-    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" },
-  },
-  "pom.xml": {
-    marker: "Java",
+  {
+    id: "maven",
+    marker: "Java (Maven)",
+    detect: (r) => hasFile(r, "pom.xml"),
     gates: { test: "mvn test", build: "mvn package" },
   },
-};
+  {
+    id: "gradle",
+    marker: "JVM (Gradle)",
+    detect: (r) => hasFile(r, "build.gradle", "build.gradle.kts"),
+    gates: { test: "./gradlew test", build: "./gradlew build" },
+  },
+  {
+    id: "dotnet",
+    marker: "C#/.NET",
+    detect: (r) => hasFileMatching(r, /\.(sln|csproj|fsproj)$/i) || hasFile(r, "global.json"),
+    gates: {
+      test: "dotnet test",
+      lint: "dotnet format --verify-no-changes",
+      build: "dotnet build",
+    },
+  },
+  {
+    id: "swift",
+    marker: "Swift",
+    detect: (r) => hasFile(r, "Package.swift"),
+    gates: { test: "swift test", build: "swift build" },
+  },
+  {
+    id: "ruby",
+    marker: "Ruby",
+    detect: (r) => hasFile(r, "Gemfile"),
+    gates: { test: "bundle exec rspec", lint: "bundle exec rubocop" },
+  },
+  {
+    id: "php",
+    marker: "PHP",
+    detect: (r) => hasFile(r, "composer.json"),
+    gates: { test: "composer test" },
+  },
+  {
+    id: "cpp",
+    marker: "C/C++ (CMake)",
+    detect: (r) => hasFile(r, "CMakeLists.txt"),
+    // test/lint vary too much across C/C++ to default safely — declare them in
+    // `.marvin/config.json`. The build gate configures then builds, so it is
+    // self-contained (no dependence on a sibling gate running first).
+    gates: { build: "cmake -B build && cmake --build build" },
+  },
+];
 
 const VerifyInput = z.object({
   mode: z
@@ -88,7 +173,7 @@ const VerifyInput = z.object({
   stack: z
     .string()
     .optional()
-    .describe("Pre-detected stack key (e.g. 'tsconfig.json') to skip detection in a chained run."),
+    .describe("Pre-detected stack id (e.g. 'go', 'dotnet') to skip detection in a chained run."),
   gates: z
     .array(z.object({ name: z.enum(GATE_NAMES), command: z.string().min(1) }))
     .optional()
@@ -105,6 +190,12 @@ const VerifyInput = z.object({
     .boolean()
     .default(false)
     .describe("Report the detected gate plan without executing anything."),
+  action: z
+    .enum(["run", "gate"])
+    .default("run")
+    .describe(
+      "run: execute the gates (default). gate: do not run anything — read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver.",
+    ),
 });
 type VerifyInput = z.infer<typeof VerifyInput>;
 
@@ -112,7 +203,7 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "verify",
     description:
-      "Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test.",
+      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env),
   });
@@ -121,14 +212,26 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
 async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult> {
   const projectRoot = input.projectRoot ?? env.projectDir;
 
-  // Resolve the gate plan: explicit override > stack hint > detection.
-  const detected = resolvePlan(input, projectRoot);
+  // Delivery gate: read the prior verification.md verdict, run nothing.
+  if (input.action === "gate") return deliverGate(projectRoot);
+
+  // When the caller targets an explicit projectRoot, read that project's config;
+  // otherwise honour MARVIN_TASKS_CONFIG via env.configPath.
+  const configPath = input.projectRoot
+    ? join(input.projectRoot, ".marvin", "config.json")
+    : env.configPath;
+  const { config, warning: configWarning } = loadConfig(configPath);
+  const configGates = gateSpecsFromConfig(config.gates);
+
+  // Resolve the gate plan: explicit per-call gates > config-declared gates > detection.
+  const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
     return ok(
       `No quality gates detected for \`${projectRoot}\`.\n` +
-        `Looked for a known stack (go.mod, pyproject.toml, tsconfig.json, Cargo.toml, pom.xml), ` +
+        `Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), ` +
         `then for declared commands (package.json scripts, Makefile targets) — found none. ` +
-        `Pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`,
+        `Declare them in \`.marvin/config.json\` (\`"gates": { "test": "…" }\`) or pass an explicit ` +
+        `\`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`,
     );
   }
 
@@ -140,8 +243,11 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
 
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
+    const warn = configWarning
+      ? `\n\n> ⚠️ \`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`
+      : "";
     return ok(
-      `# Verify Plan (dry run)\n\n**Stacks:** ${detected.stacks.join(", ") || "explicit"}\n**Execution:** ${input.execution}\n\n${plan}`,
+      `# Verify Plan (dry run)\n\n**Stacks:** ${detected.stacks.join(", ") || "explicit"}\n**Execution:** ${input.execution}\n\n${plan}${warn}`,
     );
   }
 
@@ -152,6 +258,9 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
 
   const warnings = modeWarnings(input.mode, projectRoot);
+  if (configWarning) {
+    warnings.push(`\`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`);
+  }
   const verdict = computeVerdict(results, warnings);
 
   const markdown = renderMarkdown({
@@ -197,39 +306,100 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   };
 }
 
-/** Resolve which gates to run: explicit override, then stack hint, then detection. */
+/**
+ * Resolve which gates to run, in precedence order:
+ *   1. explicit per-call `gates` — wholesale override (testing / programmatic).
+ *   2. config-declared gates (`.marvin/config.json`) — per-gate, config wins.
+ *   3. auto-detection — stack table, then declared-command fallback.
+ * (1) is for the caller that already knows the plan; (2) is the durable,
+ * stack-agnostic project declaration (ADR-0011); (3) is the convenience default.
+ */
 function resolvePlan(
   input: VerifyInput,
   projectRoot: string,
+  configGates: GateSpec[],
 ): { stacks: string[]; gates: GateSpec[] } {
   if (input.gates && input.gates.length > 0) {
     return { stacks: ["explicit"], gates: input.gates };
   }
-  const keys =
-    input.stack && STACK_TABLE[input.stack]
-      ? [input.stack]
-      : Object.keys(STACK_TABLE).filter((file) => existsSync(join(projectRoot, file)));
+  const base = detectBase(input, projectRoot);
+  if (configGates.length === 0) return base;
+  return mergeConfigGates(base, configGates);
+}
 
-  if (keys.length === 0) {
-    // No tabled stack matched. Rather than leave an untabled ecosystem (PHP, Ruby,
-    // .NET, Elixir, Swift, Dart, …) silently unverified, fall back to the commands
-    // the project declares itself — npm scripts, then Makefile targets. A declared
-    // command beats a guessed ecosystem default: the project knows how it is built.
-    return detectGeneric(projectRoot);
+/**
+ * Auto-detect the gate plan from the filesystem: each matched built-in stack's
+ * canonical gates, else the commands the project declares itself (npm scripts →
+ * Makefile). A polyglot repo that matches several stacks contributes each one's
+ * gates (the verdict already counts them all).
+ */
+function detectBase(
+  input: VerifyInput,
+  projectRoot: string,
+): { stacks: string[]; gates: GateSpec[] } {
+  // A `stack` hint names a detector id and skips filesystem detection; an
+  // unrecognised hint is ignored and normal detection runs.
+  if (input.stack) {
+    const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
+    if (hinted) return gatesFromStacks([hinted]);
   }
 
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  if (matched.length === 0) {
+    // No built-in stack matched. Rather than leave an unrecognised ecosystem
+    // (Elixir, Dart, Haskell, Scala/sbt, Zig, …) silently unverified, fall back to
+    // the commands the project declares itself — npm scripts, then Makefile
+    // targets. A declared command beats a guessed default: the project knows how
+    // it is built.
+    return detectGeneric(projectRoot);
+  }
+  return gatesFromStacks(matched);
+}
+
+/** Flatten matched detectors into a {stacks, gates} plan in canonical gate order. */
+function gatesFromStacks(detectors: StackDetector[]): { stacks: string[]; gates: GateSpec[] } {
   const stacks: string[] = [];
   const gates: GateSpec[] = [];
-  for (const key of keys) {
-    const entry = STACK_TABLE[key];
-    if (!entry) continue;
-    stacks.push(entry.marker);
+  for (const d of detectors) {
+    stacks.push(d.marker);
     for (const name of GATE_NAMES) {
-      const command = entry.gates[name];
+      const command = d.gates[name];
       if (command) gates.push({ name, command });
     }
   }
   return { stacks, gates };
+}
+
+/**
+ * Overlay config-declared gates onto the detected base, per gate name. A gate
+ * set in `.marvin/config.json` replaces every detected gate of that name (the
+ * project has declared how it is built); gates absent from config keep their
+ * detected command. Output stays in canonical GATE_NAMES order for a
+ * deterministic report, and `.marvin/config.json` is appended to the stacks so
+ * the report shows config participated.
+ */
+function mergeConfigGates(
+  base: { stacks: string[]; gates: GateSpec[] },
+  configGates: GateSpec[],
+): { stacks: string[]; gates: GateSpec[] } {
+  const gates: GateSpec[] = [];
+  for (const name of GATE_NAMES) {
+    const override = configGates.find((g) => g.name === name);
+    if (override) gates.push(override);
+    else gates.push(...base.gates.filter((g) => g.name === name));
+  }
+  return { stacks: [...base.stacks, ".marvin/config.json"], gates };
+}
+
+/** Map the `.marvin/config.json` `gates` object to internal gate specs. */
+function gateSpecsFromConfig(gates: Partial<Record<GateName, string>> | undefined): GateSpec[] {
+  if (!gates) return [];
+  const out: GateSpec[] = [];
+  for (const name of GATE_NAMES) {
+    const command = gates[name];
+    if (command) out.push({ name, command });
+  }
+  return out;
 }
 
 /** Gate name → the declared script/target names that satisfy it, in priority order. */
@@ -241,7 +411,7 @@ const DECLARED_GATE_ALIASES: Array<[GateName, string[]]> = [
 ];
 
 /**
- * Evidence-based fallback for ecosystems outside STACK_TABLE: build the gate set
+ * Evidence-based fallback for ecosystems outside the built-in detectors: build the gate set
  * from the commands the project declares itself (npm scripts, then Makefile
  * targets). Returns no gates when the project declares none — an unknown stack is
  * surfaced to the caller, never papered over with a guessed command.
@@ -470,6 +640,94 @@ function renderMarkdown(o: {
     o.warnings.length ? o.warnings.map((w) => `- ${w}`).join("\n") : "- none",
     ``,
   ].join("\n");
+}
+
+/**
+ * Delivery gate (the tool-backed half of /marvin:task-deliver's pre-flight).
+ * Reads the verdict the verify run already wrote to verification.md — the same
+ * machine-readable `verify-result` block this tool emits — and decides ALLOW /
+ * BLOCK. Deterministic by construction: write and read share one format, so the
+ * delivery decision cannot drift from what verify recorded, and the model never
+ * eyeballs a prose verdict.
+ */
+function deliverGate(projectRoot: string): ToolResult {
+  const artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
+  if (!existsSync(artifactPath)) {
+    return gateResult(
+      "BLOCK",
+      null,
+      "no verification.md found — run /marvin:task-verify before delivering",
+    );
+  }
+  let text: string;
+  try {
+    text = readFileSync(artifactPath, "utf8");
+  } catch (err) {
+    return gateResult(
+      "BLOCK",
+      null,
+      `could not read verification.md: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
+  if (!m) {
+    return gateResult(
+      "BLOCK",
+      null,
+      "verification.md has no machine-readable verify-result block — re-run /marvin:task-verify",
+    );
+  }
+  let verdict: unknown;
+  try {
+    verdict = (JSON.parse(m[1]!) as { verdict?: unknown }).verdict;
+  } catch {
+    return gateResult(
+      "BLOCK",
+      null,
+      "verify-result block is not valid JSON — re-run /marvin:task-verify",
+    );
+  }
+  if (verdict === "PASS") return gateResult("ALLOW", "PASS", "verification passed");
+  if (verdict === "PASS WITH WARNINGS") {
+    return gateResult(
+      "ALLOW",
+      "PASS WITH WARNINGS",
+      "verification passed with warnings — review them before delivering",
+    );
+  }
+  if (verdict === "FAIL") {
+    return gateResult(
+      "BLOCK",
+      "FAIL",
+      "verification FAILED — fix the failing gates and re-run /marvin:task-verify",
+    );
+  }
+  return gateResult(
+    "BLOCK",
+    typeof verdict === "string" ? verdict : null,
+    "unrecognised verdict — re-run /marvin:task-verify",
+  );
+}
+
+/** Render an ALLOW/BLOCK delivery decision with a machine-readable block. */
+function gateResult(
+  decision: "ALLOW" | "BLOCK",
+  verdict: string | null,
+  reason: string,
+): ToolResult {
+  const machine = JSON.stringify({ decision, verdict, reason });
+  const md = [
+    `# Delivery Gate`,
+    ``,
+    `**Decision:** ${decision}`,
+    `**Verdict:** ${verdict ?? "—"}`,
+    `**Reason:** ${reason}`,
+    ``,
+  ].join("\n");
+  return {
+    content: [{ type: "text", text: `${md}\n\`\`\`json deliver-gate\n${machine}\n\`\`\`` }],
+    isError: decision === "BLOCK",
+  };
 }
 
 function ok(text: string): ToolResult {

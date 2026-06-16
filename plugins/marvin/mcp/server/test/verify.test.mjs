@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -15,7 +15,7 @@ const serverPath = join(here, "..", "dist", "server.js");
  * tool's text output. Gates are passed explicitly (fake sleep commands) so the
  * concurrency behaviour is tested deterministically without any toolchain.
  */
-function callVerify(args) {
+function callVerify(args, blockTag = "verify-result") {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [serverPath], { stdio: ["pipe", "pipe", "pipe"] });
     let buf = "";
@@ -53,8 +53,8 @@ function callVerify(args) {
           child.kill();
           try {
             const text = msg.result.content.map((c) => c.text).join("\n");
-            const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
-            assert.ok(m, `no verify-result block in output:\n${text}`);
+            const m = text.match(new RegExp("```json " + blockTag + "\\n([\\s\\S]*?)\\n```"));
+            assert.ok(m, `no ${blockTag} block in output:\n${text}`);
             resolve({ parsed: JSON.parse(m[1]), isError: msg.result.isError, text });
           } catch (err) {
             reject(err);
@@ -199,7 +199,204 @@ test("a truly unknown stack is surfaced, not silently empty", async () => {
     writeFileSync(join(dir, "README.md"), "# just docs\n");
     const res = await callVerifyRaw({ projectRoot: dir, write: false });
     assert.match(res, /No quality gates detected/);
-    assert.match(res, /Pass an explicit/);
+    assert.match(res, /Declare them in/); // now points at .marvin/config.json too
+    assert.match(res, /pass an explicit/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── config-first gate resolution: .marvin/config.json `gates` (ADR-0011) ──
+
+function writeConfig(dir, contents) {
+  mkdirSync(join(dir, ".marvin"), { recursive: true });
+  writeFileSync(join(dir, ".marvin", "config.json"), contents);
+}
+
+test("config gates override the detected stack defaults, per gate", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-cfg-"));
+  try {
+    writeFileSync(join(dir, "tsconfig.json"), "{}"); // detects TypeScript
+    writeConfig(dir, JSON.stringify({ gates: { test: "vitest run", lint: "biome check ." } }));
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    // config wins for the gates it declares ...
+    assert.match(res, /vitest run/);
+    assert.match(res, /biome check \./);
+    // ... while the detected stack still supplies the rest (per-gate merge, not replace-all)
+    assert.match(res, /npx tsc --noEmit/);
+    assert.match(res, /npm run build/);
+    assert.doesNotMatch(res, /npm test/); // the table's `test` default was overridden
+    // the report shows config participated, alongside the detected stack
+    assert.match(res, /TypeScript, \.marvin\/config\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("config supplies gates for a stack the detector does not recognise", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-cfg-unknown-"));
+  try {
+    writeFileSync(join(dir, "README.md"), "# docs only\n"); // untabled, no declared commands
+    writeConfig(dir, JSON.stringify({ gates: { test: "bats test/" } }));
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(res, /bats test\//);
+    assert.match(res, /\.marvin\/config\.json/);
+    assert.doesNotMatch(res, /No quality gates detected/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("explicit per-call gates outrank config gates", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-cfg-prec-"));
+  try {
+    writeConfig(dir, JSON.stringify({ gates: { test: "from-config" } }));
+    const res = await callVerifyRaw({
+      gates: [{ name: "test", command: "from-input" }],
+      dryRun: true,
+      projectRoot: dir,
+      write: false,
+    });
+    assert.match(res, /from-input/);
+    assert.doesNotMatch(res, /from-config/);
+    assert.match(res, /\*\*Stacks:\*\* explicit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a tabled stack with no config behaves exactly as before (parity)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-cfg-parity-"));
+  try {
+    writeFileSync(join(dir, "tsconfig.json"), "{}");
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(res, /npm test/);
+    assert.match(res, /npx eslint \./);
+    assert.match(res, /npx tsc --noEmit/);
+    assert.match(res, /npm run build/);
+    assert.match(res, /\*\*Stacks:\*\* TypeScript/);
+    assert.doesNotMatch(res, /\.marvin\/config\.json/); // no config → never mentioned
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a malformed .marvin/config.json warns and falls back to detection", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-cfg-bad-"));
+  try {
+    writeFileSync(join(dir, "tsconfig.json"), "{}");
+    writeConfig(dir, "{ not valid json");
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(res, /\.marvin\/config\.json/);
+    assert.match(res, /not valid JSON/i);
+    assert.match(res, /npm test/); // fell back to the TypeScript defaults
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── built-in stack detection: top-10 ecosystems emit canonical gates ──
+
+const STACK_DETECTION_CASES = [
+  {
+    name: "Go",
+    file: "go.mod",
+    expect: [/go test \.\/\.\.\./, /golangci-lint run/, /go build \.\/\.\.\./],
+  },
+  { name: "Rust", file: "Cargo.toml", expect: [/cargo test/, /cargo clippy/, /cargo build/] },
+  { name: "Python (setup.py)", file: "setup.py", expect: [/pytest/, /ruff check \./, /mypy \./] },
+  { name: "Java (Maven)", file: "pom.xml", expect: [/mvn test/, /mvn package/] },
+  {
+    name: "JVM (Gradle)",
+    file: "build.gradle.kts",
+    expect: [/\.\/gradlew test/, /\.\/gradlew build/],
+  },
+  {
+    name: "C#/.NET (.csproj glob)",
+    file: "App.csproj",
+    expect: [/dotnet test/, /dotnet build/, /dotnet format/],
+  },
+  { name: "Swift", file: "Package.swift", expect: [/swift test/, /swift build/] },
+  { name: "Ruby", file: "Gemfile", expect: [/bundle exec rspec/, /bundle exec rubocop/] },
+  { name: "PHP", file: "composer.json", body: "{}", expect: [/composer test/] },
+  { name: "C/C++ (CMake)", file: "CMakeLists.txt", expect: [/cmake --build build/] },
+];
+
+for (const c of STACK_DETECTION_CASES) {
+  test(`detects ${c.name} and emits its canonical gates`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "marvin-verify-stack-"));
+    try {
+      writeFileSync(join(dir, c.file), c.body ?? "");
+      const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+      assert.doesNotMatch(res, /No quality gates detected/, `${c.name} should be detected`);
+      for (const re of c.expect) assert.match(res, re, `${c.name}: expected ${re}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+// ── delivery gate (action: "gate") — reads the verification.md verdict, ADR-0014 ──
+
+function writeVerification(dir, verdict) {
+  mkdirSync(join(dir, ".marvin", "task"), { recursive: true });
+  const block = JSON.stringify({ verdict, gates: [] });
+  writeFileSync(
+    join(dir, ".marvin", "task", "verification.md"),
+    `# Verification Report\n**Verdict:** ${verdict}\n\n\`\`\`json verify-result\n${block}\n\`\`\`\n`,
+  );
+}
+
+test("deliver gate: ALLOW on a PASS verification", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-gate-"));
+  try {
+    writeVerification(dir, "PASS");
+    const { parsed, isError } = await callVerify(
+      { action: "gate", projectRoot: dir, write: false },
+      "deliver-gate",
+    );
+    assert.equal(parsed.decision, "ALLOW");
+    assert.equal(parsed.verdict, "PASS");
+    assert.ok(!isError);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate: BLOCK on a FAIL verification", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-gate-"));
+  try {
+    writeVerification(dir, "FAIL");
+    const { parsed, isError } = await callVerify(
+      { action: "gate", projectRoot: dir },
+      "deliver-gate",
+    );
+    assert.equal(parsed.decision, "BLOCK");
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true, "a BLOCK is flagged as an error");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate: BLOCK when verification.md is missing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-gate-"));
+  try {
+    const { parsed } = await callVerify({ action: "gate", projectRoot: dir }, "deliver-gate");
+    assert.equal(parsed.decision, "BLOCK");
+    assert.match(parsed.reason, /no verification\.md/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate: ALLOW on PASS WITH WARNINGS", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-gate-"));
+  try {
+    writeVerification(dir, "PASS WITH WARNINGS");
+    const { parsed } = await callVerify({ action: "gate", projectRoot: dir }, "deliver-gate");
+    assert.equal(parsed.decision, "ALLOW");
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
