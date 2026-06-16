@@ -36,3 +36,7 @@ build/
 # Coverage output (c8 / nyc)
 coverage/
 .nyc_output/
+
+# Claude Code local state — per-machine settings and agent worktrees, never shared
+.claude/settings.local.json
+.claude/worktrees/
