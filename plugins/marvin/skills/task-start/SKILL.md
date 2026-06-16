@@ -428,7 +428,7 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section. If Task
 
 4. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — it must still PASS), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
 
-**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-hashes the block on read and refuses a spec whose contract was edited after sealing.
+**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`mode: "seal"`) on read and refuses a spec whose contract was edited after sealing.
 
 ---
 

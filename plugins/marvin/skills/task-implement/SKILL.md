@@ -46,7 +46,7 @@ Resolution order:
 Read the resolved spec. Confirm:
 - Frontmatter `status` is `ready` or `in-progress` — if it is `draft`, stop (the spec has not passed DoR; run `/marvin:task-start` to finish authoring); if it is `shipped` or `superseded`, stop (already delivered).
 - Frontmatter `type` is `feature` or `bugfix` — if missing, stop and report the malformed spec.
-- **Immutability check** — if the frontmatter carries `contract_sha`, re-hash the `spec-contract` block (SHA-256, first 16 hex of the trimmed block) and compare. A mismatch means the contract was edited after DoR sealed it — stop and report; do not execute a tampered spec.
+- **Immutability check (tool-backed).** Verify the contract seal deterministically — call the **`spec` MCP tool** with `mode: "seal"` and the resolved `specPath`. It re-hashes the `spec-contract` block and compares it to the stamped `contract_sha`. A **FAIL** (`TAMPERED`) means the contract was edited after DoR sealed it — **stop and report; do not execute a tampered spec.** A `PASS WITH WARNINGS` (unsealed — no `contract_sha`) is allowed but noted. Do **not** compute the hash yourself — the tool owns the algorithm. If the `spec` tool is unavailable, report the spec as unverified rather than guessing.
 
 Then set the spec's `status: in-progress` — the lifecycle carve-out (content stays immutable) so a resumed or concurrent run sees the task is being worked.
 
@@ -86,6 +86,13 @@ Use TodoWrite to track acceptance criteria as you go — one todo per criterion,
 Self-review (`marvin-tm-diff-critic`) and verification are both slow and **independent** — the
 critic is read-only; the `verify` tool writes only `verification.md`. Run them **concurrently**
 so wall-clock collapses to the slower of the two instead of their sum.
+
+**First, the scope gate (deterministic, fast).** Call the `spec` tool with `mode: "scope"` (pass the
+resolved `specPath`). It checks `git diff` ⊆ the contract `files` allowlist and **FAILs** listing any
+out-of-scope file. Resolve a FAIL before continuing: revert genuine scope creep, or — if the file is a
+legitimate discovery — record it as a **SPEC GAP** and re-run with `allow: [<paths>]` (the sealed
+contract is immutable; do not silently edit it). This is the *mechanical* half of scope-creep
+detection; `marvin-tm-diff-critic` below is the *semantic* half.
 
 1. **Launch the critic in the background.** If Task-tool is available, dispatch
    `marvin-tm-diff-critic` (with `run_in_background`) passing the spec path and the current diff

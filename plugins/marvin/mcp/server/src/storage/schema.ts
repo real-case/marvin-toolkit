@@ -35,8 +35,22 @@ export interface Task {
   filename: string;
 }
 
+/**
+ * Per-gate command overrides for the `verify` tool, declared once per project
+ * (ADR-0011). Any gate set here wins over auto-detection (config-first); gates
+ * left unset fall back to stack detection. Keys match the verify gate names.
+ */
+export const GateCommands = z.object({
+  test: z.string().min(1).optional(),
+  lint: z.string().min(1).optional(),
+  typecheck: z.string().min(1).optional(),
+  build: z.string().min(1).optional(),
+});
+export type GateCommands = z.infer<typeof GateCommands>;
+
 export const Config = z.object({
   base_branch: z.string().default("dev"),
   tracker_url_template: z.string().nullable().default(null),
+  gates: GateCommands.optional(),
 });
 export type Config = z.infer<typeof Config>;

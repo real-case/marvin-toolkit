@@ -150,6 +150,10 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0008](./docs/adr/0008-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | active |
 | [0009](./docs/adr/0009-marvin-working-directory.md) | Unified `.marvin/` working directory | active |
 | [0010](./docs/adr/0010-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | active |
+| [0011](./docs/adr/0011-config-first-gate-resolution.md) | Config-first gate resolution for `verify` | active |
+| [0012](./docs/adr/0012-tool-backed-contract-seal.md) | Tool-backed contract-seal verification | active |
+| [0013](./docs/adr/0013-tool-backed-scope-gate.md) | Tool-backed scope-allowlist gate | active |
+| [0014](./docs/adr/0014-tool-backed-delivery-gate.md) | Tool-backed delivery gate | active |
 
 ## Contributing
 

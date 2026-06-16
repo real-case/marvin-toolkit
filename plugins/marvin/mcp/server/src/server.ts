@@ -13,7 +13,7 @@ import { buildHelpTool } from "./tools/help.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
 
-const VERSION = "2.0.0-alpha.16";
+const VERSION = "2.0.0-alpha.21";
 
 await runPackServer({
   name: "marvin",

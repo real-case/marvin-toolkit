@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -521,4 +521,155 @@ test("the gate emits a stable contract hash that changes with the block", async 
   );
   const d = (await callSpec({ specContent: editedProse, projectRoot: repoRoot })).parsed;
   assert.equal(a.contractSha, d.contractSha, "stable when only prose outside the block changes");
+});
+
+// ── contract-seal verification (mode: "seal") — the tamper gate, ADR-0012 ──
+
+test("seal: an intact spec passes (stamped hash matches the block)", async () => {
+  const sha = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed
+    .contractSha;
+  assert.ok(sha, "DoR mode emits the contract hash to stamp");
+  const sealed = VALID_FEATURE.replace("status: ready\n", `status: ready\ncontract_sha: ${sha}\n`);
+  const { parsed, isError } = await callSpec({
+    specContent: sealed,
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  assert.equal(find(parsed, "seal").status, "pass");
+  assert.ok(!isError);
+});
+
+test("seal: a block edited after sealing is reported TAMPERED (FAIL)", async () => {
+  const sha = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed
+    .contractSha;
+  const sealed = VALID_FEATURE.replace("status: ready\n", `status: ready\ncontract_sha: ${sha}\n`);
+  // Edit inside the spec-contract block after the seal was stamped.
+  const tampered = sealed.replace("intent: document the sample", "intent: tampered after sealing");
+  const { parsed, isError } = await callSpec({
+    specContent: tampered,
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(isError, true, "a tampered seal is flagged as an error");
+  assert.equal(find(parsed, "seal").status, "fail");
+  assert.match(find(parsed, "seal").detail, /TAMPERED/);
+});
+
+test("seal: an unsealed spec (no contract_sha) warns, does not fail", async () => {
+  const { parsed } = await callSpec({
+    specContent: VALID_FEATURE,
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(parsed, "seal").status, "warn");
+});
+
+test("seal: a spec with no contract block fails the seal check", async () => {
+  const noBlock = VALID_FEATURE.replace("yaml spec-contract", "yaml");
+  const { parsed } = await callSpec({ specContent: noBlock, mode: "seal", projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "seal").status, "fail");
+});
+
+// ── scope-allowlist gate (mode: "scope") — git diff ⊆ contract.files, ADR-0013 ──
+
+const SCOPE_SPEC = `---
+slug: scope-test
+type: feature
+status: ready
+created: 2026-06-14
+---
+
+# Scope test
+
+\`\`\`yaml spec-contract
+files:
+  - id: F1
+    path: src/a.ts
+    action: edit
+criteria:
+  - id: AC1
+    statement: only src/a.ts may change
+    implemented_by: [F1]
+    oracle:
+      kind: prose-review
+\`\`\`
+`;
+
+function gitScopeRepo() {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-scope-"));
+  const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  g("init", "-q", "-b", "main");
+  g("config", "user.email", "t@example.com");
+  g("config", "user.name", "Test");
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "src", "a.ts"), "export const a = 1;\n");
+  g("add", "-A");
+  g("commit", "-qm", "base");
+  return dir;
+}
+
+test("scope: a diff within the contract allowlist passes", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n"); // edit an allowed file
+    const { parsed } = await callSpec({ specContent: SCOPE_SPEC, mode: "scope", projectRoot: dir });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(find(parsed, "scope").status, "pass");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a changed file outside the allowlist fails (scope creep)", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n"); // not in the allowlist
+    const { parsed, isError } = await callSpec({
+      specContent: SCOPE_SPEC,
+      mode: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true);
+    assert.equal(find(parsed, "scope").status, "fail");
+    assert.match(find(parsed, "scope").detail, /src\/b\.ts/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: an out-of-scope file declared in `allow` passes (recorded SPEC GAP)", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      mode: "scope",
+      projectRoot: dir,
+      allow: ["src/b.ts"],
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: marvin's own .marvin/ artifacts are never scope violations", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    mkdirSync(join(dir, ".marvin", "task"), { recursive: true });
+    writeFileSync(join(dir, ".marvin", "task", "verification.md"), "# Verification\n");
+    const { parsed } = await callSpec({ specContent: SCOPE_SPEC, mode: "scope", projectRoot: dir });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.doesNotMatch(find(parsed, "scope").detail, /verification/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

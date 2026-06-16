@@ -5,6 +5,7 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import { parseFrontmatter } from "../storage/frontmatter.js";
+import { git, inGitRepo } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
@@ -158,6 +159,24 @@ const SpecInput = z.object({
     .describe(
       "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd.",
     ),
+  mode: z
+    .enum(["dor", "seal", "scope"])
+    .default("dor")
+    .describe(
+      "dor: the full Definition-of-Ready gate (default). seal: verify only the spec-contract immutability hash against the frontmatter contract_sha (the deterministic tamper check for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate).",
+    ),
+  allow: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "mode: scope — extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs).",
+    ),
+  base: z
+    .string()
+    .optional()
+    .describe(
+      "mode: scope — git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes.",
+    ),
 });
 type SpecInput = z.infer<typeof SpecInput>;
 
@@ -165,7 +184,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      "Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL.",
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha — the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
     inputSchema: SpecInput,
     handler: (input) => runSpec(input, env),
   });
@@ -187,8 +206,184 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
 
+  if (input.mode === "seal") return verifySeal(raw);
+  if (input.mode === "scope") {
+    return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
+  }
+
   const { type, checks, contractSha } = validateSpec(raw, projectRoot);
   return result(computeVerdict(checks), type, checks, contractSha);
+}
+
+/**
+ * Seal check (the tamper gate for /marvin:task-implement). Recompute the
+ * spec-contract hash and compare it to the `contract_sha` stamped into the
+ * frontmatter at DoR time. This is the deterministic replacement for the prose
+ * instruction that asked the model to "re-hash the block and compare" — a
+ * SHA-256 an LLM cannot compute reliably. Reuses the same `contractHash` the DoR
+ * gate stamps, so seal and stamp can never drift.
+ */
+function verifySeal(raw: string): ToolResult {
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const type = frontmatter.type ?? null;
+  const sealed = (frontmatter.contract_sha ?? "").trim();
+  const blockText = extractContractBlock(body);
+
+  if (blockText === null) {
+    return result("FAIL", type, [
+      fail(
+        "seal",
+        "Contract seal",
+        "no ```yaml spec-contract block found — cannot verify the seal",
+      ),
+    ]);
+  }
+
+  const actual = contractHash(blockText);
+
+  if (!sealed) {
+    return result(
+      "PASS WITH WARNINGS",
+      type,
+      [
+        warn(
+          "seal",
+          "Contract seal",
+          `spec is unsealed — no contract_sha in frontmatter (current block hash is ${actual}). Re-run /marvin:task-start to stamp it and enable tamper detection.`,
+        ),
+      ],
+      actual,
+    );
+  }
+
+  if (sealed === actual) {
+    return result(
+      "PASS",
+      type,
+      [pass("seal", "Contract seal", `intact — contract_sha matches (${actual})`)],
+      actual,
+    );
+  }
+
+  return result(
+    "FAIL",
+    type,
+    [
+      fail(
+        "seal",
+        "Contract seal",
+        `TAMPERED — the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`,
+      ),
+    ],
+    actual,
+  );
+}
+
+/**
+ * Scope gate (the mechanical half of scope-creep detection for
+ * /marvin:task-implement). Checks that every changed file in the working tree is
+ * within the spec-contract `files` allowlist — pure set math the model should not
+ * eyeball. The semantic half (is an in-allowlist change *doing* something out of
+ * scope?) stays with marvin-tm-diff-critic. marvin's own `.marvin/` artifacts and
+ * the spec file are excluded; intentional out-of-allowlist files (recorded SPEC
+ * GAPs) are passed in `allow`.
+ */
+function verifyScope(
+  raw: string,
+  projectRoot: string,
+  allow: string[],
+  base: string | undefined,
+  specPath: string | undefined,
+): ToolResult {
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const type = frontmatter.type ?? null;
+
+  const blockText = extractContractBlock(body);
+  if (blockText === null) {
+    return result("FAIL", type, [
+      fail(
+        "scope",
+        "Scope",
+        "no ```yaml spec-contract block found — cannot resolve the file allowlist",
+      ),
+    ]);
+  }
+  let doc: unknown;
+  try {
+    doc = parseYaml(blockText);
+  } catch (err) {
+    return result("FAIL", type, [
+      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err)}`),
+    ]);
+  }
+  const parsed = SpecContract.safeParse(doc);
+  if (!parsed.success) {
+    return result("FAIL", type, [
+      fail(
+        "scope",
+        "Scope",
+        "contract block failed schema validation — run the DoR gate (mode: dor) first",
+      ),
+    ]);
+  }
+
+  if (!inGitRepo(projectRoot)) {
+    return result("PASS WITH WARNINGS", type, [
+      warn(
+        "scope",
+        "Scope",
+        "not a git repository — cannot compute the diff; scope left unchecked",
+      ),
+    ]);
+  }
+
+  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizePath));
+  const specRel = specPath ? normalizePath(relativeToRoot(specPath, projectRoot)) : null;
+  const ignored = (p: string) => p.startsWith(".marvin/") || p === specRel;
+
+  const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
+  const violations = changed.filter((p) => !allowed.has(p));
+
+  if (violations.length === 0) {
+    return result("PASS", type, [
+      pass(
+        "scope",
+        "Scope",
+        `all ${changed.length} in-scope changed file(s) are within the contract allowlist`,
+      ),
+    ]);
+  }
+  return result("FAIL", type, [
+    fail(
+      "scope",
+      "Scope",
+      `${violations.length} changed file(s) outside the contract allowlist (scope creep): ${violations.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP.`,
+    ),
+  ]);
+}
+
+/** git diff (vs `base`, default HEAD) + untracked, normalised and de-duped. */
+function changedFilesForScope(projectRoot: string, base: string | undefined): string[] {
+  const ref = base && base.trim() ? base.trim() : "HEAD";
+  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
+  const lines = [
+    ...(diff.ok ? diff.value.split("\n") : []),
+    ...(untracked.ok ? untracked.value.split("\n") : []),
+  ];
+  return [...new Set(lines.map(normalizePath).filter(Boolean))];
+}
+
+/** Normalise a path for comparison: posix separators, no leading `./`. */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+
+/** Make `p` relative to `root` when it is an absolute path under it. */
+function relativeToRoot(p: string, root: string): string {
+  const np = normalizePath(p);
+  const nr = normalizePath(root).replace(/\/$/, "");
+  return np.startsWith(nr + "/") ? np.slice(nr.length + 1) : np;
 }
 
 function validateSpec(

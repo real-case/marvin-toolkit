@@ -1,6 +1,6 @@
 ---
 name: task-verify
-description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Python, TypeScript, Rust, Java, plus an npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
+description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Rust, Python, TypeScript, Java/Kotlin, C#/.NET, Swift, Ruby, PHP, C/C++, plus a declared-command / npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify
@@ -31,14 +31,23 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 Call the **`verify` MCP tool** (`mcp__plugin_marvin_marvin__verify`). It owns stack detection and
 gate execution — there is a single source of truth in TypeScript, not a table duplicated in prose.
 
-- It auto-detects the stack from config files (`go.mod` → Go, `pyproject.toml` → Python,
-  `tsconfig.json` → TypeScript, `Cargo.toml` → Rust, `pom.xml` → Java) and builds the gate set
-  (test / lint / type-check / build, whichever apply).
-- For any stack **outside** that table (PHP, Ruby, .NET, Elixir, Swift, Dart, …) it falls back to
+- It auto-detects the stack from marker files and emits that ecosystem's canonical gates — Go
+  (`go.mod`), Rust (`Cargo.toml`), Python (`pyproject.toml` / `setup.py`), TypeScript
+  (`tsconfig.json`), Java/Kotlin via Maven (`pom.xml`) or Gradle (`build.gradle[.kts]`), C#/.NET
+  (`*.sln` / `*.csproj`), Swift (`Package.swift`), Ruby (`Gemfile`), PHP (`composer.json`), and
+  C/C++ via CMake (`CMakeLists.txt`) — building the gate set (test / lint / type-check / build,
+  whichever apply). Canonical commands are best-effort defaults, overridable per gate (see below).
+- For any stack **outside** that set (Elixir, Dart, Haskell, Scala/sbt, Zig, …) it falls back to
   the commands the project **declares itself** — `package.json` scripts, then `Makefile` targets —
   instead of guessing an ecosystem default. A project with no recognised stack and no declared
   commands returns an explicit "no gates detected" message, never a silent pass; in that case pass
   the spec's `test_command` as an explicit gate.
+- **Project override (config-first, ADR-0011).** If the project declares gate commands in
+  `.marvin/config.json` — e.g. `"gates": { "test": "vitest run", "lint": "biome check ." }` — the
+  tool runs those per gate, over the detected defaults; gates left unset still fall back to
+  detection. This is the durable, stack-agnostic way to pin exactly how a project is built,
+  preferred over re-passing `gates` on every call. The report's `Stacks:` line shows
+  `.marvin/config.json` when an override applies.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
   every result at a single merge point, then computes one verdict. A failing gate never discards
   the others — every gate's result is recorded.

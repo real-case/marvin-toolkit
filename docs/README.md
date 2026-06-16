@@ -31,6 +31,10 @@ trail.
 | [0008](./adr/0008-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | active |
 | [0009](./adr/0009-marvin-working-directory.md) | Unified `.marvin/` working directory | active |
 | [0010](./adr/0010-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | active |
+| [0011](./adr/0011-config-first-gate-resolution.md) | Config-first gate resolution for `verify` | active |
+| [0012](./adr/0012-tool-backed-contract-seal.md) | Tool-backed contract-seal verification | active |
+| [0013](./adr/0013-tool-backed-scope-gate.md) | Tool-backed scope-allowlist gate | active |
+| [0014](./adr/0014-tool-backed-delivery-gate.md) | Tool-backed delivery gate | active |
 
 ## Work in progress
 
@@ -42,5 +46,6 @@ process, not finished deliverables.
 
 ## Reference
 
+- [Publishing & promotion readiness](./publishing.md) — the requirements checklist and the ordered plan for shipping Marvin to the official directory and community marketplaces.
 - [Security policy](../SECURITY.md) — supported versions and how to report a vulnerability.
 - [Changelog (marketplace)](../CHANGELOG.md) and [changelog (plugin)](../plugins/marvin/CHANGELOG.md).
