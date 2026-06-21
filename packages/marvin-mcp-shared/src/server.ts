@@ -109,7 +109,7 @@ function registerPrompt(
  * wrapper) load the skill from the plugin and resolve such paths natively;
  * only the MCP door lacks that context. When the body references a `skills/...`
  * path, prepend the absolute plugin root so the path resolves. No-op when
- * packRoot is unknown or the body references no such path. See ADR-0010.
+ * packRoot is unknown or the body references no such path. See ADR-0008.
  */
 function withPluginResourceContext(text: string, ctx: { packRoot?: string }): string {
   if (!ctx.packRoot) return text;

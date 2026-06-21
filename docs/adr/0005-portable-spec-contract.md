@@ -1,4 +1,4 @@
-# ADR 0007 — Portable, host-adaptive spec contract
+# ADR 0005 — Portable, host-adaptive spec contract
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
@@ -6,11 +6,11 @@
 | Date          | 2026-06-14                                                  |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
-| Related       | `docs/adr/0005-tool-backed-dor.md`, `docs/adr/0006-traceable-spec-contract.md`, `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/skills/task-start/{feature,bugfix}-spec-template.md`, `plugins/marvin/mcp/server/src/tools/spec.ts`, `plugins/marvin/mcp/server/src/storage/frontmatter.ts` |
+| Related       | [ADR-0003](0003-tool-backed-dor.md), [ADR-0004](0004-traceable-spec-contract.md), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts`, `plugins/marvin/mcp/server/src/storage/frontmatter.ts` |
 
 ## Context
 
-ADR-0005/0006 made the spec a tool-validated, traceable contract. But both were authored treating
+ADR-0003/0004 made the spec a tool-validated, traceable contract. But both were authored treating
 **this** repository as the host: the gate, templates, and intake sweep assume marvin's own
 scaffolding (`CLAUDE.md`, `VISION.md`, `specs/`, the committed-`dist` + version-triple merge
 obligations) and a closed set of 5–6 stacks. `/marvin:task-start` ships in a plugin installed into
@@ -21,7 +21,7 @@ lens surfaced two classes of defect.
    and Acceptance Criteria tables — with substring-matched column headers over regex-split markdown.
    When a column is renamed or absent, the traceability check returns a single WARN, and the verdict
    is `PASS WITH WARNINGS` — a passing verdict — silently disabling the closed AC⇄files⇄tests graph
-   that is the centrepiece of ADR-0006. The Interface/Contract code block is exempt from the
+   that is the centrepiece of ADR-0004. The Interface/Contract code block is exempt from the
    placeholder check (so an unfilled `{signature}` ships), and a `verified_by` counts as a "real
    proof" if it is merely non-empty and not the literal word `prose-review`. In a foreign **headless**
    run, where the semantic critic is the first thing unavailable, the mechanical gate is the only
@@ -42,7 +42,7 @@ Two contracts were conflated:
 - **Contract B** — the spec as an artefact living in the user's tree. Must adapt to the host:
   location, decision-record linkage, merge obligations, stack/gates.
 
-ADR-0005/0006 made A strict but also baked host-specific assumptions into it, so the strictness
+ADR-0003/0004 made A strict but also baked host-specific assumptions into it, so the strictness
 leaked into places the plugin does not own, while the parts that genuinely needed enforcing (the
 traceability graph) failed open.
 
@@ -96,14 +96,14 @@ analysis and the full sequencing live with the PR series.
 
 - A new runtime dependency (`yaml`), bundled into `dist` — which surfaced the esbuild "Dynamic
   require of process is not supported" trap (yaml's CJS `require` in an ESM bundle); resolved with a
-  `createRequire` banner in `tsup.config.ts`. ADR-0005's committed-`dist` + rebuild discipline
+  `createRequire` banner in `tsup.config.ts`. ADR-0003's committed-`dist` + rebuild discipline
   continues, and DoR-logic changes still require a server rebuild. The frontmatter codec parses with
   the YAML **failsafe** schema so kanban task files keep string semantics (a round-trip test guards it).
 - Hard cutover breaks pre-0007 specs with no auto-migration. Accepted: the only in-repo spec predates
-  ADR-0006 and is a frozen, shipped historical record (`status: shipped`, never re-executed), so it
+  ADR-0004 and is a frozen, shipped historical record (`status: shipped`, never re-executed), so it
   stays as-is rather than being rewritten; the plugin has no external installed base of authored specs.
 - More required structure raises the authoring bar for trivial specs — accepted for the same reason
-  as ADR-0006: the pipeline targets headless dispatch, where under-specification dominates.
+  as ADR-0004: the pipeline targets headless dispatch, where under-specification dominates.
 - The `spec` tool's (and now `yaml`'s) availability inside a headless `claude -p` run is still not
   guaranteed; `task-start` keeps the manual self-check fallback — now easier to eyeball against a
   YAML block than a regex-parsed table.

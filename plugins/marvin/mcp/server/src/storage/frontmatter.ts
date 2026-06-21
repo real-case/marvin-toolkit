@@ -1,5 +1,5 @@
 /**
- * YAML-frontmatter codec for marvin (ADR-0007: consolidated onto the `yaml`
+ * YAML-frontmatter codec for marvin (ADR-0005: consolidated onto the `yaml`
  * library, replacing the prior hand-rolled `key: value` parser).
  *
  * Task frontmatter and a spec's identity/lifecycle header are flat blocks of

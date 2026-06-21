@@ -1,15 +1,16 @@
-# ADR 0003 — Single-plugin consolidation under one `/marvin:` prefix
+# ADR 0001 — Single-plugin consolidation under one `/marvin:` prefix
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
 | Status        | **Accepted** (solo maintainer sign-off)                     |
 | Date          | 2026-06-06                                                  |
-| Supersedes    | ADR 0002 — reverses C1 (per-pack servers) and C3 (`marvin-<pack>:` prefixes) |
+| Supersedes    | The prior four-pack, per-pack-server design (its ADR was retired in the v2 publication cut) |
 | Superseded by | —                                                           |
+| Related       | [ADR-0013](0013-self-contained-server-bundle.md) (committed bundle), [ADR-0018](0018-three-doors-instrument-taxonomy.md) (three doors & instrument taxonomy), `CLAUDE.md` |
 
 ## Context
 
-ADR-0002 shipped the toolkit as **four independently-installable plugins**, each
+The toolkit previously shipped as **four independently-installable plugins**, each
 with its own MCP server (`marvin-core`, `marvin-sec`, `marvin-tm`, `marvin-tasks`).
 A Claude Code MCP slash command is `/<server-key>:<prompt>`, where the server key
 comes from the plugin's `.mcp.json`. That produced long, per-pack prefixes:
@@ -39,13 +40,13 @@ under it. Commands are renamed to `/marvin:<group>-<command>`; singletons stay b
 
 | #  | Decision |
 |----|----------|
-| D1 | **One plugin, one server.** `plugins/marvin/` with `.mcp.json` key `marvin`. Reverses ADR-0002 C1. Trade-off accepted: packs are no longer installed à la carte — installing `marvin` brings core + security + taskmaster + kanban together. |
-| D2 | **Naming scheme `/marvin:<group>-<command>`.** Groups reflect task families; singletons are bare. Reverses ADR-0002 C3/C7. The full map lives in the consolidation plan and CLAUDE.md. |
+| D1 | **One plugin, one server.** `plugins/marvin/` with `.mcp.json` key `marvin`. Reverses the prior per-pack-server design. Trade-off accepted: packs are no longer installed à la carte — installing `marvin` brings core + security + taskmaster + kanban together. |
+| D2 | **Naming scheme `/marvin:<group>-<command>`.** Groups reflect task families; singletons are bare. Replaces the prior `marvin-<pack>:` per-pack prefixes. The full map lives in the consolidation plan and CLAUDE.md. |
 | D3 | **Collision resolution.** Flattening four namespaces into one surfaced real clashes — `start`, `review`, `commit` each existed in two packs. Resolved by group prefixes: taskmaster → `task-*`, kanban → `kanban-*` (every kanban prompt prefixed, including `kanban-menu`), security → `sec-*`. Core keeps bare `commit`/`debug` and the `pr-*` pair (`pr-create`, `pr-review`). |
 | D4 | **Deprecated alias dropped.** The `security-scan` backward-compat alias (skill + command + prompt) is removed — noise under a fresh single prefix. |
-| D5 | **`SKILL.md` stays the single source of truth (ADR-0002 C4 kept).** Skill directories and their frontmatter `name:` are renamed to the new unified names so dir = name = command. The kanban group keeps inline `body:` tool-wrappers (no skills), as before. |
+| D5 | **`SKILL.md` stays the single source of truth (carried over from the prior design).** Skill directories and their frontmatter `name:` are renamed to the new unified names so dir = name = command. The kanban group keeps inline `body:` tool-wrappers (no skills), as before. |
 | D6 | **One server bundle.** The stateful kanban tools (`task`/`git`/`help`) and their `storage/`/`lib/`/`flows/` modules move into the unified server `src/`. The server registers all 38 prompts plus the 3 tools, loading `MARVIN_TASKS_*` env at build time. |
-| D7 | **Agents stay as `plugins/marvin/agents/*.md` (ADR-0002 C2 kept).** All eight agents merge into one `agents/` directory. |
+| D7 | **Agents stay as `plugins/marvin/agents/*.md` (carried over from the prior design).** All eight agents merge into one `agents/` directory. |
 | D8 | **Versioning.** The consolidated plugin and server jump to `2.0.0-alpha.1` to signal the breaking server-key rename; marketplace `metadata.version` follows. |
 
 ## Repository layout

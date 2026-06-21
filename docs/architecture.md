@@ -40,7 +40,7 @@ commands, and agents. Everything a user invokes — by chat, by `/command`, or b
 
 ## Three doors, one room
 
-The defining design choice (recorded in [ADR-0003](./adr/0003-single-plugin-consolidation.md)):
+The defining design choice (recorded in [ADR-0001](./adr/0001-single-plugin-consolidation.md)):
 each workflow is authored **once** in a `SKILL.md`, and three independent entry
 points reach it. Editing the skill updates all three without a server rebuild.
 
@@ -95,10 +95,10 @@ flowchart LR
   DEL --> FIX["task-fix-pr<br/>apply review"]
 ```
 
-- The **spec gate** ([ADR-0005](./adr/0005-tool-backed-dor.md)) zod-validates the
+- The **spec gate** ([ADR-0003](./adr/0003-tool-backed-dor.md)) zod-validates the
   spec's `spec-contract` block fail-closed — schema, file-path existence, and the
   acceptance-criteria ⇄ files ⇄ tests traceability triple.
-- The **verify gate** ([ADR-0004](./adr/0004-tool-backed-verification.md)) runs
+- The **verify gate** ([ADR-0002](./adr/0002-tool-backed-verification.md)) runs
   quality gates concurrently with stack auto-detection and writes `verification.md`,
   which `task-deliver` refuses to bypass.
 
@@ -126,7 +126,7 @@ Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking
 
 Every **service file** Marvin generates lives under one hidden `.marvin/` directory
 at the project root, one subdirectory per command group
-([ADR-0009](./adr/0009-marvin-working-directory.md)):
+([ADR-0007](./adr/0007-marvin-working-directory.md)):
 
 | Path | Written by | Contents |
 |------|-----------|----------|

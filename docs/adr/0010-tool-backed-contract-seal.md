@@ -1,4 +1,4 @@
-# ADR 0012 — Tool-backed contract-seal verification
+# ADR 0010 — Tool-backed contract-seal verification
 
 | Field         | Value                                                                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -6,11 +6,11 @@
 | Date          | 2026-06-16                                                                                                                                       |
 | Supersedes    | —                                                                                                                                                |
 | Superseded by | —                                                                                                                                                |
-| Related       | [ADR-0005](0005-tool-backed-dor.md) (tool-backed DoR), [ADR-0007](0007-portable-spec-contract.md) (M4 — the `contract_sha` seal), [ADR-0004](0004-tool-backed-verification.md) (tool-backed verify) |
+| Related       | [ADR-0003](0003-tool-backed-dor.md) (tool-backed DoR), [ADR-0005](0005-portable-spec-contract.md) (M4 — the `contract_sha` seal), [ADR-0002](0002-tool-backed-verification.md) (tool-backed verify) |
 
 ## Context
 
-ADR-0007 M4 (alpha.10) introduced `contract_sha`: the `spec` tool stamps a SHA-256
+ADR-0005 M4 (alpha.10) introduced `contract_sha`: the `spec` tool stamps a SHA-256
 fingerprint of the spec-contract block into the spec frontmatter at DoR time, so later
 tampering of the immutable contract is detectable by re-hashing. The _stamping_ is
 deterministic — the tool computes it. But the _check_ was prose. `task-implement` Step 2
@@ -49,7 +49,7 @@ means stamp and verify can never drift.
   discipline.
 - Stamp and verify share one hashing function — no algorithm drift between sealing and
   checking.
-- Same pattern as ADR-0004 (verify) and ADR-0005 (DoR): load-bearing control-flow
+- Same pattern as ADR-0002 (verify) and ADR-0003 (DoR): load-bearing control-flow
   guarantees live in tools, not prose.
 
 ### Negative / accepted trade-offs

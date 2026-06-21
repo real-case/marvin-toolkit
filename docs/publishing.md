@@ -52,7 +52,7 @@ across sites — publish once, list everywhere.
 - [x] `dist/server.js` committed (Claude Code install does not run `npm install`)
 - [ ] `claude plugin validate .` passes **locally** (CI runs it `continue-on-error`; make it a hard pre-submit check)
 - [~] **Release line decision** — currently `2.0.0-alpha.16`. Cut a stable **`2.0.0`** before the official-directory submission (alpha reads as "not ready" for the directory and for a portfolio piece). See Phase 0.
-- [ ] Version parity at the release commit across `plugin.json`, `marketplace.json` (`plugins[0].version`), and `mcp/server/package.json`; decide whether to move `metadata.version` too (independent per ADR-0003)
+- [ ] Version parity at the release commit across `plugin.json`, `marketplace.json` (`plugins[0].version`), and `mcp/server/package.json`; decide whether to move `metadata.version` too (independent per ADR-0001)
 
 ### 2.3 Quality gates / CI
 
@@ -200,4 +200,4 @@ gh repo edit real-case/marvin-toolkit \
 - [Discover and install plugins — Claude Code Docs](https://code.claude.com/docs/en/discover-plugins)
 - [Create and distribute a marketplace — Claude Code Docs](https://code.claude.com/docs/en/plugin-marketplaces)
 - [The MCP Registry](https://modelcontextprotocol.io/registry/about)
-- Internal: [ADR-0003 single-plugin consolidation](./adr/0003-single-plugin-consolidation.md), [release workflow](../.github/workflows/release.yml), [CONTRIBUTING](../CONTRIBUTING.md)
+- Internal: [ADR-0001 single-plugin consolidation](./adr/0001-single-plugin-consolidation.md), [release workflow](../.github/workflows/release.yml), [CONTRIBUTING](../CONTRIBUTING.md)

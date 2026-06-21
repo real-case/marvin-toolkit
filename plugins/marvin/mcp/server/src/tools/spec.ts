@@ -9,9 +9,9 @@ import { git, inGitRepo } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
- * Deterministic Definition-of-Ready gate (ADR-0005 → 0006 → 0007).
+ * Deterministic Definition-of-Ready gate (ADR-0003 → 0006 → 0007).
  *
- * ADR-0007 moved the execution-load-bearing structure — the File Change Plan,
+ * ADR-0005 moved the execution-load-bearing structure — the File Change Plan,
  * the Acceptance Criteria, and the interface contract — out of regex-parsed
  * markdown tables into a single authoritative ```yaml spec-contract block,
  * parsed by `yaml` and validated by a `zod` schema. The point is to **fail
@@ -127,7 +127,7 @@ const SpecContract = z.object({
 });
 type SpecContract = z.infer<typeof SpecContract>;
 
-/** Discovered, host-specific bindings (ADR-0007 Contract B). Optional and
+/** Discovered, host-specific bindings (ADR-0005 Contract B). Optional and
  * advisory — populated by task-start's pre-draft discovery, not load-bearing for
  * execution. `passthrough` keeps any extra host keys the author records;
  * `spec_location` is what lets depends_on resolve sibling specs. */
@@ -552,7 +552,7 @@ function checkContractBlock(
       fail(
         "spec-contract",
         "Spec contract",
-        "no ```yaml spec-contract block found — migrate the File Change Plan + Acceptance Criteria into the YAML block (ADR-0007); legacy table specs are no longer accepted",
+        "no ```yaml spec-contract block found — migrate the File Change Plan + Acceptance Criteria into the YAML block (ADR-0005); legacy table specs are no longer accepted",
       ),
     ];
   }

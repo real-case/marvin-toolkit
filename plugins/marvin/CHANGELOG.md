@@ -7,7 +7,7 @@ follows semver independently of the surrounding marketplace.
 ## [2.0.0-alpha.21] — 2026-06-16
 
 Tool-backed delivery gate (see
-[ADR-0014](../../docs/adr/0014-tool-backed-delivery-gate.md)).
+[ADR-0012](../../docs/adr/0012-tool-backed-delivery-gate.md)).
 
 ### Added
 
@@ -27,7 +27,7 @@ Tool-backed delivery gate (see
 ## [2.0.0-alpha.20] — 2026-06-16
 
 Tool-backed scope-allowlist gate (see
-[ADR-0013](../../docs/adr/0013-tool-backed-scope-gate.md)).
+[ADR-0011](../../docs/adr/0011-tool-backed-scope-gate.md)).
 
 ### Added
 
@@ -49,7 +49,7 @@ Tool-backed scope-allowlist gate (see
 ## [2.0.0-alpha.19] — 2026-06-16
 
 Tool-backed contract-seal verification (see
-[ADR-0012](../../docs/adr/0012-tool-backed-contract-seal.md)).
+[ADR-0010](../../docs/adr/0010-tool-backed-contract-seal.md)).
 
 ### Added
 
@@ -79,7 +79,7 @@ Built-in stack detection broadened to the top ~10 ecosystems.
   self-contained `cmake` build), alongside the existing Go, Rust, Python, TypeScript, and
   Java/Maven. Python detection now also picks up `setup.py` / `setup.cfg`. Canonical commands are
   best-effort defaults — override any of them per gate via `.marvin/config.json`
-  ([ADR-0011](../../docs/adr/0011-config-first-gate-resolution.md)); a genuinely unrecognised stack
+  ([ADR-0009](../../docs/adr/0009-config-first-gate-resolution.md)); a genuinely unrecognised stack
   still falls back to declared npm / Makefile commands, then the honest "no gates detected" message.
 
 ### Changed
@@ -94,7 +94,7 @@ Built-in stack detection broadened to the top ~10 ecosystems.
 ## [2.0.0-alpha.17] — 2026-06-16
 
 Config-first gate resolution for `verify` (see
-[ADR-0011](../../docs/adr/0011-config-first-gate-resolution.md)).
+[ADR-0009](../../docs/adr/0009-config-first-gate-resolution.md)).
 
 ### Added
 
@@ -103,7 +103,7 @@ Config-first gate resolution for `verify` (see
   `gates` declared in `.marvin/config.json` (e.g. `"gates": { "test": "vitest run", "lint": "biome
   check ." }`) override the detected commands **per gate**, then stack auto-detection (`STACK_TABLE`
   → declared-command fallback) fills the rest. This closes the toolchain-coupling gap left by
-  [ADR-0007](../../docs/adr/0007-portable-spec-contract.md)'s open stack detection: a project on a
+  [ADR-0005](../../docs/adr/0005-portable-spec-contract.md)'s open stack detection: a project on a
   non-canonical toolchain (Python `tox`/`uv`, TypeScript `vitest`/`bun`, Rust `cargo nextest`, …) can
   pin exactly how it is built **once**, instead of re-passing `gates` on every call. The report's
   `Stacks:` line appends `.marvin/config.json` when an override applies; a malformed config warns and
@@ -124,7 +124,7 @@ General door-3 fix: the MCP door now resolves plugin-relative resource paths.
   the cwd is the user's project) and the model improvised from memory. This is the general fix for
   the bare-path bug class — the safety net behind the per-resource patterns: invoke sibling skills by
   command (`sec-scan`, alpha.14) and inline a skill's own scaffolding (`task-start` templates,
-  alpha.15). See [ADR-0010](../../docs/adr/0010-mcp-door-resource-resolution.md).
+  alpha.15). See [ADR-0008](../../docs/adr/0008-mcp-door-resource-resolution.md).
 
 ### Changed
 
@@ -180,7 +180,7 @@ Prompt-injection hardening for the security scanners.
 
 Unified `.marvin/` working directory — every service file marvin generates now lives under one
 hidden root, one subdirectory per command group (see
-[ADR-0009](../../docs/adr/0009-marvin-working-directory.md)).
+[ADR-0007](../../docs/adr/0007-marvin-working-directory.md)).
 
 ### Changed
 
@@ -189,7 +189,7 @@ hidden root, one subdirectory per command group (see
   but default to the new hidden paths; `.mcp.json` and `lib/env.ts` updated in lockstep.
 - **Verification artifact moves `.taskmaster/current-task/verification.md` →
   `.marvin/task/verification.md`.** `task-verify` and `task-deliver` read the new path.
-- **Specs default to `.marvin/task/`** while staying host-adaptive (ADR-0007): an existing
+- **Specs default to `.marvin/task/`** while staying host-adaptive (ADR-0005): an existing
   `specs/` / `docs/specs/` / `docs/rfcs/` / `rfcs/` convention is still discovered and preferred, and
   the `spec` gate / `task-implement` / `task-deliver` search `.marvin/task/` first, then those.
 
@@ -204,7 +204,7 @@ conventional locations.
 
 ## [2.0.0-alpha.11] — 2026-06-14
 
-All subagents run on Opus (see [ADR-0008](../../docs/adr/0008-all-subagents-opus.md)).
+All subagents run on Opus (see [ADR-0006](../../docs/adr/0006-all-subagents-opus.md)).
 
 ### Changed
 
@@ -217,7 +217,7 @@ All subagents run on Opus (see [ADR-0008](../../docs/adr/0008-all-subagents-opus
 ## [2.0.0-alpha.10] — 2026-06-14
 
 Coverage, archetype router, and an enforceable immutability seal — M4 (final) of
-[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+[ADR-0005](../../docs/adr/0005-portable-spec-contract.md).
 
 ### Added
 
@@ -232,14 +232,14 @@ Coverage, archetype router, and an enforceable immutability seal — M4 (final) 
 - **Coverage dimensions** added to the intake sweep: concurrency/idempotency, external-dependency
   failure/timeout, test-environment availability, cost/quota, and new-dependency licence.
 
-This completes ADR-0007 (M1–M4): the spec contract is portable (host-discovered, open-stack,
+This completes ADR-0005 (M1–M4): the spec contract is portable (host-discovered, open-stack,
 location-aware), fail-closed (a schema-validated YAML block with mechanical traceability + sibling
 gate), and sealed (a tamper-evident hash binds the written artifact to a passing gate).
 
 ## [2.0.0-alpha.9] — 2026-06-14
 
 Host bindings + mechanical sibling-dependency gate — M3 of
-[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+[ADR-0005](../../docs/adr/0005-portable-spec-contract.md).
 
 ### Added
 
@@ -264,7 +264,7 @@ Host bindings + mechanical sibling-dependency gate — M3 of
 ## [2.0.0-alpha.8] — 2026-06-14
 
 The spec contract is now an authoritative, schema-validated YAML block — M2 of
-[ADR-0007](../../docs/adr/0007-portable-spec-contract.md). **Breaking spec-format change.**
+[ADR-0005](../../docs/adr/0005-portable-spec-contract.md). **Breaking spec-format change.**
 
 ### Changed
 
@@ -292,7 +292,7 @@ The spec contract is now an authoritative, schema-validated YAML block — M2 of
 ## [2.0.0-alpha.7] — 2026-06-14
 
 Portable spec output location and host-neutral Definition of Done — completes M1 of
-[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+[ADR-0005](../../docs/adr/0005-portable-spec-contract.md).
 
 ### Changed
 
@@ -308,7 +308,7 @@ Portable spec output location and host-neutral Definition of Done — completes 
 ## [2.0.0-alpha.6] — 2026-06-14
 
 Open stack detection for `/marvin:task-verify` and the spec authoring flow — M1 of
-[ADR-0007](../../docs/adr/0007-portable-spec-contract.md).
+[ADR-0005](../../docs/adr/0005-portable-spec-contract.md).
 
 ### Added
 
@@ -329,7 +329,7 @@ Open stack detection for `/marvin:task-verify` and the spec authoring flow — M
 ## [2.0.0-alpha.5] — 2026-06-14
 
 `spec` DoR gate hardened to **fail closed** — Phase 1 of the portable spec contract
-(see [ADR-0007](../../docs/adr/0007-portable-spec-contract.md)).
+(see [ADR-0005](../../docs/adr/0005-portable-spec-contract.md)).
 
 ### Changed
 
@@ -351,7 +351,7 @@ Open stack detection for `/marvin:task-verify` and the spec authoring flow — M
 ## [2.0.0-alpha.4] — 2026-06-14
 
 Traceable spec contract and gate reordering for `/marvin:task-start`
-(see [ADR-0006](../../docs/adr/0006-traceable-spec-contract.md)).
+(see [ADR-0004](../../docs/adr/0004-traceable-spec-contract.md)).
 
 ### Added
 
@@ -381,7 +381,8 @@ Traceable spec contract and gate reordering for `/marvin:task-start`
 **Breaking:** consolidated the four packs (`marvin-core-pack`, `marvin-security-pack`,
 `marvin-taskmaster-pack`, `marvin-tasks-pack`) into a **single plugin** `marvin` with one
 MCP server under one slash prefix `/marvin:` (see
-[ADR-0003](../../docs/adr/0003-single-plugin-consolidation.md), which supersedes ADR-0002).
+[ADR-0001](../../docs/adr/0001-single-plugin-consolidation.md), which supersedes the prior
+four-pack, per-pack-server design).
 
 ### Changed
 
@@ -401,7 +402,7 @@ MCP server under one slash prefix `/marvin:` (see
 
 ## [1.0.0-alpha.1] — 2026-05-20
 
-**Breaking:** migration to MCP-first architecture (see [ADR-0002](../../docs/adr/0002-mcp-first-architecture.md)) — hybrid model with skills as source of truth.
+**Breaking:** migration to MCP-first architecture — hybrid model with skills as source of truth. (The MCP-first ADR was retired in the v2 publication cut; its still-relevant rationale lives in [ADR-0013](../../docs/adr/0013-self-contained-server-bundle.md) and [ADR-0018](../../docs/adr/0018-three-doors-instrument-taxonomy.md).)
 
 ### Added
 

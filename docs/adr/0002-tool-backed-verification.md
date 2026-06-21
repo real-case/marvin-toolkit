@@ -1,4 +1,4 @@
-# ADR 0004 — Tool-backed verification gate
+# ADR 0002 — Tool-backed verification gate
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |

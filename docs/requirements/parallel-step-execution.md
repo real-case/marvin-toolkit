@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                            |
 | ---------- | -------------------------------------------------------------------------------- |
-| Status     | **Implemented** 2026-06-13 — see `specs/taskmaster-latency-optimization.md`, ADR-0004 |
+| Status     | **Implemented** 2026-06-13 — see `specs/taskmaster-latency-optimization.md`, ADR-0002 |
 | Date       | 2026-06-08                                                                       |
 | Applies to | taskmaster pipeline — `task-implement`, `task-verify` skills                     |
 | Related    | `docs/proposals/task-workflow-latency-optimization.md` (items P1, P2)            |

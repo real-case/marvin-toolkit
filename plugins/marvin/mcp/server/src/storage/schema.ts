@@ -37,7 +37,7 @@ export interface Task {
 
 /**
  * Per-gate command overrides for the `verify` tool, declared once per project
- * (ADR-0011). Any gate set here wins over auto-detection (config-first); gates
+ * (ADR-0009). Any gate set here wins over auto-detection (config-first); gates
  * left unset fall back to stack detection. Keys match the verify gate names.
  */
 export const GateCommands = z.object({

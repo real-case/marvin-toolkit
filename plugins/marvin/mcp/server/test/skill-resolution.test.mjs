@@ -99,7 +99,7 @@ test("prompts/get sec-compliance prepends plugin-root context for its skills/ re
   assert.ok(text, "missing message text");
   // sec-compliance tells the model to read skills/sec-compliance/asvs-4.0-checklist.md by a
   // plugin-relative path. Through the MCP door the model's cwd is the user's project, so the
-  // server must prepend the absolute plugin root for that path to resolve (ADR-0010).
+  // server must prepend the absolute plugin root for that path to resolve (ADR-0008).
   assert.match(
     text,
     /Plugin resources:[\s\S]*installed at/,

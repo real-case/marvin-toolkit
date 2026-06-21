@@ -1,4 +1,4 @@
-# ADR 0010 — MCP-door plugin-resource resolution
+# ADR 0008 — MCP-door plugin-resource resolution
 
 | Field         | Value                                                                                                                                                                                                                                                              |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6,11 +6,11 @@
 | Date          | 2026-06-14                                                                                                                                                                                                                                                       |
 | Supersedes    | —                                                                                                                                                                                                                                                               |
 | Superseded by | —                                                                                                                                                                                                                                                               |
-| Related       | `docs/adr/0003-single-plugin-consolidation.md` (three doors), `packages/marvin-mcp-shared/src/server.ts`, `packages/marvin-mcp-shared/src/prompts.ts`, `plugins/marvin/skills/sec-scan/`, `plugins/marvin/skills/task-start/`, `plugins/marvin/skills/sec-compliance/` |
+| Related       | [ADR-0001](0001-single-plugin-consolidation.md) (three doors), `packages/marvin-mcp-shared/src/server.ts`, `packages/marvin-mcp-shared/src/prompts.ts`, `plugins/marvin/skills/sec-scan/`, `plugins/marvin/skills/task-start/`, `plugins/marvin/skills/sec-compliance/` |
 
 ## Context
 
-A marvin skill is reachable through **three doors** (ADR-0003): Claude Code auto-discovery, the
+A marvin skill is reachable through **three doors** (ADR-0001): Claude Code auto-discovery, the
 markdown command wrapper, and the MCP prompt (`/marvin:<cmd>`). All three lead to the same
 `SKILL.md` prose.
 

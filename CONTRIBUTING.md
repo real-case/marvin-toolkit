@@ -63,14 +63,24 @@ stale `dist/` via `verify-dist.mjs`.
 
 ## Submitting a change
 
-1. Create a branch for your change.
+`dev` is the integration branch and the base for all contributions; `main` is
+release-only and advances solely through a `dev → main` promotion PR. Every
+change lands through a pull request — no direct pushes to either branch
+(see [ADR-0019](docs/adr/0019-branching-and-pr-flow.md)).
+
+1. Branch off `dev` with a topic branch — `feat/…`, `fix/…`, `chore/…`,
+   `docs/…`, or `sec/…`.
 2. Make your edits under `plugins/marvin/` (or `packages/` for the shared library).
 3. If you touched the MCP server, rebuild it (`npm run build`) and commit `dist/`.
 4. Bump the plugin's `plugin.json` version and mirror it in
    `.claude-plugin/marketplace.json` (see versioning below).
 5. Run the full quality-gate suite above.
-6. Open a PR. CI lints manifests, builds, tests, smoke-tests the MCP server,
-   and verifies `dist/` is in sync.
+6. Open a PR **into `dev`**. CI lints manifests, builds, tests, smoke-tests the
+   MCP server, and verifies `dist/` is in sync.
+
+Maintainers cut a release by promoting `dev → main` via PR and tagging `vX.Y.Z`
+on `main`, which the release workflow turns into a GitHub Release
+([ADR-0014](docs/adr/0014-distribution-release-model.md)).
 
 ## Commit messages
 

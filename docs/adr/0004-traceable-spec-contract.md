@@ -1,4 +1,4 @@
-# ADR 0006 — Traceable spec contract and gate reordering
+# ADR 0004 — Traceable spec contract and gate reordering
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
@@ -6,11 +6,16 @@
 | Date          | 2026-06-14                                                  |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
-| Related       | `docs/adr/0005-tool-backed-dor.md`, `docs/adr/0004-tool-backed-verification.md`, `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/skills/task-start/{feature,bugfix}-spec-template.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
+| Related       | [ADR-0003](0003-tool-backed-dor.md), [ADR-0002](0002-tool-backed-verification.md), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
+
+> **Amendment (2026-06-14):** the `sonnet`-backed `marvin-tm-spec-critic` referenced below
+> was later raised to Opus by [ADR-0006](0006-all-subagents-opus.md). Mentions of "sonnet"
+> here are historical; the gate-ordering rationale is unchanged (and stronger now that the
+> critic is more expensive).
 
 ## Context
 
-ADR-0005 moved the **shape** of the Definition of Ready into the `spec` tool: required
+ADR-0003 moved the **shape** of the Definition of Ready into the `spec` tool: required
 frontmatter, required sections, File-Change-Plan path existence, a non-empty `verified_by` per
 acceptance criterion. That closed the largest hole — a self-graded prose checklist — but an audit
 of the full Phase-1 → Phase-2 chain surfaced four residual gaps, all of which let a "ready" spec
@@ -37,7 +42,7 @@ still force the executor to *infer* its way to a result:
 
 Determinism of execution is a function of how little the executor must infer. Every unlinked
 table and every prose contract is an inference point — a place where spec and diff can diverge.
-ADR-0005 proved the spec's *shape*; it did not make the spec's *internal references* a checkable
+ADR-0003 proved the spec's *shape*; it did not make the spec's *internal references* a checkable
 property, nor guarantee the context needed to make those references complete was gathered before
 the allowlist was drafted.
 
@@ -95,6 +100,6 @@ draft.
   narrows, it does not replace judgment.
 - More required structure raises the authoring bar for trivial specs. Accepted: the pipeline targets
   headless dispatch, where under-specification is the dominant failure mode.
-- DoR-logic changes continue to require a server rebuild and committed `dist/` (ADR-0005's
+- DoR-logic changes continue to require a server rebuild and committed `dist/` (ADR-0003's
   trade-off), and the `spec` tool's availability inside a headless `claude -p` run is still not
   guaranteed — `task-start` falls back to a manual self-check and records the degradation.

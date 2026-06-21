@@ -80,7 +80,7 @@ function callSpec(args) {
 
 const find = (parsed, id) => parsed.checks.find((c) => c.id === id);
 
-// A complete, valid feature spec in the ADR-0007 spec-contract block format.
+// A complete, valid feature spec in the ADR-0005 spec-contract block format.
 // `CLAUDE.md` is an `edit` path that exists at repoRoot; the other paths are
 // `new`. The test oracle `test/sample.test.mjs` is allowlisted as plan row F3.
 const VALID_FEATURE = `---
@@ -523,7 +523,7 @@ test("the gate emits a stable contract hash that changes with the block", async 
   assert.equal(a.contractSha, d.contractSha, "stable when only prose outside the block changes");
 });
 
-// ── contract-seal verification (mode: "seal") — the tamper gate, ADR-0012 ──
+// ── contract-seal verification (mode: "seal") — the tamper gate, ADR-0010 ──
 
 test("seal: an intact spec passes (stamped hash matches the block)", async () => {
   const sha = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed
@@ -574,7 +574,7 @@ test("seal: a spec with no contract block fails the seal check", async () => {
   assert.equal(find(parsed, "seal").status, "fail");
 });
 
-// ── scope-allowlist gate (mode: "scope") — git diff ⊆ contract.files, ADR-0013 ──
+// ── scope-allowlist gate (mode: "scope") — git diff ⊆ contract.files, ADR-0011 ──
 
 const SCOPE_SPEC = `---
 slug: scope-test

@@ -1,4 +1,4 @@
-# ADR 0005 — Tool-backed Definition-of-Ready gate
+# ADR 0003 — Tool-backed Definition-of-Ready gate
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
@@ -6,7 +6,7 @@
 | Date          | 2026-06-13                                                  |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
-| Related       | `docs/adr/0004-tool-backed-verification.md`, `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/skills/task-start/{feature,bugfix}-spec-template.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
+| Related       | [ADR-0002](0002-tool-backed-verification.md), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
 
 ## Context
 
@@ -27,7 +27,7 @@ open questions, no half-filled template.
 
 ### The binding constraint
 
-This is the same class of problem ADR-0004 identified for verification: a guarantee expressed as
+This is the same class of problem ADR-0002 identified for verification: a guarantee expressed as
 prose holds only by the model's run-time discipline. "Every acceptance criterion is testable" and
 "affected files are identified" are checkable properties — but a markdown checklist cannot enforce
 them, and a self-grading author is the worst-positioned reader to catch what is missing.
@@ -68,7 +68,7 @@ Move the **checkable** part of the DoR out of prose into a deterministic MCP too
 - The file allowlist and per-criterion proof (`verified_by`) are first-class and validated — the
   two largest sources of headless `⚠️ SPEC GAP`s become DoR failures instead.
 - `stack` and `test_command` are captured and verified in Phase 1, so Phase 2 stops re-deriving
-  them (same latency motive as ADR-0004).
+  them (same latency motive as ADR-0002).
 - `status` lifecycle makes a shipped or superseded spec un-runnable, preventing accidental re-dispatch.
 
 ### Negative / accepted trade-offs
@@ -82,4 +82,4 @@ Move the **checkable** part of the DoR out of prose into a deterministic MCP too
   judgment.
 - DoR-logic changes now require a server rebuild and committed `dist/` (was a prose edit), and the
   `spec` tool's availability inside a headless `claude -p` run is not guaranteed — `task-start`
-  falls back to a manual self-check and records the degradation, the same mitigation ADR-0004 uses.
+  falls back to a manual self-check and records the degradation, the same mitigation ADR-0002 uses.

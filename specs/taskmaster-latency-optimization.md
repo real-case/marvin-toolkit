@@ -48,7 +48,7 @@ Authoritative allowlist. The implementer/executor MUST NOT touch files not liste
 | `.claude-plugin/marketplace.json` | edit | minor version bump | — |
 | `plugins/marvin/mcp/server/package.json` | edit | minor version bump | — |
 | `CLAUDE.md` | edit | tool inventory `task/git/help` → `+verify` | — |
-| `docs/adr/0004-tool-backed-verification.md` | new | ADR for verify becoming tool-backed | — |
+| `docs/adr/0002-tool-backed-verification.md` | new | ADR for verify becoming tool-backed | — |
 | `docs/proposals/task-workflow-latency-optimization.md` | edit | flip Status Draft → Accepted/Implemented, commit (currently untracked) | — |
 | `docs/requirements/parallel-step-execution.md` | edit | flip Status Draft → Accepted/Implemented, commit (currently untracked) | — |
 
@@ -157,7 +157,7 @@ Each criterion is observable from the outside and bound to the proof that verifi
 | AC-P4 | `task-verify` skips stack/type detection when `mode`/`stack` are supplied; `task-deliver` reuses chained spec context; standalone paths still re-derive. | prose-contract review | chained run re-derives stack/type, or standalone stops re-deriving |
 | AC-P5 | `task-implement` retry loop re-runs only the failed gate via `only:[…]`, then a final full `verify` pass before delivery. | prose-contract review | retry re-runs the full gate set, or skips the final full pass |
 | AC-P6 | `task-start` Step 3F defaults to 3 variants, expands to 5 only for high-uncertainty/high-blast-radius, and retains NATIVE fallback + anti-strawman. | prose review of `task-start/SKILL.md` | defaults to 5, or drops NATIVE fallback / anti-strawman |
-| AC-DOCS | Version bumped in `plugin.json`, `marketplace.json`, server `package.json`; `CLAUDE.md` tool inventory updated; `docs/adr/0004-tool-backed-verification.md` added; both source planning docs flipped to Accepted/Implemented. | file inspection of the version triple, `CLAUDE.md`, ADR-0004, and planning-doc status | a version left unbumped, ADR missing, or a planning doc still Draft |
+| AC-DOCS | Version bumped in `plugin.json`, `marketplace.json`, server `package.json`; `CLAUDE.md` tool inventory updated; `docs/adr/0002-tool-backed-verification.md` added; both source planning docs flipped to Accepted/Implemented. | file inspection of the version triple, `CLAUDE.md`, ADR-0002, and planning-doc status | a version left unbumped, ADR missing, or a planning doc still Draft |
 | AC-CI | `lint-manifests`, `npm run build`, `verify-dist`, ESLint, Prettier, the `npm test` suite (whose `smoke.test.mjs:51` asserts `serverInfo.name == "marvin"`), and the CI workflow's inline `initialize` smoke-test all pass. | CI workflow (`.github/workflows/validate-plugins.yml`) green | any CI gate (lint/build/verify-dist/eslint/prettier/test/smoke) red |
 
 ## Test Plan
@@ -229,7 +229,7 @@ in Design Notes; reviewers comparing spec vs. source docs should read that note.
 - **Intentional divergence from the proposal.** `docs/proposals/...latency-optimization.md`
   (lines 140–148) states "No MCP server rebuild required" because it assumed P1 would be a
   prose edit. This spec deliberately supersedes that note: P1 becomes a tool (rebuild
-  required), recorded in ADR-0004, for the determinism guarantees the prose path cannot give.
+  required), recorded in ADR-0002, for the determinism guarantees the prose path cannot give.
 - **Executor parity is an intentional scope extension.** Neither source doc lists
   `marvin-tm-executor` in its affected files; it is added here to (a) close the existing
   critic/verify ordering divergence between the two siblings and (b) keep "same contract, same
@@ -245,6 +245,6 @@ in Design Notes; reviewers comparing spec vs. source docs should read that note.
 - The verify tool could later emit machine-readable JUnit/SARIF for CI consumption.
 
 ## Delivery
-- PR: #11 — taskmaster: tool-backed parallel verification (ADR-0004); merged as commit `2caca12`.
+- PR: #11 — taskmaster: tool-backed parallel verification (ADR-0002); merged as commit `2caca12`.
 - Delivered: 2026-06-13.
 - Status: shipped.

@@ -1,4 +1,4 @@
-# ADR 0011 — Config-first gate resolution for `verify`
+# ADR 0009 — Config-first gate resolution for `verify`
 
 | Field         | Value                                                                                                                                  |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6,13 +6,13 @@
 | Date          | 2026-06-16                                                                                                                             |
 | Supersedes    | —                                                                                                                                      |
 | Superseded by | —                                                                                                                                      |
-| Related       | [ADR-0004](0004-tool-backed-verification.md) (the `verify` tool), [ADR-0007](0007-portable-spec-contract.md) (open stack detection), [ADR-0009](0009-marvin-working-directory.md) (`.marvin/` working dir) |
+| Related       | [ADR-0002](0002-tool-backed-verification.md) (the `verify` tool), [ADR-0005](0005-portable-spec-contract.md) (open stack detection), [ADR-0007](0007-marvin-working-directory.md) (`.marvin/` working dir) |
 
 ## Context
 
-`verify` (ADR-0004) detects a project's quality gates from a five-entry `STACK_TABLE`
+`verify` (ADR-0002) detects a project's quality gates from a five-entry `STACK_TABLE`
 (Go, Python, TypeScript, Rust, Java), each mapping an ecosystem to a _canonical_
-toolchain — `pytest`/`ruff`/`mypy`, `npm test`/`npx eslint`/`npx tsc`, and so on. ADR-0007
+toolchain — `pytest`/`ruff`/`mypy`, `npm test`/`npx eslint`/`npx tsc`, and so on. ADR-0005
 (alpha.6) added a declared-command fallback (`package.json` scripts → `Makefile` targets)
 for ecosystems **outside** the table.
 
@@ -48,7 +48,7 @@ declaration of gate commands — and make `verify` resolve the plan **config-fir
   `Stacks:` line appends `.marvin/config.json` so an override is visible, never silent.
 - A malformed config is surfaced as a verification **warning** and falls back to detection —
   never a silent swap to defaults (the existing `loadConfig` already validates and warns).
-- `gates` lives in the same `.marvin/config.json` the kanban tools already use (ADR-0009),
+- `gates` lives in the same `.marvin/config.json` the kanban tools already use (ADR-0007),
   read through the same loader, honouring `MARVIN_TASKS_CONFIG`.
 
 ## Consequences

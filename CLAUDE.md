@@ -5,15 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What is this
 
 Marvin is a Claude Code plugin marketplace that ships **one plugin** (`marvin`) backed by a
-**single MCP server** (per ADR-0003). The plugin exposes the whole development lifecycle —
+**single MCP server** (per ADR-0001). The plugin exposes the whole development lifecycle —
 core dev tools, a spec-driven task pipeline, security scanners, and a lightweight kanban
 tracker — under one slash prefix `/marvin:`. There is no eject/scaffold step; the plugin
 works as installed by `/plugin install`.
 
 > Until 2026-06 the toolkit was four independently-installable packs each with its own
-> server (`/marvin-core:*`, `/marvin-sec:*`, `/marvin-tm:*`, `/marvin-tasks:*`). ADR-0003
+> server (`/marvin-core:*`, `/marvin-sec:*`, `/marvin-tm:*`, `/marvin-tasks:*`). ADR-0001
 > consolidated them into one plugin/one server so every command shares the `/marvin:` prefix.
-> See `docs/adr/0003-single-plugin-consolidation.md`.
+> See `docs/adr/0001-single-plugin-consolidation.md`.
 
 ## Architecture
 
@@ -45,16 +45,16 @@ plugins/marvin/
 ### Working directory (`.marvin/`)
 
 Every **service file** marvin generates lives under a single hidden `.marvin/` directory at the
-project root, one subdirectory per command group (ADR-0009):
+project root, one subdirectory per command group (ADR-0007):
 
 | Path | Written by | Contents |
 |------|-----------|----------|
 | `.marvin/task/` | `task-*` pipeline | spec `<slug>.md` files + the current `verification.md` |
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
-| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch`, `tracker_url_template`, and `verify` gate overrides (`gates`, ADR-0011) — the `MARVIN_TASKS_CONFIG` default |
+| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch`, `tracker_url_template`, and `verify` gate overrides (`gates`, ADR-0009) — the `MARVIN_TASKS_CONFIG` default |
 
-Spec location stays **host-adaptive** (ADR-0007): `.marvin/task/` is the default, but an existing
+Spec location stays **host-adaptive** (ADR-0005): `.marvin/task/` is the default, but an existing
 host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
 `task-implement` / `task-deliver` / the `spec` gate search `.marvin/task/` first, then those. The
 `MARVIN_TASKS_*` env vars in `.mcp.json` can repoint the kanban paths. Project **deliverables** are
@@ -90,7 +90,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - **Skills** (`plugins/marvin/skills/<command>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content. Dir name, `name:`, and command all match.
 - **Markdown commands** (`plugins/marvin/commands/<command>.md`) — Short slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
 - **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `kanban-*` group, an inline `body:`) under `/marvin:<command>`.
-- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`git`/`help` tools (file CRUD, git ops, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0004/0011) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0005/0006/0007).
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`git`/`help` tools (file CRUD, git ops, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0002/0009) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0003/0004/0005).
 - **Agents** (`plugins/marvin/agents/*.md`) — Claude Code subagents with constrained tool access. Picked up automatically on `/plugin install`.
 
 > The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 13 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`git`/`help` MCP tools. There is no standalone workflow prose to duplicate into a skill.
@@ -174,6 +174,14 @@ The plugin has one version. Bump `plugins/marvin/.claude-plugin/plugin.json`, mi
 - **Minor** — new prompts, tools, or agents
 - **Major** — breaking changes (server key rename, prompt name removal/rename, schema break)
 
+## Branching & releases
+
+Two long-lived branches (ADR-0019): **`dev`** is the integration branch and the base for all
+work; **`main`** is release-only. Cut topic branches (`feat/*`, `fix/*`, `chore/*`, `docs/*`,
+`sec/*`) off `dev` and open every PR **into `dev`** — never commit directly to `dev` or `main`.
+A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`, which
+`.github/workflows/release.yml` turns into a GitHub Release (ADR-0014).
+
 ## Key files
 
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
@@ -181,12 +189,13 @@ The plugin has one version. Bump `plugins/marvin/.claude-plugin/plugin.json`, mi
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
 - `plugins/marvin/mcp/server/src/prompts/index.ts` — the 38 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
-- `docs/adr/0003-single-plugin-consolidation.md` — current architecture decision
-- `docs/adr/0004-tool-backed-verification.md` — `verify` gate moved from prose to a tool
-- `docs/adr/0005-tool-backed-dor.md` — Definition-of-Ready moved from prose to the `spec` tool
-- `docs/adr/0009-marvin-working-directory.md` — the unified `.marvin/` working-directory convention
-- `docs/adr/0010-mcp-door-resource-resolution.md` — the MCP door resolves `skills/...` resource paths; per-resource delegation convention
-- `docs/adr/0002-mcp-first-architecture.md` — superseded; the prior four-pack design
+- `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
+- `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool
+- `docs/adr/0003-tool-backed-dor.md` — Definition-of-Ready moved from prose to the `spec` tool
+- `docs/adr/0007-marvin-working-directory.md` — the unified `.marvin/` working-directory convention
+- `docs/adr/0008-mcp-door-resource-resolution.md` — the MCP door resolves `skills/...` resource paths; per-resource delegation convention
+- `docs/adr/0013-self-contained-server-bundle.md` — why `dist/server.js` is bundled and committed
+- `docs/adr/0014-distribution-release-model.md` — git-tag → GitHub Release; no npm publish
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard
 - `.github/workflows/validate-plugins.yml` — CI pipeline

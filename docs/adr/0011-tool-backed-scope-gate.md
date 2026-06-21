@@ -1,4 +1,4 @@
-# ADR 0013 — Tool-backed scope-allowlist gate
+# ADR 0011 — Tool-backed scope-allowlist gate
 
 | Field         | Value                                                                                                                                   |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6,12 +6,12 @@
 | Date          | 2026-06-16                                                                                                                              |
 | Supersedes    | —                                                                                                                                       |
 | Superseded by | —                                                                                                                                       |
-| Related       | [ADR-0012](0012-tool-backed-contract-seal.md) (tool-backed seal), [ADR-0007](0007-portable-spec-contract.md) (the `files` allowlist), [ADR-0004](0004-tool-backed-verification.md) (tool-backed verify) |
+| Related       | [ADR-0010](0010-tool-backed-contract-seal.md) (tool-backed seal), [ADR-0005](0005-portable-spec-contract.md) (the `files` allowlist), [ADR-0002](0002-tool-backed-verification.md) (tool-backed verify) |
 
 ## Context
 
 The spec-contract `files` array is the authoritative allowlist of files an
-implementation may touch (ADR-0007). `task-implement` enforced it in prose
+implementation may touch (ADR-0005). `task-implement` enforced it in prose
 ("modify only the files in the spec's `files` list", "no scope expansion"), and
 the `marvin-tm-diff-critic` agent reported scope-creep among its semantic
 findings. But "is every changed file in the allowlist?" is pure set math —
@@ -51,7 +51,7 @@ change _doing_ something out of scope?).
 
 - The allowlist is now mechanically enforced, with tests — not prompt discipline,
   and not dependent on the critic being available.
-- Same pattern as ADR-0004 (verify), ADR-0005 (DoR), ADR-0012 (seal):
+- Same pattern as ADR-0002 (verify), ADR-0003 (DoR), ADR-0010 (seal):
   deterministic gates around the non-deterministic implementation step.
 - The `allow` valve keeps the SPEC GAP protocol working — discoveries are
   explicit and auditable, not silent.

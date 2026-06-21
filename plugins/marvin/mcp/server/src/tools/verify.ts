@@ -8,7 +8,7 @@ import type { ServerEnv } from "../lib/env.js";
 import { loadConfig } from "../storage/config.js";
 
 /**
- * Deterministic quality-gate runner (ADR-0004). Runs the project's
+ * Deterministic quality-gate runner (ADR-0002). Runs the project's
  * independent gates — test, lint, type-check, build — concurrently and
  * reduces them to a single verdict at one merge point, then writes
  * `verification.md`. The determinism guarantees (every gate runs to
@@ -68,7 +68,7 @@ interface StackDetector {
  * Built-in stack detectors with canonical gate commands — the zero-config default
  * (single source of truth; was duplicated in `task-verify/SKILL.md` and
  * `marvin-tm-executor.md`). The table is a *convenience*, not authoritative:
- * `.marvin/config.json` `gates` overrides any of these per gate (ADR-0011).
+ * `.marvin/config.json` `gates` overrides any of these per gate (ADR-0009).
  * Canonical commands are best-effort defaults — a project on a non-standard
  * toolchain (`gotestsum`, `minitest`, a custom lint) pins its own via config.
  * Anything outside this set falls back to the project's declared commands
@@ -312,7 +312,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
  *   2. config-declared gates (`.marvin/config.json`) — per-gate, config wins.
  *   3. auto-detection — stack table, then declared-command fallback.
  * (1) is for the caller that already knows the plan; (2) is the durable,
- * stack-agnostic project declaration (ADR-0011); (3) is the convenience default.
+ * stack-agnostic project declaration (ADR-0009); (3) is the convenience default.
  */
 function resolvePlan(
   input: VerifyInput,

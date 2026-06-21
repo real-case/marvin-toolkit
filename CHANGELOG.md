@@ -26,10 +26,10 @@ marketplace manifest schema or plugin list changes.
 ### Fixed
 
 - README: corrected the kanban storage path to `.marvin/kanban/` (was the
-  pre-ADR-0009 `marvin/tasks/`) and expanded the architecture-decisions section to
+  pre-ADR-0007 `marvin/tasks/`) and expanded the architecture-decisions section to
   all ten ADRs with accurate statuses (was stale at three).
 - SECURITY: updated the supported-version table to `2.0.0-alpha.x` and dropped the
-  pre-consolidation "pack" terminology (single plugin since ADR-0003).
+  pre-consolidation "pack" terminology (single plugin since ADR-0001).
 
 ### Security
 
@@ -39,6 +39,6 @@ marketplace manifest schema or plugin list changes.
 
 ## [2.0.0-alpha.1]
 
-Baseline for the single-plugin marketplace (ADR-0003): one `marvin` plugin, one MCP
+Baseline for the single-plugin marketplace (ADR-0001): one `marvin` plugin, one MCP
 server, one `/marvin:` prefix. See [`plugins/marvin/CHANGELOG.md`](./plugins/marvin/CHANGELOG.md)
 for the plugin's own release history.

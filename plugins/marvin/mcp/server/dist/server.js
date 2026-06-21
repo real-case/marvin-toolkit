@@ -30252,7 +30252,7 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
       fail(
         "spec-contract",
         "Spec contract",
-        "no ```yaml spec-contract block found \u2014 migrate the File Change Plan + Acceptance Criteria into the YAML block (ADR-0007); legacy table specs are no longer accepted"
+        "no ```yaml spec-contract block found \u2014 migrate the File Change Plan + Acceptance Criteria into the YAML block (ADR-0005); legacy table specs are no longer accepted"
       )
     ];
   }

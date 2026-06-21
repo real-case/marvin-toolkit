@@ -16,25 +16,31 @@ why the key decisions were made, and where work is heading.
 ## Decision history
 
 Decisions with long-lived consequences are recorded as
-[Architecture Decision Records](./adr/). Superseded entries are kept for the audit
-trail.
+[Architecture Decision Records](./adr/). The two pre-consolidation ADRs (source-format,
+MCP-first) were retired in the v2 publication cut; their still-relevant rationale is folded
+into 0001/0013/0018.
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0001](./adr/0001-source-format.md) | Source format — keep `plugins/` Claude-native | superseded by 0002 |
-| [0002](./adr/0002-mcp-first-architecture.md) | MCP-first architecture | superseded by 0003 |
-| [0003](./adr/0003-single-plugin-consolidation.md) | Single-plugin consolidation under one `/marvin:` prefix | active |
-| [0004](./adr/0004-tool-backed-verification.md) | Tool-backed verification gate | active |
-| [0005](./adr/0005-tool-backed-dor.md) | Tool-backed Definition-of-Ready gate | active |
-| [0006](./adr/0006-traceable-spec-contract.md) | Traceable spec contract and gate reordering | active |
-| [0007](./adr/0007-portable-spec-contract.md) | Portable, host-adaptive spec contract | active |
-| [0008](./adr/0008-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | active |
-| [0009](./adr/0009-marvin-working-directory.md) | Unified `.marvin/` working directory | active |
-| [0010](./adr/0010-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | active |
-| [0011](./adr/0011-config-first-gate-resolution.md) | Config-first gate resolution for `verify` | active |
-| [0012](./adr/0012-tool-backed-contract-seal.md) | Tool-backed contract-seal verification | active |
-| [0013](./adr/0013-tool-backed-scope-gate.md) | Tool-backed scope-allowlist gate | active |
-| [0014](./adr/0014-tool-backed-delivery-gate.md) | Tool-backed delivery gate | active |
+| [0001](./adr/0001-single-plugin-consolidation.md) | Single-plugin consolidation under one `/marvin:` prefix | Accepted |
+| [0002](./adr/0002-tool-backed-verification.md) | Tool-backed verification gate | Accepted |
+| [0003](./adr/0003-tool-backed-dor.md) | Tool-backed Definition-of-Ready gate | Accepted |
+| [0004](./adr/0004-traceable-spec-contract.md) | Traceable spec contract and gate reordering | Accepted |
+| [0005](./adr/0005-portable-spec-contract.md) | Portable, host-adaptive spec contract | Accepted |
+| [0006](./adr/0006-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | Accepted |
+| [0007](./adr/0007-marvin-working-directory.md) | Unified `.marvin/` working directory | Accepted |
+| [0008](./adr/0008-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | Accepted |
+| [0009](./adr/0009-config-first-gate-resolution.md) | Config-first gate resolution for `verify` | Accepted |
+| [0010](./adr/0010-tool-backed-contract-seal.md) | Tool-backed contract-seal verification | Accepted |
+| [0011](./adr/0011-tool-backed-scope-gate.md) | Tool-backed scope-allowlist gate | Accepted |
+| [0012](./adr/0012-tool-backed-delivery-gate.md) | Tool-backed delivery gate | Accepted |
+| [0013](./adr/0013-self-contained-server-bundle.md) | Self-contained committed server bundle | Accepted |
+| [0014](./adr/0014-distribution-release-model.md) | Distribution & release model (git tag → GitHub Release; no npm) | Accepted |
+| [0015](./adr/0015-verify-shell-trust-boundary.md) | `verify` shell-execution trust boundary | Accepted |
+| [0016](./adr/0016-bundled-external-mcp-deps.md) | Bundled external MCP dependencies (context7, gitmcp) | Accepted |
+| [0017](./adr/0017-adversarial-critic-gates.md) | Adversarial critic gates in the task pipeline | Accepted |
+| [0018](./adr/0018-three-doors-instrument-taxonomy.md) | Three doors & instrument taxonomy | Accepted |
+| [0019](./adr/0019-branching-and-pr-flow.md) | Branching model: release `main`, integration `dev`, changes via PRs | Accepted |
 
 ## Work in progress
 

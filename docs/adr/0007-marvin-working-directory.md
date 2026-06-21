@@ -1,4 +1,4 @@
-# ADR 0009 — Unified `.marvin/` working directory
+# ADR 0007 — Unified `.marvin/` working directory
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
@@ -6,7 +6,7 @@
 | Date          | 2026-06-14                                                  |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
-| Related       | `docs/adr/0007-portable-spec-contract.md` (amended, not superseded), `plugins/marvin/.mcp.json`, `plugins/marvin/mcp/server/src/lib/env.ts`, `plugins/marvin/mcp/server/src/tools/verify.ts`, `plugins/marvin/mcp/server/src/tools/spec.ts`, `plugins/marvin/skills/task-*`, `plugins/marvin/skills/sec-*` |
+| Related       | [ADR-0005](0005-portable-spec-contract.md) (amended, not superseded), `plugins/marvin/.mcp.json`, `plugins/marvin/mcp/server/src/lib/env.ts`, `plugins/marvin/mcp/server/src/tools/verify.ts`, `plugins/marvin/mcp/server/src/tools/spec.ts`, `plugins/marvin/skills/task-*`, `plugins/marvin/skills/sec-*` |
 
 ## Context
 
@@ -35,7 +35,7 @@ subdirectory per command group.**
 
 1. **Hidden, not visible.** `.marvin/` (dot-prefixed) replaces the old visible `marvin/` kanban root,
    so the bookkeeping sits beside `.git`/`.github` rather than cluttering the top level.
-2. **Spec location stays host-adaptive (ADR-0007 amended, not reversed).** `.marvin/task/` becomes
+2. **Spec location stays host-adaptive (ADR-0005 amended, not reversed).** `.marvin/task/` becomes
    the default home, but an existing host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`)
    is still discovered and preferred. The `spec` gate, `task-implement`, and `task-deliver` search
    `.marvin/task/` first, then those conventions, so either location resolves automatically.

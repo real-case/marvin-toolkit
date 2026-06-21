@@ -206,7 +206,7 @@ test("a truly unknown stack is surfaced, not silently empty", async () => {
   }
 });
 
-// ── config-first gate resolution: .marvin/config.json `gates` (ADR-0011) ──
+// ── config-first gate resolution: .marvin/config.json `gates` (ADR-0009) ──
 
 function writeConfig(dir, contents) {
   mkdirSync(join(dir, ".marvin"), { recursive: true });
@@ -336,7 +336,7 @@ for (const c of STACK_DETECTION_CASES) {
   });
 }
 
-// ── delivery gate (action: "gate") — reads the verification.md verdict, ADR-0014 ──
+// ── delivery gate (action: "gate") — reads the verification.md verdict, ADR-0012 ──
 
 function writeVerification(dir, verdict) {
   mkdirSync(join(dir, ".marvin", "task"), { recursive: true });

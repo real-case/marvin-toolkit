@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                                  |
 | ---------- | -------------------------------------------------------------------------------------- |
-| Status     | **Implemented** 2026-06-13 — see `specs/taskmaster-latency-optimization.md`, ADR-0004     |
+| Status     | **Implemented** 2026-06-13 — see `specs/taskmaster-latency-optimization.md`, ADR-0002     |
 | Date       | 2026-06-08                                                                              |
 | Applies to | `task-start`, `task-implement`, `task-verify` skills (taskmaster pipeline)              |
 | Principle  | **Quality first, speed second** — every change must be latency-only, never reducing the depth of checks or dialogue |

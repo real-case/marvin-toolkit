@@ -1,4 +1,4 @@
-# ADR 0014 — Tool-backed delivery gate
+# ADR 0012 — Tool-backed delivery gate
 
 | Field         | Value                                                                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -6,11 +6,11 @@
 | Date          | 2026-06-16                                                                                                                          |
 | Supersedes    | —                                                                                                                                   |
 | Superseded by | —                                                                                                                                   |
-| Related       | [ADR-0004](0004-tool-backed-verification.md) (the verify tool / `verification.md`), [ADR-0012](0012-tool-backed-contract-seal.md) (seal), [ADR-0013](0013-tool-backed-scope-gate.md) (scope) |
+| Related       | [ADR-0002](0002-tool-backed-verification.md) (the verify tool / `verification.md`), [ADR-0010](0010-tool-backed-contract-seal.md) (seal), [ADR-0011](0011-tool-backed-scope-gate.md) (scope) |
 
 ## Context
 
-ADR-0004's `verify` tool writes `verification.md` with a machine-readable
+ADR-0002's `verify` tool writes `verification.md` with a machine-readable
 `verify-result` block (verdict + per-gate status). But `task-deliver`'s pre-flight
 read that verdict in _prose_: "Check `verification.md`… if the verdict is FAIL,
 stop." The model decided whether to proceed by eyeballing the report — it can
@@ -38,9 +38,9 @@ from what verify recorded.
 
 - The delivery refusal is now deterministic — a parsed field, not a prose read.
 - Write and read share one format (the verify tool owns both) → no drift, the same
-  property that makes the seal gate sound (ADR-0012).
+  property that makes the seal gate sound (ADR-0010).
 - Completes the trio of implementation-time gates moved from prose to tools: seal
-  (ADR-0012), scope (ADR-0013), delivery (this one).
+  (ADR-0010), scope (ADR-0011), delivery (this one).
 
 ### Negative / accepted trade-offs
 
