@@ -14,7 +14,7 @@ import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
 import { buildLessonsTool } from "./tools/lessons.js";
 
-const VERSION = "2.0.0-alpha.23";
+const VERSION = "2.0.0-alpha.24";
 
 await runPackServer({
   name: "marvin",
