@@ -15,7 +15,7 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 
 - None required (operates on current project state)
 - Pipeline context determines verification mode. If not set explicitly in conversation, **infer from spec**:
-  1. Look for spec in `.marvin/task/` (then `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) — match by slug from conversation context or most recent spec
+  1. Look for spec in `.marvin/task/` (then `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) — match by slug from conversation context (spec files are numeric-prefixed: `<slug>.md` or `<NNN>-<slug>.md`), or take the most recent spec (highest `<NNN>` prefix)
   2. Fall back to `.marvin/task/spec.md`
   3. Detect type: prefer the spec's frontmatter `type` (`feature`/`bugfix`); else infer from structure — a "Root Cause Analysis" section → bugfix, a "Chosen Approach" section → feature
   4. If no spec found → standalone mode

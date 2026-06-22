@@ -29,7 +29,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation, fall back to `.marvin/task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation (spec files are numeric-prefixed — match `<slug>.md` or `<NNN>-<slug>.md`), fall back to `.marvin/task/spec.md`
 
 ### 3. Create pull request
 
@@ -46,7 +46,7 @@ When composing the PR:
 {from spec goal/problem statement}
 
 ## Spec Reference
-`.marvin/task/{slug}.md`
+`.marvin/task/<NNN>-{slug}.md`   <!-- the actual resolved spec path -->
 
 ## Changes
 {key changes grouped by area}

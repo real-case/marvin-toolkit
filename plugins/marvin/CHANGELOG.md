@@ -4,6 +4,22 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.25] — 2026-06-22
+
+Spec files now sort by creation order.
+
+### Changed
+
+- **Numeric-prefixed spec filenames** ([ADR-0022](../../docs/adr/0022-numbered-spec-files.md)) —
+  `/marvin:task-start` now writes specs as `<NNN>-<slug>.md` (zero-padded sequence = highest
+  existing prefix in the spec dir + 1), so `.marvin/task/` lists in creation order instead of
+  alphabetically by topic. The number is filename-only: `slug` stays the spec's identity and the
+  `contract_sha` seal is unaffected.
+- **Prefix-tolerant slug resolution** — the `spec` tool's `depends_on` gate (new
+  `resolveSpecBySlug` helper) and the `task-implement` / `task-deliver` / `task-verify` skills now
+  resolve a slug to either `<slug>.md` (legacy, unnumbered) or `<NNN>-<slug>.md`, so existing
+  un-numbered specs keep working with no migration.
+
 ## [2.0.0-alpha.24] — 2026-06-22
 
 Enforce the read-only / read-mostly agent contracts that were previously prose-only (honor-system).

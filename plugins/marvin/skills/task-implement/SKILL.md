@@ -14,8 +14,8 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 ## Input
 
 `$ARGUMENTS` — one of:
-- A spec file path (`.marvin/task/<slug>.md`)
-- A slug (`<slug>` → resolves to `.marvin/task/<slug>.md`)
+- A spec file path (`.marvin/task/<NNN>-<slug>.md`)
+- A slug (`<slug>` → resolves to the spec whose filename is `<slug>.md` or `<NNN>-<slug>.md`)
 - Empty — the skill resolves the spec per Step 1
 
 ---
@@ -30,12 +30,14 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 
 Resolution order:
 
+Spec files are numeric-prefixed (`<NNN>-<slug>.md`), so resolve a slug by matching the slug part: prefer an exact `<slug>.md`, otherwise the file matching `<NNN>-<slug>.md`.
+
 1. **Argument provided:**
    - If it ends in `.md` and the file exists — use it.
-   - Else treat as a slug: try `<dir>/<arg>.md` across the spec directories. If not found, fail with a list of available specs.
+   - Else treat as a slug: across the spec directories, find `<dir>/<arg>.md` or `<dir>/<NNN>-<arg>.md`. If not found, fail with a list of available specs.
 2. **No argument — match current branch:**
    - Read current branch with `git rev-parse --abbrev-ref HEAD`.
-   - If it matches `task/<slug>`, try `<slug>.md` across the spec directories.
+   - If it matches `task/<slug>`, resolve `<slug>` (exact `<slug>.md` or `<NNN>-<slug>.md`) across the spec directories.
 3. **No branch match — prompt user:**
    - List specs across the spec directories whose frontmatter `status` is `ready`.
    - Ask the user to choose one.
