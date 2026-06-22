@@ -1,5 +1,5 @@
 ---
-name: onboarding-guide
+name: marvin-guide
 description: Helps new developers navigate and understand the codebase
 model: opus
 color: green

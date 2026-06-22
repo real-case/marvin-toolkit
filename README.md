@@ -56,7 +56,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:explain` | Explain code, architecture, and execution flow |
 | `/marvin:docs-search` | Search and synthesize project documentation |
 
-**Agents:** `onboarding-guide`, `research`.
+**Agents:** `marvin-guide`, `marvin-researcher`.
 
 **External MCP servers also registered:** `context7` (library docs lookup), `gitmcp` (GitHub repository docs).
 
@@ -77,7 +77,7 @@ OWASP Top 10, dependency audits, compliance checks.
 | `/marvin:sec-compliance` | OWASP ASVS compliance checking (L1/L2/L3) |
 | `/marvin:sec-pentest` | Generate application-specific penetration testing checklist |
 
-**Agent:** `security-reviewer`.
+**Agent:** `marvin-auditor`.
 
 ### Task pipeline — `task-*`
 
