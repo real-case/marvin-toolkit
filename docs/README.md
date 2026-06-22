@@ -41,6 +41,8 @@ into 0001/0013/0018.
 | [0017](./adr/0017-adversarial-critic-gates.md) | Adversarial critic gates in the task pipeline | Accepted |
 | [0018](./adr/0018-three-doors-instrument-taxonomy.md) | Three doors & instrument taxonomy | Accepted |
 | [0019](./adr/0019-branching-and-pr-flow.md) | Branching model: release `main`, integration `dev`, changes via PRs | Accepted |
+| [0020](./adr/0020-debugger-agent.md) | Root-cause analysis as the `marvin-debugger` agent | Accepted |
+| [0021](./adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
 
 ## Work in progress
 

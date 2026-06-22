@@ -4,6 +4,41 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.23] — 2026-06-22
+
+Bugfix block + a lessons-learned feedback loop (see
+[ADR-0020](../../docs/adr/0020-debugger-agent.md),
+[ADR-0021](../../docs/adr/0021-lessons-feedback-loop.md)).
+
+### Added
+
+- **`marvin-debugger` agent** — hypothesis-driven root-cause analysis as a fresh-context,
+  read-mostly agent, now the single source of the debugging methodology. Invoked from `task-start`
+  Step 3B, the `/marvin:debug` skill (now a thin door), and as the executor's fallback when a fix
+  stalls. Prescribes a minimal fix + regression test; never applies it.
+- **`lessons` MCP tool + `.marvin/memory/` store** — a tool-backed, git-committed, team-shared
+  lessons-learned memory. `action: "add"` captures a typed lesson (`bug-pattern` / `gotcha` /
+  `convention` / `pitfall` / `process`); `action: "search"` recalls relevant ones. Written by
+  `marvin-debugger` (on reflect) and `task-deliver` (retrospective), read by `task-start` at
+  intake — the pipeline's first backward feedback channel.
+
+### Changed
+
+- **`/marvin:debug` and `task-start` Step 3B** dispatch `marvin-debugger` instead of carrying two
+  duplicated copies of the root-cause methodology (which would have drifted).
+- **`task-deliver`** gains a retrospective step that captures a lesson after a successful ship.
+- **`task-start` Step 1.3** recalls prior lessons at intake so past mistakes inform new specs.
+
+### Removed
+
+- **The inert `memory: project` field** from all agents — it declared a per-agent native-memory
+  capability nothing curated; the shared `.marvin/memory/` store is the single memory layer now.
+
+### Fixed
+
+- **Server `VERSION` const** was left at `alpha.21` by the `alpha.22` agent-rename release while
+  the manifests moved to `alpha.22`; realigned here (all now `alpha.23`).
+
 ## [2.0.0-alpha.22] — 2026-06-22
 
 Agent naming convention — every agent now carries the `marvin-` prefix plus a

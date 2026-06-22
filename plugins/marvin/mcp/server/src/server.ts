@@ -12,8 +12,9 @@ import { buildGitTool } from "./tools/git.js";
 import { buildHelpTool } from "./tools/help.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
+import { buildLessonsTool } from "./tools/lessons.js";
 
-const VERSION = "2.0.0-alpha.21";
+const VERSION = "2.0.0-alpha.23";
 
 await runPackServer({
   name: "marvin",
@@ -31,6 +32,7 @@ await runPackServer({
         buildHelpTool(env, config, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
+        buildLessonsTool(env),
       ],
     };
   },

@@ -1311,21 +1311,21 @@ var require_errors = __commonJS({
     function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
       if (errsCount === void 0)
         throw new Error("ajv implementation error");
-      const err = gen.name("err");
+      const err2 = gen.name("err");
       gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-        gen.const(err, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-        gen.if((0, codegen_1._)`${err}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-        gen.assign((0, codegen_1._)`${err}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
-          gen.assign((0, codegen_1._)`${err}.schema`, schemaValue);
-          gen.assign((0, codegen_1._)`${err}.data`, data);
+          gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err2}.data`, data);
         }
       });
     }
     exports.extendErrors = extendErrors;
     function addError(gen, errObj) {
-      const err = gen.const("err", errObj);
-      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err})`);
+      const err2 = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
       gen.code((0, codegen_1._)`${names_1.default.errors}++`);
     }
     function returnErrors(it, errs) {
@@ -11568,8 +11568,8 @@ var require_resolve_flow_scalar = __commonJS({
     };
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
-      const ok4 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok4 ? parseInt(cc, 16) : NaN;
+      const ok5 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
+      const code = ok5 ? parseInt(cc, 16) : NaN;
       try {
         return String.fromCodePoint(code);
       } catch {
@@ -14885,8 +14885,8 @@ var ZodType = class {
         } : {
           issues: ctx.common.issues
         };
-      } catch (err) {
-        if (err?.message?.toLowerCase()?.includes("encountered")) {
+      } catch (err2) {
+        if (err2?.message?.toLowerCase()?.includes("encountered")) {
           this["~standard"].async = true;
         }
         ctx.common = {
@@ -28690,8 +28690,8 @@ function loadConfig(configPath) {
   let raw;
   try {
     raw = readFileSync(configPath, "utf8");
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+  } catch (err2) {
+    const reason = err2 instanceof Error ? err2.message : String(err2);
     return {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`
@@ -28700,8 +28700,8 @@ function loadConfig(configPath) {
   let json;
   try {
     json = JSON.parse(raw);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+  } catch (err2) {
+    const reason = err2 instanceof Error ? err2.message : String(err2);
     return { config: Config.parse({}), warning: `config.json is not valid JSON: ${reason}` };
   }
   const parsed = Config.safeParse(json);
@@ -28721,7 +28721,8 @@ function loadEnv(env = process.env) {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
-  return { projectDir, tasksDir, configPath };
+  const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
+  return { projectDir, tasksDir, configPath, memoryDir };
 }
 
 // src/storage/frontmatter.ts
@@ -29674,8 +29675,8 @@ async function executeGates(gates, execution, cwd) {
     let r;
     try {
       r = await runGate(g, cwd);
-    } catch (err) {
-      r = crashResult(g, err);
+    } catch (err2) {
+      r = crashResult(g, err2);
     }
     results.push(r);
     if (execution === "fail-fast" && r.status !== "pass") break;
@@ -29690,8 +29691,8 @@ function runGate(gate, cwd) {
     let stderr = "";
     child.stdout?.on("data", (d) => stdout += d.toString());
     child.stderr?.on("data", (d) => stderr += d.toString());
-    child.on("error", (err) => {
-      resolve(crashResult(gate, err, Math.round(performance.now() - start)));
+    child.on("error", (err2) => {
+      resolve(crashResult(gate, err2, Math.round(performance.now() - start)));
     });
     child.on("close", (code, signal) => {
       const durationMs = Math.round(performance.now() - start);
@@ -29805,11 +29806,11 @@ function deliverGate(projectRoot) {
   let text;
   try {
     text = readFileSync(artifactPath, "utf8");
-  } catch (err) {
+  } catch (err2) {
     return gateResult(
       "BLOCK",
       null,
-      `could not read verification.md: ${err instanceof Error ? err.message : String(err)}`
+      `could not read verification.md: ${err2 instanceof Error ? err2.message : String(err2)}`
     );
   }
   const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
@@ -30066,9 +30067,9 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err) {
+  } catch (err2) {
     return result("FAIL", type, [
-      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err)}`)
+      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err2)}`)
     ]);
   }
   const parsed = SpecContract.safeParse(doc);
@@ -30259,8 +30260,8 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err) {
-    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err)}`)];
+  } catch (err2) {
+    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err2)}`)];
   }
   const parsed = SpecContract.safeParse(doc);
   if (!parsed.success) {
@@ -30292,10 +30293,10 @@ function checkHostBindings(body) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(text);
-  } catch (err) {
+  } catch (err2) {
     return {
       checks: [
-        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err)}`)
+        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err2)}`)
       ],
       specLocation: void 0
     };
@@ -30576,8 +30577,8 @@ function parseSections(body) {
   flush();
   return map;
 }
-function errMessage(err) {
-  const msg = err instanceof Error ? err.message : String(err);
+function errMessage(err2) {
+  const msg = err2 instanceof Error ? err2.message : String(err2);
   return msg.split("\n")[0].slice(0, 160);
 }
 function computeVerdict2(checks) {
@@ -30633,9 +30634,171 @@ function fail(id, label, detail) {
 function warn(id, label, detail) {
   return { id, label, status: "warn", detail };
 }
+var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
+var INDEX_FILE = "MEMORY.md";
+var INDEX_HEADER = [
+  "# Marvin lessons",
+  "",
+  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
+  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
+  "in the linked file. Recalled at task intake.",
+  ""
+].join("\n");
+function uniqueSlug(memoryDir, base) {
+  const root = base || "lesson";
+  let slug = root;
+  let n = 2;
+  while (existsSync(join(memoryDir, `${slug}.md`))) {
+    slug = `${root}-${n}`;
+    n += 1;
+  }
+  return slug;
+}
+function addLesson(memoryDir, input) {
+  mkdirSync(memoryDir, { recursive: true });
+  const slug = uniqueSlug(memoryDir, slugify(input.title));
+  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const frontmatter = {
+    id: slug,
+    type: input.type,
+    title: input.title,
+    created,
+    tags: tags.length ? tags.join(", ") : void 0,
+    source: input.source?.trim() || "manual"
+  };
+  const body = input.body.trim() ? `
+${input.body.trim()}
+` : "\n";
+  const path = join(memoryDir, `${slug}.md`);
+  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
+  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
+  return { slug, path };
+}
+function appendIndex(memoryDir, entry) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
+  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
+  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(indexPath, `${content}${line}
+`);
+}
+function readAllLessons(memoryDir) {
+  if (!existsSync(memoryDir)) return [];
+  const lessons = [];
+  for (const filename of readdirSync(memoryDir).sort()) {
+    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
+    const raw = readFileSync(join(memoryDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (!frontmatter.title) continue;
+    lessons.push({
+      slug: filename.replace(/\.md$/, ""),
+      type: frontmatter.type ?? "process",
+      title: frontmatter.title,
+      created: frontmatter.created ?? "",
+      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      source: frontmatter.source ?? "manual",
+      body: body.trim()
+    });
+  }
+  return lessons;
+}
+function searchLessons(memoryDir, input) {
+  const all = readAllLessons(memoryDir);
+  const terms = (input.query ?? "").toLowerCase().split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  const scored = all.filter((l) => !input.type || l.type === input.type).map((l) => {
+    const haystack = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
+    const score = terms.length === 0 ? 1 : terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0);
+    return { lesson: l, score };
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
+  return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
+}
+
+// src/tools/lessons.ts
+var LessonsInput = external_exports.object({
+  action: external_exports.enum(["add", "search"]),
+  // add
+  type: external_exports.enum(LESSON_TYPES).optional(),
+  title: external_exports.string().optional(),
+  body: external_exports.string().optional(),
+  tags: external_exports.string().optional(),
+  // comma-separated
+  source: external_exports.string().optional(),
+  // search
+  query: external_exports.string().optional(),
+  limit: external_exports.number().int().positive().max(50).optional()
+});
+function buildLessonsTool(env) {
+  return defineTool({
+    name: "lessons",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task or debug session; action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it at task intake so past mistakes inform new work.",
+    inputSchema: LessonsInput,
+    handler: (input) => Promise.resolve(dispatch(env, input))
+  });
+}
+function dispatch(env, input) {
+  return input.action === "add" ? runAdd(env, input) : runSearch(env, input);
+}
+function runAdd(env, input) {
+  const missing = [];
+  if (!input.type) missing.push("type");
+  if (!input.title?.trim()) missing.push("title");
+  if (!input.body?.trim()) missing.push("body");
+  if (missing.length > 0) {
+    return err(
+      `lessons add requires: ${missing.join(", ")}. type \u2208 {${LESSON_TYPES.join(" | ")}}.`
+    );
+  }
+  const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+  const { slug, path } = addLesson(env.memoryDir, {
+    type: input.type,
+    title: input.title.trim(),
+    body: input.body,
+    tags,
+    ...input.source ? { source: input.source } : {}
+  });
+  return ok4(
+    `Captured lesson **${slug}** (\`${input.type}\`).
+File: \`${path}\`
+Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
+  );
+}
+function runSearch(env, input) {
+  const lessons = searchLessons(env.memoryDir, {
+    ...input.query ? { query: input.query } : {},
+    ...input.type ? { type: input.type } : {},
+    ...input.limit ? { limit: input.limit } : {}
+  });
+  if (lessons.length === 0) {
+    const filtered = input.query || input.type;
+    return ok4(
+      filtered ? `No matching lessons in \`.marvin/memory\`${input.query ? ` for "${input.query}"` : ""}${input.type ? ` [type:${input.type}]` : ""}.` : "No lessons captured yet in `.marvin/memory`."
+    );
+  }
+  return ok4(renderLessons(lessons));
+}
+function renderLessons(lessons) {
+  const out = [`# Relevant lessons (${lessons.length})`, ""];
+  for (const l of lessons) {
+    const tags = l.tags.length > 0 ? ` \xB7 _${l.tags.join(", ")}_` : "";
+    out.push(`## ${l.title}`);
+    out.push(`\`${l.type}\` \xB7 ${l.created} \xB7 source: ${l.source}${tags}`);
+    out.push("");
+    out.push(l.body);
+    out.push("");
+  }
+  return out.join("\n").trimEnd();
+}
+function ok4(text) {
+  return { content: [{ type: "text", text }] };
+}
+function err(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.21";
+var VERSION = "2.0.0-alpha.23";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -30651,7 +30814,8 @@ await runPackServer({
         buildGitTool(server, env, config2),
         buildHelpTool(env, config2, VERSION),
         buildVerifyTool(env),
-        buildSpecTool(env)
+        buildSpecTool(env),
+        buildLessonsTool(env)
       ]
     };
   }
