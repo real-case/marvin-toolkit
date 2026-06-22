@@ -1,5 +1,5 @@
 ---
-name: security-reviewer
+name: marvin-auditor
 description: Reviews code and architecture for security issues, explains vulnerabilities, and helps prioritize remediation
 model: opus
 color: green

@@ -12,7 +12,7 @@
 
 The plugin's eight subagents ran a mixed tier: `opus` for the code-writers and
 interactive agents (`marvin-tm-executor`, `marvin-tm-review-fixer`, `marvin-tm-writer`,
-`research`, `onboarding-guide`, `security-reviewer`) and `sonnet` for the two critics
+`marvin-researcher`, `marvin-guide`, `marvin-auditor`) and `sonnet` for the two critics
 (`marvin-tm-spec-critic`, `marvin-tm-diff-critic`). The sonnet choice (ADR-0004) was a
 cost optimisation — the critics sit on the hot path and run frequently.
 

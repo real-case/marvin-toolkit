@@ -4,6 +4,20 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.22] — 2026-06-22
+
+Agent naming convention — every agent now carries the `marvin-` prefix plus a
+single role-profession, so names cannot collide with agents from other plugins.
+
+### Changed
+
+- **The three unprefixed agents are renamed:** `research` → `marvin-researcher`,
+  `onboarding-guide` → `marvin-guide`, `security-reviewer` → `marvin-auditor`. The
+  five `marvin-tm-*` agents already satisfied the convention and are unchanged. This
+  renames the agent invocation identifier — anything that referenced the old names
+  (e.g. `subagent_type: "research"`) must use the new name. Cross-references in the
+  agents, README, and ADR-0006/0016 were updated in lock-step.
+
 ## [2.0.0-alpha.21] — 2026-06-16
 
 Tool-backed delivery gate (see
@@ -421,5 +435,5 @@ four-pack, per-pack-server design).
 
 - All 10 skills in `skills/<name>/SKILL.md` (`mn.commit`, `mn.pr`, `mn.review`, `mn.debug`, `mn.adr`, `mn.changelog`, `mn.readme`, `mn.migration-plan`, `mn.explaining-code`, `mn.docs-search`).
 - All 10 `/mn.*` markdown slash commands under `commands/` — short aliases that delegate to the same SKILL.md.
-- Agents (`onboarding-guide`, `research`) — unchanged.
+- Agents (`marvin-guide`, `marvin-researcher`) — unchanged.
 - External MCP servers (`context7`, `gitmcp`) — registered alongside `marvin-core`.
