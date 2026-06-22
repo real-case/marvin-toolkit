@@ -49,7 +49,7 @@ project root, one subdirectory per command group (ADR-0007):
 
 | Path | Written by | Contents |
 |------|-----------|----------|
-| `.marvin/task/` | `task-*` pipeline | spec `<slug>.md` files + the current `verification.md` |
+| `.marvin/task/` | `task-*` pipeline | spec `<NNN>-<slug>.md` files (numeric-prefixed so the dir sorts by creation order; `slug` stays the identity) + the current `verification.md` |
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |

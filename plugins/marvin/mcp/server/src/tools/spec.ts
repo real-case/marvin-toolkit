@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
@@ -628,6 +628,26 @@ function checkHostBindings(body: string): { checks: Check[]; specLocation: strin
 }
 
 /**
+ * Resolve a spec filename from its slug within one directory, tolerating the
+ * numeric ordering prefix that `task-start` stamps onto spec files
+ * (`NNN-<slug>.md`). Returns the absolute path, or null if no file in the
+ * directory matches. An exact `<slug>.md` (legacy, unnumbered) is preferred;
+ * otherwise the first `<digits>-<slug>.md` match wins.
+ */
+function resolveSpecBySlug(dir: string, slug: string, projectRoot: string): string | null {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback: string | null = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+
+/**
  * Mechanical sibling-dependency gate (audit finding B1): a spec may not depend on
  * an incomplete sibling. Each `depends_on` slug is resolved against the host's
  * spec location (then conventional dirs); the dependency must exist and be
@@ -649,8 +669,8 @@ function checkDependsOn(
   for (const slug of deps) {
     let resolved: string | null = null;
     for (const dir of dirs) {
-      const p = join(projectRoot, dir, `${slug}.md`);
-      if (existsSync(p)) {
+      const p = resolveSpecBySlug(dir, slug, projectRoot);
+      if (p) {
         resolved = p;
         break;
       }

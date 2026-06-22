@@ -51,7 +51,7 @@ gh pr checkout <number>
 gh pr view <number> --json number,headRefName,baseRefName,url,title
 ```
 
-Read the PR body to find the spec reference (`.marvin/task/<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
+Read the PR body to find the spec reference (`.marvin/task/<NNN>-<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
 
 ### 2. Fetch review feedback
 

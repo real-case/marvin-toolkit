@@ -36,7 +36,7 @@ The critic replaces neither Self-Test (tests/lint/build) nor the human reviewer 
 
 ## Input
 
-- Path to the spec (`.marvin/task/<slug>.md`)
+- Path to the spec (`.marvin/task/<NNN>-<slug>.md`)
 - Diff reference — one of:
   - `staged` (default: `git diff --cached`)
   - `branch` (against merge-base with main: `git diff $(git merge-base HEAD main)...HEAD`)

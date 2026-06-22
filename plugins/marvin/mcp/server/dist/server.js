@@ -30313,6 +30313,18 @@ function checkHostBindings(body) {
     specLocation: parsed.data.spec_location
   };
 }
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
 function checkDependsOn(deps, specLocation, projectRoot) {
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
@@ -30325,8 +30337,8 @@ function checkDependsOn(deps, specLocation, projectRoot) {
   for (const slug of deps) {
     let resolved = null;
     for (const dir of dirs) {
-      const p = join(projectRoot, dir, `${slug}.md`);
-      if (existsSync(p)) {
+      const p = resolveSpecBySlug(dir, slug, projectRoot);
+      if (p) {
         resolved = p;
         break;
       }
@@ -30798,7 +30810,7 @@ function err(text) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.24";
+var VERSION = "2.0.0-alpha.25";
 await runPackServer({
   name: "marvin",
   version: VERSION,
