@@ -1,6 +1,7 @@
 ---
 name: marvin-debugger
 description: Hypothesis-driven root-cause analysis — reproduces a bug, gathers evidence, ranks hypotheses, verifies the most likely one, and returns a confirmed root cause with a minimal fix approach and a regression-test spec. Read-mostly (may write a throwaway reproducer). Invoked from /marvin:task-start Step 3B to produce a spec's Root Cause Analysis, from the /marvin:debug skill, and as the fallback when an executor's fix stalls. Captures a bug-pattern lesson via the `lessons` tool on reflect.
+tools: Read, Glob, Grep, Bash, Write, mcp__plugin_marvin_marvin__lessons
 model: opus
 color: red
 ---

@@ -4,6 +4,33 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.24] — 2026-06-22
+
+Enforce the read-only / read-mostly agent contracts that were previously prose-only (honor-system).
+
+### Security
+
+- **Agent `tools:` allowlists** — six agents now declare a `tools:` frontmatter allowlist so Claude
+  Code enforces their constrained access instead of granting the full default toolset (a subagent that
+  omits `tools:` silently inherits *every* tool, so the prior "read-only" contracts were honor-system
+  only):
+  - `marvin-guide`, `marvin-tm-writer` → `Read, Glob, Grep`
+  - `marvin-auditor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic` → `Read, Glob, Grep, Bash`
+    (read-only `git`)
+  - `marvin-debugger` (read-mostly) → `Read, Glob, Grep, Bash, Write, mcp__plugin_marvin_marvin__lessons`
+    (may write a throwaway reproducer and record a lesson)
+
+  Execution agents (`marvin-tm-executor`, `marvin-tm-review-fixer`) and `marvin-researcher`
+  intentionally omit `tools:` and keep the full toolset.
+
+### Fixed
+
+- **Bogus `LS` tool reference** — `marvin-auditor`, `marvin-guide`, `marvin-tm-writer`, and
+  `marvin-tm-spec-critic` advertised a non-existent `LS` tool in their Capabilities prose (`Glob`
+  superseded `LS`); corrected the prose and omitted it from the allowlists.
+- **`marvin-tm-spec-critic` capability drift** — its prose claimed read-only `Read, Glob, Grep` but
+  Step 2 runs `git log`; `Bash` added to both the stated contract and the allowlist.
+
 ## [2.0.0-alpha.23] — 2026-06-22
 
 Bugfix block + a lessons-learned feedback loop (see
