@@ -55,6 +55,7 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - **CI config** — `.github/workflows/*`, `.gitlab-ci.yml`, etc. — to learn which gates actually run, so acceptance criteria align with enforcement.
 - **Existing specs** — list specs in `.marvin/task/` (the default home) and any host spec dir (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`); read frontmatter. Detect duplication and any sibling spec this task would depend on. The DoR gate now **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status.
 - `VISION.md` if present — future direction (informs variant evaluation).
+- **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the task) to recall lessons captured on past tasks and bug fixes in this repo (`.marvin/memory`). A relevant `bug-pattern` or `gotcha` becomes a constraint, a test to add, or an explicit non-goal — this is how the pipeline stops repeating mistakes (ADR-0021). If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
 - **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. These populate the spec's **host-bindings** block (`spec_location`, `decision_record`, `merge_obligations`, `gates`) so the artifact conforms to the host instead of importing marvin's layout.
 
 ### 1.4 Clarifying questions & dimension sweep
@@ -447,30 +448,13 @@ If the bug cannot be reproduced, gather logs and traces. Do not proceed to root 
 
 ### Step 3B: Root Cause Analysis
 
-Trace the bug to its source using structured analysis:
+Dispatch the **`marvin-debugger`** agent (via Task-tool) with the reproduction from Step 2B and the symptom. It runs hypothesis-driven analysis in an isolated, evidence-first context and returns a structured report — **Evidence · Hypotheses · Root Cause (confirmed, at `file:line`) · Fix Approach · Regression Test · Siblings · Lesson** — that maps directly onto this spec's Root Cause Analysis, Fix Approach, and Regression Test Specification sections. (The full methodology lives in the agent; `/marvin:debug` is its other door — there is no third copy here to drift.)
 
-1. **Read the execution path** — the function where the error occurs, its callers and callees
-2. **Check history** — `git log --oneline -10 -- <file>`, `git blame -L <start>,<end> <file>`
-3. **Form hypotheses** with evidence:
+- **Root cause confirmed** → carry its findings into Step 6B; the confirmed mechanism drives the **File Change Plan**.
+- **UNCONFIRMED** → the agent returns its best-supported hypothesis and the exact next step. Resolve it first — an unconfirmed root cause is an **Open Question** (or `spike_required: true`), not a spec ready to dispatch.
+- The agent captures a `bug-pattern` lesson on reflect, so the next task recalls it at intake (ADR-0021).
 
-```
-Hypothesis 1 (most likely): {description}
-  Evidence for: {what supports this}
-  Evidence against: {what contradicts}
-  Verify by: {specific action}
-```
-
-4. **Verify the top hypothesis** — re-read code, add targeted logging, or write a minimal test
-5. **Confirm root cause** — document the specific files, lines, and mechanism. This drives the **File Change Plan**.
-
-**Common root-cause categories to consider:**
-- Null/undefined where data is expected
-- Type mismatch or schema drift
-- Race condition / timing issue
-- State mutation by unexpected caller
-- Environment delta (works locally, fails elsewhere)
-- Off-by-one / boundary edge case
-- Dependency change or API break
+If Task-tool is unavailable, run the analysis inline following the `marvin-debugger` methodology: read the execution path and callers, check history (`git log` / `git blame`), rank 2–3 evidence-backed hypotheses, verify the top one, and confirm the mechanism at specific files and lines.
 
 Also discover the **test harness** (command + location) as in Step 2F — the regression test depends on it.
 

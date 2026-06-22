@@ -56,7 +56,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:explain` | Explain code, architecture, and execution flow |
 | `/marvin:docs-search` | Search and synthesize project documentation |
 
-**Agents:** `marvin-guide`, `marvin-researcher`.
+**Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 
 **External MCP servers also registered:** `context7` (library docs lookup), `gitmcp` (GitHub repository docs).
 

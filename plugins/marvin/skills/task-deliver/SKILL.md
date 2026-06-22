@@ -70,7 +70,16 @@ otherwise-immutable spec:
 
 Skip silently when no spec file is found (e.g. when only a verification artifact exists, no named spec).
 
-### 5. Preserve artifacts
+### 5. Capture a lesson (retrospective)
+
+Close the feedback loop (ADR-0021). If this task surfaced something a future task should inherit — a recurring **SPEC GAP**, a non-obvious convention you had to discover, a gotcha that cost time, or a process friction — capture **one** lesson via the `lessons` tool:
+
+- `action: "add"`, a one-line `title`, a `body` of 2–4 sentences (what to know · why · how to apply), relevant `tags`, and `source: "<spec-slug>"`.
+- Choose `type`: `gotcha` / `convention` / `pitfall` for code knowledge, `process` for workflow friction. (Bug root-cause patterns are captured upstream by `marvin-debugger` — don't duplicate them here.)
+
+Skip it for routine tasks that taught nothing new — an empty lesson is noise, and the store earns its value by staying scannable. Capture at most one or two. If the `lessons` tool is unavailable, append the index line to `.marvin/memory/MEMORY.md` yourself.
+
+### 6. Preserve artifacts
 
 Do NOT delete `.marvin/task/` artifacts. They serve as documentation:
 - `spec.md` — what was intended
