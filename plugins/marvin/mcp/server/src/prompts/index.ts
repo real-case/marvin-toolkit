@@ -40,8 +40,20 @@ export const PROMPTS: PromptDef[] = [
   {
     name: "pr-review",
     description:
-      "Thorough code review covering bugs, logic errors, security issues, performance, readability, and style conformance. Findings grouped by severity with suggested fixes.",
+      "Review a pull request on GitHub and post the review there — fetch the diff, review for bugs, security, performance, and style, then submit a GitHub review with inline comments grouped by severity.",
     skill: "pr-review",
+  },
+  {
+    name: "pr-resolve",
+    description:
+      "Resolve open PR review feedback — fetch the unresolved review threads, draft a change plan, apply minimal fixes, push, then reply to each thread and mark it resolved.",
+    skill: "pr-resolve",
+  },
+  {
+    name: "pr-merge",
+    description:
+      "Merge a pull request, then return to the base branch with the merge pulled in — confirm mergeability, merge via gh (delete the head branch), check out the base branch (e.g. dev) and pull.",
+    skill: "pr-merge",
   },
   {
     name: "debug",
@@ -108,12 +120,6 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Final delivery phase — commits changes and opens a PR (delegates to marvin:commit and marvin:pr-create). Refuses to proceed unless verification passed.",
     skill: "task-deliver",
-  },
-  {
-    name: "task-fix-pr",
-    description:
-      "Apply pull-request review feedback — fetch comments via gh, classify each as actionable / discussion / out-of-scope, make code changes, commit, push, and reply to each thread.",
-    skill: "task-fix-pr",
   },
 
   // ── sec (security) ───────────────────────────────────────────────────
