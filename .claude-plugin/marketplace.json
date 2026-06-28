@@ -14,7 +14,7 @@
       "name": "marvin",
       "source": "./plugins/marvin",
       "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools, the pr-* pull-request lifecycle, the task-* spec pipeline, sec-* security scanners, and a kanban-* task tracker",
-      "version": "2.0.0-alpha.26",
+      "version": "2.0.0-alpha.27",
       "category": "productivity",
       "keywords": [
         "marvin",
@@ -22,6 +22,7 @@
         "commit",
         "pr",
         "review",
+        "handoff",
         "debug",
         "adr",
         "changelog",
