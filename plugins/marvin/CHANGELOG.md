@@ -4,6 +4,35 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.26] — 2026-06-28
+
+Unify the pull-request commands into one `pr-*` lifecycle family.
+
+### Added
+
+- **`/marvin:pr-merge`** — merge a PR (`gh pr merge --delete-branch`, repo's default
+  method), then check out the PR's base branch and pull, leaving the working copy
+  clean on an up-to-date base. Confirms before merging.
+
+### Changed
+
+- **`pr-*` is now the full PR lifecycle** ([ADR-0023](../../docs/adr/0023-pr-command-family.md)):
+  `pr-create` (open) · `pr-review` (review) · `pr-resolve` (resolve) · `pr-merge` (merge).
+- **`/marvin:pr-review` now reviews on GitHub** — fetches the PR diff, reviews it, and
+  submits a GitHub review (summary + inline comments by severity) instead of printing a
+  local, chat-only review. For a local read-only pre-commit review use `/code-review` or
+  the `marvin-auditor` agent. `disable-model-invocation` is removed so "review the PR"
+  triggers it.
+
+### Removed / renamed
+
+- **`/marvin:task-fix-pr` → `/marvin:pr-resolve`** (BREAKING) — the review-feedback
+  command moves out of the `task-*` pipeline into the `pr-*` family. Beyond the rename it
+  now fetches only the **unresolved** review threads (GraphQL `reviewThreads.isResolved`),
+  drafts a change plan first, and after pushing fixes **replies to each thread and resolves
+  it** (`resolveReviewThread`) — spec-conflicts stay open. The autonomous twin
+  `marvin-tm-review-fixer` is updated in lock-step.
+
 ## [2.0.0-alpha.25] — 2026-06-22
 
 Spec files now sort by creation order.

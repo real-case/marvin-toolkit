@@ -36,7 +36,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
     │   ├── prompts/
-    │   │   └── index.ts              # 38 prompt entries (skill-backed + inline kanban)
+    │   │   └── index.ts              # 39 prompt entries (skill-backed + inline kanban)
     │   ├── tools/                    # MCP tools: kanban task / git / help + verify, spec, lessons (task pipeline)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
@@ -68,8 +68,8 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 | Group | Source | Examples |
 |-------|--------|----------|
 | _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search` |
-| `pr-*` | core PR ops | `/marvin:pr-create`, `/marvin:pr-review` |
-| `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver`, `/marvin:task-fix-pr` |
+| `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
+| `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
 | `sec-*` | security scanners | `/marvin:sec-scan`, `/marvin:sec-secrets`, `/marvin:sec-deps`, `/marvin:sec-gate`, `/marvin:sec-threat-model`, `/marvin:sec-iac`, `/marvin:sec-ci`, `/marvin:sec-fix`, `/marvin:sec-compliance`, `/marvin:sec-pentest` |
 | `kanban-*` | lightweight task tracker | `/marvin:kanban-menu`, `/marvin:kanban-bug`, `/marvin:kanban-feature`, `/marvin:kanban-chore`, `/marvin:kanban-spike`, `/marvin:kanban-start`, `/marvin:kanban-review`, `/marvin:kanban-done`, `/marvin:kanban-list`, `/marvin:kanban-status`, `/marvin:kanban-help`, `/marvin:kanban-commit`, `/marvin:kanban-create-pr` |
 
@@ -188,7 +188,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 38 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 39 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool
@@ -199,6 +199,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0014-distribution-release-model.md` — git-tag → GitHub Release; no npm publish
 - `docs/adr/0020-debugger-agent.md` — root-cause analysis as the `marvin-debugger` agent
 - `docs/adr/0021-lessons-feedback-loop.md` — the tool-backed `.marvin/memory/` lessons feedback loop
+- `docs/adr/0023-pr-command-family.md` — the unified `pr-*` PR lifecycle (create / review / resolve / merge)
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard
 - `.github/workflows/validate-plugins.yml` — CI pipeline

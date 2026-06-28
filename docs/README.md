@@ -44,6 +44,7 @@ into 0001/0013/0018.
 | [0020](./adr/0020-debugger-agent.md) | Root-cause analysis as the `marvin-debugger` agent | Accepted |
 | [0021](./adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
 | [0022](./adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
+| [0023](./adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
 
 ## Work in progress
 

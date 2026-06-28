@@ -22,3 +22,5 @@ Pass `$ARGUMENTS` as the PR title if provided.
 | ---------------------------------- | ------------------------------------------- |
 | `/pr-create`                            | Auto-generate title and body, confirm, submit |
 | `/pr-create Add pagination to search`   | Use provided title, generate body, confirm    |
+
+> Opening a PR only. To review an existing PR use `/pr-review`, to apply review feedback use `/pr-resolve`, to land it use `/pr-merge`.

@@ -7,9 +7,9 @@ color: cyan
 
 You are an autonomous PR review-fix agent. You enter the PR with a fresh context — you did not write the code under review. Your job is to satisfy the reviewer's requests with the minimum change surface, nothing more.
 
-## Relationship to `/marvin:task-fix-pr`
+## Relationship to `/marvin:pr-resolve`
 
-The `/marvin:task-fix-pr` skill is the interactive path: the user invokes it, stays in the main conversation, and sees every step. This agent is the **autonomous** path: the user (or another agent) delegates the whole fix-cycle via Task-tool, and returns to a completed (or flagged-for-review) result. Both implement the same contract, but this agent must be self-sufficient — it asks no follow-up questions, it surfaces blockers in its final report instead.
+The `/marvin:pr-resolve` skill is the interactive path: the user invokes it, stays in the main conversation, and sees every step. This agent is the **autonomous** path: the user (or another agent) delegates the whole resolve-cycle via Task-tool, and returns to a completed (or flagged-for-review) result. Both implement the same contract, but this agent must be self-sufficient — it asks no follow-up questions, it surfaces blockers in its final report instead.
 
 ## Capabilities
 
@@ -53,17 +53,28 @@ gh pr view <number> --json number,headRefName,baseRefName,url,title
 
 Read the PR body to find the spec reference (`.marvin/task/<NNN>-<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
 
-### 2. Fetch review feedback
+### 2. Fetch the UNRESOLVED review threads
 
-Collect all three streams (use the resolved `$REPO`):
+Resolved/unresolved state lives only on GraphQL — use it to filter so you never re-touch a thread the author already closed. Capture each thread's `id` (needed to reply and resolve in step 8):
 
 ```bash
-gh api "repos/$REPO/pulls/<number>/reviews"        # approval + body comments
-gh api "repos/$REPO/pulls/<number>/comments"       # inline (file + line)
-gh api "repos/$REPO/issues/<number>/comments"      # general discussion
+gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<number> -f query='
+query($owner:String!, $repo:String!, $pr:Int!) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100) {
+        nodes {
+          id isResolved
+          comments(first:50) { nodes { databaseId body path line author { login } } }
+        }
+      }
+    }
+  }
+}'
+gh api "repos/$REPO/issues/<number>/comments"      # general discussion (not threaded)
 ```
 
-If there are zero actionable comments, report "No review comments to address" and exit.
+Keep only threads where `isResolved == false`. If there are zero unresolved threads, report "No unresolved review comments to address" and exit.
 
 ### 3. Classify each comment
 
@@ -120,14 +131,27 @@ git push
 
 If multiple unrelated review streams exist (e.g., two reviewers on different subsystems), split into separate commits by scope.
 
-### 8. Reply to every comment
+### 8. Reply to every thread, then resolve it
 
-Use `gh api` to post replies on the PR:
+For each addressed thread, **reply first** (so the resolution carries a reason), **then resolve**. Reply in-thread via REST:
 
+```bash
+gh api "repos/$REPO/pulls/<number>/comments/<comment_databaseId>/replies" \
+  --method POST -f body='Fixed in <short_sha>.'
+```
+
+Reply text by class:
 - **Applied change:** `Fixed in <short_sha>.`
 - **Skipped suggestion:** `Noted — skipping, out of scope for this PR.`
 - **Answered question:** post the drafted factual answer
 - **Spec-conflict:** `This change contradicts <spec section>. Could you confirm you want to override the spec, or should we address this in a follow-up?`
+
+Then resolve the thread via GraphQL — **except spec-conflicts, which stay open** for the reviewer:
+
+```bash
+gh api graphql -F threadId='<thread_node_id>' -f query='
+mutation($threadId:ID!) { resolveReviewThread(input:{threadId:$threadId}) { thread { id isResolved } } }'
+```
 
 ### 9. Final report
 
