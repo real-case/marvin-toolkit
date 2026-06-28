@@ -28520,6 +28520,11 @@ var PROMPTS = [
     description: "Search and retrieve relevant documentation from the codebase and external sources \u2014 ADRs, READMEs, runbooks, configs.",
     skill: "docs-search"
   },
+  {
+    name: "handoff",
+    description: "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
+    skill: "handoff"
+  },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
     name: "task-start",
@@ -30815,7 +30820,7 @@ function err(text) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.26";
+var VERSION = "2.0.0-alpha.27";
 await runPackServer({
   name: "marvin",
   version: VERSION,

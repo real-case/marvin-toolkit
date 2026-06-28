@@ -31,13 +31,13 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 | Group | What | Count |
 |-------|------|-------|
-| _(bare)_ | core developer tools | 8 |
+| _(bare)_ | core developer tools | 9 |
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 4 |
 | `sec-*` | security scanners | 10 |
 | `kanban-*` | lightweight task tracker | 13 |
 
-39 prompts total, all under `/marvin:`. The skill-backed groups (core, `pr-*`, `task-*`, `sec-*`) have all three doors; the `kanban-*` group is MCP-only (thin tool wrappers, no SKILL.md).
+40 prompts total, all under `/marvin:`. The skill-backed groups (core, `pr-*`, `task-*`, `sec-*`) have all three doors; the `kanban-*` group is MCP-only (thin tool wrappers, no SKILL.md).
 
 ### Core developer tools
 
@@ -57,6 +57,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:migration-plan` | Plan migrations with risks and rollback strategy |
 | `/marvin:explain` | Explain code, architecture, and execution flow |
 | `/marvin:docs-search` | Search and synthesize project documentation |
+| `/marvin:handoff` | Capture full context into `.marvin/handoff/` + a prompt to continue in a fresh session |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 

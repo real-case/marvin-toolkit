@@ -4,6 +4,20 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.27] — 2026-06-28
+
+Add a session-handoff command.
+
+### Added
+
+- **`/marvin:handoff`** — capture the current work's full, inspected context into a
+  durable handoff document at `.marvin/handoff/<NNN>-<slug>.md` (numeric-prefixed,
+  creation order) and emit a short paste-ready prompt that points a fresh session at
+  it. Self-sufficient by design — objective, repository state, decisions and their
+  rationale, relevant files, next steps, and open questions — so the next session
+  resumes with no loss of context. A bare core command with all three doors; adds the
+  `.marvin/handoff/` working-dir subdir (ADR-0007). Prompt count 39 → 40.
+
 ## [2.0.0-alpha.26] — 2026-06-28
 
 Unify the pull-request commands into one `pr-*` lifecycle family.

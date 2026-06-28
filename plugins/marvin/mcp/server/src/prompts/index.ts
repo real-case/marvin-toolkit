@@ -95,6 +95,12 @@ export const PROMPTS: PromptDef[] = [
       "Search and retrieve relevant documentation from the codebase and external sources — ADRs, READMEs, runbooks, configs.",
     skill: "docs-search",
   },
+  {
+    name: "handoff",
+    description:
+      "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
+    skill: "handoff",
+  },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {

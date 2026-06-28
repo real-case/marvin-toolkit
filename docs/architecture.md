@@ -136,6 +136,8 @@ at the project root, one subdirectory per command group
 | `.marvin/task/` | `task-*` | spec files + the current `verification.md` |
 | `.marvin/security/` | `sec-*` | scan / threat-model / compliance / pentest reports |
 | `.marvin/kanban/` | `kanban-*` | the task `.md` board |
+| `.marvin/memory/` | `lessons` | team-shared lessons-learned (`MEMORY.md` + lesson files) |
+| `.marvin/handoff/` | `handoff` | session-continuation handoff docs |
 | `.marvin/config.json` | `kanban-*` | `base_branch`, `tracker_url_template` |
 
 Project **deliverables** are deliberately not swept in: ADRs stay under `docs/adr/`,
