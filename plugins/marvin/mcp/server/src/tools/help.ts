@@ -1,7 +1,11 @@
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
+import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 import { readAllTasks } from "../storage/tasks.js";
 import { currentBranch, hasGh, hasGit, inGitRepo } from "../lib/git.js";
+import { PROMPTS } from "../prompts/index.js";
 import type { Config, TaskStatus } from "../storage/schema.js";
 import type { ServerEnv } from "../lib/env.js";
 
@@ -44,6 +48,8 @@ function renderHelp(env: ServerEnv, config: Config, version: string): ToolResult
   for (const t of tasks) counts[t.frontmatter.status] += 1;
 
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
+  const has_git = hasGit();
+  const has_gh = hasGh();
 
   const lines: string[] = [];
   lines.push(`# marvin · kanban tracker · v${version}`);
@@ -66,12 +72,68 @@ function renderHelp(env: ServerEnv, config: Config, version: string): ToolResult
   if (malformed.length > 0) lines.push(`- ⚠ malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
-  lines.push(`- git: ${hasGit() ? "✓" : "✗ (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${hasGh() ? "✓" : "✗ (PR commands fall back to printing the command)"}`);
+  lines.push(`- git: ${has_git ? "✓" : "✗ (lifecycle commands disabled)"}`);
+  lines.push(`- gh:  ${has_gh ? "✓" : "✗ (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
   lines.push("## Prompts");
   for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` — ${p.desc}`);
 
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  // Widget payload for MCP Apps hosts (ADR-0024) — the marvin infrastructure
+  // dashboard (#8). The terminal renders the text above and ignores this.
+  const dashboard: DashboardState = {
+    version,
+    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    config: {
+      base_branch: config.base_branch,
+      tracker_url_template: config.tracker_url_template,
+      ...(config.gates ? { gates: config.gates } : {}),
+    },
+    kanban_counts: counts,
+    git: { has_git, has_gh, branch },
+    artifacts: artifactCounts(env),
+    command_groups: commandGroups(),
+  };
+
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: dashboard,
+  };
+}
+
+const GROUP_PREFIXES = ["pr", "task", "sec", "kanban"];
+const GROUP_ORDER = ["core", "pr", "task", "sec", "kanban"];
+
+/** Group of a prompt by its `<group>-<command>` prefix; bare names are "core". */
+function groupOf(name: string): string {
+  const prefix = name.split("-")[0] ?? "";
+  return GROUP_PREFIXES.includes(prefix) ? prefix : "core";
+}
+
+/** Command counts per group, derived from the prompt registry (ADR-0024). */
+function commandGroups(): DashboardState["command_groups"] {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    count: PROMPTS.filter((p) => groupOf(p.name) === group).length,
+  })).filter((g) => g.count > 0);
+}
+
+/** Count the `.md` artifacts under each `.marvin/` subdir for the dashboard. */
+function artifactCounts(env: ServerEnv): DashboardState["artifacts"] {
+  const marvin = join(env.projectDir, ".marvin");
+  return {
+    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    handoffs: countMarkdown(join(marvin, "handoff")),
+    audits: countMarkdown(join(marvin, "security")),
+    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"]),
+  };
+}
+
+function countMarkdown(dir: string, exclude: string[] = []): number {
+  if (!existsSync(dir)) return 0;
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+  } catch {
+    return 0;
+  }
 }

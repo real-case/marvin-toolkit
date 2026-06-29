@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -29356,8 +29356,6 @@ function errOk2(text) {
 function cancelled2() {
   return ok2("Cancelled \u2014 no changes made.");
 }
-
-// src/tools/help.ts
 var HelpInput = external_exports.object({});
 var ALL_PROMPTS = [
   { name: "/marvin:kanban-menu", desc: "Main menu" },
@@ -29393,6 +29391,8 @@ function renderHelp(env, config2, version2) {
   };
   for (const t of tasks) counts[t.frontmatter.status] += 1;
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
+  const has_git = hasGit();
+  const has_gh = hasGh();
   const lines = [];
   lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
   lines.push("");
@@ -29414,13 +29414,58 @@ function renderHelp(env, config2, version2) {
   if (malformed.length > 0) lines.push(`- \u26A0 malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
-  lines.push(`- git: ${hasGit() ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${hasGh() ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
+  lines.push(`- git: ${has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
+  lines.push(`- gh:  ${has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
   lines.push("## Prompts");
   for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` \u2014 ${p.desc}`);
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  const dashboard = {
+    version: version2,
+    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    config: {
+      base_branch: config2.base_branch,
+      tracker_url_template: config2.tracker_url_template,
+      ...config2.gates ? { gates: config2.gates } : {}
+    },
+    kanban_counts: counts,
+    git: { has_git, has_gh, branch },
+    artifacts: artifactCounts(env),
+    command_groups: commandGroups()
+  };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: dashboard
+  };
+}
+var GROUP_PREFIXES = ["pr", "task", "sec", "kanban"];
+var GROUP_ORDER = ["core", "pr", "task", "sec", "kanban"];
+function groupOf(name) {
+  const prefix = name.split("-")[0] ?? "";
+  return GROUP_PREFIXES.includes(prefix) ? prefix : "core";
+}
+function commandGroups() {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    count: PROMPTS.filter((p) => groupOf(p.name) === group).length
+  })).filter((g) => g.count > 0);
+}
+function artifactCounts(env) {
+  const marvin = join(env.projectDir, ".marvin");
+  return {
+    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    handoffs: countMarkdown(join(marvin, "handoff")),
+    audits: countMarkdown(join(marvin, "security")),
+    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+  };
+}
+function countMarkdown(dir, exclude = []) {
+  if (!existsSync(dir)) return 0;
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+  } catch {
+    return 0;
+  }
 }
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
