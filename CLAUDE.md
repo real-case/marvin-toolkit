@@ -136,6 +136,18 @@ claude plugin validate .
 
 CI (`.github/workflows/validate-plugins.yml`) runs the same checks plus ESLint, Prettier, and a stdio smoke-test that sends `initialize` to the server and verifies a valid response (`serverInfo.name == "marvin"`).
 
+### Manually driving a tool
+
+To exercise a tool over stdio without a rich MCP host (the same JSON-RPC
+conversation the e2e tests drive), use the dev driver after `npm run build`:
+
+```shell
+node scripts/mcp-call.mjs --list                              # enumerate registered tools
+node scripts/mcp-call.mjs handoff '{"action":"list"}'         # call a tool; prints text + structuredContent
+MARVIN_HANDOFF_DIR=/tmp/fix node scripts/mcp-call.mjs handoff '{"action":"list"}'   # point storage at a fixture
+node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"title":"demo"}'  # drive an elicitation
+```
+
 ## Adding a new prompt
 
 The canonical path is **skill-backed** — same content, three doors:
