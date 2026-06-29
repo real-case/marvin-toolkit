@@ -36,7 +36,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
     │   ├── prompts/
-    │   │   └── index.ts              # 40 prompt entries (skill-backed + inline kanban)
+    │   │   └── index.ts              # 41 prompt entries (skill-backed + inline kanban)
     │   ├── tools/                    # MCP tools: kanban task / git / help + verify, spec, lessons (task pipeline)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
@@ -190,7 +190,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 40 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 41 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool

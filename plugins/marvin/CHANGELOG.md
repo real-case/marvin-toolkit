@@ -4,6 +4,23 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.28] — 2026-06-29
+
+Add a read side for handoffs and make the handoff artifact machine-readable.
+
+### Added
+
+- **`/marvin:handoff-list`** — list the session-continuation handoff documents under
+  `.marvin/handoff/`, newest first. A thin wrapper over the new `handoff` MCP tool, which
+  returns both a text listing (terminal fallback) and a typed `HandoffListPayload`
+  `structuredContent` for MCP Apps hosts (ADR-0024, the handoff widget #5). Prompt count
+  40 → 41.
+- **Handoff frontmatter** — the `/marvin:handoff` skill now opens each handoff document with
+  a YAML frontmatter block (`id`, `slug`, `objective`, `branch`, `base?`, `pr_url?`,
+  `spec_slug?`, `created`) validated against the `HandoffCard` data contract. The list source
+  reads it directly — no prose parsing. Legacy handoffs without frontmatter are surfaced as
+  malformed rather than dropped.
+
 ## [2.0.0-alpha.27] — 2026-06-28
 
 Add a session-handoff command.

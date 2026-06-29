@@ -28544,6 +28544,13 @@ var PROMPTS = [
     description: "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
     skill: "handoff"
   },
+  {
+    // Thin tool wrapper (inline body) — the read side of the handoff group has
+    // no workflow prose, so it calls the `handoff` MCP tool directly (ADR-0024).
+    name: "handoff-list",
+    description: "List the session-continuation handoff documents under .marvin/handoff/.",
+    body: callTool("handoff", { action: "list" })
+  },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
     name: "task-start",
@@ -28704,6 +28711,16 @@ var TaskFrontmatter = external_exports.object({
   created: external_exports.string().datetime(),
   updated: external_exports.string().datetime()
 });
+var HandoffFrontmatter = external_exports.object({
+  id: external_exports.string().regex(/^\d{3}$/),
+  slug: external_exports.string().min(1),
+  objective: external_exports.string().min(1),
+  branch: external_exports.string().min(1),
+  base: external_exports.string().min(1).optional(),
+  pr_url: external_exports.string().url().optional(),
+  spec_slug: external_exports.string().min(1).optional(),
+  created: external_exports.string().datetime()
+});
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
@@ -28756,7 +28773,8 @@ function loadEnv(env = process.env) {
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
-  return { projectDir, tasksDir, configPath, memoryDir };
+  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
 }
 
 // src/storage/frontmatter.ts
@@ -30939,9 +30957,90 @@ function ok4(text) {
 function err(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
+function readAllHandoffs(handoffDir) {
+  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
+  const handoffs = [];
+  const malformed = [];
+  for (const filename of readdirSync(handoffDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(handoffDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = HandoffFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    handoffs.push({ frontmatter: parsed.data, body, filename });
+  }
+  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { handoffs, malformed };
+}
+
+// src/tools/handoff.ts
+var HandoffInput = external_exports.object({
+  action: external_exports.enum(["list"]).optional()
+});
+function buildHandoffTool(env) {
+  return defineTool({
+    name: "handoff",
+    description: "List the session-continuation handoff documents saved under .marvin/handoff/, newest first.",
+    inputSchema: HandoffInput,
+    // Only one action today (list); the optional enum leaves room to grow
+    // (e.g. a `show` detail action) without a breaking schema change.
+    handler: () => Promise.resolve(runList2(env))
+  });
+}
+function runList2(env) {
+  const { handoffs, malformed } = readAllHandoffs(env.handoffDir);
+  const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
+  const warning = malformed.length > 0 ? `
+
+_\u26A0 ${malformed.length} handoff(s) without valid frontmatter: ${malformed.map((m) => m.filename).join(", ")} (regenerate with \`/marvin:handoff\`)_` : "";
+  return {
+    content: [{ type: "text", text: `# Handoffs (${handoffs.length})
+
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the handoff viewer (#5).
+    // Same data the text renders, typed to the HandoffListPayload contract;
+    // terminals render `content` and ignore this.
+    structuredContent: buildHandoffListPayload(handoffs)
+  };
+}
+function formatHandoffLine(h) {
+  const fm = h.frontmatter;
+  const pr = fm.pr_url ? ` \xB7 PR: ${fm.pr_url}` : "";
+  const base = fm.base ? ` \u2192 \`${fm.base}\`` : "";
+  return `- **${fm.id}** ${fm.objective} \xB7 \`${fm.branch}\`${base}${pr}`;
+}
+function buildHandoffListPayload(handoffs) {
+  const cards = handoffs.map((h) => {
+    const fm = h.frontmatter;
+    return {
+      id: fm.id,
+      slug: fm.slug,
+      objective: fm.objective,
+      branch: fm.branch,
+      ...fm.base ? { base: fm.base } : {},
+      // Contract field is nullable-required; storage omits it when absent.
+      pr_url: fm.pr_url ?? null,
+      ...fm.spec_slug ? { spec_slug: fm.spec_slug } : {},
+      created: fm.created
+    };
+  });
+  return { handoffs: cards };
+}
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.27";
+var VERSION = "2.0.0-alpha.28";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -30958,7 +31057,8 @@ await runPackServer({
         buildHelpTool(env, config2, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
-        buildLessonsTool(env)
+        buildLessonsTool(env),
+        buildHandoffTool(env)
       ]
     };
   }

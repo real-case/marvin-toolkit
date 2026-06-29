@@ -41,6 +41,33 @@ export interface Task {
 }
 
 /**
+ * Runtime validation schema for the YAML frontmatter on a handoff artifact
+ * (`.marvin/handoff/<NNN>-<slug>.md`, ADR-0024). Mirrors the `HandoffCard`
+ * data contract in `marvin-mcp-shared/contracts`; the contract is imported
+ * type-only by the tool so zod never bundles into `dist/server.js`. `pr_url`
+ * is `.optional()` here (the writer omits the line when no PR exists) and
+ * maps to the contract's nullable field when the card is built.
+ */
+export const HandoffFrontmatter = z.object({
+  id: z.string().regex(/^\d{3}$/),
+  slug: z.string().min(1),
+  objective: z.string().min(1),
+  branch: z.string().min(1),
+  base: z.string().min(1).optional(),
+  pr_url: z.string().url().optional(),
+  spec_slug: z.string().min(1).optional(),
+  created: z.string().datetime(),
+});
+export type HandoffFrontmatter = z.infer<typeof HandoffFrontmatter>;
+
+export interface Handoff {
+  frontmatter: HandoffFrontmatter;
+  body: string;
+  /** File path relative to the handoff dir. */
+  filename: string;
+}
+
+/**
  * Per-gate command overrides for the `verify` tool, declared once per project
  * (ADR-0009). Any gate set here wins over auto-detection (config-first); gates
  * left unset fall back to stack detection. Keys match the verify gate names.

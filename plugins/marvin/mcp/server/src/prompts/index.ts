@@ -101,6 +101,13 @@ export const PROMPTS: PromptDef[] = [
       "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
     skill: "handoff",
   },
+  {
+    // Thin tool wrapper (inline body) — the read side of the handoff group has
+    // no workflow prose, so it calls the `handoff` MCP tool directly (ADR-0024).
+    name: "handoff-list",
+    description: "List the session-continuation handoff documents under .marvin/handoff/.",
+    body: callTool("handoff", { action: "list" }),
+  },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {

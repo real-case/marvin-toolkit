@@ -29,6 +29,7 @@ git diff --stat                       # uncommitted
 # on a topic branch, also the branch's full diff vs its base:
 git diff <base>...HEAD --stat
 gh pr view --json number,url,state,baseRefName 2>/dev/null   # open PR, if any
+date -u +"%Y-%m-%dT%H:%M:%SZ"                                # for the `created` frontmatter
 ```
 
 Detect pipeline / working-dir artifacts that carry context:
@@ -58,9 +59,23 @@ If a recent handoff for the **same** work already exists, offer to **update it i
 
 ### 4. Write the handoff document
 
-Use this structure — self-contained, skimmable, factual. Drop sections that don't apply:
+Open the file with a **YAML frontmatter block**, then the markdown body. The frontmatter is
+machine-readable (ADR-0024) — it powers `/marvin:handoff-list` and the handoff widget, so fill
+it from the *inspected* state, not prose. Then write the body using the structure below —
+self-contained, skimmable, factual. Drop body sections that don't apply:
 
 ```markdown
+---
+id: "<NNN>"                 # the zero-padded sequence from step 3 (quote it)
+slug: <slug>                # the kebab-case slug from step 3 (matches the filename)
+objective: <one line>       # quote if it contains a colon or other YAML-special char
+branch: <branch>            # from `git branch --show-current`
+base: <base>                # omit this line entirely if not on a topic branch
+pr_url: <url>               # omit this line entirely if there is no open PR
+spec_slug: <slug>           # omit unless a .marvin/task/ spec backs this work
+created: "<ISO-8601 UTC>"   # the `date -u …` output from step 1 (quote it)
+---
+
 # Handoff — <objective, one line>
 
 > Generated <branch> @ <short-sha>. Read this top-to-bottom, then resume at **Next steps**.
@@ -98,7 +113,7 @@ Use this structure — self-contained, skimmable, factual. Drop sections that do
 - <anything needing a human decision>
 ```
 
-Cite the real paths, SHAs, and PR URLs gathered in step 1 — no invented state. No AI/automation attribution.
+Cite the real paths, SHAs, and PR URLs gathered in step 1 — no invented state. No AI/automation attribution. Keep the frontmatter `objective` in sync with the `# Handoff — …` title; the `pr_url`/`base`/`spec_slug` lines are present only when those facts exist.
 
 ### 5. Emit the paste-ready prompt
 

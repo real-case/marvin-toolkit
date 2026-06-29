@@ -13,8 +13,9 @@ import { buildHelpTool } from "./tools/help.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
 import { buildLessonsTool } from "./tools/lessons.js";
+import { buildHandoffTool } from "./tools/handoff.js";
 
-const VERSION = "2.0.0-alpha.27";
+const VERSION = "2.0.0-alpha.28";
 
 await runPackServer({
   name: "marvin",
@@ -33,6 +34,7 @@ await runPackServer({
         buildVerifyTool(env),
         buildSpecTool(env),
         buildLessonsTool(env),
+        buildHandoffTool(env),
       ],
     };
   },
