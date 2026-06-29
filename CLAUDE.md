@@ -111,6 +111,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - `runPackServer({ name, version, promptsDir, packRoot, build })` — the standard server entry
 - `elicit(server, message, zodSchema)` — typed MCP elicitation wrapper
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
+- `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
 
 The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//, ...]`) into a single self-contained `dist/server.js`.
 
@@ -201,6 +202,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0020-debugger-agent.md` — root-cause analysis as the `marvin-debugger` agent
 - `docs/adr/0021-lessons-feedback-loop.md` — the tool-backed `.marvin/memory/` lessons feedback loop
 - `docs/adr/0023-pr-command-family.md` — the unified `pr-*` PR lifecycle (create / review / resolve / merge)
+- `docs/adr/0024-mcp-apps-widget-architecture.md` — MCP Apps widget layer: data-first staging + shared `contracts/` data schemas
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard
 - `.github/workflows/validate-plugins.yml` — CI pipeline

@@ -28378,7 +28378,7 @@ var StdioServerTransport = class {
 };
 
 // ../../../../packages/marvin-mcp-shared/dist/server.js
-async function runPackServer(opts) {
+async function buildServer(opts) {
   const server = new McpServer({ name: opts.name, version: opts.version }, { capabilities: { prompts: {}, tools: {} } });
   const bundle = await opts.build(server);
   const ctx = { promptsDir: opts.promptsDir, packRoot: opts.packRoot };
@@ -28388,6 +28388,13 @@ async function runPackServer(opts) {
   for (const def of bundle.tools ?? []) {
     registerTool(server, def);
   }
+  for (const def of bundle.resources ?? []) {
+    registerResource(server, def);
+  }
+  return server;
+}
+async function runPackServer(opts) {
+  const server = await buildServer(opts);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
@@ -28430,7 +28437,10 @@ function registerTool(server, def) {
   const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
   server.registerTool(def.name, {
     description: def.description,
-    inputSchema: shape
+    inputSchema: shape,
+    // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
+    // (ADR-0024); omitted by text-only tools.
+    ...def.meta ? { _meta: def.meta } : {}
   }, async (args) => {
     const parsed = def.inputSchema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -28447,9 +28457,18 @@ function registerTool(server, def) {
     const result2 = await def.handler(parsed.data);
     return {
       isError: result2.isError,
-      content: result2.content.map((c) => ({ type: "text", text: c.text }))
+      content: result2.content.map((c) => ({ type: "text", text: c.text })),
+      // The widget payload (ADR-0024); forwarded only when the tool produced
+      // one, so text-only results are byte-for-byte unchanged.
+      ...result2.structuredContent ? { structuredContent: result2.structuredContent } : {}
     };
   });
+}
+function registerResource(server, def) {
+  const mimeType = def.mimeType ?? "text/html";
+  server.registerResource(def.name, def.uri, { description: def.description, mimeType }, async () => ({
+    contents: [{ uri: def.uri, mimeType, text: await def.read() }]
+  }));
 }
 
 // src/prompts/index.ts
