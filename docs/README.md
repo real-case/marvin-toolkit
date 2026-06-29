@@ -45,6 +45,7 @@ into 0001/0013/0018.
 | [0021](./adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
 | [0022](./adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
 | [0023](./adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
+| [0024](./adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 
 ## Work in progress
 
