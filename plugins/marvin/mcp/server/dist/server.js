@@ -28696,6 +28696,11 @@ var TaskFrontmatter = external_exports.object({
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: external_exports.string(),
+  /**
+   * PR URL captured at `gh pr create` time (ADR-0024). Stored, never
+   * live-resolved; absent until a PR is opened for the task.
+   */
+  pr: external_exports.string().url().optional(),
   created: external_exports.string().datetime(),
   updated: external_exports.string().datetime()
 });
@@ -28895,6 +28900,16 @@ function updateStatus(tasksDir, task, newStatus) {
   writeTask(tasksDir, { ...task, frontmatter: next });
   return { ...task, frontmatter: next };
 }
+function setTaskPr(tasksDir, task, prUrl) {
+  const updated = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...task.frontmatter,
+    pr: prUrl,
+    updated
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
 function writeTask(tasksDir, task) {
   const fm = {
     id: task.frontmatter.id,
@@ -28903,6 +28918,7 @@ function writeTask(tasksDir, task) {
     title: task.frontmatter.title,
     tracker_id: task.frontmatter.tracker_id,
     branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
     created: task.frontmatter.created,
     updated: task.frontmatter.updated
   };
@@ -29146,12 +29162,17 @@ function buildTaskListPayload(tasks, config2) {
       branch: fm.branch,
       ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
       tracker_url: trackerUrl(config2, fm.tracker_id),
-      pr: null,
+      pr: prRefFromUrl(fm.pr),
       created: fm.created,
       updated: fm.updated
     };
   });
   return { tasks: cards, counts };
+}
+function prRefFromUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
 }
 function runStatus(_server, env, _config) {
   const { tasks } = readAllTasks(env.tasksDir);
@@ -29345,7 +29366,17 @@ gh pr create --base ${config2.base_branch} --title ${JSON.stringify(title)} --bo
     env.projectDir
   );
   if (!result2.ok) return errOk2(`gh pr create failed: ${result2.stderr}`);
-  return ok2(`PR created: ${result2.value.split("\n").pop() ?? result2.value}`);
+  const prUrl = extractPrUrl(result2.value);
+  if (task && prUrl) setTaskPr(env.tasksDir, task, prUrl);
+  return ok2(`PR created: ${prUrl ?? result2.value}`);
+}
+function extractPrUrl(output) {
+  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? "";
+    if (/^https?:\/\/\S+$/.test(line)) return line;
+  }
+  return null;
 }
 function ok2(text) {
   return { content: [{ type: "text", text }] };

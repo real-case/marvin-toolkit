@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool, elicit, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { currentBranch, git as runGit, gh as runGh, hasGh, hasGit, inGitRepo } from "../lib/git.js";
-import { findTaskByBranch, readAllTasks } from "../storage/tasks.js";
+import { findTaskByBranch, readAllTasks, setTaskPr } from "../storage/tasks.js";
 import { trackerUrl } from "../storage/config.js";
 import type { Config } from "../storage/schema.js";
 import type { ServerEnv } from "../lib/env.js";
@@ -125,7 +125,29 @@ async function runCreatePr(
     env.projectDir,
   );
   if (!result.ok) return errOk(`gh pr create failed: ${result.stderr}`);
-  return ok(`PR created: ${result.value.split("\n").pop() ?? result.value}`);
+
+  // Capture the PR URL onto the task frontmatter (ADR-0024) — the one piece of
+  // widget data the tool used to drop. Stored, never live-resolved.
+  const prUrl = extractPrUrl(result.value);
+  if (task && prUrl) setTaskPr(env.tasksDir, task, prUrl);
+
+  return ok(`PR created: ${prUrl ?? result.value}`);
+}
+
+/**
+ * `gh pr create` prints the new PR's URL, sometimes after warning lines. Return
+ * the last http(s) URL line so it can be persisted on the task frontmatter.
+ */
+function extractPrUrl(output: string): string | null {
+  const lines = output
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? "";
+    if (/^https?:\/\/\S+$/.test(line)) return line;
+  }
+  return null;
 }
 
 function ok(text: string): ToolResult {

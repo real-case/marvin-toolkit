@@ -23,6 +23,11 @@ export const TaskFrontmatter = z.object({
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: z.string(),
+  /**
+   * PR URL captured at `gh pr create` time (ADR-0024). Stored, never
+   * live-resolved; absent until a PR is opened for the task.
+   */
+  pr: z.string().url().optional(),
   created: z.string().datetime(),
   updated: z.string().datetime(),
 });

@@ -133,6 +133,21 @@ export function updateStatus(tasksDir: string, task: Task, newStatus: TaskStatus
   return { ...task, frontmatter: next };
 }
 
+/**
+ * Persist the PR URL captured at `gh pr create` onto a task's frontmatter
+ * (ADR-0024). The URL is stored verbatim, never live-resolved; bumps `updated`.
+ */
+export function setTaskPr(tasksDir: string, task: Task, prUrl: string): Task {
+  const updated = new Date().toISOString();
+  const next: TaskFrontmatter = {
+    ...task.frontmatter,
+    pr: prUrl,
+    updated,
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
+
 function writeTask(tasksDir: string, task: Task): void {
   const fm: Record<string, string | undefined> = {
     id: task.frontmatter.id,
@@ -141,6 +156,7 @@ function writeTask(tasksDir: string, task: Task): void {
     title: task.frontmatter.title,
     tracker_id: task.frontmatter.tracker_id,
     branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
     created: task.frontmatter.created,
     updated: task.frontmatter.updated,
   };

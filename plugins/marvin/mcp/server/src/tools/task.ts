@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool, elicit, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
-import type { TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
+import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   createTask,
@@ -185,12 +185,23 @@ function buildTaskListPayload(tasks: Task[], config: Config): TaskListPayload {
       branch: fm.branch,
       ...(fm.tracker_id ? { tracker_id: fm.tracker_id } : {}),
       tracker_url: trackerUrl(config, fm.tracker_id),
-      pr: null,
+      pr: prRefFromUrl(fm.pr),
       created: fm.created,
       updated: fm.updated,
     };
   });
   return { tasks: cards, counts };
+}
+
+/**
+ * Map a stored PR URL to the PrRef widget contract (ADR-0024). The PR number is
+ * derived from the URL (`…/pull/<n>`); `state` is intentionally omitted — marvin
+ * stores the URL at create time and never live-resolves the PR's current state.
+ */
+function prRefFromUrl(url: string | undefined): PrRef | null {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
 }
 
 function runStatus(_server: McpServer, env: ServerEnv, _config: Config): ToolResult {
