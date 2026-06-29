@@ -29045,7 +29045,7 @@ async function dispatchTask(server, env, config2, input) {
     case "create":
       return runCreate(server, env, config2, input.type);
     case "list":
-      return runList(env);
+      return runList(env, config2);
     case "status":
       return runStatus(server, env);
     case "start":
@@ -29116,16 +29116,42 @@ Branch creation failed: ${result2.stderr}`;
 File: \`${created.path}\`${branchInfo}`
   );
 }
-function runList(env) {
+function runList(env, config2) {
   const { tasks, malformed } = readAllTasks(env.tasksDir);
   const branch = currentBranch(env.projectDir);
   const body = renderListTable(tasks, branch);
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
-  return ok(`# Tasks (${tasks.length})
+  return {
+    content: [{ type: "text", text: `# Tasks (${tasks.length})
 
-${body}${warning}`);
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
+    // renders, typed to the TaskListPayload contract. `pr` is null until PR-URL
+    // capture lands; terminals render `content` and ignore this.
+    structuredContent: buildTaskListPayload(tasks, config2)
+  };
+}
+function buildTaskListPayload(tasks, config2) {
+  const counts = { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 };
+  const cards = tasks.map((t) => {
+    const fm = t.frontmatter;
+    counts[fm.status] += 1;
+    return {
+      id: fm.id,
+      type: fm.type,
+      status: fm.status,
+      title: fm.title,
+      branch: fm.branch,
+      ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
+      tracker_url: trackerUrl(config2, fm.tracker_id),
+      pr: null,
+      created: fm.created,
+      updated: fm.updated
+    };
+  });
+  return { tasks: cards, counts };
 }
 function runStatus(_server, env, _config) {
   const { tasks } = readAllTasks(env.tasksDir);
