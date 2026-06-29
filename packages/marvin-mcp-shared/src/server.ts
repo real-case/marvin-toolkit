@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { resolvePromptBody, interpolateArgs } from "./prompts.js";
-import type { PromptDef, ToolDef } from "./types.js";
+import type { PromptDef, ResourceDef, ToolDef } from "./types.js";
 
 export interface PackBundle {
   prompts: PromptDef[];
@@ -10,6 +10,12 @@ export interface PackBundle {
   // `safeParse` so the per-tool shape can be narrow at definition time
   // without becoming a generic obligation on every consumer.
   tools?: Array<ToolDef<z.ZodTypeAny>>;
+  /**
+   * Static resources, e.g. `ui://` widget documents (ADR-0024). Registering at
+   * least one advertises the MCP `resources` capability; an empty/omitted list
+   * leaves the server's surface unchanged.
+   */
+  resources?: ResourceDef[];
 }
 
 export interface RunPackOptions {
@@ -33,18 +39,11 @@ export interface RunPackOptions {
 }
 
 /**
- * Construct, wire, and connect an MCP server for a pack.
- *
- *   import { runPackServer, promptsDirFromMeta } from "@marvin-toolkit/mcp-shared";
- *
- *   await runPackServer({
- *     name: "marvin",
- *     version: "1.0.0",
- *     promptsDir: promptsDirFromMeta(import.meta.url),
- *     build: (server) => buildPack(server, env),
- *   });
+ * Construct and wire a pack server without connecting a transport. This is the
+ * testable seam: callers can attach an in-memory transport and drive it from an
+ * MCP client. `runPackServer` is this plus a stdio connect.
  */
-export async function runPackServer(opts: RunPackOptions): Promise<void> {
+export async function buildServer(opts: RunPackOptions): Promise<McpServer> {
   const server = new McpServer(
     { name: opts.name, version: opts.version },
     { capabilities: { prompts: {}, tools: {} } },
@@ -59,7 +58,29 @@ export async function runPackServer(opts: RunPackOptions): Promise<void> {
   for (const def of bundle.tools ?? []) {
     registerTool(server, def);
   }
+  // Registering a resource auto-advertises the `resources` capability (MCP SDK);
+  // an empty list leaves the server's advertised surface untouched.
+  for (const def of bundle.resources ?? []) {
+    registerResource(server, def);
+  }
 
+  return server;
+}
+
+/**
+ * Construct, wire, and connect an MCP server for a pack over stdio.
+ *
+ *   import { runPackServer, promptsDirFromMeta } from "@marvin-toolkit/mcp-shared";
+ *
+ *   await runPackServer({
+ *     name: "marvin",
+ *     version: "1.0.0",
+ *     promptsDir: promptsDirFromMeta(import.meta.url),
+ *     build: (server) => buildPack(server, env),
+ *   });
+ */
+export async function runPackServer(opts: RunPackOptions): Promise<void> {
+  const server = await buildServer(opts);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
@@ -130,6 +151,9 @@ function registerTool<TInput extends z.ZodTypeAny>(server: McpServer, def: ToolD
     {
       description: def.description,
       inputSchema: shape,
+      // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
+      // (ADR-0024); omitted by text-only tools.
+      ...(def.meta ? { _meta: def.meta } : {}),
     },
     async (args: unknown) => {
       const parsed = def.inputSchema.safeParse(args ?? {});
@@ -148,7 +172,26 @@ function registerTool<TInput extends z.ZodTypeAny>(server: McpServer, def: ToolD
       return {
         isError: result.isError,
         content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
+        // The widget payload (ADR-0024); forwarded only when the tool produced
+        // one, so text-only results are byte-for-byte unchanged.
+        ...(result.structuredContent ? { structuredContent: result.structuredContent } : {}),
       };
     },
+  );
+}
+
+/**
+ * Register a static resource (ADR-0024). Used to serve `ui://` widget HTML; the
+ * body is produced lazily by `def.read` at request time.
+ */
+function registerResource(server: McpServer, def: ResourceDef): void {
+  const mimeType = def.mimeType ?? "text/html";
+  server.registerResource(
+    def.name,
+    def.uri,
+    { description: def.description, mimeType },
+    async () => ({
+      contents: [{ uri: def.uri, mimeType, text: await def.read() }],
+    }),
   );
 }

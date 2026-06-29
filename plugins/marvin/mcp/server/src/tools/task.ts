@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool, elicit, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
+import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   createTask,
@@ -8,6 +9,7 @@ import {
   readAllTasks,
   updateStatus,
 } from "../storage/tasks.js";
+import { trackerUrl } from "../storage/config.js";
 import {
   TaskType,
   TaskTitle,
@@ -63,7 +65,7 @@ async function dispatchTask(
     case "create":
       return runCreate(server, env, config, input.type);
     case "list":
-      return runList(env);
+      return runList(env, config);
     case "status":
       return runStatus(server, env, config);
     case "start":
@@ -152,7 +154,7 @@ async function runCreate(
   );
 }
 
-function runList(env: ServerEnv): ToolResult {
+function runList(env: ServerEnv, config: Config): ToolResult {
   const { tasks, malformed } = readAllTasks(env.tasksDir);
   const branch = currentBranch(env.projectDir);
   const body = renderListTable(tasks, branch);
@@ -160,7 +162,46 @@ function runList(env: ServerEnv): ToolResult {
     malformed.length > 0
       ? `\n\n_⚠ ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_`
       : "";
-  return ok(`# Tasks (${tasks.length})\n\n${body}${warning}`);
+  return {
+    content: [{ type: "text", text: `# Tasks (${tasks.length})\n\n${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
+    // renders, typed to the TaskListPayload contract. `pr` is null until PR-URL
+    // capture lands; terminals render `content` and ignore this.
+    structuredContent: buildTaskListPayload(tasks, config),
+  };
+}
+
+/** Map kanban tasks to the TaskListPayload widget contract (ADR-0024). */
+function buildTaskListPayload(tasks: Task[], config: Config): TaskListPayload {
+  const counts = { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 };
+  const cards: TaskCard[] = tasks.map((t) => {
+    const fm = t.frontmatter;
+    counts[fm.status] += 1;
+    return {
+      id: fm.id,
+      type: fm.type,
+      status: fm.status,
+      title: fm.title,
+      branch: fm.branch,
+      ...(fm.tracker_id ? { tracker_id: fm.tracker_id } : {}),
+      tracker_url: trackerUrl(config, fm.tracker_id),
+      pr: prRefFromUrl(fm.pr),
+      created: fm.created,
+      updated: fm.updated,
+    };
+  });
+  return { tasks: cards, counts };
+}
+
+/**
+ * Map a stored PR URL to the PrRef widget contract (ADR-0024). The PR number is
+ * derived from the URL (`…/pull/<n>`); `state` is intentionally omitted — marvin
+ * stores the URL at create time and never live-resolves the PR's current state.
+ */
+function prRefFromUrl(url: string | undefined): PrRef | null {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
 }
 
 function runStatus(_server: McpServer, env: ServerEnv, _config: Config): ToolResult {

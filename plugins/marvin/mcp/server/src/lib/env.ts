@@ -14,6 +14,8 @@ export interface ServerEnv {
   configPath: string;
   /** Directory where lessons-learned `.md` files live (default `.marvin/memory`). */
   memoryDir: string;
+  /** Directory where handoff `.md` documents live (default `.marvin/handoff`). */
+  handoffDir: string;
 }
 
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -21,5 +23,6 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
-  return { projectDir, tasksDir, configPath, memoryDir };
+  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
 }

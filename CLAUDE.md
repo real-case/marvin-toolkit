@@ -36,7 +36,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
     │   ├── prompts/
-    │   │   └── index.ts              # 40 prompt entries (skill-backed + inline kanban)
+    │   │   └── index.ts              # 41 prompt entries (skill-backed + inline kanban)
     │   ├── tools/                    # MCP tools: kanban task / git / help + verify, spec, lessons (task pipeline)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
@@ -111,6 +111,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - `runPackServer({ name, version, promptsDir, packRoot, build })` — the standard server entry
 - `elicit(server, message, zodSchema)` — typed MCP elicitation wrapper
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
+- `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
 
 The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//, ...]`) into a single self-contained `dist/server.js`.
 
@@ -134,6 +135,18 @@ claude plugin validate .
 ```
 
 CI (`.github/workflows/validate-plugins.yml`) runs the same checks plus ESLint, Prettier, and a stdio smoke-test that sends `initialize` to the server and verifies a valid response (`serverInfo.name == "marvin"`).
+
+### Manually driving a tool
+
+To exercise a tool over stdio without a rich MCP host (the same JSON-RPC
+conversation the e2e tests drive), use the dev driver after `npm run build`:
+
+```shell
+node scripts/mcp-call.mjs --list                              # enumerate registered tools
+node scripts/mcp-call.mjs handoff '{"action":"list"}'         # call a tool; prints text + structuredContent
+MARVIN_HANDOFF_DIR=/tmp/fix node scripts/mcp-call.mjs handoff '{"action":"list"}'   # point storage at a fixture
+node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"title":"demo"}'  # drive an elicitation
+```
 
 ## Adding a new prompt
 
@@ -189,7 +202,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 40 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 41 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool
@@ -201,6 +214,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0020-debugger-agent.md` — root-cause analysis as the `marvin-debugger` agent
 - `docs/adr/0021-lessons-feedback-loop.md` — the tool-backed `.marvin/memory/` lessons feedback loop
 - `docs/adr/0023-pr-command-family.md` — the unified `pr-*` PR lifecycle (create / review / resolve / merge)
+- `docs/adr/0024-mcp-apps-widget-architecture.md` — MCP Apps widget layer: data-first staging + shared `contracts/` data schemas
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard
 - `.github/workflows/validate-plugins.yml` — CI pipeline

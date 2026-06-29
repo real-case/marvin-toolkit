@@ -23,6 +23,11 @@ export const TaskFrontmatter = z.object({
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: z.string(),
+  /**
+   * PR URL captured at `gh pr create` time (ADR-0024). Stored, never
+   * live-resolved; absent until a PR is opened for the task.
+   */
+  pr: z.string().url().optional(),
   created: z.string().datetime(),
   updated: z.string().datetime(),
 });
@@ -32,6 +37,33 @@ export interface Task {
   frontmatter: TaskFrontmatter;
   body: string;
   /** File path relative to MARVIN_TASKS_DIR. */
+  filename: string;
+}
+
+/**
+ * Runtime validation schema for the YAML frontmatter on a handoff artifact
+ * (`.marvin/handoff/<NNN>-<slug>.md`, ADR-0024). Mirrors the `HandoffCard`
+ * data contract in `marvin-mcp-shared/contracts`; the contract is imported
+ * type-only by the tool so zod never bundles into `dist/server.js`. `pr_url`
+ * is `.optional()` here (the writer omits the line when no PR exists) and
+ * maps to the contract's nullable field when the card is built.
+ */
+export const HandoffFrontmatter = z.object({
+  id: z.string().regex(/^\d{3}$/),
+  slug: z.string().min(1),
+  objective: z.string().min(1),
+  branch: z.string().min(1),
+  base: z.string().min(1).optional(),
+  pr_url: z.string().url().optional(),
+  spec_slug: z.string().min(1).optional(),
+  created: z.string().datetime(),
+});
+export type HandoffFrontmatter = z.infer<typeof HandoffFrontmatter>;
+
+export interface Handoff {
+  frontmatter: HandoffFrontmatter;
+  body: string;
+  /** File path relative to the handoff dir. */
   filename: string;
 }
 

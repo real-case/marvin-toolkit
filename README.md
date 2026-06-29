@@ -165,6 +165,7 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0021](./docs/adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
 | [0022](./docs/adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
 | [0023](./docs/adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
+| [0024](./docs/adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 
 ## Contributing
 

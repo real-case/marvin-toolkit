@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -28378,7 +28378,7 @@ var StdioServerTransport = class {
 };
 
 // ../../../../packages/marvin-mcp-shared/dist/server.js
-async function runPackServer(opts) {
+async function buildServer(opts) {
   const server = new McpServer({ name: opts.name, version: opts.version }, { capabilities: { prompts: {}, tools: {} } });
   const bundle = await opts.build(server);
   const ctx = { promptsDir: opts.promptsDir, packRoot: opts.packRoot };
@@ -28388,6 +28388,13 @@ async function runPackServer(opts) {
   for (const def of bundle.tools ?? []) {
     registerTool(server, def);
   }
+  for (const def of bundle.resources ?? []) {
+    registerResource(server, def);
+  }
+  return server;
+}
+async function runPackServer(opts) {
+  const server = await buildServer(opts);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
@@ -28430,7 +28437,10 @@ function registerTool(server, def) {
   const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
   server.registerTool(def.name, {
     description: def.description,
-    inputSchema: shape
+    inputSchema: shape,
+    // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
+    // (ADR-0024); omitted by text-only tools.
+    ...def.meta ? { _meta: def.meta } : {}
   }, async (args) => {
     const parsed = def.inputSchema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -28447,9 +28457,18 @@ function registerTool(server, def) {
     const result2 = await def.handler(parsed.data);
     return {
       isError: result2.isError,
-      content: result2.content.map((c) => ({ type: "text", text: c.text }))
+      content: result2.content.map((c) => ({ type: "text", text: c.text })),
+      // The widget payload (ADR-0024); forwarded only when the tool produced
+      // one, so text-only results are byte-for-byte unchanged.
+      ...result2.structuredContent ? { structuredContent: result2.structuredContent } : {}
     };
   });
+}
+function registerResource(server, def) {
+  const mimeType = def.mimeType ?? "text/html";
+  server.registerResource(def.name, def.uri, { description: def.description, mimeType }, async () => ({
+    contents: [{ uri: def.uri, mimeType, text: await def.read() }]
+  }));
 }
 
 // src/prompts/index.ts
@@ -28524,6 +28543,13 @@ var PROMPTS = [
     name: "handoff",
     description: "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
     skill: "handoff"
+  },
+  {
+    // Thin tool wrapper (inline body) — the read side of the handoff group has
+    // no workflow prose, so it calls the `handoff` MCP tool directly (ADR-0024).
+    name: "handoff-list",
+    description: "List the session-continuation handoff documents under .marvin/handoff/.",
+    body: callTool("handoff", { action: "list" })
   },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
@@ -28677,8 +28703,23 @@ var TaskFrontmatter = external_exports.object({
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: external_exports.string(),
+  /**
+   * PR URL captured at `gh pr create` time (ADR-0024). Stored, never
+   * live-resolved; absent until a PR is opened for the task.
+   */
+  pr: external_exports.string().url().optional(),
   created: external_exports.string().datetime(),
   updated: external_exports.string().datetime()
+});
+var HandoffFrontmatter = external_exports.object({
+  id: external_exports.string().regex(/^\d{3}$/),
+  slug: external_exports.string().min(1),
+  objective: external_exports.string().min(1),
+  branch: external_exports.string().min(1),
+  base: external_exports.string().min(1).optional(),
+  pr_url: external_exports.string().url().optional(),
+  spec_slug: external_exports.string().min(1).optional(),
+  created: external_exports.string().datetime()
 });
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
@@ -28732,7 +28773,8 @@ function loadEnv(env = process.env) {
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
-  return { projectDir, tasksDir, configPath, memoryDir };
+  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
 }
 
 // src/storage/frontmatter.ts
@@ -28876,6 +28918,16 @@ function updateStatus(tasksDir, task, newStatus) {
   writeTask(tasksDir, { ...task, frontmatter: next });
   return { ...task, frontmatter: next };
 }
+function setTaskPr(tasksDir, task, prUrl) {
+  const updated = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...task.frontmatter,
+    pr: prUrl,
+    updated
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
 function writeTask(tasksDir, task) {
   const fm = {
     id: task.frontmatter.id,
@@ -28884,6 +28936,7 @@ function writeTask(tasksDir, task) {
     title: task.frontmatter.title,
     tracker_id: task.frontmatter.tracker_id,
     branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
     created: task.frontmatter.created,
     updated: task.frontmatter.updated
   };
@@ -29026,7 +29079,7 @@ async function dispatchTask(server, env, config2, input) {
     case "create":
       return runCreate(server, env, config2, input.type);
     case "list":
-      return runList(env);
+      return runList(env, config2);
     case "status":
       return runStatus(server, env);
     case "start":
@@ -29097,16 +29150,47 @@ Branch creation failed: ${result2.stderr}`;
 File: \`${created.path}\`${branchInfo}`
   );
 }
-function runList(env) {
+function runList(env, config2) {
   const { tasks, malformed } = readAllTasks(env.tasksDir);
   const branch = currentBranch(env.projectDir);
   const body = renderListTable(tasks, branch);
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
-  return ok(`# Tasks (${tasks.length})
+  return {
+    content: [{ type: "text", text: `# Tasks (${tasks.length})
 
-${body}${warning}`);
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
+    // renders, typed to the TaskListPayload contract. `pr` is null until PR-URL
+    // capture lands; terminals render `content` and ignore this.
+    structuredContent: buildTaskListPayload(tasks, config2)
+  };
+}
+function buildTaskListPayload(tasks, config2) {
+  const counts = { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 };
+  const cards = tasks.map((t) => {
+    const fm = t.frontmatter;
+    counts[fm.status] += 1;
+    return {
+      id: fm.id,
+      type: fm.type,
+      status: fm.status,
+      title: fm.title,
+      branch: fm.branch,
+      ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
+      tracker_url: trackerUrl(config2, fm.tracker_id),
+      pr: prRefFromUrl(fm.pr),
+      created: fm.created,
+      updated: fm.updated
+    };
+  });
+  return { tasks: cards, counts };
+}
+function prRefFromUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
 }
 function runStatus(_server, env, _config) {
   const { tasks } = readAllTasks(env.tasksDir);
@@ -29300,7 +29384,17 @@ gh pr create --base ${config2.base_branch} --title ${JSON.stringify(title)} --bo
     env.projectDir
   );
   if (!result2.ok) return errOk2(`gh pr create failed: ${result2.stderr}`);
-  return ok2(`PR created: ${result2.value.split("\n").pop() ?? result2.value}`);
+  const prUrl = extractPrUrl(result2.value);
+  if (task && prUrl) setTaskPr(env.tasksDir, task, prUrl);
+  return ok2(`PR created: ${prUrl ?? result2.value}`);
+}
+function extractPrUrl(output) {
+  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? "";
+    if (/^https?:\/\/\S+$/.test(line)) return line;
+  }
+  return null;
 }
 function ok2(text) {
   return { content: [{ type: "text", text }] };
@@ -29311,8 +29405,6 @@ function errOk2(text) {
 function cancelled2() {
   return ok2("Cancelled \u2014 no changes made.");
 }
-
-// src/tools/help.ts
 var HelpInput = external_exports.object({});
 var ALL_PROMPTS = [
   { name: "/marvin:kanban-menu", desc: "Main menu" },
@@ -29348,6 +29440,8 @@ function renderHelp(env, config2, version2) {
   };
   for (const t of tasks) counts[t.frontmatter.status] += 1;
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
+  const has_git = hasGit();
+  const has_gh = hasGh();
   const lines = [];
   lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
   lines.push("");
@@ -29369,13 +29463,58 @@ function renderHelp(env, config2, version2) {
   if (malformed.length > 0) lines.push(`- \u26A0 malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
-  lines.push(`- git: ${hasGit() ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${hasGh() ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
+  lines.push(`- git: ${has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
+  lines.push(`- gh:  ${has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
   lines.push("## Prompts");
   for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` \u2014 ${p.desc}`);
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  const dashboard = {
+    version: version2,
+    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    config: {
+      base_branch: config2.base_branch,
+      tracker_url_template: config2.tracker_url_template,
+      ...config2.gates ? { gates: config2.gates } : {}
+    },
+    kanban_counts: counts,
+    git: { has_git, has_gh, branch },
+    artifacts: artifactCounts(env),
+    command_groups: commandGroups()
+  };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: dashboard
+  };
+}
+var GROUP_PREFIXES = ["pr", "task", "sec", "kanban"];
+var GROUP_ORDER = ["core", "pr", "task", "sec", "kanban"];
+function groupOf(name) {
+  const prefix = name.split("-")[0] ?? "";
+  return GROUP_PREFIXES.includes(prefix) ? prefix : "core";
+}
+function commandGroups() {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    count: PROMPTS.filter((p) => groupOf(p.name) === group).length
+  })).filter((g) => g.count > 0);
+}
+function artifactCounts(env) {
+  const marvin = join(env.projectDir, ".marvin");
+  return {
+    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    handoffs: countMarkdown(join(marvin, "handoff")),
+    audits: countMarkdown(join(marvin, "security")),
+    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+  };
+}
+function countMarkdown(dir, exclude = []) {
+  if (!existsSync(dir)) return 0;
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+  } catch {
+    return 0;
+  }
 }
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
@@ -30818,9 +30957,90 @@ function ok4(text) {
 function err(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
+function readAllHandoffs(handoffDir) {
+  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
+  const handoffs = [];
+  const malformed = [];
+  for (const filename of readdirSync(handoffDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(handoffDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = HandoffFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    handoffs.push({ frontmatter: parsed.data, body, filename });
+  }
+  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { handoffs, malformed };
+}
+
+// src/tools/handoff.ts
+var HandoffInput = external_exports.object({
+  action: external_exports.enum(["list"]).optional()
+});
+function buildHandoffTool(env) {
+  return defineTool({
+    name: "handoff",
+    description: "List the session-continuation handoff documents saved under .marvin/handoff/, newest first.",
+    inputSchema: HandoffInput,
+    // Only one action today (list); the optional enum leaves room to grow
+    // (e.g. a `show` detail action) without a breaking schema change.
+    handler: () => Promise.resolve(runList2(env))
+  });
+}
+function runList2(env) {
+  const { handoffs, malformed } = readAllHandoffs(env.handoffDir);
+  const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
+  const warning = malformed.length > 0 ? `
+
+_\u26A0 ${malformed.length} handoff(s) without valid frontmatter: ${malformed.map((m) => m.filename).join(", ")} (regenerate with \`/marvin:handoff\`)_` : "";
+  return {
+    content: [{ type: "text", text: `# Handoffs (${handoffs.length})
+
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the handoff viewer (#5).
+    // Same data the text renders, typed to the HandoffListPayload contract;
+    // terminals render `content` and ignore this.
+    structuredContent: buildHandoffListPayload(handoffs)
+  };
+}
+function formatHandoffLine(h) {
+  const fm = h.frontmatter;
+  const pr = fm.pr_url ? ` \xB7 PR: ${fm.pr_url}` : "";
+  const base = fm.base ? ` \u2192 \`${fm.base}\`` : "";
+  return `- **${fm.id}** ${fm.objective} \xB7 \`${fm.branch}\`${base}${pr}`;
+}
+function buildHandoffListPayload(handoffs) {
+  const cards = handoffs.map((h) => {
+    const fm = h.frontmatter;
+    return {
+      id: fm.id,
+      slug: fm.slug,
+      objective: fm.objective,
+      branch: fm.branch,
+      ...fm.base ? { base: fm.base } : {},
+      // Contract field is nullable-required; storage omits it when absent.
+      pr_url: fm.pr_url ?? null,
+      ...fm.spec_slug ? { spec_slug: fm.spec_slug } : {},
+      created: fm.created
+    };
+  });
+  return { handoffs: cards };
+}
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.27";
+var VERSION = "2.0.0-alpha.28";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -30837,7 +31057,8 @@ await runPackServer({
         buildHelpTool(env, config2, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
-        buildLessonsTool(env)
+        buildLessonsTool(env),
+        buildHandoffTool(env)
       ]
     };
   }
