@@ -28551,6 +28551,13 @@ var PROMPTS = [
     description: "List the session-continuation handoff documents under .marvin/handoff/.",
     body: callTool("handoff", { action: "list" })
   },
+  {
+    // Thin tool wrapper (inline body) — the marvin dashboard + command index,
+    // derived from this registry (ADR-0024). Optional `section` filter.
+    name: "help",
+    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+  },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
     name: "task-start",
@@ -29405,31 +29412,18 @@ function errOk2(text) {
 function cancelled2() {
   return ok2("Cancelled \u2014 no changes made.");
 }
-var HelpInput = external_exports.object({});
-var ALL_PROMPTS = [
-  { name: "/marvin:kanban-menu", desc: "Main menu" },
-  { name: "/marvin:kanban-bug", desc: "Quick-create a bug task" },
-  { name: "/marvin:kanban-feature", desc: "Quick-create a feature task" },
-  { name: "/marvin:kanban-chore", desc: "Quick-create a chore task" },
-  { name: "/marvin:kanban-spike", desc: "Quick-create a spike task" },
-  { name: "/marvin:kanban-start", desc: "Pick a todo task and start it" },
-  { name: "/marvin:kanban-review", desc: "Move current task to review" },
-  { name: "/marvin:kanban-done", desc: "Mark current task done" },
-  { name: "/marvin:kanban-list", desc: "List all tasks" },
-  { name: "/marvin:kanban-status", desc: "Current branch + WIP tasks" },
-  { name: "/marvin:kanban-help", desc: "This dashboard" },
-  { name: "/marvin:kanban-commit", desc: "Commit with task context" },
-  { name: "/marvin:kanban-create-pr", desc: "Create PR for current task" }
-];
+var HelpInput = external_exports.object({
+  section: external_exports.string().optional().describe("Filter the command index to one group: core, pr, task, sec, kanban.")
+});
 function buildHelpTool(env, config2, version2) {
   return defineTool({
     name: "help",
-    description: "Marvin tasks dashboard: project state, dependency status, prompt list.",
+    description: "Marvin dashboard: project state, dependency status, and the full command index (derived from the prompt registry). Pass `section` to filter to one group (core/pr/task/sec/kanban).",
     inputSchema: HelpInput,
-    handler: () => Promise.resolve(renderHelp(env, config2, version2))
+    handler: (input) => Promise.resolve(renderHelp(env, config2, version2, input.section))
   });
 }
-function renderHelp(env, config2, version2) {
+function renderHelp(env, config2, version2, section) {
   const { tasks, malformed } = readAllTasks(env.tasksDir);
   const counts = {
     todo: 0,
@@ -29467,8 +29461,7 @@ function renderHelp(env, config2, version2) {
   lines.push(`- gh:  ${has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
-  lines.push("## Prompts");
-  for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` \u2014 ${p.desc}`);
+  lines.push(...renderCommandIndex(section));
   const dashboard = {
     version: version2,
     paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
@@ -29498,6 +29491,33 @@ function commandGroups() {
     group,
     count: PROMPTS.filter((p) => groupOf(p.name) === group).length
   })).filter((g) => g.count > 0);
+}
+function renderCommandIndex(section) {
+  const want = section?.trim().toLowerCase();
+  const known = !!want && GROUP_ORDER.includes(want);
+  const groups = known ? [want] : GROUP_ORDER;
+  const lines = [
+    known ? `## Commands \xB7 \`${want}\` group` : `## Commands (${PROMPTS.length})`
+  ];
+  if (want && !known) {
+    lines.push(`_Unknown section \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
+  }
+  for (const group of groups) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
+    if (inGroup.length === 0) continue;
+    lines.push("", `### ${group} (${inGroup.length})`);
+    for (const p of inGroup) lines.push(`- \`/marvin:${p.name}\` \u2014 ${shortDesc(p.description)}`);
+  }
+  return lines;
+}
+function shortDesc(desc, max = 80) {
+  const oneLine = desc.replace(/\s+/g, " ").trim();
+  const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
+  const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
+  if (base.length <= max) return base;
+  const cut = base.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}\u2026`;
 }
 function artifactCounts(env) {
   const marvin = join(env.projectDir, ".marvin");
@@ -31040,7 +31060,7 @@ function buildHandoffListPayload(handoffs) {
 }
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.28";
+var VERSION = "2.0.0-alpha.29";
 await runPackServer({
   name: "marvin",
   version: VERSION,

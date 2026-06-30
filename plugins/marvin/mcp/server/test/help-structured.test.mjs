@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const serverPath = join(here, "..", "dist", "server.js");
 
 /** Call the `help` tool once against the given project dir and return its result. */
-function callHelp(dir) {
+function callHelp(dir, args = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [serverPath], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -45,7 +45,7 @@ function callHelp(dir) {
             jsonrpc: "2.0",
             id: 2,
             method: "tools/call",
-            params: { name: "help", arguments: {} },
+            params: { name: "help", arguments: args },
           });
         } else if (msg.id === 2) {
           clearTimeout(timer);
@@ -113,6 +113,53 @@ test("help emits a DashboardState structuredContent (paths, config, artifacts, c
     }
     const total = sc.command_groups.reduce((n, g) => n + g.count, 0);
     assert.ok(total >= 30, `command total looks like the full registry (got ${total})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("help renders a registry-derived command index in text (no hand-list drift)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const text = (await callHelp(dir)).content.map((c) => c.text).join("\n");
+    assert.match(text, /## Commands \(\d+\)/);
+    // every group header is present...
+    for (const g of ["core", "pr", "task", "sec", "kanban"]) {
+      assert.match(text, new RegExp(`### ${g} \\(\\d+\\)`), `group ${g} header`);
+    }
+    // ...including commands the old hand-maintained list never covered.
+    for (const cmd of [
+      "/marvin:sec-scan",
+      "/marvin:pr-create",
+      "/marvin:task-start",
+      "/marvin:help",
+    ]) {
+      assert.ok(text.includes(cmd), `index lists ${cmd}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("help `section` narrows the index to one group", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const text = (await callHelp(dir, { section: "sec" })).content.map((c) => c.text).join("\n");
+    assert.match(text, /## Commands · `sec` group/);
+    assert.ok(text.includes("/marvin:sec-scan"), "sec group listed");
+    assert.ok(!text.includes("/marvin:kanban-bug"), "other groups excluded");
+    assert.ok(!/### kanban/.test(text), "no other group headers");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("help unknown `section` falls back to the full index with a hint", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const text = (await callHelp(dir, { section: "zzz" })).content.map((c) => c.text).join("\n");
+    assert.match(text, /Unknown section `zzz`/);
+    assert.match(text, /### kanban \(\d+\)/, "still lists all groups");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

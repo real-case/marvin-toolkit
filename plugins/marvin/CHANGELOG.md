@@ -4,6 +4,24 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.29] — 2026-06-30
+
+Make the dashboard command index registry-driven and filterable.
+
+### Added
+
+- **`/marvin:help [section]`** — the marvin dashboard now lists the **full** command index,
+  derived from the prompt registry (`PROMPTS`) and grouped by `core` / `pr` / `task` / `sec` /
+  `kanban`, instead of a hand-maintained list that only covered the kanban group. Pass a
+  section (e.g. `/marvin:help sec`) to filter to one group; an unknown section falls back to
+  the full index with a hint. Prompt count 41 → 42.
+
+### Changed
+
+- The `help` tool's `## Commands` section and the `DashboardState.command_groups` payload are
+  now the single registry-derived source, so the dashboard can no longer drift from the real
+  command set.
+
 ## [2.0.0-alpha.28] — 2026-06-29
 
 Add a read side for handoffs and make the handoff artifact machine-readable.
