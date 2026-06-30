@@ -15,7 +15,7 @@ import { buildSpecTool } from "./tools/spec.js";
 import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 
-const VERSION = "2.0.0-alpha.28";
+const VERSION = "2.0.0-alpha.29";
 
 await runPackServer({
   name: "marvin",

@@ -108,6 +108,14 @@ export const PROMPTS: PromptDef[] = [
     description: "List the session-continuation handoff documents under .marvin/handoff/.",
     body: callTool("handoff", { action: "list" }),
   },
+  {
+    // Thin tool wrapper (inline body) — the marvin dashboard + command index,
+    // derived from this registry (ADR-0024). Optional `section` filter.
+    name: "help",
+    description:
+      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+  },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
