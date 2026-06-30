@@ -30023,44 +30023,6 @@ function ok3(text) {
 
 // src/tools/spec.ts
 var import_yaml2 = __toESM(require_dist2());
-var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
-var RISK_VALUES = ["low", "medium", "high"];
-var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
-var FEATURE_REQUIRED = [
-  "goal",
-  "data config",
-  "chosen approach",
-  "test plan",
-  "definition of done",
-  "non goals",
-  "open questions",
-  "security nfr"
-];
-var FEATURE_RECOMMENDED = [
-  "context",
-  "why this over alternatives",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes",
-  "future considerations"
-];
-var BUGFIX_REQUIRED = [
-  "problem",
-  "reproduction steps",
-  "root cause analysis",
-  "fix approach",
-  "regression test specification",
-  "definition of done",
-  "non goals",
-  "open questions"
-];
-var BUGFIX_RECOMMENDED = [
-  "expected behavior",
-  "severity impact",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes"
-];
 var ID_FILE = /^F\d+$/i;
 var ID_AC = /^AC\d+$/i;
 var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
@@ -30101,6 +30063,67 @@ var HostBindings = external_exports.object({
   merge_obligations: external_exports.array(external_exports.string()).optional(),
   gates: external_exports.record(external_exports.string()).optional()
 }).passthrough();
+function extractContractBlock(body) {
+  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+function extractHostBindings(body) {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+
+// src/tools/spec.ts
+var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
+var RISK_VALUES = ["low", "medium", "high"];
+var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
+var FEATURE_REQUIRED = [
+  "goal",
+  "data config",
+  "chosen approach",
+  "test plan",
+  "definition of done",
+  "non goals",
+  "open questions",
+  "security nfr"
+];
+var FEATURE_RECOMMENDED = [
+  "context",
+  "why this over alternatives",
+  "assumptions",
+  "critic verdict overrides",
+  "design notes",
+  "future considerations"
+];
+var BUGFIX_REQUIRED = [
+  "problem",
+  "reproduction steps",
+  "root cause analysis",
+  "fix approach",
+  "regression test specification",
+  "definition of done",
+  "non goals",
+  "open questions"
+];
+var BUGFIX_RECOMMENDED = [
+  "expected behavior",
+  "severity impact",
+  "assumptions",
+  "critic verdict overrides",
+  "design notes"
+];
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
   specContent: external_exports.string().optional().describe(
@@ -30389,10 +30412,6 @@ function checkSections(sections, required2, recommended) {
   }
   return checks;
 }
-function extractContractBlock(body) {
-  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
 function checkContractBlock(body, type, projectRoot, specLocation) {
   const blockText = extractContractBlock(body);
   if (blockText === null) {
@@ -30430,10 +30449,6 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot));
   return checks;
 }
-function extractHostBindings(body) {
-  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
 function checkHostBindings(body) {
   const text = extractHostBindings(body);
   if (text === null) return { checks: [], specLocation: void 0 };
@@ -30460,25 +30475,11 @@ function checkHostBindings(body) {
     specLocation: parsed.data.spec_location
   };
 }
-function resolveSpecBySlug(dir, slug, projectRoot) {
-  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
-  if (!existsSync(abs)) return null;
-  const exact = `${slug}.md`;
-  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
-  let fallback = null;
-  for (const entry of readdirSync(abs).sort()) {
-    if (entry === exact) return join(abs, entry);
-    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
-  }
-  return fallback;
-}
 function checkDependsOn(deps, specLocation, projectRoot) {
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, ".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
-    (d) => !!d
-  );
+  const dirs = [specLocation, ...SPEC_DIRS].filter((d) => !!d);
   const notFound = [];
   const notShipped = [];
   for (const slug of deps) {
