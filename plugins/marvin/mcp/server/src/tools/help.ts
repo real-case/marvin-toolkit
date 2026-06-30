@@ -9,34 +9,24 @@ import { PROMPTS } from "../prompts/index.js";
 import type { Config, TaskStatus } from "../storage/schema.js";
 import type { ServerEnv } from "../lib/env.js";
 
-const HelpInput = z.object({});
-
-const ALL_PROMPTS: Array<{ name: string; desc: string }> = [
-  { name: "/marvin:kanban-menu", desc: "Main menu" },
-  { name: "/marvin:kanban-bug", desc: "Quick-create a bug task" },
-  { name: "/marvin:kanban-feature", desc: "Quick-create a feature task" },
-  { name: "/marvin:kanban-chore", desc: "Quick-create a chore task" },
-  { name: "/marvin:kanban-spike", desc: "Quick-create a spike task" },
-  { name: "/marvin:kanban-start", desc: "Pick a todo task and start it" },
-  { name: "/marvin:kanban-review", desc: "Move current task to review" },
-  { name: "/marvin:kanban-done", desc: "Mark current task done" },
-  { name: "/marvin:kanban-list", desc: "List all tasks" },
-  { name: "/marvin:kanban-status", desc: "Current branch + WIP tasks" },
-  { name: "/marvin:kanban-help", desc: "This dashboard" },
-  { name: "/marvin:kanban-commit", desc: "Commit with task context" },
-  { name: "/marvin:kanban-create-pr", desc: "Create PR for current task" },
-];
+const HelpInput = z.object({
+  section: z
+    .string()
+    .optional()
+    .describe("Filter the command index to one group: core, pr, task, sec, kanban."),
+});
 
 export function buildHelpTool(env: ServerEnv, config: Config, version: string): AnyToolDef {
   return defineTool({
     name: "help",
-    description: "Marvin tasks dashboard: project state, dependency status, prompt list.",
+    description:
+      "Marvin dashboard: project state, dependency status, and the full command index (derived from the prompt registry). Pass `section` to filter to one group (core/pr/task/sec/kanban).",
     inputSchema: HelpInput,
-    handler: () => Promise.resolve(renderHelp(env, config, version)),
+    handler: (input) => Promise.resolve(renderHelp(env, config, version, input.section)),
   });
 }
 
-function renderHelp(env: ServerEnv, config: Config, version: string): ToolResult {
+function renderHelp(env: ServerEnv, config: Config, version: string, section?: string): ToolResult {
   const { tasks, malformed } = readAllTasks(env.tasksDir);
   const counts: Record<TaskStatus, number> = {
     todo: 0,
@@ -76,8 +66,7 @@ function renderHelp(env: ServerEnv, config: Config, version: string): ToolResult
   lines.push(`- gh:  ${has_gh ? "✓" : "✗ (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
-  lines.push("## Prompts");
-  for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` — ${p.desc}`);
+  lines.push(...renderCommandIndex(section));
 
   // Widget payload for MCP Apps hosts (ADR-0024) — the marvin infrastructure
   // dashboard (#8). The terminal renders the text above and ignores this.
@@ -116,6 +105,43 @@ function commandGroups(): DashboardState["command_groups"] {
     group,
     count: PROMPTS.filter((p) => groupOf(p.name) === group).length,
   })).filter((g) => g.count > 0);
+}
+
+/**
+ * The `## Commands` section of the dashboard, derived from the `PROMPTS`
+ * registry so it can never drift from the real command set (it replaced a
+ * hand-maintained list that only covered the kanban group). `section` filters
+ * to one group; an unknown section falls back to the full index with a hint.
+ */
+function renderCommandIndex(section?: string): string[] {
+  const want = section?.trim().toLowerCase();
+  const known = !!want && GROUP_ORDER.includes(want);
+  const groups = known ? [want] : GROUP_ORDER;
+
+  const lines: string[] = [
+    known ? `## Commands · \`${want}\` group` : `## Commands (${PROMPTS.length})`,
+  ];
+  if (want && !known) {
+    lines.push(`_Unknown section \`${want}\` — showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
+  }
+  for (const group of groups) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
+    if (inGroup.length === 0) continue;
+    lines.push("", `### ${group} (${inGroup.length})`);
+    for (const p of inGroup) lines.push(`- \`/marvin:${p.name}\` — ${shortDesc(p.description)}`);
+  }
+  return lines;
+}
+
+/** First clause of a prompt description, trimmed to one scannable line. */
+function shortDesc(desc: string, max = 80): string {
+  const oneLine = desc.replace(/\s+/g, " ").trim();
+  const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
+  const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
+  if (base.length <= max) return base;
+  const cut = base.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
 /** Count the `.md` artifacts under each `.marvin/` subdir for the dashboard. */
