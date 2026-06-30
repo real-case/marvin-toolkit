@@ -274,15 +274,14 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     sumOfGatesMs,
   });
 
-  let artifactPath: string | null = null;
-  if (input.write) {
-    artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
-    mkdirSync(dirname(artifactPath), { recursive: true });
-    writeFileSync(artifactPath, markdown, "utf8");
-  }
+  // Resolve the artifact path up front so it can be embedded in the machine
+  // block, then write the SAME text we return (markdown + verify-result) to the
+  // file — so verification.md is itself machine-readable. Both the delivery gate
+  // (action: "gate") and the task-summary aggregator (ADR-0024) read the block
+  // back from the file rather than scraping prose; previously the block was only
+  // in the tool's return value, so a real verify → deliver never found it.
+  const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
 
-  // Embed a machine-readable block so callers/tests can parse the result
-  // without scraping prose. The model reads the markdown above it.
   const machine = JSON.stringify({
     verdict,
     gates: results.map((r) => ({
@@ -298,10 +297,15 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     artifactPath,
   });
 
+  const fullText = `${markdown}\n\n\`\`\`json verify-result\n${machine}\n\`\`\``;
+
+  if (input.write && artifactPath) {
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, fullText, "utf8");
+  }
+
   return {
-    content: [
-      { type: "text", text: `${markdown}\n\n\`\`\`json verify-result\n${machine}\n\`\`\`` },
-    ],
+    content: [{ type: "text", text: fullText }],
     isError: verdict === "FAIL",
   };
 }

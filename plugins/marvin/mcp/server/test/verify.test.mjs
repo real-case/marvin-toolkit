@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -397,6 +397,37 @@ test("deliver gate: ALLOW on PASS WITH WARNINGS", async () => {
     const { parsed } = await callVerify({ action: "gate", projectRoot: dir }, "deliver-gate");
     assert.equal(parsed.decision, "ALLOW");
     assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a real verify (write) persists the verify-result block, and its deliver gate ALLOWs", async () => {
+  // Regression for the latent bug: verify used to write only prose to
+  // verification.md, so the delivery gate (which reads the block back from the
+  // file) never found it on a real run — the gate tests above only passed
+  // because they hand-write a fixture. This drives the real chain end-to-end.
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-write-"));
+  try {
+    const run = await callVerify({
+      projectRoot: dir,
+      gates: [{ name: "test", command: "true" }],
+      write: true,
+    });
+    assert.equal(run.parsed.verdict, "PASS");
+
+    // the on-disk artifact is itself machine-readable, not prose-only
+    const onDisk = readFileSync(join(dir, ".marvin", "task", "verification.md"), "utf8");
+    assert.match(onDisk, /```json verify-result/);
+    assert.match(onDisk, /"verdict":"PASS"/);
+
+    // the delivery gate, reading that REAL artifact (no fixture), ALLOWs
+    const gate = await callVerify(
+      { action: "gate", projectRoot: dir, write: false },
+      "deliver-gate",
+    );
+    assert.equal(gate.parsed.decision, "ALLOW");
+    assert.equal(gate.parsed.verdict, "PASS");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -29681,12 +29681,7 @@ ${plan}${warn2}`
     wallClockMs,
     sumOfGatesMs
   });
-  let artifactPath = null;
-  if (input.write) {
-    artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
-    mkdirSync(dirname(artifactPath), { recursive: true });
-    writeFileSync(artifactPath, markdown, "utf8");
-  }
+  const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
   const machine = JSON.stringify({
     verdict,
     gates: results.map((r) => ({
@@ -29701,14 +29696,17 @@ ${plan}${warn2}`
     sumOfGatesMs,
     artifactPath
   });
-  return {
-    content: [
-      { type: "text", text: `${markdown}
+  const fullText = `${markdown}
 
 \`\`\`json verify-result
 ${machine}
-\`\`\`` }
-    ],
+\`\`\``;
+  if (input.write && artifactPath) {
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, fullText, "utf8");
+  }
+  return {
+    content: [{ type: "text", text: fullText }],
     isError: verdict === "FAIL"
   };
 }
