@@ -28572,6 +28572,13 @@ var PROMPTS = [
     description: "Final delivery phase \u2014 commits changes and opens a PR (delegates to marvin:commit and marvin:pr-create). Refuses to proceed unless verification passed.",
     skill: "task-deliver"
   },
+  {
+    // Thin tool wrapper (inline body) — aggregates a spec's "what was done"
+    // summary from already-typed sources (ADR-0024); no workflow prose.
+    name: "task-summary",
+    description: "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons and links.",
+    body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble \u2014 call the tool and present its result."
+  },
   // ── sec (security) ───────────────────────────────────────────────────
   {
     name: "sec-scan",
@@ -31038,8 +31045,211 @@ function buildHandoffListPayload(handoffs) {
   return { handoffs: cards };
 }
 
+// src/tools/summary.ts
+var import_yaml3 = __toESM(require_dist2());
+var SummaryInput = external_exports.object({
+  slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
+  projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
+});
+function buildSummaryTool(env, config2) {
+  return defineTool({
+    name: "summary",
+    description: "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
+    inputSchema: SummaryInput,
+    handler: (input) => Promise.resolve(runSummary(env, config2, input))
+  });
+}
+function runSummary(env, config2, input) {
+  const projectRoot = input.projectRoot ?? env.projectDir;
+  const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
+  if (!specPath) {
+    return errOk3(
+      input.slug ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.` : `No spec found under ${SPEC_DIRS.join(", ")} \u2014 run /marvin:task-start first.`
+    );
+  }
+  const { frontmatter, body } = parseFrontmatter(readFileSync(specPath, "utf8"));
+  const slug = frontmatter.slug?.trim() || basenameSlug(specPath);
+  const contract = parseSpecContract(body);
+  const hostBindings = parseHostBindings(body);
+  const verify = readVerifyResult(projectRoot);
+  const acceptance = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
+  const gates = (verify?.gates ?? []).map(toGateOutcome);
+  const commits = readCommits(projectRoot, config2.base_branch);
+  const lessons = searchLessons(env.memoryDir, { query: slug, limit: 10 }).map(
+    (l) => ({
+      id: l.slug,
+      title: l.title
+    })
+  );
+  const links = buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings);
+  const summary = {
+    slug,
+    title: extractTitle(body) ?? slug,
+    status: frontmatter.status?.trim() || "unknown",
+    acceptance,
+    gates,
+    commits,
+    lessons,
+    links
+  };
+  return {
+    content: [{ type: "text", text: render(summary, verify) }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the task-summary view (#3).
+    structuredContent: summary
+  };
+}
+function findSpecBySlug(slug, projectRoot) {
+  for (const dir of SPEC_DIRS) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function findLatestSpec(projectRoot) {
+  for (const dir of SPEC_DIRS) {
+    const abs = join(projectRoot, dir);
+    if (!existsSync(abs)) continue;
+    const specs = readdirSync(abs).filter((f) => f.endsWith(".md") && f !== "verification.md").sort();
+    if (specs.length) return join(abs, specs[specs.length - 1]);
+  }
+  return null;
+}
+function basenameSlug(specPath) {
+  const file = specPath.split("/").pop() ?? specPath;
+  return file.replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function parseSpecContract(body) {
+  const block = extractContractBlock(body);
+  if (!block) return null;
+  try {
+    const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+function parseHostBindings(body) {
+  const text = extractHostBindings(body);
+  if (!text) return null;
+  try {
+    const parsed = HostBindings.safeParse((0, import_yaml3.parse)(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+function readVerifyResult(projectRoot) {
+  const path = join(projectRoot, ".marvin", "task", "verification.md");
+  if (!existsSync(path)) return null;
+  const m = readFileSync(path, "utf8").match(/```json verify-result\n([\s\S]*?)\n```/);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(m[1]);
+    return { verdict: parsed.verdict, gates: parsed.gates ?? [] };
+  } catch {
+    return null;
+  }
+}
+function toAcOutcome(cr, verify) {
+  const base = {
+    id: cr.id,
+    statement: cr.statement,
+    oracle_kind: cr.oracle.kind,
+    ...cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}
+  };
+  const passed = verify?.verdict === "PASS" || verify?.verdict === "PASS WITH WARNINGS";
+  const real = cr.oracle.kind === "test" || cr.oracle.kind === "command";
+  return { ...base, outcome: passed && real ? "pass" : "unknown" };
+}
+function toGateOutcome(g) {
+  const status = g.status === "pass" ? "pass" : "fail";
+  return {
+    name: g.name,
+    status,
+    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {}
+  };
+}
+function readCommits(projectRoot, base) {
+  if (!inGitRepo(projectRoot)) return [];
+  const r = git(
+    ["log", `${base}..HEAD`, "--no-merges", "--format=%h%x09%s", "-n", "30"],
+    projectRoot
+  );
+  if (!r.ok || !r.value.trim()) return [];
+  return r.value.split("\n").map((line) => {
+    const tab = line.indexOf("	");
+    return tab === -1 ? null : { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
+  }).filter((c) => c !== null);
+}
+function buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings) {
+  const links = [{ kind: "spec", label: slug, ref: slug }];
+  const branch = currentBranch(projectRoot);
+  if (branch) {
+    links.push({ kind: "branch", label: branch, ref: branch });
+    const { tasks } = readAllTasks(env.tasksDir);
+    const pr = findTaskByBranch(tasks, branch)?.frontmatter.pr;
+    if (pr) links.push({ kind: "pr", label: prLabel(pr), url: pr });
+  }
+  const tracker = (frontmatter.tracker ?? "").trim();
+  if (tracker && !["none", "n/a", "\u2014", "-"].includes(tracker.toLowerCase())) {
+    const url = trackerUrl(config2, tracker);
+    links.push({ kind: "tracker", label: tracker, ...url ? { url } : { ref: tracker } });
+  }
+  const adr = hostBindings?.decision_record?.path;
+  if (adr) links.push({ kind: "adr", label: adr, ref: adr });
+  return links;
+}
+function prLabel(url) {
+  const m = url.match(/\/pull\/(\d+)/);
+  return m ? `PR #${m[1]}` : "PR";
+}
+function extractTitle(body) {
+  const m = body.match(/^#\s+(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+function render(s, verify) {
+  const acIcon = (o) => o === "pass" ? "\u2705" : o === "fail" ? "\u274C" : "\u26AA";
+  const gateIcon = (st) => st === "pass" ? "\u2705" : st === "skip" ? "\u26AA" : "\u274C";
+  const lines = [
+    `# Task summary \u2014 ${s.title}`,
+    "",
+    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status}${verify ? ` \xB7 **Verification:** ${verify.verdict}` : " \xB7 **Verification:** not run"}`,
+    "",
+    `## Acceptance (${s.acceptance.length})`,
+    ...s.acceptance.length ? s.acceptance.map(
+      (a) => `- ${acIcon(a.outcome)} **${a.id}** ${a.statement} \u2014 _${a.oracle_kind}${a.oracle_ref ? ` ${a.oracle_ref}` : ""}_ \xB7 ${a.outcome}`
+    ) : ["_no spec-contract criteria found_"],
+    "",
+    `## Gates`,
+    ...s.gates.length ? s.gates.map(
+      (g) => `- ${gateIcon(g.status)} ${g.name} \u2014 ${g.status}${g.detail ? ` (${g.detail})` : ""}`
+    ) : ["_no verification gates_"],
+    "",
+    `## Commits (${s.commits.length})`,
+    ...s.commits.length ? s.commits.map((c) => `- \`${c.sha}\` ${c.subject}`) : ["_none on this branch vs base_"]
+  ];
+  if (s.lessons.length) {
+    lines.push(
+      "",
+      `## Lessons (${s.lessons.length})`,
+      ...s.lessons.map((l) => `- ${l.title} (\`${l.id}\`)`)
+    );
+  }
+  lines.push(
+    "",
+    `## Links`,
+    ...s.links.map(
+      (l) => `- [${l.kind}] ${l.label}${l.url ? ` \u2192 ${l.url}` : l.ref ? ` \u2192 \`${l.ref}\`` : ""}`
+    )
+  );
+  return lines.join("\n");
+}
+function errOk3(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
 // src/server.ts
-var VERSION = "2.0.0-alpha.28";
+var VERSION = "2.0.0-alpha.29";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -31057,7 +31267,8 @@ await runPackServer({
         buildVerifyTool(env),
         buildSpecTool(env),
         buildLessonsTool(env),
-        buildHandoffTool(env)
+        buildHandoffTool(env),
+        buildSummaryTool(env, config2)
       ]
     };
   }

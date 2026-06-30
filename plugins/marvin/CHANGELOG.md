@@ -4,6 +4,35 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [2.0.0-alpha.29] — 2026-06-30
+
+Add the task-summary aggregator and make verification.md machine-readable.
+
+### Added
+
+- **`/marvin:task-summary`** — a "what was done" summary for a spec-pipeline task,
+  backed by the new `summary` MCP tool. Joins five already-typed sources for one spec —
+  the spec-contract `criteria`, the `verification.md` gate outcomes, the branch's git
+  log, the captured lessons, and the artifact links — into one `TaskSummary`
+  `structuredContent` payload plus a text fallback (ADR-0024, widget #3). Per-criterion
+  outcome is conservative: "pass" only when verification passed and the criterion has a
+  real (test/command) oracle; otherwise "unknown" — it never fabricates a per-AC verdict.
+  Prompt count 41 → 42.
+
+### Fixed
+
+- **`verify` now persists the `verify-result` block into `verification.md`.** The
+  machine-readable block previously lived only in the tool's return value, so a real
+  `task-verify` → `task-deliver` always blocked at the delivery gate (which reads the
+  block back from the file) with "no machine-readable verify-result block". The written
+  artifact now matches the returned text.
+
+### Changed
+
+- The spec-contract / host-bindings schemas and extractors moved from the `spec` tool
+  into a shared `storage/spec.ts`, so the `spec` DoR gate and the task-summary aggregator
+  read the same authoritative shape (no behaviour change to the gate).
+
 ## [2.0.0-alpha.28] — 2026-06-29
 
 Add a read side for handoffs and make the handoff artifact machine-readable.
