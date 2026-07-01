@@ -4,6 +4,42 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.1.0] — 2026-07-01
+
+First public release. Marvin is one Claude Code plugin backed by a single MCP server,
+exposing the whole development lifecycle under the `/marvin:` slash prefix. The version
+resets from the internal `2.0.0-alpha` line — which tracked the four-pack → single-plugin
+consolidation, never a shipped 1.x — to an honest pre-1.0 start (see ADR-0001).
+
+### Added
+
+- **Core developer tools** — `commit`, `debug`, `adr`, `changelog`, `readme`,
+  `migration-plan`, `explain`, `docs-search`, `handoff` (+ `handoff-list`), and `help`
+  (a registry-derived dashboard and full command index).
+- **Pull-request lifecycle (`pr-*`)** — `pr-create`, `pr-review`, `pr-resolve`, `pr-merge`.
+- **Spec-driven task pipeline (`task-*`)** — `task-start` (interactive spec co-creation with a
+  tool-backed Definition-of-Ready gate), `task-implement`, `task-verify` (concurrent quality
+  gates with stack auto-detection), `task-deliver` (delivery gated on verification), and
+  `task-summary`.
+- **Security scanners (`sec-*`)** — `sec-scan`, `sec-secrets`, `sec-deps`, `sec-gate`,
+  `sec-threat-model`, `sec-iac`, `sec-ci`, `sec-fix`, `sec-compliance`, `sec-pentest`.
+- **Kanban tracker (`kanban-*`)** — a lightweight per-project board with interactive
+  MCP-elicit forms (13 commands).
+- **Deterministic MCP tools** — `task`, `git`, `help`, `verify`, `spec`, `lessons`,
+  `handoff`, `summary` — used where determinism matters (file CRUD, git ops, quality gates,
+  the DoR contract, the lessons store).
+- **Nine subagents** — read-only auditors/critics and code-writing executors for the task
+  pipeline and research.
+- **43 prompts total**, reachable through three doors — chat auto-discovery, `/<command>`
+  markdown slash commands, and `/marvin:<command>` MCP prompts — all sharing one `SKILL.md`.
+
+### Notes
+
+- Distribution is git-tag → GitHub Release (no npm publish); install via the Claude Code
+  plugin marketplace (ADR-0014).
+- The committed `dist/server.js` is the shipped artifact; CI verifies it stays in sync on
+  every server change.
+
 ## [2.0.0-alpha.30] — 2026-06-30
 
 Add the task-summary aggregator and make verification.md machine-readable.

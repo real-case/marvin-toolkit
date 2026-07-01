@@ -32,7 +32,7 @@ plugins/marvin/
 Every command is `/marvin:<group>-<command>` (singletons bare). The shared TypeScript
 library lives in [`packages/marvin-mcp-shared`](./packages/marvin-mcp-shared).
 Architectural rationale is recorded in [`docs/adr/`](./docs/adr/) — start with
-[ADR-0003](./docs/adr/0003-single-plugin-consolidation.md).
+[ADR-0001](./docs/adr/0001-single-plugin-consolidation.md).
 
 See [CLAUDE.md](./CLAUDE.md) for the full architecture reference, including the
 "three doors, one room" model and step-by-step recipes for adding prompts,
