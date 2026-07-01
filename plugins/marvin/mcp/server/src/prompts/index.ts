@@ -142,6 +142,14 @@ export const PROMPTS: PromptDef[] = [
       "Final delivery phase — commits changes and opens a PR (delegates to marvin:commit and marvin:pr-create). Refuses to proceed unless verification passed.",
     skill: "task-deliver",
   },
+  {
+    // Thin tool wrapper (inline body) — aggregates a spec's "what was done"
+    // summary from already-typed sources (ADR-0024); no workflow prose.
+    name: "task-summary",
+    description:
+      "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons and links.",
+    body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble — call the tool and present its result.",
+  },
 
   // ── sec (security) ───────────────────────────────────────────────────
   {
