@@ -31,13 +31,15 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 | Group | What | Count |
 |-------|------|-------|
-| _(bare)_ | core developer tools | 9 |
+| _(bare)_ | core developer tools | 11 |
 | `pr-*` | pull-request operations | 4 |
-| `task-*` | spec-driven task pipeline | 4 |
+| `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
 | `kanban-*` | lightweight task tracker | 13 |
 
-40 prompts total, all under `/marvin:`. The skill-backed groups (core, `pr-*`, `task-*`, `sec-*`) have all three doors; the `kanban-*` group is MCP-only (thin tool wrappers, no SKILL.md).
+43 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+
+See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and a usage example.
 
 ### Core developer tools
 
@@ -58,6 +60,8 @@ Language-agnostic, used by every engineer.
 | `/marvin:explain` | Explain code, architecture, and execution flow |
 | `/marvin:docs-search` | Search and synthesize project documentation |
 | `/marvin:handoff` | Capture full context into `.marvin/handoff/` + a prompt to continue in a fresh session |
+| `/marvin:handoff-list` | List the session-continuation handoff documents, newest first |
+| `/marvin:help` | Project dashboard + the full command index (filter with `/marvin:help <group>`) |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 
@@ -92,6 +96,7 @@ Spec-driven pipeline — separates human decisions from automated execution.
 | `/marvin:task-implement` | Execute a ready spec interactively in the current session |
 | `/marvin:task-verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
 | `/marvin:task-deliver` | Commit + PR, gated on verification passing |
+| `/marvin:task-summary` | Aggregate a finished task's criteria, gates, commits, and lessons into one summary |
 
 **Agents:** `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer` (the autonomous twin of `/marvin:pr-resolve`).
 
@@ -114,7 +119,7 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 | `/marvin:kanban-commit` | Commit with task context |
 | `/marvin:kanban-create-pr` | Open PR with task context |
 
-Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`) — the default working directory per [ADR-0009](./docs/adr/0009-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars.
+Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars.
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 

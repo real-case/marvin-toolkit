@@ -13,8 +13,8 @@ published as a standalone package, which is why the official MCP registry is out
 of scope (see §1).
 
 > Status legend: `[x]` done (verified in repo), `[ ]` to do, `[~]` decision
-> needed. Snapshot taken on the `fix/mcp-door-and-sec-hardening` branch — re-audit
-> before the release commit.
+> needed. Snapshot last refreshed on the `chore/release-0.1.0` branch (2026-07-01),
+> the release-prep commit.
 
 ---
 
@@ -40,7 +40,7 @@ across sites — publish once, list everywhere.
 - [x] `LICENSE` (MIT) at repo root
 - [x] License declared in `plugin.json`, `marketplace.json`, and `package.json`
 - [x] No secrets or build artifacts tracked — `.env*`, `node_modules/`, `.idea/`, `.vscode/`, `coverage/` are gitignored; the only committed `dist/` is the required `plugins/*/mcp/server/dist/` (verified clean)
-- [x] Repository is **public**
+- [ ] Repository is **public** — currently **private**; making it public is Admin-only (the release account has WRITE) and is required before the official-directory submission
 - [x] `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md` present
 - [x] Issue templates (bug / feature / config) + PR template
 - [x] Dependabot configured (`.github/dependabot.yml`)
@@ -51,8 +51,8 @@ across sites — publish once, list everywhere.
 - [x] `plugin.json` — `name`, `description`, `homepage`, `repository`, `license` all set
 - [x] `dist/server.js` committed (Claude Code install does not run `npm install`)
 - [ ] `claude plugin validate .` passes **locally** (CI runs it `continue-on-error`; make it a hard pre-submit check)
-- [~] **Release line decision** — currently `2.0.0-alpha.16`. Cut a stable **`2.0.0`** before the official-directory submission (alpha reads as "not ready" for the directory and for a portfolio piece). See Phase 0.
-- [ ] Version parity at the release commit across `plugin.json`, `marketplace.json` (`plugins[0].version`), and `mcp/server/package.json`; decide whether to move `metadata.version` too (independent per ADR-0001)
+- [x] **Release line decision** — **`0.1.0`**, the first public release. Reset from the internal `2.0.0-alpha` line (which tracked the four-pack → single-plugin consolidation, never a shipped 1.x) to an honest pre-1.0 start — see [ADR-0001](./adr/0001-single-plugin-consolidation.md).
+- [x] Version parity at `0.1.0` across `plugin.json`, `marketplace.json` (`plugins[0].version` **and** `metadata.version`), `mcp/server/package.json`, the server `VERSION` constant, and the root `package.json`
 
 ### 2.3 Quality gates / CI
 
@@ -71,7 +71,11 @@ across sites — publish once, list everywhere.
 The official directory has a security bar, and a security toolkit that fails its
 own scanners is the worst possible first impression. Ran Marvin against Marvin on
 2026-06-16 (`sec-scan` umbrella) — **0 critical / 0 high**; findings were
-supply-chain hardening, fixed in [#33](https://github.com/real-case/marvin-toolkit/pull/33):
+supply-chain hardening, fixed in [#33](https://github.com/real-case/marvin-toolkit/pull/33).
+**Re-audited for the 0.1.0 cut (2026-07-01):** `npm audit` **0 vulnerabilities** (a
+non-shipped transitive `hono` advisory pinned out via an override), secrets clean (tree +
+history), server static-review clean — full record in
+[security-audit-0.1.0.md](./security-audit-0.1.0.md). The 2026-06-16 detail:
 
 - [x] `/marvin:sec-secrets` — full git history + tracked files: **no secrets**
 - [x] `/marvin:sec-scan` — OWASP pass over the MCP server: clean (safe `yaml.parse` / `JSON.parse`, git via arg-arrays, no `eval`); the only exec is `verify`'s `shell:true` gate runner — a documented trust boundary (`SECURITY.md`)
@@ -91,7 +95,7 @@ supply-chain hardening, fixed in [#33](https://github.com/real-case/marvin-toolk
 
 ### 2.6 Release artifact
 
-- [ ] `plugins/marvin/CHANGELOG.md` has a `## [<version>]` section for the release version (the workflow extracts notes from it)
+- [x] `plugins/marvin/CHANGELOG.md` has a `## [0.1.0]` section for the release version (the workflow extracts notes from it)
 - [ ] Tag pushed → GitHub Release auto-created (`git tag vX.Y.Z && git push origin vX.Y.Z`)
 - [ ] **No tags or releases exist yet** — the first one is part of this effort; verify the Release page renders notes correctly
 
@@ -114,10 +118,9 @@ supply-chain hardening, fixed in [#33](https://github.com/real-case/marvin-toolk
 
 ### Phase 0 — Decide the release line _(decision, do first)_
 
-Cut **`2.0.0` stable** rather than submitting an alpha. Everything downstream
-(version bump, changelog, tag, form) keys off this number. If you would rather
-soak longer, keep alpha on the self-hosted repo + community tier and hold the
-official-directory submission until stable.
+**Decided: `0.1.0`** — the first public release (reset from the internal `2.0.0-alpha`
+line; see ADR-0001). Everything downstream (version bump, changelog, tag, form) keys off
+this number.
 
 ### Phase 1 — Green build + security self-audit
 
@@ -146,16 +149,16 @@ gh repo edit real-case/marvin-toolkit \
 
 ### Phase 3 — Cut the release
 
-6. Add a `## [2.0.0]` section to `plugins/marvin/CHANGELOG.md` (the release workflow reads it).
-7. Bump to `2.0.0` in **all three**: `plugins/marvin/.claude-plugin/plugin.json`,
-   `.claude-plugin/marketplace.json` (`plugins[0].version`), `plugins/marvin/mcp/server/package.json`. Decide on `metadata.version`.
+6. Add a `## [0.1.0]` section to `plugins/marvin/CHANGELOG.md` (the release workflow reads it).
+7. Bump to `0.1.0` in `plugins/marvin/.claude-plugin/plugin.json`,
+   `.claude-plugin/marketplace.json` (`plugins[0].version` + `metadata.version`), `plugins/marvin/mcp/server/package.json`, the server `VERSION` constant, and the root `package.json`.
 8. Rebuild + re-verify the committed artifact:
    ```shell
    npm run build && node scripts/verify-dist.mjs
    ```
 9. Merge to `main`, then tag from `main`:
    ```shell
-   git tag v2.0.0 && git push origin v2.0.0
+   git tag v0.1.0 && git push origin v0.1.0
    ```
 10. Confirm the GitHub Release was created with correct notes.
 

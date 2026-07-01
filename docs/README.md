@@ -57,6 +57,7 @@ process, not finished deliverables.
 
 ## Reference
 
+- [Command reference](./commands.md) — every `/marvin:` command with a one-line synopsis and a usage example.
 - [Publishing & promotion readiness](./publishing.md) — the requirements checklist and the ordered plan for shipping Marvin to the official directory and community marketplaces.
 - [Security policy](../SECURITY.md) — supported versions and how to report a vulnerability.
 - [Changelog (marketplace)](../CHANGELOG.md) and [changelog (plugin)](../plugins/marvin/CHANGELOG.md).
