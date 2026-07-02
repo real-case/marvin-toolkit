@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------- |
-| Status     | **In execution** — WP1–WP3 merged, v0.3.0 released 2026-07-02; progress tracked in [kanban-rework-progress.md](./kanban-rework-progress.md) |
+| Status     | **Implemented** 2026-07-02 — all five work packages merged (WP5 last: #63, plugin 0.6.0); 19/19 audit findings closed; execution record in [kanban-rework-progress.md](./kanban-rework-progress.md) |
 | Date       | 2026-07-02                                                                                                 |
 | Applies to | `kanban-*` prompt group; `task` / `git` / `help` MCP tools; `commit` and `pr-create` skills; shared contracts |
 | Origin     | Effectiveness audit of the kanban command group, its tools, and related agents/skills (2026-07-02)         |
