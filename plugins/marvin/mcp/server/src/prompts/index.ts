@@ -17,11 +17,16 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
  * (`commit`, `debug`). See docs/adr/0003-single-plugin-consolidation.md.
  */
 
-function callTool(tool: string, args: Record<string, string> = {}): string {
+function callTool(tool: string, args: Record<string, string> = {}, hint = ""): string {
   const pairs = Object.entries(args).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
   const argText = pairs.length > 0 ? ` with ${pairs.join(", ")}` : "";
-  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}. Use the user's choices from the elicitation form to fill any other fields. Do not add preamble — just call the tool.`;
+  const hintText = hint ? ` ${hint}` : "";
+  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}.${hintText} The form (if any) covers only what is missing; use the user's choices from it to fill the remaining fields. Do not add preamble — just call the tool.`;
 }
+
+/** Shared hint for the four create prompts: mine the user's message for arguments. */
+const CREATE_HINT =
+  "If the user's message already contains a title, a description, or a tracker id (like ABC-123) for the task, pass them as the `title` / `description` / `tracker_id` arguments instead of leaving them to the form.";
 
 export const PROMPTS: PromptDef[] = [
   // ── core (bare + pr group) ───────────────────────────────────────────
@@ -217,42 +222,58 @@ export const PROMPTS: PromptDef[] = [
   {
     name: "kanban-menu",
     description: "Marvin tasks main menu",
-    body: callTool("task"),
+    body: callTool(
+      "task",
+      {},
+      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move, `status` (the target status key) for move.",
+    ),
   },
   {
     name: "kanban-bug",
     description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" }),
+    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT),
   },
   {
     name: "kanban-feature",
     description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" }),
+    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT),
   },
   {
     name: "kanban-chore",
     description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" }),
+    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT),
   },
   {
     name: "kanban-spike",
     description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" }),
+    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT),
   },
   {
     name: "kanban-start",
     description: "Pick a todo task, branch off, and mark it WIP",
-    body: callTool("task", { action: "start" }),
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument.",
+    ),
   },
   {
     name: "kanban-review",
     description: "Move current task to review",
-    body: callTool("task", { action: "review" }),
+    body: callTool(
+      "task",
+      { action: "review" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument.",
+    ),
   },
   {
     name: "kanban-done",
     description: "Mark current task done",
-    body: callTool("task", { action: "done" }),
+    body: callTool(
+      "task",
+      { action: "done" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument.",
+    ),
   },
   {
     name: "kanban-list",

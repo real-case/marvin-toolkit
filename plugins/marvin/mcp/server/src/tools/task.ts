@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { defineTool, elicit, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
+import {
+  canElicit,
+  defineTool,
+  elicit,
+  type AnyToolDef,
+  type ToolResult,
+} from "@marvin-toolkit/mcp-shared";
 import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
@@ -35,6 +41,18 @@ import {
 import type { ServerEnv } from "../lib/env.js";
 import { formatTaskLine, renderListTable } from "../flows/format.js";
 
+/**
+ * Every field an interactive form can ask for is also a first-class tool
+ * argument, so the model is a first-class caller: a flow elicits only the
+ * fields still missing after the arguments are applied, and on hosts without
+ * elicitation support the arguments are the only path (the flows answer with
+ * an instructive error naming exactly what to pass on retry).
+ *
+ * `title`/`tracker_id`/`status` are deliberately plain strings here — their
+ * real contracts (TaskTitle, TrackerId, the configured status set) are checked
+ * inside the flows so an invalid value earns a readable, actionable error
+ * instead of a wire-level schema failure.
+ */
 const TaskInput = z.object({
   action: z
     .enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"])
@@ -42,6 +60,19 @@ const TaskInput = z.object({
   type: TaskType.optional(),
   taskId: z.string().optional(),
   url: z.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
+  title: z
+    .string()
+    .optional()
+    .describe("Task title for `create` — 3..120 printable characters, Unicode welcome"),
+  description: z.string().optional().describe("Task body for `create` (Markdown)"),
+  tracker_id: z
+    .string()
+    .optional()
+    .describe("External tracker id for `create`, e.g. OSI-123 (SHORT-123 format)"),
+  status: z
+    .string()
+    .optional()
+    .describe("Target status key for `move` — one of the configured statuses"),
 });
 
 type TaskInput = z.infer<typeof TaskInput>;
@@ -50,7 +81,7 @@ export function buildTaskTool(server: McpServer, env: ServerEnv, config: Config)
   return defineTool({
     name: "task",
     description:
-      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
+      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config, input),
   });
@@ -65,6 +96,11 @@ async function dispatchTask(
   let action = input.action;
   // "menu" and undefined both mean "show the picker".
   if (!action || action === "menu") {
+    if (!canElicit(server)) {
+      return errOk(
+        "This host does not support interactive forms — pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr.",
+      );
+    }
     const picked = await pickMenuAction(server, env, config);
     if (!picked) return cancelled();
     action = picked;
@@ -72,7 +108,7 @@ async function dispatchTask(
 
   switch (action) {
     case "create":
-      return runCreate(server, env, config, input.type);
+      return runCreate(server, env, config, input);
     case "list":
       return runList(env, config);
     case "status":
@@ -80,11 +116,11 @@ async function dispatchTask(
     case "start":
       return runStart(server, env, config, input.taskId);
     case "review":
-      return runReview(server, env, config);
+      return runReview(server, env, config, input.taskId);
     case "done":
-      return runDone(server, env, config);
+      return runDone(server, env, config, input.taskId);
     case "move":
-      return runMove(server, env, config, input.taskId);
+      return runMove(server, env, config, input);
     case "link-pr":
       return runLinkPr(env, config, input.taskId, input.url);
   }
@@ -111,56 +147,90 @@ async function runCreate(
   server: McpServer,
   env: ServerEnv,
   config: Config,
-  preType: ReturnType<typeof TaskType.parse> | undefined,
+  input: TaskInput,
 ): Promise<ToolResult> {
-  const formSchema = preType
-    ? z.object({
-        title: TaskTitle,
-        tracker_id: TrackerId.optional(),
-        description: z.string().optional(),
-      })
-    : z.object({
-        type: TaskType,
-        title: TaskTitle,
-        tracker_id: TrackerId.optional(),
-        description: z.string().optional(),
-      });
+  // Arguments are validated up front: an explicitly passed but invalid value
+  // earns an instructive error (fix and retry), never a silent re-ask.
+  if (input.title !== undefined && !TaskTitle.safeParse(input.title).success) {
+    return errOk(
+      "Invalid `title` — pass 3..120 printable characters (control characters are rejected).",
+    );
+  }
+  if (input.tracker_id !== undefined && !TrackerId.safeParse(input.tracker_id).success) {
+    return errOk("Invalid `tracker_id` — expected SHORT-123 format, e.g. OSI-123.");
+  }
 
-  const data = await elicit(server, "New task", formSchema as never);
-  if (!data) return cancelled();
+  let type = input.type;
+  let title = input.title;
+  let trackerId = input.tracker_id;
+  let description = input.description;
 
-  const type = preType ?? (data as { type: ReturnType<typeof TaskType.parse> }).type;
+  // The form asks only for what the arguments did not supply: the missing
+  // required fields plus the optionals not already given. With `type` and
+  // `title` both passed there is no form at all.
+  if (!type || !title) {
+    if (!canElicit(server)) {
+      const missing = [
+        !type && "`type` (bug | feature | chore | spike)",
+        !title && "`title` (3..120 characters)",
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      return errOk(
+        `This host does not support interactive forms — pass ${missing} as tool argument(s) and retry. Optional: \`tracker_id\` (e.g. OSI-123), \`description\`.`,
+      );
+    }
+    const shape: z.ZodRawShape = {};
+    if (!type) shape.type = TaskType;
+    if (!title) shape.title = TaskTitle;
+    if (!trackerId) shape.tracker_id = TrackerId.optional();
+    if (!description) shape.description = z.string().optional();
+    const data = (await elicit(server, "New task", z.object(shape))) as {
+      type?: TaskType;
+      title?: string;
+      tracker_id?: string;
+      description?: string;
+    } | null;
+    if (!data) return cancelled();
+    type = type ?? data.type;
+    title = title ?? data.title;
+    trackerId = trackerId ?? data.tracker_id;
+    description = description ?? data.description;
+  }
+  if (!type || !title) return cancelled();
+
   const created = createTask(env.tasksDir, config, {
     type,
-    title: (data as { title: string }).title,
-    ...((data as { tracker_id?: string }).tracker_id
-      ? { tracker_id: (data as { tracker_id?: string }).tracker_id }
-      : {}),
-    ...((data as { description?: string }).description
-      ? { description: (data as { description?: string }).description }
-      : {}),
+    title,
+    ...(trackerId ? { tracker_id: trackerId } : {}),
+    ...(description ? { description } : {}),
   });
 
   let branchInfo = "";
   if (hasGit() && inGitRepo(env.projectDir)) {
-    const confirm = await elicit(
-      server,
-      `Create branch \`${created.task.frontmatter.branch}\` from \`${config.base_branch}\` and check it out?`,
-      z.object({ checkout: z.enum(["yes", "no"]) }),
-    );
-    if (confirm?.checkout === "yes") {
-      const result = createBranchFromBase(
-        config.base_branch,
-        created.task.frontmatter.branch,
-        env.projectDir,
+    if (canElicit(server)) {
+      const confirm = await elicit(
+        server,
+        `Create branch \`${created.task.frontmatter.branch}\` from \`${config.base_branch}\` and check it out?`,
+        z.object({ checkout: z.enum(["yes", "no"]) }),
       );
-      if (result.ok) {
-        const wipStatus = requireRole(config, "wip");
-        updateStatus(env.tasksDir, created.task, wipStatus.key);
-        branchInfo = `\nBranch \`${created.task.frontmatter.branch}\` checked out; status → ${wipStatus.key}.`;
-      } else {
-        branchInfo = `\nBranch creation failed: ${result.stderr}`;
+      if (confirm?.checkout === "yes") {
+        const result = createBranchFromBase(
+          config.base_branch,
+          created.task.frontmatter.branch,
+          env.projectDir,
+        );
+        if (result.ok) {
+          const wipStatus = requireRole(config, "wip");
+          updateStatus(env.tasksDir, created.task, wipStatus.key);
+          branchInfo = `\nBranch \`${created.task.frontmatter.branch}\` checked out; status → ${wipStatus.key}.`;
+        } else {
+          branchInfo = `\nBranch creation failed: ${result.stderr}`;
+        }
       }
+    } else {
+      // No way to ask — leave the branch uncreated and say how to pick it up.
+      branchInfo = `\nTo branch off and pick it up, call this tool with action="start", taskId="${created.task.frontmatter.id}".`;
     }
   }
 
@@ -282,6 +352,13 @@ async function runStart(
         `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`,
       );
     }
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms — pass \`taskId\` as a tool argument and retry. Todo tasks: ${todo
+          .map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`)
+          .join(", ")}.`,
+      );
+    }
     const data = await elicit(
       server,
       "Which task to start?",
@@ -308,15 +385,21 @@ async function runStart(
   );
 }
 
-async function runReview(server: McpServer, env: ServerEnv, config: Config): Promise<ToolResult> {
+async function runReview(
+  server: McpServer,
+  env: ServerEnv,
+  config: Config,
+  preselected: string | undefined,
+): Promise<ToolResult> {
   const target = firstOfRole(config, "review");
   if (!target) {
     return errOk(
       'No status with role "review" is configured — add one to `statuses` in `.marvin/config.json`, or use the `move` action.',
     );
   }
-  const pick = await detectCurrentTaskOrPick(server, env, config, ["wip"]);
+  const pick = await detectCurrentTaskOrPick(server, env, config, ["wip"], preselected);
   if (pick.kind === "cancelled") return cancelled();
+  if (pick.kind === "error") return errOk(pick.message);
   if (pick.kind === "none") {
     return ok(
       `No tasks in a wip-role status (${keysOfRoles(config, ["wip"]).join(", ")}) — nothing to move to review.`,
@@ -329,10 +412,16 @@ async function runReview(server: McpServer, env: ServerEnv, config: Config): Pro
   );
 }
 
-async function runDone(server: McpServer, env: ServerEnv, config: Config): Promise<ToolResult> {
+async function runDone(
+  server: McpServer,
+  env: ServerEnv,
+  config: Config,
+  preselected: string | undefined,
+): Promise<ToolResult> {
   const roles: StatusRole[] = ["wip", "review"];
-  const pick = await detectCurrentTaskOrPick(server, env, config, roles);
+  const pick = await detectCurrentTaskOrPick(server, env, config, roles, preselected);
   if (pick.kind === "cancelled") return cancelled();
+  if (pick.kind === "error") return errOk(pick.message);
   if (pick.kind === "none") {
     return ok(
       `No tasks in a wip- or review-role status (${keysOfRoles(config, roles).join(", ")}) — nothing to mark done.`,
@@ -350,12 +439,14 @@ async function runDone(server: McpServer, env: ServerEnv, config: Config): Promi
  * statuses the lifecycle verbs don't reach (e.g. `blocked`, or a second
  * review-role status like `qa`). Resolves the task like the other actions:
  * explicit taskId, else the current branch's task, else an interactive picker.
+ * A `status` argument (validated against the configured set) skips the
+ * target picker entirely.
  */
 async function runMove(
   server: McpServer,
   env: ServerEnv,
   config: Config,
-  preselected: string | undefined,
+  input: TaskInput,
 ): Promise<ToolResult> {
   const { tasks } = readAllTasks(env.tasksDir, config);
   if (tasks.length === 0) {
@@ -364,15 +455,28 @@ async function runMove(
     );
   }
 
+  const keys = statusKeys(config);
+  let target = input.status;
+  if (target !== undefined && !keys.includes(target)) {
+    return errOk(`Unknown status key \`${target}\` — configured statuses: ${keys.join(", ")}.`);
+  }
+
   let task: Task | null = null;
-  if (preselected) {
-    task = findTaskById(tasks, preselected);
-    if (!task) return errOk(`Task ${preselected} not found`);
+  if (input.taskId) {
+    task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
   } else {
     const branch = currentBranch(env.projectDir);
     task = branch ? findTaskByBranch(tasks, branch) : null;
   }
   if (!task) {
+    if (!canElicit(server)) {
+      return errOk(
+        `Current branch has no linked task and this host does not support interactive forms — pass \`taskId\` as a tool argument and retry. Tasks: ${tasks
+          .map((t) => `${t.frontmatter.id} (${t.frontmatter.status})`)
+          .join(", ")}.`,
+      );
+    }
     const data = await elicit(
       server,
       "Which task to move?",
@@ -385,21 +489,28 @@ async function runMove(
     if (!task) return errOk(`Task ${data.taskId} not found`);
   }
 
-  const keys = statusKeys(config);
-  const target = await elicit(
-    server,
-    `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
-    z.object({ status: z.enum(keys as [string, ...string[]]) }),
-  );
-  if (!target) return cancelled();
-  if (target.status === task.frontmatter.status) {
-    return ok(`**${task.frontmatter.id}** is already in \`${target.status}\` — nothing to do.`);
+  if (!target) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms — pass \`status\` (the target status key) as a tool argument and retry. Configured statuses: ${keys.join(", ")}.`,
+      );
+    }
+    const picked = await elicit(
+      server,
+      `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
+      z.object({ status: z.enum(keys as [string, ...string[]]) }),
+    );
+    if (!picked) return cancelled();
+    target = picked.status;
+  }
+  if (target === task.frontmatter.status) {
+    return ok(`**${task.frontmatter.id}** is already in \`${target}\` — nothing to do.`);
   }
 
   const from = task.frontmatter.status;
-  updateStatus(env.tasksDir, task, target.status);
+  updateStatus(env.tasksDir, task, target);
   return ok(
-    `Moved **${task.frontmatter.id}** — ${task.frontmatter.title}\n\`${from}\` → \`${target.status}\``,
+    `Moved **${task.frontmatter.id}** — ${task.frontmatter.title}\n\`${from}\` → \`${target}\``,
   );
 }
 
@@ -455,21 +566,42 @@ function isHttpUrl(raw: string): boolean {
 
 /**
  * Resolve "the task this command should act on" for the lifecycle verbs:
- * the current branch's task when its status role is allowed, else an
+ * an explicit `taskId` argument (role-checked, like `start` — finding 14),
+ * else the current branch's task when its status role is allowed, else an
  * interactive picker over the allowed-role candidates. The empty-candidate
  * case is distinguished from a user cancel (finding 8) so callers can answer
- * honestly instead of pretending something was cancelled.
+ * honestly instead of pretending something was cancelled; the `error` kind
+ * carries instructive messages (bad preselection, or no way to ask on a host
+ * without elicitation support).
  */
-type TaskPick = { kind: "task"; task: Task } | { kind: "none" } | { kind: "cancelled" };
+type TaskPick =
+  | { kind: "task"; task: Task }
+  | { kind: "none" }
+  | { kind: "cancelled" }
+  | { kind: "error"; message: string };
 
 async function detectCurrentTaskOrPick(
   server: McpServer,
   env: ServerEnv,
   config: Config,
   roles: StatusRole[],
+  preselected?: string,
 ): Promise<TaskPick> {
   const { tasks } = readAllTasks(env.tasksDir, config);
   const allowedKeys = keysOfRoles(config, roles);
+
+  if (preselected) {
+    const task = findTaskById(tasks, preselected);
+    if (!task) return { kind: "error", message: `Task ${preselected} not found` };
+    if (!allowedKeys.includes(task.frontmatter.status)) {
+      return {
+        kind: "error",
+        message: `Task ${preselected} is in status "${task.frontmatter.status}" — this action requires a ${roles.join("/")}-role status (${allowedKeys.join(", ")}). Use the \`move\` action for other transitions.`,
+      };
+    }
+    return { kind: "task", task };
+  }
+
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
   if (linked && allowedKeys.includes(linked.frontmatter.status)) {
@@ -478,6 +610,15 @@ async function detectCurrentTaskOrPick(
 
   const candidates = tasks.filter((t) => allowedKeys.includes(t.frontmatter.status));
   if (candidates.length === 0) return { kind: "none" };
+
+  if (!canElicit(server)) {
+    return {
+      kind: "error",
+      message: `Current branch has no linked task and this host does not support interactive forms — pass \`taskId\` as a tool argument and retry. Candidates: ${candidates
+        .map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`)
+        .join(", ")}.`,
+    };
+  }
 
   const data = await elicit(
     server,

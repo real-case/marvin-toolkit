@@ -1,4 +1,11 @@
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  mkdirSync,
+  existsSync,
+  renameSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   TaskFrontmatter,
@@ -9,7 +16,7 @@ import {
   type TaskType,
 } from "./schema.js";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.js";
-import { buildFilename, parseSeq, slugify } from "./slug.js";
+import { buildBranch, buildFilename, parseSeq, slugify } from "./slug.js";
 
 export interface MalformedTask {
   filename: string;
@@ -71,14 +78,21 @@ export function readAllTasks(tasksDir: string, config: Config): ReadTasksResult 
 }
 
 /**
- * Allocate the next sequential id by scanning existing filenames.
+ * Allocate the next sequential id by scanning ALL `.md` filenames in the
+ * tasks directory — including files whose frontmatter fails validation —
+ * so a malformed file can never cause its id to be handed out twice.
  * Returns a zero-padded 3-digit string.
  */
-export function nextSeq(tasks: Task[]): string {
+export function nextSeq(tasksDir: string): string {
   let max = 0;
-  for (const t of tasks) {
-    const n = Number(t.frontmatter.id);
-    if (n > max) max = n;
+  if (existsSync(tasksDir)) {
+    for (const filename of readdirSync(tasksDir)) {
+      if (!filename.endsWith(".md")) continue;
+      const seq = parseSeq(filename);
+      if (!seq) continue;
+      const n = Number(seq);
+      if (n > max) max = n;
+    }
   }
   return String(max + 1).padStart(3, "0");
 }
@@ -98,14 +112,16 @@ export interface CreatedTask {
 /**
  * Create a new task file. Returns the persisted task with its absolute path.
  * The initial status is the first configured todo-role status (ADR-0026).
+ * The branch name follows the ADR-0019 topic-branch convention
+ * (`fix/007-OSI-123--login-timeout`); a title that slugifies to nothing
+ * (fully non-Latin) falls back to the task type as its slug.
  */
 export function createTask(tasksDir: string, config: Config, input: NewTaskInput): CreatedTask {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir, config);
-  const id = nextSeq(tasks);
-  const slug = slugify(input.title);
+  const id = nextSeq(tasksDir);
+  const slug = slugify(input.title) || input.type;
   const filename = buildFilename(id, input.tracker_id, slug);
-  const branch = filename.replace(/\.md$/, "");
+  const branch = buildBranch(input.type, id, input.tracker_id, slug);
   const now = new Date().toISOString();
   const status = requireRole(config, "todo").key;
 
@@ -123,7 +139,7 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
   const body = input.description ? `\n${input.description}\n` : "\n";
   const text = stringifyFrontmatter(frontmatter, body);
   const path = join(tasksDir, filename);
-  writeFileSync(path, text);
+  writeFileAtomic(path, text);
 
   const parsed = TaskFrontmatter.parse({
     id,
@@ -140,7 +156,8 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
 
 /**
  * Persist a status change for a task. `newStatus` is a configured status key
- * (ADR-0026); transition semantics live in the callers. Rewrites the file.
+ * (ADR-0026); transition semantics live in the callers. Rewrites the file
+ * atomically (temp file + rename — see `writeFileAtomic`).
  */
 export function updateStatus(tasksDir: string, task: Task, newStatus: string): Task {
   const updated = new Date().toISOString();
@@ -180,7 +197,19 @@ function writeTask(tasksDir: string, task: Task): void {
     created: task.frontmatter.created,
     updated: task.frontmatter.updated,
   };
-  writeFileSync(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+  writeFileAtomic(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+}
+
+/**
+ * Crash-safe write: land the bytes in a temp file next to the target, then
+ * `rename(2)` over it — readers see the old task file or the new one, never a
+ * torn half-write. The temp name never ends in `.md`, so a file left behind
+ * by a crash between the two steps is invisible to `readAllTasks`/`nextSeq`.
+ */
+function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
 }
 
 export function findTaskByBranch(tasks: Task[], branch: string): Task | null {

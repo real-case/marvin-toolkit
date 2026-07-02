@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -18238,7 +18238,13 @@ function zodTypeToJsonSchema(field) {
   }
   throw new Error(`zodToElicitSchema: unsupported zod type ${field.constructor.name} \u2014 extend the helper`);
 }
+function canElicit(server) {
+  return Boolean(server.server.getClientCapabilities()?.elicitation);
+}
 async function elicit(server, message, schema) {
+  if (!canElicit(server)) {
+    throw new Error("This client does not support interactive forms (MCP elicitation) \u2014 pass the required fields as tool arguments instead.");
+  }
   const requestedSchema = zodToElicitSchema(schema);
   const response = await server.server.elicitInput({
     message,
@@ -28472,11 +28478,13 @@ function registerResource(server, def) {
 }
 
 // src/prompts/index.ts
-function callTool(tool, args = {}) {
+function callTool(tool, args = {}, hint = "") {
   const pairs = Object.entries(args).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
   const argText = pairs.length > 0 ? ` with ${pairs.join(", ")}` : "";
-  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}. Use the user's choices from the elicitation form to fill any other fields. Do not add preamble \u2014 just call the tool.`;
+  const hintText = hint ? ` ${hint}` : "";
+  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}.${hintText} The form (if any) covers only what is missing; use the user's choices from it to fill the remaining fields. Do not add preamble \u2014 just call the tool.`;
 }
+var CREATE_HINT = "If the user's message already contains a title, a description, or a tracker id (like ABC-123) for the task, pass them as the `title` / `description` / `tracker_id` arguments instead of leaving them to the form.";
 var PROMPTS = [
   // ── core (bare + pr group) ───────────────────────────────────────────
   {
@@ -28641,42 +28649,58 @@ var PROMPTS = [
   {
     name: "kanban-menu",
     description: "Marvin tasks main menu",
-    body: callTool("task")
+    body: callTool(
+      "task",
+      {},
+      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move, `status` (the target status key) for move."
+    )
   },
   {
     name: "kanban-bug",
     description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" })
+    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT)
   },
   {
     name: "kanban-feature",
     description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" })
+    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT)
   },
   {
     name: "kanban-chore",
     description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" })
+    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT)
   },
   {
     name: "kanban-spike",
     description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" })
+    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT)
   },
   {
     name: "kanban-start",
     description: "Pick a todo task, branch off, and mark it WIP",
-    body: callTool("task", { action: "start" })
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-review",
     description: "Move current task to review",
-    body: callTool("task", { action: "review" })
+    body: callTool(
+      "task",
+      { action: "review" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-done",
     description: "Mark current task done",
-    body: callTool("task", { action: "done" })
+    body: callTool(
+      "task",
+      { action: "done" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-list",
@@ -28728,7 +28752,7 @@ var Statuses = external_exports.array(StatusDef).superRefine((statuses, ctx) => 
     }
   }
 });
-var TaskTitle = external_exports.string().min(3).max(120).regex(/^[\x20-\x7E]+$/, "ASCII printable only");
+var TaskTitle = external_exports.string().min(3).max(120).regex(/^[^\u0000-\u001F\u007F-\u009F]+$/, "printable characters only (no control characters)");
 var TrackerId = external_exports.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");
 var TaskFrontmatter = external_exports.object({
   id: external_exports.string().regex(/^\d{3}$/),
@@ -28968,6 +28992,16 @@ function buildFilename(seq, tracker, slug) {
   if (tracker) return `${seq}-${tracker}--${slug}.md`;
   return `${seq}--${slug}.md`;
 }
+var BRANCH_TYPE_PREFIX = {
+  bug: "fix",
+  feature: "feat",
+  chore: "chore",
+  spike: "spike"
+};
+function buildBranch(type, seq, tracker, slug) {
+  const tail = tracker ? `${seq}-${tracker}--${slug}` : `${seq}--${slug}`;
+  return `${BRANCH_TYPE_PREFIX[type]}/${tail}`;
+}
 function parseSeq(filename) {
   const match = filename.match(/^(\d{3})(?:-|--)/);
   return match ? match[1] ?? null : null;
@@ -29009,21 +29043,25 @@ function readAllTasks(tasksDir, config2) {
   tasks.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
   return { tasks, malformed };
 }
-function nextSeq(tasks) {
+function nextSeq(tasksDir) {
   let max = 0;
-  for (const t of tasks) {
-    const n = Number(t.frontmatter.id);
-    if (n > max) max = n;
+  if (existsSync(tasksDir)) {
+    for (const filename of readdirSync(tasksDir)) {
+      if (!filename.endsWith(".md")) continue;
+      const seq = parseSeq(filename);
+      if (!seq) continue;
+      const n = Number(seq);
+      if (n > max) max = n;
+    }
   }
   return String(max + 1).padStart(3, "0");
 }
 function createTask(tasksDir, config2, input) {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir, config2);
-  const id = nextSeq(tasks);
-  const slug = slugify(input.title);
+  const id = nextSeq(tasksDir);
+  const slug = slugify(input.title) || input.type;
   const filename = buildFilename(id, input.tracker_id, slug);
-  const branch = filename.replace(/\.md$/, "");
+  const branch = buildBranch(input.type, id, input.tracker_id, slug);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const status = requireRole(config2, "todo").key;
   const frontmatter = {
@@ -29041,7 +29079,7 @@ ${input.description}
 ` : "\n";
   const text = stringifyFrontmatter(frontmatter, body);
   const path = join(tasksDir, filename);
-  writeFileSync(path, text);
+  writeFileAtomic(path, text);
   const parsed = TaskFrontmatter.parse({
     id,
     type: input.type,
@@ -29086,7 +29124,12 @@ function writeTask(tasksDir, task) {
     created: task.frontmatter.created,
     updated: task.frontmatter.updated
   };
-  writeFileSync(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+  writeFileAtomic(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+}
+function writeFileAtomic(path, data) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
 }
 function findTaskByBranch(tasks, branch) {
   return tasks.find((t) => t.frontmatter.branch === branch) ?? null;
@@ -29138,12 +29181,16 @@ var TaskInput = external_exports.object({
   action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"]).optional(),
   type: TaskType.optional(),
   taskId: external_exports.string().optional(),
-  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)")
+  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
+  title: external_exports.string().optional().describe("Task title for `create` \u2014 3..120 printable characters, Unicode welcome"),
+  description: external_exports.string().optional().describe("Task body for `create` (Markdown)"),
+  tracker_id: external_exports.string().optional().describe("External tracker id for `create`, e.g. OSI-123 (SHORT-123 format)"),
+  status: external_exports.string().optional().describe("Target status key for `move` \u2014 one of the configured statuses")
 });
 function buildTaskTool(server, env, config2) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config2, input)
   });
@@ -29151,13 +29198,18 @@ function buildTaskTool(server, env, config2) {
 async function dispatchTask(server, env, config2, input) {
   let action = input.action;
   if (!action || action === "menu") {
+    if (!canElicit(server)) {
+      return errOk(
+        "This host does not support interactive forms \u2014 pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr."
+      );
+    }
     const picked = await pickMenuAction(server, env, config2);
     if (!picked) return cancelled();
     action = picked;
   }
   switch (action) {
     case "create":
-      return runCreate(server, env, config2, input.type);
+      return runCreate(server, env, config2, input);
     case "list":
       return runList(env, config2);
     case "status":
@@ -29165,11 +29217,11 @@ async function dispatchTask(server, env, config2, input) {
     case "start":
       return runStart(server, env, config2, input.taskId);
     case "review":
-      return runReview(server, env, config2);
+      return runReview(server, env, config2, input.taskId);
     case "done":
-      return runDone(server, env, config2);
+      return runDone(server, env, config2, input.taskId);
     case "move":
-      return runMove(server, env, config2, input.taskId);
+      return runMove(server, env, config2, input);
     case "link-pr":
       return runLinkPr(env, config2, input.taskId, input.url);
   }
@@ -29186,48 +29238,75 @@ async function pickMenuAction(server, env, config2) {
   );
   return data?.action ?? null;
 }
-async function runCreate(server, env, config2, preType) {
-  const formSchema = preType ? external_exports.object({
-    title: TaskTitle,
-    tracker_id: TrackerId.optional(),
-    description: external_exports.string().optional()
-  }) : external_exports.object({
-    type: TaskType,
-    title: TaskTitle,
-    tracker_id: TrackerId.optional(),
-    description: external_exports.string().optional()
-  });
-  const data = await elicit(server, "New task", formSchema);
-  if (!data) return cancelled();
-  const type = preType ?? data.type;
+async function runCreate(server, env, config2, input) {
+  if (input.title !== void 0 && !TaskTitle.safeParse(input.title).success) {
+    return errOk(
+      "Invalid `title` \u2014 pass 3..120 printable characters (control characters are rejected)."
+    );
+  }
+  if (input.tracker_id !== void 0 && !TrackerId.safeParse(input.tracker_id).success) {
+    return errOk("Invalid `tracker_id` \u2014 expected SHORT-123 format, e.g. OSI-123.");
+  }
+  let type = input.type;
+  let title = input.title;
+  let trackerId = input.tracker_id;
+  let description = input.description;
+  if (!type || !title) {
+    if (!canElicit(server)) {
+      const missing = [
+        !type && "`type` (bug | feature | chore | spike)",
+        !title && "`title` (3..120 characters)"
+      ].filter(Boolean).join(" and ");
+      return errOk(
+        `This host does not support interactive forms \u2014 pass ${missing} as tool argument(s) and retry. Optional: \`tracker_id\` (e.g. OSI-123), \`description\`.`
+      );
+    }
+    const shape = {};
+    if (!type) shape.type = TaskType;
+    if (!title) shape.title = TaskTitle;
+    if (!trackerId) shape.tracker_id = TrackerId.optional();
+    if (!description) shape.description = external_exports.string().optional();
+    const data = await elicit(server, "New task", external_exports.object(shape));
+    if (!data) return cancelled();
+    type = type ?? data.type;
+    title = title ?? data.title;
+    trackerId = trackerId ?? data.tracker_id;
+    description = description ?? data.description;
+  }
+  if (!type || !title) return cancelled();
   const created = createTask(env.tasksDir, config2, {
     type,
-    title: data.title,
-    ...data.tracker_id ? { tracker_id: data.tracker_id } : {},
-    ...data.description ? { description: data.description } : {}
+    title,
+    ...trackerId ? { tracker_id: trackerId } : {},
+    ...description ? { description } : {}
   });
   let branchInfo = "";
   if (hasGit() && inGitRepo(env.projectDir)) {
-    const confirm = await elicit(
-      server,
-      `Create branch \`${created.task.frontmatter.branch}\` from \`${config2.base_branch}\` and check it out?`,
-      external_exports.object({ checkout: external_exports.enum(["yes", "no"]) })
-    );
-    if (confirm?.checkout === "yes") {
-      const result2 = createBranchFromBase(
-        config2.base_branch,
-        created.task.frontmatter.branch,
-        env.projectDir
+    if (canElicit(server)) {
+      const confirm = await elicit(
+        server,
+        `Create branch \`${created.task.frontmatter.branch}\` from \`${config2.base_branch}\` and check it out?`,
+        external_exports.object({ checkout: external_exports.enum(["yes", "no"]) })
       );
-      if (result2.ok) {
-        const wipStatus = requireRole(config2, "wip");
-        updateStatus(env.tasksDir, created.task, wipStatus.key);
-        branchInfo = `
+      if (confirm?.checkout === "yes") {
+        const result2 = createBranchFromBase(
+          config2.base_branch,
+          created.task.frontmatter.branch,
+          env.projectDir
+        );
+        if (result2.ok) {
+          const wipStatus = requireRole(config2, "wip");
+          updateStatus(env.tasksDir, created.task, wipStatus.key);
+          branchInfo = `
 Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 ${wipStatus.key}.`;
-      } else {
-        branchInfo = `
+        } else {
+          branchInfo = `
 Branch creation failed: ${result2.stderr}`;
+        }
       }
+    } else {
+      branchInfo = `
+To branch off and pick it up, call this tool with action="start", taskId="${created.task.frontmatter.id}".`;
     }
   }
   return ok(
@@ -29325,6 +29404,11 @@ async function runStart(server, env, config2, preselected) {
         `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
       );
     }
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Todo tasks: ${todo.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to start?",
@@ -29347,15 +29431,16 @@ async function runStart(server, env, config2, preselected) {
 Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 ${wipStatus.key}`
   );
 }
-async function runReview(server, env, config2) {
+async function runReview(server, env, config2, preselected) {
   const target = firstOfRole(config2, "review");
   if (!target) {
     return errOk(
       'No status with role "review" is configured \u2014 add one to `statuses` in `.marvin/config.json`, or use the `move` action.'
     );
   }
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"]);
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"], preselected);
   if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
     return ok(
       `No tasks in a wip-role status (${keysOfRoles(config2, ["wip"]).join(", ")}) \u2014 nothing to move to review.`
@@ -29367,10 +29452,11 @@ async function runReview(server, env, config2) {
 Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
-async function runDone(server, env, config2) {
+async function runDone(server, env, config2, preselected) {
   const roles = ["wip", "review"];
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles);
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles, preselected);
   if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
     return ok(
       `No tasks in a wip- or review-role status (${keysOfRoles(config2, roles).join(", ")}) \u2014 nothing to mark done.`
@@ -29382,22 +29468,32 @@ async function runDone(server, env, config2) {
     `Marked **${pick2.task.frontmatter.id}** as **${doneStatus.key}**. Branch cleanup and merge are left to you / CI.`
   );
 }
-async function runMove(server, env, config2, preselected) {
+async function runMove(server, env, config2, input) {
   const { tasks } = readAllTasks(env.tasksDir, config2);
   if (tasks.length === 0) {
     return ok(
       "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
     );
   }
+  const keys = statusKeys(config2);
+  let target = input.status;
+  if (target !== void 0 && !keys.includes(target)) {
+    return errOk(`Unknown status key \`${target}\` \u2014 configured statuses: ${keys.join(", ")}.`);
+  }
   let task = null;
-  if (preselected) {
-    task = findTaskById(tasks, preselected);
-    if (!task) return errOk(`Task ${preselected} not found`);
+  if (input.taskId) {
+    task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
   } else {
     const branch = currentBranch(env.projectDir);
     task = branch ? findTaskByBranch(tasks, branch) : null;
   }
   if (!task) {
+    if (!canElicit(server)) {
+      return errOk(
+        `Current branch has no linked task and this host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Tasks: ${tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.status})`).join(", ")}.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to move?",
@@ -29409,21 +29505,28 @@ async function runMove(server, env, config2, preselected) {
     task = findTaskById(tasks, data.taskId);
     if (!task) return errOk(`Task ${data.taskId} not found`);
   }
-  const keys = statusKeys(config2);
-  const target = await elicit(
-    server,
-    `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
-    external_exports.object({ status: external_exports.enum(keys) })
-  );
-  if (!target) return cancelled();
-  if (target.status === task.frontmatter.status) {
-    return ok(`**${task.frontmatter.id}** is already in \`${target.status}\` \u2014 nothing to do.`);
+  if (!target) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`status\` (the target status key) as a tool argument and retry. Configured statuses: ${keys.join(", ")}.`
+      );
+    }
+    const picked = await elicit(
+      server,
+      `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
+      external_exports.object({ status: external_exports.enum(keys) })
+    );
+    if (!picked) return cancelled();
+    target = picked.status;
+  }
+  if (target === task.frontmatter.status) {
+    return ok(`**${task.frontmatter.id}** is already in \`${target}\` \u2014 nothing to do.`);
   }
   const from = task.frontmatter.status;
-  updateStatus(env.tasksDir, task, target.status);
+  updateStatus(env.tasksDir, task, target);
   return ok(
     `Moved **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
-\`${from}\` \u2192 \`${target.status}\``
+\`${from}\` \u2192 \`${target}\``
   );
 }
 function runLinkPr(env, config2, taskId, url) {
@@ -29463,9 +29566,20 @@ function isHttpUrl(raw) {
     return false;
   }
 }
-async function detectCurrentTaskOrPick(server, env, config2, roles) {
+async function detectCurrentTaskOrPick(server, env, config2, roles, preselected) {
   const { tasks } = readAllTasks(env.tasksDir, config2);
   const allowedKeys = keysOfRoles(config2, roles);
+  if (preselected) {
+    const task = findTaskById(tasks, preselected);
+    if (!task) return { kind: "error", message: `Task ${preselected} not found` };
+    if (!allowedKeys.includes(task.frontmatter.status)) {
+      return {
+        kind: "error",
+        message: `Task ${preselected} is in status "${task.frontmatter.status}" \u2014 this action requires a ${roles.join("/")}-role status (${allowedKeys.join(", ")}). Use the \`move\` action for other transitions.`
+      };
+    }
+    return { kind: "task", task };
+  }
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
   if (linked && allowedKeys.includes(linked.frontmatter.status)) {
@@ -29473,6 +29587,12 @@ async function detectCurrentTaskOrPick(server, env, config2, roles) {
   }
   const candidates = tasks.filter((t) => allowedKeys.includes(t.frontmatter.status));
   if (candidates.length === 0) return { kind: "none" };
+  if (!canElicit(server)) {
+    return {
+      kind: "error",
+      message: `Current branch has no linked task and this host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Candidates: ${candidates.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+    };
+  }
   const data = await elicit(
     server,
     "Current branch has no linked task \u2014 pick one",
@@ -31349,7 +31469,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.3.0";
+var VERSION = "0.4.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
