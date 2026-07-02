@@ -4,6 +4,41 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.2.0] — 2026-07-02
+
+The kanban group goes **board-only** ([ADR-0025](../../docs/adr/0025-kanban-board-only.md)):
+git operations move out of the tracker and into the task-aware core skills.
+
+### Removed (breaking)
+
+- **Prompts `/marvin:kanban-commit` and `/marvin:kanban-create-pr`** — use
+  `/marvin:commit` and `/marvin:pr-create`, which now pick up board-task context
+  automatically (kanban 13 → 11 commands, 41 prompts total).
+- **The `git` MCP tool.** The PR lifecycle is prose-driven (ADR-0023); the one
+  deterministic piece that had to survive — PR-URL capture onto task frontmatter
+  (ADR-0024 widget data) — moved to the `task` tool as the new `link-pr` action.
+
+### Added
+
+- **`task` tool `link-pr` action** — validates an http(s) PR URL and persists it
+  onto the linked task's frontmatter via `setTaskPr` (explicit `taskId` wins,
+  otherwise the task whose `branch` matches the current branch; a typed error
+  when neither resolves).
+- **`pr` column in `task list`** — the stored PR URL renders as a link in the
+  board table, and the structured payload carries the populated `PrRef`.
+
+### Changed
+
+- **`commit` skill is kanban-aware** — when the current branch belongs to a board
+  task, the commit message gains a `Refs: <id>[, <tracker_id>]` footer.
+- **`pr-create` skill is kanban-aware** — task-prefixed title (`[<tracker_id>]`
+  falling back to `[<id>]`), `Task:`/`Tracker:` body lines, an explicit
+  `git push -u origin <branch>` step, and — after creation — a `task link-pr`
+  call plus an offer to move the task to review.
+- The `task` and `help` tool descriptions now name the **kanban board**, so chat
+  phrases like "add a bug to the board" keep routing to the tracker (the group
+  has no skills; the descriptions are its only auto-discovery surface).
+
 ## [0.1.0] — 2026-07-01
 
 First public release. Marvin is one Claude Code plugin backed by a single MCP server,

@@ -10,8 +10,8 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
  *    the same prose under `/marvin:<name>` (frontmatter stripped at
  *    request time).
  *  - **inline-body** (kanban group): thin wrappers that just instruct the
- *    model to call the matching MCP tool (`task` / `git` / `help`) with the
- *    right pre-fills. Bodies are one sentence, so a SKILL.md would be noise.
+ *    model to call the matching MCP tool (`task` / `help`) with the right
+ *    pre-fills. Bodies are one sentence, so a SKILL.md would be noise.
  *
  * Naming scheme: `/marvin:<group>-<command>`. Singletons stay bare
  * (`commit`, `debug`). See docs/adr/0003-single-plugin-consolidation.md.
@@ -268,15 +268,5 @@ export const PROMPTS: PromptDef[] = [
     name: "kanban-help",
     description: "Marvin tasks dashboard and prompt list",
     body: callTool("help"),
-  },
-  {
-    name: "kanban-commit",
-    description: "Commit with current task context",
-    body: callTool("git", { action: "commit" }),
-  },
-  {
-    name: "kanban-create-pr",
-    description: "Create a PR for the current task",
-    body: callTool("git", { action: "create-pr" }),
   },
 ];

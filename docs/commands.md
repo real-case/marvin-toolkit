@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **43** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **41** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -64,7 +64,7 @@ Language-agnostic, used by every engineer.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files (`.env`, keys), draft a Conventional Commits message, and confirm before committing. | `marvin commit this`, `marvin stage and commit`, `commit my changes` |
+| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files (`.env`, keys), draft a Conventional Commits message — with a `Refs:` footer when the branch belongs to a kanban task — and confirm before committing. | `marvin commit this`, `marvin stage and commit`, `commit my changes`, `marvin commit with task context` |
 | `/marvin:debug` | Hypothesis-driven root-cause analysis — gather evidence, form hypotheses, build a minimal reproduction instead of guessing. | `marvin debug this`, `marvin why is this failing?`, `the tests only flake on CI` |
 | `/marvin:adr` | Create an Architecture Decision Record capturing context, the decision, and its consequences. | `marvin write an ADR`, `marvin record this decision`, `document this design choice` |
 | `/marvin:changelog` | Generate a changelog / release notes from git history between tags, dates, or refs (Keep a Changelog). | `marvin changelog since v0.1.0`, `marvin what changed since the last tag?`, `generate release notes` |
@@ -84,7 +84,7 @@ The full PR lifecycle, from open to merge.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:pr-create` | Open a PR with a structured description, verification checklist, and issue linking; runs pre-flight checks. | `marvin create a PR`, `marvin open a pull request`, `push and open a PR` |
+| `/marvin:pr-create` | Open a PR with a structured description, verification checklist, and issue linking; runs pre-flight checks. Picks up kanban task context (title prefix, task/tracker links) and captures the PR URL onto the task. | `marvin create a PR`, `marvin open a pull request`, `push and open a PR`, `marvin open a PR for this board task` |
 | `/marvin:pr-review` | Review a PR for bugs, security, performance, and style; post the review with severity-tagged inline comments. | `marvin review PR 51`, `marvin review this PR on GitHub`, `post a review on #51` |
 | `/marvin:pr-resolve` | Work through unresolved review threads — plan, fix, push, then reply to and resolve each. | `marvin resolve PR 51`, `marvin address the review comments on #51`, `fix the PR feedback` |
 | `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull. | `marvin merge PR 51`, `marvin land this PR`, `merge it and pull the base` |
@@ -140,8 +140,10 @@ Claude Code. Storage: `.marvin/kanban/` (+ optional `.marvin/config.json`).
 | `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
 | `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
 | `/marvin:kanban-help` | Show the project dashboard. | `marvin board dashboard`, `kanban help` |
-| `/marvin:kanban-commit` | Commit with the current task's context. | `marvin commit with task context`, `kanban commit` |
-| `/marvin:kanban-create-pr` | Open a PR with the current task's context. | `marvin open a PR for this board task`, `kanban create pr` |
+
+Committing and opening PRs for board tasks is handled by the kanban-aware
+[`/marvin:commit`](#core-developer-tools) and [`/marvin:pr-create`](#pull-request-lifecycle--pr-)
+— they pick up the linked task automatically (ADR-0025).
 
 ---
 
@@ -153,8 +155,7 @@ slash commands:
 
 | Tool | Purpose |
 |------|---------|
-| `task` | Kanban task CRUD + status transitions |
-| `git` | git operations (commit, branch, PR helpers) |
+| `task` | Kanban board — task CRUD, status transitions, PR-URL capture (`link-pr`) |
 | `help` | Dashboard + registry-derived command index |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |
