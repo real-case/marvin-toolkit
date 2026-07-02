@@ -15,8 +15,8 @@ Status values: **Not started · In progress · Blocked · Done**.
 | -- | ---------------------------- | ----------- | ------ | -- | --- | ------- | ----- |
 | 1  | `adr` MCP tool and contract  | Not started | —      | —  | ADR-0027 | 0.7.0  | |
 | 2  | ADR command surface          | Not started | —      | —  | —   | 0.8.0  | release cut candidate after merge |
-| 3  | Lessons v2                   | Not started | —      | —  | ADR-0028 | 0.9.0  | independent of WP1–2 |
-| 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; version + count re-assigned at landing if another wave-1 PR lands first |
+| 3  | Lessons v2                   | Done | `feat/toolbox-wp3-lessons-v2` | [#70](https://github.com/real-case/marvin-toolkit/pull/70) | ADR-0028 | 0.8.0 | landed second — re-bumped 0.7.0 → 0.8.0 at rebase per the parallel rule; registry 44 → 45 |
+| 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
 | 5  | Refactoring plan and apply   | Not started | —      | —  | —   | 0.11.0 | needs WP4 |
 | 6  | Dashboard                    | Not started | —      | —  | ADR-0030 | 0.12.0 | wants WP3 + WP5 landed |
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
@@ -100,14 +100,14 @@ docs tables, and the version manifests:
 
 ## WP3 — Lessons v2
 
-- [ ] ADR-0028 authored (recall/capture expansion + hygiene) and linked from both README indexes
-- [ ] `lessons` tool: `stats` action (counts by type/tag) and `prune` action (stale candidates; delete by slug behind confirmation)
-- [ ] `add` near-duplicate guard: search-before-write, warn instead of double-writing
-- [ ] `/marvin:lessons` inline prompt (48 → 49): search / add / stats / prune from chat
-- [ ] Recall wiring: `task-implement` pre-flight, `sec-fix` intake
-- [ ] Search-first step in `marvin-tm-executor` and `marvin-tm-review-fixer`
-- [ ] Capture wiring: `task-fix-pr` retrospective with anti-boilerplate guards
-- [ ] Tests: new actions unit + e2e, dedup cases; version 0.9.0; `dist/` rebuilt
+- [x] ADR-0028 authored (recall/capture expansion + hygiene) and linked from both README indexes
+- [x] `lessons` tool: `stats` action (counts by type/tag, `structuredContent` per the new shared `LessonsStats` contract) and `prune` action (stale candidates; delete by slug behind confirmation — elicitation or `confirm: true`; file + MEMORY.md index line removed together)
+- [x] `add` near-duplicate guard: search-before-write, warn instead of double-writing (`force: true` overrides)
+- [x] `/marvin:lessons` inline prompt: search / add / stats / prune from chat — 42 → 43 on this branch (the plan's 48 → 49 assumed WP1–2 landed first; recount at landing)
+- [x] Recall wiring: `task-implement` pre-flight, `sec-fix` intake
+- [x] Search-first step in `marvin-tm-executor` and `marvin-tm-review-fixer`
+- [x] Capture wiring: retrospective with anti-boilerplate guards — wired into **`pr-resolve`**, not `task-fix-pr`: that command was renamed by ADR-0023 before this plan executed; correction recorded in ADR-0028
+- [x] Tests: new actions unit + e2e, dedup cases (150/150 across workspaces); version **0.7.0** on the branch (serial target 0.9.0 — re-bumped at landing per the parallel rules); `dist/` rebuilt
 
 ## WP4 — Refactoring read side
 

@@ -114,6 +114,20 @@ export const PROMPTS: PromptDef[] = [
     body: callTool("handoff", { action: "list" }),
   },
   {
+    // Thin tool wrapper (inline body) — the human door to the lessons store
+    // (ADR-0028): search, add, stats, and prune without leaving chat.
+    name: "lessons",
+    description:
+      "Browse the project lessons-learned store under .marvin/memory — search lessons, add one, show counts by type/tag, or prune stale and duplicate entries.",
+    body:
+      "Invoke the `lessons` MCP tool from the `marvin` server. Map the user's ask onto `action`: " +
+      '"search" (pass `query` keywords and/or `type` ∈ bug-pattern | gotcha | convention | pitfall | process; no query returns the most recent), ' +
+      '"add" (pass `type`, a one-line `title`, a 2–4 sentence `body`, optional comma-separated `tags` and `source`; on a near-duplicate warning either extend the named lesson or, if the user insists, retry with `force: true`), ' +
+      '"stats" (counts by type and tag), or ' +
+      '"prune" (no `slug` lists stale/duplicate candidates; with `slug` it deletes that lesson — confirmation is asked via a form, or pass `confirm: true` once the user has approved). ' +
+      'With nothing to go on, default to "search" with no query. Do not add preamble — just call the tool and present its result.',
+  },
+  {
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",

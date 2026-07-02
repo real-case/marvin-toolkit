@@ -31,6 +31,8 @@ Extract:
 
 Read the affected code — the full function/method, its callers, and its type definitions. Understand the context before proposing a fix.
 
+Then recall prior art: call the `lessons` tool (`action: "search"`, keywords from the vulnerability type and the affected area — e.g. `sql injection users api`). A prior `bug-pattern` lesson about this class in this repo tells you where the last fix landed, what pattern was chosen, and what its regression test looked like (ADR-0021/0028) — reuse that direction instead of rediscovering it. If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
+
 ## Phase 2 — Research the fix pattern
 
 Select the appropriate fix pattern for the vulnerability type:

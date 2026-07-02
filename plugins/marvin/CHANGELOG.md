@@ -4,6 +4,47 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.8.0] — 2026-07-02
+
+Lessons v2 (WP3 of the toolbox expansion, ADR-0028): the ADR-0021 feedback
+loop widens on both ends — every code-writing flow now recalls prior lessons
+before touching code, the PR-review channel captures them — and the store
+gains a maintenance surface so it stays small and scannable by tooling, not
+by hope.
+
+### Added
+
+- **`stats` action on the `lessons` tool** — counts by type and by tag,
+  rendered as text and emitted as `structuredContent` conforming to the new
+  shared `LessonsStats` contract (the planned dashboard's lessons feed,
+  ADR-0024 data-first staging). The closed type taxonomy is reported per key
+  even at 0; tags are an open vocabulary.
+- **`prune` action on the `lessons` tool** — with no arguments it lists
+  candidates (lessons older than 180 days; near-duplicate title pairs) and
+  deletes nothing. Deleting takes an explicit `slug` plus explicit
+  confirmation — an elicitation form on capable hosts, `confirm: true`
+  elsewhere — and removes the lesson file together with its
+  `.marvin/memory/MEMORY.md` index line, so the pair can never drift.
+- **Near-duplicate guard on `lessons add`** — the tool searches before
+  writing; a title that slug-collides with or heavily overlaps an existing
+  lesson answers with a warning naming the existing slug instead of writing.
+  `force: true` overrides deliberately.
+- **`/marvin:lessons` prompt** — an inline thin wrapper (kanban-style), so
+  humans search / add / stats / prune the store from chat (registry 44 → 45).
+
+### Changed
+
+- **Recall reaches every write path** (ADR-0028): `task-implement` searches
+  the store while reading context, `sec-fix` at finding intake, and the two
+  code-writing agents (`marvin-tm-executor`, `marvin-tm-review-fixer`) get a
+  search-first step before touching code. Degradation unchanged — skim
+  `MEMORY.md`, or skip silently in headless runs without the tool.
+- **`pr-resolve` captures review lessons** — a retrospective step with the
+  same anti-boilerplate guards as `task-deliver`: routine feedback writes
+  nothing, at most one or two lessons, `source: "PR #<n>"`. (The expansion
+  plan named `task-fix-pr` as this capture point; that command was renamed to
+  `pr-resolve` by ADR-0023.)
+
 ## [0.7.0] — 2026-07-02
 
 The refactoring family opens its read side (toolbox-expansion WP4, ADR-0029):

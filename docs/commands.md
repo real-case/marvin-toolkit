@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **44** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **45** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -14,10 +14,10 @@ it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are *
 - **`/marvin:<command>`** — the MCP prompt slash command (e.g. `/marvin:commit`).
 
 Every command also runs in slash form as **`/marvin:<command> [args]`**. The chat phrases below
-are illustrative, not exhaustive — any close paraphrase works. The `kanban-*` group and the three
-read-side commands (`help`, `handoff-list`, `task-summary`) have no `SKILL.md`; there a chat
-phrase is served by Claude calling the underlying tool rather than by skill auto-discovery, but
-the effect is the same.
+are illustrative, not exhaustive — any close paraphrase works. The `kanban-*` group and the four
+tool-wrapper commands (`help`, `handoff-list`, `lessons`, `task-summary`) have no `SKILL.md`;
+there a chat phrase is served by Claude calling the underlying tool rather than by skill
+auto-discovery, but the effect is the same.
 
 ---
 
@@ -74,6 +74,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:docs-search` | Search and synthesize project docs (ADRs, README, runbooks) to answer a question. | `marvin where is X documented?`, `marvin find the deploy runbook`, `how do the verify gates resolve?` |
 | `/marvin:handoff` | Capture full session context into `.marvin/handoff/` plus a prompt to continue in a fresh session. | `marvin hand off this session`, `marvin save context to continue later`, `create a handoff` |
 | `/marvin:handoff-list` | List the session-continuation handoff documents under `.marvin/handoff/`, newest first. | `marvin list handoffs`, `marvin show session handoffs` |
+| `/marvin:lessons` | Browse the lessons-learned store under `.marvin/memory/` — search, add, counts by type/tag, or prune stale and duplicate lessons (delete asks for confirmation). | `marvin what did we learn about auth?`, `marvin lessons stats`, `marvin prune the lessons` |
 | `/marvin:help` | Project dashboard and the full command index, derived from the prompt registry; filter by group. | `marvin help`, `marvin what commands are there?`, `marvin help sec` |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger`.
@@ -235,7 +236,7 @@ slash commands:
 | `help` | Dashboard + registry-derived command index |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |
-| `lessons` | Lessons-learned store under `.marvin/memory/` |
+| `lessons` | Lessons-learned store under `.marvin/memory/` — add (dedup-guarded) / search / stats / prune |
 | `handoff` | Session-continuation handoff docs under `.marvin/handoff/` |
 | `summary` | Task-delivery summary aggregator |
 

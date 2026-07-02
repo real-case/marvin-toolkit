@@ -186,6 +186,7 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0024](./docs/adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 | [0025](./docs/adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
 | [0026](./docs/adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
+| [0028](./docs/adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall/capture expansion | Accepted |
 | [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read → plan → apply under hard rails | Accepted |
 
 ## Contributing

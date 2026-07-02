@@ -53,6 +53,8 @@ gh pr view <number> --json number,headRefName,baseRefName,url,title
 
 Read the PR body to find the spec reference (`.marvin/task/<NNN>-<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
 
+**Search lessons before planning fixes.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the review comments' topics and file paths — a prior lesson about this code area often explains why the code is the way it is and shapes the minimal fix. If the tool is unavailable, skip silently.
+
 ### 2. Fetch the UNRESOLVED review threads
 
 Resolved/unresolved state lives only on GraphQL — use it to filter so you never re-touch a thread the author already closed. Capture each thread's `id` (needed to reply and resolve in step 8):

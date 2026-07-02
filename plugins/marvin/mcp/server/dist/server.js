@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -28560,6 +28560,13 @@ var PROMPTS = [
     body: callTool("handoff", { action: "list" })
   },
   {
+    // Thin tool wrapper (inline body) — the human door to the lessons store
+    // (ADR-0028): search, add, stats, and prune without leaving chat.
+    name: "lessons",
+    description: "Browse the project lessons-learned store under .marvin/memory \u2014 search lessons, add one, show counts by type/tag, or prune stale and duplicate entries.",
+    body: 'Invoke the `lessons` MCP tool from the `marvin` server. Map the user\'s ask onto `action`: "search" (pass `query` keywords and/or `type` \u2208 bug-pattern | gotcha | convention | pitfall | process; no query returns the most recent), "add" (pass `type`, a one-line `title`, a 2\u20134 sentence `body`, optional comma-separated `tags` and `source`; on a near-duplicate warning either extend the named lesson or, if the user insists, retry with `force: true`), "stats" (counts by type and tag), or "prune" (no `slug` lists stale/duplicate candidates; with `slug` it deletes that lesson \u2014 confirmation is asked via a form, or pass `confirm: true` once the user has approved). With nothing to go on, default to "search" with no query. Do not add preamble \u2014 just call the tool and present its result.'
+  },
+  {
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
@@ -31483,10 +31490,74 @@ function searchLessons(memoryDir, input) {
   }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
   return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
 }
+function lessonsStats(memoryDir) {
+  const by_type = Object.fromEntries(LESSON_TYPES.map((t) => [t, 0]));
+  const by_tag = {};
+  const all = readAllLessons(memoryDir);
+  for (const l of all) {
+    by_type[l.type] = (by_type[l.type] ?? 0) + 1;
+    for (const tag of l.tags) by_tag[tag] = (by_tag[tag] ?? 0) + 1;
+  }
+  return { total: all.length, by_type, by_tag };
+}
+function titleWords(title) {
+  return new Set(
+    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
+  );
+}
+function titleSimilarity(a, b) {
+  const wa = titleWords(a);
+  const wb = titleWords(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let hits = 0;
+  for (const w of wa) if (wb.has(w)) hits += 1;
+  return hits / (wa.size + wb.size - hits);
+}
+var NEAR_DUPLICATE_THRESHOLD = 0.5;
+function findNearDuplicate(memoryDir, title) {
+  const slug = slugify(title);
+  let best = null;
+  for (const l of readAllLessons(memoryDir)) {
+    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
+    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
+      best = { lesson: l, score };
+    }
+  }
+  return best?.lesson ?? null;
+}
+var STALE_AFTER_DAYS = 180;
+function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
+  const all = readAllLessons(memoryDir);
+  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
+  const duplicates = [];
+  for (let i = 0; i < all.length; i += 1) {
+    for (let j = i + 1; j < all.length; j += 1) {
+      if (titleSimilarity(all[i].title, all[j].title) >= NEAR_DUPLICATE_THRESHOLD) {
+        duplicates.push([all[i], all[j]]);
+      }
+    }
+  }
+  return { stale, duplicates };
+}
+function deleteLesson(memoryDir, slug) {
+  const lesson = readAllLessons(memoryDir).find((l) => l.slug === slug);
+  if (!lesson) return null;
+  const path = join(memoryDir, `${lesson.slug}.md`);
+  unlinkSync(path);
+  removeIndexLine(memoryDir, lesson.slug);
+  return { path };
+}
+function removeIndexLine(memoryDir, slug) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  if (!existsSync(indexPath)) return;
+  const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
+  writeFileSync(indexPath, kept.join("\n"));
+}
 
 // src/tools/lessons.ts
 var LessonsInput = external_exports.object({
-  action: external_exports.enum(["add", "search"]),
+  action: external_exports.enum(["add", "search", "stats", "prune"]),
   // add
   type: external_exports.enum(LESSON_TYPES).optional(),
   title: external_exports.string().optional(),
@@ -31494,20 +31565,33 @@ var LessonsInput = external_exports.object({
   tags: external_exports.string().optional(),
   // comma-separated
   source: external_exports.string().optional(),
+  force: external_exports.boolean().optional().describe("add: write the lesson even when a near-duplicate title already exists"),
   // search
   query: external_exports.string().optional(),
-  limit: external_exports.number().int().positive().max(50).optional()
+  limit: external_exports.number().int().positive().max(50).optional(),
+  // prune
+  slug: external_exports.string().optional().describe("prune: the lesson to delete \u2014 a slug from the candidate list"),
+  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form")
 });
-function buildLessonsTool(env) {
+function buildLessonsTool(server, env) {
   return defineTool({
     name: "lessons",
-    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task or debug session; action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it at task intake so past mistakes inform new work.",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
     inputSchema: LessonsInput,
-    handler: (input) => Promise.resolve(dispatch(env, input))
+    handler: (input) => dispatch(server, env, input)
   });
 }
-function dispatch(env, input) {
-  return input.action === "add" ? runAdd(env, input) : runSearch(env, input);
+async function dispatch(server, env, input) {
+  switch (input.action) {
+    case "add":
+      return runAdd(env, input);
+    case "search":
+      return runSearch(env, input);
+    case "stats":
+      return runStats(env);
+    case "prune":
+      return runPrune(server, env, input);
+  }
 }
 function runAdd(env, input) {
   const missing = [];
@@ -31518,6 +31602,14 @@ function runAdd(env, input) {
     return err(
       `lessons add requires: ${missing.join(", ")}. type \u2208 {${LESSON_TYPES.join(" | ")}}.`
     );
+  }
+  if (!input.force) {
+    const dup = findNearDuplicate(env.memoryDir, input.title.trim());
+    if (dup) {
+      return err(
+        `Near-duplicate of existing lesson **${dup.slug}** \u2014 "${dup.title}" (\`${dup.type}\`, ${dup.created}). Nothing written. Extend that lesson instead, or pass \`force: true\` to add this one anyway.`
+      );
+    }
   }
   const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
   const { slug, path } = addLesson(env.memoryDir, {
@@ -31546,6 +31638,86 @@ function runSearch(env, input) {
     );
   }
   return ok3(renderLessons(lessons));
+}
+function runStats(env) {
+  const stats = lessonsStats(env.memoryDir);
+  if (stats.total === 0) {
+    return {
+      content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
+      structuredContent: stats
+    };
+  }
+  const types = Object.entries(stats.by_type).filter(([, n]) => n > 0).map(([t, n]) => `- \`${t}\` \u2014 ${n}`);
+  const tags = Object.entries(stats.by_tag).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t, n]) => `- ${t} \u2014 ${n}`);
+  const out = [
+    `# Lessons store \u2014 ${stats.total} lesson(s)`,
+    "",
+    "## By type",
+    ...types,
+    "",
+    "## By tag",
+    ...tags.length > 0 ? tags : ["_no tags_"]
+  ];
+  return {
+    content: [{ type: "text", text: out.join("\n") }],
+    structuredContent: stats
+  };
+}
+async function runPrune(server, env, input) {
+  if (!input.slug) {
+    const total = readAllLessons(env.memoryDir).length;
+    if (total === 0) {
+      return ok3("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
+    }
+    const { stale, duplicates } = pruneCandidates(env.memoryDir);
+    if (stale.length === 0 && duplicates.length === 0) {
+      return ok3(
+        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
+      );
+    }
+    const out = [`# Prune candidates (${stale.length + duplicates.length})`, ""];
+    if (stale.length > 0) {
+      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS} days ago`);
+      for (const l of stale) out.push(`- **${l.slug}** \u2014 ${l.title} (\`${l.type}\`, ${l.created})`);
+      out.push("");
+    }
+    if (duplicates.length > 0) {
+      out.push("## Possible duplicates \u2014 near-identical titles");
+      for (const [a, b] of duplicates) {
+        out.push(`- **${a.slug}** ("${a.title}") \u2194 **${b.slug}** ("${b.title}")`);
+      }
+      out.push("");
+    }
+    out.push(
+      'Delete one with `action: "prune", slug: "<slug>"` \u2014 deletion asks for confirmation (or pass `confirm: true`) and removes the lesson file together with its `.marvin/memory/MEMORY.md` index line.'
+    );
+    return ok3(out.join("\n").trimEnd());
+  }
+  const target = readAllLessons(env.memoryDir).find((l) => l.slug === input.slug);
+  if (!target) {
+    return err(
+      `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. Call \`action: "prune"\` with no slug to list the candidates.`
+    );
+  }
+  if (!input.confirm) {
+    if (!canElicit(server)) {
+      return err(
+        `Deleting a lesson is destructive and needs explicit confirmation. This host does not support interactive forms \u2014 re-run with \`confirm: true\` to delete **${target.slug}** ("${target.title}").`
+      );
+    }
+    const answer = await elicit(
+      server,
+      `Delete lesson \`${target.slug}\` \u2014 "${target.title}"? This removes the file and its MEMORY.md index line.`,
+      external_exports.object({ delete: external_exports.enum(["yes", "no"]) })
+    );
+    if (answer?.delete !== "yes") return ok3("Cancelled \u2014 no changes made.");
+  }
+  const deleted = deleteLesson(env.memoryDir, target.slug);
+  if (!deleted) return err(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
+  return ok3(
+    `Deleted lesson **${target.slug}** ("${target.title}").
+Removed \`${deleted.path}\` and its index line from \`.marvin/memory/MEMORY.md\` \u2014 commit the removal to share it.`
+  );
 }
 function renderLessons(lessons) {
   const out = [`# Relevant lessons (${lessons.length})`, ""];
@@ -31854,7 +32026,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.6.0";
+var VERSION = "0.7.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -31869,7 +32041,7 @@ await runPackServer({
         buildHelpTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
-        buildLessonsTool(env),
+        buildLessonsTool(server, env),
         buildHandoffTool(env),
         buildSummaryTool(env)
       ]
