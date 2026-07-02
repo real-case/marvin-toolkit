@@ -4,6 +4,45 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.9.0] — 2026-07-02
+
+WP1 of the toolbox expansion ([ADR-0027](../../docs/adr/0027-tool-backed-adr-lifecycle.md)):
+every deterministic ADR-lifecycle guarantee moves out of prose into a new `adr`
+MCP tool. This package ships the mechanics only — the `adr-*` command surface
+(review, accept, audit, coverage, supersede, sync) arrives with WP2.
+
+### Added
+
+- **`adr` MCP tool** — six actions over the project's decision-record corpus:
+  `next` (collision-free numbering + target-path preview), `list` (parsed
+  corpus with statuses and per-status counts), `audit` (corpus lint: dangling
+  `ADR-NNNN` references, numbering holes/duplicates, broken supersede pairs,
+  placeholder residue, invalid statuses, stale index — errors fail it,
+  warnings inform), `index` (regenerates the corpus index between
+  `<!-- marvin:adr-index:start/end -->` markers so hand-written prose
+  survives; skips gracefully with no target), `accept` (readiness gate — no
+  `{…}` placeholders outside code, required sections present, cross-references
+  resolve — then a status + date stamp in the record's own header style), and
+  `supersede` (creates a `proposed` skeleton or pairs an existing successor,
+  links both ways, and flips the old record's status — its content is never
+  edited). Mutating actions validate fail-closed.
+- **Host-adaptive corpus resolution** — `adr.dir` in `.marvin/config.json`
+  wins; otherwise the first existing of `docs/adr/`, `docs/decisions/`,
+  `adr/`; otherwise `docs/adr/`. The optional `adr.index_file` names the
+  managed index target. The `adr` block rides the same fail-closed config
+  path as the kanban settings; keys owned by other tools survive every
+  read-modify-write.
+- **Dual-style record parser** — one record shape from both header styles in
+  the wild: marvin's table style (`| Status | **Accepted** … |`) and the
+  MADR/Nygard heading style (`## Status`). Status vocabulary is the closed
+  set `proposed | accepted | deprecated | superseded | rejected`; files the
+  parser cannot read surface per file through a malformed channel instead of
+  sinking the corpus.
+- **`AdrRecord` contract family** (`AdrStatus`, `AdrRecord`, `AdrListPayload`,
+  `AdrAuditFinding`, `AdrAuditPayload`) in the shared `contracts/` module
+  (ADR-0024 data-first staging); the tool emits `structuredContent` built
+  from it alongside its text rendering — the future dashboard's ADR feed.
+
 ## [0.8.0] — 2026-07-02
 
 Lessons v2 (WP3 of the toolbox expansion, ADR-0028): the ADR-0021 feedback

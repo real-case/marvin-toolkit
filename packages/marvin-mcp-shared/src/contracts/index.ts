@@ -6,6 +6,7 @@
  * drift apart. This module ships data contracts ONLY; it has no runtime effect
  * on the server until a tool imports a schema (Stage-1 work).
  */
+export * from "./adr.js";
 export * from "./links.js";
 export * from "./task.js";
 export * from "./summary.js";

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'fs';
-import { join, dirname, isAbsolute } from 'path';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, statSync } from 'fs';
+import { join, dirname, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
 import { spawn, spawnSync, execFileSync } from 'child_process';
@@ -1311,21 +1311,21 @@ var require_errors = __commonJS({
     function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
       if (errsCount === void 0)
         throw new Error("ajv implementation error");
-      const err2 = gen.name("err");
+      const err3 = gen.name("err");
       gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-        gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-        gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-        gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        gen.const(err3, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err3}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err3}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err3}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
-          gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
-          gen.assign((0, codegen_1._)`${err2}.data`, data);
+          gen.assign((0, codegen_1._)`${err3}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err3}.data`, data);
         }
       });
     }
     exports.extendErrors = extendErrors;
     function addError(gen, errObj) {
-      const err2 = gen.const("err", errObj);
-      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
+      const err3 = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err3}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err3})`);
       gen.code((0, codegen_1._)`${names_1.default.errors}++`);
     }
     function returnErrors(it, errs) {
@@ -3638,49 +3638,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative = parse4(serialize(relative, options), options);
+        relative2 = parse4(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3688,7 +3688,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -10743,10 +10743,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -10760,7 +10760,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -10784,7 +10784,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -10800,7 +10800,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -10889,7 +10889,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -10903,13 +10903,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep + cb;
-              sep = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -10951,18 +10951,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11016,8 +11016,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
+        if (!isMap && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11029,7 +11029,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11040,8 +11040,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep)
-                for (const st of sep) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11058,7 +11058,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -11236,7 +11236,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -11253,24 +11253,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep === " ")
-            sep = "\n";
-          else if (!prevMoreIndented && sep === "\n")
-            sep = "\n\n";
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          value += sep + content;
-          sep = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -11451,25 +11451,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep = " ";
+      let sep2 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep === "\n")
-            res += sep;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          res += sep + match[1];
-          sep = " ";
+          res += sep2 + match[1];
+          sep2 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep + (match?.[1] ?? "");
+      return res + sep2 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -12272,14 +12272,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start, key, sep: sep2, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep)
-        for (const st of sep)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -13441,18 +13441,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep;
+          let sep2;
           if (scalar.end) {
-            sep = scalar.end;
-            sep.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep }]
+            items: [{ start, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -13605,15 +13605,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep = it.sep;
-                  sep.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start2, key, sep: sep2 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -13807,13 +13807,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep = fc.end.splice(1, fc.end.length);
-            sep.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep }]
+              items: [{ start, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -14885,8 +14885,8 @@ var ZodType = class {
         } : {
           issues: ctx.common.issues
         };
-      } catch (err2) {
-        if (err2?.message?.toLowerCase()?.includes("encountered")) {
+      } catch (err3) {
+        if (err3?.message?.toLowerCase()?.includes("encountered")) {
           this["~standard"].async = true;
         }
         ctx.common = {
@@ -28560,13 +28560,6 @@ var PROMPTS = [
     body: callTool("handoff", { action: "list" })
   },
   {
-    // Thin tool wrapper (inline body) — the human door to the lessons store
-    // (ADR-0028): search, add, stats, and prune without leaving chat.
-    name: "lessons",
-    description: "Browse the project lessons-learned store under .marvin/memory \u2014 search lessons, add one, show counts by type/tag, or prune stale and duplicate entries.",
-    body: 'Invoke the `lessons` MCP tool from the `marvin` server. Map the user\'s ask onto `action`: "search" (pass `query` keywords and/or `type` \u2208 bug-pattern | gotcha | convention | pitfall | process; no query returns the most recent), "add" (pass `type`, a one-line `title`, a 2\u20134 sentence `body`, optional comma-separated `tags` and `source`; on a near-duplicate warning either extend the named lesson or, if the user insists, retry with `force: true`), "stats" (counts by type and tag), or "prune" (no `slug` lists stale/duplicate candidates; with `slug` it deletes that lesson \u2014 confirmation is asked via a form, or pass `confirm: true` once the user has approved). With nothing to go on, default to "search" with no query. Do not add preamble \u2014 just call the tool and present its result.'
-  },
-  {
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
@@ -28651,17 +28644,6 @@ var PROMPTS = [
     name: "sec-pentest",
     description: "Generate a tailored penetration-testing checklist for the application \u2014 auth, authz, input surfaces, business logic, APIs, infrastructure \u2014 mapped to PTES / OWASP Testing Guide.",
     skill: "sec-pentest"
-  },
-  // ── refactor (code-health read side, ADR-0029) ───────────────────────
-  {
-    name: "refactor-audit",
-    description: "Whole-project structural refactoring audit \u2014 architecture map, churn\xD7size hotspots, dependency tangles, dead-code candidates. Read-only; writes a numbered findings register under .marvin/refactor/.",
-    skill: "refactor-audit"
-  },
-  {
-    name: "refactor-smells",
-    description: "Scoped code-smell scan of a path, module, or diff \u2014 smells, anti-patterns, idiom and naming inconsistencies. Same findings-register format as refactor-audit, composable reports.",
-    skill: "refactor-smells"
   },
   // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
   {
@@ -28825,10 +28807,16 @@ var GateCommands = external_exports.object({
   typecheck: external_exports.string().min(1).optional(),
   build: external_exports.string().min(1).optional()
 });
+var AdrConfig = external_exports.object({
+  dir: external_exports.string().min(1).optional(),
+  index_file: external_exports.string().min(1).optional()
+});
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
   tracker_url_template: external_exports.string().nullable().default(null),
   gates: GateCommands.optional(),
+  /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
+  adr: AdrConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
   statuses: Statuses.default(DEFAULT_STATUSES),
   /**
@@ -28862,47 +28850,187 @@ function statusKeys(config2) {
 function keysOfRoles(config2, roles) {
   return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
 }
-
-// src/storage/frontmatter.ts
-var import_yaml = __toESM(require_dist2());
-function parseFrontmatter(text) {
-  if (!text.startsWith("---\n")) {
-    return { frontmatter: {}, body: text };
+function run(cmd, args, cwd) {
+  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+  if (result2.error) {
+    return { ok: false, code: -1, stderr: result2.error.message };
   }
-  const endIdx = text.indexOf("\n---", 4);
-  if (endIdx === -1) {
-    return { frontmatter: {}, body: text };
+  if (result2.status !== 0) {
+    return {
+      ok: false,
+      code: result2.status ?? -1,
+      stderr: (result2.stderr || result2.stdout || "").trim()
+    };
   }
-  const raw = text.slice(4, endIdx);
-  const after = text.slice(endIdx + 4);
-  const body = after.startsWith("\n") ? after.slice(1) : after;
-  let doc;
-  try {
-    doc = (0, import_yaml.parse)(raw, { schema: "failsafe" });
-  } catch {
-    return { frontmatter: {}, body };
-  }
-  const frontmatter = {};
-  if (doc && typeof doc === "object" && !Array.isArray(doc)) {
-    for (const [key, value] of Object.entries(doc)) {
-      if (value == null) continue;
-      frontmatter[key] = typeof value === "string" ? value : String(value);
-    }
-  }
-  return { frontmatter, body };
+  return { ok: true, value: (result2.stdout || "").trim() };
 }
-function stringifyFrontmatter(frontmatter, body) {
-  const clean = {};
-  for (const [key, value] of Object.entries(frontmatter)) {
-    if (value !== void 0) clean[key] = value;
+function git(args, cwd) {
+  return run("git", args, cwd);
+}
+function inGitRepo(cwd) {
+  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
+}
+function hasGit() {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
   }
-  const fm = Object.keys(clean).length ? (0, import_yaml.stringify)(clean, { schema: "failsafe" }).trimEnd() : "";
-  const lines = ["---"];
-  if (fm) lines.push(fm);
-  lines.push("---");
-  if (body && !body.startsWith("\n")) lines.push("");
-  lines.push(body);
-  return lines.join("\n");
+}
+function hasGh() {
+  try {
+    execFileSync("gh", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function currentBranch(cwd) {
+  const r = git(["branch", "--show-current"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function defaultBranchFromOrigin(cwd) {
+  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
+function hasUncommittedChanges(cwd) {
+  const r = git(["status", "--porcelain"], cwd);
+  return r.ok && r.value.length > 0;
+}
+function branchExists(name, cwd) {
+  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
+}
+function createBranchFromBase(base, branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  const checkoutBase = git(["checkout", base], cwd);
+  if (!checkoutBase.ok) return checkoutBase;
+  git(["pull", "--ff-only"], cwd);
+  return git(["checkout", "-b", branch], cwd);
+}
+function checkoutBranch(branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  return git(["checkout", branch], cwd);
+}
+
+// src/storage/config.ts
+function loadConfig(configPath, projectDir) {
+  if (!existsSync(configPath)) {
+    const config2 = Config.parse({});
+    if (projectDir !== void 0 && hasGit() && inGitRepo(projectDir)) {
+      const detected = defaultBranchFromOrigin(projectDir);
+      if (detected) {
+        config2.base_branch = detected;
+        return { config: config2, warning: null, base_branch_source: "origin/HEAD" };
+      }
+    }
+    return { config: config2, warning: null, base_branch_source: "default" };
+  }
+  let raw;
+  try {
+    raw = readFileSync(configPath, "utf8");
+  } catch (err3) {
+    const reason = err3 instanceof Error ? err3.message : String(err3);
+    return {
+      config: Config.parse({}),
+      warning: `failed to read config: ${reason}`,
+      base_branch_source: "default"
+    };
+  }
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch (err3) {
+    const reason = err3 instanceof Error ? err3.message : String(err3);
+    return {
+      config: Config.parse({}),
+      warning: `config.json is not valid JSON: ${reason}`,
+      base_branch_source: "default"
+    };
+  }
+  const parsed = Config.safeParse(json);
+  if (!parsed.success) {
+    return {
+      config: Config.parse({}),
+      warning: `config.json failed schema validation: ${parsed.error.message}`,
+      base_branch_source: "default"
+    };
+  }
+  const hasOwnBase = typeof json === "object" && json !== null && Object.hasOwn(json, "base_branch");
+  return {
+    config: parsed.data,
+    warning: null,
+    base_branch_source: hasOwnBase ? "config" : "default"
+  };
+}
+function trackerUrl(config2, trackerId) {
+  if (!trackerId || !config2.tracker_url_template) return null;
+  return config2.tracker_url_template.replace("{tracker_id}", trackerId);
+}
+function updateConfigFile(configPath, patch) {
+  const created = !existsSync(configPath);
+  let raw = {};
+  if (!created) {
+    let text;
+    try {
+      text = readFileSync(configPath, "utf8");
+    } catch (err3) {
+      const reason = err3 instanceof Error ? err3.message : String(err3);
+      return { ok: false, error: `cannot read ${configPath}: ${reason}` };
+    }
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (err3) {
+      const reason = err3 instanceof Error ? err3.message : String(err3);
+      return {
+        ok: false,
+        error: `the existing config.json is not valid JSON (${reason}) \u2014 fix the file by hand first; nothing was written`
+      };
+    }
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      return {
+        ok: false,
+        error: "the existing config.json is not a JSON object \u2014 fix the file by hand first; nothing was written"
+      };
+    }
+    raw = { ...json };
+  }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === void 0) continue;
+    if (value === null) delete raw[key];
+    else raw[key] = value;
+  }
+  const merged = Config.safeParse(raw);
+  if (!merged.success) {
+    return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
+  }
+  mkdirSync(dirname(configPath), { recursive: true });
+  const tmp = `${configPath}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(raw, null, 2) + "\n");
+  renameSync(tmp, configPath);
+  return { ok: true, config: merged.data, created };
+}
+function parseStatusesJson(input) {
+  let json;
+  try {
+    json = JSON.parse(input);
+  } catch (err3) {
+    const reason = err3 instanceof Error ? err3.message : String(err3);
+    return { ok: false, error: `not valid JSON: ${reason}` };
+  }
+  const parsed = Statuses.safeParse(json);
+  if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
+  return { ok: true, statuses: parsed.data };
+}
+function zodIssues(error2) {
+  return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
 }
 
 // src/storage/slug.ts
@@ -28948,6 +29076,922 @@ function isSafeBranchRef(name) {
 function parseSeq(filename) {
   const match = filename.match(/^(\d{3})(?:-|--)/);
   return match ? match[1] ?? null : null;
+}
+var ADR_STATUSES = [
+  "proposed",
+  "accepted",
+  "deprecated",
+  "superseded",
+  "rejected"
+];
+var DETECTION_CANDIDATES = ["docs/adr", "docs/decisions", "adr"];
+var DEFAULT_DIR = "docs/adr";
+function resolveAdrDir(projectDir, adrConfig) {
+  if (adrConfig?.dir) {
+    const abs = isAbsolute(adrConfig.dir) ? adrConfig.dir : join(projectDir, adrConfig.dir);
+    return { abs, rel: toPosix(relative(projectDir, abs)) || adrConfig.dir, source: "config" };
+  }
+  for (const rel of DETECTION_CANDIDATES) {
+    const abs = join(projectDir, rel);
+    if (existsSync(abs) && statSync(abs).isDirectory()) {
+      return { abs, rel, source: "detected" };
+    }
+  }
+  return { abs: join(projectDir, DEFAULT_DIR), rel: DEFAULT_DIR, source: "default" };
+}
+function toPosix(p) {
+  return p.split(sep).join(posix.sep);
+}
+var FILENAME_RE = /^(\d{3,5})-(.+)\.md$/;
+var ADR_REF_RE = /\bADR[-\s]?(\d{3,5})\b/gi;
+var ISO_DATE_RE = /\d{4}-\d{2}-\d{2}/;
+function parseAdrFile(raw, filename, relPath) {
+  const nameMatch = filename.match(FILENAME_RE);
+  const number3 = nameMatch ? Number(nameMatch[1]) : null;
+  const slug = nameMatch?.[2] ?? "";
+  const fail2 = (kind, reason) => ({
+    ok: false,
+    malformed: { filename, number: number3, kind, reason }
+  });
+  if (!nameMatch || number3 === null) {
+    return fail2("missing-title", `filename does not match NNNN-<slug>.md`);
+  }
+  const title = extractTitle(raw);
+  if (!title) return fail2("missing-title", "no `# <title>` heading found");
+  const statusSource = extractStatusSource(raw);
+  if (!statusSource) {
+    return fail2(
+      "missing-status",
+      "no status header found (neither a `| Status | \u2026 |` table row nor a `## Status` section)"
+    );
+  }
+  const status = normalizeStatus(statusSource.text);
+  if (!status) {
+    return fail2(
+      "invalid-status",
+      `status "${compact(statusSource.text)}" is not in the vocabulary (${ADR_STATUSES.join(" | ")})`
+    );
+  }
+  const links = extractLinks(raw, statusSource);
+  return {
+    ok: true,
+    record: {
+      number: number3,
+      slug,
+      title,
+      status,
+      date: extractDate(raw, statusSource.style),
+      supersedes: links.supersedes,
+      superseded_by: links.supersededBy,
+      path: relPath,
+      filename,
+      style: statusSource.style
+    }
+  };
+}
+function extractTitle(raw) {
+  const match = raw.match(/^#\s+(.+?)\s*$/m);
+  if (!match?.[1]) return null;
+  const stripped = match[1].replace(/^ADR[-\s]?\d+\s*[—–:-]\s*/i, "").trim();
+  return stripped || match[1];
+}
+function extractStatusSource(raw) {
+  const cell = tableCell(raw, "Status");
+  if (cell !== null) return { style: "table", text: cell };
+  const section = headingSection(raw, "Status");
+  if (section !== null) return { style: "heading", text: section };
+  return null;
+}
+function tableCell(raw, field) {
+  const match = raw.match(tableRowRe(field));
+  return match?.[1] !== void 0 ? match[1].trim() : null;
+}
+function tableRowRe(field) {
+  return new RegExp(`^\\|\\s*${field}\\s*\\|(.*)\\|[ \\t]*$`, "im");
+}
+function headingSection(raw, name) {
+  const re = new RegExp(`^##\\s+${name}\\s*$\\n([\\s\\S]*?)(?=^#{1,2}\\s|\\n*$(?![\\s\\S]))`, "im");
+  const match = raw.match(re);
+  return match?.[1] !== void 0 ? match[1].trim() : null;
+}
+function normalizeStatus(text) {
+  const plain = text.replace(/[*_]/g, "").trim().toLowerCase();
+  for (const status of ADR_STATUSES) {
+    if (plain.startsWith(status)) return status;
+  }
+  return null;
+}
+function extractDate(raw, style) {
+  const source = style === "table" ? tableCell(raw, "Date") : headingSection(raw, "Date");
+  const match = source?.match(ISO_DATE_RE);
+  return match ? match[0] : null;
+}
+function adrRefs(text) {
+  const out = [];
+  for (const match of text.matchAll(ADR_REF_RE)) {
+    const n = Number(match[1]);
+    if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
+function extractLinks(raw, statusSource) {
+  if (statusSource.style === "table") {
+    return {
+      supersedes: adrRefs(tableCell(raw, "Supersedes") ?? ""),
+      // The status cell itself may carry the pointer (`**Superseded** by [ADR-0031](…)`).
+      supersededBy: adrRefs(
+        `${tableCell(raw, "Superseded by") ?? ""} ${refsIfSuperseded(statusSource.text)}`
+      )
+    };
+  }
+  const supersedes = [];
+  const supersededBy = [];
+  for (const line of statusSource.text.split("\n")) {
+    if (/superseded\s+by/i.test(line)) supersededBy.push(...adrRefs(line));
+    else if (/supersedes/i.test(line)) supersedes.push(...adrRefs(line));
+  }
+  return { supersedes: dedupe(supersedes), supersededBy: dedupe(supersededBy) };
+}
+function refsIfSuperseded(statusText) {
+  return /superseded/i.test(statusText) ? statusText : "";
+}
+function dedupe(numbers) {
+  return [...new Set(numbers)];
+}
+function compact(text) {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 77)}\u2026` : oneLine;
+}
+function readAdrCorpus(dir) {
+  if (!existsSync(dir.abs)) return { records: [], malformed: [] };
+  const records = [];
+  const malformed = [];
+  for (const filename of readdirSync(dir.abs).sort()) {
+    if (!FILENAME_RE.test(filename)) continue;
+    const raw = readFileSync(join(dir.abs, filename), "utf8");
+    const parsed = parseAdrFile(raw, filename, posix.join(dir.rel, filename));
+    if (parsed.ok) records.push(parsed.record);
+    else malformed.push(parsed.malformed);
+  }
+  records.sort((a, b) => a.number - b.number || a.filename.localeCompare(b.filename));
+  return { records, malformed };
+}
+function nextAdrNumber(corpus) {
+  const numbers = [
+    ...corpus.records.map((r) => r.number),
+    ...corpus.malformed.map((m) => m.number ?? 0)
+  ];
+  return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+}
+function formatAdrId(number3) {
+  return String(number3).padStart(4, "0");
+}
+function stripCodeSpans(raw) {
+  return raw.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
+}
+function findPlaceholders(raw) {
+  return (stripCodeSpans(raw).match(/\{[^{}\n]*\}/g) ?? []).map(compact);
+}
+var REQUIRED_SECTIONS = ["Context", "Decision", "Consequences"];
+function missingSections(raw) {
+  const headings = [...raw.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => (m[1] ?? "").toLowerCase());
+  return REQUIRED_SECTIONS.filter(
+    (name) => !headings.some((h) => h.startsWith(name.toLowerCase()))
+  );
+}
+function stampAccepted(raw, style, date3) {
+  if (style === "table") {
+    const withStatus2 = replaceTableCell(raw, "Status", "**Accepted**");
+    if (!withStatus2) return { ok: false, error: "no `| Status | \u2026 |` row to stamp" };
+    return { ok: true, text: replaceTableCell(withStatus2, "Date", date3) ?? withStatus2 };
+  }
+  const withStatus = replaceHeadingSection(raw, "Status", "Accepted");
+  if (!withStatus) return { ok: false, error: "no `## Status` section to stamp" };
+  return { ok: true, text: replaceHeadingSection(withStatus, "Date", date3) ?? withStatus };
+}
+function flipSuperseded(raw, style, successor) {
+  const link = `[ADR-${formatAdrId(successor.number)}](${successor.filename})`;
+  if (style === "table") {
+    const withStatus2 = replaceTableCell(raw, "Status", `**Superseded** by ${link}`);
+    if (!withStatus2) return { ok: false, error: "no `| Status | \u2026 |` row to flip" };
+    const withLink = replaceTableCell(withStatus2, "Superseded by", link) ?? insertTableRowAfter(withStatus2, "Status", "Superseded by", link);
+    return { ok: true, text: withLink ?? withStatus2 };
+  }
+  const withStatus = replaceHeadingSection(raw, "Status", `Superseded by ${link}`);
+  if (!withStatus) return { ok: false, error: "no `## Status` section to flip" };
+  return { ok: true, text: withStatus };
+}
+function linkSupersedes(raw, style, predecessor) {
+  const link = `[ADR-${formatAdrId(predecessor.number)}](${predecessor.filename})`;
+  if (style === "table") {
+    const cell = tableCell(raw, "Supersedes");
+    if (cell !== null) {
+      if (adrRefs(cell).includes(predecessor.number)) return { ok: true, text: raw };
+      const value = cell === "" || cell === "\u2014" || cell === "-" ? link : `${cell}, ${link}`;
+      const text2 = replaceTableCell(raw, "Supersedes", value);
+      return text2 ? { ok: true, text: text2 } : { ok: false, error: "could not rewrite Supersedes row" };
+    }
+    const inserted = insertTableRowAfter(raw, "Status", "Supersedes", link);
+    return inserted ? { ok: true, text: inserted } : { ok: false, error: "no header table to hold the Supersedes link" };
+  }
+  const section = headingSection(raw, "Status");
+  if (section === null) return { ok: false, error: "no `## Status` section to hold the link" };
+  if (adrRefs(section).includes(predecessor.number)) return { ok: true, text: raw };
+  const text = replaceHeadingSection(raw, "Status", `${section}
+
+Supersedes ${link}`);
+  return text ? { ok: true, text } : { ok: false, error: "could not rewrite the `## Status` section" };
+}
+function replaceTableCell(raw, field, value) {
+  const re = tableRowRe(field);
+  const match = raw.match(re);
+  if (!match || match.index === void 0) return null;
+  const prefix = match[0].slice(0, match[0].indexOf("|", 1) + 1);
+  return raw.slice(0, match.index) + `${prefix} ${value} |` + raw.slice(match.index + match[0].length);
+}
+function insertTableRowAfter(raw, afterField, field, value) {
+  const match = raw.match(tableRowRe(afterField));
+  if (!match || match.index === void 0) return null;
+  const lineEnd = match.index + match[0].length;
+  return `${raw.slice(0, lineEnd)}
+| ${field} | ${value} |${raw.slice(lineEnd)}`;
+}
+function replaceHeadingSection(raw, name, body) {
+  const re = new RegExp(
+    `^(##\\s+${name}\\s*$\\n)([\\s\\S]*?)(?=^#{1,2}\\s|\\n*$(?![\\s\\S]))`,
+    "im"
+  );
+  if (!re.test(raw)) return null;
+  return raw.replace(re, (_m, heading) => `${heading.trimEnd()}
+
+${body}
+
+`);
+}
+function renderAdrSkeleton(opts) {
+  const old = `[ADR-${formatAdrId(opts.supersedes.number)}](${opts.supersedes.filename})`;
+  return [
+    `# ADR ${formatAdrId(opts.number)} \u2014 ${opts.title}`,
+    "",
+    "| Field         | Value |",
+    "| ------------- | ----- |",
+    "| Status        | **Proposed** |",
+    `| Date          | ${opts.date} |`,
+    `| Supersedes    | ${old} |`,
+    "| Superseded by | \u2014 |",
+    "| Related       | \u2014 |",
+    "",
+    "## Context",
+    "",
+    "{Why does the superseded decision no longer hold? What changed?}",
+    "",
+    "## Decision",
+    "",
+    "{State the new decision and its rationale.}",
+    "",
+    "## Consequences",
+    "",
+    "{Positive, negative, accepted trade-offs.}",
+    ""
+  ].join("\n");
+}
+function writeAdrFileAtomic(path, data) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
+}
+var INDEX_START = "<!-- marvin:adr-index:start -->";
+var INDEX_END = "<!-- marvin:adr-index:end -->";
+function resolveIndexTarget(projectDir, dir, adrConfig) {
+  if (adrConfig?.index_file) {
+    const abs2 = isAbsolute(adrConfig.index_file) ? adrConfig.index_file : join(projectDir, adrConfig.index_file);
+    return {
+      abs: abs2,
+      rel: toPosix(relative(projectDir, abs2)) || adrConfig.index_file,
+      source: "config"
+    };
+  }
+  const abs = join(dir.abs, "README.md");
+  if (existsSync(abs)) {
+    return { abs, rel: posix.join(dir.rel, "README.md"), source: "detected" };
+  }
+  return null;
+}
+var STATUS_LABEL = {
+  proposed: "Proposed",
+  accepted: "Accepted",
+  deprecated: "Deprecated",
+  superseded: "Superseded",
+  rejected: "Rejected"
+};
+function renderIndexBlock(corpus, dir, indexAbs) {
+  const lines = ["| ADR | Title | Status | Date |", "| --- | ----- | ------ | ---- |"];
+  for (const r of corpus.records) {
+    const href = toPosix(relative(dirname(indexAbs), join(dir.abs, r.filename)));
+    const status = r.superseded_by.length ? `Superseded by ${r.superseded_by.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}` : STATUS_LABEL[r.status];
+    lines.push(
+      `| [${formatAdrId(r.number)}](${href}) | ${r.title} | ${status} | ${r.date ?? "\u2014"} |`
+    );
+  }
+  return lines.join("\n");
+}
+function readManagedBlock(text) {
+  const start = text.indexOf(INDEX_START);
+  const end = text.indexOf(INDEX_END);
+  if (start === -1 || end === -1 || end < start) return null;
+  return text.slice(start + INDEX_START.length, end).replace(/^\n+|\n+$/g, "");
+}
+function spliceIndex(existing, block) {
+  const managed = `${INDEX_START}
+
+${block}
+
+${INDEX_END}`;
+  if (existing === null) {
+    return { action: "created", text: `# Architecture Decision Records
+
+${managed}
+` };
+  }
+  if (readManagedBlock(existing) !== null) {
+    const start = existing.indexOf(INDEX_START);
+    const end = existing.indexOf(INDEX_END) + INDEX_END.length;
+    return { action: "replaced", text: existing.slice(0, start) + managed + existing.slice(end) };
+  }
+  const joiner = existing.endsWith("\n") ? "\n" : "\n\n";
+  return { action: "appended", text: `${existing}${joiner}${managed}
+` };
+}
+
+// src/tools/adr.ts
+var AdrInput = external_exports.object({
+  action: external_exports.enum(["next", "list", "index", "audit", "accept", "supersede"]),
+  number: external_exports.coerce.number().int().positive().optional().describe("Target record number \u2014 required for accept and supersede (accepts 27 or '0027')"),
+  title: external_exports.string().optional().describe(
+    "next: preview the target path for this title \xB7 supersede: title of the new skeleton record"
+  ),
+  successor: external_exports.coerce.number().int().positive().optional().describe(
+    "supersede: pair this existing record as the successor instead of creating a skeleton"
+  )
+});
+function buildAdrTool(env) {
+  return defineTool({
+    name: "adr",
+    description: "Deterministic ADR-lifecycle mechanics over the project's decision-record corpus (ADR-0027; location: config adr.dir, else detected docs/adr | docs/decisions | adr, else docs/adr). Parses both table-style and MADR heading-style records. action:'next' reserves the next number (pass title to preview the file path); 'list' renders the parsed corpus with statuses; 'audit' lints it (dangling ADR-NNNN references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index); 'index' regenerates the corpus index between managed markers; 'accept' ratifies one proposed record after a readiness gate (no {\u2026} placeholders, required sections, resolving cross-references) and stamps status + date; 'supersede' creates or pairs a successor and flips the old record's status \u2014 never its content. accept and supersede are human decisions: invoke them only on explicit user instruction.",
+    inputSchema: AdrInput,
+    handler: (input) => Promise.resolve(dispatch(env, input))
+  });
+}
+function loadContext(env) {
+  const { config: config2, warning } = loadConfig(env.configPath);
+  const adrConfig = config2.adr;
+  const dir = resolveAdrDir(env.projectDir, adrConfig);
+  return {
+    dir,
+    corpus: readAdrCorpus(dir),
+    index: resolveIndexTarget(env.projectDir, dir, adrConfig),
+    warning
+  };
+}
+function dispatch(env, input) {
+  const ctx = loadContext(env);
+  switch (input.action) {
+    case "next":
+      return runNext(ctx, input);
+    case "list":
+      return runList(ctx);
+    case "index":
+      return runIndex(ctx);
+    case "audit":
+      return runAudit(ctx);
+    case "accept":
+      return runAccept(env, ctx, input);
+    case "supersede":
+      return runSupersede(env, ctx, input);
+  }
+}
+function runNext(ctx, input) {
+  const number3 = nextAdrNumber(ctx.corpus);
+  const id = formatAdrId(number3);
+  const slug = input.title ? slugify(input.title) : "";
+  const path = slug ? `${ctx.dir.rel}/${id}-${slug}.md` : null;
+  const lines = [
+    `Next ADR number: **${id}**`,
+    `Corpus: \`${ctx.dir.rel}\` (${ctx.dir.source}) \xB7 ${ctx.corpus.records.length} record(s)`
+  ];
+  if (path) lines.push(`Target path: \`${path}\``);
+  else if (input.title !== void 0)
+    lines.push("_The title yields no usable slug \u2014 name the file by hand._");
+  lines.push("_New records always land `proposed` (ADR-0027)._");
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: { dir: ctx.dir.rel, number: number3, id, path }
+  });
+}
+function runList(ctx) {
+  const { records } = ctx.corpus;
+  const lines = [
+    `# ADR corpus \u2014 \`${ctx.dir.rel}\` (${ctx.dir.source}) \xB7 ${records.length} record(s)`,
+    ""
+  ];
+  if (records.length === 0) {
+    lines.push("_No records yet \u2014 `adr next` reserves the first number._");
+  } else {
+    lines.push("| ADR | Title | Status | Date |");
+    lines.push("| --- | ----- | ------ | ---- |");
+    for (const r of records) {
+      lines.push(
+        `| ${formatAdrId(r.number)} | ${r.title} | ${statusLabel(r)} | ${r.date ?? "\u2014"} |`
+      );
+    }
+  }
+  appendMalformedNote(lines, ctx);
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: buildListPayload(ctx)
+  });
+}
+function statusLabel(r) {
+  if (r.superseded_by.length > 0) {
+    return `superseded by ${r.superseded_by.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}`;
+  }
+  return r.status;
+}
+function appendMalformedNote(lines, ctx) {
+  if (ctx.corpus.malformed.length === 0) return;
+  lines.push("");
+  lines.push(
+    `_\u26A0 ${ctx.corpus.malformed.length} file(s) could not be parsed: ${ctx.corpus.malformed.map((m) => `\`${m.filename}\` (${m.reason})`).join("; ")}_`
+  );
+}
+function runIndex(ctx) {
+  if (!ctx.index) {
+    return withWarning(ctx, {
+      content: [
+        {
+          type: "text",
+          text: `No corpus index target \u2014 nothing to regenerate.
+Set \`adr.index_file\` in \`.marvin/config.json\` or create \`${ctx.dir.rel}/README.md\`; the index is maintained between \`<!-- marvin:adr-index:start -->\` / \`:end -->\` markers.`
+        }
+      ],
+      structuredContent: { dir: ctx.dir.rel, target: null, result: "skipped", records: 0 }
+    });
+  }
+  const block = renderIndexBlock(ctx.corpus, ctx.dir, ctx.index.abs);
+  const existing = existsSync(ctx.index.abs) ? readFileSync(ctx.index.abs, "utf8") : null;
+  if (existing !== null && readManagedBlock(existing) === block) {
+    return withWarning(ctx, {
+      content: [
+        {
+          type: "text",
+          text: `Corpus index \`${ctx.index.rel}\` is already up to date (${ctx.corpus.records.length} record(s)).`
+        }
+      ],
+      structuredContent: {
+        dir: ctx.dir.rel,
+        target: ctx.index.rel,
+        result: "unchanged",
+        records: ctx.corpus.records.length
+      }
+    });
+  }
+  const write = spliceIndex(existing, block);
+  writeAdrFileAtomic(ctx.index.abs, write.text);
+  const verb = write.action === "created" ? "Created" : write.action === "appended" ? "Appended the managed block to" : "Regenerated the managed block in";
+  const lines = [
+    `${verb} \`${ctx.index.rel}\` \u2014 ${ctx.corpus.records.length} record(s) indexed.`,
+    "_Hand-written prose outside the markers is untouched._"
+  ];
+  appendMalformedNote(lines, ctx);
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: {
+      dir: ctx.dir.rel,
+      target: ctx.index.rel,
+      result: write.action,
+      records: ctx.corpus.records.length
+    }
+  });
+}
+function runAudit(ctx) {
+  const findings = collectFindings(ctx);
+  const errors = findings.filter((f) => f.severity === "error");
+  const warnings = findings.filter((f) => f.severity === "warning");
+  const checked = ctx.corpus.records.length + ctx.corpus.malformed.length;
+  const lines = [`# ADR audit \u2014 \`${ctx.dir.rel}\` \xB7 ${checked} file(s) checked`, ""];
+  if (findings.length === 0) {
+    lines.push("\u2713 Corpus clean \u2014 no findings.");
+  } else {
+    if (errors.length > 0) {
+      lines.push(`\u2717 ${errors.length} error(s):`);
+      for (const f of errors) lines.push(renderFinding(f));
+      lines.push("");
+    }
+    if (warnings.length > 0) {
+      lines.push(`\u26A0 ${warnings.length} warning(s):`);
+      for (const f of warnings) lines.push(renderFinding(f));
+    }
+  }
+  const payload = {
+    dir: ctx.dir.rel,
+    checked,
+    findings,
+    ok: errors.length === 0
+  };
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n").trimEnd() }],
+    structuredContent: payload,
+    ...errors.length > 0 ? { isError: true } : {}
+  });
+}
+function renderFinding(f) {
+  const anchor = f.path ? ` \u2014 \`${f.path}\`` : "";
+  return `- **[${f.kind}]** ${f.message}${anchor}`;
+}
+function collectFindings(ctx) {
+  const findings = [];
+  const { records, malformed } = ctx.corpus;
+  const known = /* @__PURE__ */ new Set([
+    ...records.map((r) => r.number),
+    ...malformed.flatMap((m) => m.number === null ? [] : [m.number])
+  ]);
+  const byNumber = new Map(records.map((r) => [r.number, r]));
+  for (const m of malformed) {
+    findings.push({
+      kind: m.kind === "invalid-status" ? "invalid-status" : "malformed",
+      severity: "error",
+      message: `\`${m.filename}\`: ${m.reason}`,
+      number: m.number,
+      path: m.number === null ? null : `${ctx.dir.rel}/${m.filename}`
+    });
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const r of records) push(counts, r.number, r.filename);
+  for (const m of malformed) if (m.number !== null) push(counts, m.number, m.filename);
+  for (const [number3, files] of [...counts].sort((a, b) => a[0] - b[0])) {
+    if (files.length > 1) {
+      findings.push({
+        kind: "duplicate-number",
+        severity: "error",
+        message: `ADR-${formatAdrId(number3)} is claimed by ${files.length} files: ${files.map((f) => `\`${f}\``).join(", ")}`,
+        number: number3,
+        path: null
+      });
+    }
+  }
+  const numbers = [...counts.keys()].sort((a, b) => a - b);
+  for (let i = 1; i < numbers.length; i++) {
+    const prev = numbers[i - 1];
+    const cur = numbers[i];
+    if (cur - prev > 1) {
+      const gap = Array.from({ length: cur - prev - 1 }, (_, k) => formatAdrId(prev + 1 + k));
+      findings.push({
+        kind: "numbering-hole",
+        severity: "warning",
+        message: `numbering hole between ADR-${formatAdrId(prev)} and ADR-${formatAdrId(cur)} (missing ${gap.join(", ")})`,
+        number: null,
+        path: null
+      });
+    }
+  }
+  for (const r of records) {
+    const raw = readFileSync(join(ctx.dir.abs, r.filename), "utf8");
+    for (const ref of adrRefs(stripCodeSpans(raw))) {
+      if (!known.has(ref)) {
+        findings.push({
+          kind: "dangling-reference",
+          severity: "error",
+          message: `ADR-${formatAdrId(r.number)} references ADR-${formatAdrId(ref)}, which does not exist in the corpus`,
+          number: r.number,
+          path: r.path
+        });
+      }
+    }
+    const placeholders = findPlaceholders(raw);
+    if (placeholders.length > 0) {
+      findings.push({
+        kind: "placeholder-residue",
+        // A still-proposed draft may legitimately carry template placeholders;
+        // residue in a ratified record is an error.
+        severity: r.status === "proposed" ? "warning" : "error",
+        message: `${placeholders.length} template placeholder(s) left in ADR-${formatAdrId(r.number)}: ${placeholders.slice(0, 3).map((p) => `\`${p}\``).join(", ")}${placeholders.length > 3 ? ", \u2026" : ""}`,
+        number: r.number,
+        path: r.path
+      });
+    }
+  }
+  for (const r of records) {
+    for (const n of r.supersedes) {
+      const target = byNumber.get(n);
+      if (target && !target.superseded_by.includes(r.number)) {
+        findings.push({
+          kind: "broken-supersede-pair",
+          severity: "error",
+          message: `ADR-${formatAdrId(r.number)} supersedes ADR-${formatAdrId(n)}, but ADR-${formatAdrId(n)} carries no Superseded-by link back`,
+          number: n,
+          path: target.path
+        });
+      }
+    }
+    for (const n of r.superseded_by) {
+      const successor = byNumber.get(n);
+      if (successor && !successor.supersedes.includes(r.number)) {
+        findings.push({
+          kind: "broken-supersede-pair",
+          severity: "error",
+          message: `ADR-${formatAdrId(r.number)} points at successor ADR-${formatAdrId(n)}, but ADR-${formatAdrId(n)} carries no Supersedes link back`,
+          number: n,
+          path: successor.path
+        });
+      }
+    }
+    if (r.superseded_by.length > 0 && r.status !== "superseded") {
+      findings.push({
+        kind: "broken-supersede-pair",
+        severity: "error",
+        message: `ADR-${formatAdrId(r.number)} carries a Superseded-by link but its status is "${r.status}"`,
+        number: r.number,
+        path: r.path
+      });
+    }
+    if (r.status === "superseded" && r.superseded_by.length === 0) {
+      findings.push({
+        kind: "broken-supersede-pair",
+        severity: "error",
+        message: `ADR-${formatAdrId(r.number)} is marked superseded but names no successor`,
+        number: r.number,
+        path: r.path
+      });
+    }
+  }
+  if (ctx.index) {
+    if (!existsSync(ctx.index.abs)) {
+      findings.push(staleIndex(`configured index file \`${ctx.index.rel}\` does not exist`));
+    } else {
+      const text = readFileSync(ctx.index.abs, "utf8");
+      const managed = readManagedBlock(text);
+      if (managed === null) {
+        findings.push(staleIndex(`index file \`${ctx.index.rel}\` has no managed markers yet`));
+      } else if (managed !== renderIndexBlock(ctx.corpus, ctx.dir, ctx.index.abs)) {
+        findings.push(staleIndex(`index file \`${ctx.index.rel}\` is out of date`));
+      }
+    }
+  }
+  return findings;
+}
+function staleIndex(message) {
+  return {
+    kind: "stale-index",
+    severity: "warning",
+    message: `${message} \u2014 run \`adr index\` to regenerate`,
+    number: null,
+    path: null
+  };
+}
+function push(map, key, value) {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+function runAccept(env, ctx, input) {
+  if (input.number === void 0) {
+    return err('`accept` requires `number` \u2014 the record to ratify (e.g. 27 or "0027").');
+  }
+  const found = findRecord(ctx, input.number);
+  if (!found.ok) return err(found.error);
+  const record2 = found.record;
+  if (record2.status !== "proposed") {
+    return err(
+      record2.status === "accepted" ? `ADR-${formatAdrId(record2.number)} is already accepted${record2.date ? ` (since ${record2.date})` : ""}.` : `ADR-${formatAdrId(record2.number)} is ${record2.status} \u2014 only a proposed record can be accepted.`
+    );
+  }
+  const raw = readFileSync(join(ctx.dir.abs, record2.filename), "utf8");
+  const problems = [];
+  const placeholders = findPlaceholders(raw);
+  if (placeholders.length > 0) {
+    problems.push(
+      `${placeholders.length} template placeholder(s) left: ${placeholders.slice(0, 5).map((p) => `\`${p}\``).join(", ")}${placeholders.length > 5 ? ", \u2026" : ""}`
+    );
+  }
+  const missing = missingSections(raw);
+  if (missing.length > 0) {
+    problems.push(`required section(s) missing: ${missing.map((s) => `\`## ${s}\``).join(", ")}`);
+  }
+  const knownNumbers = /* @__PURE__ */ new Set([
+    ...ctx.corpus.records.map((r) => r.number),
+    ...ctx.corpus.malformed.flatMap((m) => m.number === null ? [] : [m.number])
+  ]);
+  const dangling = adrRefs(stripCodeSpans(raw)).filter((n) => !knownNumbers.has(n));
+  if (dangling.length > 0) {
+    problems.push(
+      `unresolved cross-reference(s): ${dangling.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}`
+    );
+  }
+  if (problems.length > 0) {
+    return err(
+      `Not ready for acceptance \u2014 ADR-${formatAdrId(record2.number)} fails the readiness gate:
+${problems.map((p) => `- ${p}`).join("\n")}
+Fix the record and retry; nothing was written.`
+    );
+  }
+  const today = isoToday();
+  const stamped = stampAccepted(raw, record2.style, today);
+  if (!stamped.ok) return err(`Cannot stamp ADR-${formatAdrId(record2.number)}: ${stamped.error}.`);
+  writeAdrFileAtomic(join(ctx.dir.abs, record2.filename), stamped.text);
+  const fresh = loadContext(env);
+  const updated = fresh.corpus.records.find((r) => r.number === record2.number);
+  const lines = [
+    `Accepted **ADR-${formatAdrId(record2.number)} \u2014 ${record2.title}**, dated ${today}.`,
+    `File: \`${record2.path}\``
+  ];
+  appendIndexReminder(lines, fresh);
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n") }],
+    ...updated ? { structuredContent: { record: toPayloadRecord(updated) } } : {}
+  });
+}
+function runSupersede(env, ctx, input) {
+  if (input.number === void 0) {
+    return err("`supersede` requires `number` \u2014 the record being superseded.");
+  }
+  const hasTitle = input.title !== void 0 && input.title.trim() !== "";
+  if (hasTitle === (input.successor !== void 0)) {
+    return err(
+      "`supersede` requires exactly one of `title` (create a proposed skeleton as the successor) or `successor` (pair an existing record)."
+    );
+  }
+  const found = findRecord(ctx, input.number);
+  if (!found.ok) return err(found.error);
+  const old = found.record;
+  if (old.status === "superseded") {
+    return err(
+      `ADR-${formatAdrId(old.number)} is already superseded${old.superseded_by.length > 0 ? ` by ${old.superseded_by.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}` : ""}.`
+    );
+  }
+  const today = isoToday();
+  let successor;
+  if (input.successor !== void 0) {
+    if (input.successor === old.number) {
+      return err("A record cannot supersede itself \u2014 `successor` must differ from `number`.");
+    }
+    const target = findRecord(ctx, input.successor);
+    if (!target.ok) return err(target.error);
+    const raw = readFileSync(join(ctx.dir.abs, target.record.filename), "utf8");
+    const linked = linkSupersedes(raw, target.record.style, old);
+    if (!linked.ok) {
+      return err(
+        `Cannot record the Supersedes link on ADR-${formatAdrId(target.record.number)}: ${linked.error}. Nothing was written.`
+      );
+    }
+    if (linked.text !== raw) {
+      writeAdrFileAtomic(join(ctx.dir.abs, target.record.filename), linked.text);
+    }
+    successor = { number: target.record.number, filename: target.record.filename, created: false };
+  } else {
+    const title = input.title.trim();
+    const slug = slugify(title);
+    if (!slug) {
+      return err(
+        "The successor title yields no usable slug (latin letters or digits required) \u2014 pass a different `title`."
+      );
+    }
+    const number3 = nextAdrNumber(ctx.corpus);
+    const filename = `${formatAdrId(number3)}-${slug}.md`;
+    const path = join(ctx.dir.abs, filename);
+    if (existsSync(path)) {
+      return err(`\`${ctx.dir.rel}/${filename}\` already exists \u2014 nothing was written.`);
+    }
+    writeAdrFileAtomic(path, renderAdrSkeleton({ number: number3, title, date: today, supersedes: old }));
+    successor = { number: number3, filename, created: true };
+  }
+  const oldRaw = readFileSync(join(ctx.dir.abs, old.filename), "utf8");
+  const flipped = flipSuperseded(oldRaw, old.style, successor);
+  if (!flipped.ok) {
+    return err(
+      `Cannot flip ADR-${formatAdrId(old.number)} to superseded: ${flipped.error}. ` + (successor.created ? `The successor skeleton \`${ctx.dir.rel}/${successor.filename}\` was created \u2014 remove it or flip the old record by hand.` : "The successor's Supersedes link may already be written.")
+    );
+  }
+  writeAdrFileAtomic(join(ctx.dir.abs, old.filename), flipped.text);
+  const fresh = loadContext(env);
+  const freshOld = fresh.corpus.records.find((r) => r.number === old.number);
+  const freshNew = fresh.corpus.records.find((r) => r.number === successor.number);
+  const lines = [
+    successor.created ? `Created successor skeleton \`${ctx.dir.rel}/${successor.filename}\` (proposed) \u2014 fill its sections, then ratify with \`accept\`.` : `Paired existing ADR-${formatAdrId(successor.number)} as the successor.`,
+    `Flipped **ADR-${formatAdrId(old.number)} \u2014 ${old.title}** to superseded (content untouched).`
+  ];
+  appendIndexReminder(lines, fresh);
+  return withWarning(ctx, {
+    content: [{ type: "text", text: lines.join("\n") }],
+    ...freshNew && freshOld ? {
+      structuredContent: {
+        record: toPayloadRecord(freshNew),
+        superseded: toPayloadRecord(freshOld)
+      }
+    } : {}
+  });
+}
+function findRecord(ctx, number3) {
+  const record2 = ctx.corpus.records.find((r) => r.number === number3);
+  if (record2) return { ok: true, record: record2 };
+  const malformed = ctx.corpus.malformed.find((m) => m.number === number3);
+  if (malformed) {
+    return {
+      ok: false,
+      error: `ADR-${formatAdrId(number3)} exists (\`${malformed.filename}\`) but cannot be parsed: ${malformed.reason}. Fix the file first.`
+    };
+  }
+  return {
+    ok: false,
+    error: `ADR-${formatAdrId(number3)} not found in \`${ctx.dir.rel}\` (${ctx.corpus.records.length} record(s) parsed).`
+  };
+}
+function toPayloadRecord(r) {
+  return {
+    number: r.number,
+    slug: r.slug,
+    title: r.title,
+    status: r.status,
+    date: r.date,
+    supersedes: r.supersedes,
+    superseded_by: r.superseded_by,
+    path: r.path
+  };
+}
+function buildListPayload(ctx) {
+  const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
+  for (const r of ctx.corpus.records) counts[r.status] += 1;
+  return {
+    dir: ctx.dir.rel,
+    records: ctx.corpus.records.map(toPayloadRecord),
+    counts,
+    malformed: ctx.corpus.malformed.map((m) => ({
+      filename: m.filename,
+      number: m.number,
+      reason: m.reason
+    }))
+  };
+}
+function appendIndexReminder(lines, ctx) {
+  if (!ctx.index) return;
+  const stale = collectFindings(ctx).some((f) => f.kind === "stale-index");
+  if (stale)
+    lines.push(`_The corpus index \`${ctx.index.rel}\` is now stale \u2014 run \`adr index\`._`);
+}
+function isoToday() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function withWarning(ctx, result2) {
+  if (!ctx.warning) return result2;
+  const first = result2.content[0];
+  if (first) first.text = `\u26A0 ${ctx.warning} \u2014 using default ADR configuration.
+
+${first.text}`;
+  return result2;
+}
+function err(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+// src/storage/frontmatter.ts
+var import_yaml = __toESM(require_dist2());
+function parseFrontmatter(text) {
+  if (!text.startsWith("---\n")) {
+    return { frontmatter: {}, body: text };
+  }
+  const endIdx = text.indexOf("\n---", 4);
+  if (endIdx === -1) {
+    return { frontmatter: {}, body: text };
+  }
+  const raw = text.slice(4, endIdx);
+  const after = text.slice(endIdx + 4);
+  const body = after.startsWith("\n") ? after.slice(1) : after;
+  let doc;
+  try {
+    doc = (0, import_yaml.parse)(raw, { schema: "failsafe" });
+  } catch {
+    return { frontmatter: {}, body };
+  }
+  const frontmatter = {};
+  if (doc && typeof doc === "object" && !Array.isArray(doc)) {
+    for (const [key, value] of Object.entries(doc)) {
+      if (value == null) continue;
+      frontmatter[key] = typeof value === "string" ? value : String(value);
+    }
+  }
+  return { frontmatter, body };
+}
+function stringifyFrontmatter(frontmatter, body) {
+  const clean = {};
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (value !== void 0) clean[key] = value;
+  }
+  const fm = Object.keys(clean).length ? (0, import_yaml.stringify)(clean, { schema: "failsafe" }).trimEnd() : "";
+  const lines = ["---"];
+  if (fm) lines.push(fm);
+  lines.push("---");
+  if (body && !body.startsWith("\n")) lines.push("");
+  lines.push(body);
+  return lines.join("\n");
 }
 
 // src/storage/tasks.ts
@@ -29115,188 +30159,6 @@ function findTaskByBranch(tasks, branch) {
 function findTaskById(tasks, id) {
   return tasks.find((t) => t.frontmatter.id === id) ?? null;
 }
-function run(cmd, args, cwd) {
-  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
-  if (result2.error) {
-    return { ok: false, code: -1, stderr: result2.error.message };
-  }
-  if (result2.status !== 0) {
-    return {
-      ok: false,
-      code: result2.status ?? -1,
-      stderr: (result2.stderr || result2.stdout || "").trim()
-    };
-  }
-  return { ok: true, value: (result2.stdout || "").trim() };
-}
-function git(args, cwd) {
-  return run("git", args, cwd);
-}
-function inGitRepo(cwd) {
-  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
-}
-function hasGit() {
-  try {
-    execFileSync("git", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function hasGh() {
-  try {
-    execFileSync("gh", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function currentBranch(cwd) {
-  const r = git(["branch", "--show-current"], cwd);
-  return r.ok && r.value ? r.value : null;
-}
-function defaultBranchFromOrigin(cwd) {
-  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
-  if (!r.ok || !r.value) return null;
-  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
-  return name && name !== r.value ? name : null;
-}
-function hasUncommittedChanges(cwd) {
-  const r = git(["status", "--porcelain"], cwd);
-  return r.ok && r.value.length > 0;
-}
-function branchExists(name, cwd) {
-  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
-}
-function createBranchFromBase(base, branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  const checkoutBase = git(["checkout", base], cwd);
-  if (!checkoutBase.ok) return checkoutBase;
-  git(["pull", "--ff-only"], cwd);
-  return git(["checkout", "-b", branch], cwd);
-}
-function checkoutBranch(branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  return git(["checkout", branch], cwd);
-}
-
-// src/storage/config.ts
-function loadConfig(configPath, projectDir) {
-  if (!existsSync(configPath)) {
-    const config2 = Config.parse({});
-    if (projectDir !== void 0 && hasGit() && inGitRepo(projectDir)) {
-      const detected = defaultBranchFromOrigin(projectDir);
-      if (detected) {
-        config2.base_branch = detected;
-        return { config: config2, warning: null, base_branch_source: "origin/HEAD" };
-      }
-    }
-    return { config: config2, warning: null, base_branch_source: "default" };
-  }
-  let raw;
-  try {
-    raw = readFileSync(configPath, "utf8");
-  } catch (err2) {
-    const reason = err2 instanceof Error ? err2.message : String(err2);
-    return {
-      config: Config.parse({}),
-      warning: `failed to read config: ${reason}`,
-      base_branch_source: "default"
-    };
-  }
-  let json;
-  try {
-    json = JSON.parse(raw);
-  } catch (err2) {
-    const reason = err2 instanceof Error ? err2.message : String(err2);
-    return {
-      config: Config.parse({}),
-      warning: `config.json is not valid JSON: ${reason}`,
-      base_branch_source: "default"
-    };
-  }
-  const parsed = Config.safeParse(json);
-  if (!parsed.success) {
-    return {
-      config: Config.parse({}),
-      warning: `config.json failed schema validation: ${parsed.error.message}`,
-      base_branch_source: "default"
-    };
-  }
-  const hasOwnBase = typeof json === "object" && json !== null && Object.hasOwn(json, "base_branch");
-  return {
-    config: parsed.data,
-    warning: null,
-    base_branch_source: hasOwnBase ? "config" : "default"
-  };
-}
-function trackerUrl(config2, trackerId) {
-  if (!trackerId || !config2.tracker_url_template) return null;
-  return config2.tracker_url_template.replace("{tracker_id}", trackerId);
-}
-function updateConfigFile(configPath, patch) {
-  const created = !existsSync(configPath);
-  let raw = {};
-  if (!created) {
-    let text;
-    try {
-      text = readFileSync(configPath, "utf8");
-    } catch (err2) {
-      const reason = err2 instanceof Error ? err2.message : String(err2);
-      return { ok: false, error: `cannot read ${configPath}: ${reason}` };
-    }
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch (err2) {
-      const reason = err2 instanceof Error ? err2.message : String(err2);
-      return {
-        ok: false,
-        error: `the existing config.json is not valid JSON (${reason}) \u2014 fix the file by hand first; nothing was written`
-      };
-    }
-    if (typeof json !== "object" || json === null || Array.isArray(json)) {
-      return {
-        ok: false,
-        error: "the existing config.json is not a JSON object \u2014 fix the file by hand first; nothing was written"
-      };
-    }
-    raw = { ...json };
-  }
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === void 0) continue;
-    if (value === null) delete raw[key];
-    else raw[key] = value;
-  }
-  const merged = Config.safeParse(raw);
-  if (!merged.success) {
-    return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
-  }
-  mkdirSync(dirname(configPath), { recursive: true });
-  const tmp = `${configPath}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(raw, null, 2) + "\n");
-  renameSync(tmp, configPath);
-  return { ok: true, config: merged.data, created };
-}
-function parseStatusesJson(input) {
-  let json;
-  try {
-    json = JSON.parse(input);
-  } catch (err2) {
-    const reason = err2 instanceof Error ? err2.message : String(err2);
-    return { ok: false, error: `not valid JSON: ${reason}` };
-  }
-  const parsed = Statuses.safeParse(json);
-  if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
-  return { ok: true, statuses: parsed.data };
-}
-function zodIssues(error2) {
-  return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
-}
 
 // src/flows/format.ts
 function formatTaskLine(t) {
@@ -29400,7 +30262,7 @@ async function dispatchTask(server, env, config2, input) {
     case "create":
       return runCreate(server, env, config2, input);
     case "list":
-      return runList(env, config2);
+      return runList2(env, config2);
     case "status":
       return runStatus(server, env, config2);
     case "start":
@@ -29519,7 +30381,7 @@ To branch off and pick it up, call this tool with action="start", taskId="${crea
 File: \`${created.path}\`${templateWarning}${branchInfo}`
   );
 }
-function runList(env, config2) {
+function runList2(env, config2) {
   const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
   const branch = currentBranch(env.projectDir);
   const body = renderListTable(tasks, branch, config2);
@@ -30438,8 +31300,8 @@ async function executeGates(gates, execution, cwd) {
     let r;
     try {
       r = await runGate(g, cwd);
-    } catch (err2) {
-      r = crashResult(g, err2);
+    } catch (err3) {
+      r = crashResult(g, err3);
     }
     results.push(r);
     if (execution === "fail-fast" && r.status !== "pass") break;
@@ -30454,8 +31316,8 @@ function runGate(gate, cwd) {
     let stderr = "";
     child.stdout?.on("data", (d) => stdout += d.toString());
     child.stderr?.on("data", (d) => stderr += d.toString());
-    child.on("error", (err2) => {
-      resolve(crashResult(gate, err2, Math.round(performance.now() - start)));
+    child.on("error", (err3) => {
+      resolve(crashResult(gate, err3, Math.round(performance.now() - start)));
     });
     child.on("close", (code, signal) => {
       const durationMs = Math.round(performance.now() - start);
@@ -30569,11 +31431,11 @@ function deliverGate(projectRoot) {
   let text;
   try {
     text = readFileSync(artifactPath, "utf8");
-  } catch (err2) {
+  } catch (err3) {
     return gateResult(
       "BLOCK",
       null,
-      `could not read verification.md: ${err2 instanceof Error ? err2.message : String(err2)}`
+      `could not read verification.md: ${err3 instanceof Error ? err3.message : String(err3)}`
     );
   }
   const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
@@ -30853,9 +31715,9 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err2) {
+  } catch (err3) {
     return result("FAIL", type, [
-      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err2)}`)
+      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err3)}`)
     ]);
   }
   const parsed = SpecContract.safeParse(doc);
@@ -31042,8 +31904,8 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err2) {
-    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err2)}`)];
+  } catch (err3) {
+    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err3)}`)];
   }
   const parsed = SpecContract.safeParse(doc);
   if (!parsed.success) {
@@ -31071,10 +31933,10 @@ function checkHostBindings(body) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(text);
-  } catch (err2) {
+  } catch (err3) {
     return {
       checks: [
-        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err2)}`)
+        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err3)}`)
       ],
       specLocation: void 0
     };
@@ -31353,8 +32215,8 @@ function parseSections(body) {
   flush();
   return map;
 }
-function errMessage(err2) {
-  const msg = err2 instanceof Error ? err2.message : String(err2);
+function errMessage(err3) {
+  const msg = err3 instanceof Error ? err3.message : String(err3);
   return msg.split("\n")[0].slice(0, 160);
 }
 function computeVerdict2(checks) {
@@ -31490,74 +32352,10 @@ function searchLessons(memoryDir, input) {
   }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
   return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
 }
-function lessonsStats(memoryDir) {
-  const by_type = Object.fromEntries(LESSON_TYPES.map((t) => [t, 0]));
-  const by_tag = {};
-  const all = readAllLessons(memoryDir);
-  for (const l of all) {
-    by_type[l.type] = (by_type[l.type] ?? 0) + 1;
-    for (const tag of l.tags) by_tag[tag] = (by_tag[tag] ?? 0) + 1;
-  }
-  return { total: all.length, by_type, by_tag };
-}
-function titleWords(title) {
-  return new Set(
-    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
-  );
-}
-function titleSimilarity(a, b) {
-  const wa = titleWords(a);
-  const wb = titleWords(b);
-  if (wa.size === 0 || wb.size === 0) return 0;
-  let hits = 0;
-  for (const w of wa) if (wb.has(w)) hits += 1;
-  return hits / (wa.size + wb.size - hits);
-}
-var NEAR_DUPLICATE_THRESHOLD = 0.5;
-function findNearDuplicate(memoryDir, title) {
-  const slug = slugify(title);
-  let best = null;
-  for (const l of readAllLessons(memoryDir)) {
-    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
-    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
-      best = { lesson: l, score };
-    }
-  }
-  return best?.lesson ?? null;
-}
-var STALE_AFTER_DAYS = 180;
-function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
-  const all = readAllLessons(memoryDir);
-  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-  const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
-  const duplicates = [];
-  for (let i = 0; i < all.length; i += 1) {
-    for (let j = i + 1; j < all.length; j += 1) {
-      if (titleSimilarity(all[i].title, all[j].title) >= NEAR_DUPLICATE_THRESHOLD) {
-        duplicates.push([all[i], all[j]]);
-      }
-    }
-  }
-  return { stale, duplicates };
-}
-function deleteLesson(memoryDir, slug) {
-  const lesson = readAllLessons(memoryDir).find((l) => l.slug === slug);
-  if (!lesson) return null;
-  const path = join(memoryDir, `${lesson.slug}.md`);
-  unlinkSync(path);
-  removeIndexLine(memoryDir, lesson.slug);
-  return { path };
-}
-function removeIndexLine(memoryDir, slug) {
-  const indexPath = join(memoryDir, INDEX_FILE);
-  if (!existsSync(indexPath)) return;
-  const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
-  writeFileSync(indexPath, kept.join("\n"));
-}
 
 // src/tools/lessons.ts
 var LessonsInput = external_exports.object({
-  action: external_exports.enum(["add", "search", "stats", "prune"]),
+  action: external_exports.enum(["add", "search"]),
   // add
   type: external_exports.enum(LESSON_TYPES).optional(),
   title: external_exports.string().optional(),
@@ -31565,33 +32363,20 @@ var LessonsInput = external_exports.object({
   tags: external_exports.string().optional(),
   // comma-separated
   source: external_exports.string().optional(),
-  force: external_exports.boolean().optional().describe("add: write the lesson even when a near-duplicate title already exists"),
   // search
   query: external_exports.string().optional(),
-  limit: external_exports.number().int().positive().max(50).optional(),
-  // prune
-  slug: external_exports.string().optional().describe("prune: the lesson to delete \u2014 a slug from the candidate list"),
-  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form")
+  limit: external_exports.number().int().positive().max(50).optional()
 });
-function buildLessonsTool(server, env) {
+function buildLessonsTool(env) {
   return defineTool({
     name: "lessons",
-    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task or debug session; action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it at task intake so past mistakes inform new work.",
     inputSchema: LessonsInput,
-    handler: (input) => dispatch(server, env, input)
+    handler: (input) => Promise.resolve(dispatch2(env, input))
   });
 }
-async function dispatch(server, env, input) {
-  switch (input.action) {
-    case "add":
-      return runAdd(env, input);
-    case "search":
-      return runSearch(env, input);
-    case "stats":
-      return runStats(env);
-    case "prune":
-      return runPrune(server, env, input);
-  }
+function dispatch2(env, input) {
+  return input.action === "add" ? runAdd(env, input) : runSearch(env, input);
 }
 function runAdd(env, input) {
   const missing = [];
@@ -31599,17 +32384,9 @@ function runAdd(env, input) {
   if (!input.title?.trim()) missing.push("title");
   if (!input.body?.trim()) missing.push("body");
   if (missing.length > 0) {
-    return err(
+    return err2(
       `lessons add requires: ${missing.join(", ")}. type \u2208 {${LESSON_TYPES.join(" | ")}}.`
     );
-  }
-  if (!input.force) {
-    const dup = findNearDuplicate(env.memoryDir, input.title.trim());
-    if (dup) {
-      return err(
-        `Near-duplicate of existing lesson **${dup.slug}** \u2014 "${dup.title}" (\`${dup.type}\`, ${dup.created}). Nothing written. Extend that lesson instead, or pass \`force: true\` to add this one anyway.`
-      );
-    }
   }
   const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
   const { slug, path } = addLesson(env.memoryDir, {
@@ -31639,86 +32416,6 @@ function runSearch(env, input) {
   }
   return ok3(renderLessons(lessons));
 }
-function runStats(env) {
-  const stats = lessonsStats(env.memoryDir);
-  if (stats.total === 0) {
-    return {
-      content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
-      structuredContent: stats
-    };
-  }
-  const types = Object.entries(stats.by_type).filter(([, n]) => n > 0).map(([t, n]) => `- \`${t}\` \u2014 ${n}`);
-  const tags = Object.entries(stats.by_tag).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t, n]) => `- ${t} \u2014 ${n}`);
-  const out = [
-    `# Lessons store \u2014 ${stats.total} lesson(s)`,
-    "",
-    "## By type",
-    ...types,
-    "",
-    "## By tag",
-    ...tags.length > 0 ? tags : ["_no tags_"]
-  ];
-  return {
-    content: [{ type: "text", text: out.join("\n") }],
-    structuredContent: stats
-  };
-}
-async function runPrune(server, env, input) {
-  if (!input.slug) {
-    const total = readAllLessons(env.memoryDir).length;
-    if (total === 0) {
-      return ok3("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
-    }
-    const { stale, duplicates } = pruneCandidates(env.memoryDir);
-    if (stale.length === 0 && duplicates.length === 0) {
-      return ok3(
-        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
-      );
-    }
-    const out = [`# Prune candidates (${stale.length + duplicates.length})`, ""];
-    if (stale.length > 0) {
-      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS} days ago`);
-      for (const l of stale) out.push(`- **${l.slug}** \u2014 ${l.title} (\`${l.type}\`, ${l.created})`);
-      out.push("");
-    }
-    if (duplicates.length > 0) {
-      out.push("## Possible duplicates \u2014 near-identical titles");
-      for (const [a, b] of duplicates) {
-        out.push(`- **${a.slug}** ("${a.title}") \u2194 **${b.slug}** ("${b.title}")`);
-      }
-      out.push("");
-    }
-    out.push(
-      'Delete one with `action: "prune", slug: "<slug>"` \u2014 deletion asks for confirmation (or pass `confirm: true`) and removes the lesson file together with its `.marvin/memory/MEMORY.md` index line.'
-    );
-    return ok3(out.join("\n").trimEnd());
-  }
-  const target = readAllLessons(env.memoryDir).find((l) => l.slug === input.slug);
-  if (!target) {
-    return err(
-      `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. Call \`action: "prune"\` with no slug to list the candidates.`
-    );
-  }
-  if (!input.confirm) {
-    if (!canElicit(server)) {
-      return err(
-        `Deleting a lesson is destructive and needs explicit confirmation. This host does not support interactive forms \u2014 re-run with \`confirm: true\` to delete **${target.slug}** ("${target.title}").`
-      );
-    }
-    const answer = await elicit(
-      server,
-      `Delete lesson \`${target.slug}\` \u2014 "${target.title}"? This removes the file and its MEMORY.md index line.`,
-      external_exports.object({ delete: external_exports.enum(["yes", "no"]) })
-    );
-    if (answer?.delete !== "yes") return ok3("Cancelled \u2014 no changes made.");
-  }
-  const deleted = deleteLesson(env.memoryDir, target.slug);
-  if (!deleted) return err(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
-  return ok3(
-    `Deleted lesson **${target.slug}** ("${target.title}").
-Removed \`${deleted.path}\` and its index line from \`.marvin/memory/MEMORY.md\` \u2014 commit the removal to share it.`
-  );
-}
 function renderLessons(lessons) {
   const out = [`# Relevant lessons (${lessons.length})`, ""];
   for (const l of lessons) {
@@ -31734,7 +32431,7 @@ function renderLessons(lessons) {
 function ok3(text) {
   return { content: [{ type: "text", text }] };
 }
-function err(text) {
+function err2(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
 function readAllHandoffs(handoffDir) {
@@ -31776,10 +32473,10 @@ function buildHandoffTool(env) {
     inputSchema: HandoffInput,
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
-    handler: () => Promise.resolve(runList2(env))
+    handler: () => Promise.resolve(runList3(env))
   });
 }
-function runList2(env) {
+function runList3(env) {
   const { handoffs, malformed } = readAllHandoffs(env.handoffDir);
   const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
   const warning = malformed.length > 0 ? `
@@ -31861,7 +32558,7 @@ function runSummary(env, config2, input) {
   const links = buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings);
   const summary = {
     slug,
-    title: extractTitle(body) ?? slug,
+    title: extractTitle2(body) ?? slug,
     status: frontmatter.status?.trim() || "unknown",
     acceptance,
     gates,
@@ -31980,7 +32677,7 @@ function prLabel(url) {
   const m = url.match(/\/pull\/(\d+)/);
   return m ? `PR #${m[1]}` : "PR";
 }
-function extractTitle(body) {
+function extractTitle2(body) {
   const m = body.match(/^#\s+(.+?)\s*$/m);
   return m ? m[1] : null;
 }
@@ -32026,7 +32723,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.8.0";
+var VERSION = "0.7.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -32041,9 +32738,10 @@ await runPackServer({
         buildHelpTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
-        buildLessonsTool(server, env),
+        buildLessonsTool(env),
         buildHandoffTool(env),
-        buildSummaryTool(env)
+        buildSummaryTool(env),
+        buildAdrTool(env)
       ]
     };
   }
