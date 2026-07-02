@@ -140,10 +140,25 @@ export const GateCommands = z.object({
 });
 export type GateCommands = z.infer<typeof GateCommands>;
 
+/**
+ * ADR corpus configuration (ADR-0027), owned by the `adr` tool. `dir` points
+ * at the corpus (project-root-relative; wins over detection), `index_file` at
+ * the file carrying the managed corpus-index block. Both optional — resolution
+ * falls back to detection (`docs/adr/`, `docs/decisions/`, `adr/`) and then
+ * the `docs/adr/` default.
+ */
+export const AdrConfig = z.object({
+  dir: z.string().min(1).optional(),
+  index_file: z.string().min(1).optional(),
+});
+export type AdrConfig = z.infer<typeof AdrConfig>;
+
 export const Config = z.object({
   base_branch: z.string().default("dev"),
   tracker_url_template: z.string().nullable().default(null),
   gates: GateCommands.optional(),
+  /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
+  adr: AdrConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
   statuses: Statuses.default(DEFAULT_STATUSES),
   /**

@@ -48,6 +48,7 @@ into 0001/0013/0018.
 | [0024](./adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 | [0025](./adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
 | [0026](./adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
+| [0027](./adr/0027-tool-backed-adr-lifecycle.md) | Tool-backed ADR lifecycle | Accepted |
 | [0028](./adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall/capture expansion | Accepted |
 | [0029](./adr/0029-refactoring-command-family.md) | Refactoring command family: read → plan → apply under hard rails | Accepted |
 
