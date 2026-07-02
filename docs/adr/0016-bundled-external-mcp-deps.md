@@ -14,7 +14,7 @@
 ## Context
 
 Beyond its own server, Marvin's `.mcp.json` registers two **external** MCP servers that the
-`research` agent and the docs-search flows lean on:
+`marvin-researcher` agent and the docs-search flows lean on:
 
 - **context7** — up-to-date library documentation, run locally via `npx`.
 - **gitmcp** — repository documentation, reached as a remote service.

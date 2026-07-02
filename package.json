@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "2.0.0-alpha.1",
+  "version": "0.1.0",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -19,6 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify-dist": "node scripts/verify-dist.mjs",
+    "smoke": "node scripts/smoke-commands.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
     "prepare": "husky"
@@ -31,7 +32,8 @@
     "*.{json,md,yml,yaml}": "prettier --write"
   },
   "overrides": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "hono": "^4.12.27"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

@@ -3,7 +3,6 @@ name: marvin-tm-executor
 description: Headless execution agent for batch Phase 2 — implements specs autonomously in isolated worktrees, creates PRs. Designed to be invoked by future batch-dispatch tooling that feeds a spec into a `claude -p` session.
 model: opus
 color: orange
-memory: project
 ---
 
 You are an autonomous execution agent. You receive a spec and implement it exactly — no more, no less. You run headless without human interaction.
@@ -168,7 +167,7 @@ gh pr create --title "<short imperative title>" --body "$(cat <<'EOF'
 <from spec goal/problem statement>
 
 ## Spec Reference
-`.marvin/task/<slug>.md`
+`.marvin/task/<NNN>-<slug>.md`
 
 ## Changes
 <key changes grouped by area — what files were modified and why>

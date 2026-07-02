@@ -1,6 +1,6 @@
 ---
 name: sec-ci
-description: Audit CI/CD pipelines for security risks across GitHub Actions, GitLab CI, CircleCI, Jenkins, and similar configurations — pinned actions, least-privilege tokens, secret exposure, untrusted inputs, artifact tampering, cache poisoning. Use when the user says "check CI security", "audit pipeline", "review GitHub Actions", "harden workflows", "supply chain security", "SLSA", or before enabling a new workflow or granting a runner elevated credentials.
+description: Audit CI/CD pipelines for security risks across GitHub Actions, GitLab CI, CircleCI, Jenkins, and similar configurations — pinned actions, least-privilege tokens, secret exposure, untrusted inputs, artifact tampering, cache poisoning. Use when the user says "check CI security", "audit pipeline", "review GitHub Actions", "harden workflows", "supply chain security", "SLSA", "marvin audit the CI pipeline", or before enabling a new workflow or granting a runner elevated credentials.
 ---
 
 # CI/CD Pipeline Security Audit

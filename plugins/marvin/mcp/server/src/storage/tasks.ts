@@ -1,6 +1,13 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { TaskFrontmatter, type Task, type TaskStatus, type TaskType } from "./schema.js";
+import {
+  TaskFrontmatter,
+  requireRole,
+  statusKeys,
+  type Config,
+  type Task,
+  type TaskType,
+} from "./schema.js";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.js";
 import { buildFilename, parseSeq, slugify } from "./slug.js";
 
@@ -17,11 +24,14 @@ export interface ReadTasksResult {
 /**
  * Read every task file in the tasks directory. Files with broken
  * frontmatter are collected separately, so the rest of the surface can
- * keep working even when one file is in a bad state.
+ * keep working even when one file is in a bad state. Status keys are
+ * validated against the configured set (ADR-0026) — an unknown status is
+ * surfaced through the same malformed channel, never silently dropped.
  */
-export function readAllTasks(tasksDir: string): ReadTasksResult {
+export function readAllTasks(tasksDir: string, config: Config): ReadTasksResult {
   if (!existsSync(tasksDir)) return { tasks: [], malformed: [] };
 
+  const keys = statusKeys(config);
   const tasks: Task[] = [];
   const malformed: MalformedTask[] = [];
 
@@ -43,6 +53,13 @@ export function readAllTasks(tasksDir: string): ReadTasksResult {
       malformed.push({
         filename,
         reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`,
+      });
+      continue;
+    }
+    if (!keys.includes(parsed.data.status)) {
+      malformed.push({
+        filename,
+        reason: `unknown status "${parsed.data.status}" — configured statuses: ${keys.join(", ")}`,
       });
       continue;
     }
@@ -80,20 +97,22 @@ export interface CreatedTask {
 
 /**
  * Create a new task file. Returns the persisted task with its absolute path.
+ * The initial status is the first configured todo-role status (ADR-0026).
  */
-export function createTask(tasksDir: string, input: NewTaskInput): CreatedTask {
+export function createTask(tasksDir: string, config: Config, input: NewTaskInput): CreatedTask {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir);
+  const { tasks } = readAllTasks(tasksDir, config);
   const id = nextSeq(tasks);
   const slug = slugify(input.title);
   const filename = buildFilename(id, input.tracker_id, slug);
   const branch = filename.replace(/\.md$/, "");
   const now = new Date().toISOString();
+  const status = requireRole(config, "todo").key;
 
   const frontmatter: Record<string, string | undefined> = {
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     tracker_id: input.tracker_id,
     branch,
@@ -109,7 +128,7 @@ export function createTask(tasksDir: string, input: NewTaskInput): CreatedTask {
   const parsed = TaskFrontmatter.parse({
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     ...(input.tracker_id ? { tracker_id: input.tracker_id } : {}),
     branch,
@@ -120,13 +139,29 @@ export function createTask(tasksDir: string, input: NewTaskInput): CreatedTask {
 }
 
 /**
- * Persist a status change for a task. Rewrites the file atomically.
+ * Persist a status change for a task. `newStatus` is a configured status key
+ * (ADR-0026); transition semantics live in the callers. Rewrites the file.
  */
-export function updateStatus(tasksDir: string, task: Task, newStatus: TaskStatus): Task {
+export function updateStatus(tasksDir: string, task: Task, newStatus: string): Task {
   const updated = new Date().toISOString();
   const next: TaskFrontmatter = {
     ...task.frontmatter,
     status: newStatus,
+    updated,
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
+
+/**
+ * Persist the PR URL captured at `gh pr create` onto a task's frontmatter
+ * (ADR-0024). The URL is stored verbatim, never live-resolved; bumps `updated`.
+ */
+export function setTaskPr(tasksDir: string, task: Task, prUrl: string): Task {
+  const updated = new Date().toISOString();
+  const next: TaskFrontmatter = {
+    ...task.frontmatter,
+    pr: prUrl,
     updated,
   };
   writeTask(tasksDir, { ...task, frontmatter: next });
@@ -141,6 +176,7 @@ function writeTask(tasksDir: string, task: Task): void {
     title: task.frontmatter.title,
     tracker_id: task.frontmatter.tracker_id,
     branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
     created: task.frontmatter.created,
     updated: task.frontmatter.updated,
   };

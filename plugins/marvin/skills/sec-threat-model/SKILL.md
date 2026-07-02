@@ -1,6 +1,6 @@
 ---
 name: sec-threat-model
-description: Generate STRIDE-based threat models for a feature, service, or full application — data flows, trust boundaries, assets, threats per category (Spoofing, Tampering, Repudiation, Info disclosure, DoS, Elevation of privilege), existing mitigations, and residual risk. Use when the user says "threat model", "STRIDE analysis", "attack surface", "security architecture review", "what can go wrong?", or during design reviews for new features, integrations, or infrastructure. Produces a markdown threat-model document.
+description: Generate STRIDE-based threat models for a feature, service, or full application — data flows, trust boundaries, assets, threats per category (Spoofing, Tampering, Repudiation, Info disclosure, DoS, Elevation of privilege), existing mitigations, and residual risk. Use when the user says "threat model", "STRIDE analysis", "attack surface", "security architecture review", "what can go wrong?", "marvin threat model this", or during design reviews for new features, integrations, or infrastructure. Produces a markdown threat-model document.
 ---
 
 # Threat Modeling

@@ -31,13 +31,15 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 | Group | What | Count |
 |-------|------|-------|
-| _(bare)_ | core developer tools | 8 |
-| `pr-*` | pull-request operations | 2 |
+| _(bare)_ | core developer tools | 11 |
+| `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
-| `kanban-*` | lightweight task tracker | 13 |
+| `kanban-*` | lightweight task tracker | 11 |
 
-38 prompts total, all under `/marvin:`. The skill-backed groups (core, `pr-*`, `task-*`, `sec-*`) have all three doors; the `kanban-*` group is MCP-only (thin tool wrappers, no SKILL.md).
+41 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+
+See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
 ### Core developer tools
 
@@ -47,7 +49,9 @@ Language-agnostic, used by every engineer.
 |---------|-------------|
 | `/marvin:commit` | Generate conventional commit messages with sensitive file detection |
 | `/marvin:pr-create` | Create PRs with structured descriptions and pre-flight checks |
-| `/marvin:pr-review` | Code review by severity (critical, warning, suggestion) |
+| `/marvin:pr-review` | Review a PR on GitHub and post the review (inline comments by severity) |
+| `/marvin:pr-resolve` | Resolve unresolved PR review threads — plan, fix, push, reply + resolve |
+| `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull |
 | `/marvin:debug` | Systematic root-cause analysis with hypotheses |
 | `/marvin:adr` | Create Architecture Decision Records |
 | `/marvin:changelog` | Generate changelog from git history |
@@ -55,8 +59,11 @@ Language-agnostic, used by every engineer.
 | `/marvin:migration-plan` | Plan migrations with risks and rollback strategy |
 | `/marvin:explain` | Explain code, architecture, and execution flow |
 | `/marvin:docs-search` | Search and synthesize project documentation |
+| `/marvin:handoff` | Capture full context into `.marvin/handoff/` + a prompt to continue in a fresh session |
+| `/marvin:handoff-list` | List the session-continuation handoff documents, newest first |
+| `/marvin:help` | Project dashboard + the full command index (filter with `/marvin:help <group>`) |
 
-**Agents:** `onboarding-guide`, `research`.
+**Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 
 **External MCP servers also registered:** `context7` (library docs lookup), `gitmcp` (GitHub repository docs).
 
@@ -77,7 +84,7 @@ OWASP Top 10, dependency audits, compliance checks.
 | `/marvin:sec-compliance` | OWASP ASVS compliance checking (L1/L2/L3) |
 | `/marvin:sec-pentest` | Generate application-specific penetration testing checklist |
 
-**Agent:** `security-reviewer`.
+**Agent:** `marvin-auditor`.
 
 ### Task pipeline — `task-*`
 
@@ -89,9 +96,9 @@ Spec-driven pipeline — separates human decisions from automated execution.
 | `/marvin:task-implement` | Execute a ready spec interactively in the current session |
 | `/marvin:task-verify` | Run quality gates (tests, lint, type-check, build) with stack auto-detection |
 | `/marvin:task-deliver` | Commit + PR, gated on verification passing |
-| `/marvin:task-fix-pr` | Apply PR review comments as code fixes |
+| `/marvin:task-summary` | Aggregate a finished task's criteria, gates, commits, and lessons into one summary |
 
-**Agents:** `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`.
+**Agents:** `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer` (the autonomous twin of `/marvin:pr-resolve`).
 
 > Batch dispatch (the old `dispatch.sh`) was removed; it will return as a dedicated feature later, designed against the MCP boundary.
 
@@ -109,23 +116,23 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 | `/marvin:kanban-list` | List all tasks grouped by status |
 | `/marvin:kanban-status` | Current branch + WIP tasks |
 | `/marvin:kanban-help` | Project dashboard |
-| `/marvin:kanban-commit` | Commit with task context |
-| `/marvin:kanban-create-pr` | Open PR with task context |
 
-Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`) — the default working directory per [ADR-0009](./docs/adr/0009-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars.
+Committing and opening PRs for board tasks goes through the kanban-aware `/marvin:commit` and `/marvin:pr-create` — they pick up the linked task automatically (`Refs:` footer, task-prefixed PR title, PR-URL capture; [ADR-0025](./docs/adr/0025-kanban-board-only.md)).
+
+Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`, `statuses`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars. Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)): configure your tracker's vocabulary (`{ key, role, tracker_status? }`) and the lifecycle commands drive it by role; a generic `move` action on the `task` tool reaches every configured status. `base_branch` auto-detects from `origin/HEAD` when no config exists.
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 
 ## Development lifecycle
 
 ```
-Plan                  Code               Review            Secure              Document             Ship                Pipeline
-├─ marvin:adr         ├─ marvin:debug    └─ marvin:        ├─ marvin:sec-scan  ├─ marvin:readme     ├─ marvin:commit    ├─ marvin:task-start
-└─ marvin:            ├─ marvin:explain     pr-review      ├─ marvin:sec-      ├─ marvin:changelog  └─ marvin:pr-create ├─ marvin:task-implement
-   migration-plan     └─ marvin:                              secrets          └─ marvin:                              ├─ marvin:task-verify
-                         docs-search                       ├─ marvin:sec-deps     docs-search                          ├─ marvin:task-deliver
-                                                            ├─ marvin:sec-gate                                          └─ marvin:task-fix-pr
-                                                            └─ ...
+Plan                Code              Secure             Document            Ship                  Pipeline
+├─ marvin:adr       ├─ marvin:debug   ├─ marvin:sec-scan ├─ marvin:readme    ├─ marvin:commit      ├─ marvin:task-start
+└─ marvin:          ├─ marvin:explain ├─ marvin:sec-     ├─ marvin:changelog ├─ marvin:pr-create   ├─ marvin:task-implement
+   migration-plan   └─ marvin:           secrets         └─ marvin:          ├─ marvin:pr-review   ├─ marvin:task-verify
+                       docs-search    ├─ marvin:sec-deps    docs-search       ├─ marvin:pr-resolve  └─ marvin:task-deliver
+                                      ├─ marvin:sec-gate                      └─ marvin:pr-merge
+                                      └─ ...
 ```
 
 For day-to-day task tracking, layer the `kanban-*` commands on top of either workflow.
@@ -159,6 +166,13 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0017](./docs/adr/0017-adversarial-critic-gates.md) | Adversarial critic gates in the task pipeline | Accepted |
 | [0018](./docs/adr/0018-three-doors-instrument-taxonomy.md) | Three doors & instrument taxonomy | Accepted |
 | [0019](./docs/adr/0019-branching-and-pr-flow.md) | Branching model: release `main`, integration `dev`, changes via PRs | Accepted |
+| [0020](./docs/adr/0020-debugger-agent.md) | Root-cause analysis as the `marvin-debugger` agent | Accepted |
+| [0021](./docs/adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
+| [0022](./docs/adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
+| [0023](./docs/adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
+| [0024](./docs/adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
+| [0025](./docs/adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
+| [0026](./docs/adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
 
 ## Contributing
 

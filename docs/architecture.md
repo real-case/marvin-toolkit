@@ -92,8 +92,12 @@ flowchart LR
   VER -->|red| IMPL
   VER -->|green| DC["diff-critic<br/>(red-team)"]
   DC --> DEL["task-deliver<br/>commit + PR"]
-  DEL --> FIX["task-fix-pr<br/>apply review"]
+  DEL --> PR["pr-* family<br/>review · resolve · merge"]
 ```
+
+After delivery the PR is handled by the `pr-*` command family — `pr-review` posts a
+GitHub review, `pr-resolve` turns the unresolved threads into fixes, and `pr-merge`
+lands it (`marvin-tm-review-fixer` is the autonomous twin of `pr-resolve`).
 
 - The **spec gate** ([ADR-0003](./adr/0003-tool-backed-dor.md)) zod-validates the
   spec's `spec-contract` block fail-closed — schema, file-path existence, and the
@@ -115,10 +119,9 @@ flowchart LR
 |-------|----------|
 | Plan | `adr`, `migration-plan` |
 | Code | `debug`, `explain`, `docs-search` |
-| Review | `pr-review` |
 | Secure | `sec-scan`, `sec-secrets`, `sec-deps`, `sec-gate`, … |
 | Document | `readme`, `changelog` |
-| Ship | `commit`, `pr-create` |
+| Ship | `commit`, `pr-create`, `pr-review`, `pr-resolve`, `pr-merge` |
 
 Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking.
 
@@ -133,6 +136,8 @@ at the project root, one subdirectory per command group
 | `.marvin/task/` | `task-*` | spec files + the current `verification.md` |
 | `.marvin/security/` | `sec-*` | scan / threat-model / compliance / pentest reports |
 | `.marvin/kanban/` | `kanban-*` | the task `.md` board |
+| `.marvin/memory/` | `lessons` | team-shared lessons-learned (`MEMORY.md` + lesson files) |
+| `.marvin/handoff/` | `handoff` | session-continuation handoff docs |
 | `.marvin/config.json` | `kanban-*` | `base_branch`, `tracker_url_template` |
 
 Project **deliverables** are deliberately not swept in: ADRs stay under `docs/adr/`,

@@ -60,6 +60,13 @@ export interface ToolDef<TInput extends z.ZodTypeAny = z.ZodTypeAny> {
   description: string;
   inputSchema: TInput;
   handler: (input: z.infer<TInput>) => Promise<ToolResult>;
+  /**
+   * Optional tool `_meta` (ADR-0024). Carries `{ ui: { resourceUri } }` to bind
+   * a `ui://` widget resource to this tool for MCP Apps hosts. Every text-only
+   * tool omits it; the terminal ignores it. Passed verbatim to the MCP SDK's
+   * `registerTool` config `_meta`.
+   */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -78,4 +85,32 @@ export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;
   /** Optional flag — true if the tool call failed at the application level. */
   isError?: boolean;
+  /**
+   * Optional typed payload for rich hosts (ADR-0024). The terminal renders
+   * `content`; an MCP Apps host hands this to the widget bound via the tool's
+   * `meta.ui.resourceUri`. Must be a JSON object — the MCP `structuredContent`
+   * shape — and should mirror a `contracts/` schema. The MCP SDK forwards it
+   * untouched when the tool declares no `outputSchema`.
+   */
+  structuredContent?: Record<string, unknown>;
+}
+
+/**
+ * A static resource a pack server exposes (ADR-0024). The marvin widget layer
+ * uses these to serve `ui://<server>/<widget>` documents — the self-contained
+ * HTML an MCP Apps host renders in its iframe. `read` runs at request time
+ * (mirroring how SKILL.md bodies load), so the body can be a committed file read
+ * from the plugin root rather than baked into the committed server bundle.
+ */
+export interface ResourceDef {
+  /** Registration name / stable key. */
+  name: string;
+  /** URI clients request, e.g. `ui://marvin/help`. */
+  uri: string;
+  /** Optional human description for resource listings. */
+  description?: string;
+  /** Body MIME type. Defaults to `text/html` (the MCP Apps widget type). */
+  mimeType?: string;
+  /** Produce the resource body (e.g. the widget's bundled HTML). */
+  read: () => string | Promise<string>;
 }

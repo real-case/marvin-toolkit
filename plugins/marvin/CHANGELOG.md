@@ -4,6 +4,308 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.3.0] — 2026-07-02
+
+Statuses become project data ([ADR-0026](../../docs/adr/0026-configurable-status-model.md)):
+the board runs any tracker vocabulary while the lifecycle commands stay role-driven.
+
+### Changed (breaking — widget contracts)
+
+- **`TaskCard.status` is now `{ key, role }`** and the board counts are an **open
+  per-key record plus a closed per-role roll-up** (`TaskListPayload.counts` +
+  `role_counts`, `DashboardState.kanban_counts` + `kanban_role_counts`; the dashboard
+  `config` also carries the configured `statuses`). Shipped before the first ADR-0024
+  widget consumer on purpose — the structured-content tests are the reference consumers.
+- **Lifecycle transitions are role-driven.** `create`/`start`/`review`/`done` target the
+  first configured status of their role; candidate pickers filter by role. `review`
+  without a review-role status explains itself and points at `move`.
+- **Honest empty-candidate replies** — "no tasks in a …-role status" instead of the
+  misleading "Cancelled — no changes made" (audit finding 8), and `start` with an explicit
+  `taskId` now applies the same todo-role filter as the picker (finding 14).
+
+### Added
+
+- **`statuses` in `.marvin/config.json`** — `{ key, role, tracker_status? }[]` with role
+  invariants (todo/wip/done required, review/blocked optional, unique keys). Defaults to
+  the classic five (key == role), so existing boards parse unchanged; unknown status keys
+  in task files surface through the malformed-file channel with an explicit reason.
+- **Generic `move` action on the `task` tool** — transition a task to *any* configured
+  status (the previously unreachable `blocked` included, finding 5), resolving the task
+  like the other actions: explicit `taskId`, else the current branch's task, else a picker.
+- **`base_branch` auto-detection from `origin/HEAD`** when no config file exists
+  (finding 4's detection half) — main-based repos work on first run; a config file always
+  wins.
+
+## [0.2.0] — 2026-07-02
+
+The kanban group goes **board-only** ([ADR-0025](../../docs/adr/0025-kanban-board-only.md)):
+git operations move out of the tracker and into the task-aware core skills.
+
+### Removed (breaking)
+
+- **Prompts `/marvin:kanban-commit` and `/marvin:kanban-create-pr`** — use
+  `/marvin:commit` and `/marvin:pr-create`, which now pick up board-task context
+  automatically (kanban 13 → 11 commands, 41 prompts total).
+- **The `git` MCP tool.** The PR lifecycle is prose-driven (ADR-0023); the one
+  deterministic piece that had to survive — PR-URL capture onto task frontmatter
+  (ADR-0024 widget data) — moved to the `task` tool as the new `link-pr` action.
+
+### Added
+
+- **`task` tool `link-pr` action** — validates an http(s) PR URL and persists it
+  onto the linked task's frontmatter via `setTaskPr` (explicit `taskId` wins,
+  otherwise the task whose `branch` matches the current branch; a typed error
+  when neither resolves).
+- **`pr` column in `task list`** — the stored PR URL renders as a link in the
+  board table, and the structured payload carries the populated `PrRef`.
+
+### Changed
+
+- **`commit` skill is kanban-aware** — when the current branch belongs to a board
+  task, the commit message gains a `Refs: <id>[, <tracker_id>]` footer.
+- **`pr-create` skill is kanban-aware** — task-prefixed title (`[<tracker_id>]`
+  falling back to `[<id>]`), `Task:`/`Tracker:` body lines, an explicit
+  `git push -u origin <branch>` step, and — after creation — a `task link-pr`
+  call plus an offer to move the task to review.
+- The `task` and `help` tool descriptions now name the **kanban board**, so chat
+  phrases like "add a bug to the board" keep routing to the tracker (the group
+  has no skills; the descriptions are its only auto-discovery surface).
+
+## [0.1.0] — 2026-07-01
+
+First public release. Marvin is one Claude Code plugin backed by a single MCP server,
+exposing the whole development lifecycle under the `/marvin:` slash prefix. The version
+resets from the internal `2.0.0-alpha` line — which tracked the four-pack → single-plugin
+consolidation, never a shipped 1.x — to an honest pre-1.0 start (see ADR-0001).
+
+### Added
+
+- **Core developer tools** — `commit`, `debug`, `adr`, `changelog`, `readme`,
+  `migration-plan`, `explain`, `docs-search`, `handoff` (+ `handoff-list`), and `help`
+  (a registry-derived dashboard and full command index).
+- **Pull-request lifecycle (`pr-*`)** — `pr-create`, `pr-review`, `pr-resolve`, `pr-merge`.
+- **Spec-driven task pipeline (`task-*`)** — `task-start` (interactive spec co-creation with a
+  tool-backed Definition-of-Ready gate), `task-implement`, `task-verify` (concurrent quality
+  gates with stack auto-detection), `task-deliver` (delivery gated on verification), and
+  `task-summary`.
+- **Security scanners (`sec-*`)** — `sec-scan`, `sec-secrets`, `sec-deps`, `sec-gate`,
+  `sec-threat-model`, `sec-iac`, `sec-ci`, `sec-fix`, `sec-compliance`, `sec-pentest`.
+- **Kanban tracker (`kanban-*`)** — a lightweight per-project board with interactive
+  MCP-elicit forms (13 commands).
+- **Deterministic MCP tools** — `task`, `git`, `help`, `verify`, `spec`, `lessons`,
+  `handoff`, `summary` — used where determinism matters (file CRUD, git ops, quality gates,
+  the DoR contract, the lessons store).
+- **Nine subagents** — read-only auditors/critics and code-writing executors for the task
+  pipeline and research.
+- **43 prompts total**, reachable through three doors — chat auto-discovery, `/<command>`
+  markdown slash commands, and `/marvin:<command>` MCP prompts — all sharing one `SKILL.md`.
+
+### Notes
+
+- Distribution is git-tag → GitHub Release (no npm publish); install via the Claude Code
+  plugin marketplace (ADR-0014).
+- The committed `dist/server.js` is the shipped artifact; CI verifies it stays in sync on
+  every server change.
+
+## [2.0.0-alpha.30] — 2026-06-30
+
+Add the task-summary aggregator and make verification.md machine-readable.
+
+### Added
+
+- **`/marvin:task-summary`** — a "what was done" summary for a spec-pipeline task,
+  backed by the new `summary` MCP tool. Joins five already-typed sources for one spec —
+  the spec-contract `criteria`, the `verification.md` gate outcomes, the branch's git
+  log, the captured lessons, and the artifact links — into one `TaskSummary`
+  `structuredContent` payload plus a text fallback (ADR-0024, widget #3). Per-criterion
+  outcome is conservative: "pass" only when verification passed and the criterion has a
+  real (test/command) oracle; otherwise "unknown" — it never fabricates a per-AC verdict.
+  Prompt count 42 → 43.
+
+### Fixed
+
+- **`verify` now persists the `verify-result` block into `verification.md`.** The
+  machine-readable block previously lived only in the tool's return value, so a real
+  `task-verify` → `task-deliver` always blocked at the delivery gate (which reads the
+  block back from the file) with "no machine-readable verify-result block". The written
+  artifact now matches the returned text.
+
+### Changed
+
+- The spec-contract / host-bindings schemas and extractors moved from the `spec` tool
+  into a shared `storage/spec.ts`, so the `spec` DoR gate and the task-summary aggregator
+  read the same authoritative shape (no behaviour change to the gate).
+
+## [2.0.0-alpha.29] — 2026-06-30
+
+Make the dashboard command index registry-driven and filterable.
+
+### Added
+
+- **`/marvin:help [section]`** — the marvin dashboard now lists the **full** command index,
+  derived from the prompt registry (`PROMPTS`) and grouped by `core` / `pr` / `task` / `sec` /
+  `kanban`, instead of a hand-maintained list that only covered the kanban group. Pass a
+  section (e.g. `/marvin:help sec`) to filter to one group; an unknown section falls back to
+  the full index with a hint. Prompt count 41 → 42.
+
+### Changed
+
+- The `help` tool's `## Commands` section and the `DashboardState.command_groups` payload are
+  now the single registry-derived source, so the dashboard can no longer drift from the real
+  command set.
+
+## [2.0.0-alpha.28] — 2026-06-29
+
+Add a read side for handoffs and make the handoff artifact machine-readable.
+
+### Added
+
+- **`/marvin:handoff-list`** — list the session-continuation handoff documents under
+  `.marvin/handoff/`, newest first. A thin wrapper over the new `handoff` MCP tool, which
+  returns both a text listing (terminal fallback) and a typed `HandoffListPayload`
+  `structuredContent` for MCP Apps hosts (ADR-0024, the handoff widget #5). Prompt count
+  40 → 41.
+- **Handoff frontmatter** — the `/marvin:handoff` skill now opens each handoff document with
+  a YAML frontmatter block (`id`, `slug`, `objective`, `branch`, `base?`, `pr_url?`,
+  `spec_slug?`, `created`) validated against the `HandoffCard` data contract. The list source
+  reads it directly — no prose parsing. Legacy handoffs without frontmatter are surfaced as
+  malformed rather than dropped.
+
+## [2.0.0-alpha.27] — 2026-06-28
+
+Add a session-handoff command.
+
+### Added
+
+- **`/marvin:handoff`** — capture the current work's full, inspected context into a
+  durable handoff document at `.marvin/handoff/<NNN>-<slug>.md` (numeric-prefixed,
+  creation order) and emit a short paste-ready prompt that points a fresh session at
+  it. Self-sufficient by design — objective, repository state, decisions and their
+  rationale, relevant files, next steps, and open questions — so the next session
+  resumes with no loss of context. A bare core command with all three doors; adds the
+  `.marvin/handoff/` working-dir subdir (ADR-0007). Prompt count 39 → 40.
+
+## [2.0.0-alpha.26] — 2026-06-28
+
+Unify the pull-request commands into one `pr-*` lifecycle family.
+
+### Added
+
+- **`/marvin:pr-merge`** — merge a PR (`gh pr merge --delete-branch`, repo's default
+  method), then check out the PR's base branch and pull, leaving the working copy
+  clean on an up-to-date base. Confirms before merging.
+
+### Changed
+
+- **`pr-*` is now the full PR lifecycle** ([ADR-0023](../../docs/adr/0023-pr-command-family.md)):
+  `pr-create` (open) · `pr-review` (review) · `pr-resolve` (resolve) · `pr-merge` (merge).
+- **`/marvin:pr-review` now reviews on GitHub** — fetches the PR diff, reviews it, and
+  submits a GitHub review (summary + inline comments by severity) instead of printing a
+  local, chat-only review. For a local read-only pre-commit review use `/code-review` or
+  the `marvin-auditor` agent. `disable-model-invocation` is removed so "review the PR"
+  triggers it.
+
+### Removed / renamed
+
+- **`/marvin:task-fix-pr` → `/marvin:pr-resolve`** (BREAKING) — the review-feedback
+  command moves out of the `task-*` pipeline into the `pr-*` family. Beyond the rename it
+  now fetches only the **unresolved** review threads (GraphQL `reviewThreads.isResolved`),
+  drafts a change plan first, and after pushing fixes **replies to each thread and resolves
+  it** (`resolveReviewThread`) — spec-conflicts stay open. The autonomous twin
+  `marvin-tm-review-fixer` is updated in lock-step.
+
+## [2.0.0-alpha.25] — 2026-06-22
+
+Spec files now sort by creation order.
+
+### Changed
+
+- **Numeric-prefixed spec filenames** ([ADR-0022](../../docs/adr/0022-numbered-spec-files.md)) —
+  `/marvin:task-start` now writes specs as `<NNN>-<slug>.md` (zero-padded sequence = highest
+  existing prefix in the spec dir + 1), so `.marvin/task/` lists in creation order instead of
+  alphabetically by topic. The number is filename-only: `slug` stays the spec's identity and the
+  `contract_sha` seal is unaffected.
+- **Prefix-tolerant slug resolution** — the `spec` tool's `depends_on` gate (new
+  `resolveSpecBySlug` helper) and the `task-implement` / `task-deliver` / `task-verify` skills now
+  resolve a slug to either `<slug>.md` (legacy, unnumbered) or `<NNN>-<slug>.md`, so existing
+  un-numbered specs keep working with no migration.
+
+## [2.0.0-alpha.24] — 2026-06-22
+
+Enforce the read-only / read-mostly agent contracts that were previously prose-only (honor-system).
+
+### Security
+
+- **Agent `tools:` allowlists** — six agents now declare a `tools:` frontmatter allowlist so Claude
+  Code enforces their constrained access instead of granting the full default toolset (a subagent that
+  omits `tools:` silently inherits *every* tool, so the prior "read-only" contracts were honor-system
+  only):
+  - `marvin-guide`, `marvin-tm-writer` → `Read, Glob, Grep`
+  - `marvin-auditor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic` → `Read, Glob, Grep, Bash`
+    (read-only `git`)
+  - `marvin-debugger` (read-mostly) → `Read, Glob, Grep, Bash, Write, mcp__plugin_marvin_marvin__lessons`
+    (may write a throwaway reproducer and record a lesson)
+
+  Execution agents (`marvin-tm-executor`, `marvin-tm-review-fixer`) and `marvin-researcher`
+  intentionally omit `tools:` and keep the full toolset.
+
+### Fixed
+
+- **Bogus `LS` tool reference** — `marvin-auditor`, `marvin-guide`, `marvin-tm-writer`, and
+  `marvin-tm-spec-critic` advertised a non-existent `LS` tool in their Capabilities prose (`Glob`
+  superseded `LS`); corrected the prose and omitted it from the allowlists.
+- **`marvin-tm-spec-critic` capability drift** — its prose claimed read-only `Read, Glob, Grep` but
+  Step 2 runs `git log`; `Bash` added to both the stated contract and the allowlist.
+
+## [2.0.0-alpha.23] — 2026-06-22
+
+Bugfix block + a lessons-learned feedback loop (see
+[ADR-0020](../../docs/adr/0020-debugger-agent.md),
+[ADR-0021](../../docs/adr/0021-lessons-feedback-loop.md)).
+
+### Added
+
+- **`marvin-debugger` agent** — hypothesis-driven root-cause analysis as a fresh-context,
+  read-mostly agent, now the single source of the debugging methodology. Invoked from `task-start`
+  Step 3B, the `/marvin:debug` skill (now a thin door), and as the executor's fallback when a fix
+  stalls. Prescribes a minimal fix + regression test; never applies it.
+- **`lessons` MCP tool + `.marvin/memory/` store** — a tool-backed, git-committed, team-shared
+  lessons-learned memory. `action: "add"` captures a typed lesson (`bug-pattern` / `gotcha` /
+  `convention` / `pitfall` / `process`); `action: "search"` recalls relevant ones. Written by
+  `marvin-debugger` (on reflect) and `task-deliver` (retrospective), read by `task-start` at
+  intake — the pipeline's first backward feedback channel.
+
+### Changed
+
+- **`/marvin:debug` and `task-start` Step 3B** dispatch `marvin-debugger` instead of carrying two
+  duplicated copies of the root-cause methodology (which would have drifted).
+- **`task-deliver`** gains a retrospective step that captures a lesson after a successful ship.
+- **`task-start` Step 1.3** recalls prior lessons at intake so past mistakes inform new specs.
+
+### Removed
+
+- **The inert `memory: project` field** from all agents — it declared a per-agent native-memory
+  capability nothing curated; the shared `.marvin/memory/` store is the single memory layer now.
+
+### Fixed
+
+- **Server `VERSION` const** was left at `alpha.21` by the `alpha.22` agent-rename release while
+  the manifests moved to `alpha.22`; realigned here (all now `alpha.23`).
+
+## [2.0.0-alpha.22] — 2026-06-22
+
+Agent naming convention — every agent now carries the `marvin-` prefix plus a
+single role-profession, so names cannot collide with agents from other plugins.
+
+### Changed
+
+- **The three unprefixed agents are renamed:** `research` → `marvin-researcher`,
+  `onboarding-guide` → `marvin-guide`, `security-reviewer` → `marvin-auditor`. The
+  five `marvin-tm-*` agents already satisfied the convention and are unchanged. This
+  renames the agent invocation identifier — anything that referenced the old names
+  (e.g. `subagent_type: "research"`) must use the new name. Cross-references in the
+  agents, README, and ADR-0006/0016 were updated in lock-step.
+
 ## [2.0.0-alpha.21] — 2026-06-16
 
 Tool-backed delivery gate (see
@@ -421,5 +723,5 @@ four-pack, per-pack-server design).
 
 - All 10 skills in `skills/<name>/SKILL.md` (`mn.commit`, `mn.pr`, `mn.review`, `mn.debug`, `mn.adr`, `mn.changelog`, `mn.readme`, `mn.migration-plan`, `mn.explaining-code`, `mn.docs-search`).
 - All 10 `/mn.*` markdown slash commands under `commands/` — short aliases that delegate to the same SKILL.md.
-- Agents (`onboarding-guide`, `research`) — unchanged.
+- Agents (`marvin-guide`, `marvin-researcher`) — unchanged.
 - External MCP servers (`context7`, `gitmcp`) — registered alongside `marvin-core`.

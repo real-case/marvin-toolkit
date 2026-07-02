@@ -6,15 +6,15 @@
   },
   "metadata": {
     "description": "Open plugin marketplace for Claude Code — the Marvin toolkit as a single MCP-first plugin covering the development lifecycle",
-    "version": "2.0.0-alpha.1",
+    "version": "0.1.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
     {
       "name": "marvin",
       "source": "./plugins/marvin",
-      "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools, the task-* spec pipeline, sec-* security scanners, and a kanban-* task tracker",
-      "version": "2.0.0-alpha.21",
+      "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools, the pr-* pull-request lifecycle, the task-* spec pipeline, sec-* security scanners, and a kanban-* task tracker",
+      "version": "0.3.0",
       "category": "productivity",
       "keywords": [
         "marvin",
@@ -22,6 +22,7 @@
         "commit",
         "pr",
         "review",
+        "handoff",
         "debug",
         "adr",
         "changelog",

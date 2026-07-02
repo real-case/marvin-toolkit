@@ -498,6 +498,27 @@ test("a spec depending on a missing sibling blocks", async () => {
   }
 });
 
+test("a depends_on slug resolves a numbered sibling file (NNN-<slug>.md)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-spec-dep-num-"));
+  try {
+    writeFileSync(join(dir, "CLAUDE.md"), "# host\n");
+    mkdirSync(join(dir, "specs"), { recursive: true });
+    // The sibling on disk carries the ordering prefix; depends_on names the bare slug.
+    writeFileSync(
+      join(dir, "specs", "007-shipped-sib.md"),
+      `---\nslug: shipped-sib\ntype: feature\nstatus: shipped\ncreated: 2026-06-14\n---\n# shipped-sib\n`,
+    );
+    const { parsed } = await callSpec({
+      specContent: withDependsOn("shipped-sib"),
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(find(parsed, "depends-on").status, "pass");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a host-bindings block is accepted (advisory)", async () => {
   const hb = "```yaml host-bindings\nspec_location: specs/\ngates:\n  test: npm test\n```\n\n";
   const content = VALID_FEATURE.replace("## Data & Config", hb + "## Data & Config");

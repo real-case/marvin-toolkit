@@ -76,6 +76,17 @@ export function currentBranch(cwd?: string): string | null {
   return r.ok && r.value ? r.value : null;
 }
 
+/**
+ * The remote's default branch, read from `origin/HEAD` (e.g. "main").
+ * Returns null when origin/HEAD is unset (no remote, or never fetched).
+ */
+export function defaultBranchFromOrigin(cwd?: string): string | null {
+  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
+
 export function hasUncommittedChanges(cwd?: string): boolean {
   const r = git(["status", "--porcelain"], cwd);
   return r.ok && r.value.length > 0;

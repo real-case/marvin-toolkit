@@ -1,6 +1,6 @@
 ---
 name: task-start
-description: Start work on a task through a structured dialogue that produces immutable, testable specs for features and bug fixes. Drives exhaustive context capture — codebase grounding, verified stack, test harness, a file-change allowlist, interface/data/config contract, acceptance criteria bound to their proofs — runs a red-team critic, then a tool-backed Definition-of-Ready gate before dispatch. Use when the user says "start a task", "begin work on", "spec this out", "define the task", "/marvin:task-start", or before dispatching work to headless taskmaster agents. Output lands under .marvin/task/.
+description: Start work on a task through a structured dialogue that produces immutable, testable specs for features and bug fixes. Drives exhaustive context capture — codebase grounding, verified stack, test harness, a file-change allowlist, interface/data/config contract, acceptance criteria bound to their proofs — runs a red-team critic, then a tool-backed Definition-of-Ready gate before dispatch. Use when the user says "start a task", "begin work on", "spec this out", "define the task", "/marvin:task-start", "marvin start a new task", "marvin new task", or before dispatching work to headless taskmaster agents. Output lands under .marvin/task/.
 ---
 
 # Spec Create
@@ -53,8 +53,9 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - `git log --oneline -10` — recent activity
 - **Dependency manifest** — whatever the host actually uses: `package.json`, `pyproject.toml` / `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml` / `build.gradle`, `composer.json`, `Gemfile`, `*.csproj`, `mix.exs`, `pubspec.yaml`, … and a root `Makefile`. Detect by what is present — do not assume one of a fixed five. You will **verify** the stack-compliance marker against this, not guess it.
 - **CI config** — `.github/workflows/*`, `.gitlab-ci.yml`, etc. — to learn which gates actually run, so acceptance criteria align with enforcement.
-- **Existing specs** — list specs in `.marvin/task/` (the default home) and any host spec dir (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`); read frontmatter. Detect duplication and any sibling spec this task would depend on. The DoR gate now **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status.
+- **Existing specs** — list specs in `.marvin/task/` (the default home) and any host spec dir (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`); read frontmatter. Spec files are named `<NNN>-<slug>.md` (numeric-prefixed so the directory sorts by creation order); identify each by its frontmatter `slug`, not the number. Detect duplication and any sibling spec this task would depend on. The DoR gate now **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status.
 - `VISION.md` if present — future direction (informs variant evaluation).
+- **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the task) to recall lessons captured on past tasks and bug fixes in this repo (`.marvin/memory`). A relevant `bug-pattern` or `gotcha` becomes a constraint, a test to add, or an explicit non-goal — this is how the pipeline stops repeating mistakes (ADR-0021). If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
 - **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. These populate the spec's **host-bindings** block (`spec_location`, `decision_record`, `merge_obligations`, `gates`) so the artifact conforms to the host instead of importing marvin's layout.
 
 ### 1.4 Clarifying questions & dimension sweep
@@ -424,9 +425,11 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section. If Task
 
 2. **Choose the location.** marvin's own home for specs is `.marvin/task/` — use it by default. But if the host repo already keeps specs by a convention of its own — `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`, or a directory named in the host's `CONTRIBUTING` — prefer that, so the artifact conforms to the host instead of importing marvin's layout. Propose the chosen directory and confirm it with the user. `/marvin:task-implement` and `/marvin:task-deliver` search `.marvin/task/` first, then those host conventions, so either location resolves automatically.
 
-3. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). If `<chosen-dir>/{slug}.md` already exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
+3. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). Check the chosen dir for an existing file whose slug part matches — i.e. any `{slug}.md` or `<NNN>-{slug}.md`. If one exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
 
-4. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — it must still PASS), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
+4. **Allocate the ordering number.** Spec files are written with a numeric prefix so the directory sorts by creation order: `<NNN>-{slug}.md`. Compute `<NNN>` as the **highest leading-integer prefix already present** in `<chosen-dir>` (across `*.md`) **plus one**, zero-padded to **at least 3 digits** (start at `001` when none exist; match a wider width if the dir already uses one — e.g. host RFC dirs). The number lives **only in the filename** — `slug` stays the spec's identity (do not add it to frontmatter; it is not part of the contract hash).
+
+5. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/<NNN>-{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — it must still PASS), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
 
 **Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`mode: "seal"`) on read and refuses a spec whose contract was edited after sealing.
 
@@ -447,30 +450,13 @@ If the bug cannot be reproduced, gather logs and traces. Do not proceed to root 
 
 ### Step 3B: Root Cause Analysis
 
-Trace the bug to its source using structured analysis:
+Dispatch the **`marvin-debugger`** agent (via Task-tool) with the reproduction from Step 2B and the symptom. It runs hypothesis-driven analysis in an isolated, evidence-first context and returns a structured report — **Evidence · Hypotheses · Root Cause (confirmed, at `file:line`) · Fix Approach · Regression Test · Siblings · Lesson** — that maps directly onto this spec's Root Cause Analysis, Fix Approach, and Regression Test Specification sections. (The full methodology lives in the agent; `/marvin:debug` is its other door — there is no third copy here to drift.)
 
-1. **Read the execution path** — the function where the error occurs, its callers and callees
-2. **Check history** — `git log --oneline -10 -- <file>`, `git blame -L <start>,<end> <file>`
-3. **Form hypotheses** with evidence:
+- **Root cause confirmed** → carry its findings into Step 6B; the confirmed mechanism drives the **File Change Plan**.
+- **UNCONFIRMED** → the agent returns its best-supported hypothesis and the exact next step. Resolve it first — an unconfirmed root cause is an **Open Question** (or `spike_required: true`), not a spec ready to dispatch.
+- The agent captures a `bug-pattern` lesson on reflect, so the next task recalls it at intake (ADR-0021).
 
-```
-Hypothesis 1 (most likely): {description}
-  Evidence for: {what supports this}
-  Evidence against: {what contradicts}
-  Verify by: {specific action}
-```
-
-4. **Verify the top hypothesis** — re-read code, add targeted logging, or write a minimal test
-5. **Confirm root cause** — document the specific files, lines, and mechanism. This drives the **File Change Plan**.
-
-**Common root-cause categories to consider:**
-- Null/undefined where data is expected
-- Type mismatch or schema drift
-- Race condition / timing issue
-- State mutation by unexpected caller
-- Environment delta (works locally, fails elsewhere)
-- Off-by-one / boundary edge case
-- Dependency change or API break
+If Task-tool is unavailable, run the analysis inline following the `marvin-debugger` methodology: read the execution path and callers, check history (`git log` / `git blame`), rank 2–3 evidence-backed hypotheses, verify the top one, and confirm the mechanism at specific files and lines.
 
 Also discover the **test harness** (command + location) as in Step 2F — the regression test depends on it.
 
@@ -659,8 +645,9 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    - [ ] No dependency on an incomplete sibling spec
 
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
-2. **Location & slug collision** — same handling as 9F (default `.marvin/task/`; honor the host's convention if it has one).
-3. **Write & seal** — `status: ready`, write to `<chosen-dir>/{slug}.md`, re-run the `spec` tool on the written file (must PASS), stamp `contract_sha` from the result, confirm path.
+2. **Location & slug collision** — same handling as 9F (default `.marvin/task/`; honor the host's convention if it has one; collision check is slug-based across `{slug}.md` / `<NNN>-{slug}.md`).
+3. **Allocate the ordering number** — same as 9F: `<NNN>` = highest leading-integer prefix in `<chosen-dir>` + 1, zero-padded to ≥3 digits.
+4. **Write & seal** — `status: ready`, write to `<chosen-dir>/<NNN>-{slug}.md`, re-run the `spec` tool on the written file (must PASS), stamp `contract_sha` from the result, confirm path.
 
 **Immutability** — same carve-out as the feature flow.
 

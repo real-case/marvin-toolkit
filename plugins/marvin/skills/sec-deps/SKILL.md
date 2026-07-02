@@ -1,6 +1,6 @@
 ---
 name: sec-deps
-description: Audit project dependencies for known CVEs, license risks, unmaintained packages, typosquats, and transitive risk across package.json, requirements.txt, Gemfile, go.mod, Cargo.toml, pom.xml, and similar manifests. Use when the user says "check dependencies", "audit packages", "find vulnerable libraries", "npm audit", "pip-audit", "license check", "SBOM", or before releases and compliance reviews. Produces a prioritized findings report with upgrade paths.
+description: Audit project dependencies for known CVEs, license risks, unmaintained packages, typosquats, and transitive risk across package.json, requirements.txt, Gemfile, go.mod, Cargo.toml, pom.xml, and similar manifests. Use when the user says "check dependencies", "audit packages", "find vulnerable libraries", "npm audit", "pip-audit", "license check", "SBOM", "marvin audit dependencies", or before releases and compliance reviews. Produces a prioritized findings report with upgrade paths.
 ---
 
 # Dependency Security Audit

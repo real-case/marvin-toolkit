@@ -51,7 +51,7 @@ Move the **checkable** part of the DoR out of prose into a deterministic MCP too
   with a per-check breakdown and a machine-readable `spec-result` block.
 - **`task-start` Step 8 runs the tool as the gate.** On `FAIL` it loops back; it never writes the
   spec. The human-judgment items the tool cannot assess (is the goal specific? is each
-  `verified_by` *genuine*? does it contradict VISION.md?) remain a short checklist, and the
+  `verified_by` *genuine*? does it contradict `CLAUDE.md`?) remain a short checklist, and the
   semantic critic (`marvin-tm-spec-critic`) remains the complement — it judges meaning, the tool
   proves shape.
 - **Lifecycle.** `status` moves `draft → ready → in-progress → shipped | superseded`

@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files (.env, keys, tokens), drafts a Conventional Commits message, confirms with the user, and handles pre-commit hook failures cleanly. No AI attribution in messages. Use when the user says "commit", "commit this", "git commit", "stage and commit", "make a commit", "/marvin:commit", or when ready to persist changes after finishing a unit of work.
+description: Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files (.env, keys, tokens), drafts a Conventional Commits message, links the current kanban board task as a Refs footer, confirms with the user, and handles pre-commit hook failures cleanly. No AI attribution in messages. Use when the user says "commit", "commit this", "git commit", "stage and commit", "make a commit", "commit with task context", "kanban commit", "/marvin:commit", "marvin commit this", or when ready to persist changes after finishing a unit of work.
 ---
 
 Analyze staged git changes and generate a conventional commit message. Follow the full workflow below.
@@ -63,7 +63,28 @@ Otherwise, analyze the staged diff and generate a message per the format below.
 
 Match the existing commit style from `git log`.
 
-### 4. Confirm with User
+### 4. Link the Kanban Task
+
+If the project has a kanban board (task files under `.marvin/kanban/`), check whether the
+current branch belongs to a board task: compare `git branch --show-current` against the
+`branch` frontmatter field of the task files.
+
+If one matches, append a footer to the commit message (blank-line separated, after the body):
+
+```
+Refs: <id>
+```
+
+or, when the task has a `tracker_id`:
+
+```
+Refs: <id>, <tracker_id>
+```
+
+e.g. `Refs: 007, PROJ-123`. This applies to `$ARGUMENTS`-provided messages too. When there
+is no board or no task matches the branch, skip silently.
+
+### 5. Confirm with User
 
 Present:
 - List of staged files
@@ -71,7 +92,7 @@ Present:
 
 Ask the user to **Commit**, **Edit message**, or **Cancel**.
 
-### 5. Create Commit
+### 6. Create Commit
 
 Always use HEREDOC to preserve multiline formatting:
 
@@ -84,7 +105,7 @@ EOF
 )"
 ```
 
-### 6. Handle Pre-commit Hook Failure
+### 7. Handle Pre-commit Hook Failure
 
 If the commit fails due to a pre-commit hook:
 
@@ -94,7 +115,7 @@ If the commit fails due to a pre-commit hook:
 4. Create a **new** commit — never `--amend` (the failed commit didn't land, amending would modify the previous one)
 5. Never use `--no-verify`
 
-### 7. Verify
+### 8. Verify
 
 ```bash
 git status

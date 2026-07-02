@@ -10,8 +10,8 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
  *    the same prose under `/marvin:<name>` (frontmatter stripped at
  *    request time).
  *  - **inline-body** (kanban group): thin wrappers that just instruct the
- *    model to call the matching MCP tool (`task` / `git` / `help`) with the
- *    right pre-fills. Bodies are one sentence, so a SKILL.md would be noise.
+ *    model to call the matching MCP tool (`task` / `help`) with the right
+ *    pre-fills. Bodies are one sentence, so a SKILL.md would be noise.
  *
  * Naming scheme: `/marvin:<group>-<command>`. Singletons stay bare
  * (`commit`, `debug`). See docs/adr/0003-single-plugin-consolidation.md.
@@ -40,8 +40,20 @@ export const PROMPTS: PromptDef[] = [
   {
     name: "pr-review",
     description:
-      "Thorough code review covering bugs, logic errors, security issues, performance, readability, and style conformance. Findings grouped by severity with suggested fixes.",
+      "Review a pull request on GitHub and post the review there — fetch the diff, review for bugs, security, performance, and style, then submit a GitHub review with inline comments grouped by severity.",
     skill: "pr-review",
+  },
+  {
+    name: "pr-resolve",
+    description:
+      "Resolve open PR review feedback — fetch the unresolved review threads, draft a change plan, apply minimal fixes, push, then reply to each thread and mark it resolved.",
+    skill: "pr-resolve",
+  },
+  {
+    name: "pr-merge",
+    description:
+      "Merge a pull request, then return to the base branch with the merge pulled in — confirm mergeability, merge via gh (delete the head branch), check out the base branch (e.g. dev) and pull.",
+    skill: "pr-merge",
   },
   {
     name: "debug",
@@ -83,6 +95,27 @@ export const PROMPTS: PromptDef[] = [
       "Search and retrieve relevant documentation from the codebase and external sources — ADRs, READMEs, runbooks, configs.",
     skill: "docs-search",
   },
+  {
+    name: "handoff",
+    description:
+      "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
+    skill: "handoff",
+  },
+  {
+    // Thin tool wrapper (inline body) — the read side of the handoff group has
+    // no workflow prose, so it calls the `handoff` MCP tool directly (ADR-0024).
+    name: "handoff-list",
+    description: "List the session-continuation handoff documents under .marvin/handoff/.",
+    body: callTool("handoff", { action: "list" }),
+  },
+  {
+    // Thin tool wrapper (inline body) — the marvin dashboard + command index,
+    // derived from this registry (ADR-0024). Optional `section` filter.
+    name: "help",
+    description:
+      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+  },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
@@ -110,10 +143,12 @@ export const PROMPTS: PromptDef[] = [
     skill: "task-deliver",
   },
   {
-    name: "task-fix-pr",
+    // Thin tool wrapper (inline body) — aggregates a spec's "what was done"
+    // summary from already-typed sources (ADR-0024); no workflow prose.
+    name: "task-summary",
     description:
-      "Apply pull-request review feedback — fetch comments via gh, classify each as actionable / discussion / out-of-scope, make code changes, commit, push, and reply to each thread.",
-    skill: "task-fix-pr",
+      "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons and links.",
+    body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble — call the tool and present its result.",
   },
 
   // ── sec (security) ───────────────────────────────────────────────────
@@ -233,15 +268,5 @@ export const PROMPTS: PromptDef[] = [
     name: "kanban-help",
     description: "Marvin tasks dashboard and prompt list",
     body: callTool("help"),
-  },
-  {
-    name: "kanban-commit",
-    description: "Commit with current task context",
-    body: callTool("git", { action: "commit" }),
-  },
-  {
-    name: "kanban-create-pr",
-    description: "Create a PR for the current task",
-    body: callTool("git", { action: "create-pr" }),
   },
 ];

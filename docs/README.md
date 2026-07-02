@@ -41,6 +41,13 @@ into 0001/0013/0018.
 | [0017](./adr/0017-adversarial-critic-gates.md) | Adversarial critic gates in the task pipeline | Accepted |
 | [0018](./adr/0018-three-doors-instrument-taxonomy.md) | Three doors & instrument taxonomy | Accepted |
 | [0019](./adr/0019-branching-and-pr-flow.md) | Branching model: release `main`, integration `dev`, changes via PRs | Accepted |
+| [0020](./adr/0020-debugger-agent.md) | Root-cause analysis as the `marvin-debugger` agent | Accepted |
+| [0021](./adr/0021-lessons-feedback-loop.md) | Tool-backed lessons-learned feedback loop | Accepted |
+| [0022](./adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
+| [0023](./adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
+| [0024](./adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
+| [0025](./adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
+| [0026](./adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
 
 ## Work in progress
 
@@ -52,6 +59,7 @@ process, not finished deliverables.
 
 ## Reference
 
+- [Command reference](./commands.md) — every `/marvin:` command with a one-line synopsis and a usage example.
 - [Publishing & promotion readiness](./publishing.md) — the requirements checklist and the ordered plan for shipping Marvin to the official directory and community marketplaces.
 - [Security policy](../SECURITY.md) — supported versions and how to report a vulnerability.
 - [Changelog (marketplace)](../CHANGELOG.md) and [changelog (plugin)](../plugins/marvin/CHANGELOG.md).

@@ -1,6 +1,6 @@
 ---
 name: task-deliver
-description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
+description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", "marvin deliver the task", or when a taskmaster worktree has finished implementation and verification.
 ---
 
 # Deliver
@@ -29,7 +29,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation, fall back to `.marvin/task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation (spec files are numeric-prefixed — match `<slug>.md` or `<NNN>-<slug>.md`), fall back to `.marvin/task/spec.md`
 
 ### 3. Create pull request
 
@@ -46,7 +46,7 @@ When composing the PR:
 {from spec goal/problem statement}
 
 ## Spec Reference
-`.marvin/task/{slug}.md`
+`.marvin/task/<NNN>-{slug}.md`   <!-- the actual resolved spec path -->
 
 ## Changes
 {key changes grouped by area}
@@ -70,7 +70,16 @@ otherwise-immutable spec:
 
 Skip silently when no spec file is found (e.g. when only a verification artifact exists, no named spec).
 
-### 5. Preserve artifacts
+### 5. Capture a lesson (retrospective)
+
+Close the feedback loop (ADR-0021). If this task surfaced something a future task should inherit — a recurring **SPEC GAP**, a non-obvious convention you had to discover, a gotcha that cost time, or a process friction — capture **one** lesson via the `lessons` tool:
+
+- `action: "add"`, a one-line `title`, a `body` of 2–4 sentences (what to know · why · how to apply), relevant `tags`, and `source: "<spec-slug>"`.
+- Choose `type`: `gotcha` / `convention` / `pitfall` for code knowledge, `process` for workflow friction. (Bug root-cause patterns are captured upstream by `marvin-debugger` — don't duplicate them here.)
+
+Skip it for routine tasks that taught nothing new — an empty lesson is noise, and the store earns its value by staying scannable. Capture at most one or two. If the `lessons` tool is unavailable, append the index line to `.marvin/memory/MEMORY.md` yourself.
+
+### 6. Preserve artifacts
 
 Do NOT delete `.marvin/task/` artifacts. They serve as documentation:
 - `spec.md` — what was intended

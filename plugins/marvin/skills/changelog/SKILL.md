@@ -1,6 +1,6 @@
 ---
 name: changelog
-description: Generate a changelog from git commit history between tags, date ranges, or arbitrary refs. Use this skill whenever the user mentions "changelog", "release notes", "what changed", "what's new", "diff between versions", "release summary", or asks to summarize git history for a release. Also triggers for requests like "prepare release notes", "generate CHANGELOG.md", or "summarize commits since last tag".
+description: Generate a changelog from git commit history between tags, date ranges, or arbitrary refs. Use this skill whenever the user mentions "changelog", "release notes", "what changed", "what's new", "diff between versions", "release summary", or asks to summarize git history for a release. Also triggers for requests like "prepare release notes", "generate CHANGELOG.md", "marvin changelog since v0.1.0", or "summarize commits since last tag".
 ---
 
 # Changelog Generator

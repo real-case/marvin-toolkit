@@ -1,6 +1,6 @@
 ---
 name: task-verify
-description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Rust, Python, TypeScript, Java/Kotlin, C#/.NET, Swift, Ruby, PHP, C/C++, plus a declared-command / npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
+description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Rust, Python, TypeScript, Java/Kotlin, C#/.NET, Swift, Ruby, PHP, C/C++, plus a declared-command / npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", "marvin verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify
@@ -15,7 +15,7 @@ Run project quality gates with stack auto-detection. Verification gates delivery
 
 - None required (operates on current project state)
 - Pipeline context determines verification mode. If not set explicitly in conversation, **infer from spec**:
-  1. Look for spec in `.marvin/task/` (then `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) — match by slug from conversation context or most recent spec
+  1. Look for spec in `.marvin/task/` (then `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) — match by slug from conversation context (spec files are numeric-prefixed: `<slug>.md` or `<NNN>-<slug>.md`), or take the most recent spec (highest `<NNN>` prefix)
   2. Fall back to `.marvin/task/spec.md`
   3. Detect type: prefer the spec's frontmatter `type` (`feature`/`bugfix`); else infer from structure — a "Root Cause Analysis" section → bugfix, a "Chosen Approach" section → feature
   4. If no spec found → standalone mode

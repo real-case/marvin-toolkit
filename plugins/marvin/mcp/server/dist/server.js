@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { spawn, spawnSync, execFileSync } from 'child_process';
+import { execFileSync, spawnSync, spawn } from 'child_process';
 import { performance } from 'perf_hooks';
 import { createHash } from 'crypto';
 
@@ -1311,21 +1311,21 @@ var require_errors = __commonJS({
     function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
       if (errsCount === void 0)
         throw new Error("ajv implementation error");
-      const err = gen.name("err");
+      const err2 = gen.name("err");
       gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-        gen.const(err, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-        gen.if((0, codegen_1._)`${err}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-        gen.assign((0, codegen_1._)`${err}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
-          gen.assign((0, codegen_1._)`${err}.schema`, schemaValue);
-          gen.assign((0, codegen_1._)`${err}.data`, data);
+          gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err2}.data`, data);
         }
       });
     }
     exports.extendErrors = extendErrors;
     function addError(gen, errObj) {
-      const err = gen.const("err", errObj);
-      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err})`);
+      const err2 = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
       gen.code((0, codegen_1._)`${names_1.default.errors}++`);
     }
     function returnErrors(it, errs) {
@@ -14885,8 +14885,8 @@ var ZodType = class {
         } : {
           issues: ctx.common.issues
         };
-      } catch (err) {
-        if (err?.message?.toLowerCase()?.includes("encountered")) {
+      } catch (err2) {
+        if (err2?.message?.toLowerCase()?.includes("encountered")) {
           this["~standard"].async = true;
         }
         ctx.common = {
@@ -28378,7 +28378,7 @@ var StdioServerTransport = class {
 };
 
 // ../../../../packages/marvin-mcp-shared/dist/server.js
-async function runPackServer(opts) {
+async function buildServer(opts) {
   const server = new McpServer({ name: opts.name, version: opts.version }, { capabilities: { prompts: {}, tools: {} } });
   const bundle = await opts.build(server);
   const ctx = { promptsDir: opts.promptsDir, packRoot: opts.packRoot };
@@ -28388,6 +28388,13 @@ async function runPackServer(opts) {
   for (const def of bundle.tools ?? []) {
     registerTool(server, def);
   }
+  for (const def of bundle.resources ?? []) {
+    registerResource(server, def);
+  }
+  return server;
+}
+async function runPackServer(opts) {
+  const server = await buildServer(opts);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
@@ -28430,7 +28437,10 @@ function registerTool(server, def) {
   const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
   server.registerTool(def.name, {
     description: def.description,
-    inputSchema: shape
+    inputSchema: shape,
+    // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
+    // (ADR-0024); omitted by text-only tools.
+    ...def.meta ? { _meta: def.meta } : {}
   }, async (args) => {
     const parsed = def.inputSchema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -28447,9 +28457,18 @@ function registerTool(server, def) {
     const result2 = await def.handler(parsed.data);
     return {
       isError: result2.isError,
-      content: result2.content.map((c) => ({ type: "text", text: c.text }))
+      content: result2.content.map((c) => ({ type: "text", text: c.text })),
+      // The widget payload (ADR-0024); forwarded only when the tool produced
+      // one, so text-only results are byte-for-byte unchanged.
+      ...result2.structuredContent ? { structuredContent: result2.structuredContent } : {}
     };
   });
+}
+function registerResource(server, def) {
+  const mimeType = def.mimeType ?? "text/html";
+  server.registerResource(def.name, def.uri, { description: def.description, mimeType }, async () => ({
+    contents: [{ uri: def.uri, mimeType, text: await def.read() }]
+  }));
 }
 
 // src/prompts/index.ts
@@ -28472,8 +28491,18 @@ var PROMPTS = [
   },
   {
     name: "pr-review",
-    description: "Thorough code review covering bugs, logic errors, security issues, performance, readability, and style conformance. Findings grouped by severity with suggested fixes.",
+    description: "Review a pull request on GitHub and post the review there \u2014 fetch the diff, review for bugs, security, performance, and style, then submit a GitHub review with inline comments grouped by severity.",
     skill: "pr-review"
+  },
+  {
+    name: "pr-resolve",
+    description: "Resolve open PR review feedback \u2014 fetch the unresolved review threads, draft a change plan, apply minimal fixes, push, then reply to each thread and mark it resolved.",
+    skill: "pr-resolve"
+  },
+  {
+    name: "pr-merge",
+    description: "Merge a pull request, then return to the base branch with the merge pulled in \u2014 confirm mergeability, merge via gh (delete the head branch), check out the base branch (e.g. dev) and pull.",
+    skill: "pr-merge"
   },
   {
     name: "debug",
@@ -28510,6 +28539,25 @@ var PROMPTS = [
     description: "Search and retrieve relevant documentation from the codebase and external sources \u2014 ADRs, READMEs, runbooks, configs.",
     skill: "docs-search"
   },
+  {
+    name: "handoff",
+    description: "Capture the current work's full context into a durable handoff document under .marvin/handoff/ and emit a paste-ready prompt to continue in a fresh session.",
+    skill: "handoff"
+  },
+  {
+    // Thin tool wrapper (inline body) — the read side of the handoff group has
+    // no workflow prose, so it calls the `handoff` MCP tool directly (ADR-0024).
+    name: "handoff-list",
+    description: "List the session-continuation handoff documents under .marvin/handoff/.",
+    body: callTool("handoff", { action: "list" })
+  },
+  {
+    // Thin tool wrapper (inline body) — the marvin dashboard + command index,
+    // derived from this registry (ADR-0024). Optional `section` filter.
+    name: "help",
+    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+  },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
     name: "task-start",
@@ -28532,9 +28580,11 @@ var PROMPTS = [
     skill: "task-deliver"
   },
   {
-    name: "task-fix-pr",
-    description: "Apply pull-request review feedback \u2014 fetch comments via gh, classify each as actionable / discussion / out-of-scope, make code changes, commit, push, and reply to each thread.",
-    skill: "task-fix-pr"
+    // Thin tool wrapper (inline body) — aggregates a spec's "what was done"
+    // summary from already-typed sources (ADR-0024); no workflow prose.
+    name: "task-summary",
+    description: "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons and links.",
+    body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble \u2014 call the tool and present its result."
   },
   // ── sec (security) ───────────────────────────────────────────────────
   {
@@ -28642,33 +28692,73 @@ var PROMPTS = [
     name: "kanban-help",
     description: "Marvin tasks dashboard and prompt list",
     body: callTool("help")
-  },
-  {
-    name: "kanban-commit",
-    description: "Commit with current task context",
-    body: callTool("git", { action: "commit" })
-  },
-  {
-    name: "kanban-create-pr",
-    description: "Create a PR for the current task",
-    body: callTool("git", { action: "create-pr" })
   }
 ];
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
-var TaskStatus = external_exports.enum(["todo", "wip", "review", "done", "blocked"]);
+var StatusRole = external_exports.enum(["todo", "wip", "review", "done", "blocked"]);
+var StatusDef = external_exports.object({
+  key: external_exports.string().regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase alphanumerics and hyphens"),
+  role: StatusRole,
+  tracker_status: external_exports.string().min(1).optional()
+});
+var DEFAULT_STATUSES = [
+  { key: "todo", role: "todo" },
+  { key: "wip", role: "wip" },
+  { key: "review", role: "review" },
+  { key: "done", role: "done" },
+  { key: "blocked", role: "blocked" }
+];
+var REQUIRED_ROLES = ["todo", "wip", "done"];
+var Statuses = external_exports.array(StatusDef).superRefine((statuses, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of statuses) {
+    if (seen.has(s.key)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate status key "${s.key}"` });
+    }
+    seen.add(s.key);
+  }
+  for (const role of REQUIRED_ROLES) {
+    if (!statuses.some((s) => s.role === role)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: `at least one status with role "${role}" is required`
+      });
+    }
+  }
+});
 var TaskTitle = external_exports.string().min(3).max(120).regex(/^[\x20-\x7E]+$/, "ASCII printable only");
 var TrackerId = external_exports.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");
 var TaskFrontmatter = external_exports.object({
   id: external_exports.string().regex(/^\d{3}$/),
   type: TaskType,
-  status: TaskStatus,
+  /**
+   * A configured status key (ADR-0026). The schema only requires a string;
+   * membership in the configured set is checked by `readAllTasks`, which
+   * routes unknown keys through the malformed-file channel.
+   */
+  status: external_exports.string().min(1),
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: external_exports.string(),
+  /**
+   * PR URL captured by the `task` tool's `link-pr` action (ADR-0024/0025).
+   * Stored, never live-resolved; absent until a PR is opened for the task.
+   */
+  pr: external_exports.string().url().optional(),
   created: external_exports.string().datetime(),
   updated: external_exports.string().datetime()
+});
+var HandoffFrontmatter = external_exports.object({
+  id: external_exports.string().regex(/^\d{3}$/),
+  slug: external_exports.string().min(1),
+  objective: external_exports.string().min(1),
+  branch: external_exports.string().min(1),
+  base: external_exports.string().min(1).optional(),
+  pr_url: external_exports.string().url().optional(),
+  spec_slug: external_exports.string().min(1).optional(),
+  created: external_exports.string().datetime()
 });
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
@@ -28679,19 +28769,117 @@ var GateCommands = external_exports.object({
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
   tracker_url_template: external_exports.string().nullable().default(null),
-  gates: GateCommands.optional()
+  gates: GateCommands.optional(),
+  /** The board's status vocabulary (ADR-0026); defaults to key == role. */
+  statuses: Statuses.default(DEFAULT_STATUSES)
 });
+var ROLE_ORDER = ["wip", "review", "todo", "blocked", "done"];
+function orderedStatuses(config2) {
+  return ROLE_ORDER.flatMap((role) => config2.statuses.filter((s) => s.role === role));
+}
+function firstOfRole(config2, role) {
+  return config2.statuses.find((s) => s.role === role) ?? null;
+}
+function requireRole(config2, role) {
+  const status = firstOfRole(config2, role);
+  if (!status) throw new Error(`no status with role "${role}" is configured`);
+  return status;
+}
+function roleOfStatus(config2, key) {
+  const status = config2.statuses.find((s) => s.key === key);
+  if (!status) throw new Error(`unknown status key "${key}"`);
+  return status.role;
+}
+function statusKeys(config2) {
+  return config2.statuses.map((s) => s.key);
+}
+function keysOfRoles(config2, roles) {
+  return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
+}
+function run(cmd, args, cwd) {
+  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+  if (result2.error) {
+    return { ok: false, code: -1, stderr: result2.error.message };
+  }
+  if (result2.status !== 0) {
+    return {
+      ok: false,
+      code: result2.status ?? -1,
+      stderr: (result2.stderr || result2.stdout || "").trim()
+    };
+  }
+  return { ok: true, value: (result2.stdout || "").trim() };
+}
+function git(args, cwd) {
+  return run("git", args, cwd);
+}
+function inGitRepo(cwd) {
+  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
+}
+function hasGit() {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function hasGh() {
+  try {
+    execFileSync("gh", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function currentBranch(cwd) {
+  const r = git(["branch", "--show-current"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function defaultBranchFromOrigin(cwd) {
+  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
+function hasUncommittedChanges(cwd) {
+  const r = git(["status", "--porcelain"], cwd);
+  return r.ok && r.value.length > 0;
+}
+function branchExists(name, cwd) {
+  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
+}
+function createBranchFromBase(base, branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  const checkoutBase = git(["checkout", base], cwd);
+  if (!checkoutBase.ok) return checkoutBase;
+  git(["pull", "--ff-only"], cwd);
+  return git(["checkout", "-b", branch], cwd);
+}
+function checkoutBranch(branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  return git(["checkout", branch], cwd);
+}
 
 // src/storage/config.ts
-function loadConfig(configPath) {
+function loadConfig(configPath, projectDir) {
   if (!existsSync(configPath)) {
-    return { config: Config.parse({}), warning: null };
+    const config2 = Config.parse({});
+    if (projectDir !== void 0 && hasGit() && inGitRepo(projectDir)) {
+      const detected = defaultBranchFromOrigin(projectDir);
+      if (detected) config2.base_branch = detected;
+    }
+    return { config: config2, warning: null };
   }
   let raw;
   try {
     raw = readFileSync(configPath, "utf8");
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+  } catch (err2) {
+    const reason = err2 instanceof Error ? err2.message : String(err2);
     return {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`
@@ -28700,8 +28888,8 @@ function loadConfig(configPath) {
   let json;
   try {
     json = JSON.parse(raw);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+  } catch (err2) {
+    const reason = err2 instanceof Error ? err2.message : String(err2);
     return { config: Config.parse({}), warning: `config.json is not valid JSON: ${reason}` };
   }
   const parsed = Config.safeParse(json);
@@ -28721,7 +28909,9 @@ function loadEnv(env = process.env) {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
-  return { projectDir, tasksDir, configPath };
+  const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
+  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
 }
 
 // src/storage/frontmatter.ts
@@ -28784,8 +28974,9 @@ function parseSeq(filename) {
 }
 
 // src/storage/tasks.ts
-function readAllTasks(tasksDir) {
+function readAllTasks(tasksDir, config2) {
   if (!existsSync(tasksDir)) return { tasks: [], malformed: [] };
+  const keys = statusKeys(config2);
   const tasks = [];
   const malformed = [];
   for (const filename of readdirSync(tasksDir).sort()) {
@@ -28806,6 +28997,13 @@ function readAllTasks(tasksDir) {
       });
       continue;
     }
+    if (!keys.includes(parsed.data.status)) {
+      malformed.push({
+        filename,
+        reason: `unknown status "${parsed.data.status}" \u2014 configured statuses: ${keys.join(", ")}`
+      });
+      continue;
+    }
     tasks.push({ frontmatter: parsed.data, body, filename });
   }
   tasks.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
@@ -28819,18 +29017,19 @@ function nextSeq(tasks) {
   }
   return String(max + 1).padStart(3, "0");
 }
-function createTask(tasksDir, input) {
+function createTask(tasksDir, config2, input) {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir);
+  const { tasks } = readAllTasks(tasksDir, config2);
   const id = nextSeq(tasks);
   const slug = slugify(input.title);
   const filename = buildFilename(id, input.tracker_id, slug);
   const branch = filename.replace(/\.md$/, "");
   const now = (/* @__PURE__ */ new Date()).toISOString();
+  const status = requireRole(config2, "todo").key;
   const frontmatter = {
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     tracker_id: input.tracker_id,
     branch,
@@ -28846,7 +29045,7 @@ ${input.description}
   const parsed = TaskFrontmatter.parse({
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     ...input.tracker_id ? { tracker_id: input.tracker_id } : {},
     branch,
@@ -28865,6 +29064,16 @@ function updateStatus(tasksDir, task, newStatus) {
   writeTask(tasksDir, { ...task, frontmatter: next });
   return { ...task, frontmatter: next };
 }
+function setTaskPr(tasksDir, task, prUrl) {
+  const updated = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...task.frontmatter,
+    pr: prUrl,
+    updated
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
 function writeTask(tasksDir, task) {
   const fm = {
     id: task.frontmatter.id,
@@ -28873,6 +29082,7 @@ function writeTask(tasksDir, task) {
     title: task.frontmatter.title,
     tracker_id: task.frontmatter.tracker_id,
     branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
     created: task.frontmatter.created,
     updated: task.frontmatter.updated
   };
@@ -28884,71 +29094,6 @@ function findTaskByBranch(tasks, branch) {
 function findTaskById(tasks, id) {
   return tasks.find((t) => t.frontmatter.id === id) ?? null;
 }
-function run(cmd, args, cwd) {
-  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
-  if (result2.error) {
-    return { ok: false, code: -1, stderr: result2.error.message };
-  }
-  if (result2.status !== 0) {
-    return {
-      ok: false,
-      code: result2.status ?? -1,
-      stderr: (result2.stderr || result2.stdout || "").trim()
-    };
-  }
-  return { ok: true, value: (result2.stdout || "").trim() };
-}
-function git(args, cwd) {
-  return run("git", args, cwd);
-}
-function gh(args, cwd) {
-  return run("gh", args, cwd);
-}
-function inGitRepo(cwd) {
-  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
-}
-function hasGit() {
-  try {
-    execFileSync("git", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function hasGh() {
-  try {
-    execFileSync("gh", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function currentBranch(cwd) {
-  const r = git(["branch", "--show-current"], cwd);
-  return r.ok && r.value ? r.value : null;
-}
-function hasUncommittedChanges(cwd) {
-  const r = git(["status", "--porcelain"], cwd);
-  return r.ok && r.value.length > 0;
-}
-function branchExists(name, cwd) {
-  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
-}
-function createBranchFromBase(base, branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  const checkoutBase = git(["checkout", base], cwd);
-  if (!checkoutBase.ok) return checkoutBase;
-  git(["pull", "--ff-only"], cwd);
-  return git(["checkout", "-b", branch], cwd);
-}
-function checkoutBranch(branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  return git(["checkout", branch], cwd);
-}
 
 // src/flows/format.ts
 function formatTaskLine(t) {
@@ -28956,50 +29101,49 @@ function formatTaskLine(t) {
   return `${t.frontmatter.id} \xB7 [${t.frontmatter.type}] ${t.frontmatter.title}${tracker} \xB7 ${t.frontmatter.status}`;
 }
 function groupByStatus(tasks) {
-  const groups = {
-    todo: [],
-    wip: [],
-    review: [],
-    done: [],
-    blocked: []
-  };
-  for (const t of tasks) groups[t.frontmatter.status].push(t);
+  const groups = {};
+  for (const t of tasks) (groups[t.frontmatter.status] ??= []).push(t);
   return groups;
 }
-function renderListTable(tasks, currentBranch2) {
+function renderListTable(tasks, currentBranch2, config2) {
   if (tasks.length === 0)
     return "_No tasks yet \u2014 use `/marvin:kanban-bug` or similar to create one._";
   const groups = groupByStatus(tasks);
-  const order = ["wip", "review", "todo", "blocked", "done"];
   const sections = [];
-  for (const status of order) {
-    const list = groups[status];
+  for (const status of orderedStatuses(config2)) {
+    const list = groups[status.key] ?? [];
     if (list.length === 0) continue;
-    sections.push(`### ${status} (${list.length})`);
+    sections.push(`### ${status.key} (${list.length})`);
     sections.push("");
-    sections.push("| seq | type | title | tracker | branch |");
-    sections.push("|-----|------|-------|---------|--------|");
+    sections.push("| seq | type | title | tracker | branch | pr |");
+    sections.push("|-----|------|-------|---------|--------|----|");
     for (const t of list) {
       const marker = currentBranch2 === t.frontmatter.branch ? " \u25C0 current" : "";
       sections.push(
-        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "\u2014"} | \`${t.frontmatter.branch}\`${marker} |`
+        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "\u2014"} | \`${t.frontmatter.branch}\`${marker} | ${prCell(t.frontmatter.pr)} |`
       );
     }
     sections.push("");
   }
   return sections.join("\n");
 }
+function prCell(url) {
+  if (!url) return "\u2014";
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? `[#${match[1]}](${url})` : `[PR](${url})`;
+}
 
 // src/tools/task.ts
 var TaskInput = external_exports.object({
-  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done"]).optional(),
+  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"]).optional(),
   type: TaskType.optional(),
-  taskId: external_exports.string().optional()
+  taskId: external_exports.string().optional(),
+  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)")
 });
 function buildTaskTool(server, env, config2) {
   return defineTool({
     name: "task",
-    description: "Marvin tasks CRUD + lifecycle. Defaults to an interactive main menu when called with no arguments.",
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config2, input)
   });
@@ -29007,7 +29151,7 @@ function buildTaskTool(server, env, config2) {
 async function dispatchTask(server, env, config2, input) {
   let action = input.action;
   if (!action || action === "menu") {
-    const picked = await pickMenuAction(server, env);
+    const picked = await pickMenuAction(server, env, config2);
     if (!picked) return cancelled();
     action = picked;
   }
@@ -29015,25 +29159,29 @@ async function dispatchTask(server, env, config2, input) {
     case "create":
       return runCreate(server, env, config2, input.type);
     case "list":
-      return runList(env);
+      return runList(env, config2);
     case "status":
-      return runStatus(server, env);
+      return runStatus(server, env, config2);
     case "start":
       return runStart(server, env, config2, input.taskId);
     case "review":
       return runReview(server, env, config2);
     case "done":
-      return runDone(server, env);
+      return runDone(server, env, config2);
+    case "move":
+      return runMove(server, env, config2, input.taskId);
+    case "link-pr":
+      return runLinkPr(env, config2, input.taskId, input.url);
   }
 }
-async function pickMenuAction(server, env) {
-  const { tasks } = readAllTasks(env.tasksDir);
-  const wip = tasks.filter((t) => t.frontmatter.status === "wip").length;
+async function pickMenuAction(server, env, config2) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip").length;
   const data = await elicit(
     server,
     `Marvin \xB7 ${tasks.length} tasks \xB7 ${wip} in progress`,
     external_exports.object({
-      action: external_exports.enum(["create", "list", "status", "start", "review", "done"])
+      action: external_exports.enum(["create", "list", "status", "start", "review", "done", "move"])
     })
   );
   return data?.action ?? null;
@@ -29052,7 +29200,7 @@ async function runCreate(server, env, config2, preType) {
   const data = await elicit(server, "New task", formSchema);
   if (!data) return cancelled();
   const type = preType ?? data.type;
-  const created = createTask(env.tasksDir, {
+  const created = createTask(env.tasksDir, config2, {
     type,
     title: data.title,
     ...data.tracker_id ? { tracker_id: data.tracker_id } : {},
@@ -29072,9 +29220,10 @@ async function runCreate(server, env, config2, preType) {
         env.projectDir
       );
       if (result2.ok) {
-        updateStatus(env.tasksDir, created.task, "wip");
+        const wipStatus = requireRole(config2, "wip");
+        updateStatus(env.tasksDir, created.task, wipStatus.key);
         branchInfo = `
-Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 wip.`;
+Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 ${wipStatus.key}.`;
       } else {
         branchInfo = `
 Branch creation failed: ${result2.stderr}`;
@@ -29086,22 +29235,63 @@ Branch creation failed: ${result2.stderr}`;
 File: \`${created.path}\`${branchInfo}`
   );
 }
-function runList(env) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir);
+function runList(env, config2) {
+  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
   const branch = currentBranch(env.projectDir);
-  const body = renderListTable(tasks, branch);
+  const body = renderListTable(tasks, branch, config2);
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
-  return ok(`# Tasks (${tasks.length})
+  return {
+    content: [{ type: "text", text: `# Tasks (${tasks.length})
 
-${body}${warning}`);
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
+    // renders, typed to the TaskListPayload contract. `pr` is populated from the
+    // URL captured by link-pr; terminals render `content` and ignore this.
+    structuredContent: buildTaskListPayload(tasks, config2)
+  };
 }
-function runStatus(_server, env, _config) {
-  const { tasks } = readAllTasks(env.tasksDir);
+function buildTaskListPayload(tasks, config2) {
+  const counts = {};
+  for (const s of config2.statuses) counts[s.key] = 0;
+  const role_counts = {
+    todo: 0,
+    wip: 0,
+    review: 0,
+    done: 0,
+    blocked: 0
+  };
+  const cards = tasks.map((t) => {
+    const fm = t.frontmatter;
+    const role = roleOfStatus(config2, fm.status);
+    counts[fm.status] = (counts[fm.status] ?? 0) + 1;
+    role_counts[role] += 1;
+    return {
+      id: fm.id,
+      type: fm.type,
+      status: { key: fm.status, role },
+      title: fm.title,
+      branch: fm.branch,
+      ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
+      tracker_url: trackerUrl(config2, fm.tracker_id),
+      pr: prRefFromUrl(fm.pr),
+      created: fm.created,
+      updated: fm.updated
+    };
+  });
+  return { tasks: cards, counts, role_counts };
+}
+function prRefFromUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
+}
+function runStatus(_server, env, config2) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
-  const wip = tasks.filter((t) => t.frontmatter.status === "wip");
+  const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip");
   const lines = [];
   lines.push(`**Branch:** \`${branch ?? "(not in a git repo)"}\``);
   lines.push(
@@ -29117,15 +29307,24 @@ function runStatus(_server, env, _config) {
   return ok(lines.join("\n"));
 }
 async function runStart(server, env, config2, preselected) {
-  const { tasks } = readAllTasks(env.tasksDir);
-  const todo = tasks.filter((t) => t.frontmatter.status === "todo");
-  if (todo.length === 0) {
-    return ok(
-      "No `todo` tasks. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
-    );
-  }
-  let taskId = preselected;
-  if (!taskId) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const todoKeys = keysOfRoles(config2, ["todo"]);
+  const todo = tasks.filter((t) => todoKeys.includes(t.frontmatter.status));
+  let task;
+  if (preselected) {
+    task = findTaskById(tasks, preselected);
+    if (!task) return errOk(`Task ${preselected} not found`);
+    if (!todoKeys.includes(task.frontmatter.status)) {
+      return errOk(
+        `Task ${preselected} is in status "${task.frontmatter.status}" \u2014 starting requires a todo-role status (${todoKeys.join(", ")}). Use the \`move\` action for other transitions.`
+      );
+    }
+  } else {
+    if (todo.length === 0) {
+      return ok(
+        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to start?",
@@ -29134,44 +29333,146 @@ async function runStart(server, env, config2, preselected) {
       })
     );
     if (!data) return cancelled();
-    taskId = data.taskId;
+    task = findTaskById(tasks, data.taskId);
+    if (!task) return errOk(`Task ${data.taskId} not found`);
   }
-  const task = findTaskById(tasks, taskId);
-  if (!task) return errOk(`Task ${taskId} not found`);
   if (hasGit() && inGitRepo(env.projectDir)) {
     const result2 = branchExists(task.frontmatter.branch, env.projectDir) ? checkoutBranch(task.frontmatter.branch, env.projectDir) : createBranchFromBase(config2.base_branch, task.frontmatter.branch, env.projectDir);
     if (!result2.ok) return errOk(`git: ${result2.stderr}`);
   }
-  updateStatus(env.tasksDir, task, "wip");
+  const wipStatus = requireRole(config2, "wip");
+  updateStatus(env.tasksDir, task, wipStatus.key);
   return ok(
     `Started **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
-Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 wip`
+Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 ${wipStatus.key}`
   );
 }
 async function runReview(server, env, config2) {
-  const task = await detectCurrentTaskOrPick(server, env, ["wip"]);
-  if (!task) return cancelled();
-  updateStatus(env.tasksDir, task, "review");
+  const target = firstOfRole(config2, "review");
+  if (!target) {
+    return errOk(
+      'No status with role "review" is configured \u2014 add one to `statuses` in `.marvin/config.json`, or use the `move` action.'
+    );
+  }
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"]);
+  if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "none") {
+    return ok(
+      `No tasks in a wip-role status (${keysOfRoles(config2, ["wip"]).join(", ")}) \u2014 nothing to move to review.`
+    );
+  }
+  updateStatus(env.tasksDir, pick2.task, target.key);
   return ok(
-    `Moved **${task.frontmatter.id}** to **review**.
-Open a PR with \`/marvin:kanban-create-pr\` (base branch: \`${config2.base_branch}\`).`
+    `Moved **${pick2.task.frontmatter.id}** to **${target.key}**.
+Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
-async function runDone(server, env, _config) {
-  const task = await detectCurrentTaskOrPick(server, env, ["wip", "review"]);
-  if (!task) return cancelled();
-  updateStatus(env.tasksDir, task, "done");
+async function runDone(server, env, config2) {
+  const roles = ["wip", "review"];
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles);
+  if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "none") {
+    return ok(
+      `No tasks in a wip- or review-role status (${keysOfRoles(config2, roles).join(", ")}) \u2014 nothing to mark done.`
+    );
+  }
+  const doneStatus = requireRole(config2, "done");
+  updateStatus(env.tasksDir, pick2.task, doneStatus.key);
   return ok(
-    `Marked **${task.frontmatter.id}** as **done**. Branch cleanup and merge are left to you / CI.`
+    `Marked **${pick2.task.frontmatter.id}** as **${doneStatus.key}**. Branch cleanup and merge are left to you / CI.`
   );
 }
-async function detectCurrentTaskOrPick(server, env, allowedStatuses) {
-  const { tasks } = readAllTasks(env.tasksDir);
+async function runMove(server, env, config2, preselected) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  if (tasks.length === 0) {
+    return ok(
+      "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+    );
+  }
+  let task = null;
+  if (preselected) {
+    task = findTaskById(tasks, preselected);
+    if (!task) return errOk(`Task ${preselected} not found`);
+  } else {
+    const branch = currentBranch(env.projectDir);
+    task = branch ? findTaskByBranch(tasks, branch) : null;
+  }
+  if (!task) {
+    const data = await elicit(
+      server,
+      "Which task to move?",
+      external_exports.object({
+        taskId: external_exports.enum(tasks.map((t) => t.frontmatter.id))
+      })
+    );
+    if (!data) return cancelled();
+    task = findTaskById(tasks, data.taskId);
+    if (!task) return errOk(`Task ${data.taskId} not found`);
+  }
+  const keys = statusKeys(config2);
+  const target = await elicit(
+    server,
+    `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
+    external_exports.object({ status: external_exports.enum(keys) })
+  );
+  if (!target) return cancelled();
+  if (target.status === task.frontmatter.status) {
+    return ok(`**${task.frontmatter.id}** is already in \`${target.status}\` \u2014 nothing to do.`);
+  }
+  const from = task.frontmatter.status;
+  updateStatus(env.tasksDir, task, target.status);
+  return ok(
+    `Moved **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
+\`${from}\` \u2192 \`${target.status}\``
+  );
+}
+function runLinkPr(env, config2, taskId, url) {
+  if (!url) {
+    return errOk(
+      "Missing `url` \u2014 pass the PR URL to link, e.g. https://github.com/acme/widget/pull/42."
+    );
+  }
+  if (!isHttpUrl(url)) {
+    return errOk(
+      `Not an http(s) URL: \`${url}\` \u2014 pass the PR URL as printed by \`gh pr create\`.`
+    );
+  }
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  let task;
+  if (taskId) {
+    task = findTaskById(tasks, taskId);
+    if (!task) return errOk(`Task ${taskId} not found.`);
+  } else {
+    const branch = currentBranch(env.projectDir);
+    task = branch ? findTaskByBranch(tasks, branch) : null;
+    if (!task) {
+      return errOk(
+        "No task is linked to the current branch \u2014 no board task's `branch` frontmatter matches it. Pass `taskId` to pick the task explicitly."
+      );
+    }
+  }
+  const saved = setTaskPr(env.tasksDir, task, url);
+  return ok(`Linked PR to **${saved.frontmatter.id}** \u2014 ${saved.frontmatter.title}
+PR: ${url}`);
+}
+function isHttpUrl(raw) {
+  try {
+    const protocol = new URL(raw).protocol;
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+async function detectCurrentTaskOrPick(server, env, config2, roles) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const allowedKeys = keysOfRoles(config2, roles);
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
-  if (linked && allowedStatuses.includes(linked.frontmatter.status)) return linked;
-  const candidates = tasks.filter((t) => allowedStatuses.includes(t.frontmatter.status));
-  if (candidates.length === 0) return null;
+  if (linked && allowedKeys.includes(linked.frontmatter.status)) {
+    return { kind: "task", task: linked };
+  }
+  const candidates = tasks.filter((t) => allowedKeys.includes(t.frontmatter.status));
+  if (candidates.length === 0) return { kind: "none" };
   const data = await elicit(
     server,
     "Current branch has no linked task \u2014 pick one",
@@ -29179,8 +29480,9 @@ async function detectCurrentTaskOrPick(server, env, allowedStatuses) {
       taskId: external_exports.enum(candidates.map((t) => t.frontmatter.id))
     })
   );
-  if (!data) return null;
-  return findTaskById(tasks, data.taskId);
+  if (!data) return { kind: "cancelled" };
+  const picked = findTaskById(tasks, data.taskId);
+  return picked ? { kind: "task", task: picked } : { kind: "none" };
 }
 function ok(text) {
   return { content: [{ type: "text", text }] };
@@ -29191,152 +29493,35 @@ function errOk(text) {
 function cancelled() {
   return ok("Cancelled \u2014 no changes made.");
 }
-
-// src/tools/git.ts
-var GitInput = external_exports.object({
-  action: external_exports.enum(["commit", "create-pr"]),
-  message: external_exports.string().optional()
+var HelpInput = external_exports.object({
+  section: external_exports.string().optional().describe("Filter the command index to one group: core, pr, task, sec, kanban.")
 });
-var CommitType = external_exports.enum([
-  "feat",
-  "fix",
-  "chore",
-  "docs",
-  "refactor",
-  "test",
-  "style",
-  "perf",
-  "build",
-  "ci"
-]);
-function buildGitTool(server, env, config2) {
-  return defineTool({
-    name: "git",
-    description: "Marvin git operations tied to the current task: commit, create-pr.",
-    inputSchema: GitInput,
-    handler: (input) => {
-      if (input.action === "commit") return runCommit(server, env, input.message);
-      return runCreatePr(server, env, config2);
-    }
-  });
-}
-async function runCommit(server, env, preMessage) {
-  if (!hasGit()) return errOk2("`git` not found on PATH.");
-  if (!inGitRepo(env.projectDir)) return errOk2("Not inside a git repository.");
-  const { tasks } = readAllTasks(env.tasksDir);
-  const branch = currentBranch(env.projectDir);
-  const task = branch ? findTaskByBranch(tasks, branch) : null;
-  const form = await elicit(
-    server,
-    "Commit",
-    external_exports.object({
-      type: CommitType,
-      scope: external_exports.string().optional(),
-      message: preMessage ? external_exports.string().min(3).default(preMessage) : external_exports.string().min(3),
-      stage_all: external_exports.enum(["yes", "no"])
-    })
-  );
-  if (!form) return cancelled2();
-  const scope = form.scope ? `(${form.scope})` : "";
-  const subject = `${form.type}${scope}: ${form.message}`;
-  const refs2 = task ? `
-
-Refs: ${task.frontmatter.id}${task.frontmatter.tracker_id ? `, ${task.frontmatter.tracker_id}` : ""}` : "";
-  const fullMessage = `${subject}${refs2}`;
-  if (form.stage_all === "yes") {
-    const stage = git(["add", "-A"], env.projectDir);
-    if (!stage.ok) return errOk2(`git add failed: ${stage.stderr}`);
-  }
-  const commit = git(["commit", "-m", fullMessage], env.projectDir);
-  if (!commit.ok) return errOk2(`git commit failed: ${commit.stderr}`);
-  const sha = git(["rev-parse", "HEAD"], env.projectDir);
-  const stat = git(["show", "--stat", "--oneline", "HEAD"], env.projectDir);
-  return ok2(
-    `Committed \`${sha.ok ? sha.value.slice(0, 8) : "?"}\`
-
-\`\`\`
-${stat.ok ? stat.value : ""}
-\`\`\``
-  );
-}
-async function runCreatePr(_server, env, config2) {
-  if (!hasGit()) return errOk2("`git` not found on PATH.");
-  if (!inGitRepo(env.projectDir)) return errOk2("Not inside a git repository.");
-  const { tasks } = readAllTasks(env.tasksDir);
-  const branch = currentBranch(env.projectDir);
-  const task = branch ? findTaskByBranch(tasks, branch) : null;
-  const title = task ? task.frontmatter.tracker_id ? `[${task.frontmatter.tracker_id}] ${task.frontmatter.title}` : `[${task.frontmatter.id}] ${task.frontmatter.title}` : `[${branch ?? "wip"}] Update`;
-  const trackerLink = task ? trackerUrl(config2, task.frontmatter.tracker_id) : null;
-  const bodyLines = [];
-  if (task) {
-    bodyLines.push(`Task: \`.marvin/kanban/${task.filename}\``);
-    if (trackerLink) bodyLines.push(`Tracker: ${trackerLink}`);
-  } else {
-    bodyLines.push("_No marvin task linked to this branch._");
-  }
-  const body = bodyLines.join("\n");
-  if (!hasGh()) {
-    return ok2(
-      `**\`gh\` CLI not installed.** Run this manually:
-
-\`\`\`
-gh pr create --base ${config2.base_branch} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)}
-\`\`\``
-    );
-  }
-  const result2 = gh(
-    ["pr", "create", "--base", config2.base_branch, "--title", title, "--body", body],
-    env.projectDir
-  );
-  if (!result2.ok) return errOk2(`gh pr create failed: ${result2.stderr}`);
-  return ok2(`PR created: ${result2.value.split("\n").pop() ?? result2.value}`);
-}
-function ok2(text) {
-  return { content: [{ type: "text", text }] };
-}
-function errOk2(text) {
-  return { content: [{ type: "text", text }], isError: true };
-}
-function cancelled2() {
-  return ok2("Cancelled \u2014 no changes made.");
-}
-
-// src/tools/help.ts
-var HelpInput = external_exports.object({});
-var ALL_PROMPTS = [
-  { name: "/marvin:kanban-menu", desc: "Main menu" },
-  { name: "/marvin:kanban-bug", desc: "Quick-create a bug task" },
-  { name: "/marvin:kanban-feature", desc: "Quick-create a feature task" },
-  { name: "/marvin:kanban-chore", desc: "Quick-create a chore task" },
-  { name: "/marvin:kanban-spike", desc: "Quick-create a spike task" },
-  { name: "/marvin:kanban-start", desc: "Pick a todo task and start it" },
-  { name: "/marvin:kanban-review", desc: "Move current task to review" },
-  { name: "/marvin:kanban-done", desc: "Mark current task done" },
-  { name: "/marvin:kanban-list", desc: "List all tasks" },
-  { name: "/marvin:kanban-status", desc: "Current branch + WIP tasks" },
-  { name: "/marvin:kanban-help", desc: "This dashboard" },
-  { name: "/marvin:kanban-commit", desc: "Commit with task context" },
-  { name: "/marvin:kanban-create-pr", desc: "Create PR for current task" }
-];
 function buildHelpTool(env, config2, version2) {
   return defineTool({
     name: "help",
-    description: "Marvin tasks dashboard: project state, dependency status, prompt list.",
+    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
     inputSchema: HelpInput,
-    handler: () => Promise.resolve(renderHelp(env, config2, version2))
+    handler: (input) => Promise.resolve(renderHelp(env, config2, version2, input.section))
   });
 }
-function renderHelp(env, config2, version2) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir);
-  const counts = {
+function renderHelp(env, config2, version2, section) {
+  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
+  const counts = {};
+  for (const s of config2.statuses) counts[s.key] = 0;
+  const roleCounts = {
     todo: 0,
     wip: 0,
     review: 0,
     done: 0,
     blocked: 0
   };
-  for (const t of tasks) counts[t.frontmatter.status] += 1;
+  for (const t of tasks) {
+    counts[t.frontmatter.status] = (counts[t.frontmatter.status] ?? 0) + 1;
+    roleCounts[roleOfStatus(config2, t.frontmatter.status)] += 1;
+  }
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
+  const has_git = hasGit();
+  const has_gh = hasGh();
   const lines = [];
   lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
   lines.push("");
@@ -29350,21 +29535,93 @@ function renderHelp(env, config2, version2) {
   );
   lines.push("");
   lines.push("## Counters");
-  lines.push(`- todo: ${counts.todo}`);
-  lines.push(`- wip: ${counts.wip}`);
-  lines.push(`- review: ${counts.review}`);
-  lines.push(`- done: ${counts.done}`);
-  lines.push(`- blocked: ${counts.blocked}`);
+  for (const s of orderedStatuses(config2)) {
+    const roleNote = s.key === s.role ? "" : ` (${s.role})`;
+    lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
+  }
   if (malformed.length > 0) lines.push(`- \u26A0 malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
-  lines.push(`- git: ${hasGit() ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${hasGh() ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
+  lines.push(`- git: ${has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
+  lines.push(`- gh:  ${has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
   lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
   lines.push("");
-  lines.push("## Prompts");
-  for (const p of ALL_PROMPTS) lines.push(`- \`${p.name}\` \u2014 ${p.desc}`);
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+  lines.push(...renderCommandIndex(section));
+  const dashboard = {
+    version: version2,
+    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    config: {
+      base_branch: config2.base_branch,
+      tracker_url_template: config2.tracker_url_template,
+      ...config2.gates ? { gates: config2.gates } : {},
+      statuses: config2.statuses
+    },
+    kanban_counts: counts,
+    kanban_role_counts: roleCounts,
+    git: { has_git, has_gh, branch },
+    artifacts: artifactCounts(env),
+    command_groups: commandGroups()
+  };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: dashboard
+  };
+}
+var GROUP_PREFIXES = ["pr", "task", "sec", "kanban"];
+var GROUP_ORDER = ["core", "pr", "task", "sec", "kanban"];
+function groupOf(name) {
+  const prefix = name.split("-")[0] ?? "";
+  return GROUP_PREFIXES.includes(prefix) ? prefix : "core";
+}
+function commandGroups() {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    count: PROMPTS.filter((p) => groupOf(p.name) === group).length
+  })).filter((g) => g.count > 0);
+}
+function renderCommandIndex(section) {
+  const want = section?.trim().toLowerCase();
+  const known = !!want && GROUP_ORDER.includes(want);
+  const groups = known ? [want] : GROUP_ORDER;
+  const lines = [
+    known ? `## Commands \xB7 \`${want}\` group` : `## Commands (${PROMPTS.length})`
+  ];
+  if (want && !known) {
+    lines.push(`_Unknown section \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
+  }
+  for (const group of groups) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
+    if (inGroup.length === 0) continue;
+    lines.push("", `### ${group} (${inGroup.length})`);
+    for (const p of inGroup) lines.push(`- \`/marvin:${p.name}\` \u2014 ${shortDesc(p.description)}`);
+  }
+  return lines;
+}
+function shortDesc(desc, max = 80) {
+  const oneLine = desc.replace(/\s+/g, " ").trim();
+  const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
+  const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
+  if (base.length <= max) return base;
+  const cut = base.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}\u2026`;
+}
+function artifactCounts(env) {
+  const marvin = join(env.projectDir, ".marvin");
+  return {
+    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    handoffs: countMarkdown(join(marvin, "handoff")),
+    audits: countMarkdown(join(marvin, "security")),
+    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+  };
+}
+function countMarkdown(dir, exclude = []) {
+  if (!existsSync(dir)) return 0;
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+  } catch {
+    return 0;
+  }
 }
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
@@ -29488,7 +29745,7 @@ async function runVerify(input, env) {
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
-    return ok3(
+    return ok2(
       `No quality gates detected for \`${projectRoot}\`.
 Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
@@ -29496,14 +29753,14 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
   let gates = detected.gates;
   if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
   if (gates.length === 0) {
-    return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
+    return ok2(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
     const warn2 = configWarning ? `
 
 > \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
-    return ok3(
+    return ok2(
       `# Verify Plan (dry run)
 
 **Stacks:** ${detected.stacks.join(", ") || "explicit"}
@@ -29531,12 +29788,7 @@ ${plan}${warn2}`
     wallClockMs,
     sumOfGatesMs
   });
-  let artifactPath = null;
-  if (input.write) {
-    artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
-    mkdirSync(dirname(artifactPath), { recursive: true });
-    writeFileSync(artifactPath, markdown, "utf8");
-  }
+  const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
   const machine = JSON.stringify({
     verdict,
     gates: results.map((r) => ({
@@ -29551,14 +29803,17 @@ ${plan}${warn2}`
     sumOfGatesMs,
     artifactPath
   });
-  return {
-    content: [
-      { type: "text", text: `${markdown}
+  const fullText = `${markdown}
 
 \`\`\`json verify-result
 ${machine}
-\`\`\`` }
-    ],
+\`\`\``;
+  if (input.write && artifactPath) {
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(artifactPath, fullText, "utf8");
+  }
+  return {
+    content: [{ type: "text", text: fullText }],
     isError: verdict === "FAIL"
   };
 }
@@ -29674,8 +29929,8 @@ async function executeGates(gates, execution, cwd) {
     let r;
     try {
       r = await runGate(g, cwd);
-    } catch (err) {
-      r = crashResult(g, err);
+    } catch (err2) {
+      r = crashResult(g, err2);
     }
     results.push(r);
     if (execution === "fail-fast" && r.status !== "pass") break;
@@ -29690,8 +29945,8 @@ function runGate(gate, cwd) {
     let stderr = "";
     child.stdout?.on("data", (d) => stdout += d.toString());
     child.stderr?.on("data", (d) => stderr += d.toString());
-    child.on("error", (err) => {
-      resolve(crashResult(gate, err, Math.round(performance.now() - start)));
+    child.on("error", (err2) => {
+      resolve(crashResult(gate, err2, Math.round(performance.now() - start)));
     });
     child.on("close", (code, signal) => {
       const durationMs = Math.round(performance.now() - start);
@@ -29805,11 +30060,11 @@ function deliverGate(projectRoot) {
   let text;
   try {
     text = readFileSync(artifactPath, "utf8");
-  } catch (err) {
+  } catch (err2) {
     return gateResult(
       "BLOCK",
       null,
-      `could not read verification.md: ${err instanceof Error ? err.message : String(err)}`
+      `could not read verification.md: ${err2 instanceof Error ? err2.message : String(err2)}`
     );
   }
   const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
@@ -29869,50 +30124,12 @@ ${machine}
     isError: decision === "BLOCK"
   };
 }
-function ok3(text) {
+function ok2(text) {
   return { content: [{ type: "text", text }] };
 }
 
 // src/tools/spec.ts
 var import_yaml2 = __toESM(require_dist2());
-var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
-var RISK_VALUES = ["low", "medium", "high"];
-var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
-var FEATURE_REQUIRED = [
-  "goal",
-  "data config",
-  "chosen approach",
-  "test plan",
-  "definition of done",
-  "non goals",
-  "open questions",
-  "security nfr"
-];
-var FEATURE_RECOMMENDED = [
-  "context",
-  "why this over alternatives",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes",
-  "future considerations"
-];
-var BUGFIX_REQUIRED = [
-  "problem",
-  "reproduction steps",
-  "root cause analysis",
-  "fix approach",
-  "regression test specification",
-  "definition of done",
-  "non goals",
-  "open questions"
-];
-var BUGFIX_RECOMMENDED = [
-  "expected behavior",
-  "severity impact",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes"
-];
 var ID_FILE = /^F\d+$/i;
 var ID_AC = /^AC\d+$/i;
 var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
@@ -29953,6 +30170,67 @@ var HostBindings = external_exports.object({
   merge_obligations: external_exports.array(external_exports.string()).optional(),
   gates: external_exports.record(external_exports.string()).optional()
 }).passthrough();
+function extractContractBlock(body) {
+  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+function extractHostBindings(body) {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+
+// src/tools/spec.ts
+var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
+var RISK_VALUES = ["low", "medium", "high"];
+var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
+var FEATURE_REQUIRED = [
+  "goal",
+  "data config",
+  "chosen approach",
+  "test plan",
+  "definition of done",
+  "non goals",
+  "open questions",
+  "security nfr"
+];
+var FEATURE_RECOMMENDED = [
+  "context",
+  "why this over alternatives",
+  "assumptions",
+  "critic verdict overrides",
+  "design notes",
+  "future considerations"
+];
+var BUGFIX_REQUIRED = [
+  "problem",
+  "reproduction steps",
+  "root cause analysis",
+  "fix approach",
+  "regression test specification",
+  "definition of done",
+  "non goals",
+  "open questions"
+];
+var BUGFIX_RECOMMENDED = [
+  "expected behavior",
+  "severity impact",
+  "assumptions",
+  "critic verdict overrides",
+  "design notes"
+];
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
   specContent: external_exports.string().optional().describe(
@@ -30066,9 +30344,9 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err) {
+  } catch (err2) {
     return result("FAIL", type, [
-      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err)}`)
+      fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err2)}`)
     ]);
   }
   const parsed = SpecContract.safeParse(doc);
@@ -30241,10 +30519,6 @@ function checkSections(sections, required2, recommended) {
   }
   return checks;
 }
-function extractContractBlock(body) {
-  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
 function checkContractBlock(body, type, projectRoot, specLocation) {
   const blockText = extractContractBlock(body);
   if (blockText === null) {
@@ -30259,8 +30533,8 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   let doc;
   try {
     doc = (0, import_yaml2.parse)(blockText);
-  } catch (err) {
-    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err)}`)];
+  } catch (err2) {
+    return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err2)}`)];
   }
   const parsed = SpecContract.safeParse(doc);
   if (!parsed.success) {
@@ -30282,20 +30556,16 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot));
   return checks;
 }
-function extractHostBindings(body) {
-  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
 function checkHostBindings(body) {
   const text = extractHostBindings(body);
   if (text === null) return { checks: [], specLocation: void 0 };
   let doc;
   try {
     doc = (0, import_yaml2.parse)(text);
-  } catch (err) {
+  } catch (err2) {
     return {
       checks: [
-        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err)}`)
+        warn("host-bindings", "Host bindings", `block is not valid YAML: ${errMessage(err2)}`)
       ],
       specLocation: void 0
     };
@@ -30316,16 +30586,14 @@ function checkDependsOn(deps, specLocation, projectRoot) {
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, ".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
-    (d) => !!d
-  );
+  const dirs = [specLocation, ...SPEC_DIRS].filter((d) => !!d);
   const notFound = [];
   const notShipped = [];
   for (const slug of deps) {
     let resolved = null;
     for (const dir of dirs) {
-      const p = join(projectRoot, dir, `${slug}.md`);
-      if (existsSync(p)) {
+      const p = resolveSpecBySlug(dir, slug, projectRoot);
+      if (p) {
         resolved = p;
         break;
       }
@@ -30576,8 +30844,8 @@ function parseSections(body) {
   flush();
   return map;
 }
-function errMessage(err) {
-  const msg = err instanceof Error ? err.message : String(err);
+function errMessage(err2) {
+  const msg = err2 instanceof Error ? err2.message : String(err2);
   return msg.split("\n")[0].slice(0, 160);
 }
 function computeVerdict2(checks) {
@@ -30633,9 +30901,455 @@ function fail(id, label, detail) {
 function warn(id, label, detail) {
   return { id, label, status: "warn", detail };
 }
+var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
+var INDEX_FILE = "MEMORY.md";
+var INDEX_HEADER = [
+  "# Marvin lessons",
+  "",
+  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
+  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
+  "in the linked file. Recalled at task intake.",
+  ""
+].join("\n");
+function uniqueSlug(memoryDir, base) {
+  const root = base || "lesson";
+  let slug = root;
+  let n = 2;
+  while (existsSync(join(memoryDir, `${slug}.md`))) {
+    slug = `${root}-${n}`;
+    n += 1;
+  }
+  return slug;
+}
+function addLesson(memoryDir, input) {
+  mkdirSync(memoryDir, { recursive: true });
+  const slug = uniqueSlug(memoryDir, slugify(input.title));
+  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const frontmatter = {
+    id: slug,
+    type: input.type,
+    title: input.title,
+    created,
+    tags: tags.length ? tags.join(", ") : void 0,
+    source: input.source?.trim() || "manual"
+  };
+  const body = input.body.trim() ? `
+${input.body.trim()}
+` : "\n";
+  const path = join(memoryDir, `${slug}.md`);
+  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
+  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
+  return { slug, path };
+}
+function appendIndex(memoryDir, entry) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
+  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
+  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(indexPath, `${content}${line}
+`);
+}
+function readAllLessons(memoryDir) {
+  if (!existsSync(memoryDir)) return [];
+  const lessons = [];
+  for (const filename of readdirSync(memoryDir).sort()) {
+    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
+    const raw = readFileSync(join(memoryDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (!frontmatter.title) continue;
+    lessons.push({
+      slug: filename.replace(/\.md$/, ""),
+      type: frontmatter.type ?? "process",
+      title: frontmatter.title,
+      created: frontmatter.created ?? "",
+      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      source: frontmatter.source ?? "manual",
+      body: body.trim()
+    });
+  }
+  return lessons;
+}
+function searchLessons(memoryDir, input) {
+  const all = readAllLessons(memoryDir);
+  const terms = (input.query ?? "").toLowerCase().split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  const scored = all.filter((l) => !input.type || l.type === input.type).map((l) => {
+    const haystack = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
+    const score = terms.length === 0 ? 1 : terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0);
+    return { lesson: l, score };
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
+  return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
+}
+
+// src/tools/lessons.ts
+var LessonsInput = external_exports.object({
+  action: external_exports.enum(["add", "search"]),
+  // add
+  type: external_exports.enum(LESSON_TYPES).optional(),
+  title: external_exports.string().optional(),
+  body: external_exports.string().optional(),
+  tags: external_exports.string().optional(),
+  // comma-separated
+  source: external_exports.string().optional(),
+  // search
+  query: external_exports.string().optional(),
+  limit: external_exports.number().int().positive().max(50).optional()
+});
+function buildLessonsTool(env) {
+  return defineTool({
+    name: "lessons",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task or debug session; action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it at task intake so past mistakes inform new work.",
+    inputSchema: LessonsInput,
+    handler: (input) => Promise.resolve(dispatch(env, input))
+  });
+}
+function dispatch(env, input) {
+  return input.action === "add" ? runAdd(env, input) : runSearch(env, input);
+}
+function runAdd(env, input) {
+  const missing = [];
+  if (!input.type) missing.push("type");
+  if (!input.title?.trim()) missing.push("title");
+  if (!input.body?.trim()) missing.push("body");
+  if (missing.length > 0) {
+    return err(
+      `lessons add requires: ${missing.join(", ")}. type \u2208 {${LESSON_TYPES.join(" | ")}}.`
+    );
+  }
+  const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+  const { slug, path } = addLesson(env.memoryDir, {
+    type: input.type,
+    title: input.title.trim(),
+    body: input.body,
+    tags,
+    ...input.source ? { source: input.source } : {}
+  });
+  return ok3(
+    `Captured lesson **${slug}** (\`${input.type}\`).
+File: \`${path}\`
+Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
+  );
+}
+function runSearch(env, input) {
+  const lessons = searchLessons(env.memoryDir, {
+    ...input.query ? { query: input.query } : {},
+    ...input.type ? { type: input.type } : {},
+    ...input.limit ? { limit: input.limit } : {}
+  });
+  if (lessons.length === 0) {
+    const filtered = input.query || input.type;
+    return ok3(
+      filtered ? `No matching lessons in \`.marvin/memory\`${input.query ? ` for "${input.query}"` : ""}${input.type ? ` [type:${input.type}]` : ""}.` : "No lessons captured yet in `.marvin/memory`."
+    );
+  }
+  return ok3(renderLessons(lessons));
+}
+function renderLessons(lessons) {
+  const out = [`# Relevant lessons (${lessons.length})`, ""];
+  for (const l of lessons) {
+    const tags = l.tags.length > 0 ? ` \xB7 _${l.tags.join(", ")}_` : "";
+    out.push(`## ${l.title}`);
+    out.push(`\`${l.type}\` \xB7 ${l.created} \xB7 source: ${l.source}${tags}`);
+    out.push("");
+    out.push(l.body);
+    out.push("");
+  }
+  return out.join("\n").trimEnd();
+}
+function ok3(text) {
+  return { content: [{ type: "text", text }] };
+}
+function err(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+function readAllHandoffs(handoffDir) {
+  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
+  const handoffs = [];
+  const malformed = [];
+  for (const filename of readdirSync(handoffDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(handoffDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = HandoffFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    handoffs.push({ frontmatter: parsed.data, body, filename });
+  }
+  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { handoffs, malformed };
+}
+
+// src/tools/handoff.ts
+var HandoffInput = external_exports.object({
+  action: external_exports.enum(["list"]).optional()
+});
+function buildHandoffTool(env) {
+  return defineTool({
+    name: "handoff",
+    description: "List the session-continuation handoff documents saved under .marvin/handoff/, newest first.",
+    inputSchema: HandoffInput,
+    // Only one action today (list); the optional enum leaves room to grow
+    // (e.g. a `show` detail action) without a breaking schema change.
+    handler: () => Promise.resolve(runList2(env))
+  });
+}
+function runList2(env) {
+  const { handoffs, malformed } = readAllHandoffs(env.handoffDir);
+  const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
+  const warning = malformed.length > 0 ? `
+
+_\u26A0 ${malformed.length} handoff(s) without valid frontmatter: ${malformed.map((m) => m.filename).join(", ")} (regenerate with \`/marvin:handoff\`)_` : "";
+  return {
+    content: [{ type: "text", text: `# Handoffs (${handoffs.length})
+
+${body}${warning}` }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the handoff viewer (#5).
+    // Same data the text renders, typed to the HandoffListPayload contract;
+    // terminals render `content` and ignore this.
+    structuredContent: buildHandoffListPayload(handoffs)
+  };
+}
+function formatHandoffLine(h) {
+  const fm = h.frontmatter;
+  const pr = fm.pr_url ? ` \xB7 PR: ${fm.pr_url}` : "";
+  const base = fm.base ? ` \u2192 \`${fm.base}\`` : "";
+  return `- **${fm.id}** ${fm.objective} \xB7 \`${fm.branch}\`${base}${pr}`;
+}
+function buildHandoffListPayload(handoffs) {
+  const cards = handoffs.map((h) => {
+    const fm = h.frontmatter;
+    return {
+      id: fm.id,
+      slug: fm.slug,
+      objective: fm.objective,
+      branch: fm.branch,
+      ...fm.base ? { base: fm.base } : {},
+      // Contract field is nullable-required; storage omits it when absent.
+      pr_url: fm.pr_url ?? null,
+      ...fm.spec_slug ? { spec_slug: fm.spec_slug } : {},
+      created: fm.created
+    };
+  });
+  return { handoffs: cards };
+}
+
+// src/tools/summary.ts
+var import_yaml3 = __toESM(require_dist2());
+var SummaryInput = external_exports.object({
+  slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
+  projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
+});
+function buildSummaryTool(env, config2) {
+  return defineTool({
+    name: "summary",
+    description: "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
+    inputSchema: SummaryInput,
+    handler: (input) => Promise.resolve(runSummary(env, config2, input))
+  });
+}
+function runSummary(env, config2, input) {
+  const projectRoot = input.projectRoot ?? env.projectDir;
+  const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
+  if (!specPath) {
+    return errOk2(
+      input.slug ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.` : `No spec found under ${SPEC_DIRS.join(", ")} \u2014 run /marvin:task-start first.`
+    );
+  }
+  const { frontmatter, body } = parseFrontmatter(readFileSync(specPath, "utf8"));
+  const slug = frontmatter.slug?.trim() || basenameSlug(specPath);
+  const contract = parseSpecContract(body);
+  const hostBindings = parseHostBindings(body);
+  const verify = readVerifyResult(projectRoot);
+  const acceptance = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
+  const gates = (verify?.gates ?? []).map(toGateOutcome);
+  const commits = readCommits(projectRoot, config2.base_branch);
+  const lessons = searchLessons(env.memoryDir, { query: slug, limit: 10 }).map(
+    (l) => ({
+      id: l.slug,
+      title: l.title
+    })
+  );
+  const links = buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings);
+  const summary = {
+    slug,
+    title: extractTitle(body) ?? slug,
+    status: frontmatter.status?.trim() || "unknown",
+    acceptance,
+    gates,
+    commits,
+    lessons,
+    links
+  };
+  return {
+    content: [{ type: "text", text: render(summary, verify) }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the task-summary view (#3).
+    structuredContent: summary
+  };
+}
+function findSpecBySlug(slug, projectRoot) {
+  for (const dir of SPEC_DIRS) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function findLatestSpec(projectRoot) {
+  for (const dir of SPEC_DIRS) {
+    const abs = join(projectRoot, dir);
+    if (!existsSync(abs)) continue;
+    const specs = readdirSync(abs).filter((f) => f.endsWith(".md") && f !== "verification.md").sort();
+    if (specs.length) return join(abs, specs[specs.length - 1]);
+  }
+  return null;
+}
+function basenameSlug(specPath) {
+  const file = specPath.split("/").pop() ?? specPath;
+  return file.replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function parseSpecContract(body) {
+  const block = extractContractBlock(body);
+  if (!block) return null;
+  try {
+    const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+function parseHostBindings(body) {
+  const text = extractHostBindings(body);
+  if (!text) return null;
+  try {
+    const parsed = HostBindings.safeParse((0, import_yaml3.parse)(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+function readVerifyResult(projectRoot) {
+  const path = join(projectRoot, ".marvin", "task", "verification.md");
+  if (!existsSync(path)) return null;
+  const m = readFileSync(path, "utf8").match(/```json verify-result\n([\s\S]*?)\n```/);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(m[1]);
+    return { verdict: parsed.verdict, gates: parsed.gates ?? [] };
+  } catch {
+    return null;
+  }
+}
+function toAcOutcome(cr, verify) {
+  const base = {
+    id: cr.id,
+    statement: cr.statement,
+    oracle_kind: cr.oracle.kind,
+    ...cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}
+  };
+  const passed = verify?.verdict === "PASS" || verify?.verdict === "PASS WITH WARNINGS";
+  const real = cr.oracle.kind === "test" || cr.oracle.kind === "command";
+  return { ...base, outcome: passed && real ? "pass" : "unknown" };
+}
+function toGateOutcome(g) {
+  const status = g.status === "pass" ? "pass" : "fail";
+  return {
+    name: g.name,
+    status,
+    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {}
+  };
+}
+function readCommits(projectRoot, base) {
+  if (!inGitRepo(projectRoot)) return [];
+  const r = git(
+    ["log", `${base}..HEAD`, "--no-merges", "--format=%h%x09%s", "-n", "30"],
+    projectRoot
+  );
+  if (!r.ok || !r.value.trim()) return [];
+  return r.value.split("\n").map((line) => {
+    const tab = line.indexOf("	");
+    return tab === -1 ? null : { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
+  }).filter((c) => c !== null);
+}
+function buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings) {
+  const links = [{ kind: "spec", label: slug, ref: slug }];
+  const branch = currentBranch(projectRoot);
+  if (branch) {
+    links.push({ kind: "branch", label: branch, ref: branch });
+    const { tasks } = readAllTasks(env.tasksDir, config2);
+    const pr = findTaskByBranch(tasks, branch)?.frontmatter.pr;
+    if (pr) links.push({ kind: "pr", label: prLabel(pr), url: pr });
+  }
+  const tracker = (frontmatter.tracker ?? "").trim();
+  if (tracker && !["none", "n/a", "\u2014", "-"].includes(tracker.toLowerCase())) {
+    const url = trackerUrl(config2, tracker);
+    links.push({ kind: "tracker", label: tracker, ...url ? { url } : { ref: tracker } });
+  }
+  const adr = hostBindings?.decision_record?.path;
+  if (adr) links.push({ kind: "adr", label: adr, ref: adr });
+  return links;
+}
+function prLabel(url) {
+  const m = url.match(/\/pull\/(\d+)/);
+  return m ? `PR #${m[1]}` : "PR";
+}
+function extractTitle(body) {
+  const m = body.match(/^#\s+(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+function render(s, verify) {
+  const acIcon = (o) => o === "pass" ? "\u2705" : o === "fail" ? "\u274C" : "\u26AA";
+  const gateIcon = (st) => st === "pass" ? "\u2705" : st === "skip" ? "\u26AA" : "\u274C";
+  const lines = [
+    `# Task summary \u2014 ${s.title}`,
+    "",
+    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status}${verify ? ` \xB7 **Verification:** ${verify.verdict}` : " \xB7 **Verification:** not run"}`,
+    "",
+    `## Acceptance (${s.acceptance.length})`,
+    ...s.acceptance.length ? s.acceptance.map(
+      (a) => `- ${acIcon(a.outcome)} **${a.id}** ${a.statement} \u2014 _${a.oracle_kind}${a.oracle_ref ? ` ${a.oracle_ref}` : ""}_ \xB7 ${a.outcome}`
+    ) : ["_no spec-contract criteria found_"],
+    "",
+    `## Gates`,
+    ...s.gates.length ? s.gates.map(
+      (g) => `- ${gateIcon(g.status)} ${g.name} \u2014 ${g.status}${g.detail ? ` (${g.detail})` : ""}`
+    ) : ["_no verification gates_"],
+    "",
+    `## Commits (${s.commits.length})`,
+    ...s.commits.length ? s.commits.map((c) => `- \`${c.sha}\` ${c.subject}`) : ["_none on this branch vs base_"]
+  ];
+  if (s.lessons.length) {
+    lines.push(
+      "",
+      `## Lessons (${s.lessons.length})`,
+      ...s.lessons.map((l) => `- ${l.title} (\`${l.id}\`)`)
+    );
+  }
+  lines.push(
+    "",
+    `## Links`,
+    ...s.links.map(
+      (l) => `- [${l.kind}] ${l.label}${l.url ? ` \u2192 ${l.url}` : l.ref ? ` \u2192 \`${l.ref}\`` : ""}`
+    )
+  );
+  return lines.join("\n");
+}
+function errOk2(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
 
 // src/server.ts
-var VERSION = "2.0.0-alpha.21";
+var VERSION = "0.3.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -30643,15 +31357,17 @@ await runPackServer({
   packRoot: packRootFromMeta(import.meta.url),
   build: (server) => {
     const env = loadEnv();
-    const { config: config2 } = loadConfig(env.configPath);
+    const { config: config2 } = loadConfig(env.configPath, env.projectDir);
     return {
       prompts: PROMPTS,
       tools: [
         buildTaskTool(server, env, config2),
-        buildGitTool(server, env, config2),
         buildHelpTool(env, config2, VERSION),
         buildVerifyTool(env),
-        buildSpecTool(env)
+        buildSpecTool(env),
+        buildLessonsTool(env),
+        buildHandoffTool(env),
+        buildSummaryTool(env, config2)
       ]
     };
   }

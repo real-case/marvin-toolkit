@@ -5,6 +5,14 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import { parseFrontmatter } from "../storage/frontmatter.js";
+import {
+  SpecContract,
+  HostBindings,
+  extractContractBlock,
+  extractHostBindings,
+  resolveSpecBySlug,
+  SPEC_DIRS,
+} from "../storage/spec.js";
 import { git, inGitRepo } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 
@@ -83,64 +91,9 @@ const BUGFIX_RECOMMENDED = [
   "design notes",
 ];
 
-// ── spec-contract block schema (the typed, fail-closed graph) ────────────────
-
-const ID_FILE = /^F\d+$/i;
-const ID_AC = /^AC\d+$/i;
-/** A scalar id, an array of ids, or "—"/"none" for an infra row. */
-const RefList = z.union([z.array(z.union([z.string(), z.number()])), z.string()]);
-
-const FileRow = z.object({
-  id: z.string().regex(ID_FILE, "file id must look like F1, F2, …"),
-  path: z.string().min(1),
-  action: z.enum(["new", "edit", "delete"]),
-  intent: z.string().optional(),
-  satisfies: RefList.optional(),
-  anchor: z.string().optional(),
-});
-
-const Oracle = z.object({
-  kind: z.enum(["test", "command", "prose-review"]),
-  ref: z.string().optional(),
-});
-
-const Criterion = z.object({
-  id: z.string().regex(ID_AC, "criterion id must look like AC1, AC2, …"),
-  statement: z.string().min(1),
-  implemented_by: RefList,
-  oracle: Oracle,
-  failure: z.string().optional(),
-  regression: z.boolean().optional(),
-});
-
-const ContractObj = z.object({
-  kind: z.enum(["function", "route", "schema", "cli", "event", "none"]),
-  signature: z.string().optional(),
-});
-
-const SpecContract = z.object({
-  files: z.array(FileRow).min(1),
-  build_order: z.array(z.union([z.string(), z.number()])).optional(),
-  contract: ContractObj.optional(),
-  criteria: z.array(Criterion).min(1),
-  depends_on: z.array(z.string()).optional(),
-});
-type SpecContract = z.infer<typeof SpecContract>;
-
-/** Discovered, host-specific bindings (ADR-0005 Contract B). Optional and
- * advisory — populated by task-start's pre-draft discovery, not load-bearing for
- * execution. `passthrough` keeps any extra host keys the author records;
- * `spec_location` is what lets depends_on resolve sibling specs. */
-const HostBindings = z
-  .object({
-    spec_location: z.string().optional(),
-    decision_record: z
-      .object({ style: z.string().optional(), path: z.string().optional() })
-      .optional(),
-    merge_obligations: z.array(z.string()).optional(),
-    gates: z.record(z.string()).optional(),
-  })
-  .passthrough();
+// The spec-contract / host-bindings schemas and block extractors now live in
+// ../storage/spec.ts — the single source of truth shared with the task-summary
+// aggregator (ADR-0024). This tool imports them and keeps the gate checks below.
 
 const SpecInput = z.object({
   specPath: z
@@ -532,13 +485,7 @@ function checkSections(
   return checks;
 }
 
-// ── spec-contract block ──────────────────────────────────────────────────────
-
-/** Extract the first fenced block whose info string mentions `spec-contract`. */
-function extractContractBlock(body: string): string | null {
-  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1]! : null;
-}
+// ── spec-contract block (schema + extractor in ../storage/spec.ts) ───────────
 
 function checkContractBlock(
   body: string,
@@ -591,12 +538,6 @@ function checkContractBlock(
 
 // ── host-bindings + sibling dependencies (Contract B) ────────────────────────
 
-/** Extract the first fenced block whose info string mentions `host-bindings`. */
-function extractHostBindings(body: string): string | null {
-  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1]! : null;
-}
-
 /** The host-bindings block is optional and advisory (discovered, not load-bearing
  * for execution). Validate it lightly when present and surface its `spec_location`
  * so depends_on can resolve siblings; a malformed block warns, never blocks. */
@@ -641,16 +582,14 @@ function checkDependsOn(
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, ".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"].filter(
-    (d): d is string => !!d,
-  );
+  const dirs = [specLocation, ...SPEC_DIRS].filter((d): d is string => !!d);
   const notFound: string[] = [];
   const notShipped: string[] = [];
   for (const slug of deps) {
     let resolved: string | null = null;
     for (const dir of dirs) {
-      const p = join(projectRoot, dir, `${slug}.md`);
-      if (existsSync(p)) {
+      const p = resolveSpecBySlug(dir, slug, projectRoot);
+      if (p) {
         resolved = p;
         break;
       }
