@@ -54,12 +54,19 @@ const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
   }
 });
 
-/** Title contract — ASCII only, 3..120 chars. */
+/**
+ * Title contract — any printable Unicode, 3..120 chars. Only control
+ * characters (C0, DEL, C1) are excluded; the exclusion is spelled as
+ * `\uXXXX` ranges (no `\p{…}`/`u`-flag) so the pattern stays a portable
+ * ECMA-262 regex after `zodToElicitSchema` copies its source into the
+ * elicitation form's JSON Schema.
+ */
 export const TaskTitle = z
   .string()
   .min(3)
   .max(120)
-  .regex(/^[\x20-\x7E]+$/, "ASCII printable only");
+  // eslint-disable-next-line no-control-regex -- the control-char exclusion is the point
+  .regex(/^[^\u0000-\u001F\u007F-\u009F]+$/, "printable characters only (no control characters)");
 
 /** External tracker ID, e.g. OSI-123. */
 export const TrackerId = z.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");

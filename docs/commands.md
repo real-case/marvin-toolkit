@@ -125,7 +125,13 @@ OWASP-aligned scanning, threat modeling, and remediation.
 ## Kanban tracker — `kanban-*`
 
 A lightweight per-project board with interactive MCP-elicit forms — inquirer-style speed inside
-Claude Code. Storage: `.marvin/kanban/` (+ optional `.marvin/config.json`).
+Claude Code. Every form field is also a tool argument (`type`, `title`, `description`,
+`tracker_id`, `taskId`, `status`): details the user already said skip the form, and on hosts
+without elicitation support the commands answer with the exact arguments to pass instead.
+New tasks branch off following the topic-branch convention —
+`<type-prefix>/<seq>[-<tracker>]--<slug>` with bug→`fix`, feature→`feat`, chore→`chore`,
+spike→`spike` (e.g. `fix/007-OSI-123--login-timeout`). Storage: `.marvin/kanban/`
+(+ optional `.marvin/config.json`).
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|

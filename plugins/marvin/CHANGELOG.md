@@ -4,6 +4,53 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.4.0] — 2026-07-02
+
+The model becomes a first-class caller of the kanban board (WP3 of the kanban
+rework): every form field is also a tool argument, elicitation degrades
+gracefully, and the storage layer survives real-world input.
+
+### Added
+
+- **Model-passable arguments on the `task` tool** — `title`, `description`,
+  `tracker_id` (create) and `status` (the target key for `move`) join `action`,
+  `type`, `taskId`, `url`. Each flow elicits only the fields still missing after
+  the arguments are applied: `create` with `type` + `title` runs with no form at
+  all, `move` with a valid `status` skips the picker (an unknown key answers
+  with the configured keys). `review` and `done` now honor an explicit `taskId`
+  (role-checked, like `start`). Explicit-but-invalid values earn instructive
+  errors (`title` against the TaskTitle contract, `tracker_id` against
+  SHORT-123) instead of silent re-asks. The kanban prompt bodies tell the model
+  to mine the user's message for these arguments up front.
+- **Elicitation capability detection** — new `canElicit(server)` in the shared
+  lib reads the client's declared capabilities. On hosts without elicitation
+  support, interactive flows return an instructive `isError` naming exactly the
+  arguments to pass on retry — never a raw wire error; argument-complete calls
+  work end to end. `elicit()` itself now throws a readable message if called
+  without the capability (backstop, documented in its JSDoc).
+- **Unicode titles** — the TaskTitle contract accepts any printable Unicode
+  (3..120 chars, control characters rejected); the derived elicitation-form
+  pattern stays a portable ECMA-262 regex. Slugs remain ASCII kebab-case; a
+  fully non-Latin title falls back to the task type as its slug
+  (`001--bug.md`), so filenames and branches never get an empty slug segment.
+
+### Changed
+
+- **Branch names follow the ADR-0019 topic-branch convention** — new tasks
+  generate `<type-prefix>/<seq>[-<tracker>]--<slug>` with bug→`fix`,
+  feature→`feat`, chore→`chore`, spike→`spike` (e.g.
+  `fix/007-OSI-123--login-timeout`, previously `007-OSI-123--login-timeout`).
+  Existing tasks keep their stored `branch` frontmatter — no migration.
+
+### Fixed
+
+- **Sequence ids are derived from every `.md` filename** in the tasks dir —
+  including files whose frontmatter fails validation — so a malformed file can
+  no longer cause its id to be handed out twice.
+- **Task writes are crash-safe** — files land via temp-file-plus-rename in the
+  same directory; readers see the old task file or the new one, never a torn
+  half-write.
+
 ## [0.3.0] — 2026-07-02
 
 Statuses become project data ([ADR-0026](../../docs/adr/0026-configurable-status-model.md)):

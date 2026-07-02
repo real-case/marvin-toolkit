@@ -109,7 +109,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 
 - typed `PromptDef` / `ToolDef` interfaces and `defineTool` helper
 - `runPackServer({ name, version, promptsDir, packRoot, build })` — the standard server entry
-- `elicit(server, message, zodSchema)` — typed MCP elicitation wrapper
+- `elicit(server, message, zodSchema)` + `canElicit(server)` — typed MCP elicitation wrapper with client-capability detection (tools degrade to instructive errors on hosts without elicitation)
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
 - `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
 
