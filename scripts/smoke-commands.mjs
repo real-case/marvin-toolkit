@@ -56,6 +56,9 @@ const REQUIRED_PROMPTS = [
   "sec-fix",
   "sec-compliance",
   "sec-pentest",
+  // refactor-*
+  "refactor-audit",
+  "refactor-smells",
   // kanban-*
   "kanban-menu",
   "kanban-bug",
