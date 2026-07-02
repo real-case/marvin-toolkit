@@ -42,8 +42,9 @@ server.
 - Default `execution: "parallel"`; `"sequential"` (all gates, lower peak resource use) and
   `"fail-fast"` (stop at first failure) are opt-in.
 - The tool **owns `verification.md`**, writing it to
-  `<projectRoot>/.taskmaster/current-task/verification.md` — the exact path `/marvin:task-deliver`
-  reads.
+  `<projectRoot>/.marvin/task/verification.md` — the exact path `/marvin:task-deliver` reads.
+  (The artifact originally lived under `.taskmaster/current-task/`; it moved to the unified
+  `.marvin/` working directory in [ADR-0007](0007-marvin-working-directory.md).)
 - Stack detection lives **once** in the tool (five stacks: Go, Python, TypeScript, Rust, Java),
   removing the duplicated prose tables.
 

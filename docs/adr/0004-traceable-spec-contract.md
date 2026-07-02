@@ -8,11 +8,6 @@
 | Superseded by | —                                                           |
 | Related       | [ADR-0003](0003-tool-backed-dor.md), [ADR-0002](0002-tool-backed-verification.md), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
 
-> **Amendment (2026-06-14):** the `sonnet`-backed `marvin-tm-spec-critic` referenced below
-> was later raised to Opus by [ADR-0006](0006-all-subagents-opus.md). Mentions of "sonnet"
-> here are historical; the gate-ordering rationale is unchanged (and stronger now that the
-> critic is more expensive).
-
 ## Context
 
 ADR-0003 moved the **shape** of the Definition of Ready into the `spec` tool: required
@@ -30,7 +25,7 @@ still force the executor to *infer* its way to a result:
    path, where the semantic critic is most often unavailable, nothing else caught it. The
    tool also never checked that a `verified_by` test path was inside the allowlist; a test named as
    a proof but absent from the File Change Plan is a file the executor is *forbidden to create*.
-3. **Expensive gate before the cheap one.** `task-start` ran the sonnet-backed
+3. **Expensive gate before the cheap one.** `task-start` ran the LLM-backed
    `marvin-tm-spec-critic` (Step 7) *before* the free deterministic `spec` tool (Step 8). A spec
    with a shape error burned a critic invocation before the tool rejected it for nothing.
 4. **Context holes pre-draft.** Intake never swept for callers / reverse-dependencies, public-
@@ -85,13 +80,13 @@ draft.
   `ac-verified-real`) instead of "the critic might catch it".
 - The executor's degrees of freedom collapse: for each criterion, change exactly these files,
   prove with exactly this test. Spec↔diff divergence shrinks.
-- The free gate runs first; the sonnet critic is spent only on specs worth its time.
+- The free gate runs first; the LLM critic is spent only on specs worth its time.
 - Callers and merge-obligations are gathered before drafting, turning a late critic loopback into
   an intake question.
 
 ### Negative / accepted trade-offs
 
-- The spec format changed again. Pre-0006 specs (three independent tables, no `Definition of Done`,
+- The spec format changed again. Specs predating this ADR (three independent tables, no `Definition of Done`,
   no `breaking`/`spike_required`) are **not** auto-migrated — a missing-section/`traceability` WARN
   flags them on next gate run; re-author under the new templates. The format consumers
   (`task-implement`, `marvin-tm-executor`, `marvin-tm-spec-critic`) were updated in lock-step.

@@ -4,7 +4,7 @@
 | ------------- | ----------------------------------------------------------- |
 | Status        | **Accepted** (solo maintainer sign-off)                     |
 | Date          | 2026-06-06                                                  |
-| Supersedes    | The prior four-pack, per-pack-server design (its ADR was retired in the v2 publication cut) |
+| Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0013](0013-self-contained-server-bundle.md) (committed bundle), [ADR-0018](0018-three-doors-instrument-taxonomy.md) (three doors & instrument taxonomy), `CLAUDE.md` |
 
@@ -45,9 +45,9 @@ under it. Commands are renamed to `/marvin:<group>-<command>`; singletons stay b
 | D3 | **Collision resolution.** Flattening four namespaces into one surfaced real clashes — `start`, `review`, `commit` each existed in two packs. Resolved by group prefixes: taskmaster → `task-*`, kanban → `kanban-*` (every kanban prompt prefixed, including `kanban-menu`), security → `sec-*`. Core keeps bare `commit`/`debug` and the `pr-*` pair (`pr-create`, `pr-review`). |
 | D4 | **Deprecated alias dropped.** The `security-scan` backward-compat alias (skill + command + prompt) is removed — noise under a fresh single prefix. |
 | D5 | **`SKILL.md` stays the single source of truth (carried over from the prior design).** Skill directories and their frontmatter `name:` are renamed to the new unified names so dir = name = command. The kanban group keeps inline `body:` tool-wrappers (no skills), as before. |
-| D6 | **One server bundle.** The stateful kanban tools (`task`/`git`/`help`) and their `storage/`/`lib/`/`flows/` modules move into the unified server `src/`. The server registers all 38 prompts plus the 3 tools, loading `MARVIN_TASKS_*` env at build time. |
-| D7 | **Agents stay as `plugins/marvin/agents/*.md` (carried over from the prior design).** All eight agents merge into one `agents/` directory. |
-| D8 | **Versioning.** The consolidated plugin and server jump to `2.0.0-alpha.1` to signal the breaking server-key rename; marketplace `metadata.version` follows. |
+| D6 | **One server bundle.** The stateful kanban tools (`task`/`git`/`help`) and their `storage/`/`lib/`/`flows/` modules move into the unified server `src/`. The server registers the full prompt set plus the kanban tools, loading `MARVIN_TASKS_*` env at build time. |
+| D7 | **Agents stay as `plugins/marvin/agents/*.md` (carried over from the prior design).** All agents merge into one `agents/` directory. |
+| D8 | **Versioning.** Consolidation ran on an internal `2.0.0-alpha` pre-release line — the major bump signalled the breaking server-key rename and tracked the four-pack → single-plugin work; it never shipped a 1.x. The first public release **resets to an honest `0.1.0`** pre-1.0 start, with plugin, server, and marketplace `metadata.version` in lockstep (see `CHANGELOG.md`). |
 
 ## Repository layout
 
@@ -58,11 +58,11 @@ plugins/marvin/
 ├── CHANGELOG.md
 ├── skills/<command>/SKILL.md         # unified names; single source of truth
 ├── commands/<command>.md             # markdown slash aliases (no mn. prefix)
-├── agents/*.md                       # all 8 agents
+├── agents/*.md                       # all agents
 └── mcp/server/
     ├── src/
     │   ├── server.ts                 # name: "marvin"; registers prompts + tools
-    │   ├── prompts/index.ts          # 38 prompts (skill-backed + inline kanban)
+    │   ├── prompts/index.ts          # prompts (skill-backed + inline kanban)
     │   ├── tools/ lib/ storage/ flows/   # kanban tool server
     └── dist/server.js                # committed bundle
 ```
@@ -83,4 +83,5 @@ plugins/marvin/
   (`commit`) can both surface for `commit`; this mirrors the existing "three doors"
   design and is verified in the live slash menu.
 - **Breaking change.** Every `/marvin-<pack>:*` command is renamed. Communicated via
-  the CHANGELOG and the major version bump.
+  the CHANGELOG; the rename landed on the internal pre-release line, before the first
+  public `0.1.0` release, so there is no external install base to migrate.

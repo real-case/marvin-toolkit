@@ -67,10 +67,10 @@ command per stage — under the existing three-doors model.**
 
 - The PR lifecycle reads as four natural commands: `pr-create`, `pr-review`,
   `pr-resolve`, `pr-merge`. The `pr-*` group goes from 2 to 4; `task-*` drops from
-  5 to 4; the total prompt count goes 38 → 39.
+  5 to 4 — a net +1 prompt.
 - **Breaking:** the `/marvin:task-fix-pr` prompt and the `task-fix-pr` skill/command
-  are removed. Callers move to `/marvin:pr-resolve`. Acceptable under the
-  `2.0.0-alpha` line; the rename is recorded here.
+  are removed. Callers move to `/marvin:pr-resolve`. Acceptable pre-1.0 (no external
+  installed base); the rename is recorded here.
 - Posting reviews and merging require `gh` auth with repo write. Both `pr-review`
   (posting) and `pr-merge` confirm with the user before any outward action.
 - Historical ADRs that mention `task-fix-pr` (e.g. [ADR-0020](0020-debugger-agent.md))
