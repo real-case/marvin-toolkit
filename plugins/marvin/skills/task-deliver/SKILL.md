@@ -1,6 +1,6 @@
 ---
 name: task-deliver
-description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", or when a taskmaster worktree has finished implementation and verification.
+description: Final delivery phase of the taskmaster pipeline — commits changes and opens a pull request by delegating to the commit and pr-create skills, and refuses to proceed if the preceding task-verify step did not pass. Use when the user says "deliver", "ship it", "finalize the task", "commit and PR", "close out the task", "marvin deliver the task", or when a taskmaster worktree has finished implementation and verification.
 ---
 
 # Deliver

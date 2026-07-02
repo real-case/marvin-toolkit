@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review a pull request on GitHub and post the review there — fetch the PR diff, review it for bugs, security, performance, and style, then submit a GitHub review with inline comments and a summary. Use when the user says "review the PR", "make a PR review", "start a PR review", "review PR #N", or "leave review comments on the PR". This posts to GitHub; for a local pre-commit read-only review use /code-review or the marvin-auditor agent.
+description: Review a pull request on GitHub and post the review there — fetch the PR diff, review it for bugs, security, performance, and style, then submit a GitHub review with inline comments and a summary. Use when the user says "review the PR", "make a PR review", "start a PR review", "review PR #N", "marvin review PR #N", or "leave review comments on the PR". This posts to GitHub; for a local pre-commit read-only review use /code-review or the marvin-auditor agent.
 ---
 
 Review a pull request **on GitHub** and submit the review there — a summary plus inline comments anchored to the diff. This is the reviewer side of the PR flow: the author opens the PR (`/marvin:pr-create`), this command reviews it, and `/marvin:pr-resolve` turns the comments into fixes.

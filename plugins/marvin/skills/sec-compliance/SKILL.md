@@ -1,6 +1,6 @@
 ---
 name: sec-compliance
-description: Check code against OWASP ASVS (Application Security Verification Standard) controls at L1/L2/L3 and report a gap analysis with evidence and remediation steps. Use when the user says "ASVS audit", "compliance check", "security verification", "compliance requirements", "readiness review", "pre-release security certification", or needs mapping between code and ASVS/SOC2/ISO requirements. Produces a control-by-control compliance report.
+description: Check code against OWASP ASVS (Application Security Verification Standard) controls at L1/L2/L3 and report a gap analysis with evidence and remediation steps. Use when the user says "ASVS audit", "compliance check", "security verification", "compliance requirements", "readiness review", "pre-release security certification", "marvin ASVS audit", or needs mapping between code and ASVS/SOC2/ISO requirements. Produces a control-by-control compliance report.
 ---
 
 # OWASP ASVS Compliance Check

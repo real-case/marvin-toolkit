@@ -1,6 +1,6 @@
 ---
 name: readme
-description: Generate or update README.md based on actual codebase analysis. Use when user asks to "create README", "update README", "generate docs", "write project documentation", or when a new project needs onboarding documentation.
+description: Generate or update README.md based on actual codebase analysis. Use when user asks to "create README", "update README", "generate docs", "write project documentation", "marvin update the README", or when a new project needs onboarding documentation.
 ---
 
 Generate or update the project's README.md based on actual codebase analysis.
