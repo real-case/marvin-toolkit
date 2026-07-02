@@ -316,7 +316,13 @@ Each work package runs in its **own session**, kanban-rework style:
    `dist/` and amend if the guard fails.
 5. **Tracker in the same PR** — update the progress status board row, tick the checklist,
    add a dated log entry.
-6. **One PR into `dev`**, never direct commits; the next WP session starts after merge.
+6. **One PR into `dev`**, never direct commits; within a track, the next WP session starts
+   after merge.
+
+Work packages from independent tracks (WP1→WP2, WP3, WP4→WP5) may run **concurrently in
+separate child sessions** — the wave schedule and the landing rules for concurrent PRs
+(second-lander `dist/` rebuild, landing-time version assignment) live in the
+[progress record](./toolbox-expansion-progress.md#parallel-execution).
 
 ## Non-goals / deferred
 

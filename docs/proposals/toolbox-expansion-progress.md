@@ -22,6 +22,9 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
 | 8  | Consolidation and release    | Not started | —      | —  | —   | —      | promotion `dev → main` with a **merge commit** + tag |
 
+_Version values are serial-order targets; under [parallel execution](#parallel-execution)
+the actual version is assigned at landing._
+
 ## Milestones
 
 - [ ] WP1–WP2 merged: ADR lifecycle complete through all three doors (registry 48)
@@ -30,6 +33,45 @@ Status values: **Not started · In progress · Blocked · Done**.
 - [ ] WP4–WP5 merged: refactoring family complete (registry 53)
 - [ ] WP6–WP7 merged: dashboard + usage telemetry live (registry 54, tools 9)
 - [ ] WP8: docs consolidated, release tagged and published
+
+## Parallel execution
+
+The three tracks are content-independent and may run **concurrently in separate child
+sessions**: **(WP1 → WP2)**, **(WP3)**, **(WP4 → WP5)**. The tail **WP6 → WP7 → WP8** stays
+strictly sequential — WP6 consumes WP1's corpus parser, WP3's `lessons stats`, and the
+`.marvin/refactor/` inventory from WP4–5; ADR-0030 is authored in WP6 and implemented in
+WP7. Note that WP5 does **not** depend on WP3: its lessons wiring uses `add`/`search`,
+which ship with ADR-0021 already.
+
+| Wave | WPs             | Entry condition                            |
+| ---- | --------------- | ------------------------------------------ |
+| 1    | WP1 ∥ WP3 ∥ WP4 | plan merged                                |
+| 2    | WP2 ∥ WP5       | WP1 merged (for WP2); WP4 merged (for WP5) |
+| 3    | WP6             | WP2 + WP3 + WP5 merged                     |
+| 4    | WP7             | WP6 merged                                 |
+| 5    | WP8             | everything merged                          |
+
+Landing rules for concurrent PRs — they share `dist/server.js`, the prompt registry, the
+docs tables, and the version manifests:
+
+- **Worktree isolation.** Each child session works in its own worktree branched off a
+  fresh `dev`; never share a working copy.
+- **Second-lander rule for `dist/`.** A conflict on `dist/server.js` between two
+  server-touching PRs is guaranteed and must never be hand-merged: rebase onto `dev`, keep
+  your own `src/`, regenerate `dist/` with `npm run build`, re-run the gates (the kanban
+  WP5 precedent).
+- **Versions and registry counts are assigned at landing, not at branch time.** The
+  Version column in the status board is the serial-order target; the actual bump is the
+  next minor over whatever `dev` holds at rebase time, and the `docs/commands.md` total is
+  recounted from the actual registry. Record the real version in the status-board row when
+  the PR lands.
+- **Append conflicts** (`prompts/index.ts`, `docs/commands.md`, README/CLAUDE.md rows) are
+  trivial — resolve on rebase.
+- **ADR numbers do not collide.** 0027–0030 are reserved per WP by the plan regardless of
+  landing order.
+- **Release cut.** The optional post-WP2 cut ships whatever else has already landed
+  (acceptable — all changes are additive); alternatively skip it and release once after
+  WP8.
 
 ## WP1 — `adr` MCP tool and contract
 
@@ -114,4 +156,5 @@ Status values: **Not started · In progress · Blocked · Done**.
 
 ## Log
 
+- **2026-07-02** — Parallel-execution protocol added: three concurrent tracks (WP1→WP2 ∥ WP3 ∥ WP4→WP5), sequential tail WP6→WP7→WP8, second-lander `dist/` rule, landing-time version/count assignment.
 - **2026-07-02** — Plan authored and filed together with this record (WP0, `docs/toolbox-expansion-plan` branch). Inventory confirmed: lessons loop already shipped per ADR-0021 (this plan extends it); `adr` skill is create-only; `DashboardState` contract exists; next ADR number is 0027. Registry today: 42 prompts, 7 tools, 9 agents.
