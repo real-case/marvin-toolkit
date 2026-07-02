@@ -4,6 +4,48 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.5.0] — 2026-07-02
+
+The board gets its configuration surface (WP4 of the kanban rework): a
+first-run and tracker-connection entry point, so nobody hand-writes
+`.marvin/config.json`.
+
+### Added
+
+- **`config` action on the `task` tool + `/marvin:kanban-config` prompt**
+  (audit finding 17 and the config half of finding 4) — with no arguments it
+  renders the effective configuration: project/tasks/config paths,
+  `base_branch` with its source (config file · auto-detected from
+  `origin/HEAD` · default), `tracker_url_template`, `branch_template`, and
+  the statuses table (key, role, tracker_status). With arguments it edits the
+  file: `base_branch`, `tracker_url_template`, `branch_template` as plain
+  strings (an empty string clears a setting back to its default), `statuses`
+  as a JSON array validated fail-closed against the config schema — invalid
+  payloads answer with the exact issues (missing todo/wip/done roles, bad
+  keys, duplicates) and write nothing. Scalar fields are also editable through
+  an interactive form (`edit=true`) on hosts with elicitation; hosts without
+  get the WP3-style instructive error naming the retry arguments. The file is
+  created on first edit (pinning the auto-detected `base_branch` so creating
+  a config never flips a main-based repo back to `dev`); writes are atomic
+  (temp + rename), and the read-modify-write preserves every key the surface
+  does not manage — the `verify` tool's `gates` and anything a future tool
+  adds. Switching vocabularies on a live board warns about tasks stranded in
+  now-unknown statuses.
+- **`branch_template` config setting** — new-task branches can follow a
+  custom scheme with `{type_prefix}`, `{type}`, `{seq}`, `{tracker}` and
+  `{slug}` placeholders (without a tracker id, `{tracker}` plus one preceding
+  `-`/`_`/`.` collapses). The rendered name is checked against git ref rules:
+  a bad template falls back to the default ADR-0019 scheme and warns in the
+  create output instead of failing the create; setting a template previews
+  the rendered branch (with and without a tracker id) immediately.
+
+### Changed
+
+- **Tools read `.marvin/config.json` per call** instead of capturing a
+  snapshot at server startup, so `config` edits (and hand edits) apply to the
+  same session immediately — no server restart. Affects the `task`, `help`
+  and `summary` tools; `verify` already worked this way.
+
 ## [0.4.0] — 2026-07-02
 
 The model becomes a first-class caller of the kanban board (WP3 of the kanban

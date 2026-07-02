@@ -16,7 +16,7 @@ import {
   type TaskType,
 } from "./schema.js";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.js";
-import { buildBranch, buildFilename, parseSeq, slugify } from "./slug.js";
+import { buildBranch, buildFilename, parseSeq, renderBranchTemplate, slugify } from "./slug.js";
 
 export interface MalformedTask {
   filename: string;
@@ -107,21 +107,41 @@ export interface NewTaskInput {
 export interface CreatedTask {
   task: Task;
   path: string;
+  /** Set when the configured `branch_template` was unusable and the default scheme was applied. */
+  branchWarning?: string;
 }
 
 /**
  * Create a new task file. Returns the persisted task with its absolute path.
  * The initial status is the first configured todo-role status (ADR-0026).
  * The branch name follows the ADR-0019 topic-branch convention
- * (`fix/007-OSI-123--login-timeout`); a title that slugifies to nothing
- * (fully non-Latin) falls back to the task type as its slug.
+ * (`fix/007-OSI-123--login-timeout`) unless the config sets a
+ * `branch_template` (WP4); a template that renders an invalid git ref falls
+ * back to the default and reports it via `branchWarning` — a bad template
+ * must never fail the create. A title that slugifies to nothing (fully
+ * non-Latin) falls back to the task type as its slug.
  */
 export function createTask(tasksDir: string, config: Config, input: NewTaskInput): CreatedTask {
   mkdirSync(tasksDir, { recursive: true });
   const id = nextSeq(tasksDir);
   const slug = slugify(input.title) || input.type;
   const filename = buildFilename(id, input.tracker_id, slug);
-  const branch = buildBranch(input.type, id, input.tracker_id, slug);
+  let branch = buildBranch(input.type, id, input.tracker_id, slug);
+  let branchWarning: string | undefined;
+  if (config.branch_template) {
+    const rendered = renderBranchTemplate(
+      config.branch_template,
+      input.type,
+      id,
+      input.tracker_id,
+      slug,
+    );
+    if (rendered !== null) {
+      branch = rendered;
+    } else {
+      branchWarning = `the configured branch_template ${JSON.stringify(config.branch_template)} renders an invalid git branch name — used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+    }
+  }
   const now = new Date().toISOString();
   const status = requireRole(config, "todo").key;
 
@@ -151,7 +171,11 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
     created: now,
     updated: now,
   });
-  return { task: { frontmatter: parsed, body, filename }, path };
+  return {
+    task: { frontmatter: parsed, body, filename },
+    path,
+    ...(branchWarning ? { branchWarning } : {}),
+  };
 }
 
 /**

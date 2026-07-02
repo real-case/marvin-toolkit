@@ -36,7 +36,7 @@ export const DEFAULT_STATUSES: StatusDef[] = [
 /** Roles the lifecycle cannot run without; `review` and `blocked` are optional. */
 const REQUIRED_ROLES: StatusRole[] = ["todo", "wip", "done"];
 
-const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
+export const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
   const seen = new Set<string>();
   for (const s of statuses) {
     if (seen.has(s.key)) {
@@ -146,6 +146,13 @@ export const Config = z.object({
   gates: GateCommands.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
   statuses: Statuses.default(DEFAULT_STATUSES),
+  /**
+   * Branch-name template for new tasks (WP4). Placeholders: {type_prefix},
+   * {type}, {seq}, {tracker}, {slug} — see `renderBranchTemplate`. Absent
+   * means the default ADR-0019 scheme; a template that renders an invalid
+   * git ref falls back to that default at create time (with a warning).
+   */
+  branch_template: z.string().min(1).optional(),
 });
 export type Config = z.infer<typeof Config>;
 
