@@ -16,7 +16,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 1  | `adr` MCP tool and contract  | Not started | —      | —  | ADR-0027 | 0.7.0  | |
 | 2  | ADR command surface          | Not started | —      | —  | —   | 0.8.0  | release cut candidate after merge |
 | 3  | Lessons v2                   | Not started | —      | —  | ADR-0028 | 0.9.0  | independent of WP1–2 |
-| 4  | Refactoring read side        | Not started | —      | —  | ADR-0029 | 0.10.0 | independent of WP1–3 |
+| 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; version + count re-assigned at landing if another wave-1 PR lands first |
 | 5  | Refactoring plan and apply   | Not started | —      | —  | —   | 0.11.0 | needs WP4 |
 | 6  | Dashboard                    | Not started | —      | —  | ADR-0030 | 0.12.0 | wants WP3 + WP5 landed |
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
@@ -111,14 +111,14 @@ docs tables, and the version manifests:
 
 ## WP4 — Refactoring read side
 
-- [ ] ADR-0029 authored (whole `refactor-*` family incl. plan/apply rails) and linked from both README indexes
-- [ ] Skills + commands + prompts: `refactor-audit`, `refactor-smells` (49 → 51)
-- [ ] `agents/marvin-refactor-auditor.md` with read-only `tools:` allowlist (Read, Glob, Grep, Bash)
-- [ ] Findings register format defined (`F<n>`, severity, effort, evidence, direction); reports to `.marvin/refactor/NNN-<slug>.md`
-- [ ] `.marvin/refactor/` added to the ADR-0007 working-dir table (CLAUDE.md + architecture docs)
-- [ ] Audit closes by offering to file findings as kanban chores via the `task` tool
-- [ ] `RefactorFinding` contract in shared contracts, exported
-- [ ] Docs rows + count; version 0.10.0; `dist/` rebuilt; gates green
+- [x] ADR-0029 authored (whole `refactor-*` family incl. plan/apply rails) and linked from both README indexes
+- [x] Skills + commands + prompts: `refactor-audit`, `refactor-smells` (49 → 51 serial target; **42 → 44 on the wave-1 branch**, recounted at landing)
+- [x] `agents/marvin-refactor-auditor.md` with read-only `tools:` allowlist (Read, Glob, Grep, Bash)
+- [x] Findings register format defined (`F<n>`, severity, effort, evidence, direction); reports to `.marvin/refactor/NNN-<slug>.md`
+- [x] `.marvin/refactor/` added to the ADR-0007 working-dir table (CLAUDE.md + architecture docs)
+- [x] Audit closes by offering to file findings as kanban chores via the `task` tool (smells scan too)
+- [x] `RefactorFinding` contract in shared contracts, exported (+ unit test)
+- [x] Docs rows + count; version 0.10.0 serial target → **0.7.0 on branch** (landing-time assignment); `dist/` rebuilt; gates green
 
 ## WP5 — Refactoring plan and apply
 
@@ -156,5 +156,5 @@ docs tables, and the version manifests:
 
 ## Log
 
-- **2026-07-02** — Parallel-execution protocol added: three concurrent tracks (WP1→WP2 ∥ WP3 ∥ WP4→WP5), sequential tail WP6→WP7→WP8, second-lander `dist/` rule, landing-time version/count assignment.
+- **2026-07-02** — **WP4 done** (wave 1, [#69](https://github.com/real-case/marvin-toolkit/pull/69), `feat/toolbox-wp4-refactor-read` off `dev`@0.6.0). ADR-0029 records the whole `refactor-*` family (read → plan → apply, register format, apply rails for WP5). Shipped: `refactor-audit` + `refactor-smells` skills/commands/prompts (registry 42 → 44 on branch — the 49 → 51 serial target assumed WP1–3 landed first; total recounted at landing per protocol), read-only `marvin-refactor-auditor` agent, `RefactorFinding` contract + test, `.marvin/refactor/` in both working-dir tables, changelog, version 0.7.0 (next minor over `dev`; re-bumped at rebase if another wave-1 PR lands first). No new MCP tool, per plan. Gates green: build, 141 tests, lint:manifests, verify-dist, lint:docs, smoke (44 prompts resolve).
 - **2026-07-02** — Plan authored and filed together with this record (WP0, `docs/toolbox-expansion-plan` branch). Inventory confirmed: lessons loop already shipped per ADR-0021 (this plan extends it); `adr` skill is create-only; `DashboardState` contract exists; next ADR number is 0027. Registry today: 42 prompts, 7 tools, 9 agents.

@@ -4,6 +4,48 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.7.0] — 2026-07-02
+
+The refactoring family opens its read side (toolbox-expansion WP4, ADR-0029):
+the project can now be audited and scanned for structural debt without any
+mutation. Findings land as numbered registers under `.marvin/refactor/`,
+compose across commands, and can be filed straight to the kanban board. The
+plan/apply half of the family (sequenced plans, verify-gated execution)
+follows in the next package against the same ADR.
+
+### Added
+
+- **`/marvin:refactor-audit`** — whole-project structural audit: architecture
+  map, hotspots (git churn × file size, with concrete `git log`-based
+  commands), dependency tangles, dead-code candidates. Heavy reading is
+  delegated to the new read-only `marvin-refactor-auditor` agent; every
+  finding carries `file:line` evidence. Writes a findings register to
+  `.marvin/refactor/NNN-audit-<slug>.md` (`F<n>` id, severity, effort,
+  evidence, suggested direction) and closes by offering to file selected
+  findings as kanban chores via the `task` tool.
+- **`/marvin:refactor-smells`** — scoped scan of a path, module, or diff:
+  code smells, anti-patterns, idiom/naming inconsistencies judged against the
+  project's own dominant conventions. Emits the same register format as the
+  audit (`NNN-smells-<slug>.md`), so scoped reports compose with the
+  whole-project one.
+- **`marvin-refactor-auditor` agent** — read-only structural auditor
+  (`tools: Read, Glob, Grep, Bash` allowlist, ADR-0017 pattern): structure
+  mapping, hotspot ground truth, dependency tracing, dead-code detection,
+  smell verification; returns register-ready candidate findings and never
+  writes.
+- **`.marvin/refactor/` working directory** — joins the ADR-0007 table:
+  numeric-prefixed reports in creation order, one sequence shared by audit
+  and smell scans (mirrors the handoff convention).
+- **`RefactorFinding` contract** — zod schema in the shared `contracts/`
+  module (ADR-0024 data-first staging): id, title, severity (shared audit
+  vocabulary), effort, evidence locations, direction, source report.
+  Data-only; the dashboard and widget stages are the intended consumers.
+- **ADR-0029** — records the whole `refactor-*` family design: the read →
+  plan → apply split, the shared register format, task-pipeline routing for
+  oversized items, and the hard rails of the future `refactor-apply`
+  (green `verify` before and after, pin-down tests on uncovered code,
+  lessons consulted and fed).
+
 ## [0.6.0] — 2026-07-02
 
 Polish and coverage sweep (WP5, the final package of the kanban rework): the

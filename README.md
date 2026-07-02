@@ -35,9 +35,10 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
+| `refactor-*` | code-health audits (read side) | 2 |
 | `kanban-*` | lightweight task tracker | 12 |
 
-42 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+44 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -85,6 +86,17 @@ OWASP Top 10, dependency audits, compliance checks.
 | `/marvin:sec-pentest` | Generate application-specific penetration testing checklist |
 
 **Agent:** `marvin-auditor`.
+
+### Refactoring — `refactor-*`
+
+Code-health audits, read-only ([ADR-0029](./docs/adr/0029-refactoring-command-family.md)). Both produce numbered findings registers (`F<n>` + severity + effort + `file:line` evidence) under `.marvin/refactor/`, and close by offering to file findings as kanban chores.
+
+| Command | Description |
+|---------|-------------|
+| `/marvin:refactor-audit` | Whole-project structural audit — architecture map, churn×size hotspots, dependency tangles, dead code |
+| `/marvin:refactor-smells` | Scoped smell scan of a path, module, or diff — anti-patterns, idiom/naming inconsistencies |
+
+**Agent:** `marvin-refactor-auditor` (read-only structural auditor — does the heavy reading for `refactor-audit`).
 
 ### Task pipeline — `task-*`
 
@@ -174,6 +186,7 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0024](./docs/adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 | [0025](./docs/adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
 | [0026](./docs/adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
+| [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read → plan → apply under hard rails | Accepted |
 
 ## Contributing
 

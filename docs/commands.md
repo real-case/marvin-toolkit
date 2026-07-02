@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **42** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **44** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -122,6 +122,22 @@ OWASP-aligned scanning, threat modeling, and remediation.
 
 **Agent:** `marvin-auditor`.
 
+## Refactoring — `refactor-*`
+
+The read side of the code-health family (ADR-0029): audit and scan without mutating
+anything. Reports land under `.marvin/refactor/` as numbered findings registers — `F<n>`
+id, severity, effort, `file:line` evidence, suggested direction — in one shared format,
+so scoped scans compose with the whole-project audit. Both commands close by offering to
+file selected findings as kanban chores (via the `task` tool). The plan/apply half of the
+family (sequenced plans, verify-gated execution) ships next.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:refactor-audit` | Whole-project structural audit — architecture map, churn×size hotspots, dependency tangles, dead-code candidates; heavy reading delegated to the read-only `marvin-refactor-auditor` agent. | `marvin refactoring audit`, `marvin where is the tech debt?`, `what should we refactor first?` |
+| `/marvin:refactor-smells` | Scoped scan of a path, module, or diff — code smells, anti-patterns, idiom/naming inconsistencies — in the same register format as the audit. | `marvin check this module for smells`, `marvin scan src/api for anti-patterns`, `any code smells in this diff?` |
+
+**Agent:** `marvin-refactor-auditor`.
+
 ## Kanban tracker — `kanban-*`
 
 A lightweight per-project board with interactive MCP-elicit forms — inquirer-style speed inside
@@ -233,6 +249,7 @@ Claude Code subagents, auto-loaded on install (invoke via the Task tool or the p
 | `marvin-researcher` | Version-specific documentation lookup |
 | `marvin-debugger` | Root-cause analysis (read-mostly) |
 | `marvin-auditor` | Security review (read-only) |
+| `marvin-refactor-auditor` | Structural audit & smell verification for the `refactor-*` family (read-only) |
 | `marvin-tm-writer` | Conversational spec exploration |
 | `marvin-tm-spec-critic` | Red-team review of a drafted spec (read-only) |
 | `marvin-tm-executor` | Headless spec execution in a worktree |
