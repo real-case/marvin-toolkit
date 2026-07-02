@@ -57,6 +57,7 @@ Then set the spec's `status: in-progress` — the lifecycle carve-out (content s
 In parallel, read:
 - The spec in full
 - `CLAUDE.md` if it exists (project conventions)
+- **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the spec's slug, title, and the areas it touches) to recall what past tasks in this repo learned (`.marvin/memory`, ADR-0021/0028). A relevant `gotcha` or `bug-pattern` is a constraint to respect while implementing — note it next to the criterion it affects. If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
 
 Summarize back to the user in 2–4 lines: the goal, the chosen approach (or fix approach for bugs), and the acceptance criteria count. This is a handshake — the user confirms the skill parsed the spec correctly.
 

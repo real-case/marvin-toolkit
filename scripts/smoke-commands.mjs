@@ -33,6 +33,7 @@ const REQUIRED_PROMPTS = [
   "docs-search",
   "handoff",
   "handoff-list",
+  "lessons",
   "help",
   // pr-*
   "pr-create",

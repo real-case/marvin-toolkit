@@ -136,7 +136,16 @@ mutation($threadId:ID!) {
 }'
 ```
 
-### 7. Report
+### 7. Capture a lesson (retrospective)
+
+Close the feedback loop (ADR-0021/0028). If the review revealed something future work should inherit — the same class of mistake flagged across threads, a project convention you did not know, a recurring reviewer expectation — capture **one** lesson via the `lessons` tool:
+
+- `action: "add"`, a one-line `title`, a `body` of 2–4 sentences (what to know · why · how to apply), relevant `tags`, and `source: "PR #<number>"`.
+- Choose `type`: `convention` for house style the review taught you, `gotcha`/`pitfall` for code knowledge, `process` for workflow friction.
+
+Skip it for routine feedback — typos, one-off nits, style preferences already covered — an empty lesson is noise, and the store earns its value by staying scannable. Capture at most one or two. If the `lessons` tool is unavailable, append the index line to `.marvin/memory/MEMORY.md` yourself.
+
+### 8. Report
 
 ```
 ## PR #<number> — Review Resolved

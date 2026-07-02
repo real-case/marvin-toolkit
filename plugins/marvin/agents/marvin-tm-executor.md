@@ -45,6 +45,8 @@ The spec is provided inline below (injected by the batch-dispatch caller). Read 
 - Non-goals (what NOT to do)
 - Design notes (nuances and warnings)
 
+**Search lessons before writing code.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the spec's slug and touched areas — a prior lesson from this repo is a constraint on your implementation, same rank as a design note. If the tool is unavailable in this headless run, skip silently.
+
 ### 2. Implement
 
 Follow the chosen approach from the spec:

@@ -15,8 +15,8 @@ Status values: **Not started · In progress · Blocked · Done**.
 | -- | ---------------------------- | ----------- | ------ | -- | --- | ------- | ----- |
 | 1  | `adr` MCP tool and contract  | Not started | —      | —  | ADR-0027 | 0.7.0  | |
 | 2  | ADR command surface          | Not started | —      | —  | —   | 0.8.0  | release cut candidate after merge |
-| 3  | Lessons v2                   | Not started | —      | —  | ADR-0028 | 0.9.0  | independent of WP1–2 |
-| 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; version + count re-assigned at landing if another wave-1 PR lands first |
+| 3  | Lessons v2                   | Done | `feat/toolbox-wp3-lessons-v2` | [#70](https://github.com/real-case/marvin-toolkit/pull/70) | ADR-0028 | 0.8.0 | landed second — re-bumped 0.7.0 → 0.8.0 at rebase per the parallel rule; registry 44 → 45 |
+| 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
 | 5  | Refactoring plan and apply   | Not started | —      | —  | —   | 0.11.0 | needs WP4 |
 | 6  | Dashboard                    | Not started | —      | —  | ADR-0030 | 0.12.0 | wants WP3 + WP5 landed |
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
@@ -100,14 +100,14 @@ docs tables, and the version manifests:
 
 ## WP3 — Lessons v2
 
-- [ ] ADR-0028 authored (recall/capture expansion + hygiene) and linked from both README indexes
-- [ ] `lessons` tool: `stats` action (counts by type/tag) and `prune` action (stale candidates; delete by slug behind confirmation)
-- [ ] `add` near-duplicate guard: search-before-write, warn instead of double-writing
-- [ ] `/marvin:lessons` inline prompt (48 → 49): search / add / stats / prune from chat
-- [ ] Recall wiring: `task-implement` pre-flight, `sec-fix` intake
-- [ ] Search-first step in `marvin-tm-executor` and `marvin-tm-review-fixer`
-- [ ] Capture wiring: `task-fix-pr` retrospective with anti-boilerplate guards
-- [ ] Tests: new actions unit + e2e, dedup cases; version 0.9.0; `dist/` rebuilt
+- [x] ADR-0028 authored (recall/capture expansion + hygiene) and linked from both README indexes
+- [x] `lessons` tool: `stats` action (counts by type/tag, `structuredContent` per the new shared `LessonsStats` contract) and `prune` action (stale candidates; delete by slug behind confirmation — elicitation or `confirm: true`; file + MEMORY.md index line removed together)
+- [x] `add` near-duplicate guard: search-before-write, warn instead of double-writing (`force: true` overrides)
+- [x] `/marvin:lessons` inline prompt: search / add / stats / prune from chat — 42 → 43 on this branch (the plan's 48 → 49 assumed WP1–2 landed first; recount at landing)
+- [x] Recall wiring: `task-implement` pre-flight, `sec-fix` intake
+- [x] Search-first step in `marvin-tm-executor` and `marvin-tm-review-fixer`
+- [x] Capture wiring: retrospective with anti-boilerplate guards — wired into **`pr-resolve`**, not `task-fix-pr`: that command was renamed by ADR-0023 before this plan executed; correction recorded in ADR-0028
+- [x] Tests: new actions unit + e2e, dedup cases (150/150 across workspaces); version **0.7.0** on the branch (serial target 0.9.0 — re-bumped at landing per the parallel rules); `dist/` rebuilt
 
 ## WP4 — Refactoring read side
 
@@ -156,5 +156,7 @@ docs tables, and the version manifests:
 
 ## Log
 
-- **2026-07-02** — **WP4 done** (wave 1, [#69](https://github.com/real-case/marvin-toolkit/pull/69), `feat/toolbox-wp4-refactor-read` off `dev`@0.6.0). ADR-0029 records the whole `refactor-*` family (read → plan → apply, register format, apply rails for WP5). Shipped: `refactor-audit` + `refactor-smells` skills/commands/prompts (registry 42 → 44 on branch — the 49 → 51 serial target assumed WP1–3 landed first; total recounted at landing per protocol), read-only `marvin-refactor-auditor` agent, `RefactorFinding` contract + test, `.marvin/refactor/` in both working-dir tables, changelog, version 0.7.0 (next minor over `dev`; re-bumped at rebase if another wave-1 PR lands first). No new MCP tool, per plan. Gates green: build, 141 tests, lint:manifests, verify-dist, lint:docs, smoke (44 prompts resolve).
+- **2026-07-02** — **WP3 done** (PR [#70](https://github.com/real-case/marvin-toolkit/pull/70), `feat/toolbox-wp3-lessons-v2`; landed second — re-bumped 0.7.0 → **0.8.0** at rebase, registry recounted 44 → 45 per the parallel rule). ADR-0028 authored + linked. `lessons` tool: `stats` (+ shared `LessonsStats` contract), `prune` (candidate listing; slug-delete behind elicitation/`confirm: true`; file + MEMORY.md index line removed together), near-duplicate guard on `add` (`force: true` override). `/marvin:lessons` inline prompt. Recall wired into `task-implement`, `sec-fix`, `marvin-tm-executor`, `marvin-tm-review-fixer`; capture wired into **`pr-resolve`** — the plan's `task-fix-pr` was renamed by ADR-0023, correction recorded in the ADR and the checklist. 150/150 tests, all gates green.
+- **2026-07-02** — **WP4 done** (wave 1, [#69](https://github.com/real-case/marvin-toolkit/pull/69), `feat/toolbox-wp4-refactor-read` off `dev`@0.6.0; landed first, squash `9c3bc4f`). ADR-0029 records the whole `refactor-*` family (read → plan → apply, register format, apply rails for WP5). Shipped: `refactor-audit` + `refactor-smells` skills/commands/prompts (registry 42 → 44 on branch — the 49 → 51 serial target assumed WP1–3 landed first; total recounted at landing per protocol), read-only `marvin-refactor-auditor` agent, `RefactorFinding` contract + test, `.marvin/refactor/` in both working-dir tables, changelog, version 0.7.0 (next minor over `dev`). No new MCP tool, per plan. Gates green: build, 141 tests, lint:manifests, verify-dist, lint:docs, smoke (44 prompts resolve).
+- **2026-07-02** — Parallel-execution protocol added: three concurrent tracks (WP1→WP2 ∥ WP3 ∥ WP4→WP5), sequential tail WP6→WP7→WP8, second-lander `dist/` rule, landing-time version/count assignment.
 - **2026-07-02** — Plan authored and filed together with this record (WP0, `docs/toolbox-expansion-plan` branch). Inventory confirmed: lessons loop already shipped per ADR-0021 (this plan extends it); `adr` skill is create-only; `DashboardState` contract exists; next ADR number is 0027. Registry today: 42 prompts, 7 tools, 9 agents.
