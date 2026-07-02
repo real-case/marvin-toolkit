@@ -225,7 +225,7 @@ export const PROMPTS: PromptDef[] = [
     body: callTool(
       "task",
       {},
-      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move, `status` (the target status key) for move.",
+      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr / config / archive), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move / archive, `status` (the target status key) for move.",
     ),
   },
   {
@@ -297,7 +297,7 @@ export const PROMPTS: PromptDef[] = [
   },
   {
     name: "kanban-help",
-    description: "Marvin tasks dashboard and prompt list",
-    body: callTool("help"),
+    description: "Marvin dashboard scoped to the kanban group — board state + kanban commands",
+    body: callTool("help", { section: "kanban" }),
   },
 ];
