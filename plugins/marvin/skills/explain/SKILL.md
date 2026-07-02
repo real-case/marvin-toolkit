@@ -1,6 +1,6 @@
 ---
 name: explain
-description: Explain selected code, architecture decisions, or system behavior. Use when user asks "how does this work", "what does this do", "explain this code", "why is it designed this way", "walk me through", or selects code and asks about its purpose, logic, or design rationale.
+description: Explain selected code, architecture decisions, or system behavior. Use when user asks "how does this work", "what does this do", "explain this code", "why is it designed this way", "walk me through", "marvin explain this code", or selects code and asks about its purpose, logic, or design rationale.
 ---
 
 Explain the selected code or the area the user is asking about.

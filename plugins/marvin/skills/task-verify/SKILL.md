@@ -1,6 +1,6 @@
 ---
 name: task-verify
-description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Rust, Python, TypeScript, Java/Kotlin, C#/.NET, Swift, Ruby, PHP, C/C++, plus a declared-command / npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
+description: Run project quality gates — tests, lint, type-check, and build — concurrently with automatic stack detection (Go, Rust, Python, TypeScript, Java/Kotlin, C#/.NET, Swift, Ruby, PHP, C/C++, plus a declared-command / npm-script / Makefile fallback for any other stack) and produce a verification.md artifact that gates delivery. Use when the user says "verify", "run the gates", "run tests and lint", "check the project", "is this green?", "/marvin:task-verify", "marvin verify", after finishing implementation, or as a standalone health check on a repo before handing off work.
 ---
 
 # Verify

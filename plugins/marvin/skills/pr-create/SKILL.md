@@ -1,6 +1,6 @@
 ---
 name: pr-create
-description: Create a pull request with structured description, verification checklist, and issue linking. Use when the user asks to "create a PR", "make a PR", "open a pull request", "submit PR", "push and open a PR", or just "PR" — when a feature/bugfix branch is ready to be proposed. This is the OPEN step only; it does not review, update, or merge an existing PR.
+description: Create a pull request with structured description, verification checklist, and issue linking. Use when the user asks to "create a PR", "make a PR", "open a pull request", "submit PR", "push and open a PR", "marvin create a PR", or just "PR" — when a feature/bugfix branch is ready to be proposed. This is the OPEN step only; it does not review, update, or merge an existing PR.
 ---
 
 Create a well-structured pull request for the current branch.

@@ -39,7 +39,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 43 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
-See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and a usage example.
+See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
 ### Core developer tools
 

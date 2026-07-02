@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Capture the full context of the current work into a durable handoff document and emit a paste-ready prompt to continue in a fresh session. Use when the user says "create a handoff", "hand off this work", "continue this in a new session", "prep context for the next session", "I'll continue later", "продолжить в новой сессии", or when wrapping up a phase of work that will resume in another session.
+description: Capture the full context of the current work into a durable handoff document and emit a paste-ready prompt to continue in a fresh session. Use when the user says "create a handoff", "hand off this work", "continue this in a new session", "prep context for the next session", "I'll continue later", "продолжить в новой сессии", "marvin hand off this session", or when wrapping up a phase of work that will resume in another session.
 ---
 
 # Handoff

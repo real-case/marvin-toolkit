@@ -1,6 +1,6 @@
 ---
 name: sec-gate
-description: Fast security sanity-check scoped to the diff rather than the full codebase — scans staged or recent changes for injected secrets, obvious injections, unsafe deserialization, hard-coded credentials, and risky new dependencies. Use as a pre-commit gate, when the user says "check my changes for security issues", "quick sec check", "secure this diff", "gate this commit", or before pushing any branch touching auth, crypto, input handling, or infra.
+description: Fast security sanity-check scoped to the diff rather than the full codebase — scans staged or recent changes for injected secrets, obvious injections, unsafe deserialization, hard-coded credentials, and risky new dependencies. Use as a pre-commit gate, when the user says "check my changes for security issues", "quick sec check", "secure this diff", "gate this commit", "marvin quick sec check", or before pushing any branch touching auth, crypto, input handling, or infra.
 ---
 
 # Security Gate

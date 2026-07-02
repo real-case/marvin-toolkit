@@ -1,6 +1,6 @@
 ---
 name: task-implement
-description: Execute a ready spec interactively in the current session — implements the spec following its Chosen Approach (feature) or fix approach with regression test (bugfix), then auto-chains into /marvin:task-verify and /marvin:task-deliver. Use when the user says "run the task", "execute the spec", "implement this spec", "/marvin:task-implement", or after /marvin:task-start produced a spec and they want to implement it without dispatching to a worktree.
+description: Execute a ready spec interactively in the current session — implements the spec following its Chosen Approach (feature) or fix approach with regression test (bugfix), then auto-chains into /marvin:task-verify and /marvin:task-deliver. Use when the user says "run the task", "execute the spec", "implement this spec", "/marvin:task-implement", "marvin implement the spec", or after /marvin:task-start produced a spec and they want to implement it without dispatching to a worktree.
 ---
 
 # Run

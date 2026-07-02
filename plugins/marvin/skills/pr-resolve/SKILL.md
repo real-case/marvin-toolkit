@@ -1,6 +1,6 @@
 ---
 name: pr-resolve
-description: Resolve open review feedback on a pull request — fetch the UNRESOLVED review threads, draft a change plan from them, apply the fixes, push, then reply to each thread and mark it resolved. Use when the user says "resolve the PR", "update the PR", "address the review comments", "apply the PR feedback", or "resolve PR #N". The complement to /marvin:pr-review.
+description: Resolve open review feedback on a pull request — fetch the UNRESOLVED review threads, draft a change plan from them, apply the fixes, push, then reply to each thread and mark it resolved. Use when the user says "resolve the PR", "update the PR", "address the review comments", "apply the PR feedback", "marvin resolve the PR", or "resolve PR #N". The complement to /marvin:pr-review.
 ---
 
 # Resolve PR

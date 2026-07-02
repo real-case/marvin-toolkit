@@ -1,6 +1,6 @@
 ---
 name: pr-merge
-description: Merge a pull request, then return to the base branch with the merge pulled in — confirm mergeability, merge via gh (repo's default method) and delete the head branch, then check out the PR's base branch (e.g. dev) and pull. Use when the user says "merge the PR", "merge PR #N", "merge and switch back", or "land this PR".
+description: Merge a pull request, then return to the base branch with the merge pulled in — confirm mergeability, merge via gh (repo's default method) and delete the head branch, then check out the PR's base branch (e.g. dev) and pull. Use when the user says "merge the PR", "merge PR #N", "merge and switch back", "marvin merge PR #N", or "land this PR".
 ---
 
 # Merge PR
