@@ -35,9 +35,9 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
-| `kanban-*` | lightweight task tracker | 11 |
+| `kanban-*` | lightweight task tracker | 12 |
 
-41 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+42 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -115,11 +115,12 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 | `/marvin:kanban-done` | Mark current task done |
 | `/marvin:kanban-list` | List all tasks grouped by status |
 | `/marvin:kanban-status` | Current branch + WIP tasks |
+| `/marvin:kanban-config` | Show or edit the board configuration (base branch, tracker URL template, branch template, statuses) |
 | `/marvin:kanban-help` | Project dashboard |
 
 Committing and opening PRs for board tasks goes through the kanban-aware `/marvin:commit` and `/marvin:pr-create` — they pick up the linked task automatically (`Refs:` footer, task-prefixed PR title, PR-URL capture; [ADR-0025](./docs/adr/0025-kanban-board-only.md)).
 
-Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`, `statuses`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars. New tasks get topic branches `<type-prefix>/<seq>[-<tracker>]--<slug>` (bug→`fix/`, feature→`feat/`, chore→`chore/`, spike→`spike/`, e.g. `fix/007-OSI-123--login-timeout`); titles may be any printable Unicode. Every form field is also a `task`-tool argument, so details you already said skip the form — and hosts without elicitation support still get the full flow by passing arguments. Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)): configure your tracker's vocabulary (`{ key, role, tracker_status? }`) and the lifecycle commands drive it by role; a generic `move` action on the `task` tool reaches every configured status. `base_branch` auto-detects from `origin/HEAD` when no config exists.
+Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`, `statuses`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars. New tasks get topic branches `<type-prefix>/<seq>[-<tracker>]--<slug>` (bug→`fix/`, feature→`feat/`, chore→`chore/`, spike→`spike/`, e.g. `fix/007-OSI-123--login-timeout`); titles may be any printable Unicode. Every form field is also a `task`-tool argument, so details you already said skip the form — and hosts without elicitation support still get the full flow by passing arguments. Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)): configure your tracker's vocabulary (`{ key, role, tracker_status? }`) and the lifecycle commands drive it by role; a generic `move` action on the `task` tool reaches every configured status. `base_branch` auto-detects from `origin/HEAD` when no config exists. Nobody hand-writes the config file: `/marvin:kanban-config` shows and edits every setting — including an optional `branch_template` for custom branch-name schemes — with fail-closed validation.
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 

@@ -8,6 +8,7 @@ import {
 } from "@marvin-toolkit/mcp-shared";
 import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { existsSync } from "node:fs";
 import {
   createTask,
   findTaskByBranch,
@@ -16,7 +17,13 @@ import {
   setTaskPr,
   updateStatus,
 } from "../storage/tasks.js";
-import { trackerUrl } from "../storage/config.js";
+import {
+  loadConfig,
+  parseStatusesJson,
+  trackerUrl,
+  updateConfigFile,
+  type ConfigPatch,
+} from "../storage/config.js";
 import {
   TaskType,
   TaskTitle,
@@ -30,6 +37,7 @@ import {
   type Task,
   type Config,
 } from "../storage/schema.js";
+import { DEFAULT_BRANCH_SCHEME, isSafeBranchRef, renderBranchTemplate } from "../storage/slug.js";
 import {
   checkoutBranch,
   branchExists,
@@ -55,7 +63,18 @@ import { formatTaskLine, renderListTable } from "../flows/format.js";
  */
 const TaskInput = z.object({
   action: z
-    .enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"])
+    .enum([
+      "menu",
+      "create",
+      "list",
+      "status",
+      "start",
+      "review",
+      "done",
+      "move",
+      "link-pr",
+      "config",
+    ])
     .optional(),
   type: TaskType.optional(),
   taskId: z.string().optional(),
@@ -73,17 +92,52 @@ const TaskInput = z.object({
     .string()
     .optional()
     .describe("Target status key for `move` — one of the configured statuses"),
+  base_branch: z
+    .string()
+    .optional()
+    .describe("config: base branch new task branches fork from (empty string clears the setting)"),
+  tracker_url_template: z
+    .string()
+    .optional()
+    .describe(
+      "config: tracker URL template with a {tracker_id} placeholder, e.g. https://acme.atlassian.net/browse/{tracker_id} (empty string clears)",
+    ),
+  branch_template: z
+    .string()
+    .optional()
+    .describe(
+      "config: branch-name template with {type_prefix} {type} {seq} {tracker} {slug} placeholders (empty string clears back to the default scheme)",
+    ),
+  statuses: z
+    .string()
+    .optional()
+    .describe(
+      'config: the board status vocabulary as a JSON array of {key, role, tracker_status?} — roles: todo|wip|review|done|blocked, e.g. [{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"}]',
+    ),
+  edit: z
+    .boolean()
+    .optional()
+    .describe(
+      "config: open the interactive form for the scalar settings instead of just showing the configuration",
+    ),
 });
 
 type TaskInput = z.infer<typeof TaskInput>;
 
-export function buildTaskTool(server: McpServer, env: ServerEnv, config: Config): AnyToolDef {
+export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "task",
     description:
-      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status) and the form covers only what is missing — pass what the user already said.',
+      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
-    handler: (input) => dispatchTask(server, env, config, input),
+    handler: (input) => {
+      // Config is (re)loaded on every call rather than captured at server
+      // startup: the `config` action edits .marvin/config.json mid-session,
+      // and each subsequent call must see the current file (this also picks
+      // up hand edits without a restart).
+      const { config } = loadConfig(env.configPath, env.projectDir);
+      return dispatchTask(server, env, config, input);
+    },
   });
 }
 
@@ -98,7 +152,7 @@ async function dispatchTask(
   if (!action || action === "menu") {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms — pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr.",
+        "This host does not support interactive forms — pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config.",
       );
     }
     const picked = await pickMenuAction(server, env, config);
@@ -123,6 +177,8 @@ async function dispatchTask(
       return runMove(server, env, config, input);
     case "link-pr":
       return runLinkPr(env, config, input.taskId, input.url);
+    case "config":
+      return runConfig(server, env, input);
   }
 }
 
@@ -137,7 +193,7 @@ async function pickMenuAction(
     server,
     `Marvin · ${tasks.length} tasks · ${wip} in progress`,
     z.object({
-      action: z.enum(["create", "list", "status", "start", "review", "done", "move"]),
+      action: z.enum(["create", "list", "status", "start", "review", "done", "move", "config"]),
     }),
   );
   return data?.action ?? null;
@@ -234,8 +290,9 @@ async function runCreate(
     }
   }
 
+  const templateWarning = created.branchWarning ? `\n⚠ ${created.branchWarning}` : "";
   return ok(
-    `Created task **${created.task.frontmatter.id}** — ${created.task.frontmatter.title}\nFile: \`${created.path}\`${branchInfo}`,
+    `Created task **${created.task.frontmatter.id}** — ${created.task.frontmatter.title}\nFile: \`${created.path}\`${templateWarning}${branchInfo}`,
   );
 }
 
@@ -562,6 +619,191 @@ function isHttpUrl(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * The board's configuration surface (WP4, audit findings 4 + 17): show the
+ * effective configuration, or edit `.marvin/config.json` — the first-run and
+ * tracker-connection entry point, so nobody hand-writes the file.
+ *
+ * Three paths, mirroring the WP3 input contract:
+ *  - no config arguments → render the effective configuration (works on every
+ *    host, no form);
+ *  - any of `base_branch` / `tracker_url_template` / `branch_template` /
+ *    `statuses` → validate fail-closed and write (empty string clears a
+ *    setting back to its default);
+ *  - `edit=true` with no values → elicit the scalar fields on hosts with
+ *    elicitation; instructive isError naming the arguments otherwise.
+ *
+ * `statuses` arrives as a JSON string and is validated against the same
+ * schema the config loader enforces — an invalid payload answers with the
+ * exact issues and writes nothing. Keys the surface does not manage (the
+ * verify tool's `gates`, anything future) survive the read-modify-write.
+ */
+async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): Promise<ToolResult> {
+  const loaded = loadConfig(env.configPath, env.projectDir);
+  const patch: ConfigPatch = {};
+  const notes: string[] = [];
+
+  if (input.statuses !== undefined) {
+    const parsed = parseStatusesJson(input.statuses);
+    if (!parsed.ok) {
+      return errOk(
+        `Invalid \`statuses\` — ${parsed.error}.\nExpected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-case, roles are todo|wip|review|done|blocked, and at least one status is required for each of the todo, wip and done roles. Example:\n\`[{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"},{"key":"done","role":"done","tracker_status":"Done"}]\``,
+      );
+    }
+    patch.statuses = parsed.statuses;
+  }
+  if (input.base_branch !== undefined) {
+    const value = input.base_branch.trim();
+    if (value !== "" && !isSafeBranchRef(value)) {
+      return errOk(`Invalid \`base_branch\` — \`${value}\` is not a valid git branch name.`);
+    }
+    patch.base_branch = value === "" ? null : value;
+  }
+  if (input.tracker_url_template !== undefined) {
+    const value = input.tracker_url_template.trim();
+    patch.tracker_url_template = value === "" ? null : value;
+    if (value !== "" && !value.includes("{tracker_id}")) {
+      notes.push(
+        "the tracker_url_template has no `{tracker_id}` placeholder — every task will link to the same URL.",
+      );
+    }
+  }
+  if (input.branch_template !== undefined) {
+    const value = input.branch_template.trim();
+    patch.branch_template = value === "" ? null : value;
+    if (value !== "") {
+      const withTracker = renderBranchTemplate(value, "bug", "007", "ABC-123", "sample-task");
+      const withoutTracker = renderBranchTemplate(value, "bug", "007", undefined, "sample-task");
+      if (withTracker === null || withoutTracker === null) {
+        notes.push(
+          "⚠ this branch_template renders an invalid git branch name — task creation will fall back to the default scheme until it is fixed.",
+        );
+      } else {
+        notes.push(
+          `branch preview: \`${withTracker}\` (with tracker) · \`${withoutTracker}\` (without).`,
+        );
+      }
+    }
+  }
+
+  // Interactive fallback for the scalar settings — only when no values were
+  // passed (arguments always win; the form covers what the user did not say).
+  if (Object.keys(patch).length === 0 && input.edit) {
+    if (!canElicit(server)) {
+      return errOk(
+        "This host does not support interactive forms — pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?}).",
+      );
+    }
+    const data = await elicit(
+      server,
+      `Board configuration — fill only what should change (current: base_branch=${loaded.config.base_branch}, tracker_url_template=${loaded.config.tracker_url_template ?? "not set"}, branch_template=${loaded.config.branch_template ?? "default"})`,
+      z.object({
+        base_branch: z.string().optional(),
+        tracker_url_template: z.string().optional(),
+        branch_template: z.string().optional(),
+      }),
+    );
+    if (!data) return cancelled();
+    if (data.base_branch?.trim()) patch.base_branch = data.base_branch.trim();
+    if (data.tracker_url_template?.trim())
+      patch.tracker_url_template = data.tracker_url_template.trim();
+    if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return ok(renderConfigView(env, loaded));
+  }
+
+  // Creating the file pins the currently-effective base_branch unless the
+  // patch sets one: without this, materialising e.g. only `statuses` would
+  // silently turn an auto-detected `main` back into the schema default on the
+  // next load (detection only runs while no file exists).
+  if (!existsSync(env.configPath) && patch.base_branch === undefined) {
+    patch.base_branch = loaded.config.base_branch;
+    if (loaded.base_branch_source === "origin/HEAD") {
+      notes.push(
+        `base_branch \`${loaded.config.base_branch}\` (auto-detected from origin/HEAD) was written into the new file — change it any time with \`base_branch=…\`.`,
+      );
+    }
+  }
+
+  const result = updateConfigFile(env.configPath, patch);
+  if (!result.ok) return errOk(`Config not written — ${result.error}.`);
+
+  const fresh = loadConfig(env.configPath, env.projectDir);
+
+  // Entering a new vocabulary on a live board can strand existing tasks in
+  // now-unknown statuses; say so instead of letting them surface later as
+  // malformed files with no explanation.
+  if (patch.statuses) {
+    const { malformed } = readAllTasks(env.tasksDir, fresh.config);
+    const stranded = malformed.filter((m) => m.reason.includes("unknown status"));
+    if (stranded.length > 0) {
+      notes.push(
+        `⚠ ${stranded.length} existing task file(s) use statuses outside the new set (${stranded
+          .map((m) => m.filename)
+          .join(", ")}) — they will show as malformed until their status lines are updated.`,
+      );
+    }
+  }
+
+  const changed = Object.keys(patch)
+    .map((k) => `\`${k}\``)
+    .join(", ");
+  const lines = [
+    `${result.created ? "Created" : "Updated"} \`${env.configPath}\` — set ${changed}.`,
+    ...notes.map((n) => `_${n}_`),
+    "",
+    renderConfigView(env, fresh),
+  ];
+  return ok(lines.join("\n"));
+}
+
+/** The effective configuration as markdown — the `config` action's read side. */
+function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>): string {
+  const { config, warning, base_branch_source } = loaded;
+  const fileExists = existsSync(env.configPath);
+  const sourceLabel =
+    base_branch_source === "config"
+      ? "from config"
+      : base_branch_source === "origin/HEAD"
+        ? "auto-detected from origin/HEAD"
+        : "default";
+
+  const lines: string[] = [];
+  lines.push("# Board configuration");
+  lines.push("");
+  if (warning) lines.push(`⚠ ${warning} — showing defaults.`, "");
+  lines.push(`- **Project:** \`${env.projectDir}\``);
+  lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
+  lines.push(
+    `- **Config file:** \`${env.configPath}\`${fileExists ? "" : " _(not created yet — the first edit creates it)_"}`,
+  );
+  lines.push("");
+  lines.push("## Settings");
+  lines.push("");
+  lines.push(`- **base_branch:** \`${config.base_branch}\` _(${sourceLabel})_`);
+  lines.push(
+    `- **tracker_url_template:** ${config.tracker_url_template ? `\`${config.tracker_url_template}\`` : "_not set_"}`,
+  );
+  lines.push(
+    `- **branch_template:** ${config.branch_template ? `\`${config.branch_template}\`` : `_not set — default scheme \`${DEFAULT_BRANCH_SCHEME}\` (e.g. \`fix/007-ABC-123--login-timeout\`)_`}`,
+  );
+  lines.push("");
+  lines.push("## Statuses");
+  lines.push("");
+  lines.push("| key | role | tracker_status |");
+  lines.push("|-----|------|----------------|");
+  for (const s of config.statuses) {
+    lines.push(`| ${s.key} | ${s.role} | ${s.tracker_status ?? "—"} |`);
+  }
+  lines.push("");
+  lines.push(
+    "_Change settings by argument — `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}) — or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._",
+  );
+  return lines.join("\n");
 }
 
 /**

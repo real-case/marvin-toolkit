@@ -36,7 +36,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
     │   ├── prompts/
-    │   │   └── index.ts              # 41 prompt entries (skill-backed + inline kanban)
+    │   │   └── index.ts              # 42 prompt entries (skill-backed + inline kanban)
     │   ├── tools/                    # MCP tools: kanban task / help + verify, spec, lessons (task pipeline)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
@@ -54,7 +54,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
-| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), and `verify` gate overrides (`gates`, ADR-0009) — the `MARVIN_TASKS_CONFIG` default |
+| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), and `verify` gate overrides (`gates`, ADR-0009) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:kanban-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
 
 Spec location stays **host-adaptive** (ADR-0005): `.marvin/task/` is the default, but an existing
 host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
@@ -72,7 +72,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 | `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
 | `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
 | `sec-*` | security scanners | `/marvin:sec-scan`, `/marvin:sec-secrets`, `/marvin:sec-deps`, `/marvin:sec-gate`, `/marvin:sec-threat-model`, `/marvin:sec-iac`, `/marvin:sec-ci`, `/marvin:sec-fix`, `/marvin:sec-compliance`, `/marvin:sec-pentest` |
-| `kanban-*` | lightweight task tracker (board-only, ADR-0025) | `/marvin:kanban-menu`, `/marvin:kanban-bug`, `/marvin:kanban-feature`, `/marvin:kanban-chore`, `/marvin:kanban-spike`, `/marvin:kanban-start`, `/marvin:kanban-review`, `/marvin:kanban-done`, `/marvin:kanban-list`, `/marvin:kanban-status`, `/marvin:kanban-help` |
+| `kanban-*` | lightweight task tracker (board-only, ADR-0025) | `/marvin:kanban-menu`, `/marvin:kanban-bug`, `/marvin:kanban-feature`, `/marvin:kanban-chore`, `/marvin:kanban-spike`, `/marvin:kanban-start`, `/marvin:kanban-review`, `/marvin:kanban-done`, `/marvin:kanban-list`, `/marvin:kanban-status`, `/marvin:kanban-config`, `/marvin:kanban-help` |
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally
 distinct domains — keep them separate.
@@ -92,10 +92,10 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 - **Skills** (`plugins/marvin/skills/<command>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content. Dir name, `name:`, and command all match.
 - **Markdown commands** (`plugins/marvin/commands/<command>.md`) — Short slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
 - **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `kanban-*` group, an inline `body:`) under `/marvin:<command>`.
-- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`help` tools (file CRUD, role-driven transitions over the configured status set plus a generic `move` — ADR-0026, PR-URL capture via `link-pr` — ADR-0025, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0002/0009) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0003/0004/0005). `lessons` is the tool-backed lessons-learned store (`.marvin/memory/`: `add`/`search` typed lessons captured at delivery and by `marvin-debugger`, recalled at `task-start` intake; see ADR-0021).
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`help` tools (file CRUD, role-driven transitions over the configured status set plus a generic `move` — ADR-0026, PR-URL capture via `link-pr` — ADR-0025, the `config` action that shows/edits `.marvin/config.json` fail-closed, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0002/0009) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0003/0004/0005). `lessons` is the tool-backed lessons-learned store (`.marvin/memory/`: `add`/`search` typed lessons captured at delivery and by `marvin-debugger`, recalled at `task-start` intake; see ADR-0021).
 - **Agents** (`plugins/marvin/agents/*.md`) — Claude Code subagents, auto-loaded on `/plugin install`. The read-only / read-mostly agents (`marvin-auditor`, `marvin-guide`, `marvin-tm-writer`, the two `marvin-tm-*-critic`s, and `marvin-debugger`) pin their access with a `tools:` frontmatter allowlist — a subagent that omits `tools:` inherits *every* tool, so the allowlist is what actually enforces the read-only contract. Code-writing agents (`marvin-tm-executor`, `marvin-tm-review-fixer`) and `marvin-researcher` deliberately omit `tools:` and inherit the full toolset.
 
-> The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 11 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`help` MCP tools. There is no standalone workflow prose to duplicate into a skill. Git operations on board tasks live in the kanban-aware `commit`/`pr-create` skills (ADR-0025).
+> The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 12 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`help` MCP tools. There is no standalone workflow prose to duplicate into a skill. Git operations on board tasks live in the kanban-aware `commit`/`pr-create` skills (ADR-0025).
 
 ### Server key and slash prefix
 
@@ -202,7 +202,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 41 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 42 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool

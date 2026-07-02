@@ -67,6 +67,7 @@ const REQUIRED_PROMPTS = [
   "kanban-done",
   "kanban-list",
   "kanban-status",
+  "kanban-config",
   "kanban-help",
 ];
 

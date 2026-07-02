@@ -4,6 +4,7 @@ import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 import { readAllTasks } from "../storage/tasks.js";
+import { loadConfig } from "../storage/config.js";
 import { currentBranch, hasGh, hasGit, inGitRepo } from "../lib/git.js";
 import { PROMPTS } from "../prompts/index.js";
 import { orderedStatuses, roleOfStatus, type Config, type StatusRole } from "../storage/schema.js";
@@ -16,13 +17,18 @@ const HelpInput = z.object({
     .describe("Filter the command index to one group: core, pr, task, sec, kanban."),
 });
 
-export function buildHelpTool(env: ServerEnv, config: Config, version: string): AnyToolDef {
+export function buildHelpTool(env: ServerEnv, version: string): AnyToolDef {
   return defineTool({
     name: "help",
     description:
       'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
     inputSchema: HelpInput,
-    handler: (input) => Promise.resolve(renderHelp(env, config, version, input.section)),
+    handler: (input) => {
+      // Fresh config per call — the task tool's `config` action edits the
+      // file mid-session and the dashboard must reflect it immediately.
+      const { config } = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(renderHelp(env, config, version, input.section));
+    },
   });
 }
 
