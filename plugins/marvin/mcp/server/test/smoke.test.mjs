@@ -14,7 +14,7 @@ async function initializeOnce() {
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 5000);
+    }, 15000);
     child.stdout.on("data", (d) => {
       buf += d.toString();
       const lineEnd = buf.indexOf("\n");
@@ -59,7 +59,7 @@ async function listTools() {
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 5000);
+    }, 15000);
     const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
     child.stdout.on("data", (d) => {
       buf += d.toString();

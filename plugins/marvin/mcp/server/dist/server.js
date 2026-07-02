@@ -28652,7 +28652,7 @@ var PROMPTS = [
     body: callTool(
       "task",
       {},
-      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move, `status` (the target status key) for move."
+      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr / config / archive), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move / archive, `status` (the target status key) for move."
     )
   },
   {
@@ -28723,8 +28723,8 @@ var PROMPTS = [
   },
   {
     name: "kanban-help",
-    description: "Marvin tasks dashboard and prompt list",
-    body: callTool("help")
+    description: "Marvin dashboard scoped to the kanban group \u2014 board state + kanban commands",
+    body: callTool("help", { section: "kanban" })
   }
 ];
 function loadEnv(env = process.env) {
@@ -28970,8 +28970,9 @@ function readAllTasks(tasksDir, config2) {
 }
 function nextSeq(tasksDir) {
   let max = 0;
-  if (existsSync(tasksDir)) {
-    for (const filename of readdirSync(tasksDir)) {
+  for (const dir of [tasksDir, archiveDir(tasksDir)]) {
+    if (!existsSync(dir)) continue;
+    for (const filename of readdirSync(dir)) {
       if (!filename.endsWith(".md")) continue;
       const seq = parseSeq(filename);
       if (!seq) continue;
@@ -29074,6 +29075,21 @@ function writeFileAtomic(path, data) {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, data);
   renameSync(tmp, path);
+}
+function archiveDir(tasksDir) {
+  return join(tasksDir, "archive");
+}
+function archiveTask(tasksDir, task) {
+  const dir = archiveDir(tasksDir);
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, task.filename);
+  renameSync(join(tasksDir, task.filename), target);
+  return target;
+}
+function countArchived(tasksDir) {
+  const dir = archiveDir(tasksDir);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).filter((f) => f.endsWith(".md") && parseSeq(f)).length;
 }
 function findTaskByBranch(tasks, branch) {
   return tasks.find((t) => t.frontmatter.branch === branch) ?? null;
@@ -29314,11 +29330,13 @@ var TaskInput = external_exports.object({
     "done",
     "move",
     "link-pr",
-    "config"
+    "config",
+    "archive"
   ]).optional(),
   type: TaskType.optional(),
   taskId: external_exports.string().optional(),
   url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
+  confirm: external_exports.boolean().optional().describe("Confirm archiving ALL done-role tasks (`archive` action with no taskId)"),
   title: external_exports.string().optional().describe("Task title for `create` \u2014 3..120 printable characters, Unicode welcome"),
   description: external_exports.string().optional().describe("Task body for `create` (Markdown)"),
   tracker_id: external_exports.string().optional().describe("External tracker id for `create`, e.g. OSI-123 (SHORT-123 format)"),
@@ -29340,7 +29358,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     handler: (input) => {
       const { config: config2 } = loadConfig(env.configPath, env.projectDir);
@@ -29353,7 +29371,7 @@ async function dispatchTask(server, env, config2, input) {
   if (!action || action === "menu") {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms \u2014 pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config."
+        "This host does not support interactive forms \u2014 pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config, archive."
       );
     }
     const picked = await pickMenuAction(server, env, config2);
@@ -29379,6 +29397,8 @@ async function dispatchTask(server, env, config2, input) {
       return runLinkPr(env, config2, input.taskId, input.url);
     case "config":
       return runConfig(server, env, input);
+    case "archive":
+      return runArchive(server, env, config2, input);
   }
 }
 async function pickMenuAction(server, env, config2) {
@@ -29388,7 +29408,17 @@ async function pickMenuAction(server, env, config2) {
     server,
     `Marvin \xB7 ${tasks.length} tasks \xB7 ${wip} in progress`,
     external_exports.object({
-      action: external_exports.enum(["create", "list", "status", "start", "review", "done", "move", "config"])
+      action: external_exports.enum([
+        "create",
+        "list",
+        "status",
+        "start",
+        "review",
+        "done",
+        "move",
+        "config",
+        "archive"
+      ])
     })
   );
   return data?.action ?? null;
@@ -29478,10 +29508,14 @@ function runList(env, config2) {
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
+  const archived = countArchived(env.tasksDir);
+  const footer = archived > 0 ? `
+
+_${archived} archived task(s) in \`archive/\`._` : "";
   return {
     content: [{ type: "text", text: `# Tasks (${tasks.length})
 
-${body}${warning}` }],
+${body}${warning}${footer}` }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
     // renders, typed to the TaskListPayload contract. `pr` is populated from the
     // URL captured by link-pr; terminals render `content` and ignore this.
@@ -29714,6 +29748,45 @@ function runLinkPr(env, config2, taskId, url) {
   const saved = setTaskPr(env.tasksDir, task, url);
   return ok(`Linked PR to **${saved.frontmatter.id}** \u2014 ${saved.frontmatter.title}
 PR: ${url}`);
+}
+async function runArchive(server, env, config2, input) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const doneKeys = keysOfRoles(config2, ["done"]);
+  if (input.taskId) {
+    const task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
+    if (!doneKeys.includes(task.frontmatter.status)) {
+      return errOk(
+        `Task ${input.taskId} is in status "${task.frontmatter.status}" \u2014 archiving requires a done-role status (${doneKeys.join(", ")}). Mark it done first, or use the \`move\` action.`
+      );
+    }
+    const target = archiveTask(env.tasksDir, task);
+    return ok(
+      `Archived **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
+Moved to \`${target}\``
+    );
+  }
+  const done = tasks.filter((t) => doneKeys.includes(t.frontmatter.status));
+  if (done.length === 0) {
+    return ok(`No tasks in a done-role status (${doneKeys.join(", ")}) \u2014 nothing to archive.`);
+  }
+  if (!input.confirm) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`taskId\` to archive one task, or \`confirm: true\` to archive all ${done.length} done task(s): ${done.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+      );
+    }
+    const answer = await elicit(
+      server,
+      `Archive ${done.length} done task(s) to \`archive/\`?`,
+      external_exports.object({ archive: external_exports.enum(["yes", "no"]) })
+    );
+    if (answer?.archive !== "yes") return cancelled();
+  }
+  for (const t of done) archiveTask(env.tasksDir, t);
+  return ok(
+    `Archived ${done.length} task(s) to \`${archiveDir(env.tasksDir)}\`: ${done.map((t) => t.frontmatter.id).join(", ")}.`
+  );
 }
 function isHttpUrl(raw) {
   try {

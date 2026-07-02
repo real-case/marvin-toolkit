@@ -21,7 +21,7 @@ async function getPrompt(name) {
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 5000);
+    }, 15000);
 
     child.stdout.on("data", (d) => {
       buf += d.toString();

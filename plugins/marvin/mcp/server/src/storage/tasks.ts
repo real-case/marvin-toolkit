@@ -80,13 +80,14 @@ export function readAllTasks(tasksDir: string, config: Config): ReadTasksResult 
 /**
  * Allocate the next sequential id by scanning ALL `.md` filenames in the
  * tasks directory — including files whose frontmatter fails validation —
- * so a malformed file can never cause its id to be handed out twice.
- * Returns a zero-padded 3-digit string.
+ * and in `archive/`, so neither a malformed file nor an archived task can
+ * cause its id to be handed out twice. Returns a zero-padded 3-digit string.
  */
 export function nextSeq(tasksDir: string): string {
   let max = 0;
-  if (existsSync(tasksDir)) {
-    for (const filename of readdirSync(tasksDir)) {
+  for (const dir of [tasksDir, archiveDir(tasksDir)]) {
+    if (!existsSync(dir)) continue;
+    for (const filename of readdirSync(dir)) {
       if (!filename.endsWith(".md")) continue;
       const seq = parseSeq(filename);
       if (!seq) continue;
@@ -234,6 +235,33 @@ function writeFileAtomic(path: string, data: string): void {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, data);
   renameSync(tmp, path);
+}
+
+/** Where archived task files land — a subdirectory of the tasks dir. */
+export function archiveDir(tasksDir: string): string {
+  return join(tasksDir, "archive");
+}
+
+/**
+ * Move a task file off the board into `archive/` (an in-place `rename(2)`,
+ * atomic like every other storage write). Archived files are invisible to
+ * `readAllTasks` — the directory entry `archive` never matches its `*.md`
+ * filter — but their ids stay reserved because `nextSeq` scans the archive
+ * too. Returns the file's new absolute path.
+ */
+export function archiveTask(tasksDir: string, task: Task): string {
+  const dir = archiveDir(tasksDir);
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, task.filename);
+  renameSync(join(tasksDir, task.filename), target);
+  return target;
+}
+
+/** Number of archived task files — the board list's "N archived" footer. */
+export function countArchived(tasksDir: string): number {
+  const dir = archiveDir(tasksDir);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).filter((f) => f.endsWith(".md") && parseSeq(f)).length;
 }
 
 export function findTaskByBranch(tasks: Task[], branch: string): Task | null {

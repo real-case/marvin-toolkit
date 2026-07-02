@@ -10,6 +10,9 @@ import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-share
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { existsSync } from "node:fs";
 import {
+  archiveDir,
+  archiveTask,
+  countArchived,
   createTask,
   findTaskByBranch,
   findTaskById,
@@ -74,11 +77,16 @@ const TaskInput = z.object({
       "move",
       "link-pr",
       "config",
+      "archive",
     ])
     .optional(),
   type: TaskType.optional(),
   taskId: z.string().optional(),
   url: z.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("Confirm archiving ALL done-role tasks (`archive` action with no taskId)"),
   title: z
     .string()
     .optional()
@@ -128,7 +136,7 @@ export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "task",
     description:
-      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, and the config fields) and the form covers only what is missing — pass what the user already said.',
+      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
     handler: (input) => {
       // Config is (re)loaded on every call rather than captured at server
@@ -152,7 +160,7 @@ async function dispatchTask(
   if (!action || action === "menu") {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms — pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config.",
+        "This host does not support interactive forms — pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config, archive.",
       );
     }
     const picked = await pickMenuAction(server, env, config);
@@ -179,6 +187,8 @@ async function dispatchTask(
       return runLinkPr(env, config, input.taskId, input.url);
     case "config":
       return runConfig(server, env, input);
+    case "archive":
+      return runArchive(server, env, config, input);
   }
 }
 
@@ -193,7 +203,17 @@ async function pickMenuAction(
     server,
     `Marvin · ${tasks.length} tasks · ${wip} in progress`,
     z.object({
-      action: z.enum(["create", "list", "status", "start", "review", "done", "move", "config"]),
+      action: z.enum([
+        "create",
+        "list",
+        "status",
+        "start",
+        "review",
+        "done",
+        "move",
+        "config",
+        "archive",
+      ]),
     }),
   );
   return data?.action ?? null;
@@ -304,8 +324,12 @@ function runList(env: ServerEnv, config: Config): ToolResult {
     malformed.length > 0
       ? `\n\n_⚠ ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_`
       : "";
+  // Archived tasks are off the board (list, counts, payloads) — the footer is
+  // the only trace, so an emptied board still reads as history, not data loss.
+  const archived = countArchived(env.tasksDir);
+  const footer = archived > 0 ? `\n\n_${archived} archived task(s) in \`archive/\`._` : "";
   return {
-    content: [{ type: "text", text: `# Tasks (${tasks.length})\n\n${body}${warning}` }],
+    content: [{ type: "text", text: `# Tasks (${tasks.length})\n\n${body}${warning}${footer}` }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
     // renders, typed to the TaskListPayload contract. `pr` is populated from the
     // URL captured by link-pr; terminals render `content` and ignore this.
@@ -610,6 +634,64 @@ function runLinkPr(
 
   const saved = setTaskPr(env.tasksDir, task, url);
   return ok(`Linked PR to **${saved.frontmatter.id}** — ${saved.frontmatter.title}\nPR: ${url}`);
+}
+
+/**
+ * Move finished work off the board into `.marvin/kanban/archive/` (finding 15).
+ * An explicit `taskId` archives that one task — role-checked to done, like the
+ * other lifecycle verbs (finding 14), so the working set can't silently lose a
+ * live task. With no `taskId` it archives every done-role task: confirmed via
+ * elicitation when the host supports it, via `confirm: true` otherwise (the
+ * WP3 argument-first contract — the form only covers what arguments didn't).
+ */
+async function runArchive(
+  server: McpServer,
+  env: ServerEnv,
+  config: Config,
+  input: TaskInput,
+): Promise<ToolResult> {
+  const { tasks } = readAllTasks(env.tasksDir, config);
+  const doneKeys = keysOfRoles(config, ["done"]);
+
+  if (input.taskId) {
+    const task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
+    if (!doneKeys.includes(task.frontmatter.status)) {
+      return errOk(
+        `Task ${input.taskId} is in status "${task.frontmatter.status}" — archiving requires a done-role status (${doneKeys.join(", ")}). Mark it done first, or use the \`move\` action.`,
+      );
+    }
+    const target = archiveTask(env.tasksDir, task);
+    return ok(
+      `Archived **${task.frontmatter.id}** — ${task.frontmatter.title}\nMoved to \`${target}\``,
+    );
+  }
+
+  const done = tasks.filter((t) => doneKeys.includes(t.frontmatter.status));
+  if (done.length === 0) {
+    return ok(`No tasks in a done-role status (${doneKeys.join(", ")}) — nothing to archive.`);
+  }
+  if (!input.confirm) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms — pass \`taskId\` to archive one task, or \`confirm: true\` to archive all ${done.length} done task(s): ${done
+          .map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`)
+          .join(", ")}.`,
+      );
+    }
+    const answer = await elicit(
+      server,
+      `Archive ${done.length} done task(s) to \`archive/\`?`,
+      z.object({ archive: z.enum(["yes", "no"]) }),
+    );
+    if (answer?.archive !== "yes") return cancelled();
+  }
+  for (const t of done) archiveTask(env.tasksDir, t);
+  return ok(
+    `Archived ${done.length} task(s) to \`${archiveDir(env.tasksDir)}\`: ${done
+      .map((t) => t.frontmatter.id)
+      .join(", ")}.`,
+  );
 }
 
 function isHttpUrl(raw: string): boolean {

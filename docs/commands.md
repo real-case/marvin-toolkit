@@ -146,11 +146,16 @@ spike→`spike` (e.g. `fix/007-OSI-123--login-timeout`). Storage: `.marvin/kanba
 | `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
 | `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
 | `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses. Fail-closed validation; creates `.marvin/config.json` on first edit. | `marvin show the board config`, `marvin set the base branch to main`, `marvin connect our Jira statuses` |
-| `/marvin:kanban-help` | Show the project dashboard. | `marvin board dashboard`, `kanban help` |
+| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands (the full index stays on `/marvin:help`). | `marvin board dashboard`, `kanban help` |
 
 Committing and opening PRs for board tasks is handled by the kanban-aware
 [`/marvin:commit`](#core-developer-tools) and [`/marvin:pr-create`](#pull-request-lifecycle--pr-)
 — they pick up the linked task automatically (ADR-0025).
+
+Finished work can be archived off the board — say `marvin archive done tasks` (the `task`
+tool's `archive` action, also on the `kanban-menu` picker). Files move to
+`.marvin/kanban/archive/`, their ids stay reserved, and `kanban-list` shows an
+`N archived` footer while the archive is non-empty.
 
 ### Connecting a tracker
 
@@ -210,7 +215,7 @@ slash commands:
 
 | Tool | Purpose |
 |------|---------|
-| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`), board configuration (`config`) |
+| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`), done-task archive, board configuration (`config`) |
 | `help` | Dashboard + registry-derived command index |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |

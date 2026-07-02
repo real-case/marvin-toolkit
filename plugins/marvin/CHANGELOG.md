@@ -4,6 +4,40 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.6.0] — 2026-07-02
+
+Polish and coverage sweep (WP5, the final package of the kanban rework): the
+board gets an archive, the kanban help stops shouting the full command index,
+the onboarding guide learns the board exists, and the whole lifecycle is now
+covered end to end by stdio-driven tests.
+
+### Added
+
+- **`archive` action on the `task` tool** — move finished work off the board
+  into `.marvin/kanban/archive/`. An explicit `taskId` archives that one task
+  (role-checked to done, like the other lifecycle verbs); with no `taskId` it
+  archives every done-role task after a confirmation — an elicitation form on
+  capable hosts, `confirm: true` elsewhere. Archived tasks leave the board
+  everywhere (list, counters, structured payloads); their ids stay reserved
+  (`nextSeq` scans the archive too), and `kanban-list` shows an
+  "N archived task(s)" footer while the archive is non-empty. Reachable from
+  the `kanban-menu` picker and by name.
+- **End-to-end lifecycle test sweep** — stdio-driven coverage of the full
+  chain (create → start → move → review → link-pr → done → archive → list)
+  across server restarts, a config read/update round-trip mid-session, the
+  archive confirmation/degradation paths, and the id-reservation regressions
+  (malformed and archived files).
+
+### Changed
+
+- **`/marvin:kanban-help` is scoped to the kanban group** — it now calls the
+  `help` tool with `section: "kanban"` (board state + the 12 kanban commands)
+  instead of rendering the full 42-command index. The full dashboard stays on
+  `/marvin:help`.
+- **`marvin-guide` knows the board** — the onboarding agent checks for
+  `.marvin/kanban/` and, in repos that use it, shows what is in flight and
+  points new developers at the `/marvin:kanban-*` commands.
+
 ## [0.5.0] — 2026-07-02
 
 The board gets its configuration surface (WP4 of the kanban rework): a
