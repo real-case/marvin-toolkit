@@ -12,7 +12,7 @@
 
 ADR-0003/0004 made the spec a tool-validated, traceable contract. But both were authored treating
 **this** repository as the host: the gate, templates, and intake sweep assume marvin's own
-scaffolding (`CLAUDE.md`, `VISION.md`, `specs/`, the committed-`dist` + version-triple merge
+scaffolding (`CLAUDE.md`, `specs/`, the committed-`dist` + version-triple merge
 obligations) and a closed set of 5–6 stacks. `/marvin:task-start` ships in a plugin installed into
 **foreign** codebases, where none of those hold. Auditing the Phase-1 → Phase-2 chain through that
 lens surfaced two classes of defect.
@@ -99,7 +99,7 @@ analysis and the full sequencing live with the PR series.
   `createRequire` banner in `tsup.config.ts`. ADR-0003's committed-`dist` + rebuild discipline
   continues, and DoR-logic changes still require a server rebuild. The frontmatter codec parses with
   the YAML **failsafe** schema so kanban task files keep string semantics (a round-trip test guards it).
-- Hard cutover breaks pre-0007 specs with no auto-migration. Accepted: the only in-repo spec predates
+- Hard cutover breaks legacy single-table specs with no auto-migration. Accepted: the only in-repo spec predates
   ADR-0004 and is a frozen, shipped historical record (`status: shipped`, never re-executed), so it
   stays as-is rather than being rewritten; the plugin has no external installed base of authored specs.
 - More required structure raises the authoring bar for trivial specs — accepted for the same reason
