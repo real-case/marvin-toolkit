@@ -23,7 +23,7 @@ import {
 import { parseFrontmatter } from "../storage/frontmatter.js";
 import { findTaskByBranch, readAllTasks } from "../storage/tasks.js";
 import { searchLessons } from "../storage/lessons.js";
-import { trackerUrl } from "../storage/config.js";
+import { loadConfig, trackerUrl } from "../storage/config.js";
 import type { Config } from "../storage/schema.js";
 import { currentBranch, git, inGitRepo } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
@@ -59,13 +59,17 @@ interface VerifyResult {
   gates: Array<{ name: string; status: string; code: number | null }>;
 }
 
-export function buildSummaryTool(env: ServerEnv, config: Config): AnyToolDef {
+export function buildSummaryTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "summary",
     description:
       "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
     inputSchema: SummaryInput,
-    handler: (input) => Promise.resolve(runSummary(env, config, input)),
+    handler: (input) => {
+      // Fresh config per call — `task config` edits apply without a restart.
+      const { config } = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(runSummary(env, config, input));
+    },
   });
 }
 

@@ -1,4 +1,11 @@
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  mkdirSync,
+  existsSync,
+  renameSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   TaskFrontmatter,
@@ -9,7 +16,7 @@ import {
   type TaskType,
 } from "./schema.js";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.js";
-import { buildFilename, parseSeq, slugify } from "./slug.js";
+import { buildBranch, buildFilename, parseSeq, renderBranchTemplate, slugify } from "./slug.js";
 
 export interface MalformedTask {
   filename: string;
@@ -71,14 +78,22 @@ export function readAllTasks(tasksDir: string, config: Config): ReadTasksResult 
 }
 
 /**
- * Allocate the next sequential id by scanning existing filenames.
- * Returns a zero-padded 3-digit string.
+ * Allocate the next sequential id by scanning ALL `.md` filenames in the
+ * tasks directory — including files whose frontmatter fails validation —
+ * and in `archive/`, so neither a malformed file nor an archived task can
+ * cause its id to be handed out twice. Returns a zero-padded 3-digit string.
  */
-export function nextSeq(tasks: Task[]): string {
+export function nextSeq(tasksDir: string): string {
   let max = 0;
-  for (const t of tasks) {
-    const n = Number(t.frontmatter.id);
-    if (n > max) max = n;
+  for (const dir of [tasksDir, archiveDir(tasksDir)]) {
+    if (!existsSync(dir)) continue;
+    for (const filename of readdirSync(dir)) {
+      if (!filename.endsWith(".md")) continue;
+      const seq = parseSeq(filename);
+      if (!seq) continue;
+      const n = Number(seq);
+      if (n > max) max = n;
+    }
   }
   return String(max + 1).padStart(3, "0");
 }
@@ -93,19 +108,41 @@ export interface NewTaskInput {
 export interface CreatedTask {
   task: Task;
   path: string;
+  /** Set when the configured `branch_template` was unusable and the default scheme was applied. */
+  branchWarning?: string;
 }
 
 /**
  * Create a new task file. Returns the persisted task with its absolute path.
  * The initial status is the first configured todo-role status (ADR-0026).
+ * The branch name follows the ADR-0019 topic-branch convention
+ * (`fix/007-OSI-123--login-timeout`) unless the config sets a
+ * `branch_template` (WP4); a template that renders an invalid git ref falls
+ * back to the default and reports it via `branchWarning` — a bad template
+ * must never fail the create. A title that slugifies to nothing (fully
+ * non-Latin) falls back to the task type as its slug.
  */
 export function createTask(tasksDir: string, config: Config, input: NewTaskInput): CreatedTask {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir, config);
-  const id = nextSeq(tasks);
-  const slug = slugify(input.title);
+  const id = nextSeq(tasksDir);
+  const slug = slugify(input.title) || input.type;
   const filename = buildFilename(id, input.tracker_id, slug);
-  const branch = filename.replace(/\.md$/, "");
+  let branch = buildBranch(input.type, id, input.tracker_id, slug);
+  let branchWarning: string | undefined;
+  if (config.branch_template) {
+    const rendered = renderBranchTemplate(
+      config.branch_template,
+      input.type,
+      id,
+      input.tracker_id,
+      slug,
+    );
+    if (rendered !== null) {
+      branch = rendered;
+    } else {
+      branchWarning = `the configured branch_template ${JSON.stringify(config.branch_template)} renders an invalid git branch name — used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+    }
+  }
   const now = new Date().toISOString();
   const status = requireRole(config, "todo").key;
 
@@ -123,7 +160,7 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
   const body = input.description ? `\n${input.description}\n` : "\n";
   const text = stringifyFrontmatter(frontmatter, body);
   const path = join(tasksDir, filename);
-  writeFileSync(path, text);
+  writeFileAtomic(path, text);
 
   const parsed = TaskFrontmatter.parse({
     id,
@@ -135,12 +172,17 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
     created: now,
     updated: now,
   });
-  return { task: { frontmatter: parsed, body, filename }, path };
+  return {
+    task: { frontmatter: parsed, body, filename },
+    path,
+    ...(branchWarning ? { branchWarning } : {}),
+  };
 }
 
 /**
  * Persist a status change for a task. `newStatus` is a configured status key
- * (ADR-0026); transition semantics live in the callers. Rewrites the file.
+ * (ADR-0026); transition semantics live in the callers. Rewrites the file
+ * atomically (temp file + rename — see `writeFileAtomic`).
  */
 export function updateStatus(tasksDir: string, task: Task, newStatus: string): Task {
   const updated = new Date().toISOString();
@@ -180,7 +222,46 @@ function writeTask(tasksDir: string, task: Task): void {
     created: task.frontmatter.created,
     updated: task.frontmatter.updated,
   };
-  writeFileSync(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+  writeFileAtomic(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+}
+
+/**
+ * Crash-safe write: land the bytes in a temp file next to the target, then
+ * `rename(2)` over it — readers see the old task file or the new one, never a
+ * torn half-write. The temp name never ends in `.md`, so a file left behind
+ * by a crash between the two steps is invisible to `readAllTasks`/`nextSeq`.
+ */
+function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
+}
+
+/** Where archived task files land — a subdirectory of the tasks dir. */
+export function archiveDir(tasksDir: string): string {
+  return join(tasksDir, "archive");
+}
+
+/**
+ * Move a task file off the board into `archive/` (an in-place `rename(2)`,
+ * atomic like every other storage write). Archived files are invisible to
+ * `readAllTasks` — the directory entry `archive` never matches its `*.md`
+ * filter — but their ids stay reserved because `nextSeq` scans the archive
+ * too. Returns the file's new absolute path.
+ */
+export function archiveTask(tasksDir: string, task: Task): string {
+  const dir = archiveDir(tasksDir);
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, task.filename);
+  renameSync(join(tasksDir, task.filename), target);
+  return target;
+}
+
+/** Number of archived task files — the board list's "N archived" footer. */
+export function countArchived(tasksDir: string): number {
+  const dir = archiveDir(tasksDir);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).filter((f) => f.endsWith(".md") && parseSeq(f)).length;
 }
 
 export function findTaskByBranch(tasks: Task[], branch: string): Task | null {

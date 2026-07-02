@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync } from 'fs';
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { execFileSync, spawnSync, spawn } from 'child_process';
+import { spawn, spawnSync, execFileSync } from 'child_process';
 import { performance } from 'perf_hooks';
 import { createHash } from 'crypto';
 
@@ -18238,7 +18238,13 @@ function zodTypeToJsonSchema(field) {
   }
   throw new Error(`zodToElicitSchema: unsupported zod type ${field.constructor.name} \u2014 extend the helper`);
 }
+function canElicit(server) {
+  return Boolean(server.server.getClientCapabilities()?.elicitation);
+}
 async function elicit(server, message, schema) {
+  if (!canElicit(server)) {
+    throw new Error("This client does not support interactive forms (MCP elicitation) \u2014 pass the required fields as tool arguments instead.");
+  }
   const requestedSchema = zodToElicitSchema(schema);
   const response = await server.server.elicitInput({
     message,
@@ -28472,11 +28478,13 @@ function registerResource(server, def) {
 }
 
 // src/prompts/index.ts
-function callTool(tool, args = {}) {
+function callTool(tool, args = {}, hint = "") {
   const pairs = Object.entries(args).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
   const argText = pairs.length > 0 ? ` with ${pairs.join(", ")}` : "";
-  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}. Use the user's choices from the elicitation form to fill any other fields. Do not add preamble \u2014 just call the tool.`;
+  const hintText = hint ? ` ${hint}` : "";
+  return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}.${hintText} The form (if any) covers only what is missing; use the user's choices from it to fill the remaining fields. Do not add preamble \u2014 just call the tool.`;
 }
+var CREATE_HINT = "If the user's message already contains a title, a description, or a tracker id (like ABC-123) for the task, pass them as the `title` / `description` / `tracker_id` arguments instead of leaving them to the form.";
 var PROMPTS = [
   // ── core (bare + pr group) ───────────────────────────────────────────
   {
@@ -28641,42 +28649,58 @@ var PROMPTS = [
   {
     name: "kanban-menu",
     description: "Marvin tasks main menu",
-    body: callTool("task")
+    body: callTool(
+      "task",
+      {},
+      "Map whatever the user already said onto the tool's arguments instead of leaving it to the menu: `action` (create / list / status / start / review / done / move / link-pr / config / archive), `type`, `title`, `description` and `tracker_id` for create, `taskId` for start / review / done / move / archive, `status` (the target status key) for move."
+    )
   },
   {
     name: "kanban-bug",
     description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" })
+    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT)
   },
   {
     name: "kanban-feature",
     description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" })
+    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT)
   },
   {
     name: "kanban-chore",
     description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" })
+    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT)
   },
   {
     name: "kanban-spike",
     description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" })
+    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT)
   },
   {
     name: "kanban-start",
     description: "Pick a todo task, branch off, and mark it WIP",
-    body: callTool("task", { action: "start" })
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-review",
     description: "Move current task to review",
-    body: callTool("task", { action: "review" })
+    body: callTool(
+      "task",
+      { action: "review" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-done",
     description: "Mark current task done",
-    body: callTool("task", { action: "done" })
+    body: callTool(
+      "task",
+      { action: "done" },
+      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
+    )
   },
   {
     name: "kanban-list",
@@ -28689,11 +28713,28 @@ var PROMPTS = [
     body: callTool("task", { action: "status" })
   },
   {
+    name: "kanban-config",
+    description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses",
+    body: callTool(
+      "task",
+      { action: "config" },
+      "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown."
+    )
+  },
+  {
     name: "kanban-help",
-    description: "Marvin tasks dashboard and prompt list",
-    body: callTool("help")
+    description: "Marvin dashboard scoped to the kanban group \u2014 board state + kanban commands",
+    body: callTool("help", { section: "kanban" })
   }
 ];
+function loadEnv(env = process.env) {
+  const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
+  const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
+  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
+}
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
@@ -28728,7 +28769,7 @@ var Statuses = external_exports.array(StatusDef).superRefine((statuses, ctx) => 
     }
   }
 });
-var TaskTitle = external_exports.string().min(3).max(120).regex(/^[\x20-\x7E]+$/, "ASCII printable only");
+var TaskTitle = external_exports.string().min(3).max(120).regex(/^[^\u0000-\u001F\u007F-\u009F]+$/, "printable characters only (no control characters)");
 var TrackerId = external_exports.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");
 var TaskFrontmatter = external_exports.object({
   id: external_exports.string().regex(/^\d{3}$/),
@@ -28771,7 +28812,14 @@ var Config = external_exports.object({
   tracker_url_template: external_exports.string().nullable().default(null),
   gates: GateCommands.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
-  statuses: Statuses.default(DEFAULT_STATUSES)
+  statuses: Statuses.default(DEFAULT_STATUSES),
+  /**
+   * Branch-name template for new tasks (WP4). Placeholders: {type_prefix},
+   * {type}, {seq}, {tracker}, {slug} — see `renderBranchTemplate`. Absent
+   * means the default ADR-0019 scheme; a template that renders an invalid
+   * git ref falls back to that default at create time (with a warning).
+   */
+  branch_template: external_exports.string().min(1).optional()
 });
 var ROLE_ORDER = ["wip", "review", "todo", "blocked", "done"];
 function orderedStatuses(config2) {
@@ -28795,6 +28843,259 @@ function statusKeys(config2) {
 }
 function keysOfRoles(config2, roles) {
   return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
+}
+
+// src/storage/frontmatter.ts
+var import_yaml = __toESM(require_dist2());
+function parseFrontmatter(text) {
+  if (!text.startsWith("---\n")) {
+    return { frontmatter: {}, body: text };
+  }
+  const endIdx = text.indexOf("\n---", 4);
+  if (endIdx === -1) {
+    return { frontmatter: {}, body: text };
+  }
+  const raw = text.slice(4, endIdx);
+  const after = text.slice(endIdx + 4);
+  const body = after.startsWith("\n") ? after.slice(1) : after;
+  let doc;
+  try {
+    doc = (0, import_yaml.parse)(raw, { schema: "failsafe" });
+  } catch {
+    return { frontmatter: {}, body };
+  }
+  const frontmatter = {};
+  if (doc && typeof doc === "object" && !Array.isArray(doc)) {
+    for (const [key, value] of Object.entries(doc)) {
+      if (value == null) continue;
+      frontmatter[key] = typeof value === "string" ? value : String(value);
+    }
+  }
+  return { frontmatter, body };
+}
+function stringifyFrontmatter(frontmatter, body) {
+  const clean = {};
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (value !== void 0) clean[key] = value;
+  }
+  const fm = Object.keys(clean).length ? (0, import_yaml.stringify)(clean, { schema: "failsafe" }).trimEnd() : "";
+  const lines = ["---"];
+  if (fm) lines.push(fm);
+  lines.push("---");
+  if (body && !body.startsWith("\n")) lines.push("");
+  lines.push(body);
+  return lines.join("\n");
+}
+
+// src/storage/slug.ts
+function slugify(title, maxLen = 40) {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+  if (base.length <= maxLen) return base;
+  const cut = base.slice(0, maxLen);
+  const lastHyphen = cut.lastIndexOf("-");
+  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
+}
+function buildFilename(seq, tracker, slug) {
+  if (tracker) return `${seq}-${tracker}--${slug}.md`;
+  return `${seq}--${slug}.md`;
+}
+var BRANCH_TYPE_PREFIX = {
+  bug: "fix",
+  feature: "feat",
+  chore: "chore",
+  spike: "spike"
+};
+function buildBranch(type, seq, tracker, slug) {
+  const tail = tracker ? `${seq}-${tracker}--${slug}` : `${seq}--${slug}`;
+  return `${BRANCH_TYPE_PREFIX[type]}/${tail}`;
+}
+var DEFAULT_BRANCH_SCHEME = "{type_prefix}/{seq}[-{tracker}]--{slug}";
+function renderBranchTemplate(template, type, seq, tracker, slug) {
+  let name = tracker ? template.replace(/\{tracker\}/g, tracker) : template.replace(/[-_.]?\{tracker\}/g, "");
+  name = name.replace(/\{type_prefix\}/g, BRANCH_TYPE_PREFIX[type]).replace(/\{type\}/g, type).replace(/\{seq\}/g, seq).replace(/\{slug\}/g, slug);
+  if (/[{}]/.test(name)) return null;
+  return isSafeBranchRef(name) ? name : null;
+}
+function isSafeBranchRef(name) {
+  if (!name || name === "@") return false;
+  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
+  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
+  for (const segment of name.split("/")) {
+    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
+  }
+  return true;
+}
+function parseSeq(filename) {
+  const match = filename.match(/^(\d{3})(?:-|--)/);
+  return match ? match[1] ?? null : null;
+}
+
+// src/storage/tasks.ts
+function readAllTasks(tasksDir, config2) {
+  if (!existsSync(tasksDir)) return { tasks: [], malformed: [] };
+  const keys = statusKeys(config2);
+  const tasks = [];
+  const malformed = [];
+  for (const filename of readdirSync(tasksDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(tasksDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = TaskFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    if (!keys.includes(parsed.data.status)) {
+      malformed.push({
+        filename,
+        reason: `unknown status "${parsed.data.status}" \u2014 configured statuses: ${keys.join(", ")}`
+      });
+      continue;
+    }
+    tasks.push({ frontmatter: parsed.data, body, filename });
+  }
+  tasks.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { tasks, malformed };
+}
+function nextSeq(tasksDir) {
+  let max = 0;
+  for (const dir of [tasksDir, archiveDir(tasksDir)]) {
+    if (!existsSync(dir)) continue;
+    for (const filename of readdirSync(dir)) {
+      if (!filename.endsWith(".md")) continue;
+      const seq = parseSeq(filename);
+      if (!seq) continue;
+      const n = Number(seq);
+      if (n > max) max = n;
+    }
+  }
+  return String(max + 1).padStart(3, "0");
+}
+function createTask(tasksDir, config2, input) {
+  mkdirSync(tasksDir, { recursive: true });
+  const id = nextSeq(tasksDir);
+  const slug = slugify(input.title) || input.type;
+  const filename = buildFilename(id, input.tracker_id, slug);
+  let branch = buildBranch(input.type, id, input.tracker_id, slug);
+  let branchWarning;
+  if (config2.branch_template) {
+    const rendered = renderBranchTemplate(
+      config2.branch_template,
+      input.type,
+      id,
+      input.tracker_id,
+      slug
+    );
+    if (rendered !== null) {
+      branch = rendered;
+    } else {
+      branchWarning = `the configured branch_template ${JSON.stringify(config2.branch_template)} renders an invalid git branch name \u2014 used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+    }
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const status = requireRole(config2, "todo").key;
+  const frontmatter = {
+    id,
+    type: input.type,
+    status,
+    title: input.title,
+    tracker_id: input.tracker_id,
+    branch,
+    created: now,
+    updated: now
+  };
+  const body = input.description ? `
+${input.description}
+` : "\n";
+  const text = stringifyFrontmatter(frontmatter, body);
+  const path = join(tasksDir, filename);
+  writeFileAtomic(path, text);
+  const parsed = TaskFrontmatter.parse({
+    id,
+    type: input.type,
+    status,
+    title: input.title,
+    ...input.tracker_id ? { tracker_id: input.tracker_id } : {},
+    branch,
+    created: now,
+    updated: now
+  });
+  return {
+    task: { frontmatter: parsed, body, filename },
+    path,
+    ...branchWarning ? { branchWarning } : {}
+  };
+}
+function updateStatus(tasksDir, task, newStatus) {
+  const updated = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...task.frontmatter,
+    status: newStatus,
+    updated
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
+function setTaskPr(tasksDir, task, prUrl) {
+  const updated = (/* @__PURE__ */ new Date()).toISOString();
+  const next = {
+    ...task.frontmatter,
+    pr: prUrl,
+    updated
+  };
+  writeTask(tasksDir, { ...task, frontmatter: next });
+  return { ...task, frontmatter: next };
+}
+function writeTask(tasksDir, task) {
+  const fm = {
+    id: task.frontmatter.id,
+    type: task.frontmatter.type,
+    status: task.frontmatter.status,
+    title: task.frontmatter.title,
+    tracker_id: task.frontmatter.tracker_id,
+    branch: task.frontmatter.branch,
+    pr: task.frontmatter.pr,
+    created: task.frontmatter.created,
+    updated: task.frontmatter.updated
+  };
+  writeFileAtomic(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
+}
+function writeFileAtomic(path, data) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, path);
+}
+function archiveDir(tasksDir) {
+  return join(tasksDir, "archive");
+}
+function archiveTask(tasksDir, task) {
+  const dir = archiveDir(tasksDir);
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, task.filename);
+  renameSync(join(tasksDir, task.filename), target);
+  return target;
+}
+function countArchived(tasksDir) {
+  const dir = archiveDir(tasksDir);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).filter((f) => f.endsWith(".md") && parseSeq(f)).length;
+}
+function findTaskByBranch(tasks, branch) {
+  return tasks.find((t) => t.frontmatter.branch === branch) ?? null;
+}
+function findTaskById(tasks, id) {
+  return tasks.find((t) => t.frontmatter.id === id) ?? null;
 }
 function run(cmd, args, cwd) {
   const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
@@ -28871,9 +29172,12 @@ function loadConfig(configPath, projectDir) {
     const config2 = Config.parse({});
     if (projectDir !== void 0 && hasGit() && inGitRepo(projectDir)) {
       const detected = defaultBranchFromOrigin(projectDir);
-      if (detected) config2.base_branch = detected;
+      if (detected) {
+        config2.base_branch = detected;
+        return { config: config2, warning: null, base_branch_source: "origin/HEAD" };
+      }
     }
-    return { config: config2, warning: null };
+    return { config: config2, warning: null, base_branch_source: "default" };
   }
   let raw;
   try {
@@ -28882,7 +29186,8 @@ function loadConfig(configPath, projectDir) {
     const reason = err2 instanceof Error ? err2.message : String(err2);
     return {
       config: Config.parse({}),
-      warning: `failed to read config: ${reason}`
+      warning: `failed to read config: ${reason}`,
+      base_branch_source: "default"
     };
   }
   let json;
@@ -28890,209 +29195,89 @@ function loadConfig(configPath, projectDir) {
     json = JSON.parse(raw);
   } catch (err2) {
     const reason = err2 instanceof Error ? err2.message : String(err2);
-    return { config: Config.parse({}), warning: `config.json is not valid JSON: ${reason}` };
+    return {
+      config: Config.parse({}),
+      warning: `config.json is not valid JSON: ${reason}`,
+      base_branch_source: "default"
+    };
   }
   const parsed = Config.safeParse(json);
   if (!parsed.success) {
     return {
       config: Config.parse({}),
-      warning: `config.json failed schema validation: ${parsed.error.message}`
+      warning: `config.json failed schema validation: ${parsed.error.message}`,
+      base_branch_source: "default"
     };
   }
-  return { config: parsed.data, warning: null };
+  const hasOwnBase = typeof json === "object" && json !== null && Object.hasOwn(json, "base_branch");
+  return {
+    config: parsed.data,
+    warning: null,
+    base_branch_source: hasOwnBase ? "config" : "default"
+  };
 }
 function trackerUrl(config2, trackerId) {
   if (!trackerId || !config2.tracker_url_template) return null;
   return config2.tracker_url_template.replace("{tracker_id}", trackerId);
 }
-function loadEnv(env = process.env) {
-  const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
-  const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
-  const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
-  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
+function updateConfigFile(configPath, patch) {
+  const created = !existsSync(configPath);
+  let raw = {};
+  if (!created) {
+    let text;
+    try {
+      text = readFileSync(configPath, "utf8");
+    } catch (err2) {
+      const reason = err2 instanceof Error ? err2.message : String(err2);
+      return { ok: false, error: `cannot read ${configPath}: ${reason}` };
+    }
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (err2) {
+      const reason = err2 instanceof Error ? err2.message : String(err2);
+      return {
+        ok: false,
+        error: `the existing config.json is not valid JSON (${reason}) \u2014 fix the file by hand first; nothing was written`
+      };
+    }
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      return {
+        ok: false,
+        error: "the existing config.json is not a JSON object \u2014 fix the file by hand first; nothing was written"
+      };
+    }
+    raw = { ...json };
+  }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === void 0) continue;
+    if (value === null) delete raw[key];
+    else raw[key] = value;
+  }
+  const merged = Config.safeParse(raw);
+  if (!merged.success) {
+    return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
+  }
+  mkdirSync(dirname(configPath), { recursive: true });
+  const tmp = `${configPath}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(raw, null, 2) + "\n");
+  renameSync(tmp, configPath);
+  return { ok: true, config: merged.data, created };
 }
-
-// src/storage/frontmatter.ts
-var import_yaml = __toESM(require_dist2());
-function parseFrontmatter(text) {
-  if (!text.startsWith("---\n")) {
-    return { frontmatter: {}, body: text };
-  }
-  const endIdx = text.indexOf("\n---", 4);
-  if (endIdx === -1) {
-    return { frontmatter: {}, body: text };
-  }
-  const raw = text.slice(4, endIdx);
-  const after = text.slice(endIdx + 4);
-  const body = after.startsWith("\n") ? after.slice(1) : after;
-  let doc;
+function parseStatusesJson(input) {
+  let json;
   try {
-    doc = (0, import_yaml.parse)(raw, { schema: "failsafe" });
-  } catch {
-    return { frontmatter: {}, body };
+    json = JSON.parse(input);
+  } catch (err2) {
+    const reason = err2 instanceof Error ? err2.message : String(err2);
+    return { ok: false, error: `not valid JSON: ${reason}` };
   }
-  const frontmatter = {};
-  if (doc && typeof doc === "object" && !Array.isArray(doc)) {
-    for (const [key, value] of Object.entries(doc)) {
-      if (value == null) continue;
-      frontmatter[key] = typeof value === "string" ? value : String(value);
-    }
-  }
-  return { frontmatter, body };
+  const parsed = Statuses.safeParse(json);
+  if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
+  return { ok: true, statuses: parsed.data };
 }
-function stringifyFrontmatter(frontmatter, body) {
-  const clean = {};
-  for (const [key, value] of Object.entries(frontmatter)) {
-    if (value !== void 0) clean[key] = value;
-  }
-  const fm = Object.keys(clean).length ? (0, import_yaml.stringify)(clean, { schema: "failsafe" }).trimEnd() : "";
-  const lines = ["---"];
-  if (fm) lines.push(fm);
-  lines.push("---");
-  if (body && !body.startsWith("\n")) lines.push("");
-  lines.push(body);
-  return lines.join("\n");
-}
-
-// src/storage/slug.ts
-function slugify(title, maxLen = 40) {
-  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-  if (base.length <= maxLen) return base;
-  const cut = base.slice(0, maxLen);
-  const lastHyphen = cut.lastIndexOf("-");
-  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
-}
-function buildFilename(seq, tracker, slug) {
-  if (tracker) return `${seq}-${tracker}--${slug}.md`;
-  return `${seq}--${slug}.md`;
-}
-function parseSeq(filename) {
-  const match = filename.match(/^(\d{3})(?:-|--)/);
-  return match ? match[1] ?? null : null;
-}
-
-// src/storage/tasks.ts
-function readAllTasks(tasksDir, config2) {
-  if (!existsSync(tasksDir)) return { tasks: [], malformed: [] };
-  const keys = statusKeys(config2);
-  const tasks = [];
-  const malformed = [];
-  for (const filename of readdirSync(tasksDir).sort()) {
-    if (!filename.endsWith(".md")) continue;
-    const seq = parseSeq(filename);
-    if (!seq) continue;
-    const raw = readFileSync(join(tasksDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    const parsed = TaskFrontmatter.safeParse(frontmatter);
-    if (!parsed.success) {
-      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
-      continue;
-    }
-    if (parsed.data.id !== seq) {
-      malformed.push({
-        filename,
-        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
-      });
-      continue;
-    }
-    if (!keys.includes(parsed.data.status)) {
-      malformed.push({
-        filename,
-        reason: `unknown status "${parsed.data.status}" \u2014 configured statuses: ${keys.join(", ")}`
-      });
-      continue;
-    }
-    tasks.push({ frontmatter: parsed.data, body, filename });
-  }
-  tasks.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
-  return { tasks, malformed };
-}
-function nextSeq(tasks) {
-  let max = 0;
-  for (const t of tasks) {
-    const n = Number(t.frontmatter.id);
-    if (n > max) max = n;
-  }
-  return String(max + 1).padStart(3, "0");
-}
-function createTask(tasksDir, config2, input) {
-  mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir, config2);
-  const id = nextSeq(tasks);
-  const slug = slugify(input.title);
-  const filename = buildFilename(id, input.tracker_id, slug);
-  const branch = filename.replace(/\.md$/, "");
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const status = requireRole(config2, "todo").key;
-  const frontmatter = {
-    id,
-    type: input.type,
-    status,
-    title: input.title,
-    tracker_id: input.tracker_id,
-    branch,
-    created: now,
-    updated: now
-  };
-  const body = input.description ? `
-${input.description}
-` : "\n";
-  const text = stringifyFrontmatter(frontmatter, body);
-  const path = join(tasksDir, filename);
-  writeFileSync(path, text);
-  const parsed = TaskFrontmatter.parse({
-    id,
-    type: input.type,
-    status,
-    title: input.title,
-    ...input.tracker_id ? { tracker_id: input.tracker_id } : {},
-    branch,
-    created: now,
-    updated: now
-  });
-  return { task: { frontmatter: parsed, body, filename }, path };
-}
-function updateStatus(tasksDir, task, newStatus) {
-  const updated = (/* @__PURE__ */ new Date()).toISOString();
-  const next = {
-    ...task.frontmatter,
-    status: newStatus,
-    updated
-  };
-  writeTask(tasksDir, { ...task, frontmatter: next });
-  return { ...task, frontmatter: next };
-}
-function setTaskPr(tasksDir, task, prUrl) {
-  const updated = (/* @__PURE__ */ new Date()).toISOString();
-  const next = {
-    ...task.frontmatter,
-    pr: prUrl,
-    updated
-  };
-  writeTask(tasksDir, { ...task, frontmatter: next });
-  return { ...task, frontmatter: next };
-}
-function writeTask(tasksDir, task) {
-  const fm = {
-    id: task.frontmatter.id,
-    type: task.frontmatter.type,
-    status: task.frontmatter.status,
-    title: task.frontmatter.title,
-    tracker_id: task.frontmatter.tracker_id,
-    branch: task.frontmatter.branch,
-    pr: task.frontmatter.pr,
-    created: task.frontmatter.created,
-    updated: task.frontmatter.updated
-  };
-  writeFileSync(join(tasksDir, task.filename), stringifyFrontmatter(fm, task.body));
-}
-function findTaskByBranch(tasks, branch) {
-  return tasks.find((t) => t.frontmatter.branch === branch) ?? null;
-}
-function findTaskById(tasks, id) {
-  return tasks.find((t) => t.frontmatter.id === id) ?? null;
+function zodIssues(error2) {
+  return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
 }
 
 // src/flows/format.ts
@@ -29135,29 +29320,67 @@ function prCell(url) {
 
 // src/tools/task.ts
 var TaskInput = external_exports.object({
-  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"]).optional(),
+  action: external_exports.enum([
+    "menu",
+    "create",
+    "list",
+    "status",
+    "start",
+    "review",
+    "done",
+    "move",
+    "link-pr",
+    "config",
+    "archive"
+  ]).optional(),
   type: TaskType.optional(),
   taskId: external_exports.string().optional(),
-  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)")
+  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
+  confirm: external_exports.boolean().optional().describe("Confirm archiving ALL done-role tasks (`archive` action with no taskId)"),
+  title: external_exports.string().optional().describe("Task title for `create` \u2014 3..120 printable characters, Unicode welcome"),
+  description: external_exports.string().optional().describe("Task body for `create` (Markdown)"),
+  tracker_id: external_exports.string().optional().describe("External tracker id for `create`, e.g. OSI-123 (SHORT-123 format)"),
+  status: external_exports.string().optional().describe("Target status key for `move` \u2014 one of the configured statuses"),
+  base_branch: external_exports.string().optional().describe("config: base branch new task branches fork from (empty string clears the setting)"),
+  tracker_url_template: external_exports.string().optional().describe(
+    "config: tracker URL template with a {tracker_id} placeholder, e.g. https://acme.atlassian.net/browse/{tracker_id} (empty string clears)"
+  ),
+  branch_template: external_exports.string().optional().describe(
+    "config: branch-name template with {type_prefix} {type} {seq} {tracker} {slug} placeholders (empty string clears back to the default scheme)"
+  ),
+  statuses: external_exports.string().optional().describe(
+    'config: the board status vocabulary as a JSON array of {key, role, tracker_status?} \u2014 roles: todo|wip|review|done|blocked, e.g. [{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"}]'
+  ),
+  edit: external_exports.boolean().optional().describe(
+    "config: open the interactive form for the scalar settings instead of just showing the configuration"
+  )
 });
-function buildTaskTool(server, env, config2) {
+function buildTaskTool(server, env) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
-    handler: (input) => dispatchTask(server, env, config2, input)
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
+      return dispatchTask(server, env, config2, input);
+    }
   });
 }
 async function dispatchTask(server, env, config2, input) {
   let action = input.action;
   if (!action || action === "menu") {
+    if (!canElicit(server)) {
+      return errOk(
+        "This host does not support interactive forms \u2014 pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config, archive."
+      );
+    }
     const picked = await pickMenuAction(server, env, config2);
     if (!picked) return cancelled();
     action = picked;
   }
   switch (action) {
     case "create":
-      return runCreate(server, env, config2, input.type);
+      return runCreate(server, env, config2, input);
     case "list":
       return runList(env, config2);
     case "status":
@@ -29165,13 +29388,17 @@ async function dispatchTask(server, env, config2, input) {
     case "start":
       return runStart(server, env, config2, input.taskId);
     case "review":
-      return runReview(server, env, config2);
+      return runReview(server, env, config2, input.taskId);
     case "done":
-      return runDone(server, env, config2);
+      return runDone(server, env, config2, input.taskId);
     case "move":
-      return runMove(server, env, config2, input.taskId);
+      return runMove(server, env, config2, input);
     case "link-pr":
       return runLinkPr(env, config2, input.taskId, input.url);
+    case "config":
+      return runConfig(server, env, input);
+    case "archive":
+      return runArchive(server, env, config2, input);
   }
 }
 async function pickMenuAction(server, env, config2) {
@@ -29181,58 +29408,97 @@ async function pickMenuAction(server, env, config2) {
     server,
     `Marvin \xB7 ${tasks.length} tasks \xB7 ${wip} in progress`,
     external_exports.object({
-      action: external_exports.enum(["create", "list", "status", "start", "review", "done", "move"])
+      action: external_exports.enum([
+        "create",
+        "list",
+        "status",
+        "start",
+        "review",
+        "done",
+        "move",
+        "config",
+        "archive"
+      ])
     })
   );
   return data?.action ?? null;
 }
-async function runCreate(server, env, config2, preType) {
-  const formSchema = preType ? external_exports.object({
-    title: TaskTitle,
-    tracker_id: TrackerId.optional(),
-    description: external_exports.string().optional()
-  }) : external_exports.object({
-    type: TaskType,
-    title: TaskTitle,
-    tracker_id: TrackerId.optional(),
-    description: external_exports.string().optional()
-  });
-  const data = await elicit(server, "New task", formSchema);
-  if (!data) return cancelled();
-  const type = preType ?? data.type;
+async function runCreate(server, env, config2, input) {
+  if (input.title !== void 0 && !TaskTitle.safeParse(input.title).success) {
+    return errOk(
+      "Invalid `title` \u2014 pass 3..120 printable characters (control characters are rejected)."
+    );
+  }
+  if (input.tracker_id !== void 0 && !TrackerId.safeParse(input.tracker_id).success) {
+    return errOk("Invalid `tracker_id` \u2014 expected SHORT-123 format, e.g. OSI-123.");
+  }
+  let type = input.type;
+  let title = input.title;
+  let trackerId = input.tracker_id;
+  let description = input.description;
+  if (!type || !title) {
+    if (!canElicit(server)) {
+      const missing = [
+        !type && "`type` (bug | feature | chore | spike)",
+        !title && "`title` (3..120 characters)"
+      ].filter(Boolean).join(" and ");
+      return errOk(
+        `This host does not support interactive forms \u2014 pass ${missing} as tool argument(s) and retry. Optional: \`tracker_id\` (e.g. OSI-123), \`description\`.`
+      );
+    }
+    const shape = {};
+    if (!type) shape.type = TaskType;
+    if (!title) shape.title = TaskTitle;
+    if (!trackerId) shape.tracker_id = TrackerId.optional();
+    if (!description) shape.description = external_exports.string().optional();
+    const data = await elicit(server, "New task", external_exports.object(shape));
+    if (!data) return cancelled();
+    type = type ?? data.type;
+    title = title ?? data.title;
+    trackerId = trackerId ?? data.tracker_id;
+    description = description ?? data.description;
+  }
+  if (!type || !title) return cancelled();
   const created = createTask(env.tasksDir, config2, {
     type,
-    title: data.title,
-    ...data.tracker_id ? { tracker_id: data.tracker_id } : {},
-    ...data.description ? { description: data.description } : {}
+    title,
+    ...trackerId ? { tracker_id: trackerId } : {},
+    ...description ? { description } : {}
   });
   let branchInfo = "";
   if (hasGit() && inGitRepo(env.projectDir)) {
-    const confirm = await elicit(
-      server,
-      `Create branch \`${created.task.frontmatter.branch}\` from \`${config2.base_branch}\` and check it out?`,
-      external_exports.object({ checkout: external_exports.enum(["yes", "no"]) })
-    );
-    if (confirm?.checkout === "yes") {
-      const result2 = createBranchFromBase(
-        config2.base_branch,
-        created.task.frontmatter.branch,
-        env.projectDir
+    if (canElicit(server)) {
+      const confirm = await elicit(
+        server,
+        `Create branch \`${created.task.frontmatter.branch}\` from \`${config2.base_branch}\` and check it out?`,
+        external_exports.object({ checkout: external_exports.enum(["yes", "no"]) })
       );
-      if (result2.ok) {
-        const wipStatus = requireRole(config2, "wip");
-        updateStatus(env.tasksDir, created.task, wipStatus.key);
-        branchInfo = `
+      if (confirm?.checkout === "yes") {
+        const result2 = createBranchFromBase(
+          config2.base_branch,
+          created.task.frontmatter.branch,
+          env.projectDir
+        );
+        if (result2.ok) {
+          const wipStatus = requireRole(config2, "wip");
+          updateStatus(env.tasksDir, created.task, wipStatus.key);
+          branchInfo = `
 Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 ${wipStatus.key}.`;
-      } else {
-        branchInfo = `
+        } else {
+          branchInfo = `
 Branch creation failed: ${result2.stderr}`;
+        }
       }
+    } else {
+      branchInfo = `
+To branch off and pick it up, call this tool with action="start", taskId="${created.task.frontmatter.id}".`;
     }
   }
+  const templateWarning = created.branchWarning ? `
+\u26A0 ${created.branchWarning}` : "";
   return ok(
     `Created task **${created.task.frontmatter.id}** \u2014 ${created.task.frontmatter.title}
-File: \`${created.path}\`${branchInfo}`
+File: \`${created.path}\`${templateWarning}${branchInfo}`
   );
 }
 function runList(env, config2) {
@@ -29242,10 +29508,14 @@ function runList(env, config2) {
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
+  const archived = countArchived(env.tasksDir);
+  const footer = archived > 0 ? `
+
+_${archived} archived task(s) in \`archive/\`._` : "";
   return {
     content: [{ type: "text", text: `# Tasks (${tasks.length})
 
-${body}${warning}` }],
+${body}${warning}${footer}` }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
     // renders, typed to the TaskListPayload contract. `pr` is populated from the
     // URL captured by link-pr; terminals render `content` and ignore this.
@@ -29325,6 +29595,11 @@ async function runStart(server, env, config2, preselected) {
         `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
       );
     }
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Todo tasks: ${todo.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to start?",
@@ -29347,15 +29622,16 @@ async function runStart(server, env, config2, preselected) {
 Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 ${wipStatus.key}`
   );
 }
-async function runReview(server, env, config2) {
+async function runReview(server, env, config2, preselected) {
   const target = firstOfRole(config2, "review");
   if (!target) {
     return errOk(
       'No status with role "review" is configured \u2014 add one to `statuses` in `.marvin/config.json`, or use the `move` action.'
     );
   }
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"]);
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"], preselected);
   if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
     return ok(
       `No tasks in a wip-role status (${keysOfRoles(config2, ["wip"]).join(", ")}) \u2014 nothing to move to review.`
@@ -29367,10 +29643,11 @@ async function runReview(server, env, config2) {
 Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
-async function runDone(server, env, config2) {
+async function runDone(server, env, config2, preselected) {
   const roles = ["wip", "review"];
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles);
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles, preselected);
   if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
     return ok(
       `No tasks in a wip- or review-role status (${keysOfRoles(config2, roles).join(", ")}) \u2014 nothing to mark done.`
@@ -29382,22 +29659,32 @@ async function runDone(server, env, config2) {
     `Marked **${pick2.task.frontmatter.id}** as **${doneStatus.key}**. Branch cleanup and merge are left to you / CI.`
   );
 }
-async function runMove(server, env, config2, preselected) {
+async function runMove(server, env, config2, input) {
   const { tasks } = readAllTasks(env.tasksDir, config2);
   if (tasks.length === 0) {
     return ok(
       "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
     );
   }
+  const keys = statusKeys(config2);
+  let target = input.status;
+  if (target !== void 0 && !keys.includes(target)) {
+    return errOk(`Unknown status key \`${target}\` \u2014 configured statuses: ${keys.join(", ")}.`);
+  }
   let task = null;
-  if (preselected) {
-    task = findTaskById(tasks, preselected);
-    if (!task) return errOk(`Task ${preselected} not found`);
+  if (input.taskId) {
+    task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
   } else {
     const branch = currentBranch(env.projectDir);
     task = branch ? findTaskByBranch(tasks, branch) : null;
   }
   if (!task) {
+    if (!canElicit(server)) {
+      return errOk(
+        `Current branch has no linked task and this host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Tasks: ${tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.status})`).join(", ")}.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to move?",
@@ -29409,21 +29696,28 @@ async function runMove(server, env, config2, preselected) {
     task = findTaskById(tasks, data.taskId);
     if (!task) return errOk(`Task ${data.taskId} not found`);
   }
-  const keys = statusKeys(config2);
-  const target = await elicit(
-    server,
-    `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
-    external_exports.object({ status: external_exports.enum(keys) })
-  );
-  if (!target) return cancelled();
-  if (target.status === task.frontmatter.status) {
-    return ok(`**${task.frontmatter.id}** is already in \`${target.status}\` \u2014 nothing to do.`);
+  if (!target) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`status\` (the target status key) as a tool argument and retry. Configured statuses: ${keys.join(", ")}.`
+      );
+    }
+    const picked = await elicit(
+      server,
+      `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
+      external_exports.object({ status: external_exports.enum(keys) })
+    );
+    if (!picked) return cancelled();
+    target = picked.status;
+  }
+  if (target === task.frontmatter.status) {
+    return ok(`**${task.frontmatter.id}** is already in \`${target}\` \u2014 nothing to do.`);
   }
   const from = task.frontmatter.status;
-  updateStatus(env.tasksDir, task, target.status);
+  updateStatus(env.tasksDir, task, target);
   return ok(
     `Moved **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
-\`${from}\` \u2192 \`${target.status}\``
+\`${from}\` \u2192 \`${target}\``
   );
 }
 function runLinkPr(env, config2, taskId, url) {
@@ -29455,6 +29749,45 @@ function runLinkPr(env, config2, taskId, url) {
   return ok(`Linked PR to **${saved.frontmatter.id}** \u2014 ${saved.frontmatter.title}
 PR: ${url}`);
 }
+async function runArchive(server, env, config2, input) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const doneKeys = keysOfRoles(config2, ["done"]);
+  if (input.taskId) {
+    const task = findTaskById(tasks, input.taskId);
+    if (!task) return errOk(`Task ${input.taskId} not found`);
+    if (!doneKeys.includes(task.frontmatter.status)) {
+      return errOk(
+        `Task ${input.taskId} is in status "${task.frontmatter.status}" \u2014 archiving requires a done-role status (${doneKeys.join(", ")}). Mark it done first, or use the \`move\` action.`
+      );
+    }
+    const target = archiveTask(env.tasksDir, task);
+    return ok(
+      `Archived **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
+Moved to \`${target}\``
+    );
+  }
+  const done = tasks.filter((t) => doneKeys.includes(t.frontmatter.status));
+  if (done.length === 0) {
+    return ok(`No tasks in a done-role status (${doneKeys.join(", ")}) \u2014 nothing to archive.`);
+  }
+  if (!input.confirm) {
+    if (!canElicit(server)) {
+      return errOk(
+        `This host does not support interactive forms \u2014 pass \`taskId\` to archive one task, or \`confirm: true\` to archive all ${done.length} done task(s): ${done.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+      );
+    }
+    const answer = await elicit(
+      server,
+      `Archive ${done.length} done task(s) to \`archive/\`?`,
+      external_exports.object({ archive: external_exports.enum(["yes", "no"]) })
+    );
+    if (answer?.archive !== "yes") return cancelled();
+  }
+  for (const t of done) archiveTask(env.tasksDir, t);
+  return ok(
+    `Archived ${done.length} task(s) to \`${archiveDir(env.tasksDir)}\`: ${done.map((t) => t.frontmatter.id).join(", ")}.`
+  );
+}
 function isHttpUrl(raw) {
   try {
     const protocol = new URL(raw).protocol;
@@ -29463,9 +29796,158 @@ function isHttpUrl(raw) {
     return false;
   }
 }
-async function detectCurrentTaskOrPick(server, env, config2, roles) {
+async function runConfig(server, env, input) {
+  const loaded = loadConfig(env.configPath, env.projectDir);
+  const patch = {};
+  const notes = [];
+  if (input.statuses !== void 0) {
+    const parsed = parseStatusesJson(input.statuses);
+    if (!parsed.ok) {
+      return errOk(
+        `Invalid \`statuses\` \u2014 ${parsed.error}.
+Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-case, roles are todo|wip|review|done|blocked, and at least one status is required for each of the todo, wip and done roles. Example:
+\`[{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"},{"key":"done","role":"done","tracker_status":"Done"}]\``
+      );
+    }
+    patch.statuses = parsed.statuses;
+  }
+  if (input.base_branch !== void 0) {
+    const value = input.base_branch.trim();
+    if (value !== "" && !isSafeBranchRef(value)) {
+      return errOk(`Invalid \`base_branch\` \u2014 \`${value}\` is not a valid git branch name.`);
+    }
+    patch.base_branch = value === "" ? null : value;
+  }
+  if (input.tracker_url_template !== void 0) {
+    const value = input.tracker_url_template.trim();
+    patch.tracker_url_template = value === "" ? null : value;
+    if (value !== "" && !value.includes("{tracker_id}")) {
+      notes.push(
+        "the tracker_url_template has no `{tracker_id}` placeholder \u2014 every task will link to the same URL."
+      );
+    }
+  }
+  if (input.branch_template !== void 0) {
+    const value = input.branch_template.trim();
+    patch.branch_template = value === "" ? null : value;
+    if (value !== "") {
+      const withTracker = renderBranchTemplate(value, "bug", "007", "ABC-123", "sample-task");
+      const withoutTracker = renderBranchTemplate(value, "bug", "007", void 0, "sample-task");
+      if (withTracker === null || withoutTracker === null) {
+        notes.push(
+          "\u26A0 this branch_template renders an invalid git branch name \u2014 task creation will fall back to the default scheme until it is fixed."
+        );
+      } else {
+        notes.push(
+          `branch preview: \`${withTracker}\` (with tracker) \xB7 \`${withoutTracker}\` (without).`
+        );
+      }
+    }
+  }
+  if (Object.keys(patch).length === 0 && input.edit) {
+    if (!canElicit(server)) {
+      return errOk(
+        "This host does not support interactive forms \u2014 pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?})."
+      );
+    }
+    const data = await elicit(
+      server,
+      `Board configuration \u2014 fill only what should change (current: base_branch=${loaded.config.base_branch}, tracker_url_template=${loaded.config.tracker_url_template ?? "not set"}, branch_template=${loaded.config.branch_template ?? "default"})`,
+      external_exports.object({
+        base_branch: external_exports.string().optional(),
+        tracker_url_template: external_exports.string().optional(),
+        branch_template: external_exports.string().optional()
+      })
+    );
+    if (!data) return cancelled();
+    if (data.base_branch?.trim()) patch.base_branch = data.base_branch.trim();
+    if (data.tracker_url_template?.trim())
+      patch.tracker_url_template = data.tracker_url_template.trim();
+    if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
+  }
+  if (Object.keys(patch).length === 0) {
+    return ok(renderConfigView(env, loaded));
+  }
+  if (!existsSync(env.configPath) && patch.base_branch === void 0) {
+    patch.base_branch = loaded.config.base_branch;
+    if (loaded.base_branch_source === "origin/HEAD") {
+      notes.push(
+        `base_branch \`${loaded.config.base_branch}\` (auto-detected from origin/HEAD) was written into the new file \u2014 change it any time with \`base_branch=\u2026\`.`
+      );
+    }
+  }
+  const result2 = updateConfigFile(env.configPath, patch);
+  if (!result2.ok) return errOk(`Config not written \u2014 ${result2.error}.`);
+  const fresh = loadConfig(env.configPath, env.projectDir);
+  if (patch.statuses) {
+    const { malformed } = readAllTasks(env.tasksDir, fresh.config);
+    const stranded = malformed.filter((m) => m.reason.includes("unknown status"));
+    if (stranded.length > 0) {
+      notes.push(
+        `\u26A0 ${stranded.length} existing task file(s) use statuses outside the new set (${stranded.map((m) => m.filename).join(", ")}) \u2014 they will show as malformed until their status lines are updated.`
+      );
+    }
+  }
+  const changed = Object.keys(patch).map((k) => `\`${k}\``).join(", ");
+  const lines = [
+    `${result2.created ? "Created" : "Updated"} \`${env.configPath}\` \u2014 set ${changed}.`,
+    ...notes.map((n) => `_${n}_`),
+    "",
+    renderConfigView(env, fresh)
+  ];
+  return ok(lines.join("\n"));
+}
+function renderConfigView(env, loaded) {
+  const { config: config2, warning, base_branch_source } = loaded;
+  const fileExists = existsSync(env.configPath);
+  const sourceLabel = base_branch_source === "config" ? "from config" : base_branch_source === "origin/HEAD" ? "auto-detected from origin/HEAD" : "default";
+  const lines = [];
+  lines.push("# Board configuration");
+  lines.push("");
+  if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
+  lines.push(`- **Project:** \`${env.projectDir}\``);
+  lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
+  lines.push(
+    `- **Config file:** \`${env.configPath}\`${fileExists ? "" : " _(not created yet \u2014 the first edit creates it)_"}`
+  );
+  lines.push("");
+  lines.push("## Settings");
+  lines.push("");
+  lines.push(`- **base_branch:** \`${config2.base_branch}\` _(${sourceLabel})_`);
+  lines.push(
+    `- **tracker_url_template:** ${config2.tracker_url_template ? `\`${config2.tracker_url_template}\`` : "_not set_"}`
+  );
+  lines.push(
+    `- **branch_template:** ${config2.branch_template ? `\`${config2.branch_template}\`` : `_not set \u2014 default scheme \`${DEFAULT_BRANCH_SCHEME}\` (e.g. \`fix/007-ABC-123--login-timeout\`)_`}`
+  );
+  lines.push("");
+  lines.push("## Statuses");
+  lines.push("");
+  lines.push("| key | role | tracker_status |");
+  lines.push("|-----|------|----------------|");
+  for (const s of config2.statuses) {
+    lines.push(`| ${s.key} | ${s.role} | ${s.tracker_status ?? "\u2014"} |`);
+  }
+  lines.push("");
+  lines.push(
+    "_Change settings by argument \u2014 `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}) \u2014 or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._"
+  );
+  return lines.join("\n");
+}
+async function detectCurrentTaskOrPick(server, env, config2, roles, preselected) {
   const { tasks } = readAllTasks(env.tasksDir, config2);
   const allowedKeys = keysOfRoles(config2, roles);
+  if (preselected) {
+    const task = findTaskById(tasks, preselected);
+    if (!task) return { kind: "error", message: `Task ${preselected} not found` };
+    if (!allowedKeys.includes(task.frontmatter.status)) {
+      return {
+        kind: "error",
+        message: `Task ${preselected} is in status "${task.frontmatter.status}" \u2014 this action requires a ${roles.join("/")}-role status (${allowedKeys.join(", ")}). Use the \`move\` action for other transitions.`
+      };
+    }
+    return { kind: "task", task };
+  }
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
   if (linked && allowedKeys.includes(linked.frontmatter.status)) {
@@ -29473,6 +29955,12 @@ async function detectCurrentTaskOrPick(server, env, config2, roles) {
   }
   const candidates = tasks.filter((t) => allowedKeys.includes(t.frontmatter.status));
   if (candidates.length === 0) return { kind: "none" };
+  if (!canElicit(server)) {
+    return {
+      kind: "error",
+      message: `Current branch has no linked task and this host does not support interactive forms \u2014 pass \`taskId\` as a tool argument and retry. Candidates: ${candidates.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ")}.`
+    };
+  }
   const data = await elicit(
     server,
     "Current branch has no linked task \u2014 pick one",
@@ -29496,12 +29984,15 @@ function cancelled() {
 var HelpInput = external_exports.object({
   section: external_exports.string().optional().describe("Filter the command index to one group: core, pr, task, sec, kanban.")
 });
-function buildHelpTool(env, config2, version2) {
+function buildHelpTool(env, version2) {
   return defineTool({
     name: "help",
     description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
     inputSchema: HelpInput,
-    handler: (input) => Promise.resolve(renderHelp(env, config2, version2, input.section))
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(renderHelp(env, config2, version2, input.section));
+    }
   });
 }
 function renderHelp(env, config2, version2, section) {
@@ -31151,12 +31642,15 @@ var SummaryInput = external_exports.object({
   slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
 });
-function buildSummaryTool(env, config2) {
+function buildSummaryTool(env) {
   return defineTool({
     name: "summary",
     description: "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
     inputSchema: SummaryInput,
-    handler: (input) => Promise.resolve(runSummary(env, config2, input))
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(runSummary(env, config2, input));
+    }
   });
 }
 function runSummary(env, config2, input) {
@@ -31349,7 +31843,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.3.0";
+var VERSION = "0.6.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -31357,17 +31851,16 @@ await runPackServer({
   packRoot: packRootFromMeta(import.meta.url),
   build: (server) => {
     const env = loadEnv();
-    const { config: config2 } = loadConfig(env.configPath, env.projectDir);
     return {
       prompts: PROMPTS,
       tools: [
-        buildTaskTool(server, env, config2),
-        buildHelpTool(env, config2, VERSION),
+        buildTaskTool(server, env),
+        buildHelpTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
         buildLessonsTool(env),
         buildHandoffTool(env),
-        buildSummaryTool(env, config2)
+        buildSummaryTool(env)
       ]
     };
   }

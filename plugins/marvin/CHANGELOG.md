@@ -4,6 +4,129 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.6.0] — 2026-07-02
+
+Polish and coverage sweep (WP5, the final package of the kanban rework): the
+board gets an archive, the kanban help stops shouting the full command index,
+the onboarding guide learns the board exists, and the whole lifecycle is now
+covered end to end by stdio-driven tests.
+
+### Added
+
+- **`archive` action on the `task` tool** — move finished work off the board
+  into `.marvin/kanban/archive/`. An explicit `taskId` archives that one task
+  (role-checked to done, like the other lifecycle verbs); with no `taskId` it
+  archives every done-role task after a confirmation — an elicitation form on
+  capable hosts, `confirm: true` elsewhere. Archived tasks leave the board
+  everywhere (list, counters, structured payloads); their ids stay reserved
+  (`nextSeq` scans the archive too), and `kanban-list` shows an
+  "N archived task(s)" footer while the archive is non-empty. Reachable from
+  the `kanban-menu` picker and by name.
+- **End-to-end lifecycle test sweep** — stdio-driven coverage of the full
+  chain (create → start → move → review → link-pr → done → archive → list)
+  across server restarts, a config read/update round-trip mid-session, the
+  archive confirmation/degradation paths, and the id-reservation regressions
+  (malformed and archived files).
+
+### Changed
+
+- **`/marvin:kanban-help` is scoped to the kanban group** — it now calls the
+  `help` tool with `section: "kanban"` (board state + the 12 kanban commands)
+  instead of rendering the full 42-command index. The full dashboard stays on
+  `/marvin:help`.
+- **`marvin-guide` knows the board** — the onboarding agent checks for
+  `.marvin/kanban/` and, in repos that use it, shows what is in flight and
+  points new developers at the `/marvin:kanban-*` commands.
+
+## [0.5.0] — 2026-07-02
+
+The board gets its configuration surface (WP4 of the kanban rework): a
+first-run and tracker-connection entry point, so nobody hand-writes
+`.marvin/config.json`.
+
+### Added
+
+- **`config` action on the `task` tool + `/marvin:kanban-config` prompt**
+  (audit finding 17 and the config half of finding 4) — with no arguments it
+  renders the effective configuration: project/tasks/config paths,
+  `base_branch` with its source (config file · auto-detected from
+  `origin/HEAD` · default), `tracker_url_template`, `branch_template`, and
+  the statuses table (key, role, tracker_status). With arguments it edits the
+  file: `base_branch`, `tracker_url_template`, `branch_template` as plain
+  strings (an empty string clears a setting back to its default), `statuses`
+  as a JSON array validated fail-closed against the config schema — invalid
+  payloads answer with the exact issues (missing todo/wip/done roles, bad
+  keys, duplicates) and write nothing. Scalar fields are also editable through
+  an interactive form (`edit=true`) on hosts with elicitation; hosts without
+  get the WP3-style instructive error naming the retry arguments. The file is
+  created on first edit (pinning the auto-detected `base_branch` so creating
+  a config never flips a main-based repo back to `dev`); writes are atomic
+  (temp + rename), and the read-modify-write preserves every key the surface
+  does not manage — the `verify` tool's `gates` and anything a future tool
+  adds. Switching vocabularies on a live board warns about tasks stranded in
+  now-unknown statuses.
+- **`branch_template` config setting** — new-task branches can follow a
+  custom scheme with `{type_prefix}`, `{type}`, `{seq}`, `{tracker}` and
+  `{slug}` placeholders (without a tracker id, `{tracker}` plus one preceding
+  `-`/`_`/`.` collapses). The rendered name is checked against git ref rules:
+  a bad template falls back to the default ADR-0019 scheme and warns in the
+  create output instead of failing the create; setting a template previews
+  the rendered branch (with and without a tracker id) immediately.
+
+### Changed
+
+- **Tools read `.marvin/config.json` per call** instead of capturing a
+  snapshot at server startup, so `config` edits (and hand edits) apply to the
+  same session immediately — no server restart. Affects the `task`, `help`
+  and `summary` tools; `verify` already worked this way.
+
+## [0.4.0] — 2026-07-02
+
+The model becomes a first-class caller of the kanban board (WP3 of the kanban
+rework): every form field is also a tool argument, elicitation degrades
+gracefully, and the storage layer survives real-world input.
+
+### Added
+
+- **Model-passable arguments on the `task` tool** — `title`, `description`,
+  `tracker_id` (create) and `status` (the target key for `move`) join `action`,
+  `type`, `taskId`, `url`. Each flow elicits only the fields still missing after
+  the arguments are applied: `create` with `type` + `title` runs with no form at
+  all, `move` with a valid `status` skips the picker (an unknown key answers
+  with the configured keys). `review` and `done` now honor an explicit `taskId`
+  (role-checked, like `start`). Explicit-but-invalid values earn instructive
+  errors (`title` against the TaskTitle contract, `tracker_id` against
+  SHORT-123) instead of silent re-asks. The kanban prompt bodies tell the model
+  to mine the user's message for these arguments up front.
+- **Elicitation capability detection** — new `canElicit(server)` in the shared
+  lib reads the client's declared capabilities. On hosts without elicitation
+  support, interactive flows return an instructive `isError` naming exactly the
+  arguments to pass on retry — never a raw wire error; argument-complete calls
+  work end to end. `elicit()` itself now throws a readable message if called
+  without the capability (backstop, documented in its JSDoc).
+- **Unicode titles** — the TaskTitle contract accepts any printable Unicode
+  (3..120 chars, control characters rejected); the derived elicitation-form
+  pattern stays a portable ECMA-262 regex. Slugs remain ASCII kebab-case; a
+  fully non-Latin title falls back to the task type as its slug
+  (`001--bug.md`), so filenames and branches never get an empty slug segment.
+
+### Changed
+
+- **Branch names follow the ADR-0019 topic-branch convention** — new tasks
+  generate `<type-prefix>/<seq>[-<tracker>]--<slug>` with bug→`fix`,
+  feature→`feat`, chore→`chore`, spike→`spike` (e.g.
+  `fix/007-OSI-123--login-timeout`, previously `007-OSI-123--login-timeout`).
+  Existing tasks keep their stored `branch` frontmatter — no migration.
+
+### Fixed
+
+- **Sequence ids are derived from every `.md` filename** in the tasks dir —
+  including files whose frontmatter fails validation — so a malformed file can
+  no longer cause its id to be handed out twice.
+- **Task writes are crash-safe** — files land via temp-file-plus-rename in the
+  same directory; readers see the old task file or the new one, never a torn
+  half-write.
+
 ## [0.3.0] — 2026-07-02
 
 Statuses become project data ([ADR-0026](../../docs/adr/0026-configurable-status-model.md)):

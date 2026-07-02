@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **41** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **42** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -125,7 +125,13 @@ OWASP-aligned scanning, threat modeling, and remediation.
 ## Kanban tracker — `kanban-*`
 
 A lightweight per-project board with interactive MCP-elicit forms — inquirer-style speed inside
-Claude Code. Storage: `.marvin/kanban/` (+ optional `.marvin/config.json`).
+Claude Code. Every form field is also a tool argument (`type`, `title`, `description`,
+`tracker_id`, `taskId`, `status`): details the user already said skip the form, and on hosts
+without elicitation support the commands answer with the exact arguments to pass instead.
+New tasks branch off following the topic-branch convention —
+`<type-prefix>/<seq>[-<tracker>]--<slug>` with bug→`fix`, feature→`feat`, chore→`chore`,
+spike→`spike` (e.g. `fix/007-OSI-123--login-timeout`). Storage: `.marvin/kanban/`
+(+ optional `.marvin/config.json`, managed via `/marvin:kanban-config`).
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
@@ -139,17 +145,65 @@ Claude Code. Storage: `.marvin/kanban/` (+ optional `.marvin/config.json`).
 | `/marvin:kanban-done` | Mark the current task done. | `marvin mark the task done`, `finish this board task` |
 | `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
 | `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
-| `/marvin:kanban-help` | Show the project dashboard. | `marvin board dashboard`, `kanban help` |
+| `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses. Fail-closed validation; creates `.marvin/config.json` on first edit. | `marvin show the board config`, `marvin set the base branch to main`, `marvin connect our Jira statuses` |
+| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands (the full index stays on `/marvin:help`). | `marvin board dashboard`, `kanban help` |
 
 Committing and opening PRs for board tasks is handled by the kanban-aware
 [`/marvin:commit`](#core-developer-tools) and [`/marvin:pr-create`](#pull-request-lifecycle--pr-)
 — they pick up the linked task automatically (ADR-0025).
 
-Statuses are per-project data (ADR-0026): declare your tracker's vocabulary as
-`statuses: [{ key, role, tracker_status? }]` in `.marvin/config.json` and the lifecycle
-commands drive it by role (`start` → first wip-role status, and so on). The `task` tool's
-generic `move` action reaches every configured status — including `blocked`. With no
-configuration the classic `todo / wip / review / done / blocked` set applies unchanged.
+Finished work can be archived off the board — say `marvin archive done tasks` (the `task`
+tool's `archive` action, also on the `kanban-menu` picker). Files move to
+`.marvin/kanban/archive/`, their ids stay reserved, and `kanban-list` shows an
+`N archived` footer while the archive is non-empty.
+
+### Connecting a tracker
+
+Marvin does not talk to tracker APIs (yet) — "connected" means two settings in
+`.marvin/config.json`, both entered through `/marvin:kanban-config` (nobody hand-writes the
+file; the command validates fail-closed and preserves settings owned by other tools, like the
+`verify` gates):
+
+1. **Links.** Set `tracker_url_template` and every task with a `tracker_id` becomes a link in
+   lists and summaries — `marvin set the tracker url template to
+   https://acme.atlassian.net/browse/{tracker_id}` (`{tracker_id}` marks where the id goes).
+2. **Statuses.** Enter the tracker's real workflow as the board vocabulary (ADR-0026). Each
+   status carries a `key` (stored in task files), a `role` (what the lifecycle commands act
+   on: `todo`, `wip`, `review`, `done`, `blocked`), and optionally `tracker_status` — the
+   exact remote workflow name, which a future connector will use as its mapping key. Saying
+   `marvin configure the board statuses like our Jira: backlog, in progress, code review, qa,
+   done, blocked` makes Claude pass the vocabulary as JSON:
+
+   ```json
+   [{ "key": "backlog",     "role": "todo" },
+    { "key": "in-progress", "role": "wip",    "tracker_status": "In Progress" },
+    { "key": "code-review", "role": "review", "tracker_status": "In Review" },
+    { "key": "qa",          "role": "review", "tracker_status": "QA" },
+    { "key": "done",        "role": "done",   "tracker_status": "Done" },
+    { "key": "blocked",     "role": "blocked" }]
+   ```
+
+Lifecycle commands drive whatever is configured by role (`kanban-start` → the first wip-role
+status, and so on); the `task` tool's generic `move` action reaches every configured status —
+including `blocked`. At least one status each for the `todo`, `wip` and `done` roles is
+required — an edit violating that is rejected with the exact issues and nothing is written.
+With no configuration the classic `todo / wip / review / done / blocked` set applies
+unchanged. An optional `branch_template` (placeholders `{type_prefix}`, `{type}`, `{seq}`,
+`{tracker}`, `{slug}`; without a tracker id the `{tracker}` placeholder and one preceding
+`-`/`_`/`.` collapse) restyles new-task branches; a template that renders an invalid git ref
+falls back to the default scheme at create time with a warning rather than failing the create.
+
+### Commit `.marvin/` or gitignore it?
+
+For a **team-shared board**, commit `.marvin/kanban/` and `.marvin/config.json` together —
+tasks and the status vocabulary travel with the repo, board changes show up in PRs alongside
+code, and task files store status keys that only parse against the matching `statuses`
+configuration. For a **personal scratch board**, gitignore them (`.marvin/kanban/` and
+`.marvin/config.json`, or the whole `.marvin/`) — but keep the pair together: whichever
+location holds the board should hold its configuration. Of the other `.marvin/` artifacts,
+specs (`.marvin/task/`) and lessons (`.marvin/memory/`) are team assets worth committing,
+while security reports (`.marvin/security/`) and session handoffs (`.marvin/handoff/`) are
+point-in-time artifacts most teams gitignore.
 
 ---
 
@@ -161,7 +215,7 @@ slash commands:
 
 | Tool | Purpose |
 |------|---------|
-| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`) |
+| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`), done-task archive, board configuration (`config`) |
 | `help` | Dashboard + registry-derived command index |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |

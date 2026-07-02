@@ -36,7 +36,7 @@ export const DEFAULT_STATUSES: StatusDef[] = [
 /** Roles the lifecycle cannot run without; `review` and `blocked` are optional. */
 const REQUIRED_ROLES: StatusRole[] = ["todo", "wip", "done"];
 
-const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
+export const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
   const seen = new Set<string>();
   for (const s of statuses) {
     if (seen.has(s.key)) {
@@ -54,12 +54,19 @@ const Statuses = z.array(StatusDef).superRefine((statuses, ctx) => {
   }
 });
 
-/** Title contract — ASCII only, 3..120 chars. */
+/**
+ * Title contract — any printable Unicode, 3..120 chars. Only control
+ * characters (C0, DEL, C1) are excluded; the exclusion is spelled as
+ * `\uXXXX` ranges (no `\p{…}`/`u`-flag) so the pattern stays a portable
+ * ECMA-262 regex after `zodToElicitSchema` copies its source into the
+ * elicitation form's JSON Schema.
+ */
 export const TaskTitle = z
   .string()
   .min(3)
   .max(120)
-  .regex(/^[\x20-\x7E]+$/, "ASCII printable only");
+  // eslint-disable-next-line no-control-regex -- the control-char exclusion is the point
+  .regex(/^[^\u0000-\u001F\u007F-\u009F]+$/, "printable characters only (no control characters)");
 
 /** External tracker ID, e.g. OSI-123. */
 export const TrackerId = z.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");
@@ -139,6 +146,13 @@ export const Config = z.object({
   gates: GateCommands.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
   statuses: Statuses.default(DEFAULT_STATUSES),
+  /**
+   * Branch-name template for new tasks (WP4). Placeholders: {type_prefix},
+   * {type}, {seq}, {tracker}, {slug} — see `renderBranchTemplate`. Absent
+   * means the default ADR-0019 scheme; a template that renders an invalid
+   * git ref falls back to that default at create time (with a warning).
+   */
+  branch_template: z.string().min(1).optional(),
 });
 export type Config = z.infer<typeof Config>;
 

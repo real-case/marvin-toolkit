@@ -84,9 +84,34 @@ function zodTypeToJsonSchema(field: ZodTypeAny): ElicitProperty {
 }
 
 /**
+ * Does the connected client support elicitation? Reads the capabilities the
+ * client declared during `initialize` (available once the handshake is done —
+ * i.e. inside any tool/prompt handler).
+ *
+ * Interactive tools use this to pick a path *before* asking:
+ *
+ *   if (!canElicit(server)) return errorNamingTheMissingArguments();
+ *   const data = await elicit(server, "New task", schema);
+ *
+ * On hosts without the capability the tool must degrade to an instructive
+ * error that names exactly which arguments to pass on retry — never surface
+ * a raw JSON-RPC "method not found" from an unchecked `elicit()` call.
+ */
+export function canElicit(server: McpServer): boolean {
+  return Boolean(server.server.getClientCapabilities()?.elicitation);
+}
+
+/**
  * Send an elicitation request and parse the response with the supplied
  * zod schema. Returns the parsed object, or `null` if the user cancelled
- * the elicitation.
+ * (or dismissed) the elicitation — `null` always means "the user said no",
+ * never "the host could not ask".
+ *
+ * Callers are expected to gate on {@link canElicit} first; if the client
+ * never declared the `elicitation` capability this throws a descriptive
+ * `Error` instead of sending a request the client cannot answer. The MCP
+ * SDK turns an uncaught throw into an `isError` tool result, so a missed
+ * gate degrades to a readable message rather than a wire-level failure.
  *
  * Calling code looks like:
  *   const data = await elicit(server, "New task", schema);
@@ -97,6 +122,11 @@ export async function elicit<TSchema extends z.ZodObject<z.ZodRawShape>>(
   message: string,
   schema: TSchema,
 ): Promise<z.infer<TSchema> | null> {
+  if (!canElicit(server)) {
+    throw new Error(
+      "This client does not support interactive forms (MCP elicitation) — pass the required fields as tool arguments instead.",
+    );
+  }
   const requestedSchema = zodToElicitSchema(schema);
   // McpServer.server is the lower-level Server; elicitInput lives there.
   const response = await server.server.elicitInput({

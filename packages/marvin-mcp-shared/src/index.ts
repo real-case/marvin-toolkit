@@ -15,7 +15,7 @@ export {
   interpolateArgs,
 } from "./prompts.js";
 export { splitFrontmatter } from "./frontmatter.js";
-export { elicit, zodToElicitSchema } from "./elicit.js";
+export { canElicit, elicit, zodToElicitSchema } from "./elicit.js";
 export { runPackServer, buildServer } from "./server.js";
 // Widget data contracts (ADR-0024) are intentionally NOT re-exported here.
 // They are reached only via the `@marvin-toolkit/mcp-shared/contracts` subpath
