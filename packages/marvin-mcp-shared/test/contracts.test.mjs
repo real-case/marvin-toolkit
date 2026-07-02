@@ -20,11 +20,11 @@ test("LinkRef accepts a url-bearing external link and rejects an empty label", (
   assert.equal(LinkRef.safeParse({ kind: "pr", label: "" }).success, false);
 });
 
-test("TaskCard requires a 3-digit id and a non-null tracker_url/pr (nullable, not optional)", () => {
+test("TaskCard requires a 3-digit id, a {key, role} status, and non-null tracker_url/pr", () => {
   const card = {
     id: "001",
     type: "feature",
-    status: "wip",
+    status: { key: "in-progress", role: "wip" },
     title: "Do the thing",
     branch: "feat/thing",
     tracker_id: "OSI-12",
@@ -37,13 +37,27 @@ test("TaskCard requires a 3-digit id and a non-null tracker_url/pr (nullable, no
   // nullable fields must be present (as null) — a bare omission fails.
   assert.equal(TaskCard.safeParse({ ...card, pr: null, tracker_url: null }).success, true);
   assert.equal(TaskCard.safeParse({ ...card, id: "1" }).success, false);
-  assert.equal(TaskCard.safeParse({ ...card, status: "shipped" }).success, false);
+  // status is {key, role} (ADR-0026): the key is open, the role is closed.
+  assert.equal(TaskCard.safeParse({ ...card, status: "wip" }).success, false);
+  assert.equal(
+    TaskCard.safeParse({ ...card, status: { key: "qa", role: "shipping" } }).success,
+    false,
+  );
 });
 
-test("TaskListPayload counts are keyed by status", () => {
-  const ok = TaskListPayload.safeParse({ tasks: [], counts: { todo: 2, wip: 0 } });
+test("TaskListPayload counts: open per-key record plus a closed role roll-up (ADR-0026)", () => {
+  const ok = TaskListPayload.safeParse({
+    tasks: [],
+    counts: { backlog: 2, "code-review": 0 }, // any configured key is valid
+    role_counts: { todo: 2, review: 0 },
+  });
   assert.equal(ok.success, true);
-  const bad = TaskListPayload.safeParse({ tasks: [], counts: { nope: 1 } });
+  // the roll-up keys stay closed to the lifecycle roles
+  const bad = TaskListPayload.safeParse({
+    tasks: [],
+    counts: { backlog: 2 },
+    role_counts: { shipping: 1 },
+  });
   assert.equal(bad.success, false);
 });
 
@@ -109,8 +123,17 @@ test("DashboardState mirrors the help tool's computed state", () => {
   const ok = DashboardState.safeParse({
     version: "2.0.0",
     paths: { project: "/p", tasks_dir: "/p/.marvin/kanban", config_path: "/p/.marvin/config.json" },
-    config: { base_branch: "dev", tracker_url_template: null },
-    kanban_counts: { todo: 1, wip: 2 },
+    config: {
+      base_branch: "dev",
+      tracker_url_template: null,
+      statuses: [
+        { key: "todo", role: "todo" },
+        { key: "in-progress", role: "wip", tracker_status: "In Progress" },
+        { key: "done", role: "done" },
+      ],
+    },
+    kanban_counts: { todo: 1, "in-progress": 2 },
+    kanban_role_counts: { todo: 1, wip: 2 },
     git: { has_git: true, has_gh: false, branch: "dev" },
     artifacts: { specs: 0, handoffs: 1, audits: 0, lessons: 3 },
     command_groups: [{ group: "task", count: 4 }],

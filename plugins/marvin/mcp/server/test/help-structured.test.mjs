@@ -103,6 +103,15 @@ test("help emits a DashboardState structuredContent (paths, config, artifacts, c
     assert.equal(sc.git.branch, null); // temp dir is not a git repo
     assert.equal(typeof sc.git.has_git, "boolean");
 
+    // ADR-0026: the configured status set rides along, and counts come as an
+    // open per-key record plus the per-role roll-up (default set here).
+    assert.deepEqual(
+      sc.config.statuses.map((s) => s.key),
+      ["todo", "wip", "review", "done", "blocked"],
+    );
+    assert.equal(sc.kanban_counts.todo, 0);
+    assert.equal(sc.kanban_role_counts.wip, 0);
+
     // artifact counts honour the index/verification exclusions
     assert.deepEqual(sc.artifacts, { specs: 1, handoffs: 1, audits: 1, lessons: 1 });
 

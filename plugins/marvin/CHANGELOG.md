@@ -4,6 +4,38 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.3.0] — 2026-07-02
+
+Statuses become project data ([ADR-0026](../../docs/adr/0026-configurable-status-model.md)):
+the board runs any tracker vocabulary while the lifecycle commands stay role-driven.
+
+### Changed (breaking — widget contracts)
+
+- **`TaskCard.status` is now `{ key, role }`** and the board counts are an **open
+  per-key record plus a closed per-role roll-up** (`TaskListPayload.counts` +
+  `role_counts`, `DashboardState.kanban_counts` + `kanban_role_counts`; the dashboard
+  `config` also carries the configured `statuses`). Shipped before the first ADR-0024
+  widget consumer on purpose — the structured-content tests are the reference consumers.
+- **Lifecycle transitions are role-driven.** `create`/`start`/`review`/`done` target the
+  first configured status of their role; candidate pickers filter by role. `review`
+  without a review-role status explains itself and points at `move`.
+- **Honest empty-candidate replies** — "no tasks in a …-role status" instead of the
+  misleading "Cancelled — no changes made" (audit finding 8), and `start` with an explicit
+  `taskId` now applies the same todo-role filter as the picker (finding 14).
+
+### Added
+
+- **`statuses` in `.marvin/config.json`** — `{ key, role, tracker_status? }[]` with role
+  invariants (todo/wip/done required, review/blocked optional, unique keys). Defaults to
+  the classic five (key == role), so existing boards parse unchanged; unknown status keys
+  in task files surface through the malformed-file channel with an explicit reason.
+- **Generic `move` action on the `task` tool** — transition a task to *any* configured
+  status (the previously unreachable `blocked` included, finding 5), resolving the task
+  like the other actions: explicit `taskId`, else the current branch's task, else a picker.
+- **`base_branch` auto-detection from `origin/HEAD`** when no config file exists
+  (finding 4's detection half) — main-based repos work on first run; a config file always
+  wins.
+
 ## [0.2.0] — 2026-07-02
 
 The kanban group goes **board-only** ([ADR-0025](../../docs/adr/0025-kanban-board-only.md)):

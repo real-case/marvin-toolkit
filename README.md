@@ -119,7 +119,7 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 
 Committing and opening PRs for board tasks goes through the kanban-aware `/marvin:commit` and `/marvin:pr-create` — they pick up the linked task automatically (`Refs:` footer, task-prefixed PR title, PR-URL capture; [ADR-0025](./docs/adr/0025-kanban-board-only.md)).
 
-Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars.
+Storage: `.marvin/kanban/<seq>[-<tracker>]--<slug>.md`, optional `.marvin/config.json` (`base_branch`, `tracker_url_template`, `statuses`) — the default working directory per [ADR-0007](./docs/adr/0007-marvin-working-directory.md), overridable via the `MARVIN_TASKS_*` env vars. Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)): configure your tracker's vocabulary (`{ key, role, tracker_status? }`) and the lifecycle commands drive it by role; a generic `move` action on the `task` tool reaches every configured status. `base_branch` auto-detects from `origin/HEAD` when no config exists.
 
 `task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally distinct — use `task-*` for large features that deserve a spec, `kanban-*` for fast day-to-day tracking.
 
@@ -172,6 +172,7 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0023](./docs/adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
 | [0024](./docs/adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
 | [0025](./docs/adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
+| [0026](./docs/adr/0026-configurable-status-model.md) | Configurable status model: statuses are project data, roles stay closed | Accepted |
 
 ## Contributing
 

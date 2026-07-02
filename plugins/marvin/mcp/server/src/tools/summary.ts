@@ -245,7 +245,7 @@ function buildLinks(
   const branch = currentBranch(projectRoot);
   if (branch) {
     links.push({ kind: "branch", label: branch, ref: branch });
-    const { tasks } = readAllTasks(env.tasksDir);
+    const { tasks } = readAllTasks(env.tasksDir, config);
     const pr = findTaskByBranch(tasks, branch)?.frontmatter.pr;
     if (pr) links.push({ kind: "pr", label: prLabel(pr), url: pr });
   }
