@@ -16,8 +16,8 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 1  | Git-operations migration             | Done        | `feat/kanban-wp1-git-ops` | [#55](https://github.com/real-case/marvin-toolkit/pull/55) | ADR-0025 | Merged to `dev` 2026-07-02 (squash `20ed8ef`); plugin 0.2.0 |
 | 2  | Configurable status model            | Done        | `feat/kanban-wp2-status-model` | [#56](https://github.com/real-case/marvin-toolkit/pull/56) | ADR-0026 | Merged to `dev` 2026-07-02 (squash `dc55252`); plugin 0.3.0; landed before the ADR-0024 widget stage |
 | 3  | Input contract and storage hardening | Done        | `feat/kanban-wp3-input-contract` | [#61](https://github.com/real-case/marvin-toolkit/pull/61) | —   | Merged to `dev` 2026-07-02 (merge commit `0b120ae`); plugin 0.4.0 |
-| 4  | Configuration surface                | Not started | —      | —  | —   | Depends on WP2 statuses schema |
-| 5  | Polish and coverage sweep            | Not started | —      | —  | —   | |
+| 4  | Configuration surface                | Done        | `feat/kanban-wp4-config-surface` | [#64](https://github.com/real-case/marvin-toolkit/pull/64) | —   | Merged to `dev` 2026-07-02 (squash `289f11d`); plugin 0.5.0 |
+| 5  | Polish and coverage sweep            | Done        | `feat/kanban-wp5-polish` | [#63](https://github.com/real-case/marvin-toolkit/pull/63) | —   | Merged to `dev` 2026-07-02 (squash `3aefe8d`); plugin 0.6.0; second-lander rebase + config e2e added per protocol |
 
 ## Milestones
 
@@ -25,8 +25,8 @@ Status values: **Not started · In progress · Blocked · Done**.
 - [x] WP1 merged into `dev`; plugin version 0.2.0
 - [x] WP2 merged into `dev`; contracts tracker-ready (unblocks the widget stage and future connectors)
 - [x] Release cut after WP2 (breaking changes ship together) — **[v0.3.0 released](https://github.com/real-case/marvin-toolkit/releases/tag/v0.3.0)** 2026-07-02: #58 (squash, recovered), #57 prep, #60 history-join promotion (merge commit `7a21a3c`; #59 auto-marked merged), tag `v0.3.0` → GitHub Release via release.yml. `dev` is an ancestor of `main` again.
-- [ ] WP3–WP5 merged into `dev`
-- [ ] Release cut after WP5
+- [x] WP3–WP5 merged into `dev` (#61 / #64 / #63; plugin 0.6.0)
+- [ ] Release cut after WP5 — *in flight: promotion [#65](https://github.com/real-case/marvin-toolkit/pull/65) open (`dev → main`, merge with a **merge commit**); this docs finalization merges into `dev` first, then tag `v0.6.0`*
 
 ## WP1 — Git-operations migration
 
@@ -73,19 +73,19 @@ Status values: **Not started · In progress · Blocked · Done**.
 
 ## WP4 — Configuration surface
 
-- [ ] `config` action on the `task` tool + `kanban-config` prompt (base branch, tracker URL template, statuses)
-- [ ] Optional `branch_template` setting
-- [ ] Commit-versus-gitignore guidance for `.marvin/kanban/` documented
-- [ ] Tracker connection guide in `docs/commands.md`
-- [ ] Exit: build, `verify-dist`, `lint-manifests`, tests green; dist rebuilt and committed
+- [x] `config` action on the `task` tool + `kanban-config` prompt (view with base_branch source labels; edits via args; `statuses` JSON fail-closed; foreign keys like `gates` preserved — regression-tested; auto-detected base_branch pinned on file creation)
+- [x] Optional `branch_template` setting ({type_prefix}/{type}/{seq}/{tracker}/{slug}; git-ref-safe validation, fallback+warn, preview at set time)
+- [x] Commit-versus-gitignore guidance for `.marvin/kanban/` documented
+- [x] Tracker connection guide in `docs/commands.md`
+- [x] Exit: build, `verify-dist`, `lint-manifests`, tests green; dist rebuilt and committed (13 config tests; registry 42; config loaded per call)
 
 ## WP5 — Polish and coverage sweep
 
-- [ ] `kanban-help` calls `help` with `section: "kanban"`
-- [ ] Archive mechanism (or collapsed count) for done tasks
-- [ ] `marvin-guide` mentions the board
-- [ ] End-to-end lifecycle tests via `mcp-call.mjs --accept` (create → start → move → review → done, malformed collisions, `link-pr`)
-- [ ] Exit: build, `verify-dist`, `lint-manifests`, tests green; dist rebuilt and committed
+- [x] `kanban-help` calls `help` with `section: "kanban"`
+- [x] Archive mechanism for done tasks (`archive` action: single taskId or bulk behind confirmation; files → `.marvin/kanban/archive/` atomic rename; `nextSeq` scans archive so ids are never reissued; "N archived" list footer)
+- [x] `marvin-guide` mentions the board
+- [x] End-to-end lifecycle tests (`test/lifecycle-e2e.test.mjs`: full chain create → start → move → review → done → archive across server sessions, zero elicitations; malformed collisions; `link-pr`; config round-trip mid-session added after WP4 landed)
+- [x] Exit: build, `verify-dist`, `lint-manifests`, tests green; dist rebuilt and committed (second-lander rebase onto `dev`, re-bump to 0.6.0)
 
 ## Findings coverage
 
@@ -96,18 +96,60 @@ Mirrors Appendix A of the plan. A finding is Closed when its work package merges
 | 1       | 3   | Closed | 11      | 3   | Closed |
 | 2       | 1   | Closed | 12      | 1   | Closed |
 | 3       | 1   | Closed | 13      | 1   | Closed |
-| 4       | 2+4 | Half-closed (detection — WP2; `config` command — WP4) | 14      | 2   | Closed |
-| 5       | 2   | Closed | 15      | 5   | Open   |
+| 4       | 2+4 | Closed | 14      | 2   | Closed |
+| 5       | 2   | Closed | 15      | 5   | Closed |
 | 6       | 3   | Closed | 16      | 3   | Closed |
-| 7       | 3   | Closed | 17      | 4   | Open   |
+| 7       | 3   | Closed | 17      | 4   | Closed |
 | 8       | 2   | Closed | 18      | 1   | Closed |
-| 9       | 5   | Open   | 19      | 5   | Open   |
-| 10      | all | Open   |         |     |        |
+| 9       | 5   | Closed | 19      | 5   | Closed |
+| 10      | all | Closed |         |     |        |
 
 ## Log
 
 Newest entries first.
 
+- **2026-07-02** — Release cut v0.6.0 opened: promotion
+  [#65](https://github.com/real-case/marvin-toolkit/pull/65) (`dev → main`) came up
+  MERGEABLE/CLEAN — the #60 history join held, zero conflicts. This docs-finalization commit
+  (tracker complete through WP5, plan Status → Implemented) merges into `dev` ahead of the
+  promotion, which tracks `dev` and picks it up automatically. Remaining: merge #65 **with a
+  merge commit**, then tag `v0.6.0` on `main` (release workflow publishes the GitHub Release).
+- **2026-07-02** — **WP5 merged — the rework is complete.** The WP5 session executed the
+  second-lander task from the main session's message (rebase onto `dev`, re-bump to 0.6.0,
+  config round-trip added to the e2e sweep), CI went green and
+  [#63](https://github.com/real-case/marvin-toolkit/pull/63) was squash-merged (`3aefe8d`).
+  Plugin 0.6.0 on `dev`. Findings 9, 10, 15, 19 closed — **19/19, the audit register is
+  fully retired**. Plan Status flips to Implemented. Remaining follow-ups outside the plan:
+  v0.6.0 release cut, final re-commit of these docs, session/branch cleanup.
+- **2026-07-02** — **WP4 merged into `dev`** ([#64](https://github.com/real-case/marvin-toolkit/pull/64),
+  squash `289f11d`; plugin 0.5.0). Findings 4 (both halves) and 17 closed. #63 turned
+  CONFLICTING as predicted; the WP5 session was messaged with the second-lander task: rebase
+  onto `dev`, re-bump to 0.6.0, add the config round-trip to the e2e sweep, force-push.
+- **2026-07-02** — WP4 and WP5 both implemented in parallel sessions; PRs open and CI-green:
+  [#63](https://github.com/real-case/marvin-toolkit/pull/63) (WP5: scoped kanban-help,
+  `archive` action with `.marvin/kanban/archive/`, marvin-guide board awareness, 8-test
+  lifecycle e2e, repo-wide 15s stdio test timeouts) and
+  [#64](https://github.com/real-case/marvin-toolkit/pull/64) (WP4: `config` action with
+  foreign-key preservation and pinned base_branch detection, `branch_template`,
+  `kanban-config` prompt — registry 42, per-call config loads, 13 config tests). Both claim
+  0.5.0 as designed — whichever merges second rebases and re-bumps to 0.6.0. Recommended
+  order: #64 first, then the WP5 session rebases (its prompt conditionally adds a config
+  round-trip to the e2e sweep once WP4 is in its base).
+- **2026-07-02** — Plan docs merged ([#62](https://github.com/real-case/marvin-toolkit/pull/62),
+  squash `e5b7ac2`): the tracker is now a tracked file; live edits continue as uncommitted
+  working-tree changes in the main checkout (single-writer rule unchanged), with a final
+  re-commit when the rework closes. WP5 dispatched to its own session; the WP4 chip was
+  reissued — both prompts now carry a parallel-work protocol (fetch + rebase onto origin/dev
+  before opening the PR) and a landing-order version protocol (first to land takes 0.5.0,
+  the second 0.6.0).
+- **2026-07-02** — Housekeeping round: WP1/WP3 worker sessions archived (worktrees
+  auto-cleaned). Plan + tracker committed via
+  [PR #62](https://github.com/real-case/marvin-toolkit/pull/62) (`docs/kanban-rework-plan`,
+  `00d4bd9`) — live tracker edits continue on the untracked working copies in the main
+  checkout until the rework ends (single-writer rule unchanged); remove those local copies
+  before pulling the merged #62. WP4 dispatched to a dedicated session (config surface,
+  targets 0.5.0). Deletion of the five merged remote branches awaits explicit user
+  confirmation (auto mode declined it).
 - **2026-07-02** — **WP3 merged into `dev`** ([#61](https://github.com/real-case/marvin-toolkit/pull/61),
   merge commit `0b120ae` — note: topic PRs are conventionally squashed, this one landed as a
   merge; harmless, recorded for consistency). Plugin 0.4.0 on `dev`. Findings 1, 6, 7, 11, 16
