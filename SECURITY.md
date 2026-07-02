@@ -5,10 +5,10 @@
 Marvin is pre-1.0. Security fixes are applied to the latest released version of
 the plugin only. There are no long-term support branches yet.
 
-| Version           | Supported |
-| ----------------- | --------- |
-| `0.1.x`           | ✅        |
-| earlier pre-alpha | ❌        |
+| Version                      | Supported |
+| ---------------------------- | --------- |
+| `0.3.x`                      | ✅        |
+| earlier (pre-alpha, untagged 0.1–0.2) | ❌ |
 
 ## Reporting a vulnerability
 
