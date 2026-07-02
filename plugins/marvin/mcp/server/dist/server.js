@@ -11568,8 +11568,8 @@ var require_resolve_flow_scalar = __commonJS({
     };
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
-      const ok5 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok5 ? parseInt(cc, 16) : NaN;
+      const ok4 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
+      const code = ok4 ? parseInt(cc, 16) : NaN;
       try {
         return String.fromCodePoint(code);
       } catch {
@@ -28692,16 +28692,6 @@ var PROMPTS = [
     name: "kanban-help",
     description: "Marvin tasks dashboard and prompt list",
     body: callTool("help")
-  },
-  {
-    name: "kanban-commit",
-    description: "Commit with current task context",
-    body: callTool("git", { action: "commit" })
-  },
-  {
-    name: "kanban-create-pr",
-    description: "Create a PR for the current task",
-    body: callTool("git", { action: "create-pr" })
   }
 ];
 
@@ -28979,9 +28969,6 @@ function run(cmd, args, cwd) {
 function git(args, cwd) {
   return run("git", args, cwd);
 }
-function gh(args, cwd) {
-  return run("gh", args, cwd);
-}
 function inGitRepo(cwd) {
   return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
 }
@@ -29055,29 +29042,35 @@ function renderListTable(tasks, currentBranch2) {
     if (list.length === 0) continue;
     sections.push(`### ${status} (${list.length})`);
     sections.push("");
-    sections.push("| seq | type | title | tracker | branch |");
-    sections.push("|-----|------|-------|---------|--------|");
+    sections.push("| seq | type | title | tracker | branch | pr |");
+    sections.push("|-----|------|-------|---------|--------|----|");
     for (const t of list) {
       const marker = currentBranch2 === t.frontmatter.branch ? " \u25C0 current" : "";
       sections.push(
-        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "\u2014"} | \`${t.frontmatter.branch}\`${marker} |`
+        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "\u2014"} | \`${t.frontmatter.branch}\`${marker} | ${prCell(t.frontmatter.pr)} |`
       );
     }
     sections.push("");
   }
   return sections.join("\n");
 }
+function prCell(url) {
+  if (!url) return "\u2014";
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? `[#${match[1]}](${url})` : `[PR](${url})`;
+}
 
 // src/tools/task.ts
 var TaskInput = external_exports.object({
-  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done"]).optional(),
+  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "link-pr"]).optional(),
   type: TaskType.optional(),
-  taskId: external_exports.string().optional()
+  taskId: external_exports.string().optional(),
+  url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)")
 });
 function buildTaskTool(server, env, config2) {
   return defineTool({
     name: "task",
-    description: "Marvin tasks CRUD + lifecycle. Defaults to an interactive main menu when called with no arguments.",
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, or link a PR URL to a task (link-pr). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config2, input)
   });
@@ -29102,6 +29095,8 @@ async function dispatchTask(server, env, config2, input) {
       return runReview(server, env, config2);
     case "done":
       return runDone(server, env);
+    case "link-pr":
+      return runLinkPr(env, input.taskId, input.url);
   }
 }
 async function pickMenuAction(server, env) {
@@ -29176,8 +29171,8 @@ _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename
 
 ${body}${warning}` }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
-    // renders, typed to the TaskListPayload contract. `pr` is null until PR-URL
-    // capture lands; terminals render `content` and ignore this.
+    // renders, typed to the TaskListPayload contract. `pr` is populated from the
+    // URL captured by link-pr; terminals render `content` and ignore this.
     structuredContent: buildTaskListPayload(tasks, config2)
   };
 }
@@ -29263,7 +29258,7 @@ async function runReview(server, env, config2) {
   updateStatus(env.tasksDir, task, "review");
   return ok(
     `Moved **${task.frontmatter.id}** to **review**.
-Open a PR with \`/marvin:kanban-create-pr\` (base branch: \`${config2.base_branch}\`).`
+Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
 async function runDone(server, env, _config) {
@@ -29273,6 +29268,43 @@ async function runDone(server, env, _config) {
   return ok(
     `Marked **${task.frontmatter.id}** as **done**. Branch cleanup and merge are left to you / CI.`
   );
+}
+function runLinkPr(env, taskId, url) {
+  if (!url) {
+    return errOk(
+      "Missing `url` \u2014 pass the PR URL to link, e.g. https://github.com/acme/widget/pull/42."
+    );
+  }
+  if (!isHttpUrl(url)) {
+    return errOk(
+      `Not an http(s) URL: \`${url}\` \u2014 pass the PR URL as printed by \`gh pr create\`.`
+    );
+  }
+  const { tasks } = readAllTasks(env.tasksDir);
+  let task;
+  if (taskId) {
+    task = findTaskById(tasks, taskId);
+    if (!task) return errOk(`Task ${taskId} not found.`);
+  } else {
+    const branch = currentBranch(env.projectDir);
+    task = branch ? findTaskByBranch(tasks, branch) : null;
+    if (!task) {
+      return errOk(
+        "No task is linked to the current branch \u2014 no board task's `branch` frontmatter matches it. Pass `taskId` to pick the task explicitly."
+      );
+    }
+  }
+  const saved = setTaskPr(env.tasksDir, task, url);
+  return ok(`Linked PR to **${saved.frontmatter.id}** \u2014 ${saved.frontmatter.title}
+PR: ${url}`);
+}
+function isHttpUrl(raw) {
+  try {
+    const protocol = new URL(raw).protocol;
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 async function detectCurrentTaskOrPick(server, env, allowedStatuses) {
   const { tasks } = readAllTasks(env.tasksDir);
@@ -29300,132 +29332,13 @@ function errOk(text) {
 function cancelled() {
   return ok("Cancelled \u2014 no changes made.");
 }
-
-// src/tools/git.ts
-var GitInput = external_exports.object({
-  action: external_exports.enum(["commit", "create-pr"]),
-  message: external_exports.string().optional()
-});
-var CommitType = external_exports.enum([
-  "feat",
-  "fix",
-  "chore",
-  "docs",
-  "refactor",
-  "test",
-  "style",
-  "perf",
-  "build",
-  "ci"
-]);
-function buildGitTool(server, env, config2) {
-  return defineTool({
-    name: "git",
-    description: "Marvin git operations tied to the current task: commit, create-pr.",
-    inputSchema: GitInput,
-    handler: (input) => {
-      if (input.action === "commit") return runCommit(server, env, input.message);
-      return runCreatePr(server, env, config2);
-    }
-  });
-}
-async function runCommit(server, env, preMessage) {
-  if (!hasGit()) return errOk2("`git` not found on PATH.");
-  if (!inGitRepo(env.projectDir)) return errOk2("Not inside a git repository.");
-  const { tasks } = readAllTasks(env.tasksDir);
-  const branch = currentBranch(env.projectDir);
-  const task = branch ? findTaskByBranch(tasks, branch) : null;
-  const form = await elicit(
-    server,
-    "Commit",
-    external_exports.object({
-      type: CommitType,
-      scope: external_exports.string().optional(),
-      message: preMessage ? external_exports.string().min(3).default(preMessage) : external_exports.string().min(3),
-      stage_all: external_exports.enum(["yes", "no"])
-    })
-  );
-  if (!form) return cancelled2();
-  const scope = form.scope ? `(${form.scope})` : "";
-  const subject = `${form.type}${scope}: ${form.message}`;
-  const refs2 = task ? `
-
-Refs: ${task.frontmatter.id}${task.frontmatter.tracker_id ? `, ${task.frontmatter.tracker_id}` : ""}` : "";
-  const fullMessage = `${subject}${refs2}`;
-  if (form.stage_all === "yes") {
-    const stage = git(["add", "-A"], env.projectDir);
-    if (!stage.ok) return errOk2(`git add failed: ${stage.stderr}`);
-  }
-  const commit = git(["commit", "-m", fullMessage], env.projectDir);
-  if (!commit.ok) return errOk2(`git commit failed: ${commit.stderr}`);
-  const sha = git(["rev-parse", "HEAD"], env.projectDir);
-  const stat = git(["show", "--stat", "--oneline", "HEAD"], env.projectDir);
-  return ok2(
-    `Committed \`${sha.ok ? sha.value.slice(0, 8) : "?"}\`
-
-\`\`\`
-${stat.ok ? stat.value : ""}
-\`\`\``
-  );
-}
-async function runCreatePr(_server, env, config2) {
-  if (!hasGit()) return errOk2("`git` not found on PATH.");
-  if (!inGitRepo(env.projectDir)) return errOk2("Not inside a git repository.");
-  const { tasks } = readAllTasks(env.tasksDir);
-  const branch = currentBranch(env.projectDir);
-  const task = branch ? findTaskByBranch(tasks, branch) : null;
-  const title = task ? task.frontmatter.tracker_id ? `[${task.frontmatter.tracker_id}] ${task.frontmatter.title}` : `[${task.frontmatter.id}] ${task.frontmatter.title}` : `[${branch ?? "wip"}] Update`;
-  const trackerLink = task ? trackerUrl(config2, task.frontmatter.tracker_id) : null;
-  const bodyLines = [];
-  if (task) {
-    bodyLines.push(`Task: \`.marvin/kanban/${task.filename}\``);
-    if (trackerLink) bodyLines.push(`Tracker: ${trackerLink}`);
-  } else {
-    bodyLines.push("_No marvin task linked to this branch._");
-  }
-  const body = bodyLines.join("\n");
-  if (!hasGh()) {
-    return ok2(
-      `**\`gh\` CLI not installed.** Run this manually:
-
-\`\`\`
-gh pr create --base ${config2.base_branch} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)}
-\`\`\``
-    );
-  }
-  const result2 = gh(
-    ["pr", "create", "--base", config2.base_branch, "--title", title, "--body", body],
-    env.projectDir
-  );
-  if (!result2.ok) return errOk2(`gh pr create failed: ${result2.stderr}`);
-  const prUrl = extractPrUrl(result2.value);
-  if (task && prUrl) setTaskPr(env.tasksDir, task, prUrl);
-  return ok2(`PR created: ${prUrl ?? result2.value}`);
-}
-function extractPrUrl(output) {
-  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i] ?? "";
-    if (/^https?:\/\/\S+$/.test(line)) return line;
-  }
-  return null;
-}
-function ok2(text) {
-  return { content: [{ type: "text", text }] };
-}
-function errOk2(text) {
-  return { content: [{ type: "text", text }], isError: true };
-}
-function cancelled2() {
-  return ok2("Cancelled \u2014 no changes made.");
-}
 var HelpInput = external_exports.object({
   section: external_exports.string().optional().describe("Filter the command index to one group: core, pr, task, sec, kanban.")
 });
 function buildHelpTool(env, config2, version2) {
   return defineTool({
     name: "help",
-    description: "Marvin dashboard: project state, dependency status, and the full command index (derived from the prompt registry). Pass `section` to filter to one group (core/pr/task/sec/kanban).",
+    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
     inputSchema: HelpInput,
     handler: (input) => Promise.resolve(renderHelp(env, config2, version2, input.section))
   });
@@ -29665,7 +29578,7 @@ async function runVerify(input, env) {
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
-    return ok3(
+    return ok2(
       `No quality gates detected for \`${projectRoot}\`.
 Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
@@ -29673,14 +29586,14 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
   let gates = detected.gates;
   if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
   if (gates.length === 0) {
-    return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
+    return ok2(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
     const warn2 = configWarning ? `
 
 > \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
-    return ok3(
+    return ok2(
       `# Verify Plan (dry run)
 
 **Stacks:** ${detected.stacks.join(", ") || "explicit"}
@@ -30044,7 +29957,7 @@ ${machine}
     isError: decision === "BLOCK"
   };
 }
-function ok3(text) {
+function ok2(text) {
   return { content: [{ type: "text", text }] };
 }
 
@@ -30945,7 +30858,7 @@ function runAdd(env, input) {
     tags,
     ...input.source ? { source: input.source } : {}
   });
-  return ok4(
+  return ok3(
     `Captured lesson **${slug}** (\`${input.type}\`).
 File: \`${path}\`
 Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
@@ -30959,11 +30872,11 @@ function runSearch(env, input) {
   });
   if (lessons.length === 0) {
     const filtered = input.query || input.type;
-    return ok4(
+    return ok3(
       filtered ? `No matching lessons in \`.marvin/memory\`${input.query ? ` for "${input.query}"` : ""}${input.type ? ` [type:${input.type}]` : ""}.` : "No lessons captured yet in `.marvin/memory`."
     );
   }
-  return ok4(renderLessons(lessons));
+  return ok3(renderLessons(lessons));
 }
 function renderLessons(lessons) {
   const out = [`# Relevant lessons (${lessons.length})`, ""];
@@ -30977,7 +30890,7 @@ function renderLessons(lessons) {
   }
   return out.join("\n").trimEnd();
 }
-function ok4(text) {
+function ok3(text) {
   return { content: [{ type: "text", text }] };
 }
 function err(text) {
@@ -31083,7 +30996,7 @@ function runSummary(env, config2, input) {
   const projectRoot = input.projectRoot ?? env.projectDir;
   const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
   if (!specPath) {
-    return errOk3(
+    return errOk2(
       input.slug ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.` : `No spec found under ${SPEC_DIRS.join(", ")} \u2014 run /marvin:task-start first.`
     );
   }
@@ -31264,12 +31177,12 @@ function render(s, verify) {
   );
   return lines.join("\n");
 }
-function errOk3(text) {
+function errOk2(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
 
 // src/server.ts
-var VERSION = "0.1.0";
+var VERSION = "0.2.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -31282,7 +31195,6 @@ await runPackServer({
       prompts: PROMPTS,
       tools: [
         buildTaskTool(server, env, config2),
-        buildGitTool(server, env, config2),
         buildHelpTool(env, config2, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),

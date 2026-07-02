@@ -20,7 +20,7 @@ export function buildHelpTool(env: ServerEnv, config: Config, version: string): 
   return defineTool({
     name: "help",
     description:
-      "Marvin dashboard: project state, dependency status, and the full command index (derived from the prompt registry). Pass `section` to filter to one group (core/pr/task/sec/kanban).",
+      'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
     inputSchema: HelpInput,
     handler: (input) => Promise.resolve(renderHelp(env, config, version, input.section)),
   });

@@ -46,6 +46,7 @@ into 0001/0013/0018.
 | [0022](./adr/0022-numbered-spec-files.md) | Numeric-prefixed spec filenames (`NNN-<slug>.md`) | Accepted |
 | [0023](./adr/0023-pr-command-family.md) | Unified `pr-*` pull-request command family | Accepted |
 | [0024](./adr/0024-mcp-apps-widget-architecture.md) | MCP Apps widget layer: data-first staging + shared data contracts | Accepted |
+| [0025](./adr/0025-kanban-board-only.md) | Kanban goes board-only; git ops fold into the `commit`/`pr-create` skills | Accepted |
 
 ## Work in progress
 

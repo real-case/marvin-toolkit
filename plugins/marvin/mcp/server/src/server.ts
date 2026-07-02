@@ -8,7 +8,6 @@ import { PROMPTS } from "./prompts/index.js";
 import { loadConfig } from "./storage/config.js";
 import { loadEnv } from "./lib/env.js";
 import { buildTaskTool } from "./tools/task.js";
-import { buildGitTool } from "./tools/git.js";
 import { buildHelpTool } from "./tools/help.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
@@ -16,7 +15,7 @@ import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 await runPackServer({
   name: "marvin",
@@ -30,7 +29,6 @@ await runPackServer({
       prompts: PROMPTS,
       tools: [
         buildTaskTool(server, env, config),
-        buildGitTool(server, env, config),
         buildHelpTool(env, config, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),

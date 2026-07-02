@@ -7,6 +7,7 @@ import {
   findTaskByBranch,
   findTaskById,
   readAllTasks,
+  setTaskPr,
   updateStatus,
 } from "../storage/tasks.js";
 import { trackerUrl } from "../storage/config.js";
@@ -30,9 +31,12 @@ import type { ServerEnv } from "../lib/env.js";
 import { formatTaskLine, renderListTable } from "../flows/format.js";
 
 const TaskInput = z.object({
-  action: z.enum(["menu", "create", "list", "status", "start", "review", "done"]).optional(),
+  action: z
+    .enum(["menu", "create", "list", "status", "start", "review", "done", "link-pr"])
+    .optional(),
   type: TaskType.optional(),
   taskId: z.string().optional(),
+  url: z.string().optional().describe("PR URL to persist onto the task (link-pr action)"),
 });
 
 type TaskInput = z.infer<typeof TaskInput>;
@@ -41,7 +45,7 @@ export function buildTaskTool(server: McpServer, env: ServerEnv, config: Config)
   return defineTool({
     name: "task",
     description:
-      "Marvin tasks CRUD + lifecycle. Defaults to an interactive main menu when called with no arguments.",
+      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, or link a PR URL to a task (link-pr). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config, input),
   });
@@ -74,6 +78,8 @@ async function dispatchTask(
       return runReview(server, env, config);
     case "done":
       return runDone(server, env, config);
+    case "link-pr":
+      return runLinkPr(env, input.taskId, input.url);
   }
 }
 
@@ -165,8 +171,8 @@ function runList(env: ServerEnv, config: Config): ToolResult {
   return {
     content: [{ type: "text", text: `# Tasks (${tasks.length})\n\n${body}${warning}` }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the same data the text
-    // renders, typed to the TaskListPayload contract. `pr` is null until PR-URL
-    // capture lands; terminals render `content` and ignore this.
+    // renders, typed to the TaskListPayload contract. `pr` is populated from the
+    // URL captured by link-pr; terminals render `content` and ignore this.
     structuredContent: buildTaskListPayload(tasks, config),
   };
 }
@@ -273,9 +279,9 @@ async function runReview(server: McpServer, env: ServerEnv, config: Config): Pro
   const task = await detectCurrentTaskOrPick(server, env, ["wip"]);
   if (!task) return cancelled();
   updateStatus(env.tasksDir, task, "review");
-  // PR creation happens in the git tool (action=create-pr); we just hint.
+  // PR creation is prose-driven — the kanban-aware pr-create skill (ADR-0025); we just hint.
   return ok(
-    `Moved **${task.frontmatter.id}** to **review**.\nOpen a PR with \`/marvin:kanban-create-pr\` (base branch: \`${config.base_branch}\`).`,
+    `Moved **${task.frontmatter.id}** to **review**.\nOpen a PR with \`/marvin:pr-create\` (base branch: \`${config.base_branch}\`).`,
   );
 }
 
@@ -286,6 +292,55 @@ async function runDone(server: McpServer, env: ServerEnv, _config: Config): Prom
   return ok(
     `Marked **${task.frontmatter.id}** as **done**. Branch cleanup and merge are left to you / CI.`,
   );
+}
+
+/**
+ * Persist a PR URL onto a task's frontmatter (ADR-0024 widget data, ADR-0025).
+ * The deterministic tail of the prose-driven pr-create flow: judgement (what PR
+ * to open, title, body) lives in the skill; the state write lands here.
+ */
+function runLinkPr(
+  env: ServerEnv,
+  taskId: string | undefined,
+  url: string | undefined,
+): ToolResult {
+  if (!url) {
+    return errOk(
+      "Missing `url` — pass the PR URL to link, e.g. https://github.com/acme/widget/pull/42.",
+    );
+  }
+  if (!isHttpUrl(url)) {
+    return errOk(
+      `Not an http(s) URL: \`${url}\` — pass the PR URL as printed by \`gh pr create\`.`,
+    );
+  }
+
+  const { tasks } = readAllTasks(env.tasksDir);
+  let task: Task | null;
+  if (taskId) {
+    task = findTaskById(tasks, taskId);
+    if (!task) return errOk(`Task ${taskId} not found.`);
+  } else {
+    const branch = currentBranch(env.projectDir);
+    task = branch ? findTaskByBranch(tasks, branch) : null;
+    if (!task) {
+      return errOk(
+        "No task is linked to the current branch — no board task's `branch` frontmatter matches it. Pass `taskId` to pick the task explicitly.",
+      );
+    }
+  }
+
+  const saved = setTaskPr(env.tasksDir, task, url);
+  return ok(`Linked PR to **${saved.frontmatter.id}** — ${saved.frontmatter.title}\nPR: ${url}`);
+}
+
+function isHttpUrl(raw: string): boolean {
+  try {
+    const protocol = new URL(raw).protocol;
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 async function detectCurrentTaskOrPick(

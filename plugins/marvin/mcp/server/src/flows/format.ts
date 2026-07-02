@@ -30,17 +30,24 @@ export function renderListTable(tasks: Task[], currentBranch: string | null): st
     if (list.length === 0) continue;
     sections.push(`### ${status} (${list.length})`);
     sections.push("");
-    sections.push("| seq | type | title | tracker | branch |");
-    sections.push("|-----|------|-------|---------|--------|");
+    sections.push("| seq | type | title | tracker | branch | pr |");
+    sections.push("|-----|------|-------|---------|--------|----|");
     for (const t of list) {
       const marker = currentBranch === t.frontmatter.branch ? " ◀ current" : "";
       sections.push(
-        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "—"} | \`${t.frontmatter.branch}\`${marker} |`,
+        `| ${t.frontmatter.id} | ${t.frontmatter.type} | ${t.frontmatter.title} | ${t.frontmatter.tracker_id ?? "—"} | \`${t.frontmatter.branch}\`${marker} | ${prCell(t.frontmatter.pr)} |`,
       );
     }
     sections.push("");
   }
   return sections.join("\n");
+}
+
+/** PR cell for the list table: a link labeled with the /pull/<n> number when derivable. */
+function prCell(url: string | undefined): string {
+  if (!url) return "—";
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? `[#${match[1]}](${url})` : `[PR](${url})`;
 }
 
 export function renderTaskCard(t: Task, config: Config): string {
