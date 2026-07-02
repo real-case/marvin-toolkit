@@ -26,7 +26,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 - [x] WP2 merged into `dev`; contracts tracker-ready (unblocks the widget stage and future connectors)
 - [x] Release cut after WP2 (breaking changes ship together) — **[v0.3.0 released](https://github.com/real-case/marvin-toolkit/releases/tag/v0.3.0)** 2026-07-02: #58 (squash, recovered), #57 prep, #60 history-join promotion (merge commit `7a21a3c`; #59 auto-marked merged), tag `v0.3.0` → GitHub Release via release.yml. `dev` is an ancestor of `main` again.
 - [x] WP3–WP5 merged into `dev` (#61 / #64 / #63; plugin 0.6.0)
-- [ ] Release cut after WP5 — *in flight: promotion [#65](https://github.com/real-case/marvin-toolkit/pull/65) open (`dev → main`, merge with a **merge commit**); this docs finalization merges into `dev` first, then tag `v0.6.0`*
+- [x] Release cut after WP5 — **[v0.6.0 released](https://github.com/real-case/marvin-toolkit/releases/tag/v0.6.0)** 2026-07-02: docs finalization #66 (squash `c9ebc25`), promotion [#65](https://github.com/real-case/marvin-toolkit/pull/65) merged **with a merge commit** (`7fc26ea` — histories stayed joined), tag `v0.6.0` → GitHub Release via release.yml
 
 ## WP1 — Git-operations migration
 
@@ -108,6 +108,11 @@ Mirrors Appendix A of the plan. A finding is Closed when its work package merges
 
 Newest entries first.
 
+- **2026-07-02** — **v0.6.0 released — the record closes.** #66 squash-merged into `dev`
+  (`c9ebc25`); promotion #65 merged into `main` with a **merge commit** (`7fc26ea`, parents
+  `7a21a3c` + `c9ebc25` — the v0.3.0 lesson held); tag `v0.6.0` pushed from the main session;
+  release workflow green (16s); GitHub Release "marvin v0.6.0" published. The rework shipped
+  in two same-day releases (v0.3.0, v0.6.0) with the plan fully implemented.
 - **2026-07-02** — Release cut v0.6.0 opened: promotion
   [#65](https://github.com/real-case/marvin-toolkit/pull/65) (`dev → main`) came up
   MERGEABLE/CLEAN — the #60 history join held, zero conflicts. This docs-finalization commit
