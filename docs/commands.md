@@ -145,6 +145,12 @@ Committing and opening PRs for board tasks is handled by the kanban-aware
 [`/marvin:commit`](#core-developer-tools) and [`/marvin:pr-create`](#pull-request-lifecycle--pr-)
 — they pick up the linked task automatically (ADR-0025).
 
+Statuses are per-project data (ADR-0026): declare your tracker's vocabulary as
+`statuses: [{ key, role, tracker_status? }]` in `.marvin/config.json` and the lifecycle
+commands drive it by role (`start` → first wip-role status, and so on). The `task` tool's
+generic `move` action reaches every configured status — including `blocked`. With no
+configuration the classic `todo / wip / review / done / blocked` set applies unchanged.
+
 ---
 
 ## Appendix — deterministic MCP tools
@@ -155,7 +161,7 @@ slash commands:
 
 | Tool | Purpose |
 |------|---------|
-| `task` | Kanban board — task CRUD, status transitions, PR-URL capture (`link-pr`) |
+| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`) |
 | `help` | Dashboard + registry-derived command index |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |

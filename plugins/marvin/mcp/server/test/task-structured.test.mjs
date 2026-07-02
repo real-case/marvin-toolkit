@@ -110,12 +110,17 @@ test("task list emits a TaskListPayload structuredContent alongside the text", a
     const sc = result.structuredContent;
     assert.ok(sc, "structuredContent present on the list result");
     assert.equal(sc.tasks.length, 1);
+    // ADR-0026: counts is an open per-key record (every configured key present,
+    // default set here) plus the closed per-role roll-up.
     assert.equal(sc.counts.todo, 1);
+    assert.equal(sc.counts.wip, 0, "unused configured keys present at 0");
+    assert.equal(sc.role_counts.todo, 1);
+    assert.equal(sc.role_counts.wip, 0);
 
     const card = sc.tasks[0];
     assert.equal(card.id, "001");
     assert.equal(card.type, "bug");
-    assert.equal(card.status, "todo");
+    assert.deepEqual(card.status, { key: "todo", role: "todo" }, "status is {key, role}");
     assert.equal(card.title, TITLE);
     assert.equal(card.tracker_id, TRACKER);
     assert.equal(card.tracker_url, "https://tracker.example/browse/OSI-42");

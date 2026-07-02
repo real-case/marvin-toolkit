@@ -3,7 +3,7 @@ import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 
 import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { spawn, spawnSync, execFileSync } from 'child_process';
+import { execFileSync, spawnSync, spawn } from 'child_process';
 import { performance } from 'perf_hooks';
 import { createHash } from 'crypto';
 
@@ -28697,19 +28697,54 @@ var PROMPTS = [
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
-var TaskStatus = external_exports.enum(["todo", "wip", "review", "done", "blocked"]);
+var StatusRole = external_exports.enum(["todo", "wip", "review", "done", "blocked"]);
+var StatusDef = external_exports.object({
+  key: external_exports.string().regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase alphanumerics and hyphens"),
+  role: StatusRole,
+  tracker_status: external_exports.string().min(1).optional()
+});
+var DEFAULT_STATUSES = [
+  { key: "todo", role: "todo" },
+  { key: "wip", role: "wip" },
+  { key: "review", role: "review" },
+  { key: "done", role: "done" },
+  { key: "blocked", role: "blocked" }
+];
+var REQUIRED_ROLES = ["todo", "wip", "done"];
+var Statuses = external_exports.array(StatusDef).superRefine((statuses, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of statuses) {
+    if (seen.has(s.key)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate status key "${s.key}"` });
+    }
+    seen.add(s.key);
+  }
+  for (const role of REQUIRED_ROLES) {
+    if (!statuses.some((s) => s.role === role)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: `at least one status with role "${role}" is required`
+      });
+    }
+  }
+});
 var TaskTitle = external_exports.string().min(3).max(120).regex(/^[\x20-\x7E]+$/, "ASCII printable only");
 var TrackerId = external_exports.string().regex(/^[A-Z]+-\d+$/, "Expected SHORT-123 format");
 var TaskFrontmatter = external_exports.object({
   id: external_exports.string().regex(/^\d{3}$/),
   type: TaskType,
-  status: TaskStatus,
+  /**
+   * A configured status key (ADR-0026). The schema only requires a string;
+   * membership in the configured set is checked by `readAllTasks`, which
+   * routes unknown keys through the malformed-file channel.
+   */
+  status: external_exports.string().min(1),
   title: TaskTitle,
   tracker_id: TrackerId.optional(),
   branch: external_exports.string(),
   /**
-   * PR URL captured at `gh pr create` time (ADR-0024). Stored, never
-   * live-resolved; absent until a PR is opened for the task.
+   * PR URL captured by the `task` tool's `link-pr` action (ADR-0024/0025).
+   * Stored, never live-resolved; absent until a PR is opened for the task.
    */
   pr: external_exports.string().url().optional(),
   created: external_exports.string().datetime(),
@@ -28734,13 +28769,111 @@ var GateCommands = external_exports.object({
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
   tracker_url_template: external_exports.string().nullable().default(null),
-  gates: GateCommands.optional()
+  gates: GateCommands.optional(),
+  /** The board's status vocabulary (ADR-0026); defaults to key == role. */
+  statuses: Statuses.default(DEFAULT_STATUSES)
 });
+var ROLE_ORDER = ["wip", "review", "todo", "blocked", "done"];
+function orderedStatuses(config2) {
+  return ROLE_ORDER.flatMap((role) => config2.statuses.filter((s) => s.role === role));
+}
+function firstOfRole(config2, role) {
+  return config2.statuses.find((s) => s.role === role) ?? null;
+}
+function requireRole(config2, role) {
+  const status = firstOfRole(config2, role);
+  if (!status) throw new Error(`no status with role "${role}" is configured`);
+  return status;
+}
+function roleOfStatus(config2, key) {
+  const status = config2.statuses.find((s) => s.key === key);
+  if (!status) throw new Error(`unknown status key "${key}"`);
+  return status.role;
+}
+function statusKeys(config2) {
+  return config2.statuses.map((s) => s.key);
+}
+function keysOfRoles(config2, roles) {
+  return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
+}
+function run(cmd, args, cwd) {
+  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+  if (result2.error) {
+    return { ok: false, code: -1, stderr: result2.error.message };
+  }
+  if (result2.status !== 0) {
+    return {
+      ok: false,
+      code: result2.status ?? -1,
+      stderr: (result2.stderr || result2.stdout || "").trim()
+    };
+  }
+  return { ok: true, value: (result2.stdout || "").trim() };
+}
+function git(args, cwd) {
+  return run("git", args, cwd);
+}
+function inGitRepo(cwd) {
+  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
+}
+function hasGit() {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function hasGh() {
+  try {
+    execFileSync("gh", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function currentBranch(cwd) {
+  const r = git(["branch", "--show-current"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function defaultBranchFromOrigin(cwd) {
+  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
+function hasUncommittedChanges(cwd) {
+  const r = git(["status", "--porcelain"], cwd);
+  return r.ok && r.value.length > 0;
+}
+function branchExists(name, cwd) {
+  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
+}
+function createBranchFromBase(base, branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  const checkoutBase = git(["checkout", base], cwd);
+  if (!checkoutBase.ok) return checkoutBase;
+  git(["pull", "--ff-only"], cwd);
+  return git(["checkout", "-b", branch], cwd);
+}
+function checkoutBranch(branch, cwd) {
+  if (hasUncommittedChanges(cwd)) {
+    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
+  }
+  return git(["checkout", branch], cwd);
+}
 
 // src/storage/config.ts
-function loadConfig(configPath) {
+function loadConfig(configPath, projectDir) {
   if (!existsSync(configPath)) {
-    return { config: Config.parse({}), warning: null };
+    const config2 = Config.parse({});
+    if (projectDir !== void 0 && hasGit() && inGitRepo(projectDir)) {
+      const detected = defaultBranchFromOrigin(projectDir);
+      if (detected) config2.base_branch = detected;
+    }
+    return { config: config2, warning: null };
   }
   let raw;
   try {
@@ -28841,8 +28974,9 @@ function parseSeq(filename) {
 }
 
 // src/storage/tasks.ts
-function readAllTasks(tasksDir) {
+function readAllTasks(tasksDir, config2) {
   if (!existsSync(tasksDir)) return { tasks: [], malformed: [] };
+  const keys = statusKeys(config2);
   const tasks = [];
   const malformed = [];
   for (const filename of readdirSync(tasksDir).sort()) {
@@ -28863,6 +28997,13 @@ function readAllTasks(tasksDir) {
       });
       continue;
     }
+    if (!keys.includes(parsed.data.status)) {
+      malformed.push({
+        filename,
+        reason: `unknown status "${parsed.data.status}" \u2014 configured statuses: ${keys.join(", ")}`
+      });
+      continue;
+    }
     tasks.push({ frontmatter: parsed.data, body, filename });
   }
   tasks.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
@@ -28876,18 +29017,19 @@ function nextSeq(tasks) {
   }
   return String(max + 1).padStart(3, "0");
 }
-function createTask(tasksDir, input) {
+function createTask(tasksDir, config2, input) {
   mkdirSync(tasksDir, { recursive: true });
-  const { tasks } = readAllTasks(tasksDir);
+  const { tasks } = readAllTasks(tasksDir, config2);
   const id = nextSeq(tasks);
   const slug = slugify(input.title);
   const filename = buildFilename(id, input.tracker_id, slug);
   const branch = filename.replace(/\.md$/, "");
   const now = (/* @__PURE__ */ new Date()).toISOString();
+  const status = requireRole(config2, "todo").key;
   const frontmatter = {
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     tracker_id: input.tracker_id,
     branch,
@@ -28903,7 +29045,7 @@ ${input.description}
   const parsed = TaskFrontmatter.parse({
     id,
     type: input.type,
-    status: "todo",
+    status,
     title: input.title,
     ...input.tracker_id ? { tracker_id: input.tracker_id } : {},
     branch,
@@ -28952,68 +29094,6 @@ function findTaskByBranch(tasks, branch) {
 function findTaskById(tasks, id) {
   return tasks.find((t) => t.frontmatter.id === id) ?? null;
 }
-function run(cmd, args, cwd) {
-  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
-  if (result2.error) {
-    return { ok: false, code: -1, stderr: result2.error.message };
-  }
-  if (result2.status !== 0) {
-    return {
-      ok: false,
-      code: result2.status ?? -1,
-      stderr: (result2.stderr || result2.stdout || "").trim()
-    };
-  }
-  return { ok: true, value: (result2.stdout || "").trim() };
-}
-function git(args, cwd) {
-  return run("git", args, cwd);
-}
-function inGitRepo(cwd) {
-  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
-}
-function hasGit() {
-  try {
-    execFileSync("git", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function hasGh() {
-  try {
-    execFileSync("gh", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function currentBranch(cwd) {
-  const r = git(["branch", "--show-current"], cwd);
-  return r.ok && r.value ? r.value : null;
-}
-function hasUncommittedChanges(cwd) {
-  const r = git(["status", "--porcelain"], cwd);
-  return r.ok && r.value.length > 0;
-}
-function branchExists(name, cwd) {
-  return git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], cwd).ok;
-}
-function createBranchFromBase(base, branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  const checkoutBase = git(["checkout", base], cwd);
-  if (!checkoutBase.ok) return checkoutBase;
-  git(["pull", "--ff-only"], cwd);
-  return git(["checkout", "-b", branch], cwd);
-}
-function checkoutBranch(branch, cwd) {
-  if (hasUncommittedChanges(cwd)) {
-    return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
-  }
-  return git(["checkout", branch], cwd);
-}
 
 // src/flows/format.ts
 function formatTaskLine(t) {
@@ -29021,26 +29101,19 @@ function formatTaskLine(t) {
   return `${t.frontmatter.id} \xB7 [${t.frontmatter.type}] ${t.frontmatter.title}${tracker} \xB7 ${t.frontmatter.status}`;
 }
 function groupByStatus(tasks) {
-  const groups = {
-    todo: [],
-    wip: [],
-    review: [],
-    done: [],
-    blocked: []
-  };
-  for (const t of tasks) groups[t.frontmatter.status].push(t);
+  const groups = {};
+  for (const t of tasks) (groups[t.frontmatter.status] ??= []).push(t);
   return groups;
 }
-function renderListTable(tasks, currentBranch2) {
+function renderListTable(tasks, currentBranch2, config2) {
   if (tasks.length === 0)
     return "_No tasks yet \u2014 use `/marvin:kanban-bug` or similar to create one._";
   const groups = groupByStatus(tasks);
-  const order = ["wip", "review", "todo", "blocked", "done"];
   const sections = [];
-  for (const status of order) {
-    const list = groups[status];
+  for (const status of orderedStatuses(config2)) {
+    const list = groups[status.key] ?? [];
     if (list.length === 0) continue;
-    sections.push(`### ${status} (${list.length})`);
+    sections.push(`### ${status.key} (${list.length})`);
     sections.push("");
     sections.push("| seq | type | title | tracker | branch | pr |");
     sections.push("|-----|------|-------|---------|--------|----|");
@@ -29062,7 +29135,7 @@ function prCell(url) {
 
 // src/tools/task.ts
 var TaskInput = external_exports.object({
-  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "link-pr"]).optional(),
+  action: external_exports.enum(["menu", "create", "list", "status", "start", "review", "done", "move", "link-pr"]).optional(),
   type: TaskType.optional(),
   taskId: external_exports.string().optional(),
   url: external_exports.string().optional().describe("PR URL to persist onto the task (link-pr action)")
@@ -29070,7 +29143,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env, config2) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, or link a PR URL to a task (link-pr). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
+    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, or link a PR URL to a task (link-pr). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board" or "what am I working on?". Defaults to an interactive main menu when called with no arguments.',
     inputSchema: TaskInput,
     handler: (input) => dispatchTask(server, env, config2, input)
   });
@@ -29078,7 +29151,7 @@ function buildTaskTool(server, env, config2) {
 async function dispatchTask(server, env, config2, input) {
   let action = input.action;
   if (!action || action === "menu") {
-    const picked = await pickMenuAction(server, env);
+    const picked = await pickMenuAction(server, env, config2);
     if (!picked) return cancelled();
     action = picked;
   }
@@ -29088,25 +29161,27 @@ async function dispatchTask(server, env, config2, input) {
     case "list":
       return runList(env, config2);
     case "status":
-      return runStatus(server, env);
+      return runStatus(server, env, config2);
     case "start":
       return runStart(server, env, config2, input.taskId);
     case "review":
       return runReview(server, env, config2);
     case "done":
-      return runDone(server, env);
+      return runDone(server, env, config2);
+    case "move":
+      return runMove(server, env, config2, input.taskId);
     case "link-pr":
-      return runLinkPr(env, input.taskId, input.url);
+      return runLinkPr(env, config2, input.taskId, input.url);
   }
 }
-async function pickMenuAction(server, env) {
-  const { tasks } = readAllTasks(env.tasksDir);
-  const wip = tasks.filter((t) => t.frontmatter.status === "wip").length;
+async function pickMenuAction(server, env, config2) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip").length;
   const data = await elicit(
     server,
     `Marvin \xB7 ${tasks.length} tasks \xB7 ${wip} in progress`,
     external_exports.object({
-      action: external_exports.enum(["create", "list", "status", "start", "review", "done"])
+      action: external_exports.enum(["create", "list", "status", "start", "review", "done", "move"])
     })
   );
   return data?.action ?? null;
@@ -29125,7 +29200,7 @@ async function runCreate(server, env, config2, preType) {
   const data = await elicit(server, "New task", formSchema);
   if (!data) return cancelled();
   const type = preType ?? data.type;
-  const created = createTask(env.tasksDir, {
+  const created = createTask(env.tasksDir, config2, {
     type,
     title: data.title,
     ...data.tracker_id ? { tracker_id: data.tracker_id } : {},
@@ -29145,9 +29220,10 @@ async function runCreate(server, env, config2, preType) {
         env.projectDir
       );
       if (result2.ok) {
-        updateStatus(env.tasksDir, created.task, "wip");
+        const wipStatus = requireRole(config2, "wip");
+        updateStatus(env.tasksDir, created.task, wipStatus.key);
         branchInfo = `
-Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 wip.`;
+Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 ${wipStatus.key}.`;
       } else {
         branchInfo = `
 Branch creation failed: ${result2.stderr}`;
@@ -29160,9 +29236,9 @@ File: \`${created.path}\`${branchInfo}`
   );
 }
 function runList(env, config2) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir);
+  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
   const branch = currentBranch(env.projectDir);
-  const body = renderListTable(tasks, branch);
+  const body = renderListTable(tasks, branch, config2);
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
@@ -29177,14 +29253,24 @@ ${body}${warning}` }],
   };
 }
 function buildTaskListPayload(tasks, config2) {
-  const counts = { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 };
+  const counts = {};
+  for (const s of config2.statuses) counts[s.key] = 0;
+  const role_counts = {
+    todo: 0,
+    wip: 0,
+    review: 0,
+    done: 0,
+    blocked: 0
+  };
   const cards = tasks.map((t) => {
     const fm = t.frontmatter;
-    counts[fm.status] += 1;
+    const role = roleOfStatus(config2, fm.status);
+    counts[fm.status] = (counts[fm.status] ?? 0) + 1;
+    role_counts[role] += 1;
     return {
       id: fm.id,
       type: fm.type,
-      status: fm.status,
+      status: { key: fm.status, role },
       title: fm.title,
       branch: fm.branch,
       ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
@@ -29194,18 +29280,18 @@ function buildTaskListPayload(tasks, config2) {
       updated: fm.updated
     };
   });
-  return { tasks: cards, counts };
+  return { tasks: cards, counts, role_counts };
 }
 function prRefFromUrl(url) {
   if (!url) return null;
   const match = url.match(/\/pull\/(\d+)/);
   return match ? { url, number: Number(match[1]) } : { url };
 }
-function runStatus(_server, env, _config) {
-  const { tasks } = readAllTasks(env.tasksDir);
+function runStatus(_server, env, config2) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
-  const wip = tasks.filter((t) => t.frontmatter.status === "wip");
+  const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip");
   const lines = [];
   lines.push(`**Branch:** \`${branch ?? "(not in a git repo)"}\``);
   lines.push(
@@ -29221,15 +29307,24 @@ function runStatus(_server, env, _config) {
   return ok(lines.join("\n"));
 }
 async function runStart(server, env, config2, preselected) {
-  const { tasks } = readAllTasks(env.tasksDir);
-  const todo = tasks.filter((t) => t.frontmatter.status === "todo");
-  if (todo.length === 0) {
-    return ok(
-      "No `todo` tasks. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
-    );
-  }
-  let taskId = preselected;
-  if (!taskId) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const todoKeys = keysOfRoles(config2, ["todo"]);
+  const todo = tasks.filter((t) => todoKeys.includes(t.frontmatter.status));
+  let task;
+  if (preselected) {
+    task = findTaskById(tasks, preselected);
+    if (!task) return errOk(`Task ${preselected} not found`);
+    if (!todoKeys.includes(task.frontmatter.status)) {
+      return errOk(
+        `Task ${preselected} is in status "${task.frontmatter.status}" \u2014 starting requires a todo-role status (${todoKeys.join(", ")}). Use the \`move\` action for other transitions.`
+      );
+    }
+  } else {
+    if (todo.length === 0) {
+      return ok(
+        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
+      );
+    }
     const data = await elicit(
       server,
       "Which task to start?",
@@ -29238,38 +29333,100 @@ async function runStart(server, env, config2, preselected) {
       })
     );
     if (!data) return cancelled();
-    taskId = data.taskId;
+    task = findTaskById(tasks, data.taskId);
+    if (!task) return errOk(`Task ${data.taskId} not found`);
   }
-  const task = findTaskById(tasks, taskId);
-  if (!task) return errOk(`Task ${taskId} not found`);
   if (hasGit() && inGitRepo(env.projectDir)) {
     const result2 = branchExists(task.frontmatter.branch, env.projectDir) ? checkoutBranch(task.frontmatter.branch, env.projectDir) : createBranchFromBase(config2.base_branch, task.frontmatter.branch, env.projectDir);
     if (!result2.ok) return errOk(`git: ${result2.stderr}`);
   }
-  updateStatus(env.tasksDir, task, "wip");
+  const wipStatus = requireRole(config2, "wip");
+  updateStatus(env.tasksDir, task, wipStatus.key);
   return ok(
     `Started **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
-Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 wip`
+Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 ${wipStatus.key}`
   );
 }
 async function runReview(server, env, config2) {
-  const task = await detectCurrentTaskOrPick(server, env, ["wip"]);
-  if (!task) return cancelled();
-  updateStatus(env.tasksDir, task, "review");
+  const target = firstOfRole(config2, "review");
+  if (!target) {
+    return errOk(
+      'No status with role "review" is configured \u2014 add one to `statuses` in `.marvin/config.json`, or use the `move` action.'
+    );
+  }
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"]);
+  if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "none") {
+    return ok(
+      `No tasks in a wip-role status (${keysOfRoles(config2, ["wip"]).join(", ")}) \u2014 nothing to move to review.`
+    );
+  }
+  updateStatus(env.tasksDir, pick2.task, target.key);
   return ok(
-    `Moved **${task.frontmatter.id}** to **review**.
+    `Moved **${pick2.task.frontmatter.id}** to **${target.key}**.
 Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
-async function runDone(server, env, _config) {
-  const task = await detectCurrentTaskOrPick(server, env, ["wip", "review"]);
-  if (!task) return cancelled();
-  updateStatus(env.tasksDir, task, "done");
+async function runDone(server, env, config2) {
+  const roles = ["wip", "review"];
+  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles);
+  if (pick2.kind === "cancelled") return cancelled();
+  if (pick2.kind === "none") {
+    return ok(
+      `No tasks in a wip- or review-role status (${keysOfRoles(config2, roles).join(", ")}) \u2014 nothing to mark done.`
+    );
+  }
+  const doneStatus = requireRole(config2, "done");
+  updateStatus(env.tasksDir, pick2.task, doneStatus.key);
   return ok(
-    `Marked **${task.frontmatter.id}** as **done**. Branch cleanup and merge are left to you / CI.`
+    `Marked **${pick2.task.frontmatter.id}** as **${doneStatus.key}**. Branch cleanup and merge are left to you / CI.`
   );
 }
-function runLinkPr(env, taskId, url) {
+async function runMove(server, env, config2, preselected) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  if (tasks.length === 0) {
+    return ok(
+      "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+    );
+  }
+  let task = null;
+  if (preselected) {
+    task = findTaskById(tasks, preselected);
+    if (!task) return errOk(`Task ${preselected} not found`);
+  } else {
+    const branch = currentBranch(env.projectDir);
+    task = branch ? findTaskByBranch(tasks, branch) : null;
+  }
+  if (!task) {
+    const data = await elicit(
+      server,
+      "Which task to move?",
+      external_exports.object({
+        taskId: external_exports.enum(tasks.map((t) => t.frontmatter.id))
+      })
+    );
+    if (!data) return cancelled();
+    task = findTaskById(tasks, data.taskId);
+    if (!task) return errOk(`Task ${data.taskId} not found`);
+  }
+  const keys = statusKeys(config2);
+  const target = await elicit(
+    server,
+    `Move ${task.frontmatter.id} (${task.frontmatter.status}) to`,
+    external_exports.object({ status: external_exports.enum(keys) })
+  );
+  if (!target) return cancelled();
+  if (target.status === task.frontmatter.status) {
+    return ok(`**${task.frontmatter.id}** is already in \`${target.status}\` \u2014 nothing to do.`);
+  }
+  const from = task.frontmatter.status;
+  updateStatus(env.tasksDir, task, target.status);
+  return ok(
+    `Moved **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
+\`${from}\` \u2192 \`${target.status}\``
+  );
+}
+function runLinkPr(env, config2, taskId, url) {
   if (!url) {
     return errOk(
       "Missing `url` \u2014 pass the PR URL to link, e.g. https://github.com/acme/widget/pull/42."
@@ -29280,7 +29437,7 @@ function runLinkPr(env, taskId, url) {
       `Not an http(s) URL: \`${url}\` \u2014 pass the PR URL as printed by \`gh pr create\`.`
     );
   }
-  const { tasks } = readAllTasks(env.tasksDir);
+  const { tasks } = readAllTasks(env.tasksDir, config2);
   let task;
   if (taskId) {
     task = findTaskById(tasks, taskId);
@@ -29306,13 +29463,16 @@ function isHttpUrl(raw) {
     return false;
   }
 }
-async function detectCurrentTaskOrPick(server, env, allowedStatuses) {
-  const { tasks } = readAllTasks(env.tasksDir);
+async function detectCurrentTaskOrPick(server, env, config2, roles) {
+  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const allowedKeys = keysOfRoles(config2, roles);
   const branch = currentBranch(env.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
-  if (linked && allowedStatuses.includes(linked.frontmatter.status)) return linked;
-  const candidates = tasks.filter((t) => allowedStatuses.includes(t.frontmatter.status));
-  if (candidates.length === 0) return null;
+  if (linked && allowedKeys.includes(linked.frontmatter.status)) {
+    return { kind: "task", task: linked };
+  }
+  const candidates = tasks.filter((t) => allowedKeys.includes(t.frontmatter.status));
+  if (candidates.length === 0) return { kind: "none" };
   const data = await elicit(
     server,
     "Current branch has no linked task \u2014 pick one",
@@ -29320,8 +29480,9 @@ async function detectCurrentTaskOrPick(server, env, allowedStatuses) {
       taskId: external_exports.enum(candidates.map((t) => t.frontmatter.id))
     })
   );
-  if (!data) return null;
-  return findTaskById(tasks, data.taskId);
+  if (!data) return { kind: "cancelled" };
+  const picked = findTaskById(tasks, data.taskId);
+  return picked ? { kind: "task", task: picked } : { kind: "none" };
 }
 function ok(text) {
   return { content: [{ type: "text", text }] };
@@ -29344,15 +29505,20 @@ function buildHelpTool(env, config2, version2) {
   });
 }
 function renderHelp(env, config2, version2, section) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir);
-  const counts = {
+  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
+  const counts = {};
+  for (const s of config2.statuses) counts[s.key] = 0;
+  const roleCounts = {
     todo: 0,
     wip: 0,
     review: 0,
     done: 0,
     blocked: 0
   };
-  for (const t of tasks) counts[t.frontmatter.status] += 1;
+  for (const t of tasks) {
+    counts[t.frontmatter.status] = (counts[t.frontmatter.status] ?? 0) + 1;
+    roleCounts[roleOfStatus(config2, t.frontmatter.status)] += 1;
+  }
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
   const has_git = hasGit();
   const has_gh = hasGh();
@@ -29369,11 +29535,10 @@ function renderHelp(env, config2, version2, section) {
   );
   lines.push("");
   lines.push("## Counters");
-  lines.push(`- todo: ${counts.todo}`);
-  lines.push(`- wip: ${counts.wip}`);
-  lines.push(`- review: ${counts.review}`);
-  lines.push(`- done: ${counts.done}`);
-  lines.push(`- blocked: ${counts.blocked}`);
+  for (const s of orderedStatuses(config2)) {
+    const roleNote = s.key === s.role ? "" : ` (${s.role})`;
+    lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
+  }
   if (malformed.length > 0) lines.push(`- \u26A0 malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
@@ -29388,9 +29553,11 @@ function renderHelp(env, config2, version2, section) {
     config: {
       base_branch: config2.base_branch,
       tracker_url_template: config2.tracker_url_template,
-      ...config2.gates ? { gates: config2.gates } : {}
+      ...config2.gates ? { gates: config2.gates } : {},
+      statuses: config2.statuses
     },
     kanban_counts: counts,
+    kanban_role_counts: roleCounts,
     git: { has_git, has_gh, branch },
     artifacts: artifactCounts(env),
     command_groups: commandGroups()
@@ -31119,7 +31286,7 @@ function buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings) 
   const branch = currentBranch(projectRoot);
   if (branch) {
     links.push({ kind: "branch", label: branch, ref: branch });
-    const { tasks } = readAllTasks(env.tasksDir);
+    const { tasks } = readAllTasks(env.tasksDir, config2);
     const pr = findTaskByBranch(tasks, branch)?.frontmatter.pr;
     if (pr) links.push({ kind: "pr", label: prLabel(pr), url: pr });
   }
@@ -31182,7 +31349,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -31190,7 +31357,7 @@ await runPackServer({
   packRoot: packRootFromMeta(import.meta.url),
   build: (server) => {
     const env = loadEnv();
-    const { config: config2 } = loadConfig(env.configPath);
+    const { config: config2 } = loadConfig(env.configPath, env.projectDir);
     return {
       prompts: PROMPTS,
       tools: [

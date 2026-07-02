@@ -15,7 +15,7 @@ import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 await runPackServer({
   name: "marvin",
@@ -24,7 +24,7 @@ await runPackServer({
   packRoot: packRootFromMeta(import.meta.url),
   build: (server): PackBundle => {
     const env = loadEnv();
-    const { config } = loadConfig(env.configPath);
+    const { config } = loadConfig(env.configPath, env.projectDir);
     return {
       prompts: PROMPTS,
       tools: [

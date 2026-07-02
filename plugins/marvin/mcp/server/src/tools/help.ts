@@ -6,7 +6,7 @@ import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 import { readAllTasks } from "../storage/tasks.js";
 import { currentBranch, hasGh, hasGit, inGitRepo } from "../lib/git.js";
 import { PROMPTS } from "../prompts/index.js";
-import type { Config, TaskStatus } from "../storage/schema.js";
+import { orderedStatuses, roleOfStatus, type Config, type StatusRole } from "../storage/schema.js";
 import type { ServerEnv } from "../lib/env.js";
 
 const HelpInput = z.object({
@@ -27,15 +27,22 @@ export function buildHelpTool(env: ServerEnv, config: Config, version: string): 
 }
 
 function renderHelp(env: ServerEnv, config: Config, version: string, section?: string): ToolResult {
-  const { tasks, malformed } = readAllTasks(env.tasksDir);
-  const counts: Record<TaskStatus, number> = {
+  const { tasks, malformed } = readAllTasks(env.tasksDir, config);
+  // Per-status counts over the configured set (open record) plus the closed
+  // per-role roll-up (ADR-0026). Every configured key is present, even at 0.
+  const counts: Record<string, number> = {};
+  for (const s of config.statuses) counts[s.key] = 0;
+  const roleCounts: Record<StatusRole, number> = {
     todo: 0,
     wip: 0,
     review: 0,
     done: 0,
     blocked: 0,
   };
-  for (const t of tasks) counts[t.frontmatter.status] += 1;
+  for (const t of tasks) {
+    counts[t.frontmatter.status] = (counts[t.frontmatter.status] ?? 0) + 1;
+    roleCounts[roleOfStatus(config, t.frontmatter.status)] += 1;
+  }
 
   const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
   const has_git = hasGit();
@@ -54,11 +61,10 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
   );
   lines.push("");
   lines.push("## Counters");
-  lines.push(`- todo: ${counts.todo}`);
-  lines.push(`- wip: ${counts.wip}`);
-  lines.push(`- review: ${counts.review}`);
-  lines.push(`- done: ${counts.done}`);
-  lines.push(`- blocked: ${counts.blocked}`);
+  for (const s of orderedStatuses(config)) {
+    const roleNote = s.key === s.role ? "" : ` (${s.role})`;
+    lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
+  }
   if (malformed.length > 0) lines.push(`- ⚠ malformed files: ${malformed.length}`);
   lines.push("");
   lines.push("## Git");
@@ -77,8 +83,10 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
       base_branch: config.base_branch,
       tracker_url_template: config.tracker_url_template,
       ...(config.gates ? { gates: config.gates } : {}),
+      statuses: config.statuses,
     },
     kanban_counts: counts,
+    kanban_role_counts: roleCounts,
     git: { has_git, has_gh, branch },
     artifacts: artifactCounts(env),
     command_groups: commandGroups(),

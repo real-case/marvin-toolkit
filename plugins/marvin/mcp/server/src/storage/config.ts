@@ -1,17 +1,31 @@
 import { readFileSync, existsSync } from "node:fs";
 import { Config, type Config as ConfigType } from "./schema.js";
+import { defaultBranchFromOrigin, hasGit, inGitRepo } from "../lib/git.js";
 
 /**
  * Load `.marvin/config.json` if it exists; otherwise return defaults
- * (base_branch="dev", tracker_url_template=null). Bad JSON falls back
+ * (tracker_url_template=null, the default status set). Bad JSON falls back
  * to defaults — the user sees a warning via the dashboard.
+ *
+ * `base_branch` on a config-less project is auto-detected from `origin/HEAD`
+ * when `projectDir` is given (WP2, audit finding 4) so a main-based repo works
+ * on first run; the schema default ("dev") stays the last resort. A config
+ * file, once present, always wins — detection never overrides it.
  */
-export function loadConfig(configPath: string): {
+export function loadConfig(
+  configPath: string,
+  projectDir?: string,
+): {
   config: ConfigType;
   warning: string | null;
 } {
   if (!existsSync(configPath)) {
-    return { config: Config.parse({}), warning: null };
+    const config = Config.parse({});
+    if (projectDir !== undefined && hasGit() && inGitRepo(projectDir)) {
+      const detected = defaultBranchFromOrigin(projectDir);
+      if (detected) config.base_branch = detected;
+    }
+    return { config, warning: null };
   }
   let raw: string;
   try {
