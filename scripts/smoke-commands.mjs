@@ -35,6 +35,7 @@ const REQUIRED_PROMPTS = [
   "handoff-list",
   "lessons",
   "help",
+  "dashboard",
   // pr-*
   "pr-create",
   "pr-review",
@@ -84,7 +85,17 @@ const REQUIRED_PROMPTS = [
   "kanban-help",
 ];
 
-const REQUIRED_TOOLS = ["task", "help", "verify", "spec", "lessons", "handoff", "summary", "adr"];
+const REQUIRED_TOOLS = [
+  "task",
+  "help",
+  "dashboard",
+  "verify",
+  "spec",
+  "lessons",
+  "handoff",
+  "summary",
+  "adr",
+];
 
 function die(msg) {
   console.error(`smoke-commands: ${msg}`);

@@ -31,7 +31,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 | Group | What | Count |
 |-------|------|-------|
-| _(bare)_ | core developer tools | 12 |
+| _(bare)_ | core developer tools | 13 |
 | `adr-*` | ADR lifecycle (accept/supersede/sync human-run) | 6 |
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
@@ -39,7 +39,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 | `refactor-*` | code-health family (read → plan → apply) | 4 |
 | `kanban-*` | lightweight task tracker | 12 |
 
-53 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus four read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+54 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus five read-side commands (`/marvin:help`, `/marvin:dashboard`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -65,6 +65,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:handoff-list` | List the session-continuation handoff documents, newest first |
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, stats, prune (delete confirms first) |
 | `/marvin:help` | Project dashboard + the full command index (filter with `/marvin:help <group>`) |
+| `/marvin:dashboard` | Whole-toolbox state report — board, artifact inventories with freshness, ADR corpus by status, lessons stats, usage summary |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 
@@ -206,6 +207,7 @@ Decisions with long-lived consequences are recorded as ADRs under [docs/adr/](./
 | [0027](./docs/adr/0027-tool-backed-adr-lifecycle.md) | Tool-backed ADR lifecycle | Accepted |
 | [0028](./docs/adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall/capture expansion | Accepted |
 | [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read → plan → apply under hard rails | Accepted |
+| [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
 
 ## Contributing
 

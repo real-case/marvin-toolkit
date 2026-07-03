@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync, statSync } from 'fs';
+import { readFileSync, existsSync, statSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'fs';
 import { join, dirname, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -28570,8 +28570,16 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
-    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+  },
+  {
+    // Thin tool wrapper (inline body) — the whole-toolbox state report backed
+    // by the deterministic `dashboard` tool (ADR-0030). The command index
+    // stays on `help`; this aggregates the artifact/corpus/usage state.
+    name: "dashboard",
+    description: "Marvin toolbox dashboard \u2014 kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
   },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
@@ -30920,21 +30928,7 @@ function errOk(text) {
 function cancelled() {
   return ok("Cancelled \u2014 no changes made.");
 }
-var HelpInput = external_exports.object({
-  section: external_exports.string().optional().describe("Filter the command index to one group: core, pr, task, sec, kanban.")
-});
-function buildHelpTool(env, version2) {
-  return defineTool({
-    name: "help",
-    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/pr/task/sec/kanban).',
-    inputSchema: HelpInput,
-    handler: (input) => {
-      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderHelp(env, config2, version2, input.section));
-    }
-  });
-}
-function renderHelp(env, config2, version2, section) {
+function kanbanCounts(env, config2) {
   const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
   const counts = {};
   for (const s of config2.statuses) counts[s.key] = 0;
@@ -30949,9 +30943,63 @@ function renderHelp(env, config2, version2, section) {
     counts[t.frontmatter.status] = (counts[t.frontmatter.status] ?? 0) + 1;
     roleCounts[roleOfStatus(config2, t.frontmatter.status)] += 1;
   }
-  const branch = inGitRepo(env.projectDir) ? currentBranch(env.projectDir) : null;
-  const has_git = hasGit();
-  const has_gh = hasGh();
+  return { counts, roleCounts, malformed: malformed.length };
+}
+function gitState(projectDir) {
+  return {
+    has_git: hasGit(),
+    has_gh: hasGh(),
+    branch: inGitRepo(projectDir) ? currentBranch(projectDir) : null
+  };
+}
+var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "kanban"];
+var GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "kanban"];
+function groupOf(name) {
+  const prefix = name.split("-")[0] ?? "";
+  return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
+}
+function commandGroups() {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    count: PROMPTS.filter((p) => groupOf(p.name) === group).length
+  })).filter((g) => g.count > 0);
+}
+function artifactCounts(env) {
+  const marvin = join(env.projectDir, ".marvin");
+  return {
+    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    handoffs: countMarkdown(join(marvin, "handoff")),
+    audits: countMarkdown(join(marvin, "security")),
+    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+  };
+}
+function countMarkdown(dir, exclude = []) {
+  if (!existsSync(dir)) return 0;
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+  } catch {
+    return 0;
+  }
+}
+
+// src/tools/help.ts
+var HelpInput = external_exports.object({
+  section: external_exports.string().optional().describe("Filter the command index to one group: core, adr, pr, task, sec, refactor, kanban.")
+});
+function buildHelpTool(env, version2) {
+  return defineTool({
+    name: "help",
+    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/adr/pr/task/sec/refactor/kanban).',
+    inputSchema: HelpInput,
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(renderHelp(env, config2, version2, input.section));
+    }
+  });
+}
+function renderHelp(env, config2, version2, section) {
+  const { counts, roleCounts, malformed } = kanbanCounts(env, config2);
+  const git2 = gitState(env.projectDir);
   const lines = [];
   lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
   lines.push("");
@@ -30969,12 +31017,12 @@ function renderHelp(env, config2, version2, section) {
     const roleNote = s.key === s.role ? "" : ` (${s.role})`;
     lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
   }
-  if (malformed.length > 0) lines.push(`- \u26A0 malformed files: ${malformed.length}`);
+  if (malformed > 0) lines.push(`- \u26A0 malformed files: ${malformed}`);
   lines.push("");
   lines.push("## Git");
-  lines.push(`- git: ${has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
-  lines.push(`- branch: \`${branch ?? "(not in a git repo)"}\``);
+  lines.push(`- git: ${git2.has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
+  lines.push(`- gh:  ${git2.has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
+  lines.push(`- branch: \`${git2.branch ?? "(not in a git repo)"}\``);
   lines.push("");
   lines.push(...renderCommandIndex(section));
   const dashboard = {
@@ -30988,7 +31036,7 @@ function renderHelp(env, config2, version2, section) {
     },
     kanban_counts: counts,
     kanban_role_counts: roleCounts,
-    git: { has_git, has_gh, branch },
+    git: git2,
     artifacts: artifactCounts(env),
     command_groups: commandGroups()
   };
@@ -30996,18 +31044,6 @@ function renderHelp(env, config2, version2, section) {
     content: [{ type: "text", text: lines.join("\n") }],
     structuredContent: dashboard
   };
-}
-var GROUP_PREFIXES = ["pr", "task", "sec", "kanban"];
-var GROUP_ORDER = ["core", "pr", "task", "sec", "kanban"];
-function groupOf(name) {
-  const prefix = name.split("-")[0] ?? "";
-  return GROUP_PREFIXES.includes(prefix) ? prefix : "core";
-}
-function commandGroups() {
-  return GROUP_ORDER.map((group) => ({
-    group,
-    count: PROMPTS.filter((p) => groupOf(p.name) === group).length
-  })).filter((g) => g.count > 0);
 }
 function renderCommandIndex(section) {
   const want = section?.trim().toLowerCase();
@@ -31036,22 +31072,380 @@ function shortDesc(desc, max = 80) {
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}\u2026`;
 }
-function artifactCounts(env) {
-  const marvin = join(env.projectDir, ".marvin");
+var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
+var INDEX_FILE = "MEMORY.md";
+var INDEX_HEADER = [
+  "# Marvin lessons",
+  "",
+  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
+  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
+  "in the linked file. Recalled at task intake.",
+  ""
+].join("\n");
+function uniqueSlug(memoryDir, base) {
+  const root = base || "lesson";
+  let slug = root;
+  let n = 2;
+  while (existsSync(join(memoryDir, `${slug}.md`))) {
+    slug = `${root}-${n}`;
+    n += 1;
+  }
+  return slug;
+}
+function addLesson(memoryDir, input) {
+  mkdirSync(memoryDir, { recursive: true });
+  const slug = uniqueSlug(memoryDir, slugify(input.title));
+  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const frontmatter = {
+    id: slug,
+    type: input.type,
+    title: input.title,
+    created,
+    tags: tags.length ? tags.join(", ") : void 0,
+    source: input.source?.trim() || "manual"
+  };
+  const body = input.body.trim() ? `
+${input.body.trim()}
+` : "\n";
+  const path = join(memoryDir, `${slug}.md`);
+  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
+  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
+  return { slug, path };
+}
+function appendIndex(memoryDir, entry) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
+  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
+  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(indexPath, `${content}${line}
+`);
+}
+function readAllLessons(memoryDir) {
+  if (!existsSync(memoryDir)) return [];
+  const lessons = [];
+  for (const filename of readdirSync(memoryDir).sort()) {
+    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
+    const raw = readFileSync(join(memoryDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (!frontmatter.title) continue;
+    lessons.push({
+      slug: filename.replace(/\.md$/, ""),
+      type: frontmatter.type ?? "process",
+      title: frontmatter.title,
+      created: frontmatter.created ?? "",
+      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      source: frontmatter.source ?? "manual",
+      body: body.trim()
+    });
+  }
+  return lessons;
+}
+function searchLessons(memoryDir, input) {
+  const all = readAllLessons(memoryDir);
+  const terms = (input.query ?? "").toLowerCase().split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  const scored = all.filter((l) => !input.type || l.type === input.type).map((l) => {
+    const haystack = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
+    const score = terms.length === 0 ? 1 : terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0);
+    return { lesson: l, score };
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
+  return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
+}
+function lessonsStats(memoryDir) {
+  const by_type = Object.fromEntries(LESSON_TYPES.map((t) => [t, 0]));
+  const by_tag = {};
+  const all = readAllLessons(memoryDir);
+  for (const l of all) {
+    by_type[l.type] = (by_type[l.type] ?? 0) + 1;
+    for (const tag of l.tags) by_tag[tag] = (by_tag[tag] ?? 0) + 1;
+  }
+  return { total: all.length, by_type, by_tag };
+}
+function titleWords(title) {
+  return new Set(
+    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
+  );
+}
+function titleSimilarity(a, b) {
+  const wa = titleWords(a);
+  const wb = titleWords(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let hits = 0;
+  for (const w of wa) if (wb.has(w)) hits += 1;
+  return hits / (wa.size + wb.size - hits);
+}
+var NEAR_DUPLICATE_THRESHOLD = 0.5;
+function findNearDuplicate(memoryDir, title) {
+  const slug = slugify(title);
+  let best = null;
+  for (const l of readAllLessons(memoryDir)) {
+    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
+    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
+      best = { lesson: l, score };
+    }
+  }
+  return best?.lesson ?? null;
+}
+var STALE_AFTER_DAYS = 180;
+function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
+  const all = readAllLessons(memoryDir);
+  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
+  const duplicates = [];
+  for (let i = 0; i < all.length; i += 1) {
+    for (let j = i + 1; j < all.length; j += 1) {
+      if (titleSimilarity(all[i].title, all[j].title) >= NEAR_DUPLICATE_THRESHOLD) {
+        duplicates.push([all[i], all[j]]);
+      }
+    }
+  }
+  return { stale, duplicates };
+}
+function deleteLesson(memoryDir, slug) {
+  const lesson = readAllLessons(memoryDir).find((l) => l.slug === slug);
+  if (!lesson) return null;
+  const path = join(memoryDir, `${lesson.slug}.md`);
+  unlinkSync(path);
+  removeIndexLine(memoryDir, lesson.slug);
+  return { path };
+}
+function removeIndexLine(memoryDir, slug) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  if (!existsSync(indexPath)) return;
+  const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
+  writeFileSync(indexPath, kept.join("\n"));
+}
+
+// src/tools/dashboard.ts
+var SECTION_ORDER = [
+  "project",
+  "kanban",
+  "artifacts",
+  "adr",
+  "lessons",
+  "usage",
+  "commands"
+];
+var DashboardInput = external_exports.object({
+  section: external_exports.string().optional().describe(`Narrow the text report to one section: ${SECTION_ORDER.join(", ")}.`)
+});
+function buildDashboardTool(env, version2) {
+  return defineTool({
+    name: "dashboard",
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    inputSchema: DashboardInput,
+    handler: (input) => {
+      const loaded = loadConfig(env.configPath, env.projectDir);
+      return Promise.resolve(renderDashboard(env, loaded.config, loaded.warning, version2, input));
+    }
+  });
+}
+function renderDashboard(env, config2, configWarning, version2, input) {
+  const kanban = kanbanCounts(env, config2);
+  const git2 = gitState(env.projectDir);
+  const verification = verificationFreshness(env.projectDir);
+  const artifacts = { ...artifactCounts(env), verification };
+  const security = {
+    reports: artifacts.audits,
+    newest_age_days: newestAgeDays(join(env.projectDir, ".marvin", "security"))
+  };
+  const refactor = refactorInventory(env.projectDir);
+  const lessons = lessonsStats(env.memoryDir);
+  const adrDir = resolveAdrDir(env.projectDir, config2.adr);
+  const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
+  const usage = readUsageSummary(env.projectDir);
+  const groups = commandGroups();
+  const sections = {
+    project: [
+      "## Project",
+      `- Project: \`${env.projectDir}\``,
+      `- Config: \`${env.configPath}\`${existsSync(env.configPath) ? "" : " _(not created yet)_"}`,
+      `- Base branch: \`${config2.base_branch}\``,
+      `- git: ${git2.has_git ? "\u2713" : "\u2717"} \xB7 gh: ${git2.has_gh ? "\u2713" : "\u2717"} \xB7 branch: \`${git2.branch ?? "(not in a git repo)"}\``,
+      ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : []
+    ],
+    kanban: [
+      "## Kanban",
+      ...orderedStatuses(config2).map((s) => {
+        const roleNote = s.key === s.role ? "" : ` (${s.role})`;
+        return `- ${s.key}${roleNote}: ${kanban.counts[s.key] ?? 0}`;
+      }),
+      ...kanban.malformed > 0 ? [`- \u26A0 malformed files: ${kanban.malformed}`] : []
+    ],
+    artifacts: [
+      "## Artifacts",
+      `- Specs: ${artifacts.specs} \xB7 \`.marvin/task/\``,
+      `- Verification: ${verification.exists ? `\`verification.md\` ${days(verification.age_days ?? 0)} old` : "none yet"}`,
+      `- Security reports: ${security.reports} \xB7 \`.marvin/security/\`${security.newest_age_days !== null ? ` (newest ${days(security.newest_age_days)} old)` : ""}`,
+      `- Refactor: ${refactor.audits} audit \xB7 ${refactor.smells} smells \xB7 ${refactor.plans} plan register(s) \xB7 \`.marvin/refactor/\``,
+      `- Handoffs: ${artifacts.handoffs} \xB7 \`.marvin/handoff/\``
+    ],
+    adr: [
+      "## Decisions (ADR)",
+      `- Corpus: \`${adr.dir}\` (${adrDir.source}) \xB7 ${adr.total} record(s)`,
+      ...adr.total > 0 ? [`- ${nonZero(adr.counts).join(" \xB7 ")}`] : ["- _No records yet \u2014 `/marvin:adr` drafts the first one._"],
+      ...adr.malformed > 0 ? [`- \u26A0 malformed: ${adr.malformed} file(s)`] : []
+    ],
+    lessons: [
+      "## Lessons",
+      lessons.total > 0 ? `- ${lessons.total} lesson(s) \u2014 ${nonZero(lessons.by_type).join(" \xB7 ")}` : "- _No lessons captured yet in `.marvin/memory`._"
+    ],
+    usage: [
+      "## Usage",
+      ...usage === null ? [
+        "- _No usage log yet \u2014 the local `.marvin/usage/` events log arrives with usage telemetry (ADR-0030)._"
+      ] : renderUsage(usage)
+    ],
+    commands: [
+      "## Commands",
+      `- ${groups.reduce((n, g) => n + g.count, 0)} prompt(s): ${groups.map((g) => `${g.group} ${g.count}`).join(" \xB7 ")}`,
+      "- Full index: `/marvin:help`"
+    ]
+  };
+  const want = input.section?.trim().toLowerCase();
+  const known = !!want && SECTION_ORDER.includes(want);
+  const lines = [`# marvin \xB7 toolbox dashboard \xB7 v${version2}`, ""];
+  if (want && !known) {
+    lines.push(
+      `_Unknown section \`${want}\` \u2014 showing all. Valid: ${SECTION_ORDER.join(", ")}._`,
+      ""
+    );
+  }
+  for (const name of SECTION_ORDER) {
+    if (known && name !== want) continue;
+    lines.push(...sections[name], "");
+  }
+  const state = {
+    version: version2,
+    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    config: {
+      base_branch: config2.base_branch,
+      tracker_url_template: config2.tracker_url_template,
+      ...config2.gates ? { gates: config2.gates } : {},
+      statuses: config2.statuses
+    },
+    kanban_counts: kanban.counts,
+    kanban_role_counts: kanban.roleCounts,
+    git: git2,
+    artifacts,
+    command_groups: groups,
+    adr,
+    security,
+    refactor,
+    lessons,
+    ...usage ? { usage } : {}
+  };
   return {
-    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
-    handoffs: countMarkdown(join(marvin, "handoff")),
-    audits: countMarkdown(join(marvin, "security")),
-    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+    content: [{ type: "text", text: lines.join("\n").trimEnd() }],
+    structuredContent: state
   };
 }
-function countMarkdown(dir, exclude = []) {
-  if (!existsSync(dir)) return 0;
+var DAY_MS = 24 * 60 * 60 * 1e3;
+function verificationFreshness(projectDir) {
+  const path = join(projectDir, ".marvin", "task", "verification.md");
+  const age = fileAgeDays(path);
+  return age === null ? { exists: false, age_days: null } : { exists: true, age_days: age };
+}
+function fileAgeDays(path) {
   try {
-    return readdirSync(dir).filter((f) => f.endsWith(".md") && !exclude.includes(f)).length;
+    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS));
   } catch {
-    return 0;
+    return null;
   }
+}
+function newestAgeDays(dir) {
+  if (!existsSync(dir)) return null;
+  let newest = null;
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".md")) continue;
+      const mtime = statSync(join(dir, f)).mtimeMs;
+      if (newest === null || mtime > newest) newest = mtime;
+    }
+  } catch {
+    return null;
+  }
+  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS));
+}
+function refactorInventory(projectDir) {
+  const dir = join(projectDir, ".marvin", "refactor");
+  const inv = { audits: 0, smells: 0, plans: 0 };
+  if (!existsSync(dir)) return inv;
+  try {
+    for (const f of readdirSync(dir)) {
+      if (/^\d+-audit-.*\.md$/.test(f)) inv.audits += 1;
+      else if (/^\d+-smells-.*\.md$/.test(f)) inv.smells += 1;
+      else if (/^\d+-plan-.*\.md$/.test(f)) inv.plans += 1;
+    }
+  } catch {
+  }
+  return inv;
+}
+function adrSummary(rel, corpus) {
+  const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
+  for (const r of corpus.records) counts[r.status] += 1;
+  return {
+    dir: rel,
+    total: corpus.records.length,
+    counts,
+    malformed: corpus.malformed.length
+  };
+}
+var TOP_COMMANDS = 5;
+function readUsageSummary(projectDir) {
+  const path = join(projectDir, ".marvin", "usage", "events.jsonl");
+  if (!existsSync(path)) return null;
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  let events = 0;
+  let from = null;
+  let to = null;
+  const tally = /* @__PURE__ */ new Map();
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== "object" || parsed === null) continue;
+    const { ts, kind, name } = parsed;
+    if (typeof ts !== "string" || ts === "" || typeof name !== "string" || name === "") continue;
+    if (kind !== "prompt" && kind !== "tool") continue;
+    events += 1;
+    if (from === null || ts < from) from = ts;
+    if (to === null || ts > to) to = ts;
+    const key = `${kind}:${name}`;
+    const entry = tally.get(key);
+    if (entry) entry.count += 1;
+    else tally.set(key, { kind, name, count: 1 });
+  }
+  const top = [...tally.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, TOP_COMMANDS);
+  return { events, window: from !== null && to !== null ? { from, to } : null, top };
+}
+function renderUsage(usage) {
+  if (usage.events === 0) return ["- Usage log present but empty \u2014 0 event(s)."];
+  const window = usage.window ? ` between ${usage.window.from.slice(0, 10)} and ${usage.window.to.slice(0, 10)}` : "";
+  const lines = [`- ${usage.events} event(s)${window}`];
+  if (usage.top.length > 0) {
+    lines.push(
+      `- Top: ${usage.top.map((t) => `\`${t.name}\` (${t.kind}) \xD7${t.count}`).join(" \xB7 ")}`
+    );
+  }
+  return lines;
+}
+function nonZero(counts) {
+  return Object.entries(counts).filter(([, n]) => n > 0).map(([k, n]) => `${k}: ${n}`);
+}
+function days(n) {
+  return `${n} day(s)`;
 }
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
@@ -32331,150 +32725,6 @@ function fail(id, label, detail) {
 function warn(id, label, detail) {
   return { id, label, status: "warn", detail };
 }
-var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
-var INDEX_FILE = "MEMORY.md";
-var INDEX_HEADER = [
-  "# Marvin lessons",
-  "",
-  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
-  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
-  "in the linked file. Recalled at task intake.",
-  ""
-].join("\n");
-function uniqueSlug(memoryDir, base) {
-  const root = base || "lesson";
-  let slug = root;
-  let n = 2;
-  while (existsSync(join(memoryDir, `${slug}.md`))) {
-    slug = `${root}-${n}`;
-    n += 1;
-  }
-  return slug;
-}
-function addLesson(memoryDir, input) {
-  mkdirSync(memoryDir, { recursive: true });
-  const slug = uniqueSlug(memoryDir, slugify(input.title));
-  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
-  const frontmatter = {
-    id: slug,
-    type: input.type,
-    title: input.title,
-    created,
-    tags: tags.length ? tags.join(", ") : void 0,
-    source: input.source?.trim() || "manual"
-  };
-  const body = input.body.trim() ? `
-${input.body.trim()}
-` : "\n";
-  const path = join(memoryDir, `${slug}.md`);
-  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
-  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
-  return { slug, path };
-}
-function appendIndex(memoryDir, entry) {
-  const indexPath = join(memoryDir, INDEX_FILE);
-  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
-  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
-  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
-  if (!content.endsWith("\n")) content += "\n";
-  writeFileSync(indexPath, `${content}${line}
-`);
-}
-function readAllLessons(memoryDir) {
-  if (!existsSync(memoryDir)) return [];
-  const lessons = [];
-  for (const filename of readdirSync(memoryDir).sort()) {
-    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
-    const raw = readFileSync(join(memoryDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    if (!frontmatter.title) continue;
-    lessons.push({
-      slug: filename.replace(/\.md$/, ""),
-      type: frontmatter.type ?? "process",
-      title: frontmatter.title,
-      created: frontmatter.created ?? "",
-      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-      source: frontmatter.source ?? "manual",
-      body: body.trim()
-    });
-  }
-  return lessons;
-}
-function searchLessons(memoryDir, input) {
-  const all = readAllLessons(memoryDir);
-  const terms = (input.query ?? "").toLowerCase().split(/\s+/).map((t) => t.trim()).filter(Boolean);
-  const scored = all.filter((l) => !input.type || l.type === input.type).map((l) => {
-    const haystack = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
-    const score = terms.length === 0 ? 1 : terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0);
-    return { lesson: l, score };
-  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score || b.lesson.created.localeCompare(a.lesson.created));
-  return scored.slice(0, input.limit ?? 10).map((s) => s.lesson);
-}
-function lessonsStats(memoryDir) {
-  const by_type = Object.fromEntries(LESSON_TYPES.map((t) => [t, 0]));
-  const by_tag = {};
-  const all = readAllLessons(memoryDir);
-  for (const l of all) {
-    by_type[l.type] = (by_type[l.type] ?? 0) + 1;
-    for (const tag of l.tags) by_tag[tag] = (by_tag[tag] ?? 0) + 1;
-  }
-  return { total: all.length, by_type, by_tag };
-}
-function titleWords(title) {
-  return new Set(
-    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
-  );
-}
-function titleSimilarity(a, b) {
-  const wa = titleWords(a);
-  const wb = titleWords(b);
-  if (wa.size === 0 || wb.size === 0) return 0;
-  let hits = 0;
-  for (const w of wa) if (wb.has(w)) hits += 1;
-  return hits / (wa.size + wb.size - hits);
-}
-var NEAR_DUPLICATE_THRESHOLD = 0.5;
-function findNearDuplicate(memoryDir, title) {
-  const slug = slugify(title);
-  let best = null;
-  for (const l of readAllLessons(memoryDir)) {
-    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
-    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
-      best = { lesson: l, score };
-    }
-  }
-  return best?.lesson ?? null;
-}
-var STALE_AFTER_DAYS = 180;
-function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
-  const all = readAllLessons(memoryDir);
-  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-  const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
-  const duplicates = [];
-  for (let i = 0; i < all.length; i += 1) {
-    for (let j = i + 1; j < all.length; j += 1) {
-      if (titleSimilarity(all[i].title, all[j].title) >= NEAR_DUPLICATE_THRESHOLD) {
-        duplicates.push([all[i], all[j]]);
-      }
-    }
-  }
-  return { stale, duplicates };
-}
-function deleteLesson(memoryDir, slug) {
-  const lesson = readAllLessons(memoryDir).find((l) => l.slug === slug);
-  if (!lesson) return null;
-  const path = join(memoryDir, `${lesson.slug}.md`);
-  unlinkSync(path);
-  removeIndexLine(memoryDir, lesson.slug);
-  return { path };
-}
-function removeIndexLine(memoryDir, slug) {
-  const indexPath = join(memoryDir, INDEX_FILE);
-  if (!existsSync(indexPath)) return;
-  const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
-  writeFileSync(indexPath, kept.join("\n"));
-}
 
 // src/tools/lessons.ts
 var LessonsInput = external_exports.object({
@@ -32947,7 +33197,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.11.0";
+var VERSION = "0.12.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
@@ -32960,6 +33210,7 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env),
         buildHelpTool(env, VERSION),
+        buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
         buildLessonsTool(server, env),
