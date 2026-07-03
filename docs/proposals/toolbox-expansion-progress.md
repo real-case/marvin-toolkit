@@ -18,7 +18,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 3  | Lessons v2                   | Done | `feat/toolbox-wp3-lessons-v2` | [#70](https://github.com/real-case/marvin-toolkit/pull/70) | ADR-0028 | 0.8.0 | landed second — re-bumped 0.7.0 → 0.8.0 at rebase per the parallel rule; registry 44 → 45 |
 | 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
 | 5  | Refactoring plan and apply   | Done | `feat/toolbox-wp5-refactor-plan-apply` | [#73](https://github.com/real-case/marvin-toolkit/pull/73) | — (implements ADR-0029) | 0.11.0 | landed second — re-bumped 0.10.0 → 0.11.0 at rebase (matches the serial target); registry recounted 47 → 53 |
-| 6  | Dashboard                    | Not started | —      | —  | ADR-0030 | 0.12.0 | wants WP3 + WP5 landed |
+| 6  | Dashboard                    | Done | `feat/toolbox-wp6-dashboard` | [#74](https://github.com/real-case/marvin-toolkit/pull/74) | ADR-0030 | 0.12.0 | wave 3 solo off `dev`@0.11.0 — registry 53 → 54, tools 8 → 9 (serial target matches actual) |
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
 | 8  | Consolidation and release    | Not started | —      | —  | —   | —      | promotion `dev → main` with a **merge commit** + tag |
 
@@ -130,12 +130,12 @@ docs tables, and the version manifests:
 
 ## WP6 — Dashboard
 
-- [ ] ADR-0030 authored (dashboard + usage-log design) and linked from both README indexes
-- [ ] `tools/dashboard.ts`: kanban/config/git aggregation (reuse `help` computation), artifact inventories (`task` specs + `verification.md` freshness, `security` + age, `refactor`, `handoff`), `lessons stats`, ADR corpus by status
-- [ ] `DashboardState` contract extended (adr / security / refactor / usage sections)
-- [ ] Sectioned terminal text renderer; `structuredContent` alongside; zero-state degradation on fresh projects
-- [ ] `dashboard` inline prompt (53 → 54)
-- [ ] Tests: aggregation over fixtures, e2e, empty-project case; version 0.12.0; `dist/` rebuilt
+- [x] ADR-0030 authored (dashboard + usage-log design, incl. the WP7 log contract and rejected alternatives) and linked from both README indexes
+- [x] `tools/dashboard.ts`: kanban/config/git aggregation (the `help` computation factored into a shared `lib/state.ts`, not copy-pasted), artifact inventories (`task` specs + `verification.md` freshness, `security` + newest age, `refactor` by kind, `handoff`), `lessons stats`, ADR corpus by status (host-adaptive dir resolution honored)
+- [x] `DashboardState` contract extended (adr / security / refactor / lessons / usage sections + `artifacts.verification`) — all optional, `help`'s narrower payload keeps conforming
+- [x] Sectioned terminal text renderer (+ optional `section` filter); `structuredContent` alongside (always full); zero-state degradation on fresh projects
+- [x] `dashboard` inline prompt (53 → 54; smoke canonical list + required tools updated)
+- [x] Tests: 5 e2e over the stdio driver (populated / zero-state / partial / section filter, malformed usage lines skipped, payload validated against the shared contract) + 6 contract tests in the shared suite; version 0.12.0; `dist/` rebuilt
 
 ## WP7 — Usage telemetry
 
@@ -156,6 +156,26 @@ docs tables, and the version manifests:
 
 ## Log
 
+- **2026-07-03** — **WP6 done** (wave 3 solo, PR [#74](https://github.com/real-case/marvin-toolkit/pull/74),
+  `feat/toolbox-wp6-dashboard` off `dev`@0.11.0 — serial and actual targets coincide: 0.12.0,
+  registry 53 → **54**, tools 8 → **9**). ADR-0030 authored first, recording **both** halves of D4:
+  the dashboard (this WP) and the WP7 usage-log contract (`.marvin/usage/events.jsonl`, one JSONL
+  event `ts`/`kind`/`name` per prompt-get/tool-call via a `runPackServer` middleware hook;
+  self-ignoring dir, size cap + rotation, `usage.enabled` kill-switch, fail-open logger;
+  alternatives recorded: committed log rejected for merge churn, global `~/.marvin` rejected
+  because dashboards read per-project state). Shipped: the `dashboard` MCP tool + `/marvin:dashboard`
+  inline prompt — sectioned whole-toolbox report (project/config/git, kanban counters, artifact
+  inventories with freshness, refactor registers by kind, lessons stats, ADR corpus by status via
+  the WP1 parser, defensively-parsed usage summary ahead of WP7's writer) with the extended
+  `DashboardState` as `structuredContent` (new optional adr/security/refactor/lessons/usage
+  sections + `artifacts.verification` — backward compatible, closing the ADR-0024 stage-1 data
+  layer) and zero-state degradation. The `help` computation moved to a shared `lib/state.ts`;
+  en route fixed the registry-group drift left by WP2/WP4 (`adr-*`/`refactor-*` now group as
+  themselves instead of *core*, the bare `adr` singleton stays core — groups now match the
+  documented seven, 13/6/4/5/10/4/12). Gates green: build, tests 191/191 serialized (27 shared +
+  164 server; the default parallel run flaked 1 pre-existing stdio e2e timeout per run — different
+  test each time, each file green in isolation; the flaky-infra hardening runs in a separate
+  session), lint, lint:manifests, verify-dist, lint:docs, smoke (54 prompts / 9 tools).
 - **2026-07-03** — **WP5 done** (wave 2, PR [#73](https://github.com/real-case/marvin-toolkit/pull/73),
   `feat/toolbox-wp5-refactor-plan-apply` off `dev`@0.9.0). The `refactor-*` family completes
   against ADR-0029 (authored in WP4 — no new ADR this WP). Shipped: `refactor-plan`
