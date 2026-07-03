@@ -20,7 +20,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 5  | Refactoring plan and apply   | Done | `feat/toolbox-wp5-refactor-plan-apply` | [#73](https://github.com/real-case/marvin-toolkit/pull/73) | — (implements ADR-0029) | 0.11.0 | landed second — re-bumped 0.10.0 → 0.11.0 at rebase (matches the serial target); registry recounted 47 → 53 |
 | 6  | Dashboard                    | Done | `feat/toolbox-wp6-dashboard` | [#74](https://github.com/real-case/marvin-toolkit/pull/74) | ADR-0030 | 0.12.0 | wave 3 solo off `dev`@0.11.0 — registry 53 → 54, tools 8 → 9 (serial target matches actual) |
 | 7  | Usage telemetry              | Done | `feat/toolbox-wp7-usage-telemetry` | [#75](https://github.com/real-case/marvin-toolkit/pull/75) | — (implements ADR-0030) | 0.13.0 | wave 4 solo off `dev`@0.12.0 — middleware + wiring only, no new prompt/tool (registry stays 54/9); serial and actual targets coincide |
-| 8  | Consolidation and release    | Docs done; release held | `docs/toolbox-wp8-consolidation` | [#PENDING](https://github.com/real-case/marvin-toolkit/pull/PENDING) | — | 0.13.0 (no bump) | docs-consolidation sweep done in this PR; **the release (promotion `dev → main` with a merge commit + `v0.13.0` tag + GitHub Release) is held for the maintainer and is NOT part of this PR** |
+| 8  | Consolidation and release    | Docs done; release held | `docs/toolbox-wp8-consolidation` | [#76](https://github.com/real-case/marvin-toolkit/pull/76) | — | 0.13.0 (no bump) | docs-consolidation sweep done in this PR; **the release (promotion `dev → main` with a merge commit + `v0.13.0` tag + GitHub Release) is held for the maintainer and is NOT part of this PR** |
 
 _Version values are serial-order targets; under [parallel execution](#parallel-execution)
 the actual version is assigned at landing._
@@ -157,7 +157,7 @@ docs tables, and the version manifests:
 ## Log
 
 - **2026-07-03** — **WP8 docs consolidation done** (`docs/toolbox-wp8-consolidation`,
-  PR [#PENDING](https://github.com/real-case/marvin-toolkit/pull/PENDING); **docs-only, no
+  PR [#76](https://github.com/real-case/marvin-toolkit/pull/76); **docs-only, no
   version bump — plugin stays 0.13.0**). The toolbox now reads as one product across every
   human-facing doc. Ground truth verified by inspection against the live registry (`mcp-call
   --list` + `prompts/index.ts` + `ls agents/`): **54 prompts / 9 tools / 10 agents**, groups
