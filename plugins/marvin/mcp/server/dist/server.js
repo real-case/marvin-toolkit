@@ -32947,7 +32947,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.10.0";
+var VERSION = "0.11.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
