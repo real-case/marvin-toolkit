@@ -42,10 +42,14 @@ This bug class surfaced three times: `sec-scan` (delegating to sibling scanners)
 2. **Prefer the pattern that fits the resource** (the path reference is the floor, not the goal):
    - **Sibling skill** → invoke it by command (`/marvin:<skill>`), name-resolved through every door;
      keep `(see skills/<skill>/SKILL.md)` only as a pointer. (`sec-scan`, alpha.14.)
-   - **A skill's own small scaffolding** (a fill-in template) → inline it into `SKILL.md`; the skill
-     stays self-contained and the floor never matters. (`task-start` templates, alpha.15.)
-   - **Bulky shared reference data** (read by the skill *and* its command wrapper) → reference it by
-     `skills/...` path and rely on rule 1. (`sec-compliance` ASVS checklist, alpha.16.)
+   - **A skill's own small scaffolding** (a short fill-in template) → inline it into `SKILL.md`; the
+     skill stays self-contained and the floor never matters. Applies only while the template is
+     genuinely small — once it isn't, it becomes bulky data (next rule).
+   - **Bulky reference data or scaffolding** — read by the skill (and sometimes its command wrapper),
+     *or* large enough that inlining blows the ~500-line skill-body budget (CTX-01) → reference it by
+     `skills/...` path and rely on rule 1. (`sec-compliance` ASVS checklist, alpha.16; `task-start`'s
+     two ~130-line spec templates — inlined at alpha.15, extracted to `skills/task-start/references/`
+     on 2026-07-03 once they pushed the body to 667 lines, PR #77.)
 
 ## Consequences
 
