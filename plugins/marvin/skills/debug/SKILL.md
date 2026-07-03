@@ -1,6 +1,6 @@
 ---
 name: debug
-description: Systematic root-cause debugging — hypothesis-driven analysis, evidence gathering, and minimal reproductions instead of guessing. Use whenever the user reports a bug, error, unexpected behavior, test failure, crash, or performance issue, or says something "doesn't work", "broke", "stopped working", "regression", "flaky". Also triggers on pasted stack traces, error messages, log snippets, or when the user asks "why is this happening?", "what's wrong?", "marvin debug this", or "help me debug". Applies to any language, framework, or runtime.
+description: Systematic root-cause debugging — hypothesis-driven analysis, evidence gathering, and minimal reproductions instead of guessing. Use whenever the user reports a bug, error, unexpected behavior, test failure, crash, an exception or thrown error, or performance issue, or says something "doesn't work", "broke", "stopped working", "regression", "flaky". Also triggers on pasted stack traces, error messages, log snippets, or when the user asks "why is this happening?", "why does this throw?", "what's wrong?", "marvin debug this", or "help me debug" — including "walk me through why this throws" when the user wants the cause found or the failure fixed. (If they only want to understand how existing logic behaves and are explicitly not asking for a fix, that is explain, not debug.) Applies to any language, framework, or runtime.
 ---
 
 # Debug

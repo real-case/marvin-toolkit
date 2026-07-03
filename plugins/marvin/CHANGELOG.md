@@ -50,6 +50,17 @@ and timestamps only — no arguments, no file contents, no PII. To disable, set
 `/marvin:kanban-config` or by hand); logging stops immediately, no restart
 needed.
 
+### Fixed
+
+- **`debug` / `explain` trigger boundary** — the two skills overlapped on the
+  phrase "walk me through": a real bug ("this throws and I don't understand
+  why — walk me through") could be auto-selected by `explain` instead of
+  `debug`. Both descriptions now key on **intent** rather than that phrase —
+  `debug` owns finding or fixing the cause of a failure (even when phrased as a
+  walk-through), `explain` owns understanding how code behaves (including code
+  that throws) when no fix is wanted and defers failures to `debug`. Surfaced
+  and verified by the Tier-B triggering harness (`evals/trigger/`).
+
 ## [0.12.0] — 2026-07-03
 
 The toolbox dashboard (toolbox-expansion WP6, ADR-0030): one deterministic
