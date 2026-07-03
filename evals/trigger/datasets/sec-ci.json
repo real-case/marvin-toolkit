@@ -1,0 +1,219 @@
+{
+  "skill": "sec-ci",
+  "target": "sec-ci",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. Negatives are near-misses that share CI/security vocabulary but belong to a sibling (sec-iac, sec-secrets, sec-deps, sec-gate, sec-scan) or a plain debug/config action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "can you audit our GitHub Actions workflows for security issues?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "check the CI pipeline security before we give the runner deploy creds",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "our third-party actions aren't SHA-pinned — review .github/workflows/ for supply chain risk",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "harden our workflows, I'm worried about pull_request_target leaking secrets to fork PRs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "the GITHUB_TOKEN in ci.yml has write-all, can you check permission scoping across all our workflows",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "manager wants a SLSA / supply-chain review of the build pipeline before the release",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "we're migrating from Jenkins to GitLab CI — audit the pipeline for hardcoded credentials and unsafe runners",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "review .circleci/config.yml — are the orbs pinned and are contexts scoped properly?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "before I enable this new deploy workflow, sanity-check it for cache poisoning and artifact tampering",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "audit the pipeline — some actions use @main and I think a couple echo secrets into the logs",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "our Terraform gives the EC2 role s3:* — review the IAM for over-permissioning",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC/IAM review → sec-iac, not CI pipeline config"
+    },
+    {
+      "id": "neg-2",
+      "text": "scan the whole git history for leaked API keys and tokens we may have committed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection across code+history → sec-secrets"
+    },
+    {
+      "id": "neg-3",
+      "text": "the CI build started failing after the last merge — help me figure out why the tests break",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI-related but a broken build → debug, not a security audit"
+    },
+    {
+      "id": "neg-4",
+      "text": "audit package.json and package-lock for vulnerable dependencies and typosquats",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency CVE/license audit → sec-deps"
+    },
+    {
+      "id": "neg-5",
+      "text": "review our Dockerfile — it runs as root and the base image looks stale",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "container/IaC hardening → sec-iac"
+    },
+    {
+      "id": "neg-6",
+      "text": "quick security check on my staged diff before I commit",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "fast diff-scoped pre-commit gate → sec-gate"
+    },
+    {
+      "id": "neg-7",
+      "text": "explain how our release workflow decides which environment to deploy to",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding workflow logic → explain, not a security audit"
+    },
+    {
+      "id": "neg-8",
+      "text": "full OWASP Top 10 security audit of the whole service before we ship to prod",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive whole-codebase audit → sec-scan"
+    },
+    {
+      "id": "neg-9",
+      "text": "add a caching step to speed up our GitHub Actions build",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI feature work, not a security review — plain edit task"
+    },
+    {
+      "id": "neg-10",
+      "text": "the kubernetes manifests expose the dashboard on a LoadBalancer with no auth — review that",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "K8s manifest exposure → sec-iac"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "review our GitHub Actions — I think a workflow prints a secret into the build log and the token is write-all",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-ci",
+      "mock_rate": 1,
+      "note": "mentions secrets but scoped to CI pipeline handling → must beat sec-secrets"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the deploy workflow builds a Docker image and pushes it — audit the pipeline for artifact provenance and unpinned actions",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-ci",
+      "mock_rate": 1,
+      "note": "Docker appears but the target is the CI/CD pipeline itself → must beat sec-iac"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "the pipeline deploys Terraform — review the infra it provisions for exposed endpoints and weak encryption",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-iac",
+      "mock_rate": 0,
+      "note": "target is the provisioned infrastructure, not the pipeline config → sec-iac wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "did we ever commit an AWS key in a workflow file? scan the repo and history for leaked credentials",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-secrets",
+      "mock_rate": 0,
+      "note": "detecting leaked secrets across code+history is sec-secrets' job even though a workflow file is mentioned"
+    }
+  ]
+}

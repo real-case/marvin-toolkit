@@ -1,0 +1,202 @@
+{
+  "skill": "adr-coverage",
+  "target": "adr-coverage",
+  "note": "Gap analysis: recorded ADRs vs decisions actually visible in the stack, ranked by blast radius. Read-only. Nearest siblings: adr-audit (corpus-internal consistency lint), adr (draft one record), adr-review (review one proposed record), docs-search (retrieve existing docs).",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "what architectural decisions in this repo aren't written up as ADRs yet?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "do an ADR coverage analysis — I want to know where our decision docs are thin vs the actual stack",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "we picked postgres, redis, a whole build pipeline... which of those big choices have no decision record? rank them by how much they'd hurt if undocumented",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "onboarding a new hire next week and the docs feel way thinner than the codebase. what decisions are we missing ADRs for?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "decision gap analysis please, focus on the infra/terraform side",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "compare the decisions on record in docs/adr against what's actually going on in the stack and tell me what's undocumented",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "which ADRs are we missing? give me a ranked candidate list I can feed into /marvin:adr one by one",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "my manager asked me to audit how well our architecture docs cover the real system — I think there's a lot of undocumented tech choices",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "the storage layer has a bunch of implicit choices nobody wrote down — surface the significant undocumented decisions there and prioritize them",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "audit the ADR corpus for dangling references, numbering holes, and broken supersede pairs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "corpus-internal consistency lint → adr-audit, not stack-vs-record gap analysis"
+    },
+    {
+      "id": "neg-2",
+      "text": "are the decision records consistent? check for placeholder residue and stale index entries",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "internal ADR health check → adr-audit"
+    },
+    {
+      "id": "neg-3",
+      "text": "write an ADR for the message-queue decision we just made",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "drafting one new record → adr"
+    },
+    {
+      "id": "neg-4",
+      "text": "review ADR 0031 before we ratify it — is it ready for acceptance?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "deep review of one proposed record → adr-review"
+    },
+    {
+      "id": "neg-5",
+      "text": "where is the caching strategy documented? point me to the relevant ADR or runbook",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "retrieve existing docs → docs-search, not find what's missing"
+    },
+    {
+      "id": "neg-6",
+      "text": "audit our dependencies for known CVEs and unmaintained packages",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency vuln audit → sec-deps; shares 'audit' but not about ADR gaps"
+    },
+    {
+      "id": "neg-7",
+      "text": "regenerate the architecture-decisions digest in CLAUDE.md from the accepted ADRs",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "project-memory sync → adr-sync"
+    },
+    {
+      "id": "neg-8",
+      "text": "explain why we chose event sourcing over CRUD in the orders service",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explain an existing design decision → explain, not gap analysis"
+    },
+    {
+      "id": "neg-9",
+      "text": "supersede ADR 0012 with the new caching decision and link them both ways",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "roll back an accepted record → adr-supersede"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "audit our architecture docs — I suspect a bunch of real decisions in the stack were never captured as ADRs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-coverage",
+      "mock_rate": 1,
+      "note": "shares 'audit' vocab with adr-audit, but the ask is stack-vs-record coverage of undocumented decisions → adr-coverage wins"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "check the decision records against the actual system and tell me which choices are missing docs, ranked by impact",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-coverage",
+      "mock_rate": 1,
+      "note": "must beat adr-audit — 'check the decision records' but the target is gap/coverage, not internal consistency"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "lint the ADR corpus for numbering duplicates, invalid statuses, and unparseable files",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 0,
+      "note": "internal-consistency lint is adr-audit's exact domain — must lose to adr-audit"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we just decided on gRPC for inter-service calls — document that decision as an ADR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr",
+      "mock_rate": 0,
+      "note": "drafting a specific record is adr's job — must lose to adr"
+    }
+  ]
+}

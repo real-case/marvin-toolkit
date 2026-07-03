@@ -1,0 +1,217 @@
+{
+  "skill": "debug",
+  "target": "debug",
+  "note": "Near-misses share debug's vocabulary (error, broke, failing, why) but route elsewhere: explain (understand working code), sec-fix (patch a known CVE), task-verify (just run the gates), pr-review (review a diff), or a plain shell/git op. mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "the login endpoint returns 500 for some users but not others, help me figure out why",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "TypeError: cannot read properties of undefined (reading 'id') at src/api/orders.ts:42 — what's going on here?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "test_checkout_flow started failing after I merged main, it was green yesterday. classic regression",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my manager asked me to find the root cause of the memory leak in the worker process before EOD",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "this webhook handler just stopped working, no idea what changed. can you debug it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "app crashes on startup with a segfault, here's the stack trace",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "the CI job is flaky — passes locally, fails ~1 in 5 on the runner. whats wrong?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "users report the dashboard shows stale numbers sometimes, cant reproduce it reliably. need a minimal repro",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "requests to /search take 8s under load but the query is fast in isolation — something's off, dig into it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "getting 'connection reset by peer' intermittently from the payments service, walk me through what could cause it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "explain how the retry backoff logic in src/lib/http.ts works",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding working code → explain, not a bug"
+    },
+    {
+      "id": "neg-2",
+      "text": "run the test suite and lint, is the project green?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "just run the gates → task-verify"
+    },
+    {
+      "id": "neg-3",
+      "text": "patch the SQL injection Semgrep flagged in the reports controller",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediate a known finding → sec-fix"
+    },
+    {
+      "id": "neg-4",
+      "text": "review my diff for bugs before I open the PR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "review a change → pr-review, not diagnose an observed failure"
+    },
+    {
+      "id": "neg-5",
+      "text": "write a unit test that covers the empty-cart edge case",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a test, no failure to diagnose → implementation task"
+    },
+    {
+      "id": "neg-6",
+      "text": "why did we choose event sourcing over CRUD for the ledger?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "design rationale → explain"
+    },
+    {
+      "id": "neg-7",
+      "text": "find which commit introduced the failing behavior with git bisect",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "user wants the bisect git op run, not hypothesis-driven analysis"
+    },
+    {
+      "id": "neg-8",
+      "text": "address the review comments on PR #204 and reply to each thread",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "apply PR feedback → task-fix-pr"
+    },
+    {
+      "id": "neg-9",
+      "text": "audit the dependencies for known CVEs and vulnerable versions",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "vulnerability audit → sec-deps"
+    },
+    {
+      "id": "neg-10",
+      "text": "our error rate looks high on the Grafana panel, tune the alert threshold config",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "monitoring config edit, no bug to root-cause"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "this function throws on empty input and I do not understand why — help me find the cause and fix it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 1,
+      "note": "root-causing a real failure → debug (vs explain, which only understands working logic)"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the auth middleware started rejecting valid tokens after the last deploy, figure out what broke",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 1,
+      "note": "touches auth but the task is diagnosing a regression, not a security review → beats sec-scan"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "Bandit flagged a hardcoded secret in config.py — remediate it and add a regression test",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-fix",
+      "mock_rate": 0,
+      "note": "known scanner finding to patch → more specific sibling sec-fix wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "tests are red — just run the full quality gates and tell me what's failing",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-verify",
+      "mock_rate": 0,
+      "note": "user wants the gate runner, not root-cause analysis → task-verify wins"
+    }
+  ]
+}

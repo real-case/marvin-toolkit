@@ -1,0 +1,217 @@
+{
+  "skill": "refactor-apply",
+  "target": "refactor-apply",
+  "note": "refactor-apply is the MUTATING step of the refactor-* family: it executes exactly one behaviour-preserving step from a plan or a named finding under hard verify-gate rails. Near-misses belong to the read-only find phase (refactor-audit / refactor-smells), the sequencing phase (refactor-plan), the feature/fix pipeline (task-implement), migration-plan, or plain verify/debug. mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "apply the refactoring plan",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "execute step 2 of the refactor plan under .marvin/refactor",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "apply F4 from 002-smells-api.md",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "do the next refactor step, keep it behaviour-preserving and green",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "run the next pending step from the newest plan, one step only",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "we've got the plan, start actually doing the extract-method step on the payment handler",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin refactor apply — take the first pending step and stop",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "carry out finding F7 from the audit register, rolling back if the gates go red",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "the plan's ready, go ahead and perform step 3 now",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "execute that dedup refactoring you planned, tests should stay green on both sides",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "make a refactoring plan from the findings in the smells report",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "sequencing, no code change → refactor-plan"
+    },
+    {
+      "id": "neg-2",
+      "text": "audit src/api for code smells and anti-patterns",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only find phase → refactor-smells"
+    },
+    {
+      "id": "neg-3",
+      "text": "where's the tech debt in this codebase? do a structural audit",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only whole-project find → refactor-audit"
+    },
+    {
+      "id": "neg-4",
+      "text": "implement the spec I just wrote for the new billing feature",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "feature work, not behaviour-preserving → task-implement"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan the migration from the old ORM to the new one, with rollback strategy",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "large migration planning → migration-plan"
+    },
+    {
+      "id": "neg-6",
+      "text": "run the quality gates and tell me if the project is green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "standalone gate run → task-verify/verify"
+    },
+    {
+      "id": "neg-7",
+      "text": "this refactor broke three tests, help me figure out why",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause on red is debug-forward, which this skill refuses → debug"
+    },
+    {
+      "id": "neg-8",
+      "text": "add a pin-down test for handlePayment so it's covered before we touch it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "writing characterization tests as a standalone ask → task-implement/plain test writing"
+    },
+    {
+      "id": "neg-9",
+      "text": "explain how the retry logic in this module works before I refactor it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code comprehension → explain"
+    },
+    {
+      "id": "neg-10",
+      "text": "commit the refactoring step I just finished",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "persisting the diff → commit"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "the plan is written — now go execute step 1",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-apply",
+      "mock_rate": 1,
+      "note": "shares 'plan' vocab with refactor-plan but the verb is execute/mutate → refactor-apply beats refactor-plan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "apply F3 from the audit register, verify green before and after",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-apply",
+      "mock_rate": 1,
+      "note": "mentions the audit register and verify but the action is to mutate one finding → must beat refactor-audit"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "sequence findings F1, F3 and F5 into an ordered refactoring plan with risk notes",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "planning/sequencing, no code change → must lose to refactor-plan"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "this is a big architectural change, plan the whole migration with steps and rollback",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "planning a large change → refactor-plan; refactor-apply only executes one already-planned step"
+    }
+  ]
+}

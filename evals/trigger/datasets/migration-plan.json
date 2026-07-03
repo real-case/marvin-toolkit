@@ -1,0 +1,134 @@
+{
+  "skill": "migration-plan",
+  "target": "migration-plan",
+  "disable_model_invocation": true,
+  "note": "migration-plan is a disable-model-invocation skill — human-run by design; it must NEVER auto-trigger from prose. This dataset is negative-assurance only: every entry is a near-miss in the migration / upgrade / large-refactor neighborhood where the correct behavior is to route to a sibling skill (refactor-audit / refactor-smells / refactor-plan / refactor-apply, debug, explain, docs-search, task-start, adr, sec-deps, changelog) or to a plain git/shell action — or to wait for an explicit /marvin:migration-plan invocation by the human. No positives, no competition entries. mock_rate is 0 on every query so --decider mock stays green.",
+  "queries": [
+    {
+      "id": "neg-1",
+      "text": "run the pending Rails db migrations against my local dev database",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "executing schema migrations is a plain shell/CLI action (rails db:migrate), not planning a migration"
+    },
+    {
+      "id": "neg-2",
+      "text": "explain how our current auth flow works before I think about replacing it with OAuth",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding existing code → explain, not producing a migration plan"
+    },
+    {
+      "id": "neg-3",
+      "text": "audit src/legacy/ for code smells and refactoring opportunities",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only code-health scan → refactor-smells / refactor-audit, not a phased migration plan"
+    },
+    {
+      "id": "neg-4",
+      "text": "the upgrade to React 19 broke our test suite — a bunch of useEffect hooks now fire twice, help me figure out why",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing breakage after an upgrade → debug, not planning the upgrade"
+    },
+    {
+      "id": "neg-5",
+      "text": "check package.json and requirements.txt for outdated deps with known CVEs before we upgrade",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "vulnerability/version audit of manifests → sec-deps, not a migration plan"
+    },
+    {
+      "id": "neg-6",
+      "text": "actually carry out step 3 of the plan — rename the UserService module and update all the imports",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "executing a planned refactor step → refactor-apply, not re-planning it"
+    },
+    {
+      "id": "neg-7",
+      "text": "where are our db schema migration conventions documented?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "finding existing docs → docs-search, not authoring a plan"
+    },
+    {
+      "id": "neg-8",
+      "text": "write an ADR capturing our decision to migrate from REST to gRPC",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "recording the decision rationale → adr, not the step-by-step migration plan"
+    },
+    {
+      "id": "neg-9",
+      "text": "my manager asked me to spec out the task of splitting the monorepo — can you start the task and produce the spec?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "producing an immutable task spec via the pipeline → task-start; migration-plan is a separate human-run planning surface"
+    },
+    {
+      "id": "neg-10",
+      "text": "generate a rollback SQL script that drops the columns the 0042 migration added",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "writing a concrete rollback script is a code-gen/shell task, not planning the migration; rollback strategy inside a plan is different"
+    },
+    {
+      "id": "neg-11",
+      "text": "walk me through what /marvin:migration-plan asks for before I run it on the Postgres-to-DynamoDB move",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "asks ABOUT the plan surface; the plan itself is an explicit human /marvin:migration-plan run, never auto-loaded from prose"
+    },
+    {
+      "id": "neg-12",
+      "text": "summarize what changed in the framework upgrade between v2.3 and v3.0 for the release notes",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release-note summary from git history → changelog, not a forward migration plan"
+    },
+    {
+      "id": "neg-13",
+      "text": "grep the codebase for every call site of the deprecated fetchLegacy() so I know the blast radius",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a one-shot usage grep is a plain shell action; migration-plan does impact analysis as part of a full human-invoked plan, not on an ad-hoc grep request"
+    },
+    {
+      "id": "neg-14",
+      "text": "break down the smells report into a sequenced set of refactor steps I can execute",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "turning a findings register into a step plan → refactor-plan (ADR-0029 rails), not the migration-plan surface"
+    }
+  ]
+}

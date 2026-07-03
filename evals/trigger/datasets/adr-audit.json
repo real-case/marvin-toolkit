@@ -1,0 +1,219 @@
+{
+  "skill": "adr-audit",
+  "target": "adr-audit",
+  "note": "Read-only consistency LINT of the whole ADR corpus (dangling refs, numbering holes, duplicate numbers, broken supersede pairs, placeholder residue, invalid statuses, stale index). Distinct from adr-coverage (what's UNDOCUMENTED vs the stack), adr-review (one proposed ADR), and adr (drafting). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "audit the ADRs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run an ADR health check before we cut the release",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "are our decision records consistent? feels like some references are dangling",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "lint the whole ADR corpus under docs/adr and tell me what's broken",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "check the ADRs for numbering holes and duplicate numbers",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "something's off with our supersede pairs — a couple ADRs say superseded but I can't find the successor. can you sweep the corpus?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "some of the ADRs still have those {placeholder} slots and weird statuses like 'draft' — find all of them",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "my manager wants a decision-records consistency report, is the ADR index stale?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "sanity-check every file in docs/adr — invalid statuses, unparseable records, broken cross-refs, the lot",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "do an ADR lint pass, we haven't checked them in months and I bet the numbering has gaps",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "what architecture decisions are we missing? compare the ADRs against our actual stack",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "gap analysis of undocumented decisions → adr-coverage"
+    },
+    {
+      "id": "neg-2",
+      "text": "review ADR 31 before we ratify it — is it ready?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "deep review of ONE proposed record → adr-review"
+    },
+    {
+      "id": "neg-3",
+      "text": "write an ADR for the switch to Postgres",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "drafting a new record → adr"
+    },
+    {
+      "id": "neg-4",
+      "text": "mark ADR 0018 as accepted, it's approved now",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ratification mutation → adr-accept"
+    },
+    {
+      "id": "neg-5",
+      "text": "supersede ADR 0007 with a new record and link them both ways",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "supersede mutation → adr-supersede"
+    },
+    {
+      "id": "neg-6",
+      "text": "regenerate the Architecture decisions digest in CLAUDE.md from the accepted ADRs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CLAUDE.md digest regen → adr-sync"
+    },
+    {
+      "id": "neg-7",
+      "text": "where's the ADR that explains why we went single-server? point me to it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "find/retrieve a doc → docs-search"
+    },
+    {
+      "id": "neg-8",
+      "text": "explain the reasoning in ADR-0029, walk me through the refactor family decision",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explain rationale of one record → explain"
+    },
+    {
+      "id": "neg-9",
+      "text": "run a full security audit of the codebase before prod",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "shares 'audit' but it's a security scan → sec-scan"
+    },
+    {
+      "id": "neg-10",
+      "text": "the ADR numbering is a mess — renumber 0012 and 0013 so there are no gaps",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "asks to PERFORM renumbering edits; audit is read-only and reports, doesn't renumber → manual edit / adr tool"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "are the ADRs internally consistent — dangling references, orphaned supersede links, that kind of thing?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 1,
+      "note": "internal-consistency lint, not stack-vs-docs gaps — must beat adr-coverage"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "before I ratify anything, sweep the whole corpus for broken records and placeholder residue",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 1,
+      "note": "corpus-wide lint despite 'ratify' vocab — must beat adr-review (which is one record)"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "which architecture decisions in our infra and CI are undocumented? rank them by blast radius",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-coverage",
+      "mock_rate": 0,
+      "note": "gap analysis of missing decisions vs the stack — must lose to adr-coverage"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "check whether ADR 0031 is ready to accept — sections filled, claims grounded, links resolve",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-review",
+      "mock_rate": 0,
+      "note": "single-record readiness review — must lose to adr-review"
+    }
+  ]
+}

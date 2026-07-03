@@ -1,0 +1,216 @@
+{
+  "skill": "pr-resolve",
+  "target": "pr-resolve",
+  "note": "Author-side of the review loop: fetch UNRESOLVED PR threads, apply minimal fixes, push, reply + resolve. Closest siblings: task-fix-pr (autonomous same-contract variant), pr-review (reviewer side), pr-create, pr-merge, commit. mock_rate encodes the IDEAL outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "resolve the PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "address the review comments on my PR and push the fixes",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "reviewer left a bunch of comments on #128 — apply them and mark the threads resolved",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "can you work through the unresolved review threads on my PR? fix each one and reply",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "my teammate requested changes on the PR, go apply the feedback and close out the threads",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "update the PR based on the review — the null-check comment and the rename they asked for",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin resolve PR 42, then reply to the reviewers with the commit sha",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "there are open review comments on my pull request, deal with them and resolve the threads",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "apply the PR feedback for the auth branch and push, some are nits some are real changes",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "the reviewer approved with a few requested changes — knock those out and mark them done",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "review my PR and leave inline comments on the diff",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reviewer side → pr-review, not resolving feedback"
+    },
+    {
+      "id": "neg-2",
+      "text": "merge PR #42 and switch back to dev",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "landing the PR → pr-merge"
+    },
+    {
+      "id": "neg-3",
+      "text": "open a pull request for my feature branch",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "creating the PR → pr-create"
+    },
+    {
+      "id": "neg-4",
+      "text": "there's a merge conflict in src/api/handler.ts between my branch and dev, help me resolve it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'resolve' means conflict resolution, a plain git op — not review feedback"
+    },
+    {
+      "id": "neg-5",
+      "text": "the reviewer's comment says this query is an N+1 but I don't get why — explain what they mean",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding a comment → explain, no code change requested"
+    },
+    {
+      "id": "neg-6",
+      "text": "reviewer flagged a race condition in the worker pool — help me figure out if it's real",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause investigation → debug, not applying feedback"
+    },
+    {
+      "id": "neg-7",
+      "text": "commit the changes I already made from the review",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "just committing existing edits → commit; no thread fetch/reply/resolve"
+    },
+    {
+      "id": "neg-8",
+      "text": "reply to the reviewer that this contradicts the spec and I won't change it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a single manual GitHub reply, not the full apply-push-resolve cycle"
+    },
+    {
+      "id": "neg-9",
+      "text": "close PR #99 without merging, we're abandoning that approach",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain gh pr close, not resolving feedback"
+    },
+    {
+      "id": "neg-10",
+      "text": "resolve which commit introduced the failing test on the PR branch",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'resolve' as bisect/investigation → debug"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "review comments came in on my PR — apply them all inline, reply to each thread, and resolve them",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-resolve",
+      "mock_rate": 1,
+      "note": "shares 'review comments' vocab with pr-review but the action is the author applying + resolving feedback interactively"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "resolve the review feedback on PR #55 right here, walk me through each change before you apply it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-resolve",
+      "mock_rate": 1,
+      "note": "interactive inline path beats task-fix-pr's autonomous one-shot dispatch"
+    },
+    {
+      "id": "pos-ex1",
+      "text": "dispatch an agent to autonomously address all the PR review comments end-to-end and report back",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1,
+      "note": "addressing PR review comments is pr-resolve's core job (headless task-fix-pr is not auto-invocable)"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "review the pull request and post your feedback as inline GitHub comments",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-review",
+      "mock_rate": 0,
+      "note": "reviewer side (leaving comments) is pr-review; pr-resolve clears them"
+    }
+  ]
+}

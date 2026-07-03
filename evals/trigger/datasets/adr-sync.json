@@ -1,0 +1,107 @@
+{
+  "skill": "adr-sync",
+  "target": "adr-sync",
+  "disable_model_invocation": true,
+  "note": "adr-sync is a disable-model-invocation skill: it is human-run and must NEVER auto-trigger from prose (the user runs /marvin:adr-sync deliberately, sees the diff, and confirms before CLAUDE.md is written). This dataset is negative-assurance only — every query lives in or near the ADR-digest / CLAUDE.md / decision-corpus domain, yet the correct behavior is to NOT auto-load adr-sync. The right answer is always a sibling skill or an explicit human invocation. No positives, no competition entries. mock_rate is 0 throughout so --decider mock stays green on the ideal (no-trigger) outcome.",
+  "queries": [
+    {
+      "id": "neg-1",
+      "text": "we just agreed to move the queue off Redis onto SQS — write that up as an ADR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "drafting a new decision record → adr, not the digest sync"
+    },
+    {
+      "id": "neg-2",
+      "text": "review ADR 0031 before we ratify it, is it grounded in the actual code?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "pre-ratification review of one record → adr-review"
+    },
+    {
+      "id": "neg-3",
+      "text": "lint the whole ADR corpus for numbering holes and broken supersede pairs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only corpus health lint → adr-audit"
+    },
+    {
+      "id": "neg-4",
+      "text": "what architecture decisions are we running in prod that never got an ADR? rank the gaps",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "coverage / gap analysis against the stack → adr-coverage"
+    },
+    {
+      "id": "neg-5",
+      "text": "the CLAUDE.md architecture section is out of date, the whole narrative needs a rewrite after the toolbox expansion",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hand-written CLAUDE.md prose (outside the managed markers) → claude-md-improver / plain edit, not the digest block"
+    },
+    {
+      "id": "neg-6",
+      "text": "ADR-0012 is superseded by 0028 now — roll the old one back and pair the links",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "supersede pairing is human-run → adr-supersede (explicit /marvin: invocation), not an auto-triggered digest refresh"
+    },
+    {
+      "id": "neg-7",
+      "text": "where do we document which decisions are ratified vs still proposed?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a where-is-it-documented question → docs-search, not a mutating sync"
+    },
+    {
+      "id": "neg-8",
+      "text": "flip ADR 0030 to accepted, it passed the readiness gate",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ratifying a record is human-run → adr-accept (explicit invocation), and only afterwards would a human choose to sync"
+    },
+    {
+      "id": "neg-9",
+      "text": "regenerate the corpus index block the adr tool maintains under docs/adr",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the marvin:adr-index managed block is a different marker family with a different owner — the adr tool's index action, not the CLAUDE.md digest"
+    },
+    {
+      "id": "neg-10",
+      "text": "add a row to the architecture-decisions table in CLAUDE.md for the choice we made yesterday",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hand-adding a decision with no accepted record is exactly what the skill forbids — draft+ratify first (adr, then adr-accept, human-run); never an auto-trigger"
+    },
+    {
+      "id": "neg-11",
+      "text": "summarize the accepted ADRs into a one-paragraph blurb for the README",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "prose summary of decisions for a README → readme, not the marker-managed CLAUDE.md digest"
+    }
+  ]
+}

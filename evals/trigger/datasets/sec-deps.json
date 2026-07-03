@@ -1,0 +1,219 @@
+{
+  "skill": "sec-deps",
+  "target": "sec-deps",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. Negatives are near-misses that share dependency/security vocabulary but belong to a sibling (sec-secrets, sec-ci, sec-iac, sec-scan, sec-gate, sec-fix, sec-compliance) or a plain migration-plan / package-install / debug action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "check our dependencies for known vulnerabilities before the release",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run an npm audit on package.json and package-lock and tell me what's exploitable",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "audit our python deps — requirements.txt and poetry.lock — for CVEs and give me upgrade paths",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "manager asked for a license check on our third-party packages, worried about GPL in a commercial product",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "which of our libraries are abandoned or unmaintained? some haven't shipped in years",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "go.mod has a bunch of transitive deps — are any of them vulnerable and reachable?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "generate an SBOM and flag any packages with high-risk licenses",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "full-stack repo, Cargo.toml on the backend and package.json on the frontend — audit both for vulnerable libs",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "i think one of our npm packages might be a typosquat, can you review the dependency list",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "pre-compliance review — need a prioritized report of CVEs across our Gemfile and pom.xml with fix versions",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "scan the whole git history for leaked API keys and tokens we may have committed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection across code+history → sec-secrets"
+    },
+    {
+      "id": "neg-2",
+      "text": "our GitHub Actions pull an action from @main and the token is write-all — audit the pipeline",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD supply-chain config → sec-ci, not the dependency manifests"
+    },
+    {
+      "id": "neg-3",
+      "text": "the Dockerfile base image is stale and runs as root — review the container for security",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "container/IaC hardening → sec-iac"
+    },
+    {
+      "id": "neg-4",
+      "text": "just install the latest lodash and update the lockfile",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain package install, not a vulnerability audit — shell/edit task"
+    },
+    {
+      "id": "neg-5",
+      "text": "our build is failing because two packages want conflicting versions of react — help me sort out the version clash",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency resolution / broken build → debug, not a CVE audit"
+    },
+    {
+      "id": "neg-6",
+      "text": "we found CVE-2024-1234 in our jwt library — write me a tested patch and a regression test",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediating a known finding → sec-fix, not re-scanning deps"
+    },
+    {
+      "id": "neg-7",
+      "text": "plan the migration from moment.js to date-fns across the codebase, with steps and rollback",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "swapping a library is a refactor plan → migration-plan"
+    },
+    {
+      "id": "neg-8",
+      "text": "quick security check on my staged diff before I commit — did I add anything risky?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "fast diff-scoped pre-commit gate → sec-gate (even if it flags a new dep)"
+    },
+    {
+      "id": "neg-9",
+      "text": "full OWASP Top 10 audit of the whole service before we ship to prod",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive whole-codebase audit → sec-scan (it orchestrates deps as one part)"
+    },
+    {
+      "id": "neg-10",
+      "text": "map our code against OWASP ASVS L2 and give me the compliance gap matrix",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ASVS control-by-control gap analysis → sec-compliance"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "run a full security audit of our dependencies — CVEs, licenses, and abandoned packages across all our manifests",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-deps",
+      "mock_rate": 1,
+      "note": "says 'full security audit' but scoped to dependencies → must beat sec-scan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "one of our npm packages looks like a supply-chain risk — a typosquat pulled in transitively, audit the dependency tree",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-deps",
+      "mock_rate": 1,
+      "note": "'supply-chain' overlaps sec-ci but the target is the dependency tree/manifests → must beat sec-ci"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "comprehensive OWASP security scan of the whole app before the acquisition due-diligence, dependencies included",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "whole-codebase OWASP audit that orchestrates the dep scan as one part → sec-scan wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we identified a vulnerable transitive dependency — now generate and verify the minimal upgrade patch with tests",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-fix",
+      "mock_rate": 0,
+      "note": "finding is already known; producing the tested remediation patch → sec-fix wins"
+    }
+  ]
+}

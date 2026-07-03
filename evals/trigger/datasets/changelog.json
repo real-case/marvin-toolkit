@@ -1,0 +1,219 @@
+{
+  "skill": "changelog",
+  "target": "changelog",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "generate release notes for v0.13.0",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "put together a changelog for the commits since the last tag",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "what changed between v0.6.0 and v0.13.0? need something I can paste into the GitHub release",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my manager asked me to summarize everything we shipped in the last two weeks for the release announcement",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "prepend a new entry to CHANGELOG.md for this release, Keep a Changelog format pls",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "roll up the commits on dev since v0.6.0 into a user-facing whats new list",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "diff between versions v0.3.0 and v0.6.0 as a release summary",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "cutting a release tomorrow — draft the notes from git history, group by added/fixed/changed",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "give me a slack-friendly release summary of the last month of commits",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "marvin changelog since the previous tag, skip the chore/ci noise",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "commit my CHANGELOG.md edits",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "action is to make a commit → commit skill"
+    },
+    {
+      "id": "neg-2",
+      "text": "what does the latest commit change in server.ts?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "inspecting one commit's code → explain"
+    },
+    {
+      "id": "neg-3",
+      "text": "find which commit introduced the e2e stdio flake",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "bisect/root-cause → debug"
+    },
+    {
+      "id": "neg-4",
+      "text": "write the PR description for this branch with a verification checklist",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "PR body, not a release changelog → pr-create"
+    },
+    {
+      "id": "neg-5",
+      "text": "tag main as v0.13.0 and push the tag",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain git tag op, no history summary"
+    },
+    {
+      "id": "neg-6",
+      "text": "generate the README for this plugin",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "project docs from codebase → readme"
+    },
+    {
+      "id": "neg-7",
+      "text": "give me a delivery digest for the WP7 task — criteria, gates, commits, links",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "single-task summary → task-summary/summary tool"
+    },
+    {
+      "id": "neg-8",
+      "text": "where do we document our release process?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "finding existing docs → docs-search"
+    },
+    {
+      "id": "neg-9",
+      "text": "write an ADR recording why we switched to git-tag releases instead of npm publish",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "decision record → adr"
+    },
+    {
+      "id": "neg-10",
+      "text": "explain how the release.yml workflow turns a tag into a GitHub Release",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explain existing mechanism → explain"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "summarize the commits since v0.6.0 into release notes, don't commit anything yet",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "changelog",
+      "mock_rate": 1,
+      "note": "shares 'commit' vocab but the deliverable is release notes → must beat commit"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "draft the whats-new section for the release PR body from the git log between tags",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "changelog",
+      "mock_rate": 1,
+      "note": "mentions PR but the ask is release-notes-from-history → must beat pr-create"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "open the dev→main promotion PR and fill in the description",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-create",
+      "mock_rate": 0,
+      "note": "creating the PR itself → must lose to pr-create"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "our last release broke the smoke test — help me figure out what regressed",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 0,
+      "note": "root-cause a regression → must lose to debug"
+    }
+  ]
+}

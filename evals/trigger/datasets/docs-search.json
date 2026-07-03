@@ -1,0 +1,219 @@
+{
+  "skill": "docs-search",
+  "target": "docs-search",
+  "note": "Near-misses share docs vocabulary but belong to explain (code logic), adr (create a decision record), readme (generate/update README), changelog (release notes), migration-plan (author a plan), or deep-research/context7 (external sources). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "where is our auth flow documented? I know there's a doc somewhere but can't find it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "how does the retry/backoff logic work here — is there a runbook or doc on it?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "point me to whatever docs cover how the .marvin working directory is laid out",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "new here — can you pull together an onboarding summary of this repo's architecture and conventions from the docs?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "which ADR decided we'd ship a single MCP server? find it and summarize the reasoning",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "what's the documented API contract for the verify tool — check the openapi spec or wherever it lives",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "my manager asked me to find where our branching and release process is written down",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "is there any doc on the coding conventions we follow? searched the readme, nothing",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "find docs on how kanban statuses are configured and synthesize an answer",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "where do we document the deployment runbook? need the operate-this steps",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "walk me through what src/tools/verify.ts actually does line by line",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explaining code logic → explain, not finding docs"
+    },
+    {
+      "id": "neg-2",
+      "text": "write an ADR documenting our decision to switch to a monorepo",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a new decision record → adr"
+    },
+    {
+      "id": "neg-3",
+      "text": "the README is out of date, regenerate it from the actual codebase",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "generate/update README → readme"
+    },
+    {
+      "id": "neg-4",
+      "text": "generate release notes documenting everything that changed since v0.6.0",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release notes → changelog"
+    },
+    {
+      "id": "neg-5",
+      "text": "look up the latest Prisma migration docs for me",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "external library docs → context7, not project docs"
+    },
+    {
+      "id": "neg-6",
+      "text": "draft the architecture section for our developer documentation",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "writing docs prose → documentation-writer, not searching existing docs"
+    },
+    {
+      "id": "neg-7",
+      "text": "do a deep research report on state-of-the-art RAG chunking strategies with sources",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "external multi-source web research → deep-research"
+    },
+    {
+      "id": "neg-8",
+      "text": "plan the migration off the deprecated config format with steps and rollback",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a migration plan → migration-plan"
+    },
+    {
+      "id": "neg-9",
+      "text": "explain why the server is designed as one bundled dist file",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "design rationale of code → explain"
+    },
+    {
+      "id": "neg-10",
+      "text": "the setup instructions in CONTRIBUTING.md are wrong, fix them",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "editing a doc file → plain edit / documentation-writer, not searching"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "where is the decision to go board-only documented — find the relevant ADR and tell me the reasoning",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "docs-search",
+      "mock_rate": 1,
+      "note": "shares 'ADR' vocab with adr, but the ask is to LOCATE existing docs, not create one"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "is there anything in our docs explaining how the task pipeline phases fit together? summarize it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "docs-search",
+      "mock_rate": 1,
+      "note": "must beat explain — the ask is 'is it documented / find the doc', not explain the code"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "explain how the spec tool validates the spec-contract YAML block",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "explain",
+      "mock_rate": 0,
+      "note": "concrete code-behavior explanation → explain wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "create an ADR recording why we chose STRIDE for threat modeling",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr",
+      "mock_rate": 0,
+      "note": "authoring a decision record → adr wins"
+    }
+  ]
+}

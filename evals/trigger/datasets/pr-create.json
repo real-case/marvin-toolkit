@@ -1,0 +1,219 @@
+{
+  "skill": "pr-create",
+  "target": "pr-create",
+  "note": "Trigger-eval set for pr-create — the OPEN-a-PR step. Boundaries: commit (local persist, no PR), task-deliver (commit+PR pipeline step), pr-review/code-review (review an existing PR), task-fix-pr (apply review feedback), changelog (release notes), plain gh/git ops (merge/close/list). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "open a pull request for this branch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "create a PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "push and open a PR against dev",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "the feat/pagination branch is ready — submit it for review as a pull request",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "my manager wants this shipped as a PR with a proper description and verification checklist",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "make a pull request and link the PROJ-412 issue in the body",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "open a PR for this board task, prefix the title with the tracker id",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "raise a pull request into main for the bugfix I just committed",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "PR this please, base branch is develop",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "everything's pushed already, just cut the pull request with a good summary and changes section",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "review the pull request on #128 for bugs and security issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reviewing an existing PR → pr-review"
+    },
+    {
+      "id": "neg-2",
+      "text": "merge my PR into dev once CI is green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "merge op → gh pr merge / pr-merge, not opening a PR"
+    },
+    {
+      "id": "neg-3",
+      "text": "address the review comments on my open PR and reply to each thread",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "applying reviewer feedback → task-fix-pr"
+    },
+    {
+      "id": "neg-4",
+      "text": "commit these changes but don't open a PR yet",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "local persist only → commit"
+    },
+    {
+      "id": "neg-5",
+      "text": "list all open pull requests assigned to me",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain gh pr list, no authoring"
+    },
+    {
+      "id": "neg-6",
+      "text": "edit the description on my existing PR to mention the config change",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "editing an existing PR → gh pr edit, not create"
+    },
+    {
+      "id": "neg-7",
+      "text": "generate release notes for the PRs merged since v0.6.0",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release notes → changelog"
+    },
+    {
+      "id": "neg-8",
+      "text": "close the stale PR #94 without merging",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "gh pr close op"
+    },
+    {
+      "id": "neg-9",
+      "text": "why did the checks fail on my pull request?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing a failure → debug"
+    },
+    {
+      "id": "neg-10",
+      "text": "write a PR template markdown file under .github/",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a template file, not opening a PR"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "I already committed, now open a pull request for the branch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-create",
+      "mock_rate": 1,
+      "note": "shares 'committed' vocab but the action is to open a PR — must beat commit"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the review is done, put up the PR with the verification checklist filled in",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-create",
+      "mock_rate": 1,
+      "note": "mentions review but the ask is to open the PR — must beat pr-review"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "deliver this task — verification passed, commit and open the PR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 0,
+      "note": "full pipeline delivery (commit+PR, gated on verify) → task-deliver is more specific"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "code review this pull request before I request approval",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-review",
+      "mock_rate": 0,
+      "note": "reviewing an existing PR → pr-review, not opening one"
+    }
+  ]
+}

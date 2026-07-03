@@ -1,0 +1,219 @@
+{
+  "skill": "refactor-plan",
+  "target": "refactor-plan",
+  "note": "refactor-plan turns EXISTING findings registers (from refactor-audit / refactor-smells under .marvin/refactor/) into a sequenced, risk-annotated plan of small behaviour-preserving steps; oversized items route to task-start. It reads-and-sequences — it does not discover findings (audit/smells) or mutate code (refactor-apply). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "plan the refactoring from the audit findings",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "sequence F1 and F3 from the latest findings register into steps",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "we ran a code health audit last week and got a big findings list — how do we actually pay down this debt in order?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "take the smells report for src/api and turn it into a step-by-step refactor plan with rollback for each step",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "marvin refactor plan — order the findings by dependency and risk",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "make a refactoring plan from .marvin/refactor/002-smells-storage.md, pick the small ones and route the big ones",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "my lead wants the tech-debt findings broken into safe, reversible steps before anyone touches code",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "sequence the findings from the register into a plan, one commit per step, test strategy included",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "plan F2, F4, F5 — I need rationale, dependencies and effort for each before I start",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "we have audit and smells reports both sitting in .marvin/refactor, dedupe them into one ordered remediation plan",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "audit the whole codebase for tech debt and hotspots, I don't have any findings yet",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "discovery of findings from scratch → refactor-audit; there's no register to plan from yet"
+    },
+    {
+      "id": "neg-2",
+      "text": "scan src/payments for code smells and anti-patterns",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "scoped smell discovery → refactor-smells, upstream of plan"
+    },
+    {
+      "id": "neg-3",
+      "text": "apply step 2 of the refactoring plan now",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "executes a plan step and mutates code → refactor-apply"
+    },
+    {
+      "id": "neg-4",
+      "text": "do the next refactor step from the plan and run the verify gates",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "execution of an existing plan → refactor-apply"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan the migration off Express onto Fastify across the whole service",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "large cross-cutting framework migration → migration-plan, not a small-step register plan"
+    },
+    {
+      "id": "neg-6",
+      "text": "spec out the extraction of the billing module into its own package with acceptance criteria",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "spec-sized work with its own AC → task-start (refactor-plan would only route it there)"
+    },
+    {
+      "id": "neg-7",
+      "text": "explain why this god object grew so tangled before we refactor it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understand existing design → explain, not planning steps"
+    },
+    {
+      "id": "neg-8",
+      "text": "where's the tech debt worst in this repo?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hotspot discovery question → refactor-audit"
+    },
+    {
+      "id": "neg-9",
+      "text": "is UserService.ts too big and does it have duplication?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "single-file smell check → refactor-smells"
+    },
+    {
+      "id": "neg-10",
+      "text": "file kanban chores for each of these refactoring findings so the team can pick them up",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "board task creation → kanban task tool, not producing a sequenced plan"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "sequence the findings from the audit register into small reversible steps — not a big migration, just ordered cleanup",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 1,
+      "note": "shares 'plan' vocab with migration-plan but the input is a findings register and the steps are small — refactor-plan must beat migration-plan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "we already have a smells report — turn its findings into an ordered plan, I'll apply the steps myself later",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 1,
+      "note": "mentions applying but the ask is to PRODUCE the plan from a register — must beat refactor-apply"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "run a full structural refactoring audit — I have no findings register yet, start from the codebase",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 0,
+      "note": "no register exists; discovery must win — refactor-plan has nothing to consume"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "apply F4 from the plan, verify green before and after, roll back if it breaks",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-apply",
+      "mock_rate": 0,
+      "note": "code-mutating execution of a plan step — the more specific refactor-apply must win"
+    }
+  ]
+}

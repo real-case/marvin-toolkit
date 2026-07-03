@@ -1,0 +1,219 @@
+{
+  "skill": "readme",
+  "target": "readme",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. `readme` owns generating/updating README.md from real codebase analysis; near-misses belong to changelog (CHANGELOG.md), docs-search (find existing docs), explain (explain code), documentation-writer (prose style), or plain file ops.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "our repo has no README, can you write one?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "update the README, the install steps are stale after we switched to pnpm",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "generate a README.md for this project based on what's actually in the code",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "new hire starts monday and there's zero onboarding docs — write project documentation so they can get set up",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "my manager asked me to make the readme presentable before we open-source this",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "the quick start section in README.md is wrong, refresh it against the current Makefile targets",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "add a proper Usage and Configuration section to our readme",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "marvin update the README",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "write the top-level docs for this service — what it does, how to run it, prereqs",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "readme is way out of date, half the commands don't exist anymore — regenerate it from the codebase",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "generate release notes for v2.3.0 from the git log",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CHANGELOG/release notes → changelog"
+    },
+    {
+      "id": "neg-2",
+      "text": "where's the deployment runbook documented?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "find existing docs → docs-search"
+    },
+    {
+      "id": "neg-3",
+      "text": "explain how the auth middleware in src/auth/session.ts works",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explain code → explain"
+    },
+    {
+      "id": "neg-4",
+      "text": "write a CONTRIBUTING.md with our PR and branch conventions",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "different doc file, not README onboarding — plain authoring, not the readme skill"
+    },
+    {
+      "id": "neg-5",
+      "text": "document this architecture decision to use Postgres over Mongo",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "decision record → adr"
+    },
+    {
+      "id": "neg-6",
+      "text": "add JSDoc comments to the exported functions in utils/format.js",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code comments, not README"
+    },
+    {
+      "id": "neg-7",
+      "text": "tighten the prose in this paragraph of our setup guide, it reads awkwardly",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "prose style pass → documentation-writer"
+    },
+    {
+      "id": "neg-8",
+      "text": "write a handoff doc so the next session can pick up where I left off",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "session-continuation doc → handoff"
+    },
+    {
+      "id": "neg-9",
+      "text": "generate OpenAPI docs from our route decorators",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "API spec generation, not a README"
+    },
+    {
+      "id": "neg-10",
+      "text": "what does the badge in the current README even mean, and is coverage tracked?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "question about existing docs → docs-search, not authoring a README"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "our README's changelog section is a mess — regenerate the whole README from the codebase",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "readme",
+      "mock_rate": 1,
+      "note": "shares 'changelog' vocab but the deliverable is the README → must beat changelog"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the project docs are missing — write a README that explains what this codebase does and how to run it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "readme",
+      "mock_rate": 1,
+      "note": "'explains what the codebase does' overlaps explain, but the artifact is a README → must beat explain"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "prepare the CHANGELOG.md for the next release from commits since the last tag",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "changelog",
+      "mock_rate": 0,
+      "note": "release notes / CHANGELOG.md → must lose to changelog"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "where in our docs is the caching strategy described? point me to it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "docs-search",
+      "mock_rate": 0,
+      "note": "locating existing documentation → must lose to docs-search"
+    }
+  ]
+}

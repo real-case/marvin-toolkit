@@ -1,0 +1,116 @@
+{
+  "skill": "adr-supersede",
+  "target": "adr-supersede",
+  "disable_model_invocation": true,
+  "note": "adr-supersede is a disable-model-invocation skill — human-run by design, it MUST NOT auto-trigger from prose. This dataset is negatives-only, testing negative assurance: for every supersede-adjacent prompt the correct behavior is to load a sibling skill (adr, adr-review, adr-audit, adr-accept, adr-coverage, docs-search, migration-plan) or to wait for an explicit /marvin:adr-supersede invocation by the human. mock_rate encodes the ideal (never-trigger) outcome so `--decider mock` stays green; real deciders ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "neg-1",
+      "text": "our decision to use Kafka is out of date now that we've moved to SQS — write up the new decision record",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "drafting the replacement decision → adr (create); supersede is a deliberate human-run pairing, not auto-invoked"
+    },
+    {
+      "id": "neg-2",
+      "text": "review ADR 22 before I retire it, is it even ready to be replaced?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "readiness review of a record → adr-review; the supersede flip is the separate human gate"
+    },
+    {
+      "id": "neg-3",
+      "text": "lint the ADR corpus — I think one of the supersede pairs is broken and only linked one way",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only detection of broken supersede pairs → adr-audit, not the mutating supersede action"
+    },
+    {
+      "id": "neg-4",
+      "text": "which of our accepted ADRs are basically obsolete and should be replaced?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "gap/staleness analysis → adr-coverage; identifying candidates is not performing a supersession"
+    },
+    {
+      "id": "neg-5",
+      "text": "where's the ADR that documents why we picked Postgres over Mongo? want to see if it still holds",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "locating a documented decision → docs-search; no lifecycle mutation requested"
+    },
+    {
+      "id": "neg-6",
+      "text": "ratify ADR 0031, it's been reviewed and everyone signed off",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "proposed → accepted flip → adr-accept (also human-run); acceptance is not supersession"
+    },
+    {
+      "id": "neg-7",
+      "text": "the successor ADR for our old caching decision is drafted — accept it and mark the old one replaced",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "shares supersede vocab but the model must not auto-run the human-gated flip; the human invokes /marvin:adr-supersede explicitly (and /marvin:adr-accept for the successor)"
+    },
+    {
+      "id": "neg-8",
+      "text": "git mv docs/adr/0014-old-release-model.md to an archive folder and drop it from the index",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain file move / delete — hand-editing that the skill explicitly forbids; not a supersession, no skill"
+    },
+    {
+      "id": "neg-9",
+      "text": "our auth ADR is being replaced by a whole OAuth migration — plan the migration with rollback steps",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "migration planning → migration-plan; 'replaced' refers to the system, not an ADR status flip"
+    },
+    {
+      "id": "neg-10",
+      "text": "regenerate the architecture-decisions digest in CLAUDE.md now that ADR 14 was superseded",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "refresh the CLAUDE.md decision digest → adr-sync (also human-run); the supersession already happened"
+    },
+    {
+      "id": "neg-11",
+      "text": "explain how the two-way supersede link between an old ADR and its successor is supposed to work",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "conceptual explanation of the mechanism → explain/docs-search; no record is being superseded"
+    },
+    {
+      "id": "neg-12",
+      "text": "audit the decision records for a release — flag any numbering holes or dangling ADR references",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only corpus health lint → adr-audit; changes nothing, unlike the mutating supersede"
+    }
+  ]
+}

@@ -1,0 +1,219 @@
+{
+  "skill": "refactor-smells",
+  "target": "refactor-smells",
+  "note": "Scoped code-smell scan of a path/module/diff (read-only findings register). Discriminators: SCOPE (one path/module/diff, not the whole project → refactor-audit), READ-ONLY (produces a report, does not plan → refactor-plan, or mutate code → refactor-apply), and QUALITY-not-CORRECTNESS (smells/anti-patterns/naming, not bugs/security → pr-review/debug). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "check src/api for code smells before I start refactoring it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "scan the storage layer for anti-patterns and long functions",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "any smells in packages/marvin-mcp-shared/src/contracts? feels bloated",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "review the naming consistency across the tools/ dir, the verbs are all over the place (fetch vs get vs load)",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "is server.ts too big? give me a findings register with file:line evidence",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "my manager asked me to look for dead code and duplication in the flows module before we touch it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin smell check on the diff vs dev",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "scan the staged changes for god objects and copy-paste drift, dont touch anything",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "look over prompts/index.ts for anti-patterns and stringly-typed stuff, evidence only no fixes",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "give me a scoped code-health report on the kanban storage folder, primitive obsession and boolean flags especially",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "sequence F1 and F3 from the smell report into a refactoring plan with rollback steps",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "findings already exist; turning them into a plan is refactor-plan"
+    },
+    {
+      "id": "neg-2",
+      "text": "apply F4 from the register — do the actual refactor step",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "mutates code → refactor-apply"
+    },
+    {
+      "id": "neg-3",
+      "text": "review this PR diff for bugs and security issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "correctness/security review → pr-review, not a quality smell scan"
+    },
+    {
+      "id": "neg-4",
+      "text": "explain how the verify tool's concurrent gate runner works",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehension of existing code → explain"
+    },
+    {
+      "id": "neg-5",
+      "text": "this function returns undefined sometimes, help me find the root cause",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a bug to root-cause → debug, not a smell scan"
+    },
+    {
+      "id": "neg-6",
+      "text": "plan the migration from the old four-server layout to the single server",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "cross-cutting migration/large refactor plan → migration-plan"
+    },
+    {
+      "id": "neg-7",
+      "text": "run the linter and eslint --fix over src/",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain shell/tooling command, not a reasoned findings register"
+    },
+    {
+      "id": "neg-8",
+      "text": "audit the whole codebase structure and tell me where the tech debt is",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "whole-project structural audit → refactor-audit (scope is the whole repo, not a path)"
+    },
+    {
+      "id": "neg-9",
+      "text": "these dependencies look outdated, check them for known CVEs",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency vulnerability audit → sec-deps"
+    },
+    {
+      "id": "neg-10",
+      "text": "reformat this file with prettier and sort the imports",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "mechanical formatting, no analysis — plain tooling, not a smell scan"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "do a code-health check on just the src/api module — long functions, duplication, that kind of thing",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-smells",
+      "mock_rate": 1,
+      "note": "'code-health check' is refactor-audit vocab, but the scope is a single module → refactor-smells wins on scope"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "scan the diff vs dev for smells and anti-patterns",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-smells",
+      "mock_rate": 1,
+      "note": "must beat pr-review — a diff scan for quality smells, not a correctness/security review"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "refactoring audit of the whole repo — find the hotspots and dependency tangles first",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 0,
+      "note": "whole-project structural audit with hotspots → refactor-audit must win"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we've got the smell register — now plan how to pay this debt down in ordered steps",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "register already produced; sequencing findings into a plan → refactor-plan must win"
+    }
+  ]
+}

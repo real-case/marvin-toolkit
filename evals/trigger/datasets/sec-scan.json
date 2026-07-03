@@ -1,0 +1,219 @@
+{
+  "skill": "sec-scan",
+  "target": "sec-scan",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. sec-scan is the comprehensive OWASP Top 10:2025 audit that orchestrates the specialized scans — it owns broad, whole-codebase / pre-prod reviews. Negatives are near-misses scoped narrowly enough that a specialist sibling wins (sec-secrets, sec-deps, sec-iac, sec-gate, sec-ci, sec-compliance, sec-threat-model, sec-pentest, sec-fix) or a plain debug/explain action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "run a full security scan on the whole codebase before we ship to prod",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "can you do an OWASP Top 10 audit of this service? we're going through due diligence",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "comprehensive security review of the payments API — injection, authz, crypto, SSRF, the works",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my manager asked for a pre-prod security review of the backend before Friday's release",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "harden this service — do a deep security audit across secrets, deps, and the code itself",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "we're being acquired and their team wants a security audit of the repo, can you run one end to end",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "full sec audit of src/ please — I want deserialization, SSRF and broken access control all covered",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "do a thorough security pass over the entire app and give me a prioritized findings report",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "marvin security scan the codebase — we haven't audited this in over a year",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "before the launch I want the big security audit: run all the scanners plus a manual review for logic bugs and crypto misuse",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "scan the whole git history for leaked API keys and tokens we may have committed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection across code+history → sec-secrets, not the full audit"
+    },
+    {
+      "id": "neg-2",
+      "text": "audit package.json and package-lock for known CVEs and typosquatted packages",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency CVE/license audit → sec-deps"
+    },
+    {
+      "id": "neg-3",
+      "text": "review our Terraform and Kubernetes manifests for over-permissioned IAM and exposed endpoints",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "Infrastructure-as-Code review → sec-iac"
+    },
+    {
+      "id": "neg-4",
+      "text": "quick security check on my staged diff before I commit",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "fast diff-scoped pre-commit gate → sec-gate"
+    },
+    {
+      "id": "neg-5",
+      "text": "audit our GitHub Actions workflows for supply chain risk and secret exposure",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD pipeline audit → sec-ci"
+    },
+    {
+      "id": "neg-6",
+      "text": "check this code against OWASP ASVS L2 and give me a control-by-control compliance matrix",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ASVS compliance gap analysis → sec-compliance"
+    },
+    {
+      "id": "neg-7",
+      "text": "generate a STRIDE threat model for the new file-upload feature",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "STRIDE threat modeling → sec-threat-model"
+    },
+    {
+      "id": "neg-8",
+      "text": "here's a Semgrep finding for a SQL injection — write and verify a patch for it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediate a specific finding → sec-fix"
+    },
+    {
+      "id": "neg-9",
+      "text": "put together a penetration testing checklist for our auth and API surface",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "pentest checklist generation → sec-pentest"
+    },
+    {
+      "id": "neg-10",
+      "text": "explain how our authentication middleware validates session tokens",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding code behavior → explain, not a security audit"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "full security audit of the service before release — I especially care about the dependencies and any leaked secrets",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 1,
+      "note": "names deps + secrets but the ask is a comprehensive whole-codebase audit that orchestrates them → must beat sec-deps"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "we're prepping for a SOC 2 audit — do a broad security review of the entire codebase and flag everything risky",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 1,
+      "note": "'audit' + compliance context, but the request is a broad codebase-wide scan, not an ASVS control matrix → must beat sec-compliance"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "just scan the repo and git history for committed credentials and private keys",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-secrets",
+      "mock_rate": 0,
+      "note": "scoped strictly to leaked-secret detection across code+history → sec-secrets wins over the broad scan"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "quick secure-this-diff gate on my staged changes before I push the branch",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-gate",
+      "mock_rate": 0,
+      "note": "diff-scoped fast pre-commit check, not a full codebase audit → sec-gate wins"
+    }
+  ]
+}
