@@ -19,7 +19,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
 | 5  | Refactoring plan and apply   | Done | `feat/toolbox-wp5-refactor-plan-apply` | [#73](https://github.com/real-case/marvin-toolkit/pull/73) | — (implements ADR-0029) | 0.11.0 | landed second — re-bumped 0.10.0 → 0.11.0 at rebase (matches the serial target); registry recounted 47 → 53 |
 | 6  | Dashboard                    | Done | `feat/toolbox-wp6-dashboard` | [#74](https://github.com/real-case/marvin-toolkit/pull/74) | ADR-0030 | 0.12.0 | wave 3 solo off `dev`@0.11.0 — registry 53 → 54, tools 8 → 9 (serial target matches actual) |
-| 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
+| 7  | Usage telemetry              | Done | `feat/toolbox-wp7-usage-telemetry` | [#75](https://github.com/real-case/marvin-toolkit/pull/75) | — (implements ADR-0030) | 0.13.0 | wave 4 solo off `dev`@0.12.0 — middleware + wiring only, no new prompt/tool (registry stays 54/9); serial and actual targets coincide |
 | 8  | Consolidation and release    | Not started | —      | —  | —   | —      | promotion `dev → main` with a **merge commit** + tag |
 
 _Version values are serial-order targets; under [parallel execution](#parallel-execution)
@@ -31,7 +31,7 @@ the actual version is assigned at landing._
 - [ ] Optional release cut after WP2
 - [x] WP3 merged: lessons loop widened, `/marvin:lessons` live (serial target said registry 49; actual after wave 1: 45)
 - [x] WP4–WP5 merged: refactoring family complete (registry 53 — actual matches the serial target)
-- [ ] WP6–WP7 merged: dashboard + usage telemetry live (registry 54, tools 9)
+- [x] WP6–WP7 merged: dashboard + usage telemetry live (registry 54, tools 9)
 - [ ] WP8: docs consolidated, release tagged and published
 
 ## Parallel execution
@@ -139,12 +139,12 @@ docs tables, and the version manifests:
 
 ## WP7 — Usage telemetry
 
-- [ ] `runPackServer` middleware: one JSONL event (`ts`, `kind`, `name`) per prompt-get / tool-call → `.marvin/usage/events.jsonl`
-- [ ] Self-ignoring dir (`.marvin/usage/.gitignore` = `*`); size cap + rotation
-- [ ] `usage.enabled` kill-switch in `.marvin/config.json`; logger errors never break a tool call
-- [ ] Dashboard usage section: top commands, last-used, event count + window
-- [ ] Docs privacy note (local-only, never committed, how to disable)
-- [ ] Tests: events on tool call, kill-switch, rotation; version 0.13.0; `dist/` rebuilt
+- [x] `runPackServer` middleware: one JSONL event (`ts` ISO, `kind`, `name`) per prompt-get / tool-call → `.marvin/usage/events.jsonl`. Seam = optional `onInvoke` hook on `RunPackOptions` (shared package, stays project-agnostic); marvin's `lib/usage.ts` logger closes over `ServerEnv` and is wired via `onInvoke` in `server.ts`
+- [x] Self-ignoring dir (`.marvin/usage/.gitignore` = `*`, written idempotently — a host-customised `.gitignore` is left alone); size cap (~1 MiB) + rotation to `events.jsonl.1` (one generation)
+- [x] `usage.enabled` kill-switch in `.marvin/config.json` (new optional `UsageConfig` block on the schema; read through the fail-closed `loadConfig` path, re-read per event so toggles apply live; foreign keys survive); logger is fail-open — every step wrapped, errors swallowed, never breaks or delays a tool call
+- [x] Dashboard usage section confirmed end-to-end against the real producer — the WP6 defensive reader matched the emitted format **with no change** (ISO `ts` / `kind` / `name`); top commands, window, event count all render and `UsageSummary` populates
+- [x] Docs privacy note (local-only, never committed, how to disable) — `docs/architecture.md` "Usage telemetry and privacy" section, CLAUDE.md `.marvin/` table + `runPackServer` signature, CHANGELOG Privacy subsection
+- [x] Tests: 8 e2e (`usage-log.test.mjs`) — event on tool call + prompt get, `.gitignore` = `*` + idempotency, kill-switch suppresses / explicit-enable logs, rotation past the cap, **fail-open** (unwritable dir does not fail the call), dashboard renders the produced log; 5 seam unit tests (`middleware.test.mjs`) — fires once per prompt/tool with `{kind,name}`, throwing/rejecting hook swallowed, optional hook. Version 0.13.0; `dist/` rebuilt (also synced the WP6 lockfile drift 0.11.0 → 0.13.0)
 
 ## WP8 — Consolidation and release
 
@@ -156,6 +156,35 @@ docs tables, and the version manifests:
 
 ## Log
 
+- **2026-07-03** — **WP7 done** (wave 4 solo, PR [#75](https://github.com/real-case/marvin-toolkit/pull/75),
+  `feat/toolbox-wp7-usage-telemetry` off `dev`@0.12.0 — serial and actual targets coincide:
+  0.13.0; **no new prompt and no new tool**, so the registry stays **54 / 9** — this WP is
+  middleware + wiring). Completes D4 / ADR-0030's usage-log half against the record authored in
+  WP6. The seam: `runPackServer` gains an optional `onInvoke(event)` hook on `RunPackOptions`
+  (shared package), fired once per prompt-get and per tool-call with `{ kind, name }` *before* the
+  handler runs, fire-and-forget and fail-open at the boundary (a throwing hook or a rejected
+  promise it returns is swallowed by an internal `notify` helper — dispatch, results, and errors
+  are byte-for-byte unchanged). The shared library stays project-agnostic; marvin owns the
+  concrete logger in `lib/usage.ts` (closes over `ServerEnv`, wired via `onInvoke` in `server.ts`).
+  Shipped: the log itself — one JSONL event `{ts (ISO), kind, name}` per invocation to
+  `.marvin/usage/events.jsonl`, deliberately minimal (no arguments/payloads/PII) — with all four
+  guarantees: **self-ignoring** (`.gitignore` = `*` written idempotently on first use, so nothing
+  reaches git; a host-customised `.gitignore` is left alone), **bounded** (~1 MiB cap, rotation to
+  `events.jsonl.1` keeping one generation), **kill-switch** (new optional `UsageConfig` block on
+  the config schema; `usage: { enabled: false }` disables all writes, read through the fail-closed
+  `loadConfig` path and re-read per event so a toggle applies with no restart; foreign keys
+  survive read-modify-write), and **fail-open** (every step wrapped; an unwritable dir / full disk
+  / bad config never breaks or delays the request). The WP6 dashboard reader matched the produced
+  format **unchanged** — verified end-to-end (a real prompt-get + tool-call, then `/marvin:dashboard`
+  renders the count, window, and top commands; `UsageSummary` populates). Tests: 8 new e2e
+  (`usage-log.test.mjs`) + 5 new seam units (`middleware.test.mjs`); the one WP6
+  `dashboard-structured.test.mjs` case that now saw the dashboard self-log its own call was fixed
+  by pointing the *writer* at a scratch `MARVIN_USAGE_DIR` so the *reader*'s asserted fixture stays
+  put (no reader/format change). Gates green: build, tests **204/204 serialized** (32 shared + 172
+  server; the default parallel run flaked 1 pre-existing stdio e2e timeout — a clean ~15s
+  `config-surface` timeout under load, green in isolation at 421 ms — the documented WP5/WP6 flake,
+  CI referees at `--test-concurrency=4`), lint:manifests, verify-dist, lint:docs, smoke (54
+  prompts / 9 tools). Also synced the lockfile version drift the WP6 landing left (0.11.0 → 0.13.0).
 - **2026-07-03** — **WP6 done** (wave 3 solo, PR [#74](https://github.com/real-case/marvin-toolkit/pull/74),
   `feat/toolbox-wp6-dashboard` off `dev`@0.11.0 — serial and actual targets coincide: 0.12.0,
   registry 53 → **54**, tools 8 → **9**). ADR-0030 authored first, recording **both** halves of D4:

@@ -55,7 +55,8 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
-| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), and `verify` gate overrides (`gates`, ADR-0009) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:kanban-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
+| `.marvin/usage/` | usage-log middleware (`runPackServer`) | **local, never-committed** telemetry: `events.jsonl` — one JSONL event `{ts, kind, name}` per prompt-get / tool-call — plus a self-written `.gitignore` = `*` so nothing here reaches git; size-capped with rotation to `events.jsonl.1`; read only by `/marvin:dashboard`. Kill-switch `usage.enabled: false`; fail-open (ADR-0030) |
+| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:kanban-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
 
 Spec location stays **host-adaptive** (ADR-0005): `.marvin/task/` is the default, but an existing
 host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
@@ -111,7 +112,7 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 `packages/marvin-mcp-shared/` provides:
 
 - typed `PromptDef` / `ToolDef` interfaces and `defineTool` helper
-- `runPackServer({ name, version, promptsDir, packRoot, build })` — the standard server entry
+- `runPackServer({ name, version, promptsDir, packRoot, build, onInvoke? })` — the standard server entry. The optional `onInvoke(event)` middleware hook fires once per prompt-get and per tool-call with `{ kind, name }`, *before* the handler runs; it is fire-and-forget and fail-open (throws and rejected promises are swallowed), leaving dispatch byte-for-byte unchanged. marvin wires it to the `.marvin/usage/` log (ADR-0030); the shared library stays project-agnostic.
 - `elicit(server, message, zodSchema)` + `canElicit(server)` — typed MCP elicitation wrapper with client-capability detection (tools degrade to instructive errors on hosts without elicitation)
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
 - `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.

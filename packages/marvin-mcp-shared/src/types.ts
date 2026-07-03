@@ -46,6 +46,19 @@ export interface PromptArgumentDef {
 }
 
 /**
+ * A single prompt-get or tool-call dispatch, reported to the optional
+ * `onInvoke` middleware hook (see `RunPackOptions`). Deliberately minimal —
+ * only the kind and the registered name, never arguments or payloads — so a
+ * consumer (marvin's usage log, ADR-0030) records what was invoked without any
+ * risk of capturing PII. Emitted once per dispatch, before the handler runs.
+ */
+export interface InvocationEvent {
+  kind: "prompt" | "tool";
+  /** The registered prompt or tool name (the slash-command suffix). */
+  name: string;
+}
+
+/**
  * Definition of a deterministic tool exposed by a pack server.
  *
  * Tools complement prompts. A prompt instructs the LLM with markdown;

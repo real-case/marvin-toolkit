@@ -139,10 +139,29 @@ at the project root, one subdirectory per command group
 | `.marvin/kanban/` | `kanban-*` | the task `.md` board |
 | `.marvin/memory/` | `lessons` | team-shared lessons-learned (`MEMORY.md` + lesson files) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs |
-| `.marvin/config.json` | `kanban-*` | `base_branch`, `tracker_url_template` |
+| `.marvin/usage/` | usage-log middleware | local, never-committed usage events (`events.jsonl`) read by `/marvin:dashboard` |
+| `.marvin/config.json` | `kanban-*` | `base_branch`, `tracker_url_template`, `usage.enabled` kill-switch |
 
 Project **deliverables** are deliberately not swept in: ADRs stay under `docs/adr/`,
 and `CHANGELOG.md` / `README.md` at the root.
+
+### Usage telemetry and privacy
+
+marvin records a small, **strictly local** usage signal so `/marvin:dashboard` can
+answer "which commands does this project actually use?"
+([ADR-0030](./adr/0030-toolbox-dashboard-and-usage-log.md)). A `runPackServer`
+middleware hook appends one JSON line per prompt-get and per tool-call to
+`.marvin/usage/events.jsonl`:
+
+- **What is recorded:** the timestamp, whether it was a `prompt` or a `tool`, and the
+  command name — nothing else. No arguments, no file contents, no PII.
+- **Where it lives:** only in the project-local `.marvin/usage/` directory. The
+  directory self-ignores (a `.gitignore` of `*` is written on first use), so the log
+  never reaches git, and it is never transmitted anywhere — the sole reader is the
+  local dashboard. The file is size-capped and rotates so it cannot grow unbounded.
+- **How to disable:** set `usage: { enabled: false }` in `.marvin/config.json` (via
+  `/marvin:kanban-config` or by hand). Telemetry is opt-out; logging is also
+  fail-open — any logger error is swallowed and never affects the command being run.
 
 ## Where to go next
 

@@ -22,6 +22,11 @@ function callDashboard(dir, args = {}) {
         MARVIN_TASKS_CONFIG: join(dir, ".marvin", "config.json"),
         MARVIN_MEMORY_DIR: join(dir, ".marvin", "memory"),
         MARVIN_HANDOFF_DIR: join(dir, ".marvin", "handoff"),
+        // WP7: the usage-log middleware self-logs this very `dashboard` call.
+        // Point the WRITER at a scratch dir so it never mutates the fixture the
+        // READER asserts (`.marvin/usage/events.jsonl` under the project dir) —
+        // these cases test the dashboard's parse of a fixed log, not the writer.
+        MARVIN_USAGE_DIR: join(dir, ".marvin", "usage-writer-scratch"),
       },
     });
     let buf = "";
