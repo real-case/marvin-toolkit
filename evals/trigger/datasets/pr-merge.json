@@ -1,0 +1,202 @@
+{
+  "skill": "pr-merge",
+  "target": "pr-merge",
+  "note": "Dataset for the pr-merge skill (land a PR, delete the head branch, return to the base branch and pull). mock_rate encodes the IDEAL outcome so `--decider mock` stays green; real deciders (api/claude-cli) ignore it and measure the description. Near-miss siblings: pr-create (open), pr-review (review on GitHub), pr-resolve (address feedback), task-deliver (commit+open PR), commit, plus plain git ops (rebase, cherry-pick, local branch merge).",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "merge the PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "merge PR #42 and switch me back to dev",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "land this PR and delete the branch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "checks are green and it's approved, go ahead and merge it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "marvin merge PR #108, then pull the merge into my local base",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "this one's ready to ship — merge it and get me back on the base branch clean",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "can you merge and pull so my local dev is up to date",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "close out the PR by merging it, my lead already signed off",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "merge the pull request for the current branch and clean up the head branch after",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "open a pull request for this branch",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "opening a PR → pr-create, not merging one"
+    },
+    {
+      "id": "neg-2",
+      "text": "review PR #42 and leave inline comments",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "review the PR on GitHub → pr-review"
+    },
+    {
+      "id": "neg-3",
+      "text": "address the review comments on my PR and push the fixes",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "resolve open feedback → pr-resolve"
+    },
+    {
+      "id": "neg-4",
+      "text": "rebase my feature branch onto the latest dev",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plain git rebase op, not a PR merge"
+    },
+    {
+      "id": "neg-5",
+      "text": "merge my local hotfix branch into main with a fast-forward, no PR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "local git branch merge, no PR involved"
+    },
+    {
+      "id": "neg-6",
+      "text": "why did the merge on PR #90 leave a conflict in server.ts? help me debug it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause a conflict → debug"
+    },
+    {
+      "id": "neg-7",
+      "text": "change the repo's default merge method to squash-and-merge",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "repo settings config, not merging a PR"
+    },
+    {
+      "id": "neg-8",
+      "text": "cherry-pick the merge commit onto the release branch",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "git cherry-pick op"
+    },
+    {
+      "id": "neg-9",
+      "text": "generate release notes for everything that merged since v0.6.0",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ changelog"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "merge my PR, then leave me on dev with the merge pulled in",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-merge",
+      "mock_rate": 1,
+      "note": "shares 'PR' vocab with pr-create but the action is to merge, not open"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the review comments are all resolved now — merge and land PR #55",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-merge",
+      "mock_rate": 1,
+      "note": "mentions review/resolve context but must beat pr-resolve; the ask is to merge"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "the task is verified — commit and open a PR to ship it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 0,
+      "note": "commit + open PR delivery step → task-deliver, not a merge"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "review PR #42 first, then we'll decide whether to merge",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-review",
+      "mock_rate": 0,
+      "note": "the actionable ask is the review → pr-review; merge is only hypothetical"
+    }
+  ]
+}

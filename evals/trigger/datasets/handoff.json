@@ -1,0 +1,216 @@
+{
+  "skill": "handoff",
+  "target": "handoff",
+  "note": "Handoff owns capturing the current session's full context into a durable .marvin/handoff/ doc + a paste-ready prompt to resume in a fresh session. Near-misses lean on end-of-work / summary / continue-later vocab but belong to task-summary, task-deliver, commit, or the handoff-LIST read path. mock_rate encodes the IDEAL outcome for `--decider mock`; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "create a handoff for this work before I log off",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "I'm out of time today — hand this off so I can pick it up tomorrow in a fresh session",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "prep context for the next session, we're mid-way through the auth refactor and I don't want to lose the thread",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "write up everything a new chat would need to continue this — decisions, files, next steps",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "marvin hand off this session, my context window is nearly full",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "I'll continue this later — save the state so I can resume from scratch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "продолжить в новой сессии — собери контекст",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "we're wrapping up phase 1 of the migration, capture where we are so someone else can take over",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "dump a durable brief of this whole session into .marvin/handoff so the next agent isn't blind",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "generate a continuation prompt I can paste into a new session tomorrow morning",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "list the handoff docs we've saved so far",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read path → handoff-list, not the capture skill"
+    },
+    {
+      "id": "neg-2",
+      "text": "what's in .marvin/handoff/003-auth-refactor.md?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read an existing file → plain Read / handoff-list, not authoring one"
+    },
+    {
+      "id": "neg-3",
+      "text": "summarize the finished task — criteria, gates, commits, links",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "delivery digest → task-summary"
+    },
+    {
+      "id": "neg-4",
+      "text": "update CLAUDE.md with what we learned in this session",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "session learnings into project memory → revise-claude-md"
+    },
+    {
+      "id": "neg-5",
+      "text": "ship it — commit and open the PR now that verify passed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "final delivery → task-deliver"
+    },
+    {
+      "id": "neg-6",
+      "text": "save my progress to git before I break for lunch",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "persist to git → commit, not a session handoff doc"
+    },
+    {
+      "id": "neg-7",
+      "text": "write a handover runbook for on-call engineers rotating onto this service",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "operational docs deliverable → documentation-writer / readme, not a session-continuation handoff"
+    },
+    {
+      "id": "neg-8",
+      "text": "schedule a daily 9am agent to check the deploy status",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'continue later' is temporal recurrence → schedule"
+    },
+    {
+      "id": "neg-9",
+      "text": "do a reflective pass over my memory files and merge the duplicates",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "memory hygiene → consolidate-memory"
+    },
+    {
+      "id": "neg-10",
+      "text": "generate release notes summarizing what changed this sprint",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'summarize what we did' but for a release → changelog"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "we're pausing here — write up the full context so a fresh session can continue, don't just list what's done",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "handoff",
+      "mock_rate": 1,
+      "note": "shares 'summarize the work' vocab with task-summary but the ask is a session-continuation brief → handoff wins"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "capture this session's state so I can resume it tomorrow, and give me a prompt to paste into the new chat",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "handoff",
+      "mock_rate": 1,
+      "note": "'save state' overlaps commit, but the deliverable is a continuation doc + paste prompt → handoff beats commit"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "the task is done and verified — summarize the delivery: acceptance criteria, gate results, and commits",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "delivery digest → /marvin:task-summary (a tool action, not auto-invocable); handoff must abstain"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "wrap up this task — commit the changes and open the PR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 0,
+      "note": "'wrap up' but the action is commit+PR delivery → task-deliver must win"
+    }
+  ]
+}

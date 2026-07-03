@@ -9,3 +9,6 @@ package-lock.json
 
 # Local Claude Code state, not part of the published packages.
 .claude/
+
+# Trigger-eval run artifacts (also git-ignored)
+evals/trigger/results/

@@ -1,0 +1,219 @@
+{
+  "skill": "explain",
+  "target": "explain",
+  "note": "explain owns code-comprehension: how logic/architecture/behavior works and why it's designed that way. Near-misses lean toward docs-search (retrieve existing docs), debug (why is it BROKEN), migration-plan (plan a change), readme/documentation-writer (produce docs), and pr-review (find defects). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "explain how the retry logic in src/net/client.ts works",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "walk me through what this reducer does, I just inherited it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "why is the auth middleware structured this way with two passes?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "i'm lost in flows/verify.ts — can you trace how a gate actually runs end to end?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "what does the resolvePromptBody function actually do and why is it needed",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "help me understand the design rationale behind the single-server consolidation before my onboarding call",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "explain this regex, I have no idea what it matches: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$/",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "walk me thru how the elicit() wrapper degrades on clients without elicitation support",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "can you break down what happens when task-start hits the DoR gate — the whole control flow",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "my manager asked me to understand the kanban state machine, explain how a task moves between statuses",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "where is the caching behaviour documented?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "retrieve existing docs → docs-search, not explain the code"
+    },
+    {
+      "id": "neg-2",
+      "text": "why is this test failing with a null pointer, help me fix it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "broken behaviour + fix → debug"
+    },
+    {
+      "id": "neg-3",
+      "text": "write documentation explaining how the auth module works for our wiki",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "produce docs prose → documentation-writer/readme"
+    },
+    {
+      "id": "neg-4",
+      "text": "review this PR and tell me what's wrong with the error handling",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "find defects → pr-review/code-review"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan how we'd migrate this callback code to async/await",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "plan a change with steps/risks → migration-plan"
+    },
+    {
+      "id": "neg-6",
+      "text": "how does React's useEffect cleanup work?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "third-party library docs, not this codebase → context7/docs, not the explain skill"
+    },
+    {
+      "id": "neg-7",
+      "text": "document why we chose Postgres over Dynamo as an ADR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "record a decision → adr"
+    },
+    {
+      "id": "neg-8",
+      "text": "find me the runbook that explains the deploy rollback steps",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "locate a doc → docs-search"
+    },
+    {
+      "id": "neg-9",
+      "text": "the parser stopped working after my last change, what did I break?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "regression triage → debug"
+    },
+    {
+      "id": "neg-10",
+      "text": "update the README to describe how the server bundle is built",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "generate/update README → readme"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "where's the retry policy? actually just explain how it works in the code, I don't need the docs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "explain",
+      "mock_rate": 1,
+      "note": "shares docs-search vocab ('where') but the ask is to explain the code behaviour"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "walk me through why this function throws here — not asking you to fix it, I just want to understand the logic",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "explain",
+      "mock_rate": 1,
+      "note": "must beat debug: comprehension, not a fix"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "explain why this endpoint returns 500 and get it working again",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 0,
+      "note": "must lose to debug — broken behaviour + fix intent"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "explain the architecture in a README so new hires can onboard",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "readme",
+      "mock_rate": 0,
+      "note": "must lose to readme — deliverable is a written doc"
+    }
+  ]
+}

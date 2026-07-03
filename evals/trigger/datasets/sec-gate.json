@@ -1,0 +1,219 @@
+{
+  "skill": "sec-gate",
+  "target": "sec-gate",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. sec-gate owns the FAST, DIFF-SCOPED pre-commit/pre-push sanity-check on staged or recent changes. Negatives are near-misses that share security vocabulary but need a full-scope or specialized sibling (sec-scan, sec-secrets, sec-deps, sec-iac, sec-fix, sec-threat-model) or a plain commit/pr git action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "quick security check on my staged diff before I commit",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "gate this commit — did I leak anything sensitive in these changes?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "about to push this branch that touches the auth middleware, can you sanity-check the diff for security issues first",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "secure this diff real quick, I don't want to run the whole scan",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "look over just what I changed for hardcoded creds or obvious injection before I open a PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "fast sec review of my recent changes — did I accidentally add anything risky?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "pre-commit security gate please, only the stuff I'm about to commit",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "I edited the deserialization code in src/parser.py — check my changes don't introduce anything unsafe before I push",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "lightweight sec check on the diff, we're in a hurry to land this",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "my new code pulls in a couple of packages — quick gate on the diff to make sure I didn't add a risky dependency or secret",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "run a full OWASP Top 10 security audit of the whole service before we ship to prod",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive whole-codebase audit → sec-scan, not a diff gate"
+    },
+    {
+      "id": "neg-2",
+      "text": "scan the entire repo and git history for any leaked API keys or tokens we've ever committed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "deep secret detection across code + full history → sec-secrets"
+    },
+    {
+      "id": "neg-3",
+      "text": "audit package.json and the lockfile for known CVEs and unmaintained packages",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "full dependency CVE/license audit → sec-deps (not just deps introduced in the diff)"
+    },
+    {
+      "id": "neg-4",
+      "text": "here's a Semgrep finding for a SQL injection in orders.go — write and verify a patch for it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediate a specific finding → sec-fix"
+    },
+    {
+      "id": "neg-5",
+      "text": "review our Terraform and Dockerfile — the container runs as root and an S3 bucket is public",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC / container hardening → sec-iac"
+    },
+    {
+      "id": "neg-6",
+      "text": "commit these changes for me with a conventional message",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the git commit workflow itself → commit (sec-gate checks the diff, doesn't make the commit)"
+    },
+    {
+      "id": "neg-7",
+      "text": "build a STRIDE threat model for the new payments feature",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "design-time threat modeling → sec-threat-model"
+    },
+    {
+      "id": "neg-8",
+      "text": "set up a git pre-commit hook that runs gitleaks on every commit",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "tooling/hook config, not performing a security check — plain setup task"
+    },
+    {
+      "id": "neg-9",
+      "text": "audit our GitHub Actions workflows for unpinned actions and write-all tokens",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD pipeline security → sec-ci"
+    },
+    {
+      "id": "neg-10",
+      "text": "check the whole codebase against OWASP ASVS L2 and give me a compliance matrix",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ASVS compliance gap analysis → sec-compliance"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "before I commit, quick check the changes I'm staging didn't hardcode a secret",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-gate",
+      "mock_rate": 1,
+      "note": "mentions secrets but scoped to the staged diff as a pre-commit gate → must beat sec-secrets"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "my diff adds a new npm dependency and some input-parsing code — fast sec gate on just these changes before I push",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-gate",
+      "mock_rate": 1,
+      "note": "new dependency appears but the scope is the diff and it's a pre-push gate → must beat sec-deps"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "do a full security audit of the whole application before the production release",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "whole-codebase pre-prod audit → sec-scan wins over the lightweight diff gate"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we're open-sourcing this repo tomorrow — scan all files and the git history for any committed credentials",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-secrets",
+      "mock_rate": 0,
+      "note": "full-history secret sweep is sec-secrets' job, not a diff-scoped gate"
+    }
+  ]
+}

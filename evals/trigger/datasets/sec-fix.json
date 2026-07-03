@@ -1,0 +1,219 @@
+{
+  "skill": "sec-fix",
+  "target": "sec-fix",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. sec-fix REMEDIATES a specific security finding — minimal tested patch + regression test — downstream of the sec-* scanners that only DETECT. Negatives are near-misses that share security/fix vocabulary but belong to a detection sibling (sec-scan, sec-secrets, sec-deps, sec-iac, sec-gate, sec-ci, sec-compliance), to debug (functional bug), to task-fix-pr (PR review comments), to refactor-apply (refactor rails), or to a plain commit/edit action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "Semgrep flagged a SQL injection in src/api/users.ts:42 — patch it and add a regression test",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "fix this vulnerability: the login route builds the query with string interpolation on the email param",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "remediate the CVE Trivy found in our base image — give me the minimal diff",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "close the XSS in the comment renderer, it dumps user input into innerHTML — want the fix plus a test that proves it's closed",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "just ran sec-scan and it found a hardcoded API key in config.py — patch it and tell me how to rotate",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "the auditor said we're missing an ownership check on GET /orders/:id (IDOR) — write the fix and a regression test",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "Bandit says we hash passwords with sha256 — swap it for bcrypt with a test, minimal change only",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "path traversal in the file-download handler lets you read ../../etc/passwd — remediate this finding",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "we've got a command injection where we shell out with the filename — produce a focused patch and a test that fires the attack",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "Snyk finding: our CORS is set to '*' with credentials — generate the fix and a verification plan",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "run a full OWASP Top 10 audit of the whole service before we ship to prod",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive detection scan → sec-scan, not remediating a specific finding"
+    },
+    {
+      "id": "neg-2",
+      "text": "scan the git history for any leaked API keys or tokens we may have committed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection across code+history → sec-secrets"
+    },
+    {
+      "id": "neg-3",
+      "text": "audit package.json for vulnerable dependencies and give me the CVE list",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency CVE discovery → sec-deps; sec-fix acts on one finding after"
+    },
+    {
+      "id": "neg-4",
+      "text": "the checkout endpoint returns 500 for some carts — help me figure out why it's crashing",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "functional bug, not a security vulnerability → debug"
+    },
+    {
+      "id": "neg-5",
+      "text": "review our Terraform IAM for over-permissioned roles",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC security review/detection → sec-iac"
+    },
+    {
+      "id": "neg-6",
+      "text": "address the review comments on my PR — a reviewer wants me to validate the input",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "applying PR review feedback → task-fix-pr, even though input validation is security-adjacent"
+    },
+    {
+      "id": "neg-7",
+      "text": "quick security sanity-check on my staged diff before I commit",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "fast diff-scoped pre-commit detection gate → sec-gate"
+    },
+    {
+      "id": "neg-8",
+      "text": "commit the security patch I just wrote",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "persisting an already-written fix → commit, not generating one"
+    },
+    {
+      "id": "neg-9",
+      "text": "check our auth flows against OWASP ASVS L2 and give me a gap analysis",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "compliance control mapping → sec-compliance"
+    },
+    {
+      "id": "neg-10",
+      "text": "this validateUser function is a tangled mess — extract the checks and clean it up",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code-health refactor of security code → refactor-apply, not a vuln patch"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "sec-scan found a stored XSS in the profile bio — now patch it with a regression test, don't just re-scan",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-fix",
+      "mock_rate": 1,
+      "note": "names sec-scan but the ask is to remediate the finding → must beat sec-scan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "we found a hardcoded DB password in settings.py — write the fix to pull it from env and add the .gitignore entry",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-fix",
+      "mock_rate": 1,
+      "note": "hardcoded secret vocab overlaps sec-secrets, but the ask is to produce the patch → must beat sec-secrets"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "I think we may have leaked credentials somewhere — scan the whole repo and git history for secrets",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-secrets",
+      "mock_rate": 0,
+      "note": "detection sweep across code+history, no specific finding to patch → sec-secrets wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "do a comprehensive security audit of the service and surface every vulnerability",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "broad discovery of all vulns, nothing to remediate yet → sec-scan wins"
+    }
+  ]
+}

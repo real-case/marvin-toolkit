@@ -1,0 +1,219 @@
+{
+  "skill": "adr",
+  "target": "adr",
+  "note": "The `adr` skill OWNS drafting a new decision record (context / alternatives / decision / consequences, status Proposed). Near-misses are the read-only or human-run lifecycle siblings (adr-review, adr-audit, adr-coverage, adr-accept, adr-supersede, adr-sync) plus docs-search / changelog / explain / migration-plan. mock_rate encodes the IDEAL outcome for `--decider mock`; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "write an ADR for our decision to move from REST to gRPC for the internal services",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "we just picked Postgres over DynamoDB — can you record that decision properly?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "document the architecture choice to adopt event sourcing in the billing module",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my tech lead asked me to capture the rationale for why we're dropping the monorepo — draft a decision record",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "create a decision log entry: we're standardizing on Vitest instead of Jest across the frontend",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "need an architecture decision record documenting the switch to a single MCP server, MADR format pls",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "we agreed to use Kafka for the ingestion pipeline in standup — write that up as an ADR with the alternatives we weighed",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "record why we chose to keep dist/ committed instead of building in CI, include consequences",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "draft a new adr in docs/adr/ for adopting feature flags via LaunchDarkly",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "just merged the auth rewrite — I want a proper record of the tradeoffs behind moving to OIDC, context and options and all",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "review ADR-0031 and tell me if it's ready to accept",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reviewing an existing draft → adr-review"
+    },
+    {
+      "id": "neg-2",
+      "text": "audit the ADR corpus for dangling references and numbering holes",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "corpus lint → adr-audit"
+    },
+    {
+      "id": "neg-3",
+      "text": "what architecture decisions are we missing docs for?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "gap analysis → adr-coverage"
+    },
+    {
+      "id": "neg-4",
+      "text": "ratify ADR-0029 and flip it to accepted with today's date",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ratification → adr-accept (human-run)"
+    },
+    {
+      "id": "neg-5",
+      "text": "where's the ADR that explains the branching model? point me to it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "find existing docs → docs-search"
+    },
+    {
+      "id": "neg-6",
+      "text": "explain how the verify tool resolves gates from .marvin/config.json",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "explain existing code → explain, not a decision record"
+    },
+    {
+      "id": "neg-7",
+      "text": "supersede ADR-0007 with the new working-directory decision and pair the links",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "rollback/link pairing → adr-supersede (human-run)"
+    },
+    {
+      "id": "neg-8",
+      "text": "regenerate the Architecture decisions digest in CLAUDE.md from the accepted records",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "sync CLAUDE.md digest → adr-sync (human-run)"
+    },
+    {
+      "id": "neg-9",
+      "text": "plan the migration from the four-pack layout to the single plugin, with steps and rollback",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "migration planning → migration-plan (the ADR records the choice; this plans the execution)"
+    },
+    {
+      "id": "neg-10",
+      "text": "summarize what architecture changed between v0.6.0 and v0.13.0 for the release notes",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release history → changelog"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "we decided on the new caching layer — write the decision record, don't just review an existing one",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr",
+      "mock_rate": 1,
+      "note": "shares ADR vocab with adr-review but the action is to DRAFT a new record"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "capture the rationale for choosing Terraform over Pulumi as a new architecture decision record",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr",
+      "mock_rate": 1,
+      "note": "must beat docs-search — authoring a new ADR, not locating one"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "do a readiness review of the ADR I just drafted before I accept it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-review",
+      "mock_rate": 0,
+      "note": "reviewing an already-drafted record is adr-review's job, not drafting"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "lint the whole docs/adr/ folder and flag broken supersede pairs and placeholder residue",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 0,
+      "note": "corpus-wide lint is adr-audit, not authoring a single record"
+    }
+  ]
+}

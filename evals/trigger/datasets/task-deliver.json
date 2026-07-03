@@ -1,0 +1,219 @@
+{
+  "skill": "task-deliver",
+  "target": "task-deliver",
+  "note": "Trigger-eval set for task-deliver — the FINAL pipeline step: gate on verification, then commit + open a PR (delegates to commit and pr-create). Boundaries: commit (local persist only, no PR), pr-create (open a PR only, no commit/gate), task-verify (run the gates), task-implement (execute the spec), task-fix-pr (apply review feedback to an open PR), pr-merge (merge an existing PR), pr-review (review a PR), changelog (release notes). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "deliver this task",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "verification passed — commit and open the PR to close this out",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "ship it, the gates are green",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "finalize the task in this worktree — implementation and verify are both done",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "wrap up the .marvin/task/044-rate-limiter spec: commit the work and raise the PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "close out the task, but check the verification gate first before you commit anything",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "run the delivery phase — reference the spec in the PR body and set it to shipped",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "marvin deliver the task now that task-verify came back PASS",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "the feature's implemented and verified, take it the rest of the way to a pull request",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "commit and PR this taskmaster branch, and capture a lesson if anything bit us",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "commit what I've got, don't open a PR yet",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "local persist only, no PR/gate → commit"
+    },
+    {
+      "id": "neg-2",
+      "text": "open a pull request for the feat/pagination branch",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "just open a PR, no commit or verify gate → pr-create"
+    },
+    {
+      "id": "neg-3",
+      "text": "run the quality gates — tests, lint, type-check, build — before I hand this off",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "running the gates → task-verify, which task-deliver only checks after"
+    },
+    {
+      "id": "neg-4",
+      "text": "implement the spec under .marvin/task/044-rate-limiter.md",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "execute the spec → task-implement"
+    },
+    {
+      "id": "neg-5",
+      "text": "address the review feedback on my open PR and reply to each thread",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "applying reviewer comments → task-fix-pr"
+    },
+    {
+      "id": "neg-6",
+      "text": "merge PR #217 into dev now that checks are green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "merge an existing PR → pr-merge / gh pr merge, not deliver"
+    },
+    {
+      "id": "neg-7",
+      "text": "verification failed on the build gate — figure out why it's red",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing a gate failure → debug, not deliver"
+    },
+    {
+      "id": "neg-8",
+      "text": "generate release notes for everything shipped since v0.6.0",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release notes → changelog"
+    },
+    {
+      "id": "neg-9",
+      "text": "spec out the caching task before we start any work",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "front of the pipeline, produce a spec → task-start"
+    },
+    {
+      "id": "neg-10",
+      "text": "review this pull request for bugs before it gets approved",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "review an existing PR → pr-review"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "verify came back PASS — now commit this and get it into a pull request to finish the task",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 1,
+      "note": "shares commit/PR vocab but it's the gated end-of-pipeline delivery — must beat commit"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "the task is done and verified, take it to a PR — but bail if verification didn't actually pass",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 1,
+      "note": "the verify-gated commit+PR is task-deliver's whole point — must beat pr-create"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "before I deliver, run the tests and lint and tell me if it's green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-verify",
+      "mock_rate": 0,
+      "note": "the actual ask is to run the gates → task-verify is more specific"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "everything's committed and the PR is up — just merge it to ship the task",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-merge",
+      "mock_rate": 0,
+      "note": "commit and PR already exist; the remaining action is the merge → pr-merge"
+    }
+  ]
+}
