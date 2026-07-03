@@ -14,10 +14,10 @@ Status values: **Not started · In progress · Blocked · Done**.
 | WP | Title                        | Status      | Branch | PR | ADR | Version | Notes |
 | -- | ---------------------------- | ----------- | ------ | -- | --- | ------- | ----- |
 | 1  | `adr` MCP tool and contract  | Done | `feat/toolbox-wp1-adr-tool` | [#71](https://github.com/real-case/marvin-toolkit/pull/71) | ADR-0027 | 0.9.0 | landed third — re-bumped 0.7.0 → 0.9.0 at rebase; tools 7 → 8 |
-| 2  | ADR command surface          | Done | `feat/toolbox-wp2-adr-surface` | [#72](https://github.com/real-case/marvin-toolkit/pull/72) | ADR-0027 (no new ADR — surfaces WP1's) | 0.10.0 | wave 2 off `dev`@0.9.0 — serial target 0.8.0 re-assigned at landing; registry 45 → 51 on branch; release cut candidate after merge |
+| 2  | ADR command surface          | Done | `feat/toolbox-wp2-adr-surface` | [#72](https://github.com/real-case/marvin-toolkit/pull/72) | ADR-0027 (no new ADR — surfaces WP1's) | 0.10.0 | wave 2 off `dev`@0.9.0 — landed first (squash `d21a1bf`); registry 45 → 51 on branch; release cut candidate |
 | 3  | Lessons v2                   | Done | `feat/toolbox-wp3-lessons-v2` | [#70](https://github.com/real-case/marvin-toolkit/pull/70) | ADR-0028 | 0.8.0 | landed second — re-bumped 0.7.0 → 0.8.0 at rebase per the parallel rule; registry 44 → 45 |
 | 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
-| 5  | Refactoring plan and apply   | Not started | —      | —  | —   | 0.11.0 | needs WP4 |
+| 5  | Refactoring plan and apply   | Done | `feat/toolbox-wp5-refactor-plan-apply` | [#73](https://github.com/real-case/marvin-toolkit/pull/73) | — (implements ADR-0029) | 0.11.0 | landed second — re-bumped 0.10.0 → 0.11.0 at rebase (matches the serial target); registry recounted 47 → 53 |
 | 6  | Dashboard                    | Not started | —      | —  | ADR-0030 | 0.12.0 | wants WP3 + WP5 landed |
 | 7  | Usage telemetry              | Not started | —      | —  | —   | 0.13.0 | needs WP6 |
 | 8  | Consolidation and release    | Not started | —      | —  | —   | —      | promotion `dev → main` with a **merge commit** + tag |
@@ -27,10 +27,10 @@ the actual version is assigned at landing._
 
 ## Milestones
 
-- [ ] WP1–WP2 merged: ADR lifecycle complete through all three doors (registry 48)
+- [x] WP1–WP2 merged: ADR lifecycle complete through all three doors (serial target said registry 48; actual after wave 2: 53)
 - [ ] Optional release cut after WP2
 - [x] WP3 merged: lessons loop widened, `/marvin:lessons` live (serial target said registry 49; actual after wave 1: 45)
-- [ ] WP4–WP5 merged: refactoring family complete (registry 53)
+- [x] WP4–WP5 merged: refactoring family complete (registry 53 — actual matches the serial target)
 - [ ] WP6–WP7 merged: dashboard + usage telemetry live (registry 54, tools 9)
 - [ ] WP8: docs consolidated, release tagged and published
 
@@ -122,11 +122,11 @@ docs tables, and the version manifests:
 
 ## WP5 — Refactoring plan and apply
 
-- [ ] Skills + commands + prompts: `refactor-plan`, `refactor-apply` (51 → 53)
-- [ ] `refactor-plan`: findings → sequenced, risk-annotated `.marvin/refactor/NNN-plan-<slug>.md`; oversized items routed to `task-start`
-- [ ] `refactor-apply`: one finding at a time; `verify` green before and after; refuses on uncovered code (offers pin-down test first)
-- [ ] Lessons wiring: search before apply, capture after when warranted
-- [ ] Docs rows + count; version 0.11.0; `dist/` rebuilt; gates green
+- [x] Skills + commands + prompts: `refactor-plan`, `refactor-apply` (51 → 53 serial target; **45 → 47 on the wave-2 branch**, recounted at landing)
+- [x] `refactor-plan`: findings → sequenced, risk-annotated `.marvin/refactor/NNN-plan-<slug>.md` (per step: rationale, depends-on, risk, rollback, tests, effort; evidence re-verified against `HEAD`); oversized items routed to `task-start` with a ready-to-use input block
+- [x] `refactor-apply`: one finding/step at a time; `verify` green before and after (clean tree required; rollback on red, never debug-forward); refuses on uncovered code (offers pin-down test first, in scope for the same run)
+- [x] Lessons wiring: search before apply (hits become constraints), capture after when warranted (anti-boilerplate guards)
+- [x] Docs rows + count; version 0.11.0 serial target → **0.10.0 on branch** (landing-time assignment); `dist/` rebuilt; gates green (npm test 180/180 serialized — default parallel run flaked 1–2 pre-existing stdio e2e timeouts under workstation load; CI referees)
 
 ## WP6 — Dashboard
 
@@ -156,6 +156,21 @@ docs tables, and the version manifests:
 
 ## Log
 
+- **2026-07-03** — **WP5 done** (wave 2, PR [#73](https://github.com/real-case/marvin-toolkit/pull/73),
+  `feat/toolbox-wp5-refactor-plan-apply` off `dev`@0.9.0). The `refactor-*` family completes
+  against ADR-0029 (authored in WP4 — no new ADR this WP). Shipped: `refactor-plan`
+  skill/command/prompt (registers → sequenced, risk-annotated `NNN-plan-<slug>.md` in the shared
+  number sequence; evidence re-verified against `HEAD`; per step rationale / depends-on / risk /
+  rollback / tests / effort; items above the small-step threshold routed to `task-start` with a
+  ready-to-use input block; closes offering `refactor-apply`, kanban chores, and routed-item
+  dispatch) and `refactor-apply` skill/command/prompt (the hard-rail protocol: clean tree + green
+  `verify` pre-flight with refusal on red or no-gates; coverage refusal with a pin-down-test offer
+  in the same run; `lessons` search-before / capture-after with anti-boilerplate guards; re-verify
+  after; rollback-on-red instead of debug-forward; plan step-marker/step-log update + next-step
+  suggestion). No new MCP tool, per the ADR. Landed second — re-bumped 0.10.0 → **0.11.0** at rebase (coinciding with the serial target); registry recounted 47 → **53** after WP2's six `adr-*` prompts. Also fixed stale 44-counts in both READMEs and CLAUDE.md
+  left from the wave-1 landings. Gates green: build, tests 180/180 (serialized; the default
+  parallel run flaked 1–2 pre-existing stdio e2e timeouts under workstation load — follow-up
+  filed), lint:manifests, verify-dist, lint:docs, smoke (47 prompts / 8 tools resolve).
 - **2026-07-03** — **WP2 done** (`feat/toolbox-wp2-adr-surface`, PR [#72](https://github.com/real-case/marvin-toolkit/pull/72);
   wave 2 off `dev`@0.9.0 — serial version target 0.8.0 re-assigned to **0.10.0** at landing,
   registry recounted 45 → **51** per the parallel rules). The ADR lifecycle is now reachable
