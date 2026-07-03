@@ -40,6 +40,13 @@ const REQUIRED_PROMPTS = [
   "pr-review",
   "pr-resolve",
   "pr-merge",
+  // adr-*
+  "adr-review",
+  "adr-accept",
+  "adr-audit",
+  "adr-coverage",
+  "adr-supersede",
+  "adr-sync",
   // task-*
   "task-start",
   "task-implement",
