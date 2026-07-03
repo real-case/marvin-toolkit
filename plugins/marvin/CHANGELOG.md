@@ -4,6 +4,52 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.10.0] — 2026-07-02
+
+WP2 of the toolbox expansion — the command surface for
+[ADR-0027](../../docs/adr/0027-tool-backed-adr-lifecycle.md)'s tool-backed ADR
+lifecycle. The full lifecycle is now reachable through all three doors, with
+the mutating-authority steps reserved for humans.
+
+### Added
+
+- **`adr-*` command family** — six skill-backed commands over the WP1 `adr`
+  tool (registry 45 → 51):
+  - `/marvin:adr-review` — deep review of one `proposed` record: section
+    validation, grounding of every claim in the actual codebase, auto-fix of
+    formal defects only (formatting, links, mechanical placeholder fills —
+    never the substance of the decision), verdict `READY_FOR_ACCEPTANCE` or a
+    defect list. Never sets `accepted`.
+  - `/marvin:adr-accept` 👤 — ratification `proposed → accepted` via the
+    tool's fail-closed readiness gate; refusals are translated into a fix
+    path per failure class. Human-run (`disable-model-invocation`).
+  - `/marvin:adr-audit` — read-only corpus lint rendering the `adr audit`
+    findings with remediation guidance per class (malformed files, invalid
+    statuses, duplicate numbers, dangling references, broken supersede pairs,
+    placeholder residue, numbering holes, stale index).
+  - `/marvin:adr-coverage` — read-only gap analysis: the recorded corpus vs
+    the decisions visible in the actual stack (dependencies, infra, CI,
+    architectural seams), ranked by blast radius; explicit deferrals honored;
+    no mutation.
+  - `/marvin:adr-supersede` 👤 — proper rollback: a successor record (fresh
+    `proposed` skeleton or an existing draft) pairs with the old one, links
+    flip both ways, the old record's content is never edited. Human-run.
+  - `/marvin:adr-sync` 👤 — regenerates a marker-managed
+    (`<!-- marvin:adr-digest:start/end -->`) "Architecture decisions" digest
+    in the project's `CLAUDE.md` from **accepted** records only — diff shown,
+    explicit confirmation before writing. Human-run.
+
+### Changed
+
+- **`/marvin:adr` (creation) reworked** — the interview/drafting flow and the
+  MADR-ish template stay, but all mechanics now delegate to the `adr` tool:
+  `next` replaces the manual number scan and yields the exact target path,
+  `list` provides corpus context, `index` refreshes the corpus index after
+  writing. Drafts always land with status `proposed` — ratification moved to
+  `/marvin:adr-accept` — and supersession is routed to `/marvin:adr-supersede`
+  instead of hand-edited links. `disable-model-invocation` is dropped:
+  creation is model-invocable now that a wrong draft costs nothing (ADR-0027).
+
 ## [0.9.0] — 2026-07-02
 
 WP1 of the toolbox expansion ([ADR-0027](../../docs/adr/0027-tool-backed-adr-lifecycle.md)):

@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **45** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **51** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -28,15 +28,17 @@ Two layers turn a plain phrase into the right command:
 1. **Skill auto-discovery — built in, always on.** Claude Code matches your wording against each
    skill's frontmatter `description`; the phrases in the **Say it in chat** columns below are part
    of those descriptions, so `start a new task` or `resolve the review comments` land on the right
-   command with no setup. It is a best-effort semantic match, and `adr` / `migration-plan` opt out
-   of it on purpose (`disable-model-invocation`).
+   command with no setup. It is a best-effort semantic match, and a few commands opt out of it on
+   purpose (`disable-model-invocation`): `migration-plan`, plus the three human-gated ADR
+   lifecycle commands — `adr-accept`, `adr-supersede`, `adr-sync` (ADR-0027 reserves
+   ratification, rollback, and project-memory sync for humans).
 
 2. **The `marvin` wake-word hook — opt-in, deterministic routing.** A `UserPromptSubmit` hook
    ([`.claude/hooks/marvin-router.sh`](../.claude/hooks/marvin-router.sh)) makes any prompt that
    *starts with* **`marvin …`** resolve to a `/marvin:` command instead of an ad-hoc answer — e.g.
    `marvin start a new task`, `marvin resolve pr 12`, `marvin scan for secrets`, or just `marvin`
-   (opens help). Because it points Claude straight at the command, it also routes `adr` /
-   `migration-plan`, which auto-discovery skips.
+   (opens help). Because it points Claude straight at the command, it also routes
+   `migration-plan` and the human-gated `adr-*` commands, which auto-discovery skips.
 
    It is wired for this repo in [`.claude/settings.json`](../.claude/settings.json); enable it
    for **all** your projects by adding the same block to `~/.claude/settings.json`:
@@ -66,7 +68,7 @@ Language-agnostic, used by every engineer.
 |---------|--------------|----------------|
 | `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files (`.env`, keys), draft a Conventional Commits message — with a `Refs:` footer when the branch belongs to a kanban task — and confirm before committing. | `marvin commit this`, `marvin stage and commit`, `commit my changes`, `marvin commit with task context` |
 | `/marvin:debug` | Hypothesis-driven root-cause analysis — gather evidence, form hypotheses, build a minimal reproduction instead of guessing. | `marvin debug this`, `marvin why is this failing?`, `the tests only flake on CI` |
-| `/marvin:adr` | Create an Architecture Decision Record capturing context, the decision, and its consequences. | `marvin write an ADR`, `marvin record this decision`, `document this design choice` |
+| `/marvin:adr` | Draft an Architecture Decision Record — numbering, path, and index come from the `adr` tool; drafts always land `proposed` (see the [`adr-*` lifecycle](#adr-lifecycle--adr-)). | `marvin write an ADR`, `marvin record this decision`, `document this design choice` |
 | `/marvin:changelog` | Generate a changelog / release notes from git history between tags, dates, or refs (Keep a Changelog). | `marvin changelog since v0.1.0`, `marvin what changed since the last tag?`, `generate release notes` |
 | `/marvin:readme` | Generate or update `README.md` from actual codebase analysis. | `marvin update the README`, `marvin generate project docs`, `write a readme for this repo` |
 | `/marvin:migration-plan` | Plan a migration or major refactor — dependency analysis, ordered steps, risks, and rollback. | `marvin plan a migration`, `marvin how do we move REST → gRPC?`, `plan this refactor` |
@@ -78,6 +80,26 @@ Language-agnostic, used by every engineer.
 | `/marvin:help` | Project dashboard and the full command index, derived from the prompt registry; filter by group. | `marvin help`, `marvin what commands are there?`, `marvin help sec` |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger`.
+
+## ADR lifecycle — `adr-*`
+
+The full decision-record lifecycle around the bare [`/marvin:adr`](#core-developer-tools)
+creation command (ADR-0027). Deterministic mechanics — numbering, corpus parsing in both header
+styles, the accept readiness gate, paired supersede links, the marker-managed index — live in
+the `adr` MCP tool; the corpus location is host-adaptive (config `adr.dir` → detected
+`docs/adr/` / `docs/decisions/` / `adr/` → default `docs/adr/`). Authority sits at the gates:
+drafts always land `proposed`, and the three mutating-authority commands below are **human-run**
+(`disable-model-invocation`) — Claude never ratifies, rolls back, or syncs project memory on its
+own.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:adr-review` | Deep review of one `proposed` record — section validation, codebase grounding, auto-fix of formal defects only; verdict `READY_FOR_ACCEPTANCE` or a defect list. Never sets `accepted`. | `marvin review the ADR`, `marvin is ADR 31 ready?`, `check the decision record` |
+| `/marvin:adr-accept` 👤 | Ratify a `proposed` record — the tool's fail-closed readiness gate (no placeholders, required sections, resolving references), then a status + date stamp. | run `/marvin:adr-accept 31` yourself — deliberately not chat-invocable |
+| `/marvin:adr-audit` | Read-only corpus lint — dangling references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index — with remediation guidance per finding. | `marvin audit the ADRs`, `marvin ADR health check`, `are the decision records consistent?` |
+| `/marvin:adr-coverage` | Read-only gap analysis — recorded decisions vs the actual stack (dependencies, infra, CI, architectural seams); ranks undocumented decisions by blast radius, honors explicit deferrals. | `marvin what decisions are undocumented?`, `marvin ADR coverage`, `what ADRs are we missing?` |
+| `/marvin:adr-supersede` 👤 | Roll back an accepted decision properly — a successor record (fresh skeleton or an existing draft) pairs with the old one; links flip both ways, the old record's content is never edited. | run `/marvin:adr-supersede 7 <new title>` yourself — deliberately not chat-invocable |
+| `/marvin:adr-sync` 👤 | Regenerate the marker-managed "Architecture decisions" digest in `CLAUDE.md` from **accepted** records only — diff shown, explicit confirmation before writing. | run `/marvin:adr-sync` yourself — deliberately not chat-invocable |
 
 ## Pull-request lifecycle — `pr-*`
 
@@ -234,6 +256,7 @@ slash commands:
 |------|---------|
 | `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`), done-task archive, board configuration (`config`) |
 | `help` | Dashboard + registry-derived command index |
+| `adr` | ADR-lifecycle mechanics (ADR-0027) — next number/path, corpus list, lint (`audit`), marker-managed index, gate-checked `accept`, paired `supersede` |
 | `verify` | Concurrent quality-gate runner (writes `verification.md`) |
 | `spec` | Definition-of-Ready gate — parses & validates the spec contract |
 | `lessons` | Lessons-learned store under `.marvin/memory/` — add (dedup-guarded) / search / stats / prune |

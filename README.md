@@ -31,14 +31,15 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 
 | Group | What | Count |
 |-------|------|-------|
-| _(bare)_ | core developer tools | 11 |
+| _(bare)_ | core developer tools | 12 |
+| `adr-*` | ADR lifecycle (accept/supersede/sync human-run) | 6 |
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
 | `refactor-*` | code-health audits (read side) | 2 |
 | `kanban-*` | lightweight task tracker | 12 |
 
-44 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus three read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+51 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus four read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -54,7 +55,7 @@ Language-agnostic, used by every engineer.
 | `/marvin:pr-resolve` | Resolve unresolved PR review threads — plan, fix, push, reply + resolve |
 | `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull |
 | `/marvin:debug` | Systematic root-cause analysis with hypotheses |
-| `/marvin:adr` | Create Architecture Decision Records |
+| `/marvin:adr` | Draft Architecture Decision Records (tool-backed numbering; drafts land `proposed`) |
 | `/marvin:changelog` | Generate changelog from git history |
 | `/marvin:readme` | Generate or update README.md |
 | `/marvin:migration-plan` | Plan migrations with risks and rollback strategy |
@@ -62,11 +63,25 @@ Language-agnostic, used by every engineer.
 | `/marvin:docs-search` | Search and synthesize project documentation |
 | `/marvin:handoff` | Capture full context into `.marvin/handoff/` + a prompt to continue in a fresh session |
 | `/marvin:handoff-list` | List the session-continuation handoff documents, newest first |
+| `/marvin:lessons` | Browse the lessons-learned store — search, add, stats, prune (delete confirms first) |
 | `/marvin:help` | Project dashboard + the full command index (filter with `/marvin:help <group>`) |
 
 **Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger` (root-cause analysis — also drives `task-start`'s bugfix flow).
 
 **External MCP servers also registered:** `context7` (library docs lookup), `gitmcp` (GitHub repository docs).
+
+### ADR lifecycle — `adr-*`
+
+The full decision-record lifecycle around `/marvin:adr` ([ADR-0027](./docs/adr/0027-tool-backed-adr-lifecycle.md)). Deterministic mechanics (numbering, dual-style corpus parsing, the accept gate, paired supersede links, the managed index) live in the `adr` MCP tool; ratification, rollback, and project-memory sync are human-run (`disable-model-invocation`).
+
+| Command | Description |
+|---------|-------------|
+| `/marvin:adr-review` | Deep review of one `proposed` record — grounding in the codebase, formal fixes only, verdict `READY_FOR_ACCEPTANCE` or defects |
+| `/marvin:adr-accept` 👤 | Ratify `proposed → accepted` through the tool's fail-closed readiness gate |
+| `/marvin:adr-audit` | Read-only corpus lint with remediation guidance per finding class |
+| `/marvin:adr-coverage` | Read-only gap analysis — recorded decisions vs the actual stack, ranked by blast radius |
+| `/marvin:adr-supersede` 👤 | Roll back a decision via a paired successor record — old content never edited |
+| `/marvin:adr-sync` 👤 | Regenerate the accepted-decisions digest in `CLAUDE.md` between managed markers, diff-first |
 
 ### Security — `sec-*`
 

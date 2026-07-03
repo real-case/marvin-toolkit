@@ -3,7 +3,7 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
 /**
  * Prompts for the unified `marvin` server. Two body sources:
  *
- *  - **skill-backed** (core / sec / task groups): `skill` points to a
+ *  - **skill-backed** (core / adr / task / sec / refactor groups): `skill` points to a
  *    directory under `plugins/marvin/skills/<name>/SKILL.md`. The skill
  *    file is the single source of truth — Claude Code auto-discovers it
  *    through its own frontmatter `description`, while this server exposes
@@ -134,6 +134,44 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
     body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+  },
+
+  // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
+  {
+    name: "adr-review",
+    description:
+      "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, verdict READY_FOR_ACCEPTANCE or a defect list. Never sets accepted.",
+    skill: "adr-review",
+  },
+  {
+    name: "adr-accept",
+    description:
+      "Ratify a proposed ADR — proposed → accepted with a date stamp, through the adr tool's fail-closed readiness gate. Human-run.",
+    skill: "adr-accept",
+  },
+  {
+    name: "adr-audit",
+    description:
+      "Read-only lint of the ADR corpus — dangling references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index — with remediation guidance.",
+    skill: "adr-audit",
+  },
+  {
+    name: "adr-coverage",
+    description:
+      "Read-only gap analysis — recorded ADRs vs the decisions visible in the actual stack; ranks undocumented decisions by blast radius.",
+    skill: "adr-coverage",
+  },
+  {
+    name: "adr-supersede",
+    description:
+      "Roll back an accepted ADR properly — a successor record supersedes it; links pair both ways, the old record's status flips, its content is never edited. Human-run.",
+    skill: "adr-supersede",
+  },
+  {
+    name: "adr-sync",
+    description:
+      "Regenerate the marker-managed architecture-decisions digest in CLAUDE.md from accepted ADRs only — diff shown, confirmation before writing. Human-run.",
+    skill: "adr-sync",
   },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────

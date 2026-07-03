@@ -14,7 +14,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | WP | Title                        | Status      | Branch | PR | ADR | Version | Notes |
 | -- | ---------------------------- | ----------- | ------ | -- | --- | ------- | ----- |
 | 1  | `adr` MCP tool and contract  | Done | `feat/toolbox-wp1-adr-tool` | [#71](https://github.com/real-case/marvin-toolkit/pull/71) | ADR-0027 | 0.9.0 | landed third — re-bumped 0.7.0 → 0.9.0 at rebase; tools 7 → 8 |
-| 2  | ADR command surface          | Not started | —      | —  | —   | 0.8.0  | release cut candidate after merge |
+| 2  | ADR command surface          | Done | `feat/toolbox-wp2-adr-surface` | [#72](https://github.com/real-case/marvin-toolkit/pull/72) | ADR-0027 (no new ADR — surfaces WP1's) | 0.10.0 | wave 2 off `dev`@0.9.0 — serial target 0.8.0 re-assigned at landing; registry 45 → 51 on branch; release cut candidate after merge |
 | 3  | Lessons v2                   | Done | `feat/toolbox-wp3-lessons-v2` | [#70](https://github.com/real-case/marvin-toolkit/pull/70) | ADR-0028 | 0.8.0 | landed second — re-bumped 0.7.0 → 0.8.0 at rebase per the parallel rule; registry 44 → 45 |
 | 4  | Refactoring read side        | Done        | `feat/toolbox-wp4-refactor-read` | [#69](https://github.com/real-case/marvin-toolkit/pull/69) | ADR-0029 | 0.7.0 | wave 1 off `dev`@0.6.0 — registry 42 → 44 on branch; landed first (squash `9c3bc4f`) |
 | 5  | Refactoring plan and apply   | Not started | —      | —  | —   | 0.11.0 | needs WP4 |
@@ -89,14 +89,14 @@ docs tables, and the version manifests:
 
 ## WP2 — ADR command surface
 
-- [ ] `skills/adr/SKILL.md` reworked: tool-backed numbering/path/index; `disable-model-invocation` dropped; drafts land `proposed`
-- [ ] New skills + `commands/*.md`: `adr-review`, `adr-accept`, `adr-audit`, `adr-coverage`, `adr-supersede`, `adr-sync`
-- [ ] `disable-model-invocation: true` on `adr-accept`, `adr-supersede`, `adr-sync`
-- [ ] `adr-review`: template validation, formal auto-fix, verdict `READY_FOR_ACCEPTANCE`, never sets `accepted`
-- [ ] `adr-sync`: accepted-only digest into a marker-managed CLAUDE.md block; diff shown before writing
-- [ ] Six prompt registry entries (42 → 48), `skill:`-backed
-- [ ] Docs: `docs/commands.md` rows + total count, plugin README, CLAUDE.md command table
-- [ ] Tests/lints green (incl. `lint:manifests` frontmatter checks); version 0.8.0; `dist/` rebuilt
+- [x] `skills/adr/SKILL.md` reworked: tool-backed numbering/path/index; `disable-model-invocation` dropped; drafts land `proposed`
+- [x] New skills + `commands/*.md`: `adr-review`, `adr-accept`, `adr-audit`, `adr-coverage`, `adr-supersede`, `adr-sync`
+- [x] `disable-model-invocation: true` on `adr-accept`, `adr-supersede`, `adr-sync`
+- [x] `adr-review`: template validation, formal auto-fix, verdict `READY_FOR_ACCEPTANCE`, never sets `accepted`
+- [x] `adr-sync`: accepted-only digest into a marker-managed CLAUDE.md block (`marvin:adr-digest` markers); diff shown before writing
+- [x] Six prompt registry entries (42 → 48 serial target; **45 → 51 on the wave-2 branch** off `dev`@0.9.0, recounted at landing), `skill:`-backed
+- [x] Docs: `docs/commands.md` rows + total count, plugin README, CLAUDE.md command table (+ the `adr` tool row WP1 left out of the commands appendix)
+- [x] Tests/lints green (incl. `lint:manifests` frontmatter checks); version 0.8.0 serial target → **0.10.0 on branch** (landing-time assignment); `dist/` rebuilt
 
 ## WP3 — Lessons v2
 
@@ -156,6 +156,24 @@ docs tables, and the version manifests:
 
 ## Log
 
+- **2026-07-03** — **WP2 done** (`feat/toolbox-wp2-adr-surface`, PR [#72](https://github.com/real-case/marvin-toolkit/pull/72);
+  wave 2 off `dev`@0.9.0 — serial version target 0.8.0 re-assigned to **0.10.0** at landing,
+  registry recounted 45 → **51** per the parallel rules). The ADR lifecycle is now reachable
+  through all three doors. `skills/adr/SKILL.md` reworked: numbering/path via `adr next`,
+  corpus context via `adr list`, index refresh via `adr index`; drafts always land `proposed`;
+  `disable-model-invocation` dropped (creation is model-invocable, authority moved to the
+  gates); supersession routed to `adr-supersede` instead of hand-edited links. Six new skills +
+  command wrappers + skill-backed prompts: `adr-review` (grounded single-record review, formal
+  fixes only, verdict `READY_FOR_ACCEPTANCE`, never sets `accepted`), `adr-accept` 👤
+  (tool-gated ratification with per-refusal fix paths), `adr-audit` (read-only corpus lint with
+  per-class remediation), `adr-coverage` (read-only stack-vs-corpus gap analysis ranked by
+  blast radius, deferrals honored), `adr-supersede` 👤 (paired-link rollback, old content never
+  edited), `adr-sync` 👤 (accepted-only digest between `marvin:adr-digest` markers in
+  CLAUDE.md, diff-first). Human gates carry `disable-model-invocation: true`. Docs: commands.md
+  gained the `adr-*` group section + the `adr` tool appendix row WP1 missed, README/CLAUDE.md
+  group tables updated, stale 44-counts fixed to 51. No new ADR (surfaces ADR-0027). Gates
+  green: build, 180/180 tests (21 shared + 159 server), lint:manifests, verify-dist, lint:docs,
+  smoke (51 prompts resolve, 8 tools).
 - **2026-07-02** — **WP1 done** (`feat/toolbox-wp1-adr-tool`, PR #71): ADR-0027 authored and
   linked from both README indexes; `storage/adr.ts` corpus module (config → detection → default
   dir resolution; tolerant dual-style parser — table and MADR heading headers — with a

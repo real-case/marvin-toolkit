@@ -28573,6 +28573,37 @@ var PROMPTS = [
     description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
     body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
   },
+  // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
+  {
+    name: "adr-review",
+    description: "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, verdict READY_FOR_ACCEPTANCE or a defect list. Never sets accepted.",
+    skill: "adr-review"
+  },
+  {
+    name: "adr-accept",
+    description: "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the adr tool's fail-closed readiness gate. Human-run.",
+    skill: "adr-accept"
+  },
+  {
+    name: "adr-audit",
+    description: "Read-only lint of the ADR corpus \u2014 dangling references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index \u2014 with remediation guidance.",
+    skill: "adr-audit"
+  },
+  {
+    name: "adr-coverage",
+    description: "Read-only gap analysis \u2014 recorded ADRs vs the decisions visible in the actual stack; ranks undocumented decisions by blast radius.",
+    skill: "adr-coverage"
+  },
+  {
+    name: "adr-supersede",
+    description: "Roll back an accepted ADR properly \u2014 a successor record supersedes it; links pair both ways, the old record's status flips, its content is never edited. Human-run.",
+    skill: "adr-supersede"
+  },
+  {
+    name: "adr-sync",
+    description: "Regenerate the marker-managed architecture-decisions digest in CLAUDE.md from accepted ADRs only \u2014 diff shown, confirmation before writing. Human-run.",
+    skill: "adr-sync"
+  },
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
   {
     name: "task-start",
@@ -32906,7 +32937,7 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.9.0";
+var VERSION = "0.10.0";
 await runPackServer({
   name: "marvin",
   version: VERSION,
