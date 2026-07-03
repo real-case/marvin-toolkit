@@ -28683,7 +28683,7 @@ var PROMPTS = [
     description: "Generate a tailored penetration-testing checklist for the application \u2014 auth, authz, input surfaces, business logic, APIs, infrastructure \u2014 mapped to PTES / OWASP Testing Guide.",
     skill: "sec-pentest"
   },
-  // ── refactor (code-health read side, ADR-0029) ───────────────────────
+  // ── refactor (code-health family, ADR-0029) ─────────────────────────
   {
     name: "refactor-audit",
     description: "Whole-project structural refactoring audit \u2014 architecture map, churn\xD7size hotspots, dependency tangles, dead-code candidates. Read-only; writes a numbered findings register under .marvin/refactor/.",
@@ -28693,6 +28693,16 @@ var PROMPTS = [
     name: "refactor-smells",
     description: "Scoped code-smell scan of a path, module, or diff \u2014 smells, anti-patterns, idiom and naming inconsistencies. Same findings-register format as refactor-audit, composable reports.",
     skill: "refactor-smells"
+  },
+  {
+    name: "refactor-plan",
+    description: "Turn selected refactoring findings into a sequenced, risk-annotated plan under .marvin/refactor/ \u2014 small behaviour-preserving steps inline, oversized items routed to the task pipeline. Changes no code.",
+    skill: "refactor-plan"
+  },
+  {
+    name: "refactor-apply",
+    description: "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
+    skill: "refactor-apply"
   },
   // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
   {

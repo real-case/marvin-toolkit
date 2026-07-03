@@ -67,6 +67,8 @@ const REQUIRED_PROMPTS = [
   // refactor-*
   "refactor-audit",
   "refactor-smells",
+  "refactor-plan",
+  "refactor-apply",
   // kanban-*
   "kanban-menu",
   "kanban-bug",

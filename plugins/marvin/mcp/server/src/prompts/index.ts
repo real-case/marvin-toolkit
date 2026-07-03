@@ -270,7 +270,7 @@ export const PROMPTS: PromptDef[] = [
     skill: "sec-pentest",
   },
 
-  // ── refactor (code-health read side, ADR-0029) ───────────────────────
+  // ── refactor (code-health family, ADR-0029) ─────────────────────────
   {
     name: "refactor-audit",
     description:
@@ -282,6 +282,18 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Scoped code-smell scan of a path, module, or diff — smells, anti-patterns, idiom and naming inconsistencies. Same findings-register format as refactor-audit, composable reports.",
     skill: "refactor-smells",
+  },
+  {
+    name: "refactor-plan",
+    description:
+      "Turn selected refactoring findings into a sequenced, risk-annotated plan under .marvin/refactor/ — small behaviour-preserving steps inline, oversized items routed to the task pipeline. Changes no code.",
+    skill: "refactor-plan",
+  },
+  {
+    name: "refactor-apply",
+    description:
+      "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
+    skill: "refactor-apply",
   },
 
   // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
