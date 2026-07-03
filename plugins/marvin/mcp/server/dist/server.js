@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, existsSync, statSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'fs';
+import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -2866,20 +2866,20 @@ var require_compile = __commonJS({
     var util_1 = require_util();
     var validate_1 = require_validate();
     var SchemaEnv = class {
-      constructor(env) {
+      constructor(env2) {
         var _a;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env.schema == "object")
-          schema = env.schema;
-        this.schema = env.schema;
-        this.schemaId = env.schemaId;
-        this.root = env.root || this;
-        this.baseId = (_a = env.baseId) !== null && _a !== void 0 ? _a : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env.schemaId || "$id"]);
-        this.schemaPath = env.schemaPath;
-        this.localRefs = env.localRefs;
-        this.meta = env.meta;
+        if (typeof env2.schema == "object")
+          schema = env2.schema;
+        this.schema = env2.schema;
+        this.schemaId = env2.schemaId;
+        this.root = env2.root || this;
+        this.baseId = (_a = env2.baseId) !== null && _a !== void 0 ? _a : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
+        this.schemaPath = env2.schemaPath;
+        this.localRefs = env2.localRefs;
+        this.meta = env2.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -3063,15 +3063,15 @@ var require_compile = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env;
+      let env2;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env = resolveSchema.call(this, root, $ref);
+        env2 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env = env || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env.schema !== env.root.schema)
-        return env;
+      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env2.schema !== env2.root.schema)
+        return env2;
       return void 0;
     }
   }
@@ -4552,8 +4552,8 @@ var require_ref = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env, validateName, opts, self } = it;
-        const { root } = env;
+        const { baseId, schemaEnv: env2, validateName, opts, self } = it;
+        const { root } = env2;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self, root, baseId, $ref);
@@ -4563,8 +4563,8 @@ var require_ref = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env === root)
-            return callRef(cxt, validateName, env, env.$async);
+          if (env2 === root)
+            return callRef(cxt, validateName, env2, env2.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -4594,14 +4594,14 @@ var require_ref = __commonJS({
     exports.getValidate = getValidate;
     function callRef(cxt, v, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env, opts } = it;
+      const { allErrors, schemaEnv: env2, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env.$async)
+        if (!env2.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -28389,10 +28389,10 @@ async function buildServer(opts) {
   const bundle = await opts.build(server);
   const ctx = { promptsDir: opts.promptsDir, packRoot: opts.packRoot };
   for (const def of bundle.prompts) {
-    registerPrompt(server, def, ctx);
+    registerPrompt(server, def, ctx, opts.onInvoke);
   }
   for (const def of bundle.tools ?? []) {
-    registerTool(server, def);
+    registerTool(server, def, opts.onInvoke);
   }
   for (const def of bundle.resources ?? []) {
     registerResource(server, def);
@@ -28404,7 +28404,19 @@ async function runPackServer(opts) {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
-function registerPrompt(server, def, ctx) {
+function notify(onInvoke, event) {
+  if (!onInvoke)
+    return;
+  try {
+    const maybe = onInvoke(event);
+    if (maybe && typeof maybe.then === "function") {
+      maybe.then(void 0, () => {
+      });
+    }
+  } catch {
+  }
+}
+function registerPrompt(server, def, ctx, onInvoke) {
   const argsSchema = {};
   for (const arg of def.arguments ?? []) {
     argsSchema[arg.name] = arg.required ? external_exports.string() : external_exports.string().optional();
@@ -28413,6 +28425,7 @@ function registerPrompt(server, def, ctx) {
     description: def.description,
     argsSchema
   }, (args) => {
+    notify(onInvoke, { kind: "prompt", name: def.name });
     const body = resolvePromptBody(def, ctx);
     const stringArgs = {};
     for (const [key, value] of Object.entries(args ?? {})) {
@@ -28439,7 +28452,7 @@ function withPluginResourceContext(text, ctx) {
 
 ${text}`;
 }
-function registerTool(server, def) {
+function registerTool(server, def, onInvoke) {
   const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
   server.registerTool(def.name, {
     description: def.description,
@@ -28448,6 +28461,7 @@ function registerTool(server, def) {
     // (ADR-0024); omitted by text-only tools.
     ...def.meta ? { _meta: def.meta } : {}
   }, async (args) => {
+    notify(onInvoke, { kind: "tool", name: def.name });
     const parsed = def.inputSchema.safeParse(args ?? {});
     if (!parsed.success) {
       return {
@@ -28794,13 +28808,14 @@ var PROMPTS = [
     body: callTool("help", { section: "kanban" })
   }
 ];
-function loadEnv(env = process.env) {
-  const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
-  const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
-  const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
-  const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
+function loadEnv(env2 = process.env) {
+  const projectDir = env2.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const configPath = env2.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
+  const memoryDir = env2.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
+  const handoffDir = env2.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, usageDir };
 }
 
 // src/storage/schema.ts
@@ -28878,12 +28893,17 @@ var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
   index_file: external_exports.string().min(1).optional()
 });
+var UsageConfig = external_exports.object({
+  enabled: external_exports.boolean().default(true)
+});
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
   tracker_url_template: external_exports.string().nullable().default(null),
   gates: GateCommands.optional(),
   /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
   adr: AdrConfig.optional(),
+  /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
+  usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
   statuses: Statuses.default(DEFAULT_STATUSES),
   /**
@@ -29098,6 +29118,45 @@ function parseStatusesJson(input) {
 }
 function zodIssues(error2) {
   return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
+}
+
+// src/lib/usage.ts
+var EVENTS_FILE = "events.jsonl";
+var ROTATED_FILE = "events.jsonl.1";
+var MAX_LOG_BYTES = 1024 * 1024;
+function logUsageEvent(env2, event) {
+  try {
+    if (!usageEnabled(env2)) return;
+    ensureUsageDir(env2.usageDir);
+    const path = join(env2.usageDir, EVENTS_FILE);
+    rotateIfNeeded(env2.usageDir, path);
+    const line = JSON.stringify({
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      kind: event.kind,
+      name: event.name
+    });
+    appendFileSync(path, line + "\n");
+  } catch {
+  }
+}
+function usageEnabled(env2) {
+  const { config: config2 } = loadConfig(env2.configPath);
+  return config2.usage?.enabled ?? true;
+}
+function ensureUsageDir(usageDir) {
+  mkdirSync(usageDir, { recursive: true });
+  const gitignore = join(usageDir, ".gitignore");
+  if (!existsSync(gitignore)) writeFileSync(gitignore, "*\n");
+}
+function rotateIfNeeded(usageDir, path) {
+  let size;
+  try {
+    size = statSync(path).size;
+  } catch {
+    return;
+  }
+  if (size < MAX_LOG_BYTES) return;
+  renameSync(path, join(usageDir, ROTATED_FILE));
 }
 
 // src/storage/slug.ts
@@ -29501,27 +29560,27 @@ var AdrInput = external_exports.object({
     "supersede: pair this existing record as the successor instead of creating a skeleton"
   )
 });
-function buildAdrTool(env) {
+function buildAdrTool(env2) {
   return defineTool({
     name: "adr",
     description: "Deterministic ADR-lifecycle mechanics over the project's decision-record corpus (ADR-0027; location: config adr.dir, else detected docs/adr | docs/decisions | adr, else docs/adr). Parses both table-style and MADR heading-style records. action:'next' reserves the next number (pass title to preview the file path); 'list' renders the parsed corpus with statuses; 'audit' lints it (dangling ADR-NNNN references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index); 'index' regenerates the corpus index between managed markers; 'accept' ratifies one proposed record after a readiness gate (no {\u2026} placeholders, required sections, resolving cross-references) and stamps status + date; 'supersede' creates or pairs a successor and flips the old record's status \u2014 never its content. accept and supersede are human decisions: invoke them only on explicit user instruction.",
     inputSchema: AdrInput,
-    handler: (input) => Promise.resolve(dispatch(env, input))
+    handler: (input) => Promise.resolve(dispatch(env2, input))
   });
 }
-function loadContext(env) {
-  const { config: config2, warning } = loadConfig(env.configPath);
+function loadContext(env2) {
+  const { config: config2, warning } = loadConfig(env2.configPath);
   const adrConfig = config2.adr;
-  const dir = resolveAdrDir(env.projectDir, adrConfig);
+  const dir = resolveAdrDir(env2.projectDir, adrConfig);
   return {
     dir,
     corpus: readAdrCorpus(dir),
-    index: resolveIndexTarget(env.projectDir, dir, adrConfig),
+    index: resolveIndexTarget(env2.projectDir, dir, adrConfig),
     warning
   };
 }
-function dispatch(env, input) {
-  const ctx = loadContext(env);
+function dispatch(env2, input) {
+  const ctx = loadContext(env2);
   switch (input.action) {
     case "next":
       return runNext(ctx, input);
@@ -29532,9 +29591,9 @@ function dispatch(env, input) {
     case "audit":
       return runAudit(ctx);
     case "accept":
-      return runAccept(env, ctx, input);
+      return runAccept(env2, ctx, input);
     case "supersede":
-      return runSupersede(env, ctx, input);
+      return runSupersede(env2, ctx, input);
   }
 }
 function runNext(ctx, input) {
@@ -29820,7 +29879,7 @@ function push(map, key, value) {
   if (list) list.push(value);
   else map.set(key, [value]);
 }
-function runAccept(env, ctx, input) {
+function runAccept(env2, ctx, input) {
   if (input.number === void 0) {
     return err('`accept` requires `number` \u2014 the record to ratify (e.g. 27 or "0027").');
   }
@@ -29865,7 +29924,7 @@ Fix the record and retry; nothing was written.`
   const stamped = stampAccepted(raw, record2.style, today);
   if (!stamped.ok) return err(`Cannot stamp ADR-${formatAdrId(record2.number)}: ${stamped.error}.`);
   writeAdrFileAtomic(join(ctx.dir.abs, record2.filename), stamped.text);
-  const fresh = loadContext(env);
+  const fresh = loadContext(env2);
   const updated = fresh.corpus.records.find((r) => r.number === record2.number);
   const lines = [
     `Accepted **ADR-${formatAdrId(record2.number)} \u2014 ${record2.title}**, dated ${today}.`,
@@ -29877,7 +29936,7 @@ Fix the record and retry; nothing was written.`
     ...updated ? { structuredContent: { record: toPayloadRecord(updated) } } : {}
   });
 }
-function runSupersede(env, ctx, input) {
+function runSupersede(env2, ctx, input) {
   if (input.number === void 0) {
     return err("`supersede` requires `number` \u2014 the record being superseded.");
   }
@@ -29939,7 +29998,7 @@ function runSupersede(env, ctx, input) {
     );
   }
   writeAdrFileAtomic(join(ctx.dir.abs, old.filename), flipped.text);
-  const fresh = loadContext(env);
+  const fresh = loadContext(env2);
   const freshOld = fresh.corpus.records.find((r) => r.number === old.number);
   const freshNew = fresh.corpus.records.find((r) => r.number === successor.number);
   const lines = [
@@ -30302,18 +30361,18 @@ var TaskInput = external_exports.object({
     "config: open the interactive form for the scalar settings instead of just showing the configuration"
   )
 });
-function buildTaskTool(server, env) {
+function buildTaskTool(server, env2) {
   return defineTool({
     name: "task",
     description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     handler: (input) => {
-      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
-      return dispatchTask(server, env, config2, input);
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      return dispatchTask(server, env2, config2, input);
     }
   });
 }
-async function dispatchTask(server, env, config2, input) {
+async function dispatchTask(server, env2, config2, input) {
   let action = input.action;
   if (!action || action === "menu") {
     if (!canElicit(server)) {
@@ -30321,35 +30380,35 @@ async function dispatchTask(server, env, config2, input) {
         "This host does not support interactive forms \u2014 pass `action` as a tool argument and retry: one of create, list, status, start, review, done, move, link-pr, config, archive."
       );
     }
-    const picked = await pickMenuAction(server, env, config2);
+    const picked = await pickMenuAction(server, env2, config2);
     if (!picked) return cancelled();
     action = picked;
   }
   switch (action) {
     case "create":
-      return runCreate(server, env, config2, input);
+      return runCreate(server, env2, config2, input);
     case "list":
-      return runList2(env, config2);
+      return runList2(env2, config2);
     case "status":
-      return runStatus(server, env, config2);
+      return runStatus(server, env2, config2);
     case "start":
-      return runStart(server, env, config2, input.taskId);
+      return runStart(server, env2, config2, input.taskId);
     case "review":
-      return runReview(server, env, config2, input.taskId);
+      return runReview(server, env2, config2, input.taskId);
     case "done":
-      return runDone(server, env, config2, input.taskId);
+      return runDone(server, env2, config2, input.taskId);
     case "move":
-      return runMove(server, env, config2, input);
+      return runMove(server, env2, config2, input);
     case "link-pr":
-      return runLinkPr(env, config2, input.taskId, input.url);
+      return runLinkPr(env2, config2, input.taskId, input.url);
     case "config":
-      return runConfig(server, env, input);
+      return runConfig(server, env2, input);
     case "archive":
-      return runArchive(server, env, config2, input);
+      return runArchive(server, env2, config2, input);
   }
 }
-async function pickMenuAction(server, env, config2) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+async function pickMenuAction(server, env2, config2) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip").length;
   const data = await elicit(
     server,
@@ -30370,7 +30429,7 @@ async function pickMenuAction(server, env, config2) {
   );
   return data?.action ?? null;
 }
-async function runCreate(server, env, config2, input) {
+async function runCreate(server, env2, config2, input) {
   if (input.title !== void 0 && !TaskTitle.safeParse(input.title).success) {
     return errOk(
       "Invalid `title` \u2014 pass 3..120 printable characters (control characters are rejected)."
@@ -30406,14 +30465,14 @@ async function runCreate(server, env, config2, input) {
     description = description ?? data.description;
   }
   if (!type || !title) return cancelled();
-  const created = createTask(env.tasksDir, config2, {
+  const created = createTask(env2.tasksDir, config2, {
     type,
     title,
     ...trackerId ? { tracker_id: trackerId } : {},
     ...description ? { description } : {}
   });
   let branchInfo = "";
-  if (hasGit() && inGitRepo(env.projectDir)) {
+  if (hasGit() && inGitRepo(env2.projectDir)) {
     if (canElicit(server)) {
       const confirm = await elicit(
         server,
@@ -30424,11 +30483,11 @@ async function runCreate(server, env, config2, input) {
         const result2 = createBranchFromBase(
           config2.base_branch,
           created.task.frontmatter.branch,
-          env.projectDir
+          env2.projectDir
         );
         if (result2.ok) {
           const wipStatus = requireRole(config2, "wip");
-          updateStatus(env.tasksDir, created.task, wipStatus.key);
+          updateStatus(env2.tasksDir, created.task, wipStatus.key);
           branchInfo = `
 Branch \`${created.task.frontmatter.branch}\` checked out; status \u2192 ${wipStatus.key}.`;
         } else {
@@ -30448,14 +30507,14 @@ To branch off and pick it up, call this tool with action="start", taskId="${crea
 File: \`${created.path}\`${templateWarning}${branchInfo}`
   );
 }
-function runList2(env, config2) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
-  const branch = currentBranch(env.projectDir);
+function runList2(env2, config2) {
+  const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
+  const branch = currentBranch(env2.projectDir);
   const body = renderListTable(tasks, branch, config2);
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} malformed file(s): ${malformed.map((m) => m.filename).join(", ")}_` : "";
-  const archived = countArchived(env.tasksDir);
+  const archived = countArchived(env2.tasksDir);
   const footer = archived > 0 ? `
 
 _${archived} archived task(s) in \`archive/\`._` : "";
@@ -30504,9 +30563,9 @@ function prRefFromUrl(url) {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? { url, number: Number(match[1]) } : { url };
 }
-function runStatus(_server, env, config2) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
-  const branch = currentBranch(env.projectDir);
+function runStatus(_server, env2, config2) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
+  const branch = currentBranch(env2.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
   const wip = tasks.filter((t) => roleOfStatus(config2, t.frontmatter.status) === "wip");
   const lines = [];
@@ -30523,8 +30582,8 @@ function runStatus(_server, env, config2) {
   }
   return ok(lines.join("\n"));
 }
-async function runStart(server, env, config2, preselected) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+async function runStart(server, env2, config2, preselected) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   const todoKeys = keysOfRoles(config2, ["todo"]);
   const todo = tasks.filter((t) => todoKeys.includes(t.frontmatter.status));
   let task;
@@ -30558,25 +30617,25 @@ async function runStart(server, env, config2, preselected) {
     task = findTaskById(tasks, data.taskId);
     if (!task) return errOk(`Task ${data.taskId} not found`);
   }
-  if (hasGit() && inGitRepo(env.projectDir)) {
-    const result2 = branchExists(task.frontmatter.branch, env.projectDir) ? checkoutBranch(task.frontmatter.branch, env.projectDir) : createBranchFromBase(config2.base_branch, task.frontmatter.branch, env.projectDir);
+  if (hasGit() && inGitRepo(env2.projectDir)) {
+    const result2 = branchExists(task.frontmatter.branch, env2.projectDir) ? checkoutBranch(task.frontmatter.branch, env2.projectDir) : createBranchFromBase(config2.base_branch, task.frontmatter.branch, env2.projectDir);
     if (!result2.ok) return errOk(`git: ${result2.stderr}`);
   }
   const wipStatus = requireRole(config2, "wip");
-  updateStatus(env.tasksDir, task, wipStatus.key);
+  updateStatus(env2.tasksDir, task, wipStatus.key);
   return ok(
     `Started **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
 Branch: \`${task.frontmatter.branch}\` \xB7 status \u2192 ${wipStatus.key}`
   );
 }
-async function runReview(server, env, config2, preselected) {
+async function runReview(server, env2, config2, preselected) {
   const target = firstOfRole(config2, "review");
   if (!target) {
     return errOk(
       'No status with role "review" is configured \u2014 add one to `statuses` in `.marvin/config.json`, or use the `move` action.'
     );
   }
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, ["wip"], preselected);
+  const pick2 = await detectCurrentTaskOrPick(server, env2, config2, ["wip"], preselected);
   if (pick2.kind === "cancelled") return cancelled();
   if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
@@ -30584,15 +30643,15 @@ async function runReview(server, env, config2, preselected) {
       `No tasks in a wip-role status (${keysOfRoles(config2, ["wip"]).join(", ")}) \u2014 nothing to move to review.`
     );
   }
-  updateStatus(env.tasksDir, pick2.task, target.key);
+  updateStatus(env2.tasksDir, pick2.task, target.key);
   return ok(
     `Moved **${pick2.task.frontmatter.id}** to **${target.key}**.
 Open a PR with \`/marvin:pr-create\` (base branch: \`${config2.base_branch}\`).`
   );
 }
-async function runDone(server, env, config2, preselected) {
+async function runDone(server, env2, config2, preselected) {
   const roles = ["wip", "review"];
-  const pick2 = await detectCurrentTaskOrPick(server, env, config2, roles, preselected);
+  const pick2 = await detectCurrentTaskOrPick(server, env2, config2, roles, preselected);
   if (pick2.kind === "cancelled") return cancelled();
   if (pick2.kind === "error") return errOk(pick2.message);
   if (pick2.kind === "none") {
@@ -30601,13 +30660,13 @@ async function runDone(server, env, config2, preselected) {
     );
   }
   const doneStatus = requireRole(config2, "done");
-  updateStatus(env.tasksDir, pick2.task, doneStatus.key);
+  updateStatus(env2.tasksDir, pick2.task, doneStatus.key);
   return ok(
     `Marked **${pick2.task.frontmatter.id}** as **${doneStatus.key}**. Branch cleanup and merge are left to you / CI.`
   );
 }
-async function runMove(server, env, config2, input) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+async function runMove(server, env2, config2, input) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   if (tasks.length === 0) {
     return ok(
       "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
@@ -30623,7 +30682,7 @@ async function runMove(server, env, config2, input) {
     task = findTaskById(tasks, input.taskId);
     if (!task) return errOk(`Task ${input.taskId} not found`);
   } else {
-    const branch = currentBranch(env.projectDir);
+    const branch = currentBranch(env2.projectDir);
     task = branch ? findTaskByBranch(tasks, branch) : null;
   }
   if (!task) {
@@ -30661,13 +30720,13 @@ async function runMove(server, env, config2, input) {
     return ok(`**${task.frontmatter.id}** is already in \`${target}\` \u2014 nothing to do.`);
   }
   const from = task.frontmatter.status;
-  updateStatus(env.tasksDir, task, target);
+  updateStatus(env2.tasksDir, task, target);
   return ok(
     `Moved **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
 \`${from}\` \u2192 \`${target}\``
   );
 }
-function runLinkPr(env, config2, taskId, url) {
+function runLinkPr(env2, config2, taskId, url) {
   if (!url) {
     return errOk(
       "Missing `url` \u2014 pass the PR URL to link, e.g. https://github.com/acme/widget/pull/42."
@@ -30678,13 +30737,13 @@ function runLinkPr(env, config2, taskId, url) {
       `Not an http(s) URL: \`${url}\` \u2014 pass the PR URL as printed by \`gh pr create\`.`
     );
   }
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   let task;
   if (taskId) {
     task = findTaskById(tasks, taskId);
     if (!task) return errOk(`Task ${taskId} not found.`);
   } else {
-    const branch = currentBranch(env.projectDir);
+    const branch = currentBranch(env2.projectDir);
     task = branch ? findTaskByBranch(tasks, branch) : null;
     if (!task) {
       return errOk(
@@ -30692,12 +30751,12 @@ function runLinkPr(env, config2, taskId, url) {
       );
     }
   }
-  const saved = setTaskPr(env.tasksDir, task, url);
+  const saved = setTaskPr(env2.tasksDir, task, url);
   return ok(`Linked PR to **${saved.frontmatter.id}** \u2014 ${saved.frontmatter.title}
 PR: ${url}`);
 }
-async function runArchive(server, env, config2, input) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+async function runArchive(server, env2, config2, input) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   const doneKeys = keysOfRoles(config2, ["done"]);
   if (input.taskId) {
     const task = findTaskById(tasks, input.taskId);
@@ -30707,7 +30766,7 @@ async function runArchive(server, env, config2, input) {
         `Task ${input.taskId} is in status "${task.frontmatter.status}" \u2014 archiving requires a done-role status (${doneKeys.join(", ")}). Mark it done first, or use the \`move\` action.`
       );
     }
-    const target = archiveTask(env.tasksDir, task);
+    const target = archiveTask(env2.tasksDir, task);
     return ok(
       `Archived **${task.frontmatter.id}** \u2014 ${task.frontmatter.title}
 Moved to \`${target}\``
@@ -30730,9 +30789,9 @@ Moved to \`${target}\``
     );
     if (answer?.archive !== "yes") return cancelled();
   }
-  for (const t of done) archiveTask(env.tasksDir, t);
+  for (const t of done) archiveTask(env2.tasksDir, t);
   return ok(
-    `Archived ${done.length} task(s) to \`${archiveDir(env.tasksDir)}\`: ${done.map((t) => t.frontmatter.id).join(", ")}.`
+    `Archived ${done.length} task(s) to \`${archiveDir(env2.tasksDir)}\`: ${done.map((t) => t.frontmatter.id).join(", ")}.`
   );
 }
 function isHttpUrl(raw) {
@@ -30743,8 +30802,8 @@ function isHttpUrl(raw) {
     return false;
   }
 }
-async function runConfig(server, env, input) {
-  const loaded = loadConfig(env.configPath, env.projectDir);
+async function runConfig(server, env2, input) {
+  const loaded = loadConfig(env2.configPath, env2.projectDir);
   const patch = {};
   const notes = [];
   if (input.statuses !== void 0) {
@@ -30813,9 +30872,9 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
     if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
   }
   if (Object.keys(patch).length === 0) {
-    return ok(renderConfigView(env, loaded));
+    return ok(renderConfigView(env2, loaded));
   }
-  if (!existsSync(env.configPath) && patch.base_branch === void 0) {
+  if (!existsSync(env2.configPath) && patch.base_branch === void 0) {
     patch.base_branch = loaded.config.base_branch;
     if (loaded.base_branch_source === "origin/HEAD") {
       notes.push(
@@ -30823,11 +30882,11 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
       );
     }
   }
-  const result2 = updateConfigFile(env.configPath, patch);
+  const result2 = updateConfigFile(env2.configPath, patch);
   if (!result2.ok) return errOk(`Config not written \u2014 ${result2.error}.`);
-  const fresh = loadConfig(env.configPath, env.projectDir);
+  const fresh = loadConfig(env2.configPath, env2.projectDir);
   if (patch.statuses) {
-    const { malformed } = readAllTasks(env.tasksDir, fresh.config);
+    const { malformed } = readAllTasks(env2.tasksDir, fresh.config);
     const stranded = malformed.filter((m) => m.reason.includes("unknown status"));
     if (stranded.length > 0) {
       notes.push(
@@ -30837,25 +30896,25 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
   }
   const changed = Object.keys(patch).map((k) => `\`${k}\``).join(", ");
   const lines = [
-    `${result2.created ? "Created" : "Updated"} \`${env.configPath}\` \u2014 set ${changed}.`,
+    `${result2.created ? "Created" : "Updated"} \`${env2.configPath}\` \u2014 set ${changed}.`,
     ...notes.map((n) => `_${n}_`),
     "",
-    renderConfigView(env, fresh)
+    renderConfigView(env2, fresh)
   ];
   return ok(lines.join("\n"));
 }
-function renderConfigView(env, loaded) {
+function renderConfigView(env2, loaded) {
   const { config: config2, warning, base_branch_source } = loaded;
-  const fileExists = existsSync(env.configPath);
+  const fileExists = existsSync(env2.configPath);
   const sourceLabel = base_branch_source === "config" ? "from config" : base_branch_source === "origin/HEAD" ? "auto-detected from origin/HEAD" : "default";
   const lines = [];
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
-  lines.push(`- **Project:** \`${env.projectDir}\``);
-  lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
+  lines.push(`- **Project:** \`${env2.projectDir}\``);
+  lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
-    `- **Config file:** \`${env.configPath}\`${fileExists ? "" : " _(not created yet \u2014 the first edit creates it)_"}`
+    `- **Config file:** \`${env2.configPath}\`${fileExists ? "" : " _(not created yet \u2014 the first edit creates it)_"}`
   );
   lines.push("");
   lines.push("## Settings");
@@ -30881,8 +30940,8 @@ function renderConfigView(env, loaded) {
   );
   return lines.join("\n");
 }
-async function detectCurrentTaskOrPick(server, env, config2, roles, preselected) {
-  const { tasks } = readAllTasks(env.tasksDir, config2);
+async function detectCurrentTaskOrPick(server, env2, config2, roles, preselected) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
   const allowedKeys = keysOfRoles(config2, roles);
   if (preselected) {
     const task = findTaskById(tasks, preselected);
@@ -30895,7 +30954,7 @@ async function detectCurrentTaskOrPick(server, env, config2, roles, preselected)
     }
     return { kind: "task", task };
   }
-  const branch = currentBranch(env.projectDir);
+  const branch = currentBranch(env2.projectDir);
   const linked = branch ? findTaskByBranch(tasks, branch) : null;
   if (linked && allowedKeys.includes(linked.frontmatter.status)) {
     return { kind: "task", task: linked };
@@ -30928,8 +30987,8 @@ function errOk(text) {
 function cancelled() {
   return ok("Cancelled \u2014 no changes made.");
 }
-function kanbanCounts(env, config2) {
-  const { tasks, malformed } = readAllTasks(env.tasksDir, config2);
+function kanbanCounts(env2, config2) {
+  const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const counts = {};
   for (const s of config2.statuses) counts[s.key] = 0;
   const roleCounts = {
@@ -30964,13 +31023,13 @@ function commandGroups() {
     count: PROMPTS.filter((p) => groupOf(p.name) === group).length
   })).filter((g) => g.count > 0);
 }
-function artifactCounts(env) {
-  const marvin = join(env.projectDir, ".marvin");
+function artifactCounts(env2) {
+  const marvin = join(env2.projectDir, ".marvin");
   return {
     specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
     handoffs: countMarkdown(join(marvin, "handoff")),
     audits: countMarkdown(join(marvin, "security")),
-    lessons: countMarkdown(env.memoryDir, ["MEMORY.md"])
+    lessons: countMarkdown(env2.memoryDir, ["MEMORY.md"])
   };
 }
 function countMarkdown(dir, exclude = []) {
@@ -30986,27 +31045,27 @@ function countMarkdown(dir, exclude = []) {
 var HelpInput = external_exports.object({
   section: external_exports.string().optional().describe("Filter the command index to one group: core, adr, pr, task, sec, refactor, kanban.")
 });
-function buildHelpTool(env, version2) {
+function buildHelpTool(env2, version2) {
   return defineTool({
     name: "help",
     description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/adr/pr/task/sec/refactor/kanban).',
     inputSchema: HelpInput,
     handler: (input) => {
-      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderHelp(env, config2, version2, input.section));
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      return Promise.resolve(renderHelp(env2, config2, version2, input.section));
     }
   });
 }
-function renderHelp(env, config2, version2, section) {
-  const { counts, roleCounts, malformed } = kanbanCounts(env, config2);
-  const git2 = gitState(env.projectDir);
+function renderHelp(env2, config2, version2, section) {
+  const { counts, roleCounts, malformed } = kanbanCounts(env2, config2);
+  const git2 = gitState(env2.projectDir);
   const lines = [];
   lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
   lines.push("");
   lines.push("## State");
-  lines.push(`- Project: \`${env.projectDir}\``);
-  lines.push(`- Tasks dir: \`${env.tasksDir}\``);
-  lines.push(`- Config: \`${env.configPath}\``);
+  lines.push(`- Project: \`${env2.projectDir}\``);
+  lines.push(`- Tasks dir: \`${env2.tasksDir}\``);
+  lines.push(`- Config: \`${env2.configPath}\``);
   lines.push(`- Base branch: \`${config2.base_branch}\``);
   lines.push(
     `- Tracker template: ${config2.tracker_url_template ? `\`${config2.tracker_url_template}\`` : "not configured"}`
@@ -31027,7 +31086,7 @@ function renderHelp(env, config2, version2, section) {
   lines.push(...renderCommandIndex(section));
   const dashboard = {
     version: version2,
-    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    paths: { project: env2.projectDir, tasks_dir: env2.tasksDir, config_path: env2.configPath },
     config: {
       base_branch: config2.base_branch,
       tracker_url_template: config2.tracker_url_template,
@@ -31037,7 +31096,7 @@ function renderHelp(env, config2, version2, section) {
     kanban_counts: counts,
     kanban_role_counts: roleCounts,
     git: git2,
-    artifacts: artifactCounts(env),
+    artifacts: artifactCounts(env2),
     command_groups: commandGroups()
   };
   return {
@@ -31230,37 +31289,37 @@ var SECTION_ORDER = [
 var DashboardInput = external_exports.object({
   section: external_exports.string().optional().describe(`Narrow the text report to one section: ${SECTION_ORDER.join(", ")}.`)
 });
-function buildDashboardTool(env, version2) {
+function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
     description: `Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     handler: (input) => {
-      const loaded = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderDashboard(env, loaded.config, loaded.warning, version2, input));
+      const loaded = loadConfig(env2.configPath, env2.projectDir);
+      return Promise.resolve(renderDashboard(env2, loaded.config, loaded.warning, version2, input));
     }
   });
 }
-function renderDashboard(env, config2, configWarning, version2, input) {
-  const kanban = kanbanCounts(env, config2);
-  const git2 = gitState(env.projectDir);
-  const verification = verificationFreshness(env.projectDir);
-  const artifacts = { ...artifactCounts(env), verification };
+function renderDashboard(env2, config2, configWarning, version2, input) {
+  const kanban = kanbanCounts(env2, config2);
+  const git2 = gitState(env2.projectDir);
+  const verification = verificationFreshness(env2.projectDir);
+  const artifacts = { ...artifactCounts(env2), verification };
   const security = {
     reports: artifacts.audits,
-    newest_age_days: newestAgeDays(join(env.projectDir, ".marvin", "security"))
+    newest_age_days: newestAgeDays(join(env2.projectDir, ".marvin", "security"))
   };
-  const refactor = refactorInventory(env.projectDir);
-  const lessons = lessonsStats(env.memoryDir);
-  const adrDir = resolveAdrDir(env.projectDir, config2.adr);
+  const refactor = refactorInventory(env2.projectDir);
+  const lessons = lessonsStats(env2.memoryDir);
+  const adrDir = resolveAdrDir(env2.projectDir, config2.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
-  const usage = readUsageSummary(env.projectDir);
+  const usage = readUsageSummary(env2.projectDir);
   const groups = commandGroups();
   const sections = {
     project: [
       "## Project",
-      `- Project: \`${env.projectDir}\``,
-      `- Config: \`${env.configPath}\`${existsSync(env.configPath) ? "" : " _(not created yet)_"}`,
+      `- Project: \`${env2.projectDir}\``,
+      `- Config: \`${env2.configPath}\`${existsSync(env2.configPath) ? "" : " _(not created yet)_"}`,
       `- Base branch: \`${config2.base_branch}\``,
       `- git: ${git2.has_git ? "\u2713" : "\u2717"} \xB7 gh: ${git2.has_gh ? "\u2713" : "\u2717"} \xB7 branch: \`${git2.branch ?? "(not in a git repo)"}\``,
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : []
@@ -31318,7 +31377,7 @@ function renderDashboard(env, config2, configWarning, version2, input) {
   }
   const state = {
     version: version2,
-    paths: { project: env.projectDir, tasks_dir: env.tasksDir, config_path: env.configPath },
+    paths: { project: env2.projectDir, tasks_dir: env2.tasksDir, config_path: env2.configPath },
     config: {
       base_branch: config2.base_branch,
       tracker_url_template: config2.tracker_url_template,
@@ -31553,18 +31612,18 @@ var VerifyInput = external_exports.object({
     "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver."
   )
 });
-function buildVerifyTool(env) {
+function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
     description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver.`,
     inputSchema: VerifyInput,
-    handler: (input) => runVerify(input, env)
+    handler: (input) => runVerify(input, env2)
   });
 }
-async function runVerify(input, env) {
-  const projectRoot = input.projectRoot ?? env.projectDir;
+async function runVerify(input, env2) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
   if (input.action === "gate") return deliverGate(projectRoot);
-  const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env.configPath;
+  const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env2.configPath;
   const { config: config2, warning: configWarning } = loadConfig(configPath);
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
@@ -32073,16 +32132,16 @@ var SpecInput = external_exports.object({
     "mode: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
   )
 });
-function buildSpecTool(env) {
+function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
     description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha \u2014 the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
     inputSchema: SpecInput,
-    handler: (input) => runSpec(input, env)
+    handler: (input) => runSpec(input, env2)
   });
 }
-async function runSpec(input, env) {
-  const projectRoot = input.projectRoot ?? env.projectDir;
+async function runSpec(input, env2) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
   let raw;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
@@ -32744,27 +32803,27 @@ var LessonsInput = external_exports.object({
   slug: external_exports.string().optional().describe("prune: the lesson to delete \u2014 a slug from the candidate list"),
   confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form")
 });
-function buildLessonsTool(server, env) {
+function buildLessonsTool(server, env2) {
   return defineTool({
     name: "lessons",
     description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
     inputSchema: LessonsInput,
-    handler: (input) => dispatch2(server, env, input)
+    handler: (input) => dispatch2(server, env2, input)
   });
 }
-async function dispatch2(server, env, input) {
+async function dispatch2(server, env2, input) {
   switch (input.action) {
     case "add":
-      return runAdd(env, input);
+      return runAdd(env2, input);
     case "search":
-      return runSearch(env, input);
+      return runSearch(env2, input);
     case "stats":
-      return runStats(env);
+      return runStats(env2);
     case "prune":
-      return runPrune(server, env, input);
+      return runPrune(server, env2, input);
   }
 }
-function runAdd(env, input) {
+function runAdd(env2, input) {
   const missing = [];
   if (!input.type) missing.push("type");
   if (!input.title?.trim()) missing.push("title");
@@ -32775,7 +32834,7 @@ function runAdd(env, input) {
     );
   }
   if (!input.force) {
-    const dup = findNearDuplicate(env.memoryDir, input.title.trim());
+    const dup = findNearDuplicate(env2.memoryDir, input.title.trim());
     if (dup) {
       return err2(
         `Near-duplicate of existing lesson **${dup.slug}** \u2014 "${dup.title}" (\`${dup.type}\`, ${dup.created}). Nothing written. Extend that lesson instead, or pass \`force: true\` to add this one anyway.`
@@ -32783,7 +32842,7 @@ function runAdd(env, input) {
     }
   }
   const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
-  const { slug, path } = addLesson(env.memoryDir, {
+  const { slug, path } = addLesson(env2.memoryDir, {
     type: input.type,
     title: input.title.trim(),
     body: input.body,
@@ -32796,8 +32855,8 @@ File: \`${path}\`
 Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
   );
 }
-function runSearch(env, input) {
-  const lessons = searchLessons(env.memoryDir, {
+function runSearch(env2, input) {
+  const lessons = searchLessons(env2.memoryDir, {
     ...input.query ? { query: input.query } : {},
     ...input.type ? { type: input.type } : {},
     ...input.limit ? { limit: input.limit } : {}
@@ -32810,8 +32869,8 @@ function runSearch(env, input) {
   }
   return ok3(renderLessons(lessons));
 }
-function runStats(env) {
-  const stats = lessonsStats(env.memoryDir);
+function runStats(env2) {
+  const stats = lessonsStats(env2.memoryDir);
   if (stats.total === 0) {
     return {
       content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
@@ -32834,13 +32893,13 @@ function runStats(env) {
     structuredContent: stats
   };
 }
-async function runPrune(server, env, input) {
+async function runPrune(server, env2, input) {
   if (!input.slug) {
-    const total = readAllLessons(env.memoryDir).length;
+    const total = readAllLessons(env2.memoryDir).length;
     if (total === 0) {
       return ok3("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
     }
-    const { stale, duplicates } = pruneCandidates(env.memoryDir);
+    const { stale, duplicates } = pruneCandidates(env2.memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok3(
         `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
@@ -32864,7 +32923,7 @@ async function runPrune(server, env, input) {
     );
     return ok3(out.join("\n").trimEnd());
   }
-  const target = readAllLessons(env.memoryDir).find((l) => l.slug === input.slug);
+  const target = readAllLessons(env2.memoryDir).find((l) => l.slug === input.slug);
   if (!target) {
     return err2(
       `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. Call \`action: "prune"\` with no slug to list the candidates.`
@@ -32883,7 +32942,7 @@ async function runPrune(server, env, input) {
     );
     if (answer?.delete !== "yes") return ok3("Cancelled \u2014 no changes made.");
   }
-  const deleted = deleteLesson(env.memoryDir, target.slug);
+  const deleted = deleteLesson(env2.memoryDir, target.slug);
   if (!deleted) return err2(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
   return ok3(
     `Deleted lesson **${target.slug}** ("${target.title}").
@@ -32940,18 +32999,18 @@ function readAllHandoffs(handoffDir) {
 var HandoffInput = external_exports.object({
   action: external_exports.enum(["list"]).optional()
 });
-function buildHandoffTool(env) {
+function buildHandoffTool(env2) {
   return defineTool({
     name: "handoff",
     description: "List the session-continuation handoff documents saved under .marvin/handoff/, newest first.",
     inputSchema: HandoffInput,
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
-    handler: () => Promise.resolve(runList3(env))
+    handler: () => Promise.resolve(runList3(env2))
   });
 }
-function runList3(env) {
-  const { handoffs, malformed } = readAllHandoffs(env.handoffDir);
+function runList3(env2) {
+  const { handoffs, malformed } = readAllHandoffs(env2.handoffDir);
   const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
   const warning = malformed.length > 0 ? `
 
@@ -32996,19 +33055,19 @@ var SummaryInput = external_exports.object({
   slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
 });
-function buildSummaryTool(env) {
+function buildSummaryTool(env2) {
   return defineTool({
     name: "summary",
     description: "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
     inputSchema: SummaryInput,
     handler: (input) => {
-      const { config: config2 } = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(runSummary(env, config2, input));
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      return Promise.resolve(runSummary(env2, config2, input));
     }
   });
 }
-function runSummary(env, config2, input) {
-  const projectRoot = input.projectRoot ?? env.projectDir;
+function runSummary(env2, config2, input) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
   const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
   if (!specPath) {
     return errOk2(
@@ -33023,13 +33082,13 @@ function runSummary(env, config2, input) {
   const acceptance = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
   const gates = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config2.base_branch);
-  const lessons = searchLessons(env.memoryDir, { query: slug, limit: 10 }).map(
+  const lessons = searchLessons(env2.memoryDir, { query: slug, limit: 10 }).map(
     (l) => ({
       id: l.slug,
       title: l.title
     })
   );
-  const links = buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings);
+  const links = buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings);
   const summary = {
     slug,
     title: extractTitle2(body) ?? slug,
@@ -33129,12 +33188,12 @@ function readCommits(projectRoot, base) {
     return tab === -1 ? null : { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
   }).filter((c) => c !== null);
 }
-function buildLinks(env, config2, projectRoot, slug, frontmatter, hostBindings) {
+function buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings) {
   const links = [{ kind: "spec", label: slug, ref: slug }];
   const branch = currentBranch(projectRoot);
   if (branch) {
     links.push({ kind: "branch", label: branch, ref: branch });
-    const { tasks } = readAllTasks(env.tasksDir, config2);
+    const { tasks } = readAllTasks(env2.tasksDir, config2);
     const pr = findTaskByBranch(tasks, branch)?.frontmatter.pr;
     if (pr) links.push({ kind: "pr", label: prLabel(pr), url: pr });
   }
@@ -33197,14 +33256,18 @@ function errOk2(text) {
 }
 
 // src/server.ts
-var VERSION = "0.12.0";
+var VERSION = "0.13.0";
+var env = loadEnv();
 await runPackServer({
   name: "marvin",
   version: VERSION,
   promptsDir: promptsDirFromMeta(import.meta.url),
   packRoot: packRootFromMeta(import.meta.url),
+  // Usage telemetry (ADR-0030): fire-and-forget, fail-open. The shared hook
+  // reports only `{ kind, name }`; the logger owns the kill-switch, the
+  // self-ignoring dir, rotation, and error-swallowing.
+  onInvoke: (event) => logUsageEvent(env, event),
   build: (server) => {
-    const env = loadEnv();
     return {
       prompts: PROMPTS,
       tools: [

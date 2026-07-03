@@ -4,6 +4,52 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.13.0] — 2026-07-03
+
+Usage telemetry (toolbox-expansion WP7), completing ADR-0030: the dashboard can
+finally answer "which of the 50-odd commands does this project actually use?"
+from a local, self-ignoring event log. Middleware and wiring only — no new
+prompt and no new tool (registry stays 54 / 9).
+
+### Added
+
+- **Local usage log** (`.marvin/usage/events.jsonl`) — a `runPackServer`
+  middleware hook appends one JSONL event per prompt-get and per tool-call:
+  `{ ts, kind, name }` and nothing else. The event is deliberately minimal —
+  the ISO timestamp, whether it was a `prompt` or a `tool`, and the registered
+  command name — so no arguments, payloads, or anything user-identifying is
+  ever recorded. The `dashboard` tool's usage section (shipped in 0.12.0) now
+  has a real producer; the format matched its defensive reader unchanged.
+- **`usage.enabled` config kill-switch** — `usage: { enabled: false }` in
+  `.marvin/config.json` turns all logging off, read through the same
+  fail-closed config path as the other tool-owned blocks (foreign keys survive
+  read-modify-write). Absent config, or an absent `usage` block, means enabled:
+  telemetry is opt-OUT.
+
+### Guarantees
+
+- **Local-only, never committed.** On first write the log's directory gets a
+  `.gitignore` whose sole content is `*`, so neither the log nor the directory
+  ever reaches git — per-machine telemetry stays per-machine regardless of
+  whether the host commits the rest of `.marvin/`. The log is read only by the
+  local `dashboard` tool and is never transmitted anywhere.
+- **Bounded.** The log is size-capped (~1 MiB); on overflow it rotates to
+  `events.jsonl.1` (one generation kept) and a fresh file starts — no unbounded
+  growth.
+- **Fail-open.** Any logger failure — unwritable directory, full disk,
+  malformed config, a bad path — is swallowed. Logging is best-effort and never
+  breaks or delays the prompt-get or tool-call it observes; results and errors
+  are byte-for-byte unchanged whether logging succeeds, fails, or is disabled.
+
+### Privacy
+
+Usage data lives only in the project-local `.marvin/usage/` directory, is never
+committed (self-ignored) and never transmitted. What is recorded: command names
+and timestamps only — no arguments, no file contents, no PII. To disable, set
+`usage: { enabled: false }` in `.marvin/config.json` (via
+`/marvin:kanban-config` or by hand); logging stops immediately, no restart
+needed.
+
 ## [0.12.0] — 2026-07-03
 
 The toolbox dashboard (toolbox-expansion WP6, ADR-0030): one deterministic

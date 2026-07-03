@@ -16,6 +16,14 @@ export interface ServerEnv {
   memoryDir: string;
   /** Directory where handoff `.md` documents live (default `.marvin/handoff`). */
   handoffDir: string;
+  /**
+   * Directory where the local usage log lives (default `.marvin/usage`,
+   * ADR-0030). Holds `events.jsonl` (+ rotated generations) and a self-written
+   * `.gitignore` = `*`. The dashboard reads `<projectDir>/.marvin/usage/` by
+   * convention, so the default here is kept in lockstep with that path; the
+   * `MARVIN_USAGE_DIR` override exists for test isolation.
+   */
+  usageDir: string;
 }
 
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -24,5 +32,6 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir };
+  const usageDir = env.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, usageDir };
 }
