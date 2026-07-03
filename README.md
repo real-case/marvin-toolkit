@@ -36,10 +36,10 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
 | `sec-*` | security scanners | 10 |
-| `refactor-*` | code-health audits (read side) | 2 |
+| `refactor-*` | code-health family (read → plan → apply) | 4 |
 | `kanban-*` | lightweight task tracker | 12 |
 
-51 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus four read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+53 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus four read-side commands (`/marvin:help`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -104,12 +104,14 @@ OWASP Top 10, dependency audits, compliance checks.
 
 ### Refactoring — `refactor-*`
 
-Code-health audits, read-only ([ADR-0029](./docs/adr/0029-refactoring-command-family.md)). Both produce numbered findings registers (`F<n>` + severity + effort + `file:line` evidence) under `.marvin/refactor/`, and close by offering to file findings as kanban chores.
+The code-health family ([ADR-0029](./docs/adr/0029-refactoring-command-family.md)): read → plan → apply, split by mutation. The scanners produce numbered findings registers (`F<n>` + severity + effort + `file:line` evidence) under `.marvin/refactor/` and close by offering to file findings as kanban chores; the plan sequences selected findings into small steps (spec-sized items are routed to `/marvin:task-start`); apply executes one step at a time behind the `verify` gate.
 
 | Command | Description |
 |---------|-------------|
 | `/marvin:refactor-audit` | Whole-project structural audit — architecture map, churn×size hotspots, dependency tangles, dead code |
 | `/marvin:refactor-smells` | Scoped smell scan of a path, module, or diff — anti-patterns, idiom/naming inconsistencies |
+| `/marvin:refactor-plan` | Findings → sequenced plan: per-step rationale, dependencies, risk, rollback, tests, effort; oversized items routed to the task pipeline |
+| `/marvin:refactor-apply` | One behaviour-preserving step per run — verify green before/after, coverage refusal (pin-down test first), lessons loop, rollback on red |
 
 **Agent:** `marvin-refactor-auditor` (read-only structural auditor — does the heavy reading for `refactor-audit`).
 

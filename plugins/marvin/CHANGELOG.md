@@ -4,6 +4,47 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.11.0] — 2026-07-03
+
+The refactoring family is complete (toolbox-expansion WP5, ADR-0029): findings
+become sequenced plans, and small steps execute one at a time under the hard
+rails the ADR reserved for the mutating side — no new MCP tool, every
+deterministic need already covered by `verify`, `lessons`, and `task`.
+
+### Added
+
+- **`/marvin:refactor-plan`** — turns selected findings from audit/smells
+  registers into a sequenced, risk-annotated plan
+  (`.marvin/refactor/NNN-plan-<slug>.md`, same number sequence as the
+  reports). Evidence is re-verified against `HEAD` before planning; each step
+  carries rationale, dependency ordering, risk, rollback, test strategy, and
+  effort. Items above the small-step threshold (multi-module surgery,
+  behaviour changes, schema/API moves) are not planned inline — they are
+  routed to the task pipeline as `route: task-start` entries with a
+  ready-to-use `/marvin:task-start` input block. Closes by offering
+  `/marvin:refactor-apply` for the first step, kanban chores via the `task`
+  tool, and dispatch of the routed items.
+- **`/marvin:refactor-apply`** — executes exactly **one** behaviour-preserving
+  step per invocation (from a plan, or a directly named `F<n>` in a register)
+  under an explicit rail protocol: pre-flight `verify` must be green (red
+  baseline → refusal with the failing gates; a clean working tree is required
+  so the step is the only diff); the touched code must have test coverage —
+  uncovered code is refused with an offer to write the pin-down
+  (characterization) test first, in scope for the same run; `lessons search`
+  runs before the edit (a hit becomes a constraint) and at most one genuine
+  lesson is captured after (anti-boilerplate guards); `verify` re-runs after
+  the edit, and on red the step is **rolled back, never debugged forward** —
+  red gates after a behaviour-preserving step are evidence the step was too
+  big. Ends by updating the plan's step marker and step log (date + commit
+  ref) and suggesting the next step.
+
+### Changed
+
+- `docs/commands.md`, both READMEs, CLAUDE.md, and the architecture tour now
+  describe the full read → plan → apply family; `.marvin/refactor/` table rows
+  mention the plan files. Registry counts updated to the actual 53 after the wave-2 landings (the
+  two READMEs and CLAUDE.md had gone stale at 44).
+
 ## [0.10.0] — 2026-07-02
 
 WP2 of the toolbox expansion — the command surface for

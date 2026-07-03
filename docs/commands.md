@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **51** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **53** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -147,17 +147,25 @@ OWASP-aligned scanning, threat modeling, and remediation.
 
 ## Refactoring — `refactor-*`
 
-The read side of the code-health family (ADR-0029): audit and scan without mutating
-anything. Reports land under `.marvin/refactor/` as numbered findings registers — `F<n>`
-id, severity, effort, `file:line` evidence, suggested direction — in one shared format,
-so scoped scans compose with the whole-project audit. Both commands close by offering to
-file selected findings as kanban chores (via the `task` tool). The plan/apply half of the
-family (sequenced plans, verify-gated execution) ships next.
+The code-health family (ADR-0029), split by mutation into a read → plan → apply
+progression. The read side scans without mutating anything: reports land under
+`.marvin/refactor/` as numbered findings registers — `F<n>` id, severity, effort,
+`file:line` evidence, suggested direction — in one shared format, so scoped scans compose
+with the whole-project audit, and both scanners close by offering to file selected
+findings as kanban chores (via the `task` tool). `refactor-plan` sequences selected
+findings into small, risk-annotated steps (oversized items are routed to
+`/marvin:task-start` with a ready-to-use input — the plan is the bridge to the spec
+pipeline, not a rival); `refactor-apply` executes exactly one step at a time under hard
+rails — `verify` green before and after, refusal on uncovered code with a pin-down-test
+offer, lessons consulted before and captured after, rollback instead of debug-forward on
+red.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
 | `/marvin:refactor-audit` | Whole-project structural audit — architecture map, churn×size hotspots, dependency tangles, dead-code candidates; heavy reading delegated to the read-only `marvin-refactor-auditor` agent. | `marvin refactoring audit`, `marvin where is the tech debt?`, `what should we refactor first?` |
 | `/marvin:refactor-smells` | Scoped scan of a path, module, or diff — code smells, anti-patterns, idiom/naming inconsistencies — in the same register format as the audit. | `marvin check this module for smells`, `marvin scan src/api for anti-patterns`, `any code smells in this diff?` |
+| `/marvin:refactor-plan` | Turn selected findings into a sequenced plan — per step: rationale, dependencies, risk, rollback, test strategy, effort; spec-sized items routed to the task pipeline. Writes a plan file, changes no code. | `marvin plan the refactoring`, `marvin sequence the findings`, `plan F1 and F3` |
+| `/marvin:refactor-apply` | Execute exactly one behaviour-preserving step under hard rails — verify green before/after, coverage refusal (pin-down test first), lessons recall/capture, rollback on red. | `marvin apply the refactoring`, `marvin execute step 2 of the plan`, `do the next refactor step` |
 
 **Agent:** `marvin-refactor-auditor`.
 
