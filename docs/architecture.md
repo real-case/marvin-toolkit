@@ -6,8 +6,10 @@ tool, an agent), see [CLAUDE.md](../CLAUDE.md).
 
 Marvin is a Claude Code **plugin marketplace** shipping **one plugin** (`marvin`)
 backed by **one MCP server**, under a single slash prefix `/marvin:`. It covers the
-whole development lifecycle: core dev tools, a spec-driven task pipeline, security
-scanners, and a lightweight kanban tracker.
+whole development lifecycle: core dev tools, the ADR decision-record lifecycle, a
+spec-driven task pipeline, security scanners, a code-health refactoring family, and a
+lightweight kanban tracker — **54 prompts, 9 tools, 10 agents** across seven command
+groups.
 
 ## System at a glance
 
@@ -38,6 +40,24 @@ A single `/plugin install` registers the MCP server and auto-discovers the skill
 commands, and agents. Everything a user invokes — by chat, by `/command`, or by
 `/marvin:command` — ultimately resolves to the same skill prose.
 
+## Command groups
+
+Commands are `/marvin:<group>-<command>`; singletons stay bare. The **54** prompts
+divide into seven groups (see the [command reference](./commands.md) for every entry):
+
+| Group | What | Count |
+|-------|------|-------|
+| _(bare)_ | core developer tools | 13 |
+| `adr-*` | ADR lifecycle (accept/supersede/sync human-run) | 6 |
+| `pr-*` | pull-request operations | 4 |
+| `task-*` | spec-driven task pipeline | 5 |
+| `sec-*` | security scanners | 10 |
+| `refactor-*` | code-health family (read → plan → apply) | 4 |
+| `kanban-*` | lightweight task tracker | 12 |
+
+Behind the prompts sit **9 deterministic MCP tools** (`task`, `help`, `dashboard`,
+`verify`, `spec`, `lessons`, `adr`, `handoff`, `summary`) and **10 subagents**.
+
 ## Three doors, one room
 
 The defining design choice (recorded in [ADR-0001](./adr/0001-single-plugin-consolidation.md)):
@@ -58,7 +78,7 @@ flowchart LR
 | Markdown command | `/commit` | `commands/commit.md` instructs the model to read the skill |
 | MCP prompt | `/marvin:commit` | the server reads the skill, strips frontmatter, returns the body |
 
-> The `kanban-*` group is the deliberate exception: its 13 prompts are thin
+> The `kanban-*` group is the deliberate exception: its 12 prompts are thin
 > tool-invocation wrappers with an inline `body:` — no `SKILL.md`, no markdown
 > command. There is no workflow prose to share, so only the MCP door exists.
 
@@ -117,13 +137,15 @@ flowchart LR
 
 | Phase | Commands |
 |-------|----------|
-| Plan | `adr`, `migration-plan` |
-| Code | `debug`, `explain`, `docs-search` |
+| Plan | `adr` (+ the `adr-*` lifecycle), `migration-plan` |
+| Code | `debug`, `explain`, `docs-search`, `refactor-*` (audit → plan → apply) |
+| Review | `pr-review`, `refactor-smells` |
 | Secure | `sec-scan`, `sec-secrets`, `sec-deps`, `sec-gate`, … |
 | Document | `readme`, `changelog` |
-| Ship | `commit`, `pr-create`, `pr-review`, `pr-resolve`, `pr-merge` |
+| Ship | `commit`, `pr-create`, `pr-resolve`, `pr-merge` |
 
-Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking.
+Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking, and
+`/marvin:dashboard` to see the whole toolbox's state at a glance.
 
 ## Working directory (`.marvin/`)
 

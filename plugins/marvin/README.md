@@ -3,8 +3,9 @@
 > Claude Code toolkit for those who don't panic.
 
 The complete Marvin toolkit as **one plugin, one MCP server, one slash prefix** —
-`/marvin:`. Core dev tools, a spec-driven task pipeline, security scanners, and a
-lightweight kanban tracker, covering the whole development lifecycle.
+`/marvin:`. Core dev tools, the ADR decision-record lifecycle, a spec-driven task
+pipeline, security scanners, a code-health refactoring family, and a lightweight kanban
+tracker, covering the whole development lifecycle.
 
 ## Install
 

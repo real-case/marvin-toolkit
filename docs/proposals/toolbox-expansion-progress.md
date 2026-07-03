@@ -20,7 +20,7 @@ Status values: **Not started · In progress · Blocked · Done**.
 | 5  | Refactoring plan and apply   | Done | `feat/toolbox-wp5-refactor-plan-apply` | [#73](https://github.com/real-case/marvin-toolkit/pull/73) | — (implements ADR-0029) | 0.11.0 | landed second — re-bumped 0.10.0 → 0.11.0 at rebase (matches the serial target); registry recounted 47 → 53 |
 | 6  | Dashboard                    | Done | `feat/toolbox-wp6-dashboard` | [#74](https://github.com/real-case/marvin-toolkit/pull/74) | ADR-0030 | 0.12.0 | wave 3 solo off `dev`@0.11.0 — registry 53 → 54, tools 8 → 9 (serial target matches actual) |
 | 7  | Usage telemetry              | Done | `feat/toolbox-wp7-usage-telemetry` | [#75](https://github.com/real-case/marvin-toolkit/pull/75) | — (implements ADR-0030) | 0.13.0 | wave 4 solo off `dev`@0.12.0 — middleware + wiring only, no new prompt/tool (registry stays 54/9); serial and actual targets coincide |
-| 8  | Consolidation and release    | Not started | —      | —  | —   | —      | promotion `dev → main` with a **merge commit** + tag |
+| 8  | Consolidation and release    | Docs done; release held | `docs/toolbox-wp8-consolidation` | [#PENDING](https://github.com/real-case/marvin-toolkit/pull/PENDING) | — | 0.13.0 (no bump) | docs-consolidation sweep done in this PR; **the release (promotion `dev → main` with a merge commit + `v0.13.0` tag + GitHub Release) is held for the maintainer and is NOT part of this PR** |
 
 _Version values are serial-order targets; under [parallel execution](#parallel-execution)
 the actual version is assigned at landing._
@@ -148,14 +148,39 @@ docs tables, and the version manifests:
 
 ## WP8 — Consolidation and release
 
-- [ ] Docs sweep: `docs/commands.md` final table + count, `docs/architecture.md`, plugin README, root README, CLAUDE.md
-- [ ] `lint:docs`, `lint:manifests`, `verify-dist`, `smoke`, full test run green
-- [ ] CHANGELOG roll-up for the 0.7.0 → 0.13.0 line
-- [ ] Promotion PR `dev → main` merged with a **merge commit**; tag pushed; GitHub Release published
-- [ ] This record closed out (plan Status → Implemented, final registry counts recorded)
+- [x] Docs sweep: `docs/commands.md` final table + count, `docs/architecture.md`, plugin README, root README, CLAUDE.md (verified 54 prompts / 9 tools / 10 agents against the live registry; groups 13/6/4/5/10/4/12). Corrections: `docs/architecture.md` kanban "13 prompts" → **12**, added a Command-groups count table + "54 prompts, 9 tools, 10 agents" intro line, refreshed the lifecycle phase table (adr-*/refactor-*/dashboard); CLAUDE.md added the missing **ADR-0028** key-files entry and completed the tool roster to all **9** (`summary`/`handoff` were unnamed); plugin README intro now names the ADR lifecycle + refactoring family. `docs/commands.md` and the root `README.md` were already accurate (WP2/WP5/WP6 swept them) — verified row-for-row, no change needed.
+- [x] `lint:docs`, `lint:manifests`, `verify-dist`, `smoke`, full test run green (see the Log entry for the numbers; e2e reruns serialized to confirm the documented stdio-timeout flake is unrelated)
+- [x] CHANGELOG roll-up for the 0.7.0 → 0.13.0 line — verified coherent, correctly ordered, and covering the four capability blocks (ADR lifecycle 0.9.0/0.10.0, lessons v2 0.8.0, refactoring 0.7.0/0.11.0, dashboard + usage 0.12.0/0.13.0); embedded registry counts checked against the landing sequence, all correct. No new version section added (WP8 is docs-only, no bump); no flake-fix entry (the separate `fix/e2e-stdio-flake` PR carries its own).
+- [ ] Promotion PR `dev → main` merged with a **merge commit**; tag pushed; GitHub Release published — **held for the maintainer; NOT part of this PR**
+- [ ] This record closed out (plan Status → Implemented, final registry counts recorded) — **left for the maintainer after the release lands**
 
 ## Log
 
+- **2026-07-03** — **WP8 docs consolidation done** (`docs/toolbox-wp8-consolidation`,
+  PR [#PENDING](https://github.com/real-case/marvin-toolkit/pull/PENDING); **docs-only, no
+  version bump — plugin stays 0.13.0**). The toolbox now reads as one product across every
+  human-facing doc. Ground truth verified by inspection against the live registry (`mcp-call
+  --list` + `prompts/index.ts` + `ls agents/`): **54 prompts / 9 tools / 10 agents**, groups
+  **13** core · **6** `adr-*` · **4** `pr-*` · **5** `task-*` · **10** `sec-*` · **4**
+  `refactor-*` · **12** `kanban-*`. Sweep results: `docs/commands.md` and root `README.md` were
+  already fully accurate (WP2/WP5/WP6 swept them) — verified row-for-row, all 54 command rows
+  match the registry 1:1, tools appendix lists all 9, agents appendix all 10, ADR index carries
+  0001–0030; no change needed. Corrections made: `docs/architecture.md` — kanban "13 prompts" →
+  **12** (the one stale count), added a Command-groups count table and a "54 prompts, 9 tools,
+  10 agents" scope line, and refreshed the development-lifecycle phase table to include the
+  `adr-*` lifecycle, the `refactor-*` family, and `/marvin:dashboard`; `CLAUDE.md` — added the
+  missing **ADR-0028** key-files entry (list jumped 0027→0029) and completed the tools roster to
+  all **9** (the ASCII-tree comment and the tools paragraph had left `summary` and `handoff`
+  unnamed); `plugins/marvin/README.md` — intro now names the ADR lifecycle and refactoring
+  family alongside the original four capability areas. CHANGELOG verified: the 0.7.0→0.13.0 line
+  is coherent, correctly ordered, and covers the four capability blocks (ADR lifecycle, lessons
+  v2, refactoring, dashboard + usage); embedded registry counts match the landing sequence. No
+  new CHANGELOG version section and no flake-fix entry (the `fix/e2e-stdio-flake` PR owns that).
+  Gates green: `npm run build` (dist unchanged — no source touched), `npm test`,
+  `lint:manifests`, `verify-dist`, `lint:docs`, `smoke` (54 prompts / 9 tools). **The release is
+  deferred to the maintainer**: the promotion `dev → main` (merge commit), the `v0.13.0` tag, and
+  the GitHub Release are deliberately NOT in this PR; the WP8 promotion/tag/release and
+  "record closed out" checklist items are left unticked for them.
 - **2026-07-03** — **WP7 done** (wave 4 solo, PR [#75](https://github.com/real-case/marvin-toolkit/pull/75),
   `feat/toolbox-wp7-usage-telemetry` off `dev`@0.12.0 — serial and actual targets coincide:
   0.13.0; **no new prompt and no new tool**, so the registry stays **54 / 9** — this WP is
