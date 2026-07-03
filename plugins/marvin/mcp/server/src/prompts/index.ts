@@ -132,8 +132,17 @@ export const PROMPTS: PromptDef[] = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+  },
+  {
+    // Thin tool wrapper (inline body) — the whole-toolbox state report backed
+    // by the deterministic `dashboard` tool (ADR-0030). The command index
+    // stays on `help`; this aggregates the artifact/corpus/usage state.
+    name: "dashboard",
+    description:
+      "Marvin toolbox dashboard — kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
   },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─

@@ -4,6 +4,54 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.0] — 2026-07-03
+
+The toolbox dashboard (toolbox-expansion WP6, ADR-0030): one deterministic
+command shows the whole toolbox state, and the MCP Apps widget data layer
+(ADR-0024 stage 1) is complete — the extended `DashboardState` is the last
+stage-1 contract.
+
+### Added
+
+- **`dashboard` MCP tool + `/marvin:dashboard`** (inline thin wrapper, tools
+  8 → 9, registry 53 → 54) — a sectioned whole-toolbox report: project
+  paths/config/git, kanban board counters (per configured status, ADR-0026),
+  artifact inventories with freshness (task specs + `verification.md` age,
+  security reports + newest-report age, refactor registers by kind —
+  audit/smells/plan per the ADR-0029 naming, handoffs), lessons statistics
+  (the ADR-0028 `stats` computation), the ADR corpus by status (the ADR-0027
+  parser with its host-adaptive directory resolution), and a usage summary
+  read defensively from `.marvin/usage/events.jsonl` when one exists
+  (malformed lines skipped; the writer arrives with the usage-telemetry work
+  package). Optional `section` filter narrows the text; `structuredContent`
+  always carries the full extended `DashboardState`. Every section degrades
+  to a sensible zero state on a fresh project. The command index stays on
+  `/marvin:help`.
+- **Extended `DashboardState` contract** (shared `contracts/`, ADR-0030) —
+  new optional sections `adr` (per-status counts over the closed `AdrStatus`
+  vocabulary), `security` (report count + newest age), `refactor` (counts by
+  kind), `lessons` (the shared `LessonsStats`), `usage` (event count, window,
+  top commands), and `verification` freshness under `artifacts`. All optional,
+  so the `help` tool's narrower payload keeps conforming — no schema break.
+- **ADR-0030** — records both halves of the design: the dashboard (this
+  release) and the local, self-ignoring `.marvin/usage/` JSONL events log
+  with size cap, rotation, and a `usage.enabled` kill-switch (specified here,
+  implemented by the next work package).
+
+### Changed
+
+- The `help` tool's state computation (kanban counters, git availability,
+  artifact counts, registry-derived command groups) moved to a shared
+  `lib/state.ts` module consumed by both `help` and `dashboard` — no
+  behaviour change to `help` beyond the fix below.
+
+### Fixed
+
+- The registry-derived command groups now recognise `adr-*` and `refactor-*`
+  as their own groups instead of lumping them into *core* (drift left by the
+  WP2/WP4 landings), and the bare `/marvin:adr` singleton stays in *core*.
+  `help`'s `section` filter accepts `adr` and `refactor` accordingly.
+
 ## [0.11.0] — 2026-07-03
 
 The refactoring family is complete (toolbox-expansion WP5, ADR-0029): findings

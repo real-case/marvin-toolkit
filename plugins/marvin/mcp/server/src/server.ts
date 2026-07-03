@@ -9,13 +9,14 @@ import { loadEnv } from "./lib/env.js";
 import { buildAdrTool } from "./tools/adr.js";
 import { buildTaskTool } from "./tools/task.js";
 import { buildHelpTool } from "./tools/help.js";
+import { buildDashboardTool } from "./tools/dashboard.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
 import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
 
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 
 await runPackServer({
   name: "marvin",
@@ -32,6 +33,7 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env),
         buildHelpTool(env, VERSION),
+        buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
         buildLessonsTool(server, env),
