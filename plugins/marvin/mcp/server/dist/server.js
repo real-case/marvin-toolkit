@@ -30331,6 +30331,25 @@ function prCell(url) {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? `[#${match[1]}](${url})` : `[PR](${url})`;
 }
+var WIDGET_MIME = "text/html;profile=mcp-app";
+var WIDGETS = [
+  {
+    name: "task-list",
+    uri: "ui://marvin/task-list.html",
+    file: join("widgets", "task-list.html"),
+    description: "Marvin kanban board \u2014 the task-list widget (ADR-0024)."
+  }
+];
+var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
+function buildWidgetResources(packRoot2) {
+  return WIDGETS.map((w) => ({
+    name: w.name,
+    uri: w.uri,
+    description: w.description,
+    mimeType: WIDGET_MIME,
+    read: () => readFileSync(join(packRoot2, w.file), "utf8")
+  }));
+}
 
 // src/tools/task.ts
 var TaskInput = external_exports.object({
@@ -30374,6 +30393,11 @@ function buildTaskTool(server, env2) {
     name: "task",
     description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
+    // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
+    // the widget renders the `list` action's TaskListPayload; other actions deliver
+    // no payload and the widget degrades to its empty/connecting state. The terminal
+    // ignores `_meta`, so the text fallback is byte-for-byte unchanged.
+    meta: { ui: { resourceUri: TASK_LIST_WIDGET_URI } },
     handler: (input) => {
       const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
       return dispatchTask(server, env2, config2, input);
@@ -33385,13 +33409,14 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.14.0";
+var VERSION = "0.15.0";
 var env = loadEnv();
+var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
   name: "marvin",
   version: VERSION,
   promptsDir: promptsDirFromMeta(import.meta.url),
-  packRoot: packRootFromMeta(import.meta.url),
+  packRoot,
   // Usage telemetry (ADR-0030): fire-and-forget, fail-open. The shared hook
   // reports only `{ kind, name }`; the logger owns the kill-switch, the
   // self-ignoring dir, rotation, and error-swallowing.
@@ -33410,7 +33435,11 @@ await runPackServer({
         buildSummaryTool(env),
         buildAdrTool(env),
         buildAuditTool(env)
-      ]
+      ],
+      // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
+      // the `resources` capability; each is served from the committed HTML under
+      // packRoot via the shared registerResource — no ext-apps SDK in this bundle.
+      resources: buildWidgetResources(packRoot)
     };
   }
 });

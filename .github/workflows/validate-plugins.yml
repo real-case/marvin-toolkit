@@ -59,6 +59,21 @@ jobs:
         if: matrix.node == '20'
         run: node scripts/verify-dist.mjs
 
+      - name: Verify committed widget HTML is in sync + self-contained
+        if: matrix.node == '20'
+        # Builds @marvin-toolkit/mcp-shared then @marvin-toolkit/widgets, then
+        # hash-compares the committed plugins/marvin/widgets/*.html (ADR-0024).
+        run: node scripts/verify-widgets.mjs
+
+      - name: Storybook interaction tests (test-storybook)
+        if: matrix.node == '20'
+        run: |
+          npx --yes playwright install --with-deps chromium
+          npm run build-storybook --silent -w @marvin-toolkit/widgets
+          npx --yes concurrently -k -s first -n "SB,TEST" \
+            "npx --yes http-server packages/marvin-widgets/storybook-static --port 6006 --silent" \
+            "npx --yes wait-on tcp:127.0.0.1:6006 && npm run test-storybook -w @marvin-toolkit/widgets"
+
       - name: Smoke-test each pack MCP server
         run: |
           set -euo pipefail
