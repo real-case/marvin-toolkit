@@ -231,3 +231,41 @@ Write the report to `.marvin/security/deps-report.md` (create the `.marvin/secur
 - **Prefer `audit fix` with caution.** Automated fixes are convenient but can introduce breaking changes. Always recommend running tests after.
 - **Note what you couldn't check.** If a tool isn't installed, say so. If reachability is uncertain, mark it as Unknown rather than guessing.
 - **One upgrade can fix many CVEs.** Group vulnerabilities by package and show the single upgrade command that resolves all of them.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose report, append a machine-readable `audit-report` block to the same
+`.marvin/security/deps-report.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `deps`; emit one finding per vulnerable dependency
+with `category` = the CVE/GHSA id and `file` = the manifest; make the `summary` counts match the
+`findings`; use the severity vocabulary `critical | high | medium | low | info`; `scanned_at` is an
+ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real scan (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "deps",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "package.json",
+  "summary": { "high": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "DEP-1",
+      "severity": "high",
+      "title": "lodash prototype pollution",
+      "category": "CVE-2020-8203",
+      "file": "package.json",
+      "remediation": "Upgrade lodash to >= 4.17.20"
+    },
+    {
+      "id": "DEP-2",
+      "severity": "medium",
+      "title": "Unmaintained transitive dependency, no fix released",
+      "category": "GHSA-abcd-1234-wxyz",
+      "file": "package-lock.json",
+      "remediation": "Replace the dependency or pin and monitor"
+    }
+  ]
+}
+```

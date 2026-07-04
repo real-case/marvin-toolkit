@@ -45,3 +45,14 @@ export const AuditReport = z.object({
   findings: z.array(Finding),
 });
 export type AuditReport = z.infer<typeof AuditReport>;
+
+/**
+ * The read-side / widget payload (ADR-0024, #7) — every `audit-report` block the
+ * `audit` tool recovered from the `.marvin/security/*.md` reports, one entry per
+ * report. Wrapper mirrors `HandoffListPayload`; the tool emits it as
+ * `structuredContent` and the audit-viewer widget consumes it.
+ */
+export const AuditListPayload = z.object({
+  reports: z.array(AuditReport),
+});
+export type AuditListPayload = z.infer<typeof AuditListPayload>;

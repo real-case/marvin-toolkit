@@ -16,8 +16,9 @@ import { buildSpecTool } from "./tools/spec.js";
 import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
+import { buildAuditTool } from "./tools/audit.js";
 
-const VERSION = "0.13.0";
+const VERSION = "0.14.0";
 
 // One env for the whole process: the tools read it, and the usage-log
 // middleware (ADR-0030) closes over the same paths. `env` carries only
@@ -50,6 +51,7 @@ await runPackServer({
         buildHandoffTool(env),
         buildSummaryTool(env),
         buildAdrTool(env),
+        buildAuditTool(env),
       ],
     };
   },

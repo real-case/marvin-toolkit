@@ -215,3 +215,44 @@ Write the report to `.marvin/security/ci-report.md` (create the `.marvin/securit
 - **Scripts invoked from CI are part of CI.** If a workflow runs `./scripts/deploy.sh`, that script's security is just as important as the workflow file itself. Read those scripts too.
 - **If actionlint is available, run it.** `actionlint` catches syntax errors and common mistakes. But it doesn't check for security issues — that's this skill's job.
 - **Makefile targets matter.** If CI runs `make deploy`, read the Makefile target. It may contain hardcoded credentials, unsafe curl commands, or excessive permissions.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose report, append a machine-readable `audit-report` block to the same
+`.marvin/security/ci-report.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `ci`; emit one finding per pipeline risk with
+`category` = the risk class and `file` = the workflow file; make the `summary` counts match the
+`findings`; use the severity vocabulary `critical | high | medium | low | info`; `scanned_at` is an
+ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real scan (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "ci",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": ".github/workflows/",
+  "summary": { "high": 1, "low": 1 },
+  "findings": [
+    {
+      "id": "CI-1",
+      "severity": "high",
+      "title": "Action pinned to a mutable tag, not a SHA",
+      "category": "Supply chain — unpinned action",
+      "file": ".github/workflows/ci.yml",
+      "line": 22,
+      "evidence": "uses: actions/checkout@v4",
+      "remediation": "Pin the action to a full commit SHA"
+    },
+    {
+      "id": "CI-2",
+      "severity": "low",
+      "title": "Broad default GITHUB_TOKEN permissions",
+      "category": "Least privilege",
+      "file": ".github/workflows/ci.yml",
+      "line": 6,
+      "remediation": "Set permissions: contents: read at the top level"
+    }
+  ]
+}
+```

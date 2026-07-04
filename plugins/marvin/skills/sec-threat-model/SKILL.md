@@ -255,3 +255,39 @@ Write the threat model to `.marvin/security/threat-model.md` (create the `.marvi
 - **Update, don't recreate.** If a threat model already exists (in docs/, ADRs, or README), build on it rather than starting from scratch. Note what has changed.
 - **Connect to code.** Every threat should reference specific files, endpoints, or configurations. This is what makes a threat model actionable rather than theoretical.
 - **Missing mitigations are findings.** If a threat has no current mitigation and the risk is HIGH or CRITICAL, that's a gap worth calling out explicitly.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose model, append a machine-readable `audit-report` block to the same
+`.marvin/security/threat-model.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `threat-model`; emit one finding per STRIDE threat
+with `category` = the STRIDE category and `severity` = the residual risk after mitigations; make the
+`summary` counts match the `findings`; use the severity vocabulary `critical | high | medium | low | info`;
+`scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real model (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "threat-model",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "Checkout service",
+  "summary": { "high": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "TM-1",
+      "severity": "high",
+      "title": "Attacker forges payment-callback requests",
+      "category": "STRIDE: Spoofing",
+      "remediation": "Verify the provider's webhook signature; residual risk after fix: low"
+    },
+    {
+      "id": "TM-2",
+      "severity": "medium",
+      "title": "Order total tampered in transit",
+      "category": "STRIDE: Tampering",
+      "remediation": "Recompute totals server-side and sign the cart"
+    }
+  ]
+}
+```

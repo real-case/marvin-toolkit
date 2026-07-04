@@ -4,6 +4,36 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.14.0] — 2026-07-04
+
+Security scanners gain a machine-readable side (ADR-0024 #7 Tier-2), closing the
+last Stage-1 data item of the MCP Apps widget layer. Every `sec-*` scanner now
+emits a typed `audit-report` block alongside its prose, and a new read-side
+`audit` tool surfaces those findings as `structuredContent`. Registry grows to
+55 prompts / 10 tools.
+
+### Added
+
+- **`audit` MCP tool + `/marvin:sec-report`** — reads the `.marvin/security/*.md`
+  reports, recovers each scanner's fenced ` ```json audit-report ` block, zod-
+  validates it against the `AuditReport` contract, and returns a text summary
+  plus an `AuditListPayload` (the audit-viewer widget payload, ADR-0024 #7).
+  Reports with no block are skipped (legacy prose stays valid); a present-but-
+  invalid block is isolated as malformed so one bad report never breaks the
+  listing (the `handoff` fail-open precedent).
+- **`AuditListPayload` contract** — the read-side/widget wrapper over
+  `AuditReport[]` in `@marvin-toolkit/mcp-shared/contracts`.
+- **`MARVIN_SECURITY_DIR`** env override (default `.marvin/security`) for test
+  isolation, mirroring `MARVIN_HANDOFF_DIR`.
+
+### Changed
+
+- **All 8 `sec-*` scanner skills** (`sec-scan`, `sec-secrets`, `sec-deps`,
+  `sec-iac`, `sec-ci`, `sec-threat-model`, `sec-compliance`, `sec-pentest`) now
+  append a typed `audit-report` block after their prose report — one finding per
+  vulnerability / ASVS gap / STRIDE threat / checklist item, with per-severity
+  counts. `sec-gate` and `sec-fix` are unchanged (no findings register).
+
 ## [0.13.0] — 2026-07-03
 
 Usage telemetry (toolbox-expansion WP7), completing ADR-0030: the dashboard can
