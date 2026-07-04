@@ -37,6 +37,9 @@ build/
 coverage/
 .nyc_output/
 
+# Storybook static build (marvin-widgets dev/verify harness — regenerated in CI)
+storybook-static/
+
 # Claude Code local state — per-machine settings and agent worktrees, never shared
 .claude/settings.local.json
 .claude/worktrees/

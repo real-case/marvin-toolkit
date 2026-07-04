@@ -29,15 +29,17 @@ plugins/marvin/
 ├── skills/<command>/SKILL.md         # source of truth for prompt bodies (dir name == command)
 ├── commands/<command>.md             # short markdown slash entries
 ├── agents/*.md                       # Claude Code subagents
+├── widgets/*.html                    # COMMITTED self-contained MCP Apps widget documents (built by packages/marvin-widgets; served as ui:// resources, ADR-0024)
 └── mcp/server/
     ├── package.json
     ├── tsconfig.json
     ├── tsup.config.ts
     ├── src/
-    │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools
+    │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
     │   │   └── index.ts              # 55 prompt entries (skill-backed + inline kanban)
     │   ├── tools/                    # 10 MCP tools: kanban task / help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings)
+    │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # kanban persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
 ```
@@ -107,6 +109,32 @@ All three doors lead to the same prose. Editing `SKILL.md` updates all three pat
 |--------|-----------|--------------|
 | marvin | `marvin` | `/marvin:*` |
 
+### MCP Apps widget layer (ADR-0024)
+
+Rich MCP hosts can render a tool's `structuredContent` in a sandboxed `ui://` iframe. Marvin's
+widgets live in a dedicated browser workspace and are wired to tools without pulling any browser SDK
+into the server bundle:
+
+- **`packages/marvin-widgets/`** — the React + `@modelcontextprotocol/ext-apps` browser bundle. Vite
+  + `vite-plugin-singlefile` build each widget to **one self-contained HTML** file (a strict host CSP
+  blocks external hosts) written to the committed `plugins/marvin/widgets/<name>.html`. A `<ListDetail>`
+  primitive and a 3-type link model (`links.ts`, over the shared `LinkRef`) are the reusable foundation;
+  a `mock-host` util (a fake ext-apps host over an in-memory transport) drives the real handshake in
+  vitest and Storybook without a real iframe.
+- **The server stays ext-apps/React free.** `src/resources/widgets.ts` returns `ResourceDef[]` for the
+  `ui://marvin/<name>.html` documents (mimeType `text/html;profile=mcp-app`), served through the shared
+  `registerResource` (NOT ext-apps' `registerAppResource`); its `read` loads the committed HTML from
+  `packRoot` at request time (ADR-0008). The `task` tool binds its widget with a plain
+  `meta.ui.resourceUri` object literal — so `tsup` never bundles ext-apps/React into `dist/server.js`.
+- **The terminal fallback is unchanged.** `_meta` is additive; a text-only host ignores it and renders
+  the tool's `content` exactly as before.
+- **`scripts/verify-widgets.mjs`** guards the committed HTML like `verify-dist` guards `dist/`: it
+  rebuilds `@marvin-toolkit/mcp-shared` then `@marvin-toolkit/widgets`, hash-compares each committed
+  `plugins/marvin/widgets/*.html` against the fresh build, and asserts each file is self-contained.
+
+The first widget is `task-list` (a `<ListDetail>` over `TaskListPayload`); the remaining widgets are
+follow-up specs reusing this foundation.
+
 ## Shared library
 
 `packages/marvin-mcp-shared/` provides:
@@ -133,6 +161,9 @@ npm run test
 
 # Verify committed dist/ is in sync with source
 node scripts/verify-dist.mjs
+
+# Verify committed widget HTML is in sync + self-contained (ADR-0024)
+node scripts/verify-widgets.mjs
 
 # Local plugin validation
 claude plugin validate .
@@ -225,6 +256,9 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0028-lessons-hygiene-and-recall-expansion.md` — lessons v2: `stats`/`prune` hygiene surface, near-duplicate guard on `add`, wider recall/capture wiring
 - `docs/adr/0029-refactoring-command-family.md` — the `refactor-*` family: read → plan → apply split, findings registers under `.marvin/refactor/`, verify-gated apply rails
 - `docs/adr/0030-toolbox-dashboard-and-usage-log.md` — the `dashboard` tool (whole-toolbox report, extended `DashboardState`) + the local self-ignoring `.marvin/usage/` events log (implemented by WP7)
+- `packages/marvin-widgets/` — the React browser workspace for MCP Apps `ui://` widgets (ADR-0024); builds committed self-contained HTML to `plugins/marvin/widgets/`
+- `plugins/marvin/mcp/server/src/resources/widgets.ts` — server-side `ui://` widget `ResourceDef`s (no ext-apps import)
 - `scripts/lint-manifests.mjs` — manifest + structure linter
 - `scripts/verify-dist.mjs` — committed-dist freshness guard
+- `scripts/verify-widgets.mjs` — committed widget-HTML freshness + self-contained guard (ADR-0024)
 - `.github/workflows/validate-plugins.yml` — CI pipeline

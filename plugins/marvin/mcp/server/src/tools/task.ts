@@ -51,6 +51,7 @@ import {
 } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 import { formatTaskLine, renderListTable } from "../flows/format.js";
+import { TASK_LIST_WIDGET_URI } from "../resources/widgets.js";
 
 /**
  * Every field an interactive form can ask for is also a first-class tool
@@ -138,6 +139,11 @@ export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
     description:
       'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
+    // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
+    // the widget renders the `list` action's TaskListPayload; other actions deliver
+    // no payload and the widget degrades to its empty/connecting state. The terminal
+    // ignores `_meta`, so the text fallback is byte-for-byte unchanged.
+    meta: { ui: { resourceUri: TASK_LIST_WIDGET_URI } },
     handler: (input) => {
       // Config is (re)loaded on every call rather than captured at server
       // startup: the `config` action edits .marvin/config.json mid-session,

@@ -4,6 +4,37 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.15.0] — 2026-07-04
+
+The first MCP Apps widget ships end-to-end (ADR-0024 Stage-2). A React `task-list`
+widget renders the `task` tool's `TaskListPayload` inside a rich host's `ui://`
+iframe, while the terminal text fallback stays byte-for-byte unchanged. This slice
+also lands the reusable widget foundation — a `<ListDetail>` primitive, the
+3-type link model, the Vite singlefile toolchain, a Storybook + mock-host harness,
+and a committed-HTML dist guard — that the remaining widgets will reuse.
+
+### Added
+
+- **`packages/marvin-widgets` workspace** — the browser widget bundle (React +
+  `@modelcontextprotocol/ext-apps` v1.7.4, Vite + `vite-plugin-singlefile`). Emits
+  one self-contained HTML per widget to the committed `plugins/marvin/widgets/`.
+- **`task-list` `ui://` widget** — a `<ListDetail>` master-detail view over the
+  `TaskListPayload`, wired via `useApp()` (`ontoolresult`). Served as
+  `ui://marvin/task-list.html` (mimeType `text/html;profile=mcp-app`) and bound to
+  the `task` tool through `_meta.ui.resourceUri`. The server stays ext-apps/React
+  free — the binding is a plain `_meta` object plus the shared `registerResource`.
+- **`<ListDetail>` primitive + the 3-type link model** — the reusable foundation
+  the remaining widgets build on.
+- **Storybook + mock-host harness** — a fake ext-apps host over an in-memory
+  transport drives the real handshake in vitest and Storybook without a browser
+  iframe; `scripts/verify-widgets.mjs` guards the committed HTML (in sync with a
+  fresh build and self-contained).
+
+### Changed
+
+- **`task` tool** gains `_meta.ui.resourceUri` (additive) and the server advertises
+  the `resources` capability. Text + `structuredContent` output are unchanged.
+
 ## [0.14.0] — 2026-07-04
 
 Security scanners gain a machine-readable side (ADR-0024 #7 Tier-2), closing the

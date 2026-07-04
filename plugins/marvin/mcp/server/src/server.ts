@@ -17,8 +17,9 @@ import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
 import { buildAuditTool } from "./tools/audit.js";
+import { buildWidgetResources } from "./resources/widgets.js";
 
-const VERSION = "0.14.0";
+const VERSION = "0.15.0";
 
 // One env for the whole process: the tools read it, and the usage-log
 // middleware (ADR-0030) closes over the same paths. `env` carries only
@@ -26,11 +27,16 @@ const VERSION = "0.14.0";
 // event inside `logUsageEvent`, so toggling `usage.enabled` applies immediately.
 const env = loadEnv();
 
+// The plugin root (holds skills/, .mcp.json, and the committed widgets/ HTML the
+// resource layer serves — ADR-0008/0024). Computed once and shared with the
+// widget-resource builder below.
+const packRoot = packRootFromMeta(import.meta.url);
+
 await runPackServer({
   name: "marvin",
   version: VERSION,
   promptsDir: promptsDirFromMeta(import.meta.url),
-  packRoot: packRootFromMeta(import.meta.url),
+  packRoot,
   // Usage telemetry (ADR-0030): fire-and-forget, fail-open. The shared hook
   // reports only `{ kind, name }`; the logger owns the kill-switch, the
   // self-ignoring dir, rotation, and error-swallowing.
@@ -53,6 +59,10 @@ await runPackServer({
         buildAdrTool(env),
         buildAuditTool(env),
       ],
+      // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
+      // the `resources` capability; each is served from the committed HTML under
+      // packRoot via the shared registerResource — no ext-apps SDK in this bundle.
+      resources: buildWidgetResources(packRoot),
     };
   },
 });
