@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   mkdtempSync,
   mkdirSync,
@@ -14,20 +12,17 @@ import {
   chmodSync,
 } from "node:fs";
 import { tmpdir, platform } from "node:os";
+import { withSession } from "./_driver.mjs";
 
 // End-to-end coverage for the usage-log middleware (ADR-0030 / WP7). Every case
 // drives the built stdio server against a throwaway project dir — never the
 // repo's own `.marvin/` — and inspects `.marvin/usage/events.jsonl`. The four
 // guarantees each get a test: self-ignoring dir, rotation, kill-switch,
-// fail-open. Self-contained spawn helper (no shared driver).
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+// fail-open.
 
 /** Env that pins every `.marvin/*` path under `dir` (test isolation). */
 function envFor(dir, extra = {}) {
   return {
-    ...process.env,
     CLAUDE_PROJECT_DIR: dir,
     MARVIN_TASKS_DIR: join(dir, ".marvin", "kanban"),
     MARVIN_TASKS_CONFIG: join(dir, ".marvin", "config.json"),
@@ -46,65 +41,12 @@ function envFor(dir, extra = {}) {
  * write) is ordered and complete before the process is killed.
  */
 function session(dir, calls, extraEnv = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: envFor(dir, extraEnv),
-    });
+  return withSession({ env: envFor(dir, extraEnv) }, async (s) => {
     const results = [];
-    let idx = 0;
-    let buf = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-    const issue = () => {
-      const call = calls[idx];
-      send({ jsonrpc: "2.0", id: 100 + idx, method: call.method, params: call.params });
-    };
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          issue();
-        } else if (typeof msg.id === "number" && msg.id >= 100) {
-          results.push(msg.result ?? { error: msg.error });
-          idx += 1;
-          if (idx >= calls.length) {
-            clearTimeout(timer);
-            child.kill();
-            resolve(results);
-          } else {
-            issue();
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "usage-test", version: "0" },
-      },
-    });
+    for (const call of calls) {
+      results.push(await s.request(call.method, call.params).catch((error) => ({ error })));
+    }
+    return results;
   });
 }
 

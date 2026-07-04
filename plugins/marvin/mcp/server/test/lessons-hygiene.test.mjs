@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { callTool } from "./_driver.mjs";
 
 /**
  * Lessons v2 hygiene surface (ADR-0028): `stats`, `prune` (candidate listing,
@@ -22,84 +18,21 @@ const serverPath = join(here, "..", "dist", "server.js");
  * `elicitation: { delete: "yes" }` (or "no") to declare the capability and
  * auto-answer the confirmation form; `elicitation: "decline"` dismisses it.
  */
-function callLessons(projectDir, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-    });
-    let buf = "";
-    let initialized = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        // Server-initiated confirmation form → answer per the test scenario.
-        if (msg.method === "elicitation/create" && msg.id != null) {
-          send({
-            jsonrpc: "2.0",
-            id: msg.id,
-            result:
-              opts.elicitation === "decline"
-                ? { action: "decline" }
-                : { action: "accept", content: opts.elicitation },
-          });
-          continue;
-        }
-        if (msg.id === 1 && !initialized) {
-          initialized = true;
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "lessons", arguments: args },
-          });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          try {
-            const text = msg.result.content.map((c) => c.text).join("\n");
-            resolve({
-              text,
-              isError: !!msg.result.isError,
-              structuredContent: msg.result.structuredContent,
-            });
-          } catch (err) {
-            reject(err);
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: opts.elicitation !== undefined ? { elicitation: {} } : {},
-        clientInfo: { name: "lessons-hygiene-test", version: "0" },
-      },
-    });
+async function callLessons(projectDir, args, opts = {}) {
+  const result = await callTool("lessons", args, {
+    env: { CLAUDE_PROJECT_DIR: projectDir },
+    capabilities: opts.elicitation !== undefined ? { elicitation: {} } : {},
+    // Server-initiated confirmation form → answer per the test scenario.
+    onServerRequest: () =>
+      opts.elicitation === "decline"
+        ? { action: "decline" }
+        : { action: "accept", content: opts.elicitation },
   });
+  return {
+    text: result.content.map((c) => c.text).join("\n"),
+    isError: !!result.isError,
+    structuredContent: result.structuredContent,
+  };
 }
 
 function freshProject() {

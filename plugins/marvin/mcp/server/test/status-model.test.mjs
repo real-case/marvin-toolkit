@@ -1,13 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { withSession } from "./_driver.mjs";
 
 /** The D2 example vocabulary from the kanban-rework plan (ADR-0026). */
 const CUSTOM_STATUSES = [
@@ -45,74 +42,21 @@ function seedTask(tasksDir, { id = "001", status = "todo", branch = `${id}--seed
  * cancelling when none is provided). Returns the tools/call results.
  */
 function callSequence(env, calls, acceptContent = null) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env },
-    });
-    let buf = "";
-    const results = [];
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-    const sendCall = (idx) =>
-      send({ jsonrpc: "2.0", id: 2 + idx, method: "tools/call", params: calls[idx] });
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        if (msg.method === "elicitation/create" && msg.id != null) {
-          send({
-            jsonrpc: "2.0",
-            id: msg.id,
-            result: acceptContent
-              ? { action: "accept", content: acceptContent }
-              : { action: "cancel" },
-          });
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          sendCall(0);
-        } else if (typeof msg.id === "number" && msg.id >= 2) {
-          results.push(msg.result);
-          const next = msg.id - 1;
-          if (next < calls.length) {
-            sendCall(next);
-          } else {
-            clearTimeout(timer);
-            child.kill();
-            resolve(results);
-          }
-        }
+  return withSession(
+    {
+      env,
+      capabilities: { elicitation: {} },
+      onServerRequest: () =>
+        acceptContent ? { action: "accept", content: acceptContent } : { action: "cancel" },
+    },
+    async (s) => {
+      const results = [];
+      for (const params of calls) {
+        results.push(await s.request("tools/call", params));
       }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: { elicitation: {} },
-        clientInfo: { name: "status-model-test", version: "0" },
-      },
-    });
-  });
+      return results;
+    },
+  );
 }
 
 /** A project dir with a .marvin/config.json carrying the custom status set. */

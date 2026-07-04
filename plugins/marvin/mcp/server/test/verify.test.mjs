@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { callTool } from "./_driver.mjs";
 
 /**
  * Drive the live stdio server: initialize, then a single tools/call for
@@ -15,67 +11,12 @@ const serverPath = join(here, "..", "dist", "server.js");
  * tool's text output. Gates are passed explicitly (fake sleep commands) so the
  * concurrency behaviour is tested deterministically without any toolchain.
  */
-function callVerify(args, blockTag = "verify-result") {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], { stdio: ["pipe", "pipe", "pipe"] });
-    let buf = "";
-    let initialized = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1 && !initialized) {
-          initialized = true;
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "verify", arguments: args },
-          });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          try {
-            const text = msg.result.content.map((c) => c.text).join("\n");
-            const m = text.match(new RegExp("```json " + blockTag + "\\n([\\s\\S]*?)\\n```"));
-            assert.ok(m, `no ${blockTag} block in output:\n${text}`);
-            resolve({ parsed: JSON.parse(m[1]), isError: msg.result.isError, text });
-          } catch (err) {
-            reject(err);
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "verify-test", version: "0" },
-      },
-    });
-  });
+async function callVerify(args, blockTag = "verify-result") {
+  const result = await callTool("verify", args);
+  const text = result.content.map((c) => c.text).join("\n");
+  const m = text.match(new RegExp("```json " + blockTag + "\\n([\\s\\S]*?)\\n```"));
+  assert.ok(m, `no ${blockTag} block in output:\n${text}`);
+  return { parsed: JSON.parse(m[1]), isError: result.isError, text };
 }
 
 const PASS = (name) => ({ name, command: "sleep 0.2" });
@@ -434,55 +375,7 @@ test("a real verify (write) persists the verify-result block, and its deliver ga
 });
 
 // Raw variant for dryRun (no verify-result block expected).
-function callVerifyRaw(args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], { stdio: ["pipe", "pipe", "pipe"] });
-    let buf = "";
-    let initialized = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1 && !initialized) {
-          initialized = true;
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "verify", arguments: args },
-          });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          resolve(msg.result.content.map((c) => c.text).join("\n"));
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "verify-test", version: "0" },
-      },
-    });
-  });
+async function callVerifyRaw(args) {
+  const result = await callTool("verify", args);
+  return result.content.map((c) => c.text).join("\n");
 }

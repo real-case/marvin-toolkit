@@ -7,7 +7,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsup",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test --test-concurrency=4 test/*.test.mjs"
   },
   "dependencies": {
     "@marvin-toolkit/mcp-shared": "*",
