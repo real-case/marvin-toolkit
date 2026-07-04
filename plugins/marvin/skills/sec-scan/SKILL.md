@@ -202,3 +202,54 @@ At the end, add a "Next Steps" section suggesting:
 - **Delegate, don't duplicate.** Phases 1 and 2 use the specialized skills. Don't re-implement their logic inline.
 - **Phase 3 is where you add the most value.** External tools find pattern-level issues. The manual OWASP review finds logic-level issues — missing auth on a specific route, business logic bypasses, insecure design decisions. Invest time here.
 - **If external tools fail or are missing, continue.** Note it in the report and perform manual analysis instead. Never produce an empty report because a tool wasn't installed.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose report, append a machine-readable `audit-report` block to the same
+`.marvin/security/scan-report.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `scan`; emit one finding per vulnerability with its
+`category` set to the OWASP Top 10:2025 id (e.g. `OWASP A05:2025`) and `file`/`line` where known;
+make the `summary` counts match the `findings` you list; use the severity vocabulary
+`critical | high | medium | low | info`; `scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`).
+Leave the prose above unchanged.
+
+Fill this shape from the real scan (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "scan",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "acme-api",
+  "summary": { "critical": 1, "high": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "SCAN-1",
+      "severity": "critical",
+      "title": "SQL injection in user lookup",
+      "category": "OWASP A05:2025",
+      "file": "src/db/users.ts",
+      "line": 88,
+      "evidence": "query built by concatenating req.params.id",
+      "remediation": "Use a parameterized query / prepared statement"
+    },
+    {
+      "id": "SCAN-2",
+      "severity": "high",
+      "title": "Missing authorization check on admin route",
+      "category": "OWASP A01:2025",
+      "file": "src/routes/admin.ts",
+      "line": 20,
+      "remediation": "Require an admin-role guard before the handler"
+    },
+    {
+      "id": "SCAN-3",
+      "severity": "medium",
+      "title": "Verbose error leaks stack trace",
+      "category": "OWASP A02:2025",
+      "file": "src/server.ts",
+      "line": 140,
+      "remediation": "Return a generic error to the client; log details server-side"
+    }
+  ]
+}
+```

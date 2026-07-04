@@ -198,3 +198,43 @@ Write the report to `.marvin/security/iac-report.md` (create the `.marvin/securi
 - **Docker multi-stage builds matter.** Secrets in an early build stage don't end up in the final image if multi-stage builds are used correctly. Check the final stage.
 - **Kubernetes RBAC deserves attention.** ClusterRoleBindings with `cluster-admin` or overly broad RoleBindings are high-value findings.
 - **Note missing external tools.** If tfsec/trivy/hadolint aren't installed, recommend them. But always provide manual analysis regardless.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose report, append a machine-readable `audit-report` block to the same
+`.marvin/security/iac-report.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `iac`; emit one finding per misconfiguration with
+`category` = the control id (CIS/benchmark) and `file`/`line` = the IaC resource; make the `summary`
+counts match the `findings`; use the severity vocabulary `critical | high | medium | low | info`;
+`scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real scan (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "iac",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "infra/",
+  "summary": { "high": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "IAC-1",
+      "severity": "high",
+      "title": "S3 bucket allows public read",
+      "category": "CIS AWS 2.1.5",
+      "file": "infra/s3.tf",
+      "line": 14,
+      "remediation": "Set block_public_acls = true and tighten the bucket policy"
+    },
+    {
+      "id": "IAC-2",
+      "severity": "medium",
+      "title": "Container runs as root",
+      "category": "CIS Docker 4.1",
+      "file": "Dockerfile",
+      "line": 1,
+      "remediation": "Add a non-root USER directive"
+    }
+  ]
+}
+```

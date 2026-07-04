@@ -65,6 +65,7 @@ const REQUIRED_PROMPTS = [
   "sec-fix",
   "sec-compliance",
   "sec-pentest",
+  "sec-report",
   // refactor-*
   "refactor-audit",
   "refactor-smells",
@@ -95,6 +96,7 @@ const REQUIRED_TOOLS = [
   "handoff",
   "summary",
   "adr",
+  "audit",
 ];
 
 function die(msg) {

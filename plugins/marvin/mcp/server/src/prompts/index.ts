@@ -278,6 +278,14 @@ export const PROMPTS: PromptDef[] = [
       "Generate a tailored penetration-testing checklist for the application — auth, authz, input surfaces, business logic, APIs, infrastructure — mapped to PTES / OWASP Testing Guide.",
     skill: "sec-pentest",
   },
+  {
+    // Thin tool wrapper (inline body) — the read side of the sec-* family
+    // (ADR-0024 #7): list the typed audit-report blocks the scanners wrote.
+    name: "sec-report",
+    description:
+      "List the structured security-audit reports under .marvin/security/ — each sec-* scanner's typed findings by severity, newest first.",
+    body: callTool("audit", { action: "list" }),
+  },
 
   // ── refactor (code-health family, ADR-0029) ─────────────────────────
   {

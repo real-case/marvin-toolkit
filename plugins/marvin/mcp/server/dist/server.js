@@ -28705,6 +28705,13 @@ var PROMPTS = [
     description: "Generate a tailored penetration-testing checklist for the application \u2014 auth, authz, input surfaces, business logic, APIs, infrastructure \u2014 mapped to PTES / OWASP Testing Guide.",
     skill: "sec-pentest"
   },
+  {
+    // Thin tool wrapper (inline body) — the read side of the sec-* family
+    // (ADR-0024 #7): list the typed audit-report blocks the scanners wrote.
+    name: "sec-report",
+    description: "List the structured security-audit reports under .marvin/security/ \u2014 each sec-* scanner's typed findings by severity, newest first.",
+    body: callTool("audit", { action: "list" })
+  },
   // ── refactor (code-health family, ADR-0029) ─────────────────────────
   {
     name: "refactor-audit",
@@ -28814,8 +28821,9 @@ function loadEnv(env2 = process.env) {
   const configPath = env2.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env2.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env2.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
+  const securityDir = env2.MARVIN_SECURITY_DIR ?? join(projectDir, ".marvin", "security");
   const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, usageDir };
+  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, securityDir, usageDir };
 }
 
 // src/storage/schema.ts
@@ -33254,9 +33262,130 @@ function render(s, verify) {
 function errOk2(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
+var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest"
+]);
+var LinkRef = external_exports.object({
+  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+var Finding = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity,
+  title: external_exports.string().min(1),
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRef).optional()
+});
+var AuditReport = external_exports.object({
+  kind: AuditKind,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(Finding)
+});
+function extractAuditBlock(text) {
+  const m = text.match(/```json audit-report\n([\s\S]*?)\n```/);
+  return m?.[1] ?? null;
+}
+function readAllAuditReports(securityDir) {
+  if (!existsSync(securityDir)) return { reports: [], malformed: [] };
+  const found = [];
+  const malformed = [];
+  let filenames;
+  try {
+    filenames = readdirSync(securityDir).sort();
+  } catch {
+    return { reports: [], malformed: [] };
+  }
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    let raw;
+    try {
+      raw = readFileSync(join(securityDir, filename), "utf8");
+    } catch {
+      continue;
+    }
+    const block = extractAuditBlock(raw);
+    if (block === null) continue;
+    let json;
+    try {
+      json = JSON.parse(block);
+    } catch {
+      malformed.push({ filename, reason: "audit-report block is not valid JSON" });
+      continue;
+    }
+    const parsed = AuditReport.safeParse(json);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    found.push({ report: parsed.data, filename });
+  }
+  found.sort(
+    (a, b) => b.report.scanned_at.localeCompare(a.report.scanned_at) || a.filename.localeCompare(b.filename)
+  );
+  return { reports: found.map((f) => f.report), malformed };
+}
+
+// src/tools/audit.ts
+var AuditInput = external_exports.object({
+  action: external_exports.enum(["list"]).optional()
+});
+function buildAuditTool(env2) {
+  return defineTool({
+    name: "audit",
+    description: "List the structured security-audit reports the sec-* scanners wrote under .marvin/security/ (ADR-0024 #7): each scanner's typed audit-report block, newest first, with per-severity counts. Terminals see the text summary; MCP Apps hosts get the AuditListPayload widget payload.",
+    inputSchema: AuditInput,
+    // Only one action today (list); the optional enum leaves room to grow
+    // (e.g. a `show` detail action) without a breaking schema change.
+    handler: () => Promise.resolve(runList4(env2))
+  });
+}
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function runList4(env2) {
+  const { reports, malformed } = readAllAuditReports(env2.securityDir);
+  const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine).join("\n");
+  const warning = malformed.length > 0 ? `
+
+_\u26A0 ${malformed.length} report(s) with an invalid audit-report block: ${malformed.map((m) => m.filename).join(", ")} (re-run the scanner)_` : "";
+  return {
+    content: [
+      { type: "text", text: `# Security audit reports (${reports.length})
+
+${body}${warning}` }
+    ],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the audit-viewer (#7).
+    structuredContent: buildPayload(reports)
+  };
+}
+function formatReportLine(r) {
+  const total = r.findings.length;
+  const breakdown = SEVERITY_ORDER.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
+  const when = r.scanned_at.slice(0, 10);
+  const target = r.target ? ` \`${r.target}\`` : "";
+  const counts = breakdown ? ` \u2014 ${breakdown}` : "";
+  return `- **${r.kind}**${target} \xB7 ${total} finding(s)${counts} \xB7 ${when}`;
+}
+function buildPayload(reports) {
+  return { reports };
+}
 
 // src/server.ts
-var VERSION = "0.13.0";
+var VERSION = "0.14.0";
 var env = loadEnv();
 await runPackServer({
   name: "marvin",
@@ -33279,7 +33408,8 @@ await runPackServer({
         buildLessonsTool(server, env),
         buildHandoffTool(env),
         buildSummaryTool(env),
-        buildAdrTool(env)
+        buildAdrTool(env),
+        buildAuditTool(env)
       ]
     };
   }
