@@ -115,12 +115,16 @@ Rich MCP hosts can render a tool's `structuredContent` in a sandboxed `ui://` if
 widgets live in a dedicated browser workspace and are wired to tools without pulling any browser SDK
 into the server bundle:
 
-- **`packages/marvin-widgets/`** — the React + `@modelcontextprotocol/ext-apps` browser bundle. Vite
-  + `vite-plugin-singlefile` build each widget to **one self-contained HTML** file (a strict host CSP
-  blocks external hosts) written to the committed `plugins/marvin/widgets/<name>.html`. A `<ListDetail>`
-  primitive and a 3-type link model (`links.ts`, over the shared `LinkRef`) are the reusable foundation;
-  a `mock-host` util (a fake ext-apps host over an in-memory transport) drives the real handshake in
-  vitest and Storybook without a real iframe.
+- **`packages/marvin-widgets/`** — the browser widget bundle (`@modelcontextprotocol/ext-apps`). Vite
+  + `vite-plugin-singlefile` build each widget to **one self-contained, minified HTML** file (a strict
+  host CSP blocks external hosts) written to the committed `plugins/marvin/widgets/<name>.html`. Widgets
+  are React-shaped code that renders on **Preact**: `react`/`react-dom` are aliased to `preact/compat`
+  via `@preact/preset-vite` (the ADR-0024 bundle-size escape hatch — the inlined bundle is ~95% zod via
+  ext-apps, so the committed HTML is a compact, hash-guarded build artifact, minified like `dist/`).
+  Tests use `@testing-library/preact`; Storybook keeps `@storybook/react-vite` with the compat aliases
+  injected via `viteFinal`. A `<ListDetail>` primitive and a 3-type link model (`links.ts`, over the
+  shared `LinkRef`) are the reusable foundation; a `mock-host` util (a fake ext-apps host over an
+  in-memory transport) drives the real handshake in vitest and Storybook without a real iframe.
 - **The server stays ext-apps/React free.** `src/resources/widgets.ts` returns `ResourceDef[]` for the
   `ui://marvin/<name>.html` documents (mimeType `text/html;profile=mcp-app`), served through the shared
   `registerResource` (NOT ext-apps' `registerAppResource`); its `read` loads the committed HTML from

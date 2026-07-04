@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/preact";
 import { TaskListView, TaskListWidget } from "./TaskListWidget";
 import { taskListFixture } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";

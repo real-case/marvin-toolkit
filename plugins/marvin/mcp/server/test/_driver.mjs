@@ -72,8 +72,14 @@ export function connect({ env = {}, onServerRequest, timeoutMs = TIMEOUT_MS } = 
     child.kill();
   }
 
+  // Decode stdout as UTF-8 through the stream's own StringDecoder so a multibyte
+  // character split across two chunks is reassembled correctly. Per-chunk
+  // `d.toString()` corrupts such a split (→ U+FFFD), which surfaces on large
+  // payloads like the ~283 KB widget HTML whose bundled zod locale strings land a
+  // multibyte char on a 64 KB chunk boundary.
+  child.stdout.setEncoding("utf8");
   child.stdout.on("data", (d) => {
-    buf += d.toString();
+    buf += d;
     let nl;
     while ((nl = buf.indexOf("\n")) !== -1) {
       const line = buf.slice(0, nl);
