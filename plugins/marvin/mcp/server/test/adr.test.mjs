@@ -1,78 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { callTool as driverCallTool } from "./_driver.mjs";
 
 /**
  * Drive the live stdio server with CLAUDE_PROJECT_DIR pointed at a temp
  * project, call one tool, and return `{ text, isError, structured }`.
  */
-function callTool(projectDir, name, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-    });
-    let buf = "";
-    let initialized = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1 && !initialized) {
-          initialized = true;
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          try {
-            resolve({
-              text: msg.result.content.map((c) => c.text).join("\n"),
-              isError: !!msg.result.isError,
-              structured: msg.result.structuredContent,
-            });
-          } catch (err) {
-            reject(err);
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "adr-test", version: "0" },
-      },
-    });
-  });
+async function callTool(projectDir, name, args) {
+  const result = await driverCallTool(name, args, { env: { CLAUDE_PROJECT_DIR: projectDir } });
+  return {
+    text: result.content.map((c) => c.text).join("\n"),
+    isError: !!result.isError,
+    structured: result.structuredContent,
+  };
 }
 
 const callAdr = (proj, args) => callTool(proj, "adr", args);

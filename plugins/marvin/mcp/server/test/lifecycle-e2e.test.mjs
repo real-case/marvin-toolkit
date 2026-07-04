@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import {
   mkdtempSync,
   mkdirSync,
@@ -13,9 +12,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { withSession } from "./_driver.mjs";
 
 /**
  * End-to-end lifecycle sweep (WP5, finding 10): drive the full task chain —
@@ -34,75 +31,26 @@ const serverPath = join(here, "..", "dist", "server.js");
  *   - accept: content used to answer every elicitation/create (cancel if null).
  * Resolves to { results, elicitations }.
  */
-function drive(env, calls, { elicitation = true, accept = null } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env },
-    });
-    let buf = "";
-    const results = [];
-    let elicitations = 0;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 30000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-    const sendCall = (idx) =>
-      send({ jsonrpc: "2.0", id: 2 + idx, method: "tools/call", params: calls[idx] });
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        if (msg.method === "elicitation/create" && msg.id != null) {
-          elicitations += 1;
-          send({
-            jsonrpc: "2.0",
-            id: msg.id,
-            result: accept ? { action: "accept", content: accept } : { action: "cancel" },
-          });
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          sendCall(0);
-        } else if (typeof msg.id === "number" && msg.id >= 2) {
-          results.push(msg.result);
-          const next = msg.id - 1;
-          if (next < calls.length) {
-            sendCall(next);
-          } else {
-            clearTimeout(timer);
-            child.kill();
-            resolve({ results, elicitations });
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: elicitation ? { elicitation: {} } : {},
-        clientInfo: { name: "lifecycle-e2e-test", version: "0" },
+async function drive(env, calls, { elicitation = true, accept = null } = {}) {
+  let elicitations = 0;
+  const results = await withSession(
+    {
+      env,
+      capabilities: elicitation ? { elicitation: {} } : {},
+      onServerRequest: () => {
+        elicitations += 1;
+        return accept ? { action: "accept", content: accept } : { action: "cancel" };
       },
-    });
-  });
+    },
+    async (s) => {
+      const out = [];
+      for (const params of calls) {
+        out.push(await s.request("tools/call", params));
+      }
+      return out;
+    },
+  );
+  return { results, elicitations };
 }
 
 const textOf = (result) => result.content.map((c) => c.text).join("\n");
