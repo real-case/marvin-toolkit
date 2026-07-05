@@ -4,6 +4,29 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.16.0] — 2026-07-04
+
+The widgets bundle migrates from React to **Preact** and the committed widget HTML
+is now **minified** (ADR-0024's named bundle-size escape hatch). The shipped
+`task-list` widget behaves identically — its full suite, including the mock-host
+App↔AppBridge handshake, stays green — while the committed document drops from
+708 KB / ~21.7k lines to **292 KB / ~80 lines**, so every subsequent widget PR is
+a compact diff instead of a 20k-line one. The spike behind this found the inlined
+bundle is ~95 % third-party (zod via `@modelcontextprotocol/ext-apps`), so the win
+comes from minifying a hash-guarded build artifact — real review lives in the
+`.tsx` source and tests, not the committed HTML.
+
+### Changed
+
+- **Widgets render on Preact.** `react`/`react-dom` are aliased to `preact/compat`
+  via `@preact/preset-vite` (with `react-dom/client` aliased too, and the browser
+  entry mounting through Preact's `render`). No component logic changes — the code
+  stays React-shaped.
+- **Committed widget HTML is minified** (`vite build` `minify: "esbuild"`), guarded
+  byte-for-byte by `verify-widgets` exactly as before.
+- **Tests use `@testing-library/preact`**; Storybook keeps `@storybook/react-vite`
+  with the compat aliases injected via `viteFinal` (story files unchanged).
+
 ## [0.15.0] — 2026-07-04
 
 The first MCP Apps widget ships end-to-end (ADR-0024 Stage-2). A React `task-list`

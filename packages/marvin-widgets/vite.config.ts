@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 /**
@@ -44,15 +44,37 @@ function flattenWidgetHtml(): Plugin {
 const OUT_DIR = resolve(__dirname, "../../plugins/marvin/widgets");
 
 export default defineConfig({
-  plugins: [react(), viteSingleFile(), flattenWidgetHtml()],
+  plugins: [preact(), viteSingleFile(), flattenWidgetHtml()],
+  resolve: {
+    // Alias every React specifier to preact/compat EXPLICITLY here (not only via
+    // @preact/preset-vite's injected aliases) so Vitest — which externalizes
+    // node_modules deps like @testing-library/react and would otherwise resolve
+    // their internal react / react-dom / react-dom/client imports to the real
+    // packages — renders through preact/compat too. Without react-dom/client
+    // aliased, testing-library's createRoot feeds Preact vnodes to React's
+    // reconciler and throws (coerceRef).
+    alias: {
+      react: "preact/compat",
+      "react-dom": "preact/compat",
+      "react-dom/client": "preact/compat",
+      "react/jsx-runtime": "preact/jsx-runtime",
+      "react/jsx-dev-runtime": "preact/jsx-runtime",
+      "react-dom/test-utils": "preact/test-utils",
+    },
+  },
   build: {
     outDir: OUT_DIR,
     // The outDir is outside the package root and holds only committed widget
     // HTML; never let a build wipe sibling files there.
     emptyOutDir: false,
-    // Deterministic, diff-readable committed output — the guard hashes it, and a
-    // minified single line would obscure real changes in review.
-    minify: false,
+    // Minify the committed document. The inlined bundle is ~95% third-party
+    // (zod via @modelcontextprotocol/ext-apps, plus preact) — code no reviewer
+    // reads line-by-line — so unminified output bought "readability" that never
+    // existed while every widget added a ~15k-line diff. Minified it is a compact
+    // build artifact like the committed dist/server.js: correctness is guaranteed
+    // by verify-widgets (fresh rebuild + hash), and each widget PR is a ~80-line
+    // diff. Real review happens in the .tsx source + tests, not this artifact.
+    minify: "esbuild",
     // Everything is inlined by vite-plugin-singlefile; no separate assets emit.
     assetsInlineLimit: 100_000_000,
     cssCodeSplit: false,

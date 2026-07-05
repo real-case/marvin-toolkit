@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/widgets",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "MCP Apps widgets for the marvin plugin (ADR-0024) — React ui:// documents built to self-contained HTML the server serves as ui:// resources.",
   "type": "module",
@@ -13,18 +13,16 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "preact": "^10.24.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@preact/preset-vite": "^2.9.0",
     "@storybook/react": "^8.6.0",
     "@storybook/react-vite": "^8.6.0",
     "@storybook/test-runner": "^0.22.0",
     "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.1.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@testing-library/preact": "^3.2.4",
     "@vitejs/plugin-react": "^4.3.0",
     "happy-dom": "^15.11.0",
     "storybook": "^8.6.0",

@@ -11,6 +11,15 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    // Type-resolve the React-named imports (kept in the components so they stay
+    // React-shaped — the preact/compat escape hatch) against preact/compat's own
+    // types. A relative target (preact is hoisted to the repo-root node_modules)
+    // so esbuild accepts it without baseUrl. Runtime aliasing lives in vite.config.
+    "paths": {
+      "react": ["../../node_modules/preact/compat"],
+      "react-dom": ["../../node_modules/preact/compat"]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
