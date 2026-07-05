@@ -4,6 +4,26 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.16.1] — 2026-07-05
+
+Adds the second reusable widget primitive, **`<Markdown>`** — a minimal,
+dependency-free renderer that turns the marvin-generated markdown bodies
+(`TaskDetail`/`HandoffDetail` `body_markdown`, plus audit fragments and
+dashboard/summary copy) into DOM elements inside the host CSP. It ships
+**unconsumed** ahead of the widgets that need it, so there is no `ui://` resource
+or server change this release.
+
+### Added
+
+- **`<Markdown>` primitive** (`packages/marvin-widgets/src/primitives/Markdown.tsx`)
+  — parses a GFM subset (ATX headings, paragraphs, bold/italic, inline + fenced
+  code, ordered/unordered lists, links, blockquotes, thematic breaks, tables) and
+  emits Preact elements via the JSX runtime. **No `dangerouslySetInnerHTML` and no
+  sanitiser:** text is JSX-escaped (raw HTML renders as literal text) and link
+  `href`s are scheme-allowlisted (`http(s)`/`mailto`/`tel`/relative; a
+  `javascript:`/`data:` link degrades to plain text). The parser is total —
+  arbitrary input never throws.
+
 ## [0.16.0] — 2026-07-04
 
 The widgets bundle migrates from React to **Preact** and the committed widget HTML
