@@ -19,7 +19,7 @@ import { buildSummaryTool } from "./tools/summary.js";
 import { buildAuditTool } from "./tools/audit.js";
 import { buildWidgetResources } from "./resources/widgets.js";
 
-const VERSION = "0.16.0";
+const VERSION = "0.16.1";
 
 // One env for the whole process: the tools read it, and the usage-log
 // middleware (ADR-0030) closes over the same paths. `env` carries only
