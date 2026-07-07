@@ -34,3 +34,15 @@ export const HandoffListPayload = z.object({
   handoffs: z.array(HandoffCard),
 });
 export type HandoffListPayload = z.infer<typeof HandoffListPayload>;
+
+/**
+ * Handoff detail payload — the full set with each handoff's markdown body and its
+ * paste-ready continue prompt, fed to the handoffs widget (ADR-0024 #5). Wraps the
+ * array exactly as `TaskListPayload` does (so the widget shares the master-detail
+ * shape), but carries `HandoffDetail` rows so the detail pane can render bodies and
+ * the copy-to-chat prompt without a second fetch.
+ */
+export const HandoffDetailPayload = z.object({
+  handoffs: z.array(HandoffDetail),
+});
+export type HandoffDetailPayload = z.infer<typeof HandoffDetailPayload>;

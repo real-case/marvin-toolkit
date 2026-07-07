@@ -58,7 +58,7 @@ function listHandoffs(handoffDir) {
   );
 }
 
-test("handoff list emits a HandoffListPayload structuredContent alongside the text", async () => {
+test("handoff list emits a HandoffDetailPayload structuredContent alongside the text", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-handoff-"));
   try {
     seedHandoffs(dir);
@@ -88,10 +88,34 @@ test("handoff list emits a HandoffListPayload structuredContent alongside the te
     assert.equal(first.spec_slug, "handoff-list");
     assert.ok(first.created, "created present");
 
+    // widget-detail fields (ADR-0024 #5): the file body verbatim + a derived
+    // continue prompt that names the objective, the real filename, and the branch
+    // (mirrors the handoff skill's step-5 template).
+    assert.equal(typeof first.body_markdown, "string");
+    assert.ok(
+      first.body_markdown.includes("Add the handoff read side"),
+      "body_markdown carries the handoff's file body",
+    );
+    assert.ok(
+      first.continue_prompt.includes("Add the handoff read side"),
+      "continue_prompt names the objective",
+    );
+    assert.ok(
+      first.continue_prompt.includes("002--handoff-read-side.md"),
+      "continue_prompt points at the handoff's real on-disk filename",
+    );
+    assert.ok(
+      first.continue_prompt.includes("feat/handoff-list"),
+      "continue_prompt names the branch",
+    );
+
     // 001 omits PR/base/spec — pr_url maps to null, the optionals are absent
     assert.equal(second.pr_url, null, "absent pr_url maps to the contract's nullable field");
     assert.equal(second.base, undefined);
     assert.equal(second.spec_slug, undefined);
+    // ...but every handoff still gets a body and a continue prompt
+    assert.equal(typeof second.body_markdown, "string");
+    assert.ok(second.continue_prompt.includes("001--initial-context.md"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
