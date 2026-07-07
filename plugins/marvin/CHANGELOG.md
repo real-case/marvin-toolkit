@@ -4,6 +4,45 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.21.0] — 2026-07-07
+
+Ships the eighth MCP Apps widget, **task-summary** (ADR-0024 #3) — the "what was
+done" delivery digest over the `TaskSummary` the existing read-only **`summary`** tool
+already returns. Unlike the master-detail widgets it is a **panel**, not a
+`<ListDetail>`: a single summary has no list to master, so it renders as sections —
+a header (title, status, a roll-up of the acceptance pass-count and gate tally), an
+**acceptance** section whose per-AC badge is `pass` / `unknown` / `fail` with the
+conservative model's `unknown` rendered as a **neutral** state (never a failure), a
+**gates** section (pass / fail / skip), a **commits** list, a **lessons** list, and a
+**links** row via the 3-type link model. The one free-text fragment rich enough for it
+— the AC `statement` — renders through the `<Markdown>` primitive; the machine strings
+(commit `subject`, gate `detail`) are escaped plain text. The widget binds to the
+existing tool via `_meta.ui.resourceUri` — **no new tool and no new prompt** — so the
+registry stays at **57 prompts / 12 tools**; `/marvin:task-summary` now surfaces the
+widget for MCP Apps hosts while the terminal keeps its byte-unchanged text fallback
+(progressive enhancement). The server stays ext-apps/React free (a plain `_meta`
+object literal + a type-only contract import + the shared `registerResource`). This is
+the last of the eight ADR-0024 widgets.
+
+### Added
+
+- **task-summary widget** (`packages/marvin-widgets/src/widgets/task-summary/`) — a
+  pure `TaskSummaryView` over the `TaskSummary` contract: a header roll-up, and
+  acceptance / gates / commits / lessons / links sections with per-outcome and
+  per-gate badges (neutral `unknown` / `skip`), the AC statement via `<Markdown>`, and
+  links through the 3-type model; empty-state notes per section, the Lessons section
+  omitted when empty, and connecting / error states. Built self-contained to
+  `plugins/marvin/widgets/task-summary.html`.
+- `TASK_SUMMARY_WIDGET_URI` and the task-summary `ui://` resource (`resources/widgets.ts`).
+
+### Changed
+
+- The `summary` tool (`tools/summary.ts`) now binds the task-summary widget via
+  `_meta.ui.resourceUri`; its text fallback and `TaskSummary` `structuredContent` are
+  unchanged (progressive enhancement).
+- Bumped the plugin, server, and widgets package versions to 0.21.0 and the server
+  `VERSION` constant in lockstep.
+
 ## [0.20.0] — 2026-07-07
 
 Ships the seventh MCP Apps widget, **audit** (ADR-0024 #7) — a severity-triage
