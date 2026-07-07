@@ -30377,10 +30377,17 @@ var WIDGETS = [
     uri: "ui://marvin/task-detail.html",
     file: join("widgets", "task-detail.html"),
     description: "Marvin task detail \u2014 a single task's fields + markdown body (ADR-0024)."
+  },
+  {
+    name: "handoffs",
+    uri: "ui://marvin/handoffs.html",
+    file: join("widgets", "handoffs.html"),
+    description: "Marvin handoffs \u2014 a master-detail browser over the session-continuation docs, each with its continue prompt + markdown body (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
 var TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
+var HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -33145,8 +33152,14 @@ function buildHandoffTool(env2) {
     name: "handoff",
     description: "List the session-continuation handoff documents saved under .marvin/handoff/, newest first.",
     inputSchema: HandoffInput,
-    // Only one action today (list); the optional enum leaves room to grow
-    // (e.g. a `show` detail action) without a breaking schema change.
+    // Bind the handoffs `ui://` widget for MCP Apps hosts (ADR-0024 #5). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: HANDOFFS_WIDGET_URI } },
+    // One action today (list); its structuredContent carries full detail (bodies +
+    // continue prompts) so the bound widget browses the whole set — no separate
+    // `show` action (see .marvin/task/001-widget-handoffs.md, Variant A). The
+    // optional enum still leaves room to grow without a breaking schema change.
     handler: () => Promise.resolve(runList3(env2))
   });
 }
@@ -33160,10 +33173,11 @@ _\u26A0 ${malformed.length} handoff(s) without valid frontmatter: ${malformed.ma
     content: [{ type: "text", text: `# Handoffs (${handoffs.length})
 
 ${body}${warning}` }],
-    // Widget payload for MCP Apps hosts (ADR-0024) — the handoff viewer (#5).
-    // Same data the text renders, typed to the HandoffListPayload contract;
-    // terminals render `content` and ignore this.
-    structuredContent: buildHandoffListPayload(handoffs)
+    // Widget payload for MCP Apps hosts (ADR-0024 #5) — the handoffs browser.
+    // A superset of the text surface: every card PLUS its markdown body and a
+    // derived continue prompt, typed to HandoffDetailPayload. Terminals render
+    // `content` and ignore this.
+    structuredContent: buildHandoffDetailPayload(handoffs)
   };
 }
 function formatHandoffLine(h) {
@@ -33172,8 +33186,8 @@ function formatHandoffLine(h) {
   const base = fm.base ? ` \u2192 \`${fm.base}\`` : "";
   return `- **${fm.id}** ${fm.objective} \xB7 \`${fm.branch}\`${base}${pr}`;
 }
-function buildHandoffListPayload(handoffs) {
-  const cards = handoffs.map((h) => {
+function buildHandoffDetailPayload(handoffs) {
+  const details = handoffs.map((h) => {
     const fm = h.frontmatter;
     return {
       id: fm.id,
@@ -33184,10 +33198,17 @@ function buildHandoffListPayload(handoffs) {
       // Contract field is nullable-required; storage omits it when absent.
       pr_url: fm.pr_url ?? null,
       ...fm.spec_slug ? { spec_slug: fm.spec_slug } : {},
-      created: fm.created
+      created: fm.created,
+      // The two detail-only fields the browser widget renders (ADR-0024 #5).
+      continue_prompt: continuePromptFor(h),
+      body_markdown: h.body
     };
   });
-  return { handoffs: cards };
+  return { handoffs: details };
+}
+function continuePromptFor(h) {
+  const fm = h.frontmatter;
+  return `Continue work on ${fm.objective}. Full context is in \`.marvin/handoff/${h.filename}\` \u2014 read that file first, then resume at its "Next steps". Repo is on branch \`${fm.branch}\`.`;
 }
 
 // src/tools/summary.ts
@@ -33518,7 +33539,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.17.0";
+var VERSION = "0.18.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
