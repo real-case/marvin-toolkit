@@ -13,6 +13,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const WIDGETS = [
   { name: "task-list", entry: "src/widgets/task-list/index.html" },
   { name: "task-detail", entry: "src/widgets/task-detail/index.html" },
+  { name: "tracker-list", entry: "src/widgets/tracker-list/index.html" },
   { name: "handoffs", entry: "src/widgets/handoffs/index.html" },
 ] as const;
 

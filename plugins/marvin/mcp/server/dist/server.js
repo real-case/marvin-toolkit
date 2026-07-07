@@ -28807,6 +28807,13 @@ var PROMPTS = [
     )
   },
   {
+    // Thin tool wrapper (inline body) — the board tasks that carry an external
+    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
+    name: "kanban-tracker",
+    description: "Show tracked tasks (external tracker id) \u2014 link out to each",
+    body: callTool("tracker", {})
+  },
+  {
     name: "kanban-status",
     description: "Current branch + WIP tasks",
     body: callTool("task", { action: "status" })
@@ -30379,6 +30386,12 @@ var WIDGETS = [
     description: "Marvin task detail \u2014 a single task's fields + markdown body (ADR-0024)."
   },
   {
+    name: "tracker-list",
+    uri: "ui://marvin/tracker-list.html",
+    file: join("widgets", "tracker-list.html"),
+    description: "Marvin tracker list \u2014 board tasks with an external tracker_id, linking out (ADR-0024)."
+  },
+  {
     name: "handoffs",
     uri: "ui://marvin/handoffs.html",
     file: join("widgets", "handoffs.html"),
@@ -30387,6 +30400,7 @@ var WIDGETS = [
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
 var TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
+var TRACKER_LIST_WIDGET_URI = "ui://marvin/tracker-list.html";
 var HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
@@ -31134,6 +31148,56 @@ function ok2(text) {
 }
 function errOk2(text) {
   return { content: [{ type: "text", text }], isError: true };
+}
+
+// src/tools/tracker.ts
+var TrackerInput = external_exports.object({});
+function buildTrackerTool(env2) {
+  return defineTool({
+    name: "tracker",
+    description: 'Show the board tasks that carry an external tracker id (e.g. OSI-123), each linking out to its tracker item. Returns the tracked tasks as text and, for MCP Apps hosts, binds the tracker-list widget (ADR-0024). Read-only. Serves requests like "which tasks are tracked in Jira?", "show my tracker links", or "open the tracker board".',
+    inputSchema: TrackerInput,
+    // Bind the tracker-list `ui://` widget for MCP Apps hosts (ADR-0024). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: TRACKER_LIST_WIDGET_URI } },
+    handler: async () => {
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      const { tasks } = readAllTasks(env2.tasksDir, config2);
+      const cards = tasks.filter((t) => t.frontmatter.tracker_id).map((t) => buildTaskCard(t, config2));
+      const payload = { tasks: cards };
+      const result2 = {
+        content: [{ type: "text", text: renderTrackerText(cards) }],
+        structuredContent: payload
+      };
+      return result2;
+    }
+  });
+}
+function renderTrackerText(cards) {
+  if (cards.length === 0) {
+    return [
+      "# Tracked tasks (0)",
+      "",
+      "No tasks carry a tracker id. Add one when you create a task (e.g. `tracker_id: OSI-123`),",
+      "and set `tracker_url_template` via `/marvin:kanban-config` to link out."
+    ].join("\n");
+  }
+  const lines = [`# Tracked tasks (${cards.length})`, ""];
+  let anyUnlinked = false;
+  for (const c of cards) {
+    const tracker = c.tracker_url ? `[${c.tracker_id}](${c.tracker_url})` : `${c.tracker_id} _(no URL)_`;
+    if (!c.tracker_url) anyUnlinked = true;
+    const pr = c.pr ? ` \xB7 ${c.pr.number ? `[PR #${c.pr.number}](${c.pr.url})` : `[PR](${c.pr.url})`}` : "";
+    lines.push(`- **${c.id}** ${c.title} \u2014 ${tracker} \xB7 ${c.status.key}${pr}`);
+  }
+  if (anyUnlinked) {
+    lines.push("");
+    lines.push(
+      "_Some tasks have no tracker URL \u2014 set `tracker_url_template` via `/marvin:kanban-config` to link out._"
+    );
+  }
+  return lines.join("\n");
 }
 function kanbanCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
@@ -33539,7 +33603,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.18.0";
+var VERSION = "0.19.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -33557,6 +33621,7 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
+        buildTrackerTool(env),
         buildHelpTool(env, VERSION),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),

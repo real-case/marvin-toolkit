@@ -39,6 +39,13 @@ const WIDGETS: WidgetResource[] = [
     description: "Marvin task detail — a single task's fields + markdown body (ADR-0024).",
   },
   {
+    name: "tracker-list",
+    uri: "ui://marvin/tracker-list.html",
+    file: join("widgets", "tracker-list.html"),
+    description:
+      "Marvin tracker list — board tasks with an external tracker_id, linking out (ADR-0024).",
+  },
+  {
     name: "handoffs",
     uri: "ui://marvin/handoffs.html",
     file: join("widgets", "handoffs.html"),
@@ -53,6 +60,8 @@ export const TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
 /** The `ui://marvin/task-detail.html` binding, exported for the tool `_meta`. */
 export const TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
 
+/** The `ui://marvin/tracker-list.html` binding, exported for the tool `_meta`. */
+export const TRACKER_LIST_WIDGET_URI = "ui://marvin/tracker-list.html";
 /** The `ui://marvin/handoffs.html` binding, exported for the tool `_meta`. */
 export const HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
 
