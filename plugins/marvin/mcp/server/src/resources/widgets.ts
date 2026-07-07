@@ -66,6 +66,13 @@ const WIDGETS: WidgetResource[] = [
     description:
       "Marvin task summary — the 'what was done' delivery digest: acceptance vs verification, gates, commits, lessons and links, as a panel (ADR-0024).",
   },
+  {
+    name: "dashboard",
+    uri: "ui://marvin/dashboard.html",
+    file: join("widgets", "dashboard.html"),
+    description:
+      "Marvin toolbox dashboard — the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024).",
+  },
 ];
 
 /** The `ui://marvin/task-list.html` binding, exported for the tool `_meta`. */
@@ -84,6 +91,9 @@ export const AUDIT_WIDGET_URI = "ui://marvin/audit.html";
 
 /** The `ui://marvin/task-summary.html` binding, exported for the tool `_meta`. */
 export const TASK_SUMMARY_WIDGET_URI = "ui://marvin/task-summary.html";
+
+/** The `ui://marvin/dashboard.html` binding, exported for the tool `_meta`. */
+export const DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
 
 /**
  * Build the `ResourceDef[]` the server registers. `packRoot` is the plugin root
