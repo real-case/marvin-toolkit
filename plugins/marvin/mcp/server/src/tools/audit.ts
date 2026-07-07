@@ -3,6 +3,7 @@ import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mc
 import type { AuditListPayload, AuditReport, Severity } from "@marvin-toolkit/mcp-shared/contracts";
 import { readAllAuditReports } from "../storage/security.js";
 import type { ServerEnv } from "../lib/env.js";
+import { AUDIT_WIDGET_URI } from "../resources/widgets.js";
 
 const AuditInput = z.object({
   action: z.enum(["list"]).optional(),
@@ -16,6 +17,10 @@ export function buildAuditTool(env: ServerEnv): AnyToolDef {
       "(ADR-0024 #7): each scanner's typed audit-report block, newest first, with per-severity counts. " +
       "Terminals see the text summary; MCP Apps hosts get the AuditListPayload widget payload.",
     inputSchema: AuditInput,
+    // Bind the audit `ui://` widget for MCP Apps hosts (ADR-0024 #7). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: AUDIT_WIDGET_URI } },
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
     handler: () => Promise.resolve(runList(env)),
