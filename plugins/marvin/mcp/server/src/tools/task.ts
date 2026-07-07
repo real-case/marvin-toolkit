@@ -6,7 +6,7 @@ import {
   type AnyToolDef,
   type ToolResult,
 } from "@marvin-toolkit/mcp-shared";
-import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
+import type { TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { existsSync } from "node:fs";
 import {
@@ -23,7 +23,6 @@ import {
 import {
   loadConfig,
   parseStatusesJson,
-  trackerUrl,
   updateConfigFile,
   type ConfigPatch,
 } from "../storage/config.js";
@@ -51,6 +50,7 @@ import {
 } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 import { formatTaskLine, renderListTable } from "../flows/format.js";
+import { buildTaskCard } from "../flows/card.js";
 import { TASK_LIST_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -359,35 +359,15 @@ function buildTaskListPayload(tasks: Task[], config: Config): TaskListPayload {
     blocked: 0,
   };
   const cards: TaskCard[] = tasks.map((t) => {
-    const fm = t.frontmatter;
-    const role = roleOfStatus(config, fm.status);
-    counts[fm.status] = (counts[fm.status] ?? 0) + 1;
-    role_counts[role] += 1;
-    return {
-      id: fm.id,
-      type: fm.type,
-      status: { key: fm.status, role },
-      title: fm.title,
-      branch: fm.branch,
-      ...(fm.tracker_id ? { tracker_id: fm.tracker_id } : {}),
-      tracker_url: trackerUrl(config, fm.tracker_id),
-      pr: prRefFromUrl(fm.pr),
-      created: fm.created,
-      updated: fm.updated,
-    };
+    // buildTaskCard (flows/card.ts) is the single card mapping shared with the
+    // task-detail tool; the counts roll up from the returned cards so the two
+    // payloads cannot describe a card differently.
+    const card = buildTaskCard(t, config);
+    counts[card.status.key] = (counts[card.status.key] ?? 0) + 1;
+    role_counts[card.status.role] += 1;
+    return card;
   });
   return { tasks: cards, counts, role_counts };
-}
-
-/**
- * Map a stored PR URL to the PrRef widget contract (ADR-0024). The PR number is
- * derived from the URL (`…/pull/<n>`); `state` is intentionally omitted — marvin
- * stores the URL at create time and never live-resolves the PR's current state.
- */
-function prRefFromUrl(url: string | undefined): PrRef | null {
-  if (!url) return null;
-  const match = url.match(/\/pull\/(\d+)/);
-  return match ? { url, number: Number(match[1]) } : { url };
 }
 
 function runStatus(_server: McpServer, env: ServerEnv, config: Config): ToolResult {

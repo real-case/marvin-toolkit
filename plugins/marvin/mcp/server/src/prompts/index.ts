@@ -376,6 +376,17 @@ export const PROMPTS: PromptDef[] = [
     body: callTool("task", { action: "list" }),
   },
   {
+    // Thin tool wrapper (inline body) — one task's full detail (fields +
+    // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
+    name: "kanban-show",
+    description: "Show one task in full — fields + markdown body",
+    body: callTool(
+      "task-detail",
+      {},
+      "If the user named a task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument; otherwise the task linked to the current branch is shown.",
+    ),
+  },
+  {
     name: "kanban-status",
     description: "Current branch + WIP tasks",
     body: callTool("task", { action: "status" }),

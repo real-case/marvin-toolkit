@@ -32,10 +32,19 @@ const WIDGETS: WidgetResource[] = [
     file: join("widgets", "task-list.html"),
     description: "Marvin kanban board — the task-list widget (ADR-0024).",
   },
+  {
+    name: "task-detail",
+    uri: "ui://marvin/task-detail.html",
+    file: join("widgets", "task-detail.html"),
+    description: "Marvin task detail — a single task's fields + markdown body (ADR-0024).",
+  },
 ];
 
 /** The `ui://marvin/task-list.html` binding, exported for the tool `_meta`. */
 export const TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
+
+/** The `ui://marvin/task-detail.html` binding, exported for the tool `_meta`. */
+export const TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
 
 /**
  * Build the `ResourceDef[]` the server registers. `packRoot` is the plugin root
