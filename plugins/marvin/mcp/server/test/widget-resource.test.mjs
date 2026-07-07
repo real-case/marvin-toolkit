@@ -14,6 +14,7 @@ const HANDOFFS_HTML = join(here, "..", "..", "..", "widgets", "handoffs.html");
 const TRACKER_HTML = join(here, "..", "..", "..", "widgets", "tracker-list.html");
 const AUDIT_HTML = join(here, "..", "..", "..", "widgets", "audit.html");
 const SUMMARY_HTML = join(here, "..", "..", "..", "widgets", "task-summary.html");
+const DASHBOARD_HTML = join(here, "..", "..", "..", "widgets", "dashboard.html");
 
 const URI = "ui://marvin/task-list.html";
 const DETAIL_URI = "ui://marvin/task-detail.html";
@@ -21,6 +22,7 @@ const HANDOFFS_URI = "ui://marvin/handoffs.html";
 const TRACKER_URI = "ui://marvin/tracker-list.html";
 const AUDIT_URI = "ui://marvin/audit.html";
 const SUMMARY_URI = "ui://marvin/task-summary.html";
+const DASHBOARD_URI = "ui://marvin/dashboard.html";
 const MIME = "text/html;profile=mcp-app";
 
 /**
@@ -326,6 +328,64 @@ test("summary tool binds the ui:// widget and the resource serves the committed 
       const shown = await s.request("tools/call", { name: "summary", arguments: {} });
       const text = shown.content.map((c) => c.text).join("\n");
       assert.match(text, /No spec found/, "summary text fallback is present");
+    });
+
+    // 5. the committed server bundle stays ext-apps/React free (ADR-0024).
+    const bundle = readFileSync(SERVER_PATH, "utf8");
+    assert.doesNotMatch(
+      bundle,
+      /@modelcontextprotocol\/ext-apps/,
+      "dist/server.js must not bundle the ext-apps SDK",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The dashboard widget (ADR-0024 #8, the final bound widget) binds end-to-end over stdio:
+ * the dashboard tool advertises `_meta.ui.resourceUri`, the resource is listed and read as
+ * the committed self-contained HTML with the mcp-app mimeType, and the terminal text
+ * fallback still renders. Content-independent (an empty project dir → the tool's zeroed
+ * toolbox report), so it fails precisely when the tool binding (dashboard.ts `meta`) and the
+ * resource registration (resources/widgets.ts) drift apart — the drop-a-widget bug the batch hit.
+ */
+test("dashboard tool binds the ui:// widget and the resource serves the committed html", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-dashboard-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir } }, async (s) => {
+      // 1. tools/list — the dashboard tool advertises the widget binding.
+      const tools = await s.request("tools/list", {});
+      const dashboard = tools.tools.find((t) => t.name === "dashboard");
+      assert.ok(dashboard, "dashboard tool is registered");
+      assert.equal(
+        dashboard._meta?.ui?.resourceUri,
+        DASHBOARD_URI,
+        "dashboard tool _meta.ui.resourceUri binds the widget",
+      );
+
+      // 2. resources/list — the ui:// resource is advertised with the mcp-app mime.
+      const resources = await s.request("resources/list", {});
+      const res = resources.resources.find((r) => r.uri === DASHBOARD_URI);
+      assert.ok(res, "resources/list includes the dashboard widget uri");
+      assert.equal(res.mimeType, MIME, "listed resource carries the mcp-app mimeType");
+
+      // 3. resources/read — returns the committed HTML with the mcp-app mimeType.
+      const read = await s.request("resources/read", { uri: DASHBOARD_URI });
+      const content = read.contents[0];
+      assert.equal(content.uri, DASHBOARD_URI);
+      assert.equal(content.mimeType, MIME, "resources/read mimeType is text/html;profile=mcp-app");
+      assert.equal(
+        content.text,
+        readFileSync(DASHBOARD_HTML, "utf8"),
+        "served HTML is byte-for-byte the committed build output",
+      );
+      assert.match(content.text, /<!doctype html>/i, "served body is an HTML document");
+
+      // 4. terminal fallback — the dashboard on an empty project dir still emits its text.
+      const shown = await s.request("tools/call", { name: "dashboard", arguments: {} });
+      const text = shown.content.map((c) => c.text).join("\n");
+      assert.match(text, /toolbox dashboard/, "dashboard text fallback is present");
     });
 
     // 5. the committed server bundle stays ext-apps/React free (ADR-0024).

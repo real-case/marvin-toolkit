@@ -17,6 +17,7 @@ import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
 import { orderedStatuses, type Config } from "../storage/schema.js";
 import { artifactCounts, commandGroups, gitState, kanbanCounts } from "../lib/state.js";
+import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 /**
  * The whole-toolbox dashboard (ADR-0030): one deterministic aggregation over
@@ -58,6 +59,10 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
       `(${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full ` +
       "DashboardState. Works on a fresh project — missing directories render as zeros.",
     inputSchema: DashboardInput,
+    // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: DASHBOARD_WIDGET_URI } },
     handler: (input) => {
       // Fresh config per call — `task config` edits and hand edits must apply
       // immediately (the help-tool precedent).

@@ -4,6 +4,53 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.22.0] — 2026-07-07
+
+Ships the **dashboard** widget (ADR-0024 #8) — the marvin whole-toolbox status
+**panel** over the `DashboardState` the existing read-only **`dashboard`** tool
+already returns. Like task-summary it is a panel, not a `<ListDetail>`: a
+`DashboardState` is a single object of heterogeneous sections, so it renders as a
+header strip (version, git/gh availability, branch) plus a responsive grid of section
+cards — paths, config (base branch, tracker template, gate commands, the `statuses`
+vocabulary), kanban counters grouped by their ADR-0026 role, artifact inventories with
+`verification.md` freshness, and the ADR corpus, security, refactor, lessons and usage
+sections — with report ages rendered human-friendly ("Nd ago", `null` → "none"/"—").
+The extended sections are optional on the contract: a card renders when its field is
+present (even at zero) and is omitted when absent, so both the `dashboard` tool's full
+payload and the `help` tool's narrower one render correctly. `DashboardState` is fully
+structured (no `body_markdown`, no `LinkRef`), so the widget carries neither `<Markdown>`
+nor a link-out. It binds to the existing tool via `_meta.ui.resourceUri` — **no new tool
+and no new prompt** — so the registry stays at **57 prompts / 12 tools**;
+`/marvin:dashboard` now surfaces the widget for MCP Apps hosts while the terminal keeps
+its byte-unchanged text fallback (progressive enhancement). The server stays
+ext-apps/React free (a plain `_meta` object literal + a type-only contract import + the
+shared `registerResource`).
+
+**This completes the ADR-0024 widget family:** the dashboard is the 7th and final bound
+`ui://` widget (task-list, task-detail, tracker-list, handoffs, audit, task-summary,
+dashboard) — item #8 of the ADR's eight-item enumeration, whose item #4, the reusable
+markdown view, shipped earlier as the shared `<Markdown>` primitive alongside
+`<ListDetail>`.
+
+### Added
+
+- **dashboard widget** (`packages/marvin-widgets/src/widgets/dashboard/`) — a pure
+  `DashboardView` over the `DashboardState` contract: a header strip and a card grid
+  covering paths, config, kanban (role roll-up + per-status counts), artifacts +
+  verification freshness, and the optional ADR / security / refactor / lessons / usage
+  sections, with CSS-variable theming and literal light/dark-safe fallbacks; neutral
+  zero-states throughout, present-but-zeroed vs absent sections distinguished, and
+  connecting / error states. Built self-contained to `plugins/marvin/widgets/dashboard.html`.
+- `DASHBOARD_WIDGET_URI` and the dashboard `ui://` resource (`resources/widgets.ts`).
+
+### Changed
+
+- The `dashboard` tool (`tools/dashboard.ts`) now binds the dashboard widget via
+  `_meta.ui.resourceUri` (additive; the text report is unchanged).
+- Version bumped to 0.22.0 (`plugin.json`, `marketplace.json`, server + widgets
+  `package.json`, the server `VERSION` constant); `dist/server.js` and the committed
+  widget HTML rebuilt.
+
 ## [0.21.0] — 2026-07-07
 
 Ships the eighth MCP Apps widget, **task-summary** (ADR-0024 #3) — the "what was
