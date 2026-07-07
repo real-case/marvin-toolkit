@@ -4,6 +4,40 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.20.0] — 2026-07-07
+
+Ships the seventh MCP Apps widget, **audit** (ADR-0024 #7) — a severity-triage
+viewer over the structured `sec-*` findings the existing read-only **`audit`** tool
+already returns as `AuditListPayload`. It flattens every report's findings into one
+master list, sorts them critical→info (tie-break by newest report), and offers a
+severity **filter** (the ADR-0024 headline), with each finding's evidence and
+remediation rendered through the `<Markdown>` primitive and its `Finding.links`
+through the 3-type link model, inside a `<ListDetail>` shell consistent with
+task-list/task-detail. The widget binds to the existing tool via `_meta.ui.resourceUri`
+— **no new tool and no new prompt** — so the registry stays at **57 prompts / 12
+tools**; `/marvin:sec-report` now surfaces the widget for MCP Apps hosts while the
+terminal keeps its byte-unchanged text fallback (progressive enhancement). The server
+stays ext-apps/React free (a plain `_meta` object literal + a type-only contract import
++ the shared `registerResource`).
+
+### Added
+
+- **audit widget** (`packages/marvin-widgets/src/widgets/audit/`) — a pure
+  `AuditListView` over the `AuditListPayload` contract: flatten reports→findings, sort
+  critical→info, a severity filter, and a `<ListDetail>` master + finding-detail pane
+  (severity badge, category, `file:line`, scanner + target, evidence/remediation via
+  `<Markdown>`, `Finding.links` via the link model); degraded-empty and positive
+  all-clear states; built self-contained to `plugins/marvin/widgets/audit.html`.
+- `AUDIT_WIDGET_URI` and the audit `ui://` resource (`resources/widgets.ts`).
+
+### Changed
+
+- The `audit` tool (`tools/audit.ts`) now binds the audit widget via
+  `_meta.ui.resourceUri`; its `list` text fallback and `AuditListPayload`
+  `structuredContent` are unchanged (progressive enhancement).
+- Bumped the plugin, server, and widgets package versions to 0.20.0 and the server
+  `VERSION` constant in lockstep.
+
 ## [0.19.0] — 2026-07-07
 
 Ships the third MCP Apps widget, **tracker-list** (ADR-0024 #6) — the board tasks

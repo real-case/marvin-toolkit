@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/server",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "private": true,
   "description": "Unified MCP server for the marvin plugin — core dev tools, security, taskmaster pipeline, and kanban tracker under one /marvin: slash prefix.",
   "type": "module",

@@ -12,11 +12,13 @@ const COMMITTED_HTML = join(here, "..", "..", "..", "widgets", "task-list.html")
 const DETAIL_HTML = join(here, "..", "..", "..", "widgets", "task-detail.html");
 const HANDOFFS_HTML = join(here, "..", "..", "..", "widgets", "handoffs.html");
 const TRACKER_HTML = join(here, "..", "..", "..", "widgets", "tracker-list.html");
+const AUDIT_HTML = join(here, "..", "..", "..", "widgets", "audit.html");
 
 const URI = "ui://marvin/task-list.html";
 const DETAIL_URI = "ui://marvin/task-detail.html";
 const HANDOFFS_URI = "ui://marvin/handoffs.html";
 const TRACKER_URI = "ui://marvin/tracker-list.html";
+const AUDIT_URI = "ui://marvin/audit.html";
 const MIME = "text/html;profile=mcp-app";
 
 /**
@@ -228,6 +230,51 @@ test("tracker tool binds the ui widget and the resource serves the committed htm
       /@modelcontextprotocol\/ext-apps/,
       "dist/server.js must not bundle the ext-apps SDK",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("audit tool binds the ui:// widget and the resource serves the committed html", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-audit-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_SECURITY_DIR: dir } }, async (s) => {
+      // 1. tools/list — the audit tool advertises the widget binding.
+      const tools = await s.request("tools/list", {});
+      const audit = tools.tools.find((t) => t.name === "audit");
+      assert.ok(audit, "audit tool is registered");
+      assert.equal(
+        audit._meta?.ui?.resourceUri,
+        AUDIT_URI,
+        "audit tool _meta.ui.resourceUri binds the widget",
+      );
+
+      // 2. resources/list — the ui:// resource is advertised with the mcp-app mime.
+      const resources = await s.request("resources/list", {});
+      const res = resources.resources.find((r) => r.uri === AUDIT_URI);
+      assert.ok(res, "resources/list includes the audit widget uri");
+      assert.equal(res.mimeType, MIME, "listed resource carries the mcp-app mimeType");
+
+      // 3. resources/read — returns the committed HTML with the mcp-app mimeType.
+      const read = await s.request("resources/read", { uri: AUDIT_URI });
+      const content = read.contents[0];
+      assert.equal(content.uri, AUDIT_URI);
+      assert.equal(content.mimeType, MIME, "resources/read mimeType is text/html;profile=mcp-app");
+      assert.equal(
+        content.text,
+        readFileSync(AUDIT_HTML, "utf8"),
+        "served HTML is byte-for-byte the committed build output",
+      );
+      assert.match(content.text, /<!doctype html>/i, "served body is an HTML document");
+
+      // 4. terminal fallback — audit list on an empty security dir still emits text.
+      const listed = await s.request("tools/call", {
+        name: "audit",
+        arguments: { action: "list" },
+      });
+      const text = listed.content.map((c) => c.text).join("\n");
+      assert.match(text, /No audit reports yet/, "audit text fallback is present");
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

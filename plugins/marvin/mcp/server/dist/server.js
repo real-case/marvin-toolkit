@@ -30396,12 +30396,19 @@ var WIDGETS = [
     uri: "ui://marvin/handoffs.html",
     file: join("widgets", "handoffs.html"),
     description: "Marvin handoffs \u2014 a master-detail browser over the session-continuation docs, each with its continue prompt + markdown body (ADR-0024)."
+  },
+  {
+    name: "audit",
+    uri: "ui://marvin/audit.html",
+    file: join("widgets", "audit.html"),
+    description: "Marvin security audit \u2014 the sec-* findings viewer with severity triage (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
 var TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
 var TRACKER_LIST_WIDGET_URI = "ui://marvin/tracker-list.html";
 var HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
+var AUDIT_WIDGET_URI = "ui://marvin/audit.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -33568,6 +33575,10 @@ function buildAuditTool(env2) {
     name: "audit",
     description: "List the structured security-audit reports the sec-* scanners wrote under .marvin/security/ (ADR-0024 #7): each scanner's typed audit-report block, newest first, with per-severity counts. Terminals see the text summary; MCP Apps hosts get the AuditListPayload widget payload.",
     inputSchema: AuditInput,
+    // Bind the audit `ui://` widget for MCP Apps hosts (ADR-0024 #7). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: AUDIT_WIDGET_URI } },
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
     handler: () => Promise.resolve(runList4(env2))
@@ -33603,7 +33614,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.19.0";
+var VERSION = "0.20.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
