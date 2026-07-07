@@ -4,7 +4,7 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
-## [0.18.0] — 2026-07-07
+## [0.19.0] — 2026-07-07
 
 Ships the third MCP Apps widget, **tracker-list** (ADR-0024 #6) — the board tasks
 that carry an external `tracker_id`, rendered as a `<ListDetail>` consistent with
@@ -44,7 +44,43 @@ literal + the shared `registerResource`); the terminal text fallback is additive
   `openLinks` host capability and record links opened via `app.openLink`
   (`openedLinks`), so a test proves the external-link path end-to-end through the
   real SDK. The task-list and task-detail suites are unaffected.
-- Bumped the plugin to 0.18.0 (server + widgets workspaces in lockstep).
+- Bumped the plugin to 0.19.0 (server + widgets workspaces in lockstep).
+
+## [0.18.0] — 2026-07-07
+
+Ships the fifth MCP Apps widget, **handoffs** (ADR-0024 #5) — a master-detail
+**browser** over the session-continuation docs under `.marvin/handoff/`. Each
+handoff's fields, its markdown body (via the `<Markdown>` primitive), and its
+paste-ready `continue_prompt` render in a `<ListDetail>` shell, with the prompt
+offered as a one-click **copy-to-chat** action (the first live use of ADR-0024's
+chat link behaviour, `app.sendMessage`). Rather than add a tool, this **enriches
+the existing `handoff` tool**: its `list` action now emits a `HandoffDetailPayload`
+(every card plus `body_markdown` and a derived `continue_prompt`) and binds the
+widget via `_meta.ui.resourceUri` — so `/marvin:handoff-list` gains the rich UI in
+place while the terminal text list is byte-unchanged (progressive enhancement). The
+server stays ext-apps/React free. Registry unchanged: **56 prompts / 11 tools**.
+
+### Added
+
+- **handoffs widget** (`packages/marvin-widgets/src/widgets/handoffs/`) — a pure
+  `HandoffsView` over the `HandoffDetailPayload` contract, a real multi-row
+  `<ListDetail>` master with a rich per-handoff detail pane (fields, a PR link from
+  `pr_url`, the continue-to-chat block, and the `<Markdown>` body); built
+  self-contained to `plugins/marvin/widgets/handoffs.html`.
+- **`HandoffDetailPayload`** (`contracts/handoff.ts`) — `{ handoffs: HandoffDetail[] }`,
+  the wrapper the enriched tool emits and the widget consumes (mirrors
+  `TaskListPayload`).
+- `HANDOFFS_WIDGET_URI` and the handoffs `ui://` resource (`resources/widgets.ts`).
+
+### Changed
+
+- The **`handoff` tool** now binds the handoffs widget (`_meta.ui.resourceUri`) and
+  its `list` payload is `HandoffDetailPayload` — each handoff carries its file body
+  and a `continue_prompt` **derived** at read time from the stored frontmatter and
+  the real on-disk filename (mirrors the handoff skill's step-5 template; no stored
+  field, no skill change, so existing handoffs gain it for free).
+- Bumped the MCP server `VERSION`, plugin, marketplace, and both workspace
+  `package.json`s to 0.18.0.
 
 ## [0.17.0] — 2026-07-07
 
