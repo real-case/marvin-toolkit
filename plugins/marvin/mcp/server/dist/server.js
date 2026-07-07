@@ -30709,7 +30709,7 @@ async function runMove(server, env2, config2, input) {
   if (target !== void 0 && !keys.includes(target)) {
     return errOk(`Unknown status key \`${target}\` \u2014 configured statuses: ${keys.join(", ")}.`);
   }
-  let task = null;
+  let task;
   if (input.taskId) {
     task = findTaskById(tasks, input.taskId);
     if (!task) return errOk(`Task ${input.taskId} not found`);

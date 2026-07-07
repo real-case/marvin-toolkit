@@ -120,8 +120,7 @@ const ADR_REF_RE = /\bADR[-\s]?(\d{3,5})\b/gi;
 const ISO_DATE_RE = /\d{4}-\d{2}-\d{2}/;
 
 export type ParsedAdrFile =
-  | { ok: true; record: AdrRecordData }
-  | { ok: false; malformed: MalformedAdr };
+  { ok: true; record: AdrRecordData } | { ok: false; malformed: MalformedAdr };
 
 /**
  * Parse one record from raw markdown. Tolerates decoration around the status

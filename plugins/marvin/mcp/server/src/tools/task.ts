@@ -548,7 +548,7 @@ async function runMove(
     return errOk(`Unknown status key \`${target}\` — configured statuses: ${keys.join(", ")}.`);
   }
 
-  let task: Task | null = null;
+  let task: Task | null;
   if (input.taskId) {
     task = findTaskById(tasks, input.taskId);
     if (!task) return errOk(`Task ${input.taskId} not found`);
