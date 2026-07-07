@@ -11568,8 +11568,8 @@ var require_resolve_flow_scalar = __commonJS({
     };
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
-      const ok4 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok4 ? parseInt(cc, 16) : NaN;
+      const ok5 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
+      const code = ok5 ? parseInt(cc, 16) : NaN;
       try {
         return String.fromCodePoint(code);
       } catch {
@@ -28796,6 +28796,17 @@ var PROMPTS = [
     body: callTool("task", { action: "list" })
   },
   {
+    // Thin tool wrapper (inline body) — one task's full detail (fields +
+    // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
+    name: "kanban-show",
+    description: "Show one task in full \u2014 fields + markdown body",
+    body: callTool(
+      "task-detail",
+      {},
+      "If the user named a task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument; otherwise the task linked to the current branch is shown."
+    )
+  },
+  {
     name: "kanban-status",
     description: "Current branch + WIP tasks",
     body: callTool("task", { action: "status" })
@@ -30331,6 +30342,28 @@ function prCell(url) {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? `[#${match[1]}](${url})` : `[PR](${url})`;
 }
+
+// src/flows/card.ts
+function buildTaskCard(task, config2) {
+  const fm = task.frontmatter;
+  return {
+    id: fm.id,
+    type: fm.type,
+    status: { key: fm.status, role: roleOfStatus(config2, fm.status) },
+    title: fm.title,
+    branch: fm.branch,
+    ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
+    tracker_url: trackerUrl(config2, fm.tracker_id),
+    pr: prRefFromUrl(fm.pr),
+    created: fm.created,
+    updated: fm.updated
+  };
+}
+function prRefFromUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? { url, number: Number(match[1]) } : { url };
+}
 var WIDGET_MIME = "text/html;profile=mcp-app";
 var WIDGETS = [
   {
@@ -30338,9 +30371,16 @@ var WIDGETS = [
     uri: "ui://marvin/task-list.html",
     file: join("widgets", "task-list.html"),
     description: "Marvin kanban board \u2014 the task-list widget (ADR-0024)."
+  },
+  {
+    name: "task-detail",
+    uri: "ui://marvin/task-detail.html",
+    file: join("widgets", "task-detail.html"),
+    description: "Marvin task detail \u2014 a single task's fields + markdown body (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
+var TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -30571,29 +30611,12 @@ function buildTaskListPayload(tasks, config2) {
     blocked: 0
   };
   const cards = tasks.map((t) => {
-    const fm = t.frontmatter;
-    const role = roleOfStatus(config2, fm.status);
-    counts[fm.status] = (counts[fm.status] ?? 0) + 1;
-    role_counts[role] += 1;
-    return {
-      id: fm.id,
-      type: fm.type,
-      status: { key: fm.status, role },
-      title: fm.title,
-      branch: fm.branch,
-      ...fm.tracker_id ? { tracker_id: fm.tracker_id } : {},
-      tracker_url: trackerUrl(config2, fm.tracker_id),
-      pr: prRefFromUrl(fm.pr),
-      created: fm.created,
-      updated: fm.updated
-    };
+    const card = buildTaskCard(t, config2);
+    counts[card.status.key] = (counts[card.status.key] ?? 0) + 1;
+    role_counts[card.status.role] += 1;
+    return card;
   });
   return { tasks: cards, counts, role_counts };
-}
-function prRefFromUrl(url) {
-  if (!url) return null;
-  const match = url.match(/\/pull\/(\d+)/);
-  return match ? { url, number: Number(match[1]) } : { url };
 }
 function runStatus(_server, env2, config2) {
   const { tasks } = readAllTasks(env2.tasksDir, config2);
@@ -31018,6 +31041,92 @@ function errOk(text) {
 }
 function cancelled() {
   return ok("Cancelled \u2014 no changes made.");
+}
+
+// src/tools/task-detail.ts
+var TaskDetailInput = external_exports.object({
+  taskId: external_exports.string().optional().describe(
+    "The task id to show, e.g. 007. Omit to show the task linked to the current git branch."
+  )
+});
+function buildTaskDetailTool(env2) {
+  return defineTool({
+    name: "task-detail",
+    description: 'Show one kanban task in full \u2014 its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
+    inputSchema: TaskDetailInput,
+    // Bind the task-detail `ui://` widget for MCP Apps hosts (ADR-0024). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: TASK_DETAIL_WIDGET_URI } },
+    handler: async (input) => {
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      const { tasks } = readAllTasks(env2.tasksDir, config2);
+      let task;
+      if (input.taskId) {
+        task = findTaskById(tasks, input.taskId);
+        if (!task) {
+          return errOk2(`Task ${input.taskId} not found${tasksHint(tasks)}`);
+        }
+      } else {
+        const branch = currentBranch(env2.projectDir);
+        task = branch ? findTaskByBranch(tasks, branch) : null;
+        if (!task) {
+          if (tasks.length === 0) {
+            return ok2(
+              "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+            );
+          }
+          return errOk2(
+            `No task is linked to the current branch \u2014 pass \`taskId\` to pick one.${tasksHint(tasks)}`
+          );
+        }
+      }
+      const detail = { ...buildTaskCard(task, config2), body_markdown: task.body };
+      const result2 = {
+        content: [{ type: "text", text: renderDetailText(detail) }],
+        structuredContent: detail
+      };
+      return result2;
+    }
+  });
+}
+function tasksHint(tasks) {
+  if (tasks.length === 0) return "";
+  const listed = tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ");
+  return ` Tasks: ${listed}.`;
+}
+function renderDetailText(d) {
+  const lines = [];
+  lines.push(`# ${d.title}`);
+  lines.push("");
+  lines.push(`- **ID:** ${d.id}`);
+  lines.push(`- **Type:** ${d.type}`);
+  lines.push(`- **Status:** ${d.status.key} (${d.status.role})`);
+  lines.push(`- **Branch:** \`${d.branch}\``);
+  if (d.tracker_id) {
+    lines.push(
+      `- **Tracker:** ${d.tracker_url ? `[${d.tracker_id}](${d.tracker_url})` : d.tracker_id}`
+    );
+  }
+  if (d.pr) {
+    lines.push(`- **PR:** ${d.pr.number ? `[#${d.pr.number}](${d.pr.url})` : d.pr.url}`);
+  }
+  if (d.spec_slug) lines.push(`- **Spec:** ${d.spec_slug}`);
+  lines.push(`- **Updated:** ${d.updated}`);
+  const body = d.body_markdown.trim();
+  if (body) {
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push(body);
+  }
+  return lines.join("\n");
+}
+function ok2(text) {
+  return { content: [{ type: "text", text }] };
+}
+function errOk2(text) {
+  return { content: [{ type: "text", text }], isError: true };
 }
 function kanbanCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
@@ -31660,7 +31769,7 @@ async function runVerify(input, env2) {
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
-    return ok2(
+    return ok3(
       `No quality gates detected for \`${projectRoot}\`.
 Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
@@ -31668,14 +31777,14 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
   let gates = detected.gates;
   if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
   if (gates.length === 0) {
-    return ok2(`None of the requested gates (\`only\`) matched the detected plan.`);
+    return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
     const warn2 = configWarning ? `
 
 > \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
-    return ok2(
+    return ok3(
       `# Verify Plan (dry run)
 
 **Stacks:** ${detected.stacks.join(", ") || "explicit"}
@@ -32039,7 +32148,7 @@ ${machine}
     isError: decision === "BLOCK"
   };
 }
-function ok2(text) {
+function ok3(text) {
   return { content: [{ type: "text", text }] };
 }
 
@@ -32881,7 +32990,7 @@ function runAdd(env2, input) {
     tags,
     ...input.source ? { source: input.source } : {}
   });
-  return ok3(
+  return ok4(
     `Captured lesson **${slug}** (\`${input.type}\`).
 File: \`${path}\`
 Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
@@ -32895,11 +33004,11 @@ function runSearch(env2, input) {
   });
   if (lessons.length === 0) {
     const filtered = input.query || input.type;
-    return ok3(
+    return ok4(
       filtered ? `No matching lessons in \`.marvin/memory\`${input.query ? ` for "${input.query}"` : ""}${input.type ? ` [type:${input.type}]` : ""}.` : "No lessons captured yet in `.marvin/memory`."
     );
   }
-  return ok3(renderLessons(lessons));
+  return ok4(renderLessons(lessons));
 }
 function runStats(env2) {
   const stats = lessonsStats(env2.memoryDir);
@@ -32929,11 +33038,11 @@ async function runPrune(server, env2, input) {
   if (!input.slug) {
     const total = readAllLessons(env2.memoryDir).length;
     if (total === 0) {
-      return ok3("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
+      return ok4("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
     }
     const { stale, duplicates } = pruneCandidates(env2.memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
-      return ok3(
+      return ok4(
         `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
       );
     }
@@ -32953,7 +33062,7 @@ async function runPrune(server, env2, input) {
     out.push(
       'Delete one with `action: "prune", slug: "<slug>"` \u2014 deletion asks for confirmation (or pass `confirm: true`) and removes the lesson file together with its `.marvin/memory/MEMORY.md` index line.'
     );
-    return ok3(out.join("\n").trimEnd());
+    return ok4(out.join("\n").trimEnd());
   }
   const target = readAllLessons(env2.memoryDir).find((l) => l.slug === input.slug);
   if (!target) {
@@ -32972,11 +33081,11 @@ async function runPrune(server, env2, input) {
       `Delete lesson \`${target.slug}\` \u2014 "${target.title}"? This removes the file and its MEMORY.md index line.`,
       external_exports.object({ delete: external_exports.enum(["yes", "no"]) })
     );
-    if (answer?.delete !== "yes") return ok3("Cancelled \u2014 no changes made.");
+    if (answer?.delete !== "yes") return ok4("Cancelled \u2014 no changes made.");
   }
   const deleted = deleteLesson(env2.memoryDir, target.slug);
   if (!deleted) return err2(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
-  return ok3(
+  return ok4(
     `Deleted lesson **${target.slug}** ("${target.title}").
 Removed \`${deleted.path}\` and its index line from \`.marvin/memory/MEMORY.md\` \u2014 commit the removal to share it.`
   );
@@ -32993,7 +33102,7 @@ function renderLessons(lessons) {
   }
   return out.join("\n").trimEnd();
 }
-function ok3(text) {
+function ok4(text) {
   return { content: [{ type: "text", text }] };
 }
 function err2(text) {
@@ -33102,7 +33211,7 @@ function runSummary(env2, config2, input) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
   const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
   if (!specPath) {
-    return errOk2(
+    return errOk3(
       input.slug ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.` : `No spec found under ${SPEC_DIRS.join(", ")} \u2014 run /marvin:task-start first.`
     );
   }
@@ -33283,7 +33392,7 @@ function render(s, verify) {
   );
   return lines.join("\n");
 }
-function errOk2(text) {
+function errOk3(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
 var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
@@ -33409,7 +33518,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.16.1";
+var VERSION = "0.17.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -33426,6 +33535,7 @@ await runPackServer({
       prompts: PROMPTS,
       tools: [
         buildTaskTool(server, env),
+        buildTaskDetailTool(env),
         buildHelpTool(env, VERSION),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),

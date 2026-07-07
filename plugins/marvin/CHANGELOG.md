@@ -4,6 +4,43 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.17.0] — 2026-07-07
+
+Ships the second MCP Apps widget, **task-detail** (ADR-0024 #2) — one kanban
+task's full detail (its `TaskCard` fields plus its markdown body, rendered
+through the `<Markdown>` primitive) inside a `<ListDetail>` shell consistent with
+task-list. It is fed by a new read-only **`task-detail`** MCP tool bound to
+`ui://marvin/task-detail.html` and reachable as **`/marvin:kanban-show`**. The
+server stays ext-apps/React free (type-only contract import + a plain `_meta`
+object literal + the shared `registerResource`); the terminal text fallback is
+byte-unchanged (progressive enhancement). Registry: **56 prompts / 11 tools**.
+
+### Added
+
+- **task-detail widget** (`packages/marvin-widgets/src/widgets/task-detail/`) — a
+  pure `TaskDetailView` over the `TaskDetail` contract (consumed directly, no
+  wrapper), rendered through the reused `<ListDetail>` + `<Markdown>` primitives
+  and the 3-type link model; built self-contained to
+  `plugins/marvin/widgets/task-detail.html`.
+- **`task-detail` MCP tool** (`plugins/marvin/mcp/server/src/tools/task-detail.ts`)
+  — read-only; resolves one task by `taskId` (or the current branch's task) and
+  returns a text fallback plus a `TaskDetail` `structuredContent`, bound to the
+  widget via `_meta.ui.resourceUri`. A dedicated tool because a widget is bound
+  per tool descriptor (one tool → one widget); `task` is already bound to task-list.
+- **`/marvin:kanban-show`** — the inline-body prompt that invokes the tool
+  (`taskId` when the user names a task).
+- `TASK_DETAIL_WIDGET_URI` and the task-detail `ui://` resource
+  (`resources/widgets.ts`).
+
+### Changed
+
+- Extracted the shared card mapping into `flows/card.ts` (`buildTaskCard` /
+  `prRefFromUrl`), consumed by both the `task` list payload and the new
+  task-detail tool so the two payloads cannot drift.
+- Generalized the widgets mock-host (`lib/mock-host.ts`) to a payload-agnostic
+  host reused by both the task-list and task-detail test/story suites.
+- Bumped the plugin to 0.17.0 (server + widgets workspaces in lockstep).
+
 ## [0.16.1] — 2026-07-05
 
 Adds the second reusable widget primitive, **`<Markdown>`** — a minimal,

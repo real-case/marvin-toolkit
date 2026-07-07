@@ -10,7 +10,18 @@ import { viteSingleFile } from "vite-plugin-singlefile";
  * single self-contained HTML file. Add a widget by adding its `src/widgets/<name>/
  * index.html` entry here — the build emits `<name>.html` into the plugin root.
  */
-const WIDGETS = [{ name: "task-list", entry: "src/widgets/task-list/index.html" }] as const;
+const WIDGETS = [
+  { name: "task-list", entry: "src/widgets/task-list/index.html" },
+  { name: "task-detail", entry: "src/widgets/task-detail/index.html" },
+] as const;
+
+// vite-plugin-singlefile forces `output.inlineDynamicImports`, which rollup
+// rejects for multiple inputs — so each widget is built by its OWN `vite build`,
+// selected by the `WIDGET` env var (the package `build` script loops over the
+// widget directories). Unset (dev / vitest) builds them all, which only works
+// while there is a single widget; the loop is the supported path.
+const ONLY_WIDGET = process.env.WIDGET;
+const activeWidgets = ONLY_WIDGET ? WIDGETS.filter((w) => w.name === ONLY_WIDGET) : WIDGETS;
 
 /**
  * Vite emits an HTML entry at its path relative to the project root
@@ -80,7 +91,7 @@ export default defineConfig({
     cssCodeSplit: false,
     reportCompressedSize: false,
     rollupOptions: {
-      input: Object.fromEntries(WIDGETS.map((w) => [w.name, resolve(__dirname, w.entry)])),
+      input: Object.fromEntries(activeWidgets.map((w) => [w.name, resolve(__dirname, w.entry)])),
     },
   },
   // Vitest reads this same config (via vitest/config's defineConfig); `vite build`

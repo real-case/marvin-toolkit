@@ -1,12 +1,21 @@
 import { App } from "@modelcontextprotocol/ext-apps";
 import { AppBridge } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
-import type { TaskListSeam } from "../widgets/task-list/TaskListWidget";
+
+/**
+ * A widget-agnostic seam: an ext-apps `App` plus the transport its widget
+ * connects. It is structurally identical to each widget's own `*Seam` type
+ * (`TaskListSeam`, `TaskDetailSeam`, …), so a host's `seam` drops straight into
+ * any widget's `seam` prop without a per-widget mock host.
+ */
+export interface WidgetSeam {
+  app: App;
+  transport: NonNullable<Parameters<App["connect"]>[0]>;
+}
 
 export interface MockHost {
-  /** Inject into `TaskListWidget`'s `seam` prop. */
-  seam: TaskListSeam;
+  /** Inject into a widget's `seam` prop. */
+  seam: WidgetSeam;
   /**
    * Connect the host (`AppBridge`) side and arm delivery: once the view completes
    * the `ui/initialize` handshake, the host pushes a tool-input then the
@@ -21,18 +30,23 @@ export interface MockHost {
  * A fake ext-apps host over an in-memory `Transport` pair (the MCP SDK
  * `InMemoryTransport` pattern) — NOT `PostMessageTransport`. It round-trips the
  * real handshake (`ui/initialize` → `ui/notifications/initialized`) and a
- * `ui/notifications/tool-result` whose `structuredContent` is a `TaskListPayload`,
- * entirely inside vitest/happy-dom with no dependency on `window.parent` (which
- * is `=== window` under happy-dom, so a same-window postMessage handshake can't be
+ * `ui/notifications/tool-result` whose `structuredContent` is `payload`, entirely
+ * inside vitest/happy-dom with no dependency on `window.parent` (which is
+ * `=== window` under happy-dom, so a same-window postMessage handshake can't be
  * proven). Both sides run the real SDK, so the handshake shapes are never guessed.
  *
- * Shared by the AC3 vitest integration test (F12) and the mock-host story (F15).
+ * Generic over the payload so every widget (task-list, task-detail, …) shares one
+ * host: pass the widget's own `structuredContent` payload and it is delivered
+ * verbatim, exactly as a real host forwards a tool result.
  */
-export function createMockHost(payload: TaskListPayload): MockHost {
+export function createMockHost(
+  payload: Record<string, unknown>,
+  appName = "marvin-widget-mock",
+): MockHost {
   const [appTransport, hostTransport] = InMemoryTransport.createLinkedPair();
 
   const app = new App(
-    { name: "marvin-task-list", version: "0.0.0-test" },
+    { name: appName, version: "0.0.0-test" },
     {},
     // happy-dom lacks ResizeObserver; disable auto-resize so connect() stays
     // headless. Production (useApp) keeps the default.
@@ -49,8 +63,8 @@ export function createMockHost(payload: TaskListPayload): MockHost {
         void (async () => {
           await bridge.sendToolInput({ arguments: {} });
           await bridge.sendToolResult({
-            content: [{ type: "text", text: "task list" }],
-            structuredContent: payload as unknown as Record<string, unknown>,
+            content: [{ type: "text", text: "widget payload" }],
+            structuredContent: payload,
           });
         })();
       });
