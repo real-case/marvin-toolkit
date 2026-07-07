@@ -387,6 +387,13 @@ export const PROMPTS: PromptDef[] = [
     ),
   },
   {
+    // Thin tool wrapper (inline body) — the board tasks that carry an external
+    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
+    name: "kanban-tracker",
+    description: "Show tracked tasks (external tracker id) — link out to each",
+    body: callTool("tracker", {}),
+  },
+  {
     name: "kanban-status",
     description: "Current branch + WIP tasks",
     body: callTool("task", { action: "status" }),

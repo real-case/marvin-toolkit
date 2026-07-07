@@ -73,3 +73,15 @@ export const TaskListPayload = z.object({
   role_counts: z.record(StatusRole, z.number().int().nonnegative()),
 });
 export type TaskListPayload = z.infer<typeof TaskListPayload>;
+
+/** Tracker-list (#6) payload — the board tasks that carry an external
+ * `tracker_id`, each linking out to its tracker item (ADR-0024 §6, link-out).
+ * Deliberately a thin wrapper over `TaskCard[]`, NOT `TaskListPayload`: a tracker
+ * view is a filtered subset, so board-wide `counts`/`role_counts` would misreport
+ * it — the header is simply the tracked-task count. A card's `tracker_url` may be
+ * `null` (the `tracker_url_template` is unconfigured); the widget then renders the
+ * `tracker_id` as text with a configure hint instead of a dead link. */
+export const TrackerListPayload = z.object({
+  tasks: z.array(TaskCard),
+});
+export type TrackerListPayload = z.infer<typeof TrackerListPayload>;

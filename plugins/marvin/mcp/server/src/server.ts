@@ -10,6 +10,7 @@ import { logUsageEvent } from "./lib/usage.js";
 import { buildAdrTool } from "./tools/adr.js";
 import { buildTaskTool } from "./tools/task.js";
 import { buildTaskDetailTool } from "./tools/task-detail.js";
+import { buildTrackerTool } from "./tools/tracker.js";
 import { buildHelpTool } from "./tools/help.js";
 import { buildDashboardTool } from "./tools/dashboard.js";
 import { buildVerifyTool } from "./tools/verify.js";
@@ -20,7 +21,7 @@ import { buildSummaryTool } from "./tools/summary.js";
 import { buildAuditTool } from "./tools/audit.js";
 import { buildWidgetResources } from "./resources/widgets.js";
 
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 
 // One env for the whole process: the tools read it, and the usage-log
 // middleware (ADR-0030) closes over the same paths. `env` carries only
@@ -51,6 +52,7 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
+        buildTrackerTool(env),
         buildHelpTool(env, VERSION),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),

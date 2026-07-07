@@ -38,6 +38,13 @@ const WIDGETS: WidgetResource[] = [
     file: join("widgets", "task-detail.html"),
     description: "Marvin task detail — a single task's fields + markdown body (ADR-0024).",
   },
+  {
+    name: "tracker-list",
+    uri: "ui://marvin/tracker-list.html",
+    file: join("widgets", "tracker-list.html"),
+    description:
+      "Marvin tracker list — board tasks with an external tracker_id, linking out (ADR-0024).",
+  },
 ];
 
 /** The `ui://marvin/task-list.html` binding, exported for the tool `_meta`. */
@@ -45,6 +52,9 @@ export const TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
 
 /** The `ui://marvin/task-detail.html` binding, exported for the tool `_meta`. */
 export const TASK_DETAIL_WIDGET_URI = "ui://marvin/task-detail.html";
+
+/** The `ui://marvin/tracker-list.html` binding, exported for the tool `_meta`. */
+export const TRACKER_LIST_WIDGET_URI = "ui://marvin/tracker-list.html";
 
 /**
  * Build the `ResourceDef[]` the server registers. `packRoot` is the plugin root

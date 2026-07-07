@@ -4,6 +4,48 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.18.0] — 2026-07-07
+
+Ships the third MCP Apps widget, **tracker-list** (ADR-0024 #6) — the board tasks
+that carry an external `tracker_id`, rendered as a `<ListDetail>` consistent with
+task-list/task-detail, each **linking out** to its tracker item. It is the **first
+consumer of the external-link (`app.openLink`) path** in the 3-type link model. It
+is fed by a new read-only **`tracker`** MCP tool bound to
+`ui://marvin/tracker-list.html` and reachable as **`/marvin:kanban-tracker`**. The
+server stays ext-apps/React free (type-only contract import + a plain `_meta` object
+literal + the shared `registerResource`); the terminal text fallback is additive
+(progressive enhancement). Registry: **57 prompts / 12 tools**.
+
+### Added
+
+- **tracker-list widget** (`packages/marvin-widgets/src/widgets/tracker-list/`) — a
+  pure `TrackerListView` over the new `TrackerListPayload`, rendered through the
+  reused `<ListDetail>` primitive and the 3-type link model. A tracked card links
+  out via an external button (host `app.openLink`); a card whose `tracker_url` is
+  `null` (the `tracker_url_template` is unconfigured) renders its id as text plus a
+  configure hint rather than a dead link. Built self-contained to
+  `plugins/marvin/widgets/tracker-list.html`.
+- **`tracker` MCP tool** (`plugins/marvin/mcp/server/src/tools/tracker.ts`) —
+  read-only; filters the board to tasks carrying a `tracker_id`, maps each via the
+  shared `buildTaskCard`, and returns a text fallback plus a `TrackerListPayload`
+  `structuredContent`, bound to the widget via `_meta.ui.resourceUri`. A dedicated
+  tool because a widget is bound per tool descriptor (one tool → one widget); `task`
+  is already bound to task-list.
+- **`/marvin:kanban-tracker`** — the inline-body prompt that invokes the tool.
+- **`TrackerListPayload`** contract (`packages/marvin-mcp-shared/src/contracts/task.ts`)
+  — a thin `{ tasks: TaskCard[] }` over `TaskCard`, deliberately without board
+  counts (a tracker view is a filtered subset, not a board).
+- `TRACKER_LIST_WIDGET_URI` and the tracker-list `ui://` resource
+  (`resources/widgets.ts`).
+
+### Changed
+
+- Extended the widgets mock-host (`lib/mock-host.ts`) additively to advertise the
+  `openLinks` host capability and record links opened via `app.openLink`
+  (`openedLinks`), so a test proves the external-link path end-to-end through the
+  real SDK. The task-list and task-detail suites are unaffected.
+- Bumped the plugin to 0.18.0 (server + widgets workspaces in lockstep).
+
 ## [0.17.0] — 2026-07-07
 
 Ships the second MCP Apps widget, **task-detail** (ADR-0024 #2) — one kanban
