@@ -17,6 +17,12 @@ export interface MockHost {
   /** Inject into a widget's `seam` prop. */
   seam: WidgetSeam;
   /**
+   * URLs the widget opened via `app.openLink` (→ `ui/open-link`), in call order.
+   * Recorded by the host bridge's `onopenlink` handler, so a test can assert the
+   * external-link path (ADR-0024 #6) end-to-end through the real SDK, not a spy.
+   */
+  openedLinks: string[];
+  /**
    * Connect the host (`AppBridge`) side and arm delivery: once the view completes
    * the `ui/initialize` handshake, the host pushes a tool-input then the
    * tool-result carrying `payload`. Call before the widget connects its App.
@@ -53,10 +59,26 @@ export function createMockHost(
     { autoResize: false },
   );
 
-  const bridge = new AppBridge(null, { name: "marvin-mock-host", version: "0.0.0-test" }, {});
+  // Advertise the `openLinks` host capability (matches the ext-apps host ctor
+  // examples) so `app.openLink` round-trips here. Additive — the task-list and
+  // task-detail suites never call openLink, so their handshakes are unaffected.
+  const bridge = new AppBridge(
+    null,
+    { name: "marvin-mock-host", version: "0.0.0-test" },
+    { openLinks: {} },
+  );
+
+  // Record every link the widget opens via `app.openLink` → `ui/open-link`. This
+  // is the seam a test asserts the external-link path against (ADR-0024 #6).
+  const openedLinks: string[] = [];
+  bridge.onopenlink = ({ url }) => {
+    openedLinks.push(url);
+    return Promise.resolve({});
+  };
 
   return {
     seam: { app, transport: appTransport },
+    openedLinks,
     async start() {
       bridge.addEventListener("initialized", () => {
         // The host MUST send tool-input before tool-result (ext-apps contract).

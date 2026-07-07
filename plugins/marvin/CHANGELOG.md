@@ -14,7 +14,7 @@ severity **filter** (the ADR-0024 headline), with each finding's evidence and
 remediation rendered through the `<Markdown>` primitive and its `Finding.links`
 through the 3-type link model, inside a `<ListDetail>` shell consistent with
 task-list/task-detail. The widget binds to the existing tool via `_meta.ui.resourceUri`
-— **no new tool and no new prompt** — so the registry stays at **56 prompts / 11
+— **no new tool and no new prompt** — so the registry stays at **57 prompts / 12
 tools**; `/marvin:sec-report` now surfaces the widget for MCP Apps hosts while the
 terminal keeps its byte-unchanged text fallback (progressive enhancement). The server
 stays ext-apps/React free (a plain `_meta` object literal + a type-only contract import
@@ -38,11 +38,83 @@ stays ext-apps/React free (a plain `_meta` object literal + a type-only contract
 - Bumped the plugin, server, and widgets package versions to 0.20.0 and the server
   `VERSION` constant in lockstep.
 
-### Notes
+## [0.19.0] — 2026-07-07
 
-- Parallel widget branches (#5 handoffs, #6 tracker, #7 audit) reserved 0.18.0–0.20.0
-  off dev 0.17.0; if merge order differs, the version is re-derived to the next minor
-  above the merged `dev` on rebase.
+Ships the third MCP Apps widget, **tracker-list** (ADR-0024 #6) — the board tasks
+that carry an external `tracker_id`, rendered as a `<ListDetail>` consistent with
+task-list/task-detail, each **linking out** to its tracker item. It is the **first
+consumer of the external-link (`app.openLink`) path** in the 3-type link model. It
+is fed by a new read-only **`tracker`** MCP tool bound to
+`ui://marvin/tracker-list.html` and reachable as **`/marvin:kanban-tracker`**. The
+server stays ext-apps/React free (type-only contract import + a plain `_meta` object
+literal + the shared `registerResource`); the terminal text fallback is additive
+(progressive enhancement). Registry: **57 prompts / 12 tools**.
+
+### Added
+
+- **tracker-list widget** (`packages/marvin-widgets/src/widgets/tracker-list/`) — a
+  pure `TrackerListView` over the new `TrackerListPayload`, rendered through the
+  reused `<ListDetail>` primitive and the 3-type link model. A tracked card links
+  out via an external button (host `app.openLink`); a card whose `tracker_url` is
+  `null` (the `tracker_url_template` is unconfigured) renders its id as text plus a
+  configure hint rather than a dead link. Built self-contained to
+  `plugins/marvin/widgets/tracker-list.html`.
+- **`tracker` MCP tool** (`plugins/marvin/mcp/server/src/tools/tracker.ts`) —
+  read-only; filters the board to tasks carrying a `tracker_id`, maps each via the
+  shared `buildTaskCard`, and returns a text fallback plus a `TrackerListPayload`
+  `structuredContent`, bound to the widget via `_meta.ui.resourceUri`. A dedicated
+  tool because a widget is bound per tool descriptor (one tool → one widget); `task`
+  is already bound to task-list.
+- **`/marvin:kanban-tracker`** — the inline-body prompt that invokes the tool.
+- **`TrackerListPayload`** contract (`packages/marvin-mcp-shared/src/contracts/task.ts`)
+  — a thin `{ tasks: TaskCard[] }` over `TaskCard`, deliberately without board
+  counts (a tracker view is a filtered subset, not a board).
+- `TRACKER_LIST_WIDGET_URI` and the tracker-list `ui://` resource
+  (`resources/widgets.ts`).
+
+### Changed
+
+- Extended the widgets mock-host (`lib/mock-host.ts`) additively to advertise the
+  `openLinks` host capability and record links opened via `app.openLink`
+  (`openedLinks`), so a test proves the external-link path end-to-end through the
+  real SDK. The task-list and task-detail suites are unaffected.
+- Bumped the plugin to 0.19.0 (server + widgets workspaces in lockstep).
+
+## [0.18.0] — 2026-07-07
+
+Ships the fifth MCP Apps widget, **handoffs** (ADR-0024 #5) — a master-detail
+**browser** over the session-continuation docs under `.marvin/handoff/`. Each
+handoff's fields, its markdown body (via the `<Markdown>` primitive), and its
+paste-ready `continue_prompt` render in a `<ListDetail>` shell, with the prompt
+offered as a one-click **copy-to-chat** action (the first live use of ADR-0024's
+chat link behaviour, `app.sendMessage`). Rather than add a tool, this **enriches
+the existing `handoff` tool**: its `list` action now emits a `HandoffDetailPayload`
+(every card plus `body_markdown` and a derived `continue_prompt`) and binds the
+widget via `_meta.ui.resourceUri` — so `/marvin:handoff-list` gains the rich UI in
+place while the terminal text list is byte-unchanged (progressive enhancement). The
+server stays ext-apps/React free. Registry unchanged: **56 prompts / 11 tools**.
+
+### Added
+
+- **handoffs widget** (`packages/marvin-widgets/src/widgets/handoffs/`) — a pure
+  `HandoffsView` over the `HandoffDetailPayload` contract, a real multi-row
+  `<ListDetail>` master with a rich per-handoff detail pane (fields, a PR link from
+  `pr_url`, the continue-to-chat block, and the `<Markdown>` body); built
+  self-contained to `plugins/marvin/widgets/handoffs.html`.
+- **`HandoffDetailPayload`** (`contracts/handoff.ts`) — `{ handoffs: HandoffDetail[] }`,
+  the wrapper the enriched tool emits and the widget consumes (mirrors
+  `TaskListPayload`).
+- `HANDOFFS_WIDGET_URI` and the handoffs `ui://` resource (`resources/widgets.ts`).
+
+### Changed
+
+- The **`handoff` tool** now binds the handoffs widget (`_meta.ui.resourceUri`) and
+  its `list` payload is `HandoffDetailPayload` — each handoff carries its file body
+  and a `continue_prompt` **derived** at read time from the stored frontmatter and
+  the real on-disk filename (mirrors the handoff skill's step-5 template; no stored
+  field, no skill change, so existing handoffs gain it for free).
+- Bumped the MCP server `VERSION`, plugin, marketplace, and both workspace
+  `package.json`s to 0.18.0.
 
 ## [0.17.0] — 2026-07-07
 

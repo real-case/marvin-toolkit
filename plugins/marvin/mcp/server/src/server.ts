@@ -10,6 +10,7 @@ import { logUsageEvent } from "./lib/usage.js";
 import { buildAdrTool } from "./tools/adr.js";
 import { buildTaskTool } from "./tools/task.js";
 import { buildTaskDetailTool } from "./tools/task-detail.js";
+import { buildTrackerTool } from "./tools/tracker.js";
 import { buildHelpTool } from "./tools/help.js";
 import { buildDashboardTool } from "./tools/dashboard.js";
 import { buildVerifyTool } from "./tools/verify.js";
@@ -51,6 +52,7 @@ await runPackServer({
       tools: [
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
+        buildTrackerTool(env),
         buildHelpTool(env, VERSION),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),

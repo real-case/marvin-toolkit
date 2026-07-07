@@ -82,6 +82,7 @@ const REQUIRED_PROMPTS = [
   "kanban-done",
   "kanban-list",
   "kanban-show",
+  "kanban-tracker",
   "kanban-status",
   "kanban-config",
   "kanban-help",
@@ -90,6 +91,7 @@ const REQUIRED_PROMPTS = [
 const REQUIRED_TOOLS = [
   "task",
   "task-detail",
+  "tracker",
   "help",
   "dashboard",
   "verify",

@@ -10,10 +10,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 // test/ → server → mcp → marvin, then widgets/<name>.html (the committed build).
 const COMMITTED_HTML = join(here, "..", "..", "..", "widgets", "task-list.html");
 const DETAIL_HTML = join(here, "..", "..", "..", "widgets", "task-detail.html");
+const HANDOFFS_HTML = join(here, "..", "..", "..", "widgets", "handoffs.html");
+const TRACKER_HTML = join(here, "..", "..", "..", "widgets", "tracker-list.html");
 const AUDIT_HTML = join(here, "..", "..", "..", "widgets", "audit.html");
 
 const URI = "ui://marvin/task-list.html";
 const DETAIL_URI = "ui://marvin/task-detail.html";
+const HANDOFFS_URI = "ui://marvin/handoffs.html";
+const TRACKER_URI = "ui://marvin/tracker-list.html";
 const AUDIT_URI = "ui://marvin/audit.html";
 const MIME = "text/html;profile=mcp-app";
 
@@ -129,12 +133,108 @@ test("task-detail tool binds the ui:// widget and the resource serves the commit
 });
 
 /**
- * AC4 (ADR-0024 #7) — the audit widget binds end-to-end over stdio: the audit
- * tool advertises `_meta.ui.resourceUri`, the resource is listed and read as the
+ * The handoffs widget (ADR-0024 #5) binds end-to-end over stdio: the handoff tool
+ * advertises `_meta.ui.resourceUri`, the resource is listed and read as the
  * committed self-contained HTML with the mcp-app mimeType, and the terminal text
- * fallback still renders. The audit tool reads `.marvin/security/` (MARVIN_SECURITY_DIR)
- * — an empty dir gives the zero-state text fallback.
+ * fallback still renders. Content-independent (an empty handoff dir) so it fails
+ * precisely when the tool binding (F2 `meta`) and the resource registration (F3
+ * `resources/widgets.ts`) drift apart — the gap the DoR critic flagged.
  */
+test("handoff tool binds the ui:// widget and the resource serves the committed html", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-handoffs-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_HANDOFF_DIR: dir } }, async (s) => {
+      // 1. tools/list — the handoff tool advertises the widget binding.
+      const tools = await s.request("tools/list", {});
+      const handoff = tools.tools.find((t) => t.name === "handoff");
+      assert.ok(handoff, "handoff tool is registered");
+      assert.equal(
+        handoff._meta?.ui?.resourceUri,
+        HANDOFFS_URI,
+        "handoff tool _meta.ui.resourceUri binds the widget",
+      );
+
+      // 2. resources/list — the ui:// resource is advertised with the mcp-app mime.
+      const resources = await s.request("resources/list", {});
+      const res = resources.resources.find((r) => r.uri === HANDOFFS_URI);
+      assert.ok(res, "resources/list includes the handoffs widget uri");
+      assert.equal(res.mimeType, MIME, "listed resource carries the mcp-app mimeType");
+
+      // 3. resources/read — returns the committed HTML with the mcp-app mimeType.
+      const read = await s.request("resources/read", { uri: HANDOFFS_URI });
+      const content = read.contents[0];
+      assert.equal(content.uri, HANDOFFS_URI);
+      assert.equal(content.mimeType, MIME, "resources/read mimeType is text/html;profile=mcp-app");
+      assert.equal(
+        content.text,
+        readFileSync(HANDOFFS_HTML, "utf8"),
+        "served HTML is byte-for-byte the committed build output",
+      );
+      assert.match(content.text, /<!doctype html>/i, "served body is an HTML document");
+
+      // 4. terminal fallback — the handoff list on an empty dir still emits text.
+      const listed = await s.request("tools/call", {
+        name: "handoff",
+        arguments: { action: "list" },
+      });
+      const text = listed.content.map((c) => c.text).join("\n");
+      assert.match(text, /# Handoffs \(0\)/, "handoff list text fallback is still present");
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tracker tool binds the ui widget and the resource serves the committed html", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-tracker-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir } }, async (s) => {
+      // 1. tools/list — the tracker tool advertises the widget binding.
+      const tools = await s.request("tools/list", {});
+      const tracker = tools.tools.find((t) => t.name === "tracker");
+      assert.ok(tracker, "tracker tool is registered");
+      assert.equal(
+        tracker._meta?.ui?.resourceUri,
+        TRACKER_URI,
+        "tracker tool _meta.ui.resourceUri binds the widget",
+      );
+
+      // 2. resources/list — the ui:// resource is advertised with the mcp-app mime.
+      const resources = await s.request("resources/list", {});
+      const res = resources.resources.find((r) => r.uri === TRACKER_URI);
+      assert.ok(res, "resources/list includes the tracker-list widget uri");
+      assert.equal(res.mimeType, MIME, "listed resource carries the mcp-app mimeType");
+
+      // 3. resources/read — returns the committed HTML with the mcp-app mimeType.
+      const read = await s.request("resources/read", { uri: TRACKER_URI });
+      const content = read.contents[0];
+      assert.equal(content.uri, TRACKER_URI);
+      assert.equal(content.mimeType, MIME, "resources/read mimeType is text/html;profile=mcp-app");
+      assert.equal(
+        content.text,
+        readFileSync(TRACKER_HTML, "utf8"),
+        "served HTML is byte-for-byte the committed build output",
+      );
+      assert.match(content.text, /<!doctype html>/i, "served body is an HTML document");
+
+      // 4. terminal fallback — tracker on an empty board still emits text.
+      const shown = await s.request("tools/call", { name: "tracker", arguments: {} });
+      const text = shown.content.map((c) => c.text).join("\n");
+      assert.match(text, /Tracked tasks \(0\)/, "tracker text fallback is present");
+    });
+
+    // 5. the committed server bundle stays ext-apps/React free (ADR-0024).
+    const bundle = readFileSync(SERVER_PATH, "utf8");
+    assert.doesNotMatch(
+      bundle,
+      /@modelcontextprotocol\/ext-apps/,
+      "dist/server.js must not bundle the ext-apps SDK",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("audit tool binds the ui:// widget and the resource serves the committed html", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-widget-audit-"));
   try {
