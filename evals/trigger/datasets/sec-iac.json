@@ -1,0 +1,219 @@
+{
+  "skill": "sec-iac",
+  "target": "sec-iac",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. sec-iac owns Infrastructure-as-Code security review (Terraform, CloudFormation, Pulumi, K8s manifests, Helm, Dockerfiles, docker-compose): IAM over-permissioning, exposed endpoints, weak encryption, network boundaries, privileged/root containers. Negatives are near-misses that share infra/security vocabulary but belong to a sibling (sec-ci, sec-secrets, sec-deps, sec-scan, sec-gate, sec-threat-model, sec-fix) or a plain explain/migration-plan/edit action.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "can you review our Terraform for security issues before we apply?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "scan the Dockerfile — it runs as root and I don't think we set a read-only rootfs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "our infra/main.tf opens a security group to 0.0.0.0/0 on 22 — do an IaC review of the whole module",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "harden our kubernetes cluster — the pods have no securityContext and one deployment sets privileged: true",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "manager asked me to check the infrastructure for over-permissioned IAM before we promote the module to prod",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "review k8s/*-deployment.yaml — no resource limits and the service account looks way too broad",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "check our helm chart and values.yaml, worried the S3 bucket isn't encrypted at rest and public access isn't blocked",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "docker-compose review pls — one service mounts /var/run/docker.sock and another binds a db to 0.0.0.0",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "before deploying this CloudFormation stack, sanity-check the RDS instance isn't publicly_accessible and has encryption on",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "iac review of our pulumi stack — I think a couple of resources are in the default VPC and use unpinned base images",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "audit our .github/workflows for supply chain risk — actions aren't SHA-pinned and GITHUB_TOKEN is write-all",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD pipeline config hardening → sec-ci, not the infra it provisions"
+    },
+    {
+      "id": "neg-2",
+      "text": "scan the repo and git history for a leaked AWS access key someone may have committed in a tfvars file",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "leaked-secret detection across code+history → sec-secrets even though a tfvars file is mentioned"
+    },
+    {
+      "id": "neg-3",
+      "text": "audit the container image's packages for known CVEs and check the go.mod for vulnerable modules",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency/CVE audit of shipped packages → sec-deps, not IaC config review"
+    },
+    {
+      "id": "neg-4",
+      "text": "explain how our Terraform networking module wires the VPC, subnets, and NAT gateway together",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding what the infra does → explain, not a security review"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan the migration from our hand-rolled CloudFormation to Terraform with a rollback strategy",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "migration planning → migration-plan, not a security scan"
+    },
+    {
+      "id": "neg-6",
+      "text": "quick security check on my staged changes before I commit this new Dockerfile",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "fast diff-scoped pre-commit gate → sec-gate, not a full IaC review"
+    },
+    {
+      "id": "neg-7",
+      "text": "write me a Terraform module that provisions an encrypted RDS instance in a private subnet",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring new infra → plain edit task, not reviewing existing IaC"
+    },
+    {
+      "id": "neg-8",
+      "text": "full OWASP Top 10 audit of the whole service — code, secrets, deps, and infra — before we ship",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive whole-codebase audit that orchestrates the sub-scans → sec-scan"
+    },
+    {
+      "id": "neg-9",
+      "text": "do a STRIDE threat model of our new multi-tenant deployment and its trust boundaries",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "STRIDE threat modeling → sec-threat-model, not a config misconfiguration scan"
+    },
+    {
+      "id": "neg-10",
+      "text": "tfsec flagged an unencrypted EBS volume in our module — generate the fix and a test to prove it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediating an already-found finding into a patch → sec-fix, not the scan itself"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "our deploy pipeline provisions Terraform — review the infrastructure it stands up for exposed endpoints and weak encryption",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-iac",
+      "mock_rate": 1,
+      "note": "a pipeline is mentioned but the target is the provisioned infra config → must beat sec-ci"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "check our Kubernetes manifests — the dashboard is on a LoadBalancer with no auth and pods run privileged",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 1,
+      "note": "scoped to K8s manifest misconfig, not a whole-codebase audit → must beat sec-scan"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "did we ever commit a hardcoded password in a Dockerfile or compose file? scan the repo and history",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-secrets",
+      "mock_rate": 0,
+      "note": "detecting leaked secrets across code+history is sec-secrets' job even though IaC files are named"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "harden our GitHub Actions workflow that builds and pushes the Docker image — pin the actions and scope the token",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-ci",
+      "mock_rate": 0,
+      "note": "Docker appears but the target is the CI/CD workflow config itself → sec-ci wins"
+    }
+  ]
+}

@@ -95,8 +95,7 @@ export interface ConfigPatch {
 }
 
 export type ConfigWriteResult =
-  | { ok: true; config: ConfigType; created: boolean }
-  | { ok: false; error: string };
+  { ok: true; config: ConfigType; created: boolean } | { ok: false; error: string };
 
 /**
  * Read-modify-write `.marvin/config.json`. The file also carries keys owned

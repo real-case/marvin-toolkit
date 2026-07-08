@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.1.0",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -19,6 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify-dist": "node scripts/verify-dist.mjs",
+    "sync-version": "node scripts/sync-version.mjs",
     "smoke": "node scripts/smoke-commands.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
@@ -36,18 +37,18 @@
     "hono": "^4.12.27"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
-    "@types/node": "^20.0.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.0",
     "c8": "^11.0.0",
-    "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.1.0",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
     "globals": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "prettier": "^3.2.0",
+    "prettier": "^3.9.4",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.63.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-darwin-arm64": "4.60.4",

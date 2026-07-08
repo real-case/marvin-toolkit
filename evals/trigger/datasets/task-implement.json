@@ -1,0 +1,219 @@
+{
+  "skill": "task-implement",
+  "target": "task-implement",
+  "note": "task-implement is the EXECUTE phase of the taskmaster pipeline: it takes a spec that already passed the Definition-of-Ready gate and implements it interactively in the current session (Chosen Approach for features, regression-test-first for bugfixes), then auto-chains into task-verify and task-deliver. Near-misses belong to the authoring phase (task-start), the standalone gate run (task-verify), the commit+PR phase (task-deliver), PR-feedback (task-fix-pr), behaviour-preserving refactor execution (refactor-apply), or plain debug/explain. mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "implement this spec",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run the task — the spec is ready, go build it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "execute .marvin/task/014-oauth-refresh.md in this session",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "task-start gave me the spec, now actually build it out following the chosen approach",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "the ready spec for the rate-limiter is written, implement it and write the tests for each acceptance criterion",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "work through the bugfix spec — regression test first, then the fix, don't dispatch to a worktree",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin implement the spec, keep me in the loop for each step",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "carry out the spec by slug: payment-retry, stay on the current branch",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "we defined the task earlier — go ahead and code it up against the file allowlist",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "the DoR gate passed, execute the spec interactively and self-test it before handing off",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "spec out the new webhook feature — gather context and produce an immutable spec",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring the spec, not executing one → task-start"
+    },
+    {
+      "id": "neg-2",
+      "text": "run the quality gates — tests, lint, type-check, build — and tell me if it's green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "standalone gate run → task-verify"
+    },
+    {
+      "id": "neg-3",
+      "text": "commit what I built and open the PR for it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "final commit+PR delivery phase → task-deliver"
+    },
+    {
+      "id": "neg-4",
+      "text": "apply the reviewer comments on my PR and reply to each thread",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "turning PR feedback into commits → task-fix-pr"
+    },
+    {
+      "id": "neg-5",
+      "text": "execute step 2 of the refactoring plan, behaviour-preserving, keep tests green",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "behaviour-preserving refactor step, not a spec feature/fix → refactor-apply"
+    },
+    {
+      "id": "neg-6",
+      "text": "the spec is still a draft — help me finish authoring it and pass the DoR gate",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "draft not ready; finishing authoring → task-start"
+    },
+    {
+      "id": "neg-7",
+      "text": "my implementation broke three tests, help me figure out the root cause",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause analysis on red → debug"
+    },
+    {
+      "id": "neg-8",
+      "text": "explain how the retry pipeline in this module works before I touch it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code comprehension → explain"
+    },
+    {
+      "id": "neg-9",
+      "text": "just add a null check on line 42 of src/parser.ts",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "trivial one-line edit, no spec pipeline → plain edit"
+    },
+    {
+      "id": "neg-10",
+      "text": "dispatch this spec to a headless worktree agent instead of doing it here",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hands-off worktree dispatch is dispatch.sh / marvin-tm-executor, not the interactive skill"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "the spec passed DoR — now actually implement it and run the gates for me",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-implement",
+      "mock_rate": 1,
+      "note": "mentions gates but the primary verb is implement; verify is auto-chained downstream → beats task-verify"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "build out the ready spec and take it all the way through to the PR",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-implement",
+      "mock_rate": 1,
+      "note": "names the PR but the entry point is implementation, which auto-chains into deliver → beats task-deliver"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "spec this out first — I need an immutable, testable spec with acceptance criteria before any code",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-start",
+      "mock_rate": 0,
+      "note": "authoring precedes execution; no spec exists yet → must lose to task-start"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "implementation's done and verified — commit it and open the pull request",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 0,
+      "note": "post-implementation delivery; work already built and green → must lose to task-deliver"
+    }
+  ]
+}

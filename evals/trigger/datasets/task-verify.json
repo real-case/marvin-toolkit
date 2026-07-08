@@ -1,0 +1,219 @@
+{
+  "skill": "task-verify",
+  "target": "task-verify",
+  "note": "Trigger-eval dataset for task-verify (run project quality gates — tests/lint/type-check/build — and write verification.md). mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "run the gates on this repo",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run tests and lint and tell me if it's all green",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "I just finished the feature — verify it before I hand it off",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "check the project: tests, type-check, build, the whole thing",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "is this green? run everything and write the verification report",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "do a health check on this repo before I pick up someone else's branch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin verify — run all the quality gates concurrently",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "run the test suite, linter and typechecker and give me a pass/fail verdict",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "before I deliver this, confirm the build passes and tests are green",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "gate the current changes — run whatever tests/lint/build the project has",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "one of the tests in tests/test_auth.py is failing, figure out why",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause of a failing test → debug, not running the gate set"
+    },
+    {
+      "id": "neg-2",
+      "text": "write a unit test for the new parseConfig() helper",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring tests is implementation work → task-implement, not verify"
+    },
+    {
+      "id": "neg-3",
+      "text": "set up a CI workflow that runs our tests and lint on every push",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "creating pipeline config, not running local gates; sec-ci audits it, plain scaffolding writes it"
+    },
+    {
+      "id": "neg-4",
+      "text": "the eslint config is a mess, clean up the rules in .eslintrc",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "editing lint config is a code edit, not running the lint gate"
+    },
+    {
+      "id": "neg-5",
+      "text": "our test suite takes 8 minutes, help me speed it up",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "test performance optimization → debug/explain, not a verify run"
+    },
+    {
+      "id": "neg-6",
+      "text": "run a security scan and check for OWASP Top 10 issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "security gate → sec-scan, not the quality gates"
+    },
+    {
+      "id": "neg-7",
+      "text": "quick security check on my staged changes before I push",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diff-scoped security pre-commit gate → sec-gate, not test/lint/build"
+    },
+    {
+      "id": "neg-8",
+      "text": "review my diff for bugs and style problems",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code review of a diff → pr-review/code-review, not running gates"
+    },
+    {
+      "id": "neg-9",
+      "text": "the build is broken with a webpack error, help me fix it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing/fixing a build error → debug; verify only records results, doesn't fix"
+    },
+    {
+      "id": "neg-10",
+      "text": "explain how the parallel gate runner decides the overall verdict",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding the mechanism → explain, not executing it"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "I already wrote the code by hand, now just run the tests and lint to verify it's green",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-verify",
+      "mock_rate": 1,
+      "note": "mentions writing code but the action is to run the gates on finished work — must beat task-implement"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "before we deliver, run the build and tests and confirm the verdict is PASS",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-verify",
+      "mock_rate": 1,
+      "note": "'deliver' vocab but the request is to run the gates — must beat task-deliver"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "implement the spec in .marvin/task/012-rate-limit.md and then verify it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-implement",
+      "mock_rate": 0,
+      "note": "primary action is implementing the spec (which auto-chains into verify) → task-implement wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "verification passed — now commit and open the PR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-deliver",
+      "mock_rate": 0,
+      "note": "verify already done; the action is commit + PR → task-deliver wins"
+    }
+  ]
+}

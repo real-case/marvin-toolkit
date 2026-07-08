@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { withSession } from "./_driver.mjs";
 
 // A title that stresses the YAML codec: colon-space (forces quoting), double
 // quotes, parens, ampersand — all printable ASCII (TaskTitle requires it).
@@ -22,79 +18,27 @@ const TRACKER = "OSI-7";
  * Project dir is a fresh temp dir (not a git repo), so no branch elicitation.
  */
 function createThenList(dir) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir },
-    });
-    let buf = "";
-    let createText = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        // Server-initiated elicitation request → accept with the form content.
-        if (msg.method === "elicitation/create" && msg.id != null) {
-          send({
-            jsonrpc: "2.0",
-            id: msg.id,
-            result: { action: "accept", content: { title: TITLE, tracker_id: TRACKER } },
-          });
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "task", arguments: { action: "create", type: "bug" } },
-          });
-        } else if (msg.id === 2) {
-          createText = msg.result.content.map((c) => c.text).join("\n");
-          send({
-            jsonrpc: "2.0",
-            id: 3,
-            method: "tools/call",
-            params: { name: "task", arguments: { action: "list" } },
-          });
-        } else if (msg.id === 3) {
-          clearTimeout(timer);
-          const listText = msg.result.content.map((c) => c.text).join("\n");
-          child.kill();
-          resolve({ createText, listText });
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: { elicitation: {} },
-        clientInfo: { name: "fm-test", version: "0" },
-      },
-    });
-  });
+  return withSession(
+    {
+      env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir },
+      capabilities: { elicitation: {} },
+      // Server-initiated elicitation request → accept with the form content.
+      onServerRequest: () => ({ action: "accept", content: { title: TITLE, tracker_id: TRACKER } }),
+    },
+    async (s) => {
+      const create = await s.request("tools/call", {
+        name: "task",
+        arguments: { action: "create", type: "bug" },
+      });
+      const createText = create.content.map((c) => c.text).join("\n");
+      const list = await s.request("tools/call", {
+        name: "task",
+        arguments: { action: "list" },
+      });
+      const listText = list.content.map((c) => c.text).join("\n");
+      return { createText, listText };
+    },
+  );
 }
 
 test("kanban task frontmatter round-trips through the YAML codec (create → list)", async () => {

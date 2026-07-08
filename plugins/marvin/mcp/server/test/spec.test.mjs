@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { callTool } from "./_driver.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
 // test → server → mcp → marvin → plugins → repoRoot
 const repoRoot = join(here, "..", "..", "..", "..", "..");
 
@@ -15,67 +15,12 @@ const repoRoot = join(here, "..", "..", "..", "..", "..");
  * Drive the live stdio server: initialize, then one tools/call for `spec`,
  * and return the parsed `spec-result` JSON block from the tool output.
  */
-function callSpec(args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], { stdio: ["pipe", "pipe", "pipe"] });
-    let buf = "";
-    let initialized = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1 && !initialized) {
-          initialized = true;
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "spec", arguments: args },
-          });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          try {
-            const text = msg.result.content.map((c) => c.text).join("\n");
-            const m = text.match(/```json spec-result\n([\s\S]*?)\n```/);
-            assert.ok(m, `no spec-result block in output:\n${text}`);
-            resolve({ parsed: JSON.parse(m[1]), isError: msg.result.isError, text });
-          } catch (err) {
-            reject(err);
-          }
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "spec-test", version: "0" },
-      },
-    });
-  });
+async function callSpec(args) {
+  const result = await callTool("spec", args);
+  const text = result.content.map((c) => c.text).join("\n");
+  const m = text.match(/```json spec-result\n([\s\S]*?)\n```/);
+  assert.ok(m, `no spec-result block in output:\n${text}`);
+  return { parsed: JSON.parse(m[1]), isError: result.isError, text };
 }
 
 const find = (parsed, id) => parsed.checks.find((c) => c.id === id);

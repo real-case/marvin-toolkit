@@ -266,3 +266,45 @@ Never print full secret values in the report. Show at most the first 4 character
 - **Don't skip git history.** A secret that was "removed" from code but exists in history is just as dangerous as one that's currently in code.
 - **Context matters.** A `password = "admin"` in a Docker Compose for local dev is different from the same pattern in a production config. Use severity to reflect this distinction.
 - **Suggest tooling.** If trufflehog/gitleaks aren't installed, recommend them. If pre-commit hooks aren't set up, suggest `detect-secrets` or `gitleaks` as a pre-commit hook.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose report, append a machine-readable `audit-report` block to the same
+`.marvin/security/secrets-report.md` file so `/marvin:sec-report` (the `audit` tool) and the dashboard
+can consume typed findings. Rules: set `kind` to `secrets`; emit one finding per leaked secret with
+`category` = the secret type and `remediation` = rotate + remove-from-history; make the `summary`
+counts match the `findings`; use the severity vocabulary `critical | high | medium | low | info`;
+`scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Do **not** put the raw secret value in
+`evidence` — describe it (pattern / location) instead. Leave the prose above unchanged.
+
+Fill this shape from the real scan (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "secrets",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "working tree + git history",
+  "summary": { "critical": 1, "high": 1 },
+  "findings": [
+    {
+      "id": "SECRET-1",
+      "severity": "critical",
+      "title": "Cloud access key committed to the repo",
+      "category": "AWS access key ID",
+      "file": "config/deploy.sh",
+      "line": 3,
+      "evidence": "AKIA-prefixed 20-char key in a tracked file",
+      "remediation": "Rotate the key now; purge it from history (git filter-repo / BFG)"
+    },
+    {
+      "id": "SECRET-2",
+      "severity": "high",
+      "title": "Generic API token hard-coded in source",
+      "category": "High-entropy string",
+      "file": "src/config.ts",
+      "line": 12,
+      "remediation": "Move to an environment variable and rotate the token"
+    }
+  ]
+}
+```

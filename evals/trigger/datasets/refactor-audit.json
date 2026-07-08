@@ -1,0 +1,217 @@
+{
+  "skill": "refactor-audit",
+  "target": "refactor-audit",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. refactor-audit is the WHOLE-PROJECT structural audit — the scope discriminator against refactor-smells (single path/module/diff) is the sharpest boundary; migration-plan (executing a named migration), explain (understanding, not cataloguing debt), and sec-scan (security, not structure) are the other near-misses.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "run a refactoring audit on the whole repo — where's the tech debt?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "we're planning a cleanup sprint next week, what should we refactor first across the codebase?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "do a code health check on the project and rank the worst offenders by churn and size",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "find the hotspots in this repo — the files that change constantly and are huge",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "my manager wants a structural audit before we commit to paying down tech debt this quarter",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "map out the architecture and find the dependency tangles and dead code candidates",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin refactor audit please, whole project",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "give me a numbered findings register of structural problems across the codebase with severity and effort",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "where should we start refactoring? I need an evidence-based list, not vibes",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "audit the codebase structure and tell me which modules are the biggest liabilities",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "scan src/api/handlers.ts for code smells and anti-patterns",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "single-file scoped scan → refactor-smells, not the whole-project audit"
+    },
+    {
+      "id": "neg-2",
+      "text": "any smells in this diff before I push?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diff-scoped → refactor-smells"
+    },
+    {
+      "id": "neg-3",
+      "text": "we picked findings F2 and F5 from the audit — sequence them into a refactoring plan",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "findings already exist; turning them into steps → refactor-plan"
+    },
+    {
+      "id": "neg-4",
+      "text": "apply step 3 of the refactoring plan",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "mutating execution → refactor-apply"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan our migration from the legacy ORM to Prisma with rollback steps",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "named migration with dependency/rollback strategy → migration-plan"
+    },
+    {
+      "id": "neg-6",
+      "text": "explain how the payment reconciliation module is architected and why",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding one module's design → explain, not a debt catalogue"
+    },
+    {
+      "id": "neg-7",
+      "text": "do a full security audit of the codebase for OWASP Top 10 issues",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'full audit' but security domain → sec-scan"
+    },
+    {
+      "id": "neg-8",
+      "text": "actually go clean up the duplication in the auth package for me",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "asks to change code, not produce a read-only report → refactor-apply (via plan)"
+    },
+    {
+      "id": "neg-9",
+      "text": "check our dependencies for known CVEs and unmaintained packages",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency vulnerability audit → sec-deps, not structural hotspots"
+    },
+    {
+      "id": "neg-10",
+      "text": "run the quality gates — tests, lint, type-check — and tell me if the repo is green",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "quality-gate run → task-verify, not a structural audit"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "scan the whole project for code smells and hotspots so we know where the debt is",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 1,
+      "note": "shares 'code smells' vocab with refactor-smells, but scope is whole-project + hotspots → refactor-audit wins"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "before we plan any refactoring, give me the findings — audit the whole codebase's structure first",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 1,
+      "note": "mentions 'plan refactoring' but the requested action is producing findings first → must beat refactor-plan"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "check just the src/billing module for anti-patterns and naming issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-smells",
+      "mock_rate": 0,
+      "note": "scoped to one module → refactor-smells is more specific and must win"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we're refactoring the storage layer to a new schema — plan the steps, risks, and rollback",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "sequencing refactor steps/risk → refactor-plan (an auto-invocable sibling)"
+    }
+  ]
+}

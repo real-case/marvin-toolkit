@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { callTool } from "./_driver.mjs";
 
 const PR_URL = "https://github.com/acme/widget/pull/7";
 
@@ -55,62 +51,14 @@ function seedHandoffs(dir) {
 
 /** Drive the live server: initialize, then call the `handoff` `list` action. */
 function listHandoffs(handoffDir) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: handoffDir, MARVIN_HANDOFF_DIR: handoffDir },
-    });
-    let buf = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "handoff", arguments: { action: "list" } },
-          });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          resolve(msg.result);
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "handoff-test", version: "0" },
-      },
-    });
-  });
+  return callTool(
+    "handoff",
+    { action: "list" },
+    { env: { CLAUDE_PROJECT_DIR: handoffDir, MARVIN_HANDOFF_DIR: handoffDir } },
+  );
 }
 
-test("handoff list emits a HandoffListPayload structuredContent alongside the text", async () => {
+test("handoff list emits a HandoffDetailPayload structuredContent alongside the text", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-handoff-"));
   try {
     seedHandoffs(dir);
@@ -140,10 +88,34 @@ test("handoff list emits a HandoffListPayload structuredContent alongside the te
     assert.equal(first.spec_slug, "handoff-list");
     assert.ok(first.created, "created present");
 
+    // widget-detail fields (ADR-0024 #5): the file body verbatim + a derived
+    // continue prompt that names the objective, the real filename, and the branch
+    // (mirrors the handoff skill's step-5 template).
+    assert.equal(typeof first.body_markdown, "string");
+    assert.ok(
+      first.body_markdown.includes("Add the handoff read side"),
+      "body_markdown carries the handoff's file body",
+    );
+    assert.ok(
+      first.continue_prompt.includes("Add the handoff read side"),
+      "continue_prompt names the objective",
+    );
+    assert.ok(
+      first.continue_prompt.includes("002--handoff-read-side.md"),
+      "continue_prompt points at the handoff's real on-disk filename",
+    );
+    assert.ok(
+      first.continue_prompt.includes("feat/handoff-list"),
+      "continue_prompt names the branch",
+    );
+
     // 001 omits PR/base/spec — pr_url maps to null, the optionals are absent
     assert.equal(second.pr_url, null, "absent pr_url maps to the contract's nullable field");
     assert.equal(second.base, undefined);
     assert.equal(second.spec_slug, undefined);
+    // ...but every handoff still gets a body and a continue prompt
+    assert.equal(typeof second.body_markdown, "string");
+    assert.ok(second.continue_prompt.includes("001--initial-context.md"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

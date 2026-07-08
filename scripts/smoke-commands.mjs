@@ -33,12 +33,21 @@ const REQUIRED_PROMPTS = [
   "docs-search",
   "handoff",
   "handoff-list",
+  "lessons",
   "help",
+  "dashboard",
   // pr-*
   "pr-create",
   "pr-review",
   "pr-resolve",
   "pr-merge",
+  // adr-*
+  "adr-review",
+  "adr-accept",
+  "adr-audit",
+  "adr-coverage",
+  "adr-supersede",
+  "adr-sync",
   // task-*
   "task-start",
   "task-implement",
@@ -56,6 +65,12 @@ const REQUIRED_PROMPTS = [
   "sec-fix",
   "sec-compliance",
   "sec-pentest",
+  "sec-report",
+  // refactor-*
+  "refactor-audit",
+  "refactor-smells",
+  "refactor-plan",
+  "refactor-apply",
   // kanban-*
   "kanban-menu",
   "kanban-bug",
@@ -66,12 +81,27 @@ const REQUIRED_PROMPTS = [
   "kanban-review",
   "kanban-done",
   "kanban-list",
+  "kanban-show",
+  "kanban-tracker",
   "kanban-status",
   "kanban-config",
   "kanban-help",
 ];
 
-const REQUIRED_TOOLS = ["task", "help", "verify", "spec", "lessons", "handoff", "summary"];
+const REQUIRED_TOOLS = [
+  "task",
+  "task-detail",
+  "tracker",
+  "help",
+  "dashboard",
+  "verify",
+  "spec",
+  "lessons",
+  "handoff",
+  "summary",
+  "adr",
+  "audit",
+];
 
 function die(msg) {
   console.error(`smoke-commands: ${msg}`);

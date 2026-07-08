@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { resolvePromptBody, interpolateArgs } from "./prompts.js";
-import type { PromptDef, ResourceDef, ToolDef } from "./types.js";
+import type { InvocationEvent, PromptDef, ResourceDef, ToolDef } from "./types.js";
 
 export interface PackBundle {
   prompts: PromptDef[];
@@ -36,6 +36,18 @@ export interface RunPackOptions {
    * Handlers can close over `server` to call `server.server.elicitInput(...)`.
    */
   build: (server: McpServer) => PackBundle | Promise<PackBundle>;
+  /**
+   * Optional middleware hook fired once per prompt-get and per tool-call,
+   * *before* the corresponding handler runs (ADR-0030). Marvin uses it to
+   * append a usage-log event; the shared library stays project-agnostic and
+   * only reports `{ kind, name }`. The hook is fire-and-forget: it is invoked
+   * synchronously, its return value is ignored, and any throw is swallowed —
+   * dispatch, its result, and its errors are byte-for-byte unaffected whether
+   * the hook is present or not. Keep the callback itself non-blocking (do not
+   * return a promise the caller must await); a slow or failing hook must never
+   * delay or break the request it observes.
+   */
+  onInvoke?: (event: InvocationEvent) => void;
 }
 
 /**
@@ -53,10 +65,10 @@ export async function buildServer(opts: RunPackOptions): Promise<McpServer> {
   const ctx = { promptsDir: opts.promptsDir, packRoot: opts.packRoot };
 
   for (const def of bundle.prompts) {
-    registerPrompt(server, def, ctx);
+    registerPrompt(server, def, ctx, opts.onInvoke);
   }
   for (const def of bundle.tools ?? []) {
-    registerTool(server, def);
+    registerTool(server, def, opts.onInvoke);
   }
   // Registering a resource auto-advertises the `resources` capability (MCP SDK);
   // an empty list leaves the server's advertised surface untouched.
@@ -85,10 +97,32 @@ export async function runPackServer(opts: RunPackOptions): Promise<void> {
   await server.connect(transport);
 }
 
+/**
+ * Fire the invocation hook and swallow everything. The hook is observability
+ * only (ADR-0030): a throw or a rejected promise it returns must never surface
+ * into the request path, so we call it inside try/catch and, if it hands back a
+ * thenable, attach a no-op rejection handler. The dispatch continues regardless.
+ */
+function notify(
+  onInvoke: ((event: InvocationEvent) => void) | undefined,
+  event: InvocationEvent,
+): void {
+  if (!onInvoke) return;
+  try {
+    const maybe = onInvoke(event) as unknown;
+    if (maybe && typeof (maybe as { then?: unknown }).then === "function") {
+      (maybe as Promise<unknown>).then(undefined, () => {});
+    }
+  } catch {
+    // usage logging is best-effort; never break the request being observed
+  }
+}
+
 function registerPrompt(
   server: McpServer,
   def: PromptDef,
   ctx: { promptsDir: string; packRoot?: string },
+  onInvoke?: (event: InvocationEvent) => void,
 ): void {
   const argsSchema: Record<string, z.ZodString | z.ZodOptional<z.ZodString>> = {};
   for (const arg of def.arguments ?? []) {
@@ -102,6 +136,7 @@ function registerPrompt(
       argsSchema,
     },
     (args) => {
+      notify(onInvoke, { kind: "prompt", name: def.name });
       const body = resolvePromptBody(def, ctx);
       const stringArgs: Record<string, string | undefined> = {};
       for (const [key, value] of Object.entries(args ?? {})) {
@@ -142,7 +177,11 @@ function withPluginResourceContext(text: string, ctx: { packRoot?: string }): st
   );
 }
 
-function registerTool<TInput extends z.ZodTypeAny>(server: McpServer, def: ToolDef<TInput>): void {
+function registerTool<TInput extends z.ZodTypeAny>(
+  server: McpServer,
+  def: ToolDef<TInput>,
+  onInvoke?: (event: InvocationEvent) => void,
+): void {
   // Tool input schemas in our contract are zod ObjectS — extract their raw
   // shape so registerTool can compose the JSON Schema itself.
   const shape = def.inputSchema instanceof z.ZodObject ? def.inputSchema.shape : undefined;
@@ -156,6 +195,9 @@ function registerTool<TInput extends z.ZodTypeAny>(server: McpServer, def: ToolD
       ...(def.meta ? { _meta: def.meta } : {}),
     },
     async (args: unknown) => {
+      // One event per dispatch, before validation runs — a tool call was made
+      // regardless of whether its arguments parse.
+      notify(onInvoke, { kind: "tool", name: def.name });
       const parsed = def.inputSchema.safeParse(args ?? {});
       if (!parsed.success) {
         return {

@@ -32,5 +32,20 @@ export default [
       ],
     },
   },
+  {
+    // The marvin-widgets workspace is the repo's first browser + JSX/React code
+    // (ADR-0024). The base config supplies only `globals.node` and no JSX block,
+    // so add browser globals and JSX parsing for these files — otherwise `eslint .`
+    // flags `document`/`window`/`setTimeout` as undefined and cannot parse `.tsx`.
+    files: ["packages/marvin-widgets/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
+  },
   prettier,
 ];

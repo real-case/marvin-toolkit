@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const serverPath = join(here, "..", "dist", "server.js");
+import { withSession } from "./_driver.mjs";
 
 const TITLE = "Wire structuredContent through task list";
 const TRACKER = "OSI-42";
@@ -20,75 +16,20 @@ const TRACKER = "OSI-42";
  * written first so `tracker_url` derivation is exercised end-to-end.
  */
 function createThenListStructured(dir) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("node", [serverPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir },
-    });
-    let buf = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`timeout; partial=${JSON.stringify(buf)}`));
-    }, 15000);
-    const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
-
-    child.stdout.on("data", (d) => {
-      buf += d.toString();
-      let nl;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        let msg;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        if (msg.method === "elicitation/create" && msg.id != null) {
-          send({
-            jsonrpc: "2.0",
-            id: msg.id,
-            result: { action: "accept", content: { title: TITLE, tracker_id: TRACKER } },
-          });
-          continue;
-        }
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "tools/call",
-            params: { name: "task", arguments: { action: "create", type: "bug" } },
-          });
-        } else if (msg.id === 2) {
-          send({
-            jsonrpc: "2.0",
-            id: 3,
-            method: "tools/call",
-            params: { name: "task", arguments: { action: "list" } },
-          });
-        } else if (msg.id === 3) {
-          clearTimeout(timer);
-          child.kill();
-          resolve(msg.result);
-        }
-      }
-    });
-    child.stderr.on("data", () => {});
-    child.on("error", reject);
-
-    send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: { elicitation: {} },
-        clientInfo: { name: "structured-test", version: "0" },
-      },
-    });
-  });
+  return withSession(
+    {
+      env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir },
+      capabilities: { elicitation: {} },
+      onServerRequest: () => ({ action: "accept", content: { title: TITLE, tracker_id: TRACKER } }),
+    },
+    async (s) => {
+      await s.request("tools/call", {
+        name: "task",
+        arguments: { action: "create", type: "bug" },
+      });
+      return s.request("tools/call", { name: "task", arguments: { action: "list" } });
+    },
+  );
 }
 
 test("task list emits a TaskListPayload structuredContent alongside the text", async () => {

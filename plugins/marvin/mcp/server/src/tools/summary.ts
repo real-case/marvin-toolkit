@@ -27,6 +27,7 @@ import { loadConfig, trackerUrl } from "../storage/config.js";
 import type { Config } from "../storage/schema.js";
 import { currentBranch, git, inGitRepo } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
+import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
 
 /**
  * "What was done" task-summary aggregator (ADR-0024, widget #3). Joins five
@@ -65,6 +66,10 @@ export function buildSummaryTool(env: ServerEnv): AnyToolDef {
     description:
       "Aggregate a spec's acceptance criteria, verification gates, commits, lessons and links into a 'what was done' task summary.",
     inputSchema: SummaryInput,
+    // Bind the task-summary `ui://` widget for MCP Apps hosts (ADR-0024 #3). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: TASK_SUMMARY_WIDGET_URI } },
     handler: (input) => {
       // Fresh config per call — `task config` edits apply without a restart.
       const { config } = loadConfig(env.configPath, env.projectDir);

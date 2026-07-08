@@ -3,7 +3,7 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
 /**
  * Prompts for the unified `marvin` server. Two body sources:
  *
- *  - **skill-backed** (core / sec / task groups): `skill` points to a
+ *  - **skill-backed** (core / adr / task / sec / refactor groups): `skill` points to a
  *    directory under `plugins/marvin/skills/<name>/SKILL.md`. The skill
  *    file is the single source of truth — Claude Code auto-discovers it
  *    through its own frontmatter `description`, while this server exposes
@@ -114,12 +114,73 @@ export const PROMPTS: PromptDef[] = [
     body: callTool("handoff", { action: "list" }),
   },
   {
+    // Thin tool wrapper (inline body) — the human door to the lessons store
+    // (ADR-0028): search, add, stats, and prune without leaving chat.
+    name: "lessons",
+    description:
+      "Browse the project lessons-learned store under .marvin/memory — search lessons, add one, show counts by type/tag, or prune stale and duplicate entries.",
+    body:
+      "Invoke the `lessons` MCP tool from the `marvin` server. Map the user's ask onto `action`: " +
+      '"search" (pass `query` keywords and/or `type` ∈ bug-pattern | gotcha | convention | pitfall | process; no query returns the most recent), ' +
+      '"add" (pass `type`, a one-line `title`, a 2–4 sentence `body`, optional comma-separated `tags` and `source`; on a near-duplicate warning either extend the named lesson or, if the user insists, retry with `force: true`), ' +
+      '"stats" (counts by type and tag), or ' +
+      '"prune" (no `slug` lists stale/duplicate candidates; with `slug` it deletes that lesson — confirmation is asked via a form, or pass `confirm: true` once the user has approved). ' +
+      'With nothing to go on, default to "search" with no query. Do not add preamble — just call the tool and present its result.',
+  },
+  {
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/pr/task/sec/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, pr, task, sec, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+      "Marvin dashboard — project state and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble.",
+  },
+  {
+    // Thin tool wrapper (inline body) — the whole-toolbox state report backed
+    // by the deterministic `dashboard` tool (ADR-0030). The command index
+    // stays on `help`; this aggregates the artifact/corpus/usage state.
+    name: "dashboard",
+    description:
+      "Marvin toolbox dashboard — kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
+  },
+
+  // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
+  {
+    name: "adr-review",
+    description:
+      "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, verdict READY_FOR_ACCEPTANCE or a defect list. Never sets accepted.",
+    skill: "adr-review",
+  },
+  {
+    name: "adr-accept",
+    description:
+      "Ratify a proposed ADR — proposed → accepted with a date stamp, through the adr tool's fail-closed readiness gate. Human-run.",
+    skill: "adr-accept",
+  },
+  {
+    name: "adr-audit",
+    description:
+      "Read-only lint of the ADR corpus — dangling references, numbering holes/duplicates, broken supersede pairs, placeholder residue, invalid statuses, stale index — with remediation guidance.",
+    skill: "adr-audit",
+  },
+  {
+    name: "adr-coverage",
+    description:
+      "Read-only gap analysis — recorded ADRs vs the decisions visible in the actual stack; ranks undocumented decisions by blast radius.",
+    skill: "adr-coverage",
+  },
+  {
+    name: "adr-supersede",
+    description:
+      "Roll back an accepted ADR properly — a successor record supersedes it; links pair both ways, the old record's status flips, its content is never edited. Human-run.",
+    skill: "adr-supersede",
+  },
+  {
+    name: "adr-sync",
+    description:
+      "Regenerate the marker-managed architecture-decisions digest in CLAUDE.md from accepted ADRs only — diff shown, confirmation before writing. Human-run.",
+    skill: "adr-sync",
   },
 
   // ── task (taskmaster spec pipeline) ──────────────────────────────────
@@ -217,6 +278,40 @@ export const PROMPTS: PromptDef[] = [
       "Generate a tailored penetration-testing checklist for the application — auth, authz, input surfaces, business logic, APIs, infrastructure — mapped to PTES / OWASP Testing Guide.",
     skill: "sec-pentest",
   },
+  {
+    // Thin tool wrapper (inline body) — the read side of the sec-* family
+    // (ADR-0024 #7): list the typed audit-report blocks the scanners wrote.
+    name: "sec-report",
+    description:
+      "List the structured security-audit reports under .marvin/security/ — each sec-* scanner's typed findings by severity, newest first.",
+    body: callTool("audit", { action: "list" }),
+  },
+
+  // ── refactor (code-health family, ADR-0029) ─────────────────────────
+  {
+    name: "refactor-audit",
+    description:
+      "Whole-project structural refactoring audit — architecture map, churn×size hotspots, dependency tangles, dead-code candidates. Read-only; writes a numbered findings register under .marvin/refactor/.",
+    skill: "refactor-audit",
+  },
+  {
+    name: "refactor-smells",
+    description:
+      "Scoped code-smell scan of a path, module, or diff — smells, anti-patterns, idiom and naming inconsistencies. Same findings-register format as refactor-audit, composable reports.",
+    skill: "refactor-smells",
+  },
+  {
+    name: "refactor-plan",
+    description:
+      "Turn selected refactoring findings into a sequenced, risk-annotated plan under .marvin/refactor/ — small behaviour-preserving steps inline, oversized items routed to the task pipeline. Changes no code.",
+    skill: "refactor-plan",
+  },
+  {
+    name: "refactor-apply",
+    description:
+      "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
+    skill: "refactor-apply",
+  },
 
   // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
   {
@@ -279,6 +374,24 @@ export const PROMPTS: PromptDef[] = [
     name: "kanban-list",
     description: "List all tasks grouped by status",
     body: callTool("task", { action: "list" }),
+  },
+  {
+    // Thin tool wrapper (inline body) — one task's full detail (fields +
+    // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
+    name: "kanban-show",
+    description: "Show one task in full — fields + markdown body",
+    body: callTool(
+      "task-detail",
+      {},
+      "If the user named a task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument; otherwise the task linked to the current branch is shown.",
+    ),
+  },
+  {
+    // Thin tool wrapper (inline body) — the board tasks that carry an external
+    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
+    name: "kanban-tracker",
+    description: "Show tracked tasks (external tracker id) — link out to each",
+    body: callTool("tracker", {}),
   },
   {
     name: "kanban-status",

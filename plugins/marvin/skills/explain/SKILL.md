@@ -1,6 +1,6 @@
 ---
 name: explain
-description: Explain selected code, architecture decisions, or system behavior. Use when user asks "how does this work", "what does this do", "explain this code", "why is it designed this way", "walk me through", "marvin explain this code", or selects code and asks about its purpose, logic, or design rationale.
+description: Explain selected code, architecture decisions, or system behavior. Use when user asks "how does this work", "what does this do", "explain this code", "why is it designed this way", "walk me through", "marvin explain this code", or selects code and asks about its purpose, logic, or design rationale. Covers understanding how code behaves — including code that errors or throws — when the user only wants to understand it and is explicitly not asking for a fix. If the user wants to fix a failure or find its root cause, use debug instead.
 ---
 
 Explain the selected code or the area the user is asking about.

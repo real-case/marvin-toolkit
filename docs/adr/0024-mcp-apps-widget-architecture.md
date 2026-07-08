@@ -116,3 +116,9 @@ set of shared data contracts**.
   tests. The server bundle (`dist/server.js`) is unchanged, so the committed-dist
   guard stays green. Stage-1 and Stage-2 mechanics are tracked in memory
   (`mcp-apps-widget-architecture`) and will be recorded as they land.
+- **Status: the widget family is complete.** Both stages have landed as of the initial
+  release, plugin **v0.1.0** — seven bound `ui://` widgets (task-list, task-detail, tracker-list,
+  handoffs, audit, task-summary, dashboard) built over the two React primitives
+  (`<Markdown>`, the enumeration's item #4 "reusable markdown view", and the `<ListDetail>`
+  master-detail shell). Progressive enhancement held throughout: every widget-backed tool
+  kept its byte-unchanged terminal text fallback.

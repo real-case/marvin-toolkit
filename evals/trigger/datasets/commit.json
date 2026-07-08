@@ -1,0 +1,202 @@
+{
+  "skill": "commit",
+  "target": "commit",
+  "note": "Worked exemplar. mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "commit this",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "stage and commit my changes",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "make a commit",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "commit what I've got, I'm about to break for lunch",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "can you commit these? conventional commits pls",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "wrap up this change with a commit following our conventions",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "gitcommit the work please",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "save my progress to git",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "done with this unit of work — persist it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "revert my last commit",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "git op, not the commit workflow"
+    },
+    {
+      "id": "neg-2",
+      "text": "what does the latest commit change?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "inspection → explain"
+    },
+    {
+      "id": "neg-3",
+      "text": "squash the last 3 commits into one",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "rebase, not commit"
+    },
+    {
+      "id": "neg-4",
+      "text": "write a bash script that commits every changed file in a loop",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "scripting task"
+    },
+    {
+      "id": "neg-5",
+      "text": "cherry-pick that commit onto main",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "git op"
+    },
+    {
+      "id": "neg-6",
+      "text": "amend the commit message on my open PR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "PR-side edit"
+    },
+    {
+      "id": "neg-7",
+      "text": "generate release notes from commits since v0.1.0",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ changelog"
+    },
+    {
+      "id": "neg-8",
+      "text": "find which commit introduced this bug",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ debug/bisect"
+    },
+    {
+      "id": "neg-9",
+      "text": "set up a pre-commit hook for linting",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "tooling config, not making a commit"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "commit my changelog edits",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "commit",
+      "mock_rate": 1,
+      "note": "shares 'changelog' vocab but the action is to commit"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "commit this, don't open a PR yet",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "commit",
+      "mock_rate": 1,
+      "note": "must beat pr-create"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "open a pull request for my branch",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-create",
+      "mock_rate": 0,
+      "note": "must lose to pr-create"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "my last commit broke the build, help me figure out why",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 0,
+      "note": "must lose to debug"
+    }
+  ]
+}

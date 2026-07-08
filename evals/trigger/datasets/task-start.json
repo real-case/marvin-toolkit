@@ -1,0 +1,219 @@
+{
+  "skill": "task-start",
+  "target": "task-start",
+  "note": "task-start OWNS Phase 1 of the taskmaster pipeline: a structured dialogue that produces an immutable, testable spec (context capture, solution variants, file-change allowlist, acceptance criteria bound to oracles, red-team critic, tool-backed Definition-of-Ready gate) BEFORE any code is written. Near-misses are the downstream pipeline siblings (task-implement executes a ready spec, task-verify runs gates, task-deliver commits+PRs, task-fix-pr applies review feedback) plus debug (root-cause with no spec), migration-plan (a different planning artifact), adr (records a decision, not a work spec), and the lightweight kanban-* tracker (board cards, not a heavyweight spec). mock_rate encodes the IDEAL outcome for `--decider mock`; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "start a task to add a rate limiter to the /api/login endpoint",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "let's spec this out properly before anyone writes code — we want to add webhook retries with exponential backoff",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "my manager asked me to define the task for migrating the sessions table off Redis onto Postgres — I need a real spec with acceptance criteria",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "begin work on the multi-tenant support feature — walk me through the variants and produce a spec I can hand to a headless agent",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "PROJ-482 needs to become a proper spec — go through the dialogue, pin down the file allowlist and testable criteria",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "I want to build a CSV export for the reports page but first let's do the whole context-capture + solution-variants thing and lock in a contract",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "/marvin:task-start add optimistic locking to the inventory update path",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "before we dispatch this to the taskmaster executor I need an immutable spec — the feature is per-user feature flags via LaunchDarkly",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "help me scope out and formalize the work for splitting the monolith auth module into its own service — I need the DoR gate to pass before I start",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "kick off a new task from issue #217 — explore 3 approaches, bind each acceptance criterion to a test, then run the readiness gate",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "the spec at .marvin/task/012-webhook-retries.md is ready — go implement it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "executing an already-ready spec → task-implement"
+    },
+    {
+      "id": "neg-2",
+      "text": "run the quality gates on this repo — tests, lint, type-check, build",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "running gates → task-verify"
+    },
+    {
+      "id": "neg-3",
+      "text": "verification passed, now commit everything and open the PR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "final delivery → task-deliver"
+    },
+    {
+      "id": "neg-4",
+      "text": "the login page throws a 500 intermittently under load — figure out why",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause analysis with no spec → debug"
+    },
+    {
+      "id": "neg-5",
+      "text": "plan the migration from webpack to vite across the frontend — steps, risks, rollback",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "migration/refactor planning artifact → migration-plan, not a task spec"
+    },
+    {
+      "id": "neg-6",
+      "text": "record our decision to adopt event sourcing in billing as an architecture decision record",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "documenting a decision → adr, not a work spec"
+    },
+    {
+      "id": "neg-7",
+      "text": "add a quick bug card to the board: search box ignores trailing whitespace",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "lightweight tracker card → kanban-bug, not the heavyweight spec pipeline"
+    },
+    {
+      "id": "neg-8",
+      "text": "the reviewer left comments on my PR — apply their suggestions, push, and reply to the threads",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "turning PR feedback into commits → task-fix-pr"
+    },
+    {
+      "id": "neg-9",
+      "text": "walk me through how the spec DoR gate parses the spec-contract YAML block",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding existing code → explain, not starting a task"
+    },
+    {
+      "id": "neg-10",
+      "text": "add a research spike card to investigate whether we can drop the Redis dependency",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "quick spike on the board → kanban-spike, not a full spec"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "I have a rough idea for a notifications feature but no spec yet — start the task, we need to explore approaches and produce the contract before implementing",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-start",
+      "mock_rate": 1,
+      "note": "mentions implementing but no spec exists yet → task-start authors it first, beats task-implement"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "define this piece of work as a proper testable spec instead of just jumping in and coding it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-start",
+      "mock_rate": 1,
+      "note": "must beat migration-plan — this is a task spec with acceptance criteria, not a migration plan"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "the spec is already written and green on the DoR gate — just execute it in this session",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-implement",
+      "mock_rate": 0,
+      "note": "a ready spec exists; executing it is task-implement's job, not authoring"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "we already agreed on the approach in the ADR — I just need the tests, lint and build to go green before I ship",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-verify",
+      "mock_rate": 0,
+      "note": "no spec authoring wanted; running the gates is task-verify"
+    }
+  ]
+}

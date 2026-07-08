@@ -1,0 +1,125 @@
+{
+  "skill": "adr-accept",
+  "target": "adr-accept",
+  "disable_model_invocation": true,
+  "note": "adr-accept is a disable-model-invocation skill — human-run by design; it must NEVER auto-trigger from prose. This dataset is negative-assurance only: every entry is a near-miss in the ADR-ratification neighborhood where the correct behavior is to route to a sibling skill (adr / adr-review / adr-audit / adr-coverage / adr-supersede / adr-sync) or to wait for an explicit /marvin:adr-accept invocation by the human. No positives, no competition entries. mock_rate is 0 on every query so --decider mock stays green.",
+  "queries": [
+    {
+      "id": "neg-1",
+      "text": "review ADR 31 and tell me if it's ready to accept",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "readiness review → adr-review; accept itself stays human-run"
+    },
+    {
+      "id": "neg-2",
+      "text": "draft an ADR for the decision to move the kanban board to sqlite",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a new proposed record → adr"
+    },
+    {
+      "id": "neg-3",
+      "text": "is decision record 0027 finished, or does it still have placeholder sections?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "readiness/defect check → adr-review, not the ratification act"
+    },
+    {
+      "id": "neg-4",
+      "text": "audit the ADR corpus — check for dangling references and numbering holes before the release",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only corpus lint → adr-audit"
+    },
+    {
+      "id": "neg-5",
+      "text": "ADR 12 is being replaced by the new one on the single-server model — roll the old one back",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "supersede/roll-back of an accepted record → adr-supersede (also human-run)"
+    },
+    {
+      "id": "neg-6",
+      "text": "what architecture decisions are we missing ADRs for?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "gap analysis → adr-coverage"
+    },
+    {
+      "id": "neg-7",
+      "text": "the accepted-decisions digest in CLAUDE.md is stale, regenerate it from the ratified records",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "sync the CLAUDE.md digest → adr-sync (also human-run)"
+    },
+    {
+      "id": "neg-8",
+      "text": "explain why we chose the fail-closed readiness gate in the adr accept flow",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "conceptual explanation of the accept mechanism → explain, not the ratification command"
+    },
+    {
+      "id": "neg-9",
+      "text": "my manager wants me to accept ADR 34 today — walk me through what /marvin:adr-accept checks first",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "asks ABOUT the accept gate; the act itself is an explicit human /marvin:adr-accept run, never auto-loaded from prose"
+    },
+    {
+      "id": "neg-10",
+      "text": "the adr accept gate keeps refusing record 0029 with 'required section missing' — help me figure out which section",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing a refusal → debug / adr-review; the skill never self-invokes to work around its own gate"
+    },
+    {
+      "id": "neg-11",
+      "text": "bump the status field in docs/adr/0031-*.md from proposed to accepted",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hand-editing the Status field is exactly what the skill forbids — a raw file edit, and ratification must go through the human-run gate anyway"
+    },
+    {
+      "id": "neg-12",
+      "text": "do a formatting and link pass over the proposed ADR before I ratify it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "formal defect auto-fix → adr-review; accept stays a separate deliberate human step"
+    },
+    {
+      "id": "neg-13",
+      "text": "list the ADRs that are still sitting in proposed status",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "read-only listing of the corpus → adr tool list / adr-audit, not the ratifying action"
+    }
+  ]
+}

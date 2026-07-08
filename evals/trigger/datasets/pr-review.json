@@ -1,0 +1,216 @@
+{
+  "skill": "pr-review",
+  "target": "pr-review",
+  "note": "pr-review = reviewer side of the PR flow: fetch the PR diff and post a GitHub review (summary + inline comments). Distinct from pr-create (author opens the PR), task-fix-pr (turn review comments into code), code-review (local read-only pre-commit), and the sec-* scanners (security-only). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "review PR #214 and leave comments",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "can you do a code review on the pull request for my branch?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "marvin review PR 87 — look for bugs, perf issues, and security stuff and post inline comments",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my teammate opened a PR against dev, go review it and request changes if anything looks off",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "start a PR review on the current branch's pull request and submit it to github",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "leave review comments on PR 142, be specific about the null handling in the api handler",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "give the open pull request a proper review pass and post it — correctness, error handling, tests",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "review my coworker's PR, approve it if it's clean otherwise comment",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "do a review of PR #9 and anchor the findings to the changed lines",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "our lead asked me to review this pull request before merge — check the diff and drop inline notes",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "open a pull request for this branch with a description and checklist",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "author side → pr-create, not reviewing an existing PR"
+    },
+    {
+      "id": "neg-2",
+      "text": "address the review comments on my PR and push the fixes",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "applying reviewer feedback → task-fix-pr"
+    },
+    {
+      "id": "neg-3",
+      "text": "review my staged changes locally before I commit, don't post anything to github",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "local read-only pre-commit review → code-review / sec-gate, no GitHub post"
+    },
+    {
+      "id": "neg-4",
+      "text": "explain how the diff in this PR actually works, walk me through the logic",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding code → explain, not a review verdict"
+    },
+    {
+      "id": "neg-5",
+      "text": "the CI check on this PR is failing, help me figure out why",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause a failure → debug"
+    },
+    {
+      "id": "neg-6",
+      "text": "run a full security scan of the code in this PR for OWASP issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dedicated security audit → sec-scan, not a general PR review"
+    },
+    {
+      "id": "neg-7",
+      "text": "merge PR #55 once the checks are green",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "merge op → pr-merge / plain gh, not reviewing"
+    },
+    {
+      "id": "neg-8",
+      "text": "reply to the reviewer's comment thread on PR 30 and resolve it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "responding to/closing threads → task-fix-pr, not authoring a new review"
+    },
+    {
+      "id": "neg-9",
+      "text": "summarize what changed in this PR for the release notes",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ changelog, not a quality review"
+    },
+    {
+      "id": "neg-10",
+      "text": "check the Terraform and Dockerfile in this PR for misconfigurations",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC-specific security review → sec-iac"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "review the pull request I just created and post the review on github",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "pr-review",
+      "mock_rate": 1,
+      "note": "shares 'pull request' with pr-create but the action is to review an existing PR, not open one"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "look over the PR diff for bugs and leave inline review comments on github",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-review",
+      "mock_rate": 1,
+      "note": "must beat code-review — the GitHub-posting review is pr-review's job, not the local read-only pass"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "review my current working diff for bugs before I push, don't touch github",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "local read-only pre-commit review → /code-review; pr-review posts to GitHub, so it must abstain here"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "open a pull request for my feature branch and fill in the description",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "pr-create",
+      "mock_rate": 0,
+      "note": "must lose to pr-create — authoring/opening the PR, not reviewing one"
+    }
+  ]
+}

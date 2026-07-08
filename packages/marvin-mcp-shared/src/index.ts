@@ -5,6 +5,7 @@ export type {
   AnyToolDef,
   ToolResult,
   ResourceDef,
+  InvocationEvent,
 } from "./types.js";
 export { defineTool } from "./types.js";
 export type { PackBundle, RunPackOptions } from "./server.js";

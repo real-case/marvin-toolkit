@@ -6,7 +6,7 @@ import {
   type AnyToolDef,
   type ToolResult,
 } from "@marvin-toolkit/mcp-shared";
-import type { PrRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
+import type { TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { existsSync } from "node:fs";
 import {
@@ -23,7 +23,6 @@ import {
 import {
   loadConfig,
   parseStatusesJson,
-  trackerUrl,
   updateConfigFile,
   type ConfigPatch,
 } from "../storage/config.js";
@@ -51,6 +50,8 @@ import {
 } from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 import { formatTaskLine, renderListTable } from "../flows/format.js";
+import { buildTaskCard } from "../flows/card.js";
+import { TASK_LIST_WIDGET_URI } from "../resources/widgets.js";
 
 /**
  * Every field an interactive form can ask for is also a first-class tool
@@ -138,6 +139,11 @@ export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
     description:
       'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
+    // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
+    // the widget renders the `list` action's TaskListPayload; other actions deliver
+    // no payload and the widget degrades to its empty/connecting state. The terminal
+    // ignores `_meta`, so the text fallback is byte-for-byte unchanged.
+    meta: { ui: { resourceUri: TASK_LIST_WIDGET_URI } },
     handler: (input) => {
       // Config is (re)loaded on every call rather than captured at server
       // startup: the `config` action edits .marvin/config.json mid-session,
@@ -353,35 +359,15 @@ function buildTaskListPayload(tasks: Task[], config: Config): TaskListPayload {
     blocked: 0,
   };
   const cards: TaskCard[] = tasks.map((t) => {
-    const fm = t.frontmatter;
-    const role = roleOfStatus(config, fm.status);
-    counts[fm.status] = (counts[fm.status] ?? 0) + 1;
-    role_counts[role] += 1;
-    return {
-      id: fm.id,
-      type: fm.type,
-      status: { key: fm.status, role },
-      title: fm.title,
-      branch: fm.branch,
-      ...(fm.tracker_id ? { tracker_id: fm.tracker_id } : {}),
-      tracker_url: trackerUrl(config, fm.tracker_id),
-      pr: prRefFromUrl(fm.pr),
-      created: fm.created,
-      updated: fm.updated,
-    };
+    // buildTaskCard (flows/card.ts) is the single card mapping shared with the
+    // task-detail tool; the counts roll up from the returned cards so the two
+    // payloads cannot describe a card differently.
+    const card = buildTaskCard(t, config);
+    counts[card.status.key] = (counts[card.status.key] ?? 0) + 1;
+    role_counts[card.status.role] += 1;
+    return card;
   });
   return { tasks: cards, counts, role_counts };
-}
-
-/**
- * Map a stored PR URL to the PrRef widget contract (ADR-0024). The PR number is
- * derived from the URL (`…/pull/<n>`); `state` is intentionally omitted — marvin
- * stores the URL at create time and never live-resolves the PR's current state.
- */
-function prRefFromUrl(url: string | undefined): PrRef | null {
-  if (!url) return null;
-  const match = url.match(/\/pull\/(\d+)/);
-  return match ? { url, number: Number(match[1]) } : { url };
 }
 
 function runStatus(_server: McpServer, env: ServerEnv, config: Config): ToolResult {
@@ -542,7 +528,7 @@ async function runMove(
     return errOk(`Unknown status key \`${target}\` — configured statuses: ${keys.join(", ")}.`);
   }
 
-  let task: Task | null = null;
+  let task: Task | null;
   if (input.taskId) {
     task = findTaskById(tasks, input.taskId);
     if (!task) return errOk(`Task ${input.taskId} not found`);

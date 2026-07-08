@@ -7,6 +7,7 @@ import {
   TaskSummary,
   HandoffCard,
   AuditReport,
+  RefactorFinding,
   DashboardState,
 } from "../dist/contracts/index.js";
 
@@ -117,6 +118,26 @@ test("AuditReport validates findings and severity-keyed summary", () => {
     AuditReport.safeParse({ kind: "nope", scanned_at: NOW, summary: {}, findings: [] }).success,
     false,
   );
+});
+
+test("RefactorFinding carries the register fields and requires evidenced findings (ADR-0029)", () => {
+  const finding = {
+    id: "F1",
+    title: "God module: server.ts owns routing, config and IO",
+    severity: "high",
+    effort: "medium",
+    evidence: [{ file: "src/server.ts", line: 12, note: "changed 47x in 12 mo" }],
+    direction: "Split registration, config and IO into dedicated modules",
+    source_report: ".marvin/refactor/001-audit-core.md",
+  };
+  assert.equal(RefactorFinding.safeParse(finding).success, true);
+  // the register id shape is F<n>
+  assert.equal(RefactorFinding.safeParse({ ...finding, id: "1" }).success, false);
+  // severity reuses the audit vocabulary; effort is the register's own scale
+  assert.equal(RefactorFinding.safeParse({ ...finding, severity: "sev1" }).success, false);
+  assert.equal(RefactorFinding.safeParse({ ...finding, effort: "epic" }).success, false);
+  // no finding without evidence
+  assert.equal(RefactorFinding.safeParse({ ...finding, evidence: [] }).success, false);
 });
 
 test("DashboardState mirrors the help tool's computed state", () => {

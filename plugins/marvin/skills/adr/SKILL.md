@@ -1,10 +1,17 @@
 ---
 name: adr
-description: Create a structured Architecture Decision Record (ADR) capturing context, alternatives considered, the decision, and consequences in MADR / Nygard format. Use when the user says "write ADR", "record this decision", "document architecture choice", "capture the rationale", "create decision log", or right after committing to a significant technical choice (framework, database, protocol, pattern, migration). Produces numbered markdown files under docs/adr/.
-disable-model-invocation: true
+description: Draft a structured Architecture Decision Record (ADR) capturing context, alternatives considered, the decision, and consequences in MADR / Nygard format. Use when the user says "write ADR", "record this decision", "document architecture choice", "capture the rationale", "create decision log", or right after committing to a significant technical choice (framework, database, protocol, pattern, migration). Numbering, target path, and the corpus index come from the `adr` MCP tool; drafts always land with status `proposed` — ratification is the separate human-run `/marvin:adr-accept`.
 ---
 
-Create an Architecture Decision Record (ADR) to document a significant technical decision.
+Draft an Architecture Decision Record (ADR) documenting a significant technical decision.
+
+The deterministic mechanics — next number, target path, corpus discovery, index regeneration —
+belong to the **`adr` MCP tool** (from the `marvin` server, ADR-0027). This skill owns only the
+judgement work: gathering context, weighing alternatives, and writing the prose. Never hand-number
+a record or hand-maintain the index.
+
+A draft **always lands with status `proposed`** — never `accepted`. Authority lives at the gates:
+ratification is `/marvin:adr-accept`, rollback is `/marvin:adr-supersede`, both human-run.
 
 ## Argument handling
 
@@ -12,20 +19,20 @@ Create an Architecture Decision Record (ADR) to document a significant technical
 - `/marvin:adr <title> --context <path>` — use research notes from the given file as additional input
 - `/marvin:adr` — ask the user what decision they want to document
 
-## Phase 1: Discover existing ADRs and project conventions
+## Phase 1: Discover the corpus and project conventions
 
-1. Read project-level conventions:
-    - `CLAUDE.md` and any files in `.claude/` — for coding standards, architectural constraints, naming conventions
-    - `docs/` directory listing — check for existing RFCs, design docs, or architectural guidelines
-2. Find existing ADR files:
-   ```
-   Glob("**/adr/**/*.md") and Glob("**/decisions/**/*.md")
-   ```
-3. If ADRs exist:
-    - Read 2–3 recent ones to match the project's ADR **style, tone, and format**
-    - Determine the next ADR number from the highest existing number
-    - Note the directory where ADRs are stored — use the same location
-4. If no ADRs exist: use `docs/adr/` as the default directory and the template from Phase 3
+1. Call the `adr` MCP tool with `{"action": "list"}` — it resolves the corpus location
+   (config `adr.dir` → detected `docs/adr/` / `docs/decisions/` / `adr/` → default `docs/adr/`)
+   and returns every existing record with number, title, and status. Note records related to
+   this decision, and any malformed files it reports.
+2. If records exist, read 2–3 recent ones to match the corpus's **style, tone, and header
+   format** — marvin-style table headers (`| Status | … |`) and MADR-style sections
+   (`## Status`) both parse; new records should match their neighbours. If the corpus is
+   empty, use the template in Phase 3 as-is.
+3. Read project-level conventions: `CLAUDE.md` and any files in `.claude/` — coding standards,
+   architectural constraints, naming conventions; check `docs/` for related RFCs or design docs.
+4. Call the `adr` MCP tool with `{"action": "next", "title": "<working title>"}` — it returns
+   the reserved number and the exact target path (`<dir>/NNNN-<slug>.md`). Use both verbatim.
 
 ## Phase 2: Gather decision context from the codebase
 
@@ -46,20 +53,26 @@ Run these in parallel where possible:
 
 ### 2c. Check for conflicts with existing decisions
 
-- Read any existing ADRs on related topics found in Phase 1
+- Read the existing records that Phase 1 flagged as related
 - Flag if this decision **supersedes**, **extends**, or **conflicts** with an existing ADR
-- If superseding: note the old ADR number for update in Phase 4
+- If it supersedes one: do **not** edit the old record and do not hand-write the link pair.
+  Draft the new record normally; after it lands, point the user at `/marvin:adr-supersede`,
+  which pairs the two records and flips the old status deterministically (its content is
+  never touched)
 
 ## Phase 3: Draft the ADR
 
-Use the template below. Fill in **all sections** with substantive content — no placeholders, HTML comments, or TODOs should remain in the final draft.
+Use the template below (or the corpus's own established format from Phase 1). Fill in **all
+sections** with substantive content — no `{…}` placeholders, HTML comments, or TODOs may remain:
+the `accept` readiness gate refuses a record with placeholder residue, missing required sections
+(Context, Decision, Consequences), or cross-references that don't resolve.
 
 ```markdown
-# ADR-{NNN}: {Title}
+# ADR-{NNNN}: {Title}
 
 ## Status
 
-{Proposed | Accepted | Deprecated | Superseded by ADR-XXX}
+Proposed
 
 ## Date
 
@@ -113,16 +126,19 @@ trivially dismissed — only those that had a real chance.}
 ## Related decisions
 
 {List related ADRs if any. "None" is acceptable.
-- Supersedes: ADR-XXX (if applicable)
-- Related to: ADR-YYY (if applicable)}
+- Related to: ADR-YYYY (if applicable)}
 ```
 
 ### Template notes
 
+- **Status is always `Proposed`** — the draft's correctness costs nothing until ratification.
+  Never write `Accepted` (that is `/marvin:adr-accept`'s job) and never pre-fill supersede
+  links (that is `/marvin:adr-supersede`'s job).
 - **Decision drivers** make the evaluation framework explicit. Readers can re-evaluate the decision against the same criteria if circumstances change.
 - **How it addresses drivers** in alternatives ties each option back to the criteria, making the comparison structured rather than ad-hoc.
 - **Risks and mitigations** is more actionable than a plain "Risks" list — it forces thinking about what to do if the risk materializes.
-- **Related decisions** creates a navigable decision graph across ADRs.
+- **Related decisions** creates a navigable decision graph across ADRs — every `ADR-NNNN`
+  reference must point at a record that actually exists (the audit lints dangling references).
 
 ## Phase 4: Review, iterate, and write
 
@@ -133,8 +149,15 @@ trivially dismissed — only those that had a real chance.}
     - Re-present the updated draft
     - Repeat until approved
 4. After user approval:
-    - Create the file at the determined path
-    - If this ADR supersedes an existing one: update the old ADR's Status to `Superseded by ADR-{NNN}` and add today's date
+    - Write the file at the exact path `adr next` returned in Phase 1 (re-run
+      `{"action": "next", "title": "<final title>"}` first if the title changed or the
+      conversation was long enough that another record may have landed meanwhile)
+    - Call the `adr` MCP tool with `{"action": "index"}` to refresh the corpus index
+      (it maintains a marker-managed block and skips gracefully when the corpus has no
+      index target)
+5. Close by naming the two follow-up gates: `/marvin:adr-review` for a grounded review of the
+   draft, and `/marvin:adr-accept` (human-run) to ratify it. If the decision replaces an
+   existing record, point at `/marvin:adr-supersede` instead of editing the old file.
 
 ## Quality checklist (self-check before presenting draft)
 
@@ -144,7 +167,8 @@ trivially dismissed — only those that had a real chance.}
 - [ ] At least 2 alternatives are listed with honest pros/cons tied to the drivers
 - [ ] Negative consequences and risks are included — no decision is free
 - [ ] Risks have mitigations — even if the mitigation is "accept the risk"
-- [ ] No placeholders, HTML comments, or TODOs remain
-- [ ] ADR number doesn't conflict with existing ADRs
-- [ ] If superseding another ADR, the old one is identified for update
-- [ ] The ADR is consistent with conventions found in CLAUDE.md and existing ADRs
+- [ ] No placeholders, HTML comments, or TODOs remain (the accept gate will refuse them)
+- [ ] Number and path came from `adr next` — never hand-numbered
+- [ ] Status reads `Proposed` — ratification and supersession stay with their human-run commands
+- [ ] Every referenced ADR number exists in the corpus
+- [ ] The ADR is consistent with conventions found in CLAUDE.md and existing records

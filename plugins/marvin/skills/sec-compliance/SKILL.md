@@ -255,3 +255,41 @@ Write the compliance report to `.marvin/security/compliance-asvs.md` (create the
 - **Don't check every requirement at once for large codebases.** If the user hasn't specified a focus, start with the highest-impact chapters (V2, V4, V5) and offer to continue with the rest.
 - **Reference sec-fix for remediation.** For each Fail, suggest running `sec-fix` with the specific requirement as input.
 - **ASVS evolves.** The checklist file (`asvs-4.0-checklist.md`) is a reference. If a newer version of ASVS is available, note the version being checked.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+After the prose gap analysis, append a machine-readable `audit-report` block to the same
+`.marvin/security/compliance-report.md` file so `/marvin:sec-report` (the `audit` tool) and the
+dashboard can consume typed findings. Rules: set `kind` to `compliance`; emit one finding per failed
+or partial ASVS control (passing controls are **not** findings) with `category` = the ASVS section
+(e.g. `ASVS V2.2.1`) and `severity` derived from the control's level; make the `summary` counts match
+the `findings`; use the severity vocabulary `critical | high | medium | low | info`; `scanned_at` is
+an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real audit (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "compliance",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "OWASP ASVS 5.0 L2",
+  "summary": { "high": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "ASVS-1",
+      "severity": "high",
+      "title": "No rate limiting or lockout on authentication",
+      "category": "ASVS V2.2.1",
+      "file": "src/auth/login.ts",
+      "remediation": "Add rate limiting and account lockout to the login endpoint"
+    },
+    {
+      "id": "ASVS-2",
+      "severity": "medium",
+      "title": "Session id not rotated on privilege change",
+      "category": "ASVS V3.3.3",
+      "remediation": "Regenerate the session id on login and on role elevation"
+    }
+  ]
+}
+```

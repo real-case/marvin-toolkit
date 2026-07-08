@@ -1,0 +1,202 @@
+{
+  "skill": "sec-threat-model",
+  "target": "sec-threat-model",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. Negatives are near-misses against sibling sec-* scanners that share 'security' vocab but produce a different artifact than a STRIDE threat model.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "threat model the new payments service",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run a STRIDE analysis on our OAuth login flow before the design review",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "we're adding a webhook receiver in src/webhooks/ — what can go wrong from a security standpoint? map the trust boundaries",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "my manager wants a security architecture review of the multi-tenant data layer for the design doc",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "can you enumerate the attack surface for the file-upload feature and list threats by spoofing/tampering/etc?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "produce a threat-model doc for the whole app covering assets, data flows, and residual risk per category",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "we're integrating a third-party billing API — walk the data flows and identify elevation-of-privilege and info-disclosure risks",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "stride threat modelling for the notification microservice pls, need it for tomorrow's arch review",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "before we ship the new SSO integration, model the repudiation and DoS threats around the token exchange",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "run a full OWASP Top 10 security scan of the whole codebase before prod",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "comprehensive codebase audit → sec-scan, not a STRIDE model"
+    },
+    {
+      "id": "neg-2",
+      "text": "generate a pentest checklist for the customer portal so I can hand it to the external assessor",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "PTES/OWASP testing checklist → sec-pentest"
+    },
+    {
+      "id": "neg-3",
+      "text": "check our infra/terraform/ for exposed endpoints and over-permissioned IAM roles",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC review → sec-iac"
+    },
+    {
+      "id": "neg-4",
+      "text": "do an ASVS L2 compliance gap analysis and give me the control matrix",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ASVS control-by-control report → sec-compliance"
+    },
+    {
+      "id": "neg-5",
+      "text": "audit package.json and requirements.txt for known CVEs and unmaintained deps",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency CVE audit → sec-deps"
+    },
+    {
+      "id": "neg-6",
+      "text": "scan the repo and git history for leaked API keys and credentials",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection → sec-secrets"
+    },
+    {
+      "id": "neg-7",
+      "text": "review our GitHub Actions workflows for supply-chain risks and pinned actions",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD pipeline audit → sec-ci"
+    },
+    {
+      "id": "neg-8",
+      "text": "quick security gate on my staged diff before I push this auth change",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diff-scoped pre-commit check → sec-gate"
+    },
+    {
+      "id": "neg-9",
+      "text": "explain how the trust boundary between the gateway and the worker is enforced in this code",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understand existing code, not model new threats → explain"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "before the design review of the new realtime sync feature, do a STRIDE threat model — I don't want a full codebase scan yet, just the attack surface and trust boundaries",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-threat-model",
+      "mock_rate": 1,
+      "note": "shares 'security'/'scan' vocab but explicitly wants a design-time STRIDE model, not the full audit → must beat sec-scan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "map the assets and threats-by-category for the API before we scope the pentest",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-threat-model",
+      "mock_rate": 1,
+      "note": "mentions pentest but the ask is to model threats/assets first → must beat sec-pentest"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "generate the tailored pentest checklist for the login and payment flows for our red team engagement",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-pentest",
+      "mock_rate": 0,
+      "note": "deliverable is a testing checklist for an assessor → must lose to sec-pentest"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "do a comprehensive OWASP Top 10 audit across the whole service including secrets, deps, and static analysis before the acquisition review",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "full multi-scanner codebase audit → must lose to sec-scan"
+    }
+  ]
+}

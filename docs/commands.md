@@ -1,245 +1,265 @@
 # Command reference
 
-Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **42** in total.
+This page lists every command Marvin ships, with a one-line synopsis and the
+natural-language phrases that invoke it. Commands follow the pattern
+`/marvin:<group>-<command>`, and singletons stay bare. There are **57** in total,
+divided into seven groups.
 
-**Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
+Use this page to look a command up. To learn the workflows themselves, read the
+[usage guide](./usage.md); to understand how the commands are built, read the
+[architecture tour](./architecture.md).
 
-- **Chat (natural language)** — just say what you want. Claude Code matches the skill by its
-  frontmatter `description`, so a phrase like `marvin start a new task` or
-  `resolve the comments on PR 51` runs the command. Leading with **“marvin”** is optional but
-  helps disambiguate from an ordinary request. The **Say it in chat** column below lists example
-  phrases per command.
-- **`/<command>`** — the terse markdown slash command (e.g. `/commit`, `/sec-scan`).
-- **`/marvin:<command>`** — the MCP prompt slash command (e.g. `/marvin:commit`).
+## The three ways to invoke a command
 
-Every command also runs in slash form as **`/marvin:<command> [args]`**. The chat phrases below
-are illustrative, not exhaustive — any close paraphrase works. The `kanban-*` group and the three
-read-side commands (`help`, `handoff-list`, `task-summary`) have no `SKILL.md`; there a chat
-phrase is served by Claude calling the underlying tool rather than by skill auto-discovery, but
-the effect is the same.
+Every workflow has three entry points that all resolve to the same behavior, which the
+["three doors" model](./architecture.md#three-doors-one-room) explains in full. Pick
+whichever suits the moment.
 
----
+- **Chat.** Say what you want in plain language, and Claude Code matches your wording to a skill by its frontmatter `description`. The **Say it in chat** column below lists example phrases; any close paraphrase works.
+- **`/<command>`.** Type the terse markdown slash command, such as `/commit` or `/sec-scan`.
+- **`/marvin:<command>`.** Type the namespaced MCP prompt, such as `/marvin:commit`, which the bundled server serves.
 
-## Natural-language routing (the `marvin` wake-word)
+The `kanban-*` group and five read-side commands — `help`, `dashboard`, `handoff-list`,
+`lessons`, and `task-summary` — have no skill. For those, a chat phrase is served by
+Claude calling the underlying tool rather than by skill auto-discovery, but the effect is
+the same.
 
-Two layers turn a plain phrase into the right command:
+## Natural-language routing
 
-1. **Skill auto-discovery — built in, always on.** Claude Code matches your wording against each
-   skill's frontmatter `description`; the phrases in the **Say it in chat** columns below are part
-   of those descriptions, so `start a new task` or `resolve the review comments` land on the right
-   command with no setup. It is a best-effort semantic match, and `adr` / `migration-plan` opt out
-   of it on purpose (`disable-model-invocation`).
+Two layers turn a plain phrase into the right command.
 
-2. **The `marvin` wake-word hook — opt-in, deterministic routing.** A `UserPromptSubmit` hook
-   ([`.claude/hooks/marvin-router.sh`](../.claude/hooks/marvin-router.sh)) makes any prompt that
-   *starts with* **`marvin …`** resolve to a `/marvin:` command instead of an ad-hoc answer — e.g.
-   `marvin start a new task`, `marvin resolve pr 12`, `marvin scan for secrets`, or just `marvin`
-   (opens help). Because it points Claude straight at the command, it also routes `adr` /
-   `migration-plan`, which auto-discovery skips.
+The first layer is **skill auto-discovery**, which is built in and always on. Claude Code
+matches your wording against each skill's frontmatter `description`, so a phrase like
+`start a new task` or `resolve the review comments` lands on the right command with no
+setup. A few commands opt out of this on purpose with `disable-model-invocation`:
+`migration-plan`, and the three human-gated ADR lifecycle commands `adr-accept`,
+`adr-supersede`, and `adr-sync`. [ADR-0027](./adr/0027-tool-backed-adr-lifecycle.md)
+reserves ratification, rollback, and project-memory sync for a person.
 
-   It is wired for this repo in [`.claude/settings.json`](../.claude/settings.json); enable it
-   for **all** your projects by adding the same block to `~/.claude/settings.json`:
+The second layer is the **`marvin` wake-word hook**, which is opt-in and deterministic. A
+`UserPromptSubmit` hook at [`.claude/hooks/marvin-router.sh`](../.claude/hooks/marvin-router.sh)
+makes any prompt that starts with `marvin …` resolve to a `/marvin:` command rather than an
+ad-hoc answer, as in `marvin start a new task` or `marvin scan for secrets`. Because it
+points Claude straight at the command, it also routes `migration-plan` and the human-gated
+`adr-*` commands that auto-discovery skips.
 
-   ```json
-   {
-     "hooks": {
-       "UserPromptSubmit": [
-         { "hooks": [ { "type": "command",
-           "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/marvin-router.sh" } ] } ]
-     }
-   }
-   ```
+The hook is wired for this repository in [`.claude/settings.json`](../.claude/settings.json).
+To enable it for all your projects, add the same block to `~/.claude/settings.json`:
 
-   The hook **fails open** (never blocks a prompt), needs `jq`, and deliberately ignores ordinary
-   prose — `marvin is slow`, `marvin's server`, `marvin the …` pass straight through. The word
-   `marvin` is a human mnemonic: the hook keys on the leading prefix, not on Claude treating
-   `marvin` as a special token.
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command",
+        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/marvin-router.sh" } ] } ]
+  }
+}
+```
 
----
+The hook fails open so it never blocks a prompt, needs `jq`, and deliberately ignores
+ordinary prose, so `marvin is slow` or `marvin's server` pass straight through. The word
+`marvin` is a human mnemonic: the hook keys on the leading prefix, not on Claude treating
+`marvin` as a special token.
 
 ## Core developer tools
 
-Language-agnostic, used by every engineer.
+These are language-agnostic and used by every engineer.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files (`.env`, keys), draft a Conventional Commits message — with a `Refs:` footer when the branch belongs to a kanban task — and confirm before committing. | `marvin commit this`, `marvin stage and commit`, `commit my changes`, `marvin commit with task context` |
-| `/marvin:debug` | Hypothesis-driven root-cause analysis — gather evidence, form hypotheses, build a minimal reproduction instead of guessing. | `marvin debug this`, `marvin why is this failing?`, `the tests only flake on CI` |
-| `/marvin:adr` | Create an Architecture Decision Record capturing context, the decision, and its consequences. | `marvin write an ADR`, `marvin record this decision`, `document this design choice` |
-| `/marvin:changelog` | Generate a changelog / release notes from git history between tags, dates, or refs (Keep a Changelog). | `marvin changelog since v0.1.0`, `marvin what changed since the last tag?`, `generate release notes` |
-| `/marvin:readme` | Generate or update `README.md` from actual codebase analysis. | `marvin update the README`, `marvin generate project docs`, `write a readme for this repo` |
-| `/marvin:migration-plan` | Plan a migration or major refactor — dependency analysis, ordered steps, risks, and rollback. | `marvin plan a migration`, `marvin how do we move REST → gRPC?`, `plan this refactor` |
-| `/marvin:explain` | Explain how code works — logic, architecture, and design rationale. | `marvin explain this code`, `marvin how does verify.ts work?`, `walk me through this file` |
-| `/marvin:docs-search` | Search and synthesize project docs (ADRs, README, runbooks) to answer a question. | `marvin where is X documented?`, `marvin find the deploy runbook`, `how do the verify gates resolve?` |
-| `/marvin:handoff` | Capture full session context into `.marvin/handoff/` plus a prompt to continue in a fresh session. | `marvin hand off this session`, `marvin save context to continue later`, `create a handoff` |
-| `/marvin:handoff-list` | List the session-continuation handoff documents under `.marvin/handoff/`, newest first. | `marvin list handoffs`, `marvin show session handoffs` |
-| `/marvin:help` | Project dashboard and the full command index, derived from the prompt registry; filter by group. | `marvin help`, `marvin what commands are there?`, `marvin help sec` |
+| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files such as `.env` and keys, draft a Conventional Commits message with a `Refs:` footer when the branch belongs to a kanban task, and confirm before committing. | `marvin commit this`, `commit my changes`, `stage and commit` |
+| `/marvin:debug` | Run hypothesis-driven root-cause analysis — gather evidence, form hypotheses, and build a minimal reproduction instead of guessing. | `marvin debug this`, `why is this failing?`, `the tests only flake on CI` |
+| `/marvin:adr` | Draft an Architecture Decision Record, with the numbering, path, and index coming from the `adr` tool; drafts always land `proposed`. | `marvin write an ADR`, `record this decision`, `document this design choice` |
+| `/marvin:changelog` | Generate a changelog or release notes from git history between tags, dates, or refs, in Keep a Changelog form. | `marvin changelog since v0.1.0`, `what changed since the last tag?`, `generate release notes` |
+| `/marvin:readme` | Generate or update `README.md` from an analysis of the actual codebase. | `marvin update the README`, `generate project docs`, `write a readme for this repo` |
+| `/marvin:migration-plan` | Plan a migration or major refactor with dependency analysis, ordered steps, risks, and a rollback strategy. | `marvin plan a migration`, `how do we move REST to gRPC?`, `plan this refactor` |
+| `/marvin:explain` | Explain how code works, covering its logic, architecture, and design rationale. | `marvin explain this code`, `how does verify.ts work?`, `walk me through this file` |
+| `/marvin:docs-search` | Search and synthesize the project's documentation to answer a question. | `marvin where is X documented?`, `find the deploy runbook`, `how do the verify gates resolve?` |
+| `/marvin:handoff` | Capture the full session context into `.marvin/handoff/` plus a prompt to continue in a fresh session. | `marvin hand off this session`, `save context to continue later`, `create a handoff` |
+| `/marvin:handoff-list` | List the session-continuation handoff documents, newest first. | `marvin list handoffs`, `show session handoffs` |
+| `/marvin:lessons` | Browse the lessons-learned store — search, add, count by type or tag, or prune stale and duplicate lessons. | `marvin what did we learn about auth?`, `lessons stats`, `prune the lessons` |
+| `/marvin:help` | Show the project dashboard and the full command index, filtered by group. | `marvin help`, `what commands are there?`, `marvin help sec` |
+| `/marvin:dashboard` | Report the whole-toolbox state — board counters, artifact inventories with freshness, the ADR corpus by status, lessons stats, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
 
-**Agents:** `marvin-guide`, `marvin-researcher`, `marvin-debugger`.
+The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
+commands.
+
+## ADR lifecycle — `adr-*`
+
+These commands wrap the full decision-record lifecycle around the bare
+[`/marvin:adr`](#core-developer-tools) create command
+([ADR-0027](./adr/0027-tool-backed-adr-lifecycle.md)). The deterministic mechanics —
+numbering, corpus parsing, the accept readiness gate, paired supersede links, and the
+managed index — live in the `adr` tool, and the corpus location is host-adaptive.
+Authority sits at the gates: drafts always land `proposed`, and the three commands marked
+below are human-run, so Claude never ratifies, rolls back, or syncs project memory on its
+own.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:adr-review` | Deeply review one `proposed` record — section validation, codebase grounding, and auto-fix of formal defects only — returning `READY_FOR_ACCEPTANCE` or a defect list. | `marvin review the ADR`, `is ADR 31 ready?`, `check the decision record` |
+| `/marvin:adr-accept` 👤 | Ratify a `proposed` record through the tool's fail-closed readiness gate, then stamp its status and date. | Run `/marvin:adr-accept 31` yourself; it is deliberately not chat-invocable. |
+| `/marvin:adr-audit` | Lint the corpus read-only for dangling references, numbering gaps, broken supersede pairs, placeholder residue, and a stale index, with remediation guidance per finding. | `marvin audit the ADRs`, `ADR health check`, `are the decision records consistent?` |
+| `/marvin:adr-coverage` | Analyze gaps read-only — recorded decisions against the actual stack — and rank undocumented decisions by blast radius. | `marvin what decisions are undocumented?`, `ADR coverage`, `what ADRs are we missing?` |
+| `/marvin:adr-supersede` 👤 | Roll back an accepted decision through a paired successor record, linking both ways and never editing the old record's content. | Run `/marvin:adr-supersede 7 <new title>` yourself; it is deliberately not chat-invocable. |
+| `/marvin:adr-sync` 👤 | Regenerate the accepted-decisions digest in `CLAUDE.md` from accepted records only, showing a diff and asking to confirm before writing. | Run `/marvin:adr-sync` yourself; it is deliberately not chat-invocable. |
 
 ## Pull-request lifecycle — `pr-*`
 
-The full PR lifecycle, from open to merge.
+These commands cover the pull request from open to merge.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:pr-create` | Open a PR with a structured description, verification checklist, and issue linking; runs pre-flight checks. Picks up kanban task context (title prefix, task/tracker links) and captures the PR URL onto the task. | `marvin create a PR`, `marvin open a pull request`, `push and open a PR`, `marvin open a PR for this board task` |
-| `/marvin:pr-review` | Review a PR for bugs, security, performance, and style; post the review with severity-tagged inline comments. | `marvin review PR 51`, `marvin review this PR on GitHub`, `post a review on #51` |
-| `/marvin:pr-resolve` | Work through unresolved review threads — plan, fix, push, then reply to and resolve each. | `marvin resolve PR 51`, `marvin address the review comments on #51`, `fix the PR feedback` |
-| `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull. | `marvin merge PR 51`, `marvin land this PR`, `merge it and pull the base` |
+| `/marvin:pr-create` | Open a PR with a structured description, a verification checklist, and issue linking, after running pre-flight checks. Picks up kanban task context and captures the PR URL onto the task. | `marvin create a PR`, `open a pull request`, `push and open a PR` |
+| `/marvin:pr-review` | Review a PR for bugs, security, performance, and style, and post the review with severity-tagged inline comments. | `marvin review PR 51`, `review this PR on GitHub`, `post a review on #51` |
+| `/marvin:pr-resolve` | Work through unresolved review threads — plan, fix, push, then reply to and resolve each. | `marvin resolve PR 51`, `address the review comments on #51`, `fix the PR feedback` |
+| `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull. | `marvin merge PR 51`, `land this PR`, `merge it and pull the base` |
 
 ## Spec-driven task pipeline — `task-*`
 
-Separates human decisions (the spec) from automated execution. Artifacts land under `.marvin/task/`.
+These commands separate the human decisions in a spec from the automated execution that
+follows, with artifacts landing under `.marvin/task/`.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:task-start` | Interactive spec co-creation — codebase grounding, acceptance criteria bound to proofs, a red-team critic, then a tool-backed Definition-of-Ready gate. | `marvin start a new task`, `marvin new task`, `marvin spec this out` |
-| `/marvin:task-implement` | Execute a ready spec in the current session, self-test, then chain into verify + deliver. | `marvin implement the spec`, `marvin run the task`, `execute this spec` |
-| `/marvin:task-verify` | Run quality gates (tests, lint, type-check, build) concurrently with stack auto-detection; writes `verification.md`. | `marvin verify`, `marvin run the gates`, `is this green?` |
-| `/marvin:task-deliver` | Commit and open a PR, refusing if verification did not pass. | `marvin deliver`, `marvin ship it`, `commit and PR the task` |
-| `/marvin:task-summary` | Aggregate a finished task — spec criteria, gate outcomes, git log, lessons, and artifact links — into one summary. | `marvin summarize the task`, `marvin what was done?`, `task summary` |
+| `/marvin:task-start` | Co-create a spec interactively — codebase grounding, acceptance criteria bound to their proofs, a red-team critic, then a tool-backed Definition-of-Ready gate. | `marvin start a new task`, `new task`, `spec this out` |
+| `/marvin:task-implement` | Execute a ready spec in the current session, self-test, then chain into verify and deliver. | `marvin implement the spec`, `run the task`, `execute this spec` |
+| `/marvin:task-verify` | Run the quality gates concurrently with stack auto-detection and write `verification.md`. | `marvin verify`, `run the gates`, `is this green?` |
+| `/marvin:task-deliver` | Commit and open a PR, refusing if verification did not pass. | `marvin deliver`, `ship it`, `commit and PR the task` |
+| `/marvin:task-summary` | Aggregate a finished task — spec criteria, gate outcomes, git log, lessons, and links — into one summary. | `marvin summarize the task`, `what was done?`, `task summary` |
 
-**Agents:** `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`, `marvin-tm-diff-critic`, `marvin-tm-review-fixer`.
+The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
+`marvin-tm-diff-critic`, and `marvin-tm-review-fixer` agents support this pipeline.
 
 ## Security scanners — `sec-*`
 
-OWASP-aligned scanning, threat modeling, and remediation.
+These commands cover OWASP-aligned scanning, threat modeling, and remediation.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:sec-scan` | Comprehensive OWASP Top 10:2025 audit — orchestrates secrets + deps + IaC scans plus deep static analysis. | `marvin security scan`, `marvin full OWASP audit`, `harden this service` |
-| `/marvin:sec-secrets` | Deep scan for leaked secrets and keys across code, config, and full git history. | `marvin scan for secrets`, `marvin did I commit a key?`, `find leaked credentials` |
-| `/marvin:sec-deps` | Audit dependencies for known CVEs, license risks, and unmaintained / typosquatted packages. | `marvin audit dependencies`, `marvin check for vulnerable packages`, `run npm audit` |
-| `/marvin:sec-gate` | Fast, diff-scoped security check for staged or recent changes — a pre-commit gate. | `marvin quick sec check`, `marvin gate this commit`, `security-check my diff` |
-| `/marvin:sec-threat-model` | STRIDE threat model for a feature, service, or the whole app — data flows, trust boundaries, threats, mitigations. | `marvin threat model the kanban tools`, `marvin STRIDE analysis`, `what can go wrong here?` |
-| `/marvin:sec-iac` | Security review of Infrastructure-as-Code — Terraform, CloudFormation, Kubernetes, Docker, Helm. | `marvin review the Terraform`, `marvin scan the Dockerfile`, `IaC security review` |
-| `/marvin:sec-ci` | Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions. | `marvin audit the CI pipeline`, `marvin review the GitHub Actions`, `harden the workflows` |
-| `/marvin:sec-fix` | Generate and verify a minimal, tested patch for a vulnerability from any scanner or manual finding. | `marvin fix this vulnerability`, `marvin patch the finding`, `remediate the CVE` |
-| `/marvin:sec-compliance` | Check code against OWASP ASVS (L1/L2/L3) and report a control-by-control gap analysis. | `marvin ASVS audit`, `marvin compliance check`, `OWASP ASVS gap analysis` |
-| `/marvin:sec-pentest` | Generate an application-specific penetration-testing checklist mapped to PTES / OWASP. | `marvin plan a pentest`, `marvin generate a pentest checklist`, `red-team scope` |
+| `/marvin:sec-scan` | Run a comprehensive OWASP Top 10:2025 audit that orchestrates the secrets, dependency, and IaC scans plus deep static analysis. | `marvin security scan`, `full OWASP audit`, `harden this service` |
+| `/marvin:sec-secrets` | Scan deeply for leaked secrets and keys across code, config, and the full git history. | `marvin scan for secrets`, `did I commit a key?`, `find leaked credentials` |
+| `/marvin:sec-deps` | Audit dependencies for known CVEs, license risks, and unmaintained or typosquatted packages. | `marvin audit dependencies`, `check for vulnerable packages`, `run npm audit` |
+| `/marvin:sec-gate` | Run a fast, diff-scoped security check on staged or recent changes, as a pre-commit gate. | `marvin quick sec check`, `gate this commit`, `security-check my diff` |
+| `/marvin:sec-threat-model` | Build a STRIDE threat model for a feature, service, or the whole app, covering data flows, trust boundaries, threats, and mitigations. | `marvin threat model the kanban tools`, `STRIDE analysis`, `what can go wrong here?` |
+| `/marvin:sec-iac` | Review Infrastructure-as-Code across Terraform, CloudFormation, Kubernetes, Docker, and Helm. | `marvin review the Terraform`, `scan the Dockerfile`, `IaC security review` |
+| `/marvin:sec-ci` | Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions. | `marvin audit the CI pipeline`, `review the GitHub Actions`, `harden the workflows` |
+| `/marvin:sec-fix` | Generate and verify a minimal, tested patch for a vulnerability from any scanner or manual finding. | `marvin fix this vulnerability`, `patch the finding`, `remediate the CVE` |
+| `/marvin:sec-compliance` | Check code against OWASP ASVS at L1, L2, or L3 and report a control-by-control gap analysis. | `marvin ASVS audit`, `compliance check`, `OWASP ASVS gap analysis` |
+| `/marvin:sec-pentest` | Generate an application-specific penetration-testing checklist mapped to PTES and the OWASP Testing Guide. | `marvin plan a pentest`, `generate a pentest checklist`, `red-team scope` |
+| `/marvin:sec-report` | Recover the structured findings the scanners wrote under `.marvin/security/` and list them by severity for triage. | `marvin show the security findings`, `list the audit report`, `triage the scan results` |
 
-**Agent:** `marvin-auditor`.
+The `marvin-auditor` agent supports these commands.
+
+## Refactoring — `refactor-*`
+
+These commands form the code-health family ([ADR-0029](./adr/0029-refactoring-command-family.md)),
+split by mutation into a read, plan, and apply progression. The read side scans without
+changing anything and writes numbered findings registers under `.marvin/refactor/`, each
+finding carrying an `F<n>` id, a severity, an effort estimate, `file:line` evidence, and a
+suggested direction. The plan sequences selected findings into small, risk-annotated steps
+and routes anything spec-sized to `/marvin:task-start`. The apply stage executes exactly
+one behavior-preserving step at a time behind the verify gate.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:refactor-audit` | Run a whole-project structural audit — an architecture map, churn-by-size hotspots, dependency tangles, and dead-code candidates — with the heavy reading delegated to `marvin-refactor-auditor`. | `marvin refactoring audit`, `where is the tech debt?`, `what should we refactor first?` |
+| `/marvin:refactor-smells` | Scan a single path, module, or diff for code smells, anti-patterns, and idiom or naming inconsistencies, in the same register format as the audit. | `marvin check this module for smells`, `scan src/api for anti-patterns`, `any code smells in this diff?` |
+| `/marvin:refactor-plan` | Turn selected findings into a sequenced plan, annotating each step with its rationale, dependencies, risk, rollback, test strategy, and effort, and route spec-sized items to the task pipeline. | `marvin plan the refactoring`, `sequence the findings`, `plan F1 and F3` |
+| `/marvin:refactor-apply` | Execute exactly one behavior-preserving step under hard rails — verify green before and after, a coverage refusal that offers a pin-down test first, lessons recall and capture, and rollback on red. | `marvin apply the refactoring`, `execute step 2 of the plan`, `do the next refactor step` |
+
+The `marvin-refactor-auditor` agent supports these commands.
 
 ## Kanban tracker — `kanban-*`
 
-A lightweight per-project board with interactive MCP-elicit forms — inquirer-style speed inside
-Claude Code. Every form field is also a tool argument (`type`, `title`, `description`,
-`tracker_id`, `taskId`, `status`): details the user already said skip the form, and on hosts
-without elicitation support the commands answer with the exact arguments to pass instead.
-New tasks branch off following the topic-branch convention —
-`<type-prefix>/<seq>[-<tracker>]--<slug>` with bug→`fix`, feature→`feat`, chore→`chore`,
-spike→`spike` (e.g. `fix/007-OSI-123--login-timeout`). Storage: `.marvin/kanban/`
-(+ optional `.marvin/config.json`, managed via `/marvin:kanban-config`).
+These commands drive a lightweight per-project board with interactive forms, giving
+inquirer-style speed inside Claude Code. Every form field is also a tool argument, so
+details you already stated skip the form, and on hosts without form support the commands
+answer with the exact arguments to pass instead. New tasks branch off following the
+convention `<type-prefix>/<seq>[-<tracker>]--<slug>`, with `bug` becoming `fix`, `feature`
+becoming `feat`, `chore` becoming `chore`, and `spike` becoming `spike`, as in
+`fix/007-OSI-123--login-timeout`. Tasks are stored under `.marvin/kanban/`, with an
+optional `.marvin/config.json` managed through `/marvin:kanban-config`.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:kanban-menu` | Open the kanban main menu. | `marvin open the board`, `marvin kanban menu` |
-| `/marvin:kanban-bug` | Quick-create a bug task via an interactive form. | `marvin add a bug to the board`, `marvin new bug task` |
-| `/marvin:kanban-feature` | Quick-create a feature task. | `marvin add a feature to the board`, `marvin new feature task` |
-| `/marvin:kanban-chore` | Quick-create a chore task. | `marvin add a chore`, `marvin new chore task` |
-| `/marvin:kanban-spike` | Quick-create a spike (research) task. | `marvin add a spike`, `marvin new research task` |
+| `/marvin:kanban-menu` | Open the kanban main menu. | `marvin open the board`, `kanban menu` |
+| `/marvin:kanban-bug` | Quick-create a bug task through an interactive form. | `marvin add a bug to the board`, `new bug task` |
+| `/marvin:kanban-feature` | Quick-create a feature task. | `marvin add a feature to the board`, `new feature task` |
+| `/marvin:kanban-chore` | Quick-create a chore task. | `marvin add a chore`, `new chore task` |
+| `/marvin:kanban-spike` | Quick-create a spike, or research, task. | `marvin add a spike`, `new research task` |
 | `/marvin:kanban-start` | Pick a todo task, branch off, and mark it work-in-progress. | `marvin start a board task`, `pick a todo and branch off` |
 | `/marvin:kanban-review` | Move the current task to review. | `marvin move my task to review`, `mark this in review` |
 | `/marvin:kanban-done` | Mark the current task done. | `marvin mark the task done`, `finish this board task` |
 | `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
+| `/marvin:kanban-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `open the login-timeout task` |
+| `/marvin:kanban-tracker` | List tasks that carry an external tracker id, each linking out to the tracker. | `marvin show tracked tasks`, `which tasks link to Jira?` |
 | `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
-| `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses. Fail-closed validation; creates `.marvin/config.json` on first edit. | `marvin show the board config`, `marvin set the base branch to main`, `marvin connect our Jira statuses` |
-| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands (the full index stays on `/marvin:help`). | `marvin board dashboard`, `kanban help` |
+| `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, and statuses — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
+| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands. | `marvin board dashboard`, `kanban help` |
 
 Committing and opening PRs for board tasks is handled by the kanban-aware
-[`/marvin:commit`](#core-developer-tools) and [`/marvin:pr-create`](#pull-request-lifecycle--pr-)
-— they pick up the linked task automatically (ADR-0025).
+[`/marvin:commit`](#core-developer-tools) and
+[`/marvin:pr-create`](#pull-request-lifecycle--pr-), which pick up the linked task
+automatically ([ADR-0025](./adr/0025-kanban-board-only.md)). Finished work archives off
+the board into `.marvin/kanban/archive/`; its ids stay reserved, and `kanban-list` shows
+an `N archived` footer while the archive holds anything. The
+[configuration reference](./configuration.md) documents connecting an external tracker.
 
-Finished work can be archived off the board — say `marvin archive done tasks` (the `task`
-tool's `archive` action, also on the `kanban-menu` picker). Files move to
-`.marvin/kanban/archive/`, their ids stay reserved, and `kanban-list` shows an
-`N archived` footer while the archive is non-empty.
+## Widgets on rich hosts
 
-### Connecting a tracker
+On an MCP host that supports the Apps widget layer, seven commands render an interactive
+panel in addition to their text output ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
+The panel is additive, so a text-only host shows the same information as text.
 
-Marvin does not talk to tracker APIs (yet) — "connected" means two settings in
-`.marvin/config.json`, both entered through `/marvin:kanban-config` (nobody hand-writes the
-file; the command validates fail-closed and preserves settings owned by other tools, like the
-`verify` gates):
+| Command | Widget |
+|---------|--------|
+| `/marvin:kanban-list` | The board as a master-detail task list. |
+| `/marvin:kanban-show` | A single task's fields and body. |
+| `/marvin:kanban-tracker` | Tasks with a tracker id, linking out. |
+| `/marvin:task-summary` | The delivery digest for a finished task. |
+| `/marvin:sec-report` | The security findings viewer with severity triage. |
+| `/marvin:handoff-list` | A browser over the session-continuation docs. |
+| `/marvin:dashboard` | The whole-toolbox status panel. |
 
-1. **Links.** Set `tracker_url_template` and every task with a `tracker_id` becomes a link in
-   lists and summaries — `marvin set the tracker url template to
-   https://acme.atlassian.net/browse/{tracker_id}` (`{tracker_id}` marks where the id goes).
-2. **Statuses.** Enter the tracker's real workflow as the board vocabulary (ADR-0026). Each
-   status carries a `key` (stored in task files), a `role` (what the lifecycle commands act
-   on: `todo`, `wip`, `review`, `done`, `blocked`), and optionally `tracker_status` — the
-   exact remote workflow name, which a future connector will use as its mapping key. Saying
-   `marvin configure the board statuses like our Jira: backlog, in progress, code review, qa,
-   done, blocked` makes Claude pass the vocabulary as JSON:
+## Deterministic MCP tools
 
-   ```json
-   [{ "key": "backlog",     "role": "todo" },
-    { "key": "in-progress", "role": "wip",    "tracker_status": "In Progress" },
-    { "key": "code-review", "role": "review", "tracker_status": "In Review" },
-    { "key": "qa",          "role": "review", "tracker_status": "QA" },
-    { "key": "done",        "role": "done",   "tracker_status": "Done" },
-    { "key": "blocked",     "role": "blocked" }]
-   ```
-
-Lifecycle commands drive whatever is configured by role (`kanban-start` → the first wip-role
-status, and so on); the `task` tool's generic `move` action reaches every configured status —
-including `blocked`. At least one status each for the `todo`, `wip` and `done` roles is
-required — an edit violating that is rejected with the exact issues and nothing is written.
-With no configuration the classic `todo / wip / review / done / blocked` set applies
-unchanged. An optional `branch_template` (placeholders `{type_prefix}`, `{type}`, `{seq}`,
-`{tracker}`, `{slug}`; without a tracker id the `{tracker}` placeholder and one preceding
-`-`/`_`/`.` collapse) restyles new-task branches; a template that renders an invalid git ref
-falls back to the default scheme at create time with a warning rather than failing the create.
-
-### Commit `.marvin/` or gitignore it?
-
-For a **team-shared board**, commit `.marvin/kanban/` and `.marvin/config.json` together —
-tasks and the status vocabulary travel with the repo, board changes show up in PRs alongside
-code, and task files store status keys that only parse against the matching `statuses`
-configuration. For a **personal scratch board**, gitignore them (`.marvin/kanban/` and
-`.marvin/config.json`, or the whole `.marvin/`) — but keep the pair together: whichever
-location holds the board should hold its configuration. Of the other `.marvin/` artifacts,
-specs (`.marvin/task/`) and lessons (`.marvin/memory/`) are team assets worth committing,
-while security reports (`.marvin/security/`) and session handoffs (`.marvin/handoff/`) are
-point-in-time artifacts most teams gitignore.
-
----
-
-## Appendix — deterministic MCP tools
-
-Where determinism matters, prompts delegate to typed MCP tools (each declares a zod input
-schema). They are invoked by the commands above (and callable by the model), not typed as
-slash commands:
+Where determinism matters, the prompts delegate to twelve typed MCP tools, each declaring
+a zod input schema. The commands above invoke them, and the model can call them directly,
+but they are not typed as slash commands.
 
 | Tool | Purpose |
 |------|---------|
-| `task` | Kanban board — task CRUD, role-driven transitions over the configured statuses (incl. a generic `move`), PR-URL capture (`link-pr`), done-task archive, board configuration (`config`) |
-| `help` | Dashboard + registry-derived command index |
-| `verify` | Concurrent quality-gate runner (writes `verification.md`) |
-| `spec` | Definition-of-Ready gate — parses & validates the spec contract |
-| `lessons` | Lessons-learned store under `.marvin/memory/` |
-| `handoff` | Session-continuation handoff docs under `.marvin/handoff/` |
-| `summary` | Task-delivery summary aggregator |
+| `task` | The kanban board — task CRUD, role-driven transitions over the configured statuses, PR-URL capture, done-task archive, and board configuration. |
+| `task-detail` | A single task's fields and body, backing the detail view. |
+| `tracker` | A read-only list of tasks that carry an external tracker id. |
+| `help` | The dashboard and the registry-derived command index. |
+| `dashboard` | The whole-toolbox state report. |
+| `verify` | The concurrent quality-gate runner that writes `verification.md`. |
+| `spec` | The Definition-of-Ready gate that validates the spec contract. |
+| `lessons` | The lessons-learned store — add with a duplicate guard, search, count, and prune. |
+| `summary` | The task-delivery summary aggregator. |
+| `handoff` | The session-continuation handoff documents. |
+| `adr` | The ADR-lifecycle mechanics — numbering, corpus list, lint, managed index, the accept gate, and paired supersede. |
+| `audit` | The structured `sec-*` findings recovered from `.marvin/security/`. |
 
-## Appendix — agents
+## Agents
 
-Claude Code subagents, auto-loaded on install (invoke via the Task tool or the pipeline):
+Ten Claude Code subagents load on install and are invoked through the Task tool or by the
+pipeline.
 
 | Agent | Role |
 |-------|------|
-| `marvin-guide` | Onboarding / codebase navigation (read-only) |
-| `marvin-researcher` | Version-specific documentation lookup |
-| `marvin-debugger` | Root-cause analysis (read-mostly) |
-| `marvin-auditor` | Security review (read-only) |
-| `marvin-tm-writer` | Conversational spec exploration |
-| `marvin-tm-spec-critic` | Red-team review of a drafted spec (read-only) |
-| `marvin-tm-executor` | Headless spec execution in a worktree |
-| `marvin-tm-diff-critic` | Red-team review of a branch/staged diff (read-only) |
-| `marvin-tm-review-fixer` | Autonomous PR-review-comment resolution |
+| `marvin-guide` | Onboarding and codebase navigation, read-only. |
+| `marvin-researcher` | Version-specific documentation lookup. |
+| `marvin-debugger` | Root-cause analysis, read-mostly. |
+| `marvin-auditor` | Security review, read-only. |
+| `marvin-refactor-auditor` | Structural audit and smell verification, read-only. |
+| `marvin-tm-writer` | Conversational spec exploration. |
+| `marvin-tm-spec-critic` | Red-team review of a drafted spec, read-only. |
+| `marvin-tm-executor` | Headless spec execution in a worktree. |
+| `marvin-tm-diff-critic` | Red-team review of a branch or staged diff, read-only. |
+| `marvin-tm-review-fixer` | Autonomous resolution of PR review comments. |
 
----
-
-See the [README](../README.md) for the install steps and the lifecycle overview, and
-[CLAUDE.md](../CLAUDE.md) for the architecture reference.
+For the install steps and the lifecycle overview, see the [README](../README.md), and for
+the contributor reference, see [CLAUDE.md](../CLAUDE.md).

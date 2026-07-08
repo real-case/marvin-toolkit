@@ -1,0 +1,219 @@
+{
+  "skill": "sec-compliance",
+  "target": "sec-compliance",
+  "note": "sec-compliance owns OWASP ASVS (L1/L2/L3) gap analysis, control-by-control compliance matrices, and mapping code to ASVS/SOC2/ISO requirements for readiness/certification reviews. Near-misses lean toward the broad sec-scan (OWASP Top 10 audit), sec-threat-model (STRIDE), sec-pentest (test checklist), sec-deps, sec-secrets, sec-iac, sec-ci, sec-gate, and sec-fix. mock_rate encodes the ideal outcome for the mock decider; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "run an ASVS audit against our backend",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "check this codebase against OWASP ASVS L2 and give me a gap analysis",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "we've got a SOC2 audit next month — can you map our auth code to the ASVS controls and show where we fall short?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "produce a control-by-control compliance matrix for the payments service",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "pre-release security certification review, we're shipping to a regulated customer",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "my manager wants a compliance check on the api/ folder before the ISO 27001 readiness review",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "do a security verification against ASVS level 3 for the identity service",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "which ASVS requirements are we failing? need evidence and remediation for each",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "readiness review for the app — check it against the Application Security Verification Standard",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "map our code to the compliance requirements and mark each control pass/fail/n-a",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "run a full OWASP Top 10 security scan of the whole repo",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "broad Top 10 audit → sec-scan, not ASVS compliance matrix"
+    },
+    {
+      "id": "neg-2",
+      "text": "build a STRIDE threat model for the new checkout flow",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "threat modeling → sec-threat-model"
+    },
+    {
+      "id": "neg-3",
+      "text": "generate a pentest checklist for our public API before we hire an assessor",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "test-plan checklist → sec-pentest"
+    },
+    {
+      "id": "neg-4",
+      "text": "audit our dependencies for known CVEs and license risk before the release",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "dependency audit → sec-deps"
+    },
+    {
+      "id": "neg-5",
+      "text": "scan the repo and git history for leaked API keys and credentials",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secret detection → sec-secrets"
+    },
+    {
+      "id": "neg-6",
+      "text": "review our Terraform and Kubernetes manifests for IAM over-permissioning",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "IaC review → sec-iac"
+    },
+    {
+      "id": "neg-7",
+      "text": "fix the breached-password-check finding and add a regression test",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediate a single finding → sec-fix"
+    },
+    {
+      "id": "neg-8",
+      "text": "quick security gate on my staged diff before I push",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diff-scoped pre-commit gate → sec-gate"
+    },
+    {
+      "id": "neg-9",
+      "text": "audit our GitHub Actions workflows for unpinned actions and secret exposure",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CI/CD supply-chain audit → sec-ci"
+    },
+    {
+      "id": "neg-10",
+      "text": "write an ADR documenting our decision to standardize on ASVS L2 as the security baseline",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "records a decision → adr, not a compliance scan"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "we need an OWASP security review for our pre-release certification — check every ASVS control and report pass/fail with evidence",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-compliance",
+      "mock_rate": 1,
+      "note": "shares 'OWASP security review' vocab with sec-scan, but the ASVS control-by-control matrix + certification framing is sec-compliance's core"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "for our SOC2 readiness, do a security verification of the auth module mapped to standard controls",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-compliance",
+      "mock_rate": 1,
+      "note": "must beat sec-scan — 'verification against standard controls / readiness' is the ASVS compliance domain"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "harden this service for production — full pre-prod security audit covering injection, authz, crypto misuse and SSRF",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "broad deep static audit of vuln classes → sec-scan wins over a standards-mapping compliance check"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "check whether our dependencies meet the compliance requirements for the release — flag any vulnerable or unmaintained packages",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "sec-deps",
+      "mock_rate": 0,
+      "note": "'compliance requirements' vocab, but the actual work is a dependency/CVE audit → sec-deps wins"
+    }
+  ]
+}

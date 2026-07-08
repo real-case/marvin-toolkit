@@ -1,0 +1,211 @@
+{
+  "skill": "adr-review",
+  "target": "adr-review",
+  "note": "Tier-B trigger dataset for adr-review — deep review of ONE proposed ADR before ratification (structure + codebase grounding + formal-defect fix + verdict). Negatives are near-misses against sibling adr-* skills (draft/audit/coverage/accept/supersede/sync) and code/PR review. mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "review the ADR I just drafted before I mark it accepted",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "is ADR 31 ready for acceptance? give it a proper readiness check",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "check the decision record my teammate wrote — do the claims actually match our codebase?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "review docs/adr/0032-switch-to-postgres.md and tell me what's wrong before we ratify it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "my manager asked me to vet the proposed ADR on the caching layer — verify it against the repo and give a verdict",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "/marvin:adr just spat out a draft, can you go over it and flag any defects",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "review adr 0028, the paths it cites might be stale and there are leftover placeholders",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "do a readiness review on the proposed decision record — structure, grounding, the works",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "before I hand this ADR to the team for sign-off, can you make sure every version and file it references is real?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "write an ADR documenting our move from REST to gRPC",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a new record → adr, not reviewing an existing one"
+    },
+    {
+      "id": "neg-2",
+      "text": "audit all our ADRs for dangling references and numbering holes",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "corpus-wide lint → adr-audit, not a single-record review"
+    },
+    {
+      "id": "neg-3",
+      "text": "what architecture decisions do we have that aren't documented yet?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "coverage gap analysis → adr-coverage"
+    },
+    {
+      "id": "neg-4",
+      "text": "flip ADR 31 to accepted with today's date",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ratification → adr-accept; adr-review never sets accepted"
+    },
+    {
+      "id": "neg-5",
+      "text": "supersede ADR 12 with this new one and link them both ways",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "supersede pairing → adr-supersede"
+    },
+    {
+      "id": "neg-6",
+      "text": "regenerate the architecture-decisions digest in CLAUDE.md from the accepted ADRs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "memory sync → adr-sync"
+    },
+    {
+      "id": "neg-7",
+      "text": "review the PR on my branch for bugs and security issues",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "code review of a diff → pr-review, not an ADR review"
+    },
+    {
+      "id": "neg-8",
+      "text": "explain the reasoning behind the decision in ADR 9 for a new hire",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "walkthrough/teaching → explain, not a readiness review"
+    },
+    {
+      "id": "neg-9",
+      "text": "find where our retry-policy decision is documented",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "locate docs → docs-search"
+    },
+    {
+      "id": "neg-10",
+      "text": "are the ADRs consistent as a whole? do a health check across the corpus before the release",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "whole-corpus health check → adr-audit, not one proposed record"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "check the decision record on the queue rework — is this one proposed ADR ready to accept?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-review",
+      "mock_rate": 1,
+      "note": "shares 'check the decision record' vocab with adr-audit, but scope is a single proposed record + readiness → adr-review wins"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "/marvin:adr drafted the record; now go over it and verify its claims before we ratify",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-review",
+      "mock_rate": 1,
+      "note": "adjacent to adr (create), but the ask is to review the produced draft → adr-review wins"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "record this decision to use Redis for sessions as an ADR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr",
+      "mock_rate": 0,
+      "note": "authoring a new record → adr is more specific"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "lint the whole ADR corpus for broken supersede pairs and stale index entries",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 0,
+      "note": "corpus-wide lint → adr-audit is the specific match"
+    }
+  ]
+}
