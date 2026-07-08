@@ -12,9 +12,15 @@ The bundled MCP server is an implementation detail of the plugin — it is **not
 published as a standalone package, which is why the official MCP registry is out
 of scope (see §1).
 
-> Status legend: `[x]` done (verified in repo), `[ ]` to do, `[~]` decision
-> needed. Snapshot last refreshed on the `chore/release-0.1.0` branch (2026-07-01),
-> the release-prep commit.
+> Status legend: `[x]` done (verified in repo), `[ ]` to do, `[~]` partly done or
+> decision needed. Snapshot last refreshed 2026-07-08, right after the release was cut.
+
+> **✅ v0.1.0 released 2026-07-08.** `dev` was promoted to `main` as merge-commit
+> `541b53a` (promotion PR #95), tagged `v0.1.0`, and `release.yml` published the GitHub
+> Release [marvin v0.1.0](https://github.com/real-case/marvin-toolkit/releases/tag/v0.1.0)
+> with notes from the plugin changelog. What remains is **publication**: making the repo
+> public, then the official-directory submission (§2.7) and the community listings and
+> announcement (§2.8) — all gated on Admin access the release account does not have.
 
 ---
 
@@ -58,8 +64,8 @@ across sites — publish once, list everywhere.
 
 - [x] CI (`validate-plugins.yml`) on Node 20 + 22: manifests, docs-drift, ESLint, Prettier, build, test, coverage, `verify-dist`, MCP stdio smoke-test
 - [x] Release workflow (`release.yml`) — tag `v*` → GitHub Release with notes from `plugins/marvin/CHANGELOG.md`
-- [ ] CI **green on `main`** at the release commit (badge green)
-- [ ] All gates pass locally before tagging:
+- [x] CI **green on `main`** at the release commit — `validate-plugins.yml` passed on `main` at `541b53a` (Node 20 + 22)
+- [x] All gates pass before tagging — verified in CI on promotion PR #95 and again on `main` at `541b53a`; the equivalent local run is:
   ```shell
   npm run lint && npm run format:check && npm run lint:manifests \
     && npm run lint:docs && npm run build && npm run test \
@@ -96,8 +102,8 @@ history), server static-review clean — full record in
 ### 2.6 Release artifact
 
 - [x] `plugins/marvin/CHANGELOG.md` has a `## [0.1.0]` section for the release version (the workflow extracts notes from it)
-- [ ] Tag pushed → GitHub Release auto-created (`git tag vX.Y.Z && git push origin vX.Y.Z`)
-- [ ] **No tags or releases exist yet** — the first one is part of this effort; verify the Release page renders notes correctly
+- [x] Tag pushed → GitHub Release auto-created — `v0.1.0` on `541b53a`; `release.yml` ran green (17s)
+- [x] **`v0.1.0` is the first tag/release** (the earlier v0.3.0 / v0.6.0 were deleted and no longer exist); the [Release page](https://github.com/real-case/marvin-toolkit/releases/tag/v0.1.0) renders its notes correctly from the plugin changelog, and it is neither a draft nor a prerelease
 
 ### 2.7 Official directory submission
 
@@ -147,7 +153,11 @@ gh repo edit real-case/marvin-toolkit \
 
 5. Record a short demo (asciinema/GIF) of one flow; embed it near the top of the README.
 
-### Phase 3 — Cut the release
+### Phase 3 — Cut the release ✅ _(done 2026-07-08)_
+
+**Done:** the docs rewrite merged (PR #94, `076622a`), then promotion PR #95 (`dev → main`)
+merged as merge-commit `541b53a`, the `v0.1.0` tag was pushed, and the GitHub Release went
+live. The numbered steps below record the process that was followed.
 
 6. Add a `## [0.1.0]` section to `plugins/marvin/CHANGELOG.md` (the release workflow reads it).
 7. Bump to `0.1.0` in `plugins/marvin/.claude-plugin/plugin.json`,
@@ -187,12 +197,15 @@ gh repo edit real-case/marvin-toolkit \
 
 ## 4. Definition of done (published)
 
-- Stable `vX.Y.Z` tag + GitHub Release live; CI green on that commit.
-- All `sec-*` self-scans clean; Actions pinned by SHA; workflow permissions least-privilege.
-- GitHub topics + homepage set; README has a demo.
-- `claude plugin validate .` passes.
-- Official-directory form submitted (and, once approved, `@claude-plugins-official` install verified).
-- At least the community-aggregator listings confirmed and one announcement posted.
+_The release milestone was reached on 2026-07-08; full publication still depends on the
+Admin-gated public-repo flip and the directory and community steps below._
+
+- [x] Stable `v0.1.0` tag + GitHub Release live; CI green on that commit (`541b53a`).
+- [x] All `sec-*` self-scans clean; Actions pinned by SHA; workflow permissions least-privilege.
+- [~] GitHub topics + homepage set (done); README still needs a demo.
+- [ ] `claude plugin validate .` passes as a hard pre-submit check.
+- [ ] Official-directory form submitted (and, once approved, `@claude-plugins-official` install verified).
+- [ ] At least the community-aggregator listings confirmed and one announcement posted.
 
 ---
 
