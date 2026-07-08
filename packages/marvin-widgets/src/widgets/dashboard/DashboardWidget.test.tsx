@@ -12,7 +12,7 @@ describe("DashboardView — panel over the full fixture", () => {
     // header: title + version + git/gh availability + branch
     const header = screen.getByTestId("dashboard-header");
     expect(header.textContent).toContain("toolbox dashboard");
-    expect(screen.getByTestId("dashboard-version").textContent).toContain("v0.22.0");
+    expect(screen.getByTestId("dashboard-version").textContent).toContain("v0.1.0");
     expect(header.textContent).toContain("git ✓");
     expect(header.textContent).toContain("gh ✓");
     expect(screen.getByTestId("dashboard-branch").textContent).toContain("feat/widget-dashboard");
@@ -88,7 +88,7 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
   // The dashboard tool's REAL fresh-project payload: the extended sections are PRESENT
   // but zeroed, ages/branch/tracker are null, and usage is absent (no log yet).
   const fresh: DashboardState = {
-    version: "0.22.0",
+    version: "0.1.0",
     paths: {
       project: "/tmp/new",
       tasks_dir: "/tmp/new/.marvin/kanban",

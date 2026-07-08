@@ -205,7 +205,7 @@ The canonical path is **skill-backed** — same content, three doors:
    ```
 4. Run `npm run build` inside `plugins/marvin/mcp/server` to refresh `dist/server.js`.
 5. Commit `src/`, `dist/`, and the new `SKILL.md` (+ optional command file) together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
-6. Bump the plugin version in `plugin.json` and `marketplace.json`.
+6. Bump the version with `npm run sync-version <x.y.z>` (see [Version bumping](#version-bumping)).
 
 For prompts with **no skill** (thin tool wrappers like the `kanban-*` group), use `body: "..."` inline. Skip steps 1 and 2.
 
@@ -220,11 +220,19 @@ For prompts with **no skill** (thin tool wrappers like the `kanban-*` group), us
 
 1. Create `plugins/marvin/agents/<agent-name>.md` with YAML frontmatter containing `description`.
 2. Specify available tools and domain constraints in the body.
-3. Bump the plugin version.
+3. Bump the version with `npm run sync-version <x.y.z>` (see [Version bumping](#version-bumping)).
 
 ## Version bumping
 
-The plugin has one version. Bump `plugins/marvin/.claude-plugin/plugin.json`, mirror it to the matching entry in `.claude-plugin/marketplace.json`, and bump the server `package.json`. The top-level `metadata.version` is independent — bump it when the marketplace manifest schema or plugin list changes.
+The whole repo shares **one version**, sourced from `plugins/marvin/.claude-plugin/plugin.json`. Bump everything with a single command:
+
+```shell
+npm run sync-version 0.2.0   # set the version everywhere, then rebuild
+npm run sync-version         # re-propagate the current plugin.json version
+npm run build                # rebuild dist/ so the server reports the new version
+```
+
+`sync-version` propagates the version to every workspace `package.json` and the marketplace plugin entry. The server's runtime `VERSION` is injected from its `package.json` at build time (`tsup.config.ts`), never hand-edited. `npm run lint:manifests` fails the build when any of them drift, so a partial bump can never ship. The marketplace's top-level `metadata.version` is deliberately independent — bump it by hand only when the manifest schema or plugin list changes.
 
 - **Patch** — prompt body tweaks, bug fixes
 - **Minor** — new prompts, tools, or agents

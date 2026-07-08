@@ -5,6 +5,11 @@ why the key decisions were made, and where work is heading.
 
 ## Start here
 
+- **[Getting started](./getting-started.md)** — install the plugin, confirm it works,
+  and run your first commands.
+- **[Usage guide](./usage.md)** — worked walkthroughs for the common workflows:
+  committing and opening a PR, the task pipeline, the kanban board, security, and
+  refactoring.
 - **[Architecture](./architecture.md)** — the visual tour: system overview, the
   "three doors, one room" model, the task pipeline, and the working-directory
   convention, with diagrams.
@@ -64,6 +69,7 @@ process, not finished deliverables.
 ## Reference
 
 - [Command reference](./commands.md) — every `/marvin:` command with a one-line synopsis and a usage example.
+- [Configuration](./configuration.md) — the `.marvin/` working directory, the `.marvin/config.json` schema, and the `MARVIN_*` environment variables.
 - [Publishing & promotion readiness](./publishing.md) — the requirements checklist and the ordered plan for shipping Marvin to the official directory and community marketplaces.
 - [Security policy](../SECURITY.md) — supported versions and how to report a vulnerability.
 - [Changelog (marketplace)](../CHANGELOG.md) and [changelog (plugin)](../plugins/marvin/CHANGELOG.md).

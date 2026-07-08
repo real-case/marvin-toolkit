@@ -25,6 +25,14 @@ Pick whichever feels right — they all use the same `SKILL.md`.
 
 The plugin registers one MCP server (`marvin`). Commands appear as `/marvin:<group>-<command>`.
 
+## Documentation
+
+- **[Getting started](./docs/getting-started.md)** — install, confirm it works, and run your first commands.
+- **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, kanban, security, and refactoring.
+- **[Configuration](./docs/configuration.md)** — the `.marvin/` working directory, `.marvin/config.json`, and the `MARVIN_*` environment variables.
+- **[Command reference](./docs/commands.md)** — every `/marvin:` command with a synopsis and phrases to invoke it.
+- **[Architecture](./docs/architecture.md)** — how the plugin is built, with diagrams.
+
 ## Command naming
 
 Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
@@ -35,11 +43,11 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. The groups:
 | `adr-*` | ADR lifecycle (accept/supersede/sync human-run) | 6 |
 | `pr-*` | pull-request operations | 4 |
 | `task-*` | spec-driven task pipeline | 5 |
-| `sec-*` | security scanners | 10 |
+| `sec-*` | security scanners | 11 |
 | `refactor-*` | code-health family (read → plan → apply) | 4 |
-| `kanban-*` | lightweight task tracker | 12 |
+| `kanban-*` | lightweight task tracker | 14 |
 
-54 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus five read-side commands (`/marvin:help`, `/marvin:dashboard`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
+57 prompts total, all under `/marvin:`. Most are skill-backed (all three doors); the `kanban-*` group plus five read-side commands (`/marvin:help`, `/marvin:dashboard`, `/marvin:handoff-list`, `/marvin:lessons`, `/marvin:task-summary`) are MCP-only thin tool wrappers with no `SKILL.md`.
 
 See the full **[command reference](./docs/commands.md)** — every `/marvin:` command with a one-line synopsis and natural-language phrases to invoke it.
 
@@ -100,6 +108,7 @@ OWASP Top 10, dependency audits, compliance checks.
 | `/marvin:sec-fix` | Generate and verify fixes for vulnerabilities with regression tests |
 | `/marvin:sec-compliance` | OWASP ASVS compliance checking (L1/L2/L3) |
 | `/marvin:sec-pentest` | Generate application-specific penetration testing checklist |
+| `/marvin:sec-report` | List the structured findings the `sec-*` scanners wrote under `.marvin/security/`, by severity |
 
 **Agent:** `marvin-auditor`.
 
@@ -144,6 +153,8 @@ Lightweight per-project task tracker with interactive MCP-elicit forms — inqui
 | `/marvin:kanban-review` | Move current task to review |
 | `/marvin:kanban-done` | Mark current task done |
 | `/marvin:kanban-list` | List all tasks grouped by status |
+| `/marvin:kanban-show` | Show one task in full — fields + markdown body |
+| `/marvin:kanban-tracker` | List tasks with an external tracker id, linking out to each |
 | `/marvin:kanban-status` | Current branch + WIP tasks |
 | `/marvin:kanban-config` | Show or edit the board configuration (base branch, tracker URL template, branch template, statuses) |
 | `/marvin:kanban-help` | Board dashboard scoped to the kanban commands |

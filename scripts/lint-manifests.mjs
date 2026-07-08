@@ -6,6 +6,8 @@
 //   4. Every pack with mcp/server has a dist/server.js committed (existence only;
 //      drift checked by verify-dist.mjs)
 //   5. All agent .md files start with YAML frontmatter containing description
+//   6. Every workspace package.json version matches the plugin version — one source
+//      of truth, propagated by scripts/sync-version.mjs
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -102,6 +104,29 @@ for (const entry of marketplace.plugins) {
   for (const file of readdirSync(commandsDir)) {
     if (!file.endsWith(".md")) continue;
     checkFrontmatter(`${entry.name}/commands/${file}`, join(commandsDir, file));
+  }
+}
+
+// 6. Repo-wide version coherence. No external client needs the workspace packages to
+//    move independently, so all track one version — the marvin plugin.json is the
+//    source of truth. scripts/sync-version.mjs propagates it; this guard fails on drift
+//    so a partial bump can never ship. The marketplace `metadata.version` is excluded on
+//    purpose: it tracks the manifest schema, not the plugin.
+const marvinVersion = JSON.parse(
+  readFileSync(join(repoRoot, "plugins", "marvin", ".claude-plugin", "plugin.json"), "utf8"),
+).version;
+const lockedVersionFiles = [
+  "package.json",
+  "packages/marvin-mcp-shared/package.json",
+  "packages/marvin-widgets/package.json",
+  "plugins/marvin/mcp/server/package.json",
+];
+for (const rel of lockedVersionFiles) {
+  const version = JSON.parse(readFileSync(join(repoRoot, rel), "utf8")).version;
+  if (version !== marvinVersion) {
+    failures.push(
+      `${rel}: version "${version}" does not match the plugin version "${marvinVersion}" — run \`npm run sync-version\``,
+    );
   }
 }
 
