@@ -1,7 +1,7 @@
 # Command reference
 
 Every command Marvin ships, with a one-line synopsis and natural-language phrases that invoke
-it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **54** in total.
+it. Commands are `/marvin:<group>-<command>` (singletons stay bare). There are **57** in total.
 
 **Three ways to invoke the same workflow** (see the ["three doors"](./architecture.md) model):
 
@@ -143,6 +143,7 @@ OWASP-aligned scanning, threat modeling, and remediation.
 | `/marvin:sec-fix` | Generate and verify a minimal, tested patch for a vulnerability from any scanner or manual finding. | `marvin fix this vulnerability`, `marvin patch the finding`, `remediate the CVE` |
 | `/marvin:sec-compliance` | Check code against OWASP ASVS (L1/L2/L3) and report a control-by-control gap analysis. | `marvin ASVS audit`, `marvin compliance check`, `OWASP ASVS gap analysis` |
 | `/marvin:sec-pentest` | Generate an application-specific penetration-testing checklist mapped to PTES / OWASP. | `marvin plan a pentest`, `marvin generate a pentest checklist`, `red-team scope` |
+| `/marvin:sec-report` | Recover the structured findings the `sec-*` scanners wrote under `.marvin/security/` and list them by severity for triage. | `marvin show the security findings`, `marvin list the audit report`, `triage the scan results` |
 
 **Agent:** `marvin-auditor`.
 
@@ -192,6 +193,8 @@ spike→`spike` (e.g. `fix/007-OSI-123--login-timeout`). Storage: `.marvin/kanba
 | `/marvin:kanban-review` | Move the current task to review. | `marvin move my task to review`, `mark this in review` |
 | `/marvin:kanban-done` | Mark the current task done. | `marvin mark the task done`, `finish this board task` |
 | `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
+| `/marvin:kanban-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `marvin open the login-timeout task` |
+| `/marvin:kanban-tracker` | List tasks that carry an external tracker id, each linking out to the tracker. | `marvin show tracked tasks`, `marvin which tasks link to Jira?` |
 | `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
 | `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses. Fail-closed validation; creates `.marvin/config.json` on first edit. | `marvin show the board config`, `marvin set the base branch to main`, `marvin connect our Jira statuses` |
 | `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands (the full index stays on `/marvin:help`). | `marvin board dashboard`, `kanban help` |

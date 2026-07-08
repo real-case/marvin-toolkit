@@ -541,7 +541,7 @@ export function DashboardWidget({ seam }: DashboardWidgetProps) {
 function DashboardLiveWidget() {
   const [data, setData] = useState<DashboardState | null>(null);
   const { isConnected, error } = useApp({
-    appInfo: { name: "marvin-dashboard", version: "0.22.0" },
+    appInfo: { name: "marvin-dashboard", version: "0.1.0" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

@@ -72,8 +72,7 @@ change lands through a pull request — no direct pushes to either branch
    `docs/…`, or `sec/…`.
 2. Make your edits under `plugins/marvin/` (or `packages/` for the shared library).
 3. If you touched the MCP server, rebuild it (`npm run build`) and commit `dist/`.
-4. Bump the plugin's `plugin.json` version and mirror it in
-   `.claude-plugin/marketplace.json` (see versioning below).
+4. Bump the version with `npm run sync-version <x.y.z>` (see versioning below).
 5. Run the full quality-gate suite above.
 6. Open a PR **into `dev`**. CI lints manifests, builds, tests, smoke-tests the
    MCP server, and verifies `dist/` is in sync.
@@ -89,9 +88,14 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) — e.g.
 
 ## Versioning
 
-The plugin carries one version. Bump `plugins/marvin/.claude-plugin/plugin.json`,
-mirror it into the `.claude-plugin/marketplace.json` entry, and bump the server
-`package.json`.
+The whole repo shares one version. Bump it in one step with
+`npm run sync-version <x.y.z>`, which propagates the version from
+`plugins/marvin/.claude-plugin/plugin.json` to every workspace `package.json` and the
+marketplace plugin entry; then run `npm run build` so the server picks it up. The
+server's runtime `VERSION` is injected from its `package.json` at build time, and
+`npm run lint:manifests` fails the build if any version drifts. The marketplace's
+top-level `metadata.version` is independent — change it only when the manifest schema
+or plugin list changes.
 
 - **Patch** — prompt body tweaks, bug fixes
 - **Minor** — new prompts, tools, or agents
@@ -102,8 +106,8 @@ mirror it into the `.claude-plugin/marketplace.json` entry, and bump the server
 Marvin installs via the Claude Code marketplace (git), so a release is a tag plus a
 GitHub Release — there is no npm publish.
 
-1. Bump the version (`plugin.json` + `marketplace.json` + server `package.json`) and
-   update both changelogs (`plugins/marvin/CHANGELOG.md` for the plugin, root
+1. Bump the version with `npm run sync-version <x.y.z>`, rebuild (`npm run build`),
+   and update both changelogs (`plugins/marvin/CHANGELOG.md` for the plugin, root
    `CHANGELOG.md` for marketplace-level changes).
 2. Tag and push: `git tag v<version> && git push origin v<version>`.
 3. The [release workflow](./.github/workflows/release.yml) opens a GitHub Release,

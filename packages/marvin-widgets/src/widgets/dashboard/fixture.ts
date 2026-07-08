@@ -11,7 +11,7 @@ import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
  * All values are fixed literals (no Date.now()) so snapshots stay deterministic.
  */
 export const dashboardFixture: DashboardState = {
-  version: "0.22.0",
+  version: "0.1.0",
   paths: {
     project: "/Users/dev/acme-api",
     tasks_dir: "/Users/dev/acme-api/.marvin/kanban",

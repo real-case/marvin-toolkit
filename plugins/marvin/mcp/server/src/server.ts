@@ -21,7 +21,11 @@ import { buildSummaryTool } from "./tools/summary.js";
 import { buildAuditTool } from "./tools/audit.js";
 import { buildWidgetResources } from "./resources/widgets.js";
 
-const VERSION = "0.22.0";
+// Injected at build time from this server's package.json (see tsup.config.ts) so the
+// reported version can never drift from the manifest. `sync-version.mjs` keeps every
+// package version equal; `lint-manifests.mjs` guards it. Rebuild dist/ after a bump.
+declare const __MARVIN_VERSION__: string;
+const VERSION = __MARVIN_VERSION__;
 
 // One env for the whole process: the tools read it, and the usage-log
 // middleware (ADR-0030) closes over the same paths. `env` carries only
