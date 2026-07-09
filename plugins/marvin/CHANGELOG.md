@@ -4,6 +4,23 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.2.0] — 2026-07-09
+
+### Added
+
+- **`help` welcome widget** (`ui://marvin/help.html`, ADR-0024) — the `help` tool now
+  binds a rich MCP Apps widget for desktop hosts: a CSS gradient wordmark, the
+  per-project summary (project · git · kanban · artifacts), the configured MCP servers
+  lit/dim by enabled state, the command-group table of contents, and the full
+  per-command reference with authored blurbs. Terminal hosts keep the markdown fallback.
+
+### Changed
+
+- The `help` tool emits a purpose-built `HelpState` `structuredContent` (MCP servers with
+  their enabled state, plus the full curated command index) in place of the narrower
+  `DashboardState` base. The markdown fallback gains lit/dim server dots (`●` / `○`) and
+  curated one-line command blurbs shared with the widget, so the two doors never drift.
+
 ## [0.1.0] — 2026-07-08
 
 Initial release. Marvin delivers the full development lifecycle as **one MCP

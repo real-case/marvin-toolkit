@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync } from 'fs';
-import { join, dirname, isAbsolute, relative, posix, sep } from 'path';
+import { join, dirname, basename, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
 import { spawn, spawnSync, execFileSync } from 'child_process';
@@ -28584,8 +28584,8 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
-    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim \u2014 reproduce the fenced banner block exactly, do not summarise or add preamble."
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -30414,6 +30414,12 @@ var WIDGETS = [
     uri: "ui://marvin/dashboard.html",
     file: join("widgets", "dashboard.html"),
     description: "Marvin toolbox dashboard \u2014 the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024)."
+  },
+  {
+    name: "help",
+    uri: "ui://marvin/help.html",
+    file: join("widgets", "help.html"),
+    description: "Marvin help \u2014 the welcome dashboard: gradient wordmark, project summary, configured MCP servers, and the full command index grouped by family (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -30423,6 +30429,7 @@ var HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
 var AUDIT_WIDGET_URI = "ui://marvin/audit.html";
 var TASK_SUMMARY_WIDGET_URI = "ui://marvin/task-summary.html";
 var DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
+var HELP_WIDGET_URI = "ui://marvin/help.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -31273,89 +31280,84 @@ function countMarkdown(dir, exclude = []) {
     return 0;
   }
 }
-
-// src/tools/help.ts
-var HelpInput = external_exports.object({
-  section: external_exports.string().optional().describe("Filter the command index to one group: core, adr, pr, task, sec, refactor, kanban.")
-});
-function buildHelpTool(env2, version2) {
-  return defineTool({
-    name: "help",
-    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/adr/pr/task/sec/refactor/kanban).',
-    inputSchema: HelpInput,
-    handler: (input) => {
-      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
-      return Promise.resolve(renderHelp(env2, config2, version2, input.section));
-    }
-  });
-}
-function renderHelp(env2, config2, version2, section) {
-  const { counts, roleCounts, malformed } = kanbanCounts(env2, config2);
-  const git2 = gitState(env2.projectDir);
-  const lines = [];
-  lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
-  lines.push("");
-  lines.push("## State");
-  lines.push(`- Project: \`${env2.projectDir}\``);
-  lines.push(`- Tasks dir: \`${env2.tasksDir}\``);
-  lines.push(`- Config: \`${env2.configPath}\``);
-  lines.push(`- Base branch: \`${config2.base_branch}\``);
-  lines.push(
-    `- Tracker template: ${config2.tracker_url_template ? `\`${config2.tracker_url_template}\`` : "not configured"}`
-  );
-  lines.push("");
-  lines.push("## Counters");
-  for (const s of orderedStatuses(config2)) {
-    const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-    lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
-  }
-  if (malformed > 0) lines.push(`- \u26A0 malformed files: ${malformed}`);
-  lines.push("");
-  lines.push("## Git");
-  lines.push(`- git: ${git2.has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${git2.has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
-  lines.push(`- branch: \`${git2.branch ?? "(not in a git repo)"}\``);
-  lines.push("");
-  lines.push(...renderCommandIndex(section));
-  const dashboard = {
-    version: version2,
-    paths: { project: env2.projectDir, tasks_dir: env2.tasksDir, config_path: env2.configPath },
-    config: {
-      base_branch: config2.base_branch,
-      tracker_url_template: config2.tracker_url_template,
-      ...config2.gates ? { gates: config2.gates } : {},
-      statuses: config2.statuses
-    },
-    kanban_counts: counts,
-    kanban_role_counts: roleCounts,
-    git: git2,
-    artifacts: artifactCounts(env2),
-    command_groups: commandGroups()
-  };
-  return {
-    content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: dashboard
-  };
-}
-function renderCommandIndex(section) {
-  const want = section?.trim().toLowerCase();
-  const known = !!want && GROUP_ORDER.includes(want);
-  const groups = known ? [want] : GROUP_ORDER;
-  const lines = [
-    known ? `## Commands \xB7 \`${want}\` group` : `## Commands (${PROMPTS.length})`
-  ];
-  if (want && !known) {
-    lines.push(`_Unknown section \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
-  }
-  for (const group of groups) {
-    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
-    if (inGroup.length === 0) continue;
-    lines.push("", `### ${group} (${inGroup.length})`);
-    for (const p of inGroup) lines.push(`- \`/marvin:${p.name}\` \u2014 ${shortDesc(p.description)}`);
-  }
-  return lines;
-}
-function shortDesc(desc, max = 80) {
+var SLOGAN = "Claude Code toolset for AI development without panic";
+var GROUP_BLURBS = {
+  core: "Everyday dev \u2014 commits, debugging, docs, ADRs, handoffs",
+  adr: "Architecture Decision Record lifecycle",
+  pr: "Pull-request lifecycle \u2014 create, review, resolve, merge",
+  task: "Spec-driven pipeline \u2014 start, implement, verify, deliver",
+  sec: "Security scanners \u2014 secrets, deps, threat models & more",
+  refactor: "Code-health \u2014 audit, smells, plan, apply",
+  kanban: "Lightweight board tracker \u2014 create, move, list, configure"
+};
+var COMMAND_BLURBS = {
+  // core
+  commit: "Conventional commit, kanban-linked",
+  debug: "Systematic root-cause debugging",
+  adr: "Create an Architecture Decision Record",
+  changelog: "Changelog from git history",
+  readme: "Generate or update README",
+  "migration-plan": "Plan a migration or major refactor",
+  explain: "Explain code, logic, and design",
+  "docs-search": "Search project documentation",
+  handoff: "Capture a session handoff",
+  "handoff-list": "List handoff documents",
+  lessons: "Team lessons-learned store",
+  help: "This dashboard + command index",
+  dashboard: "Whole-toolbox state report",
+  // adr
+  "adr-review": "Review a proposed ADR",
+  "adr-accept": "Ratify an ADR (human-run)",
+  "adr-audit": "Lint the whole ADR corpus",
+  "adr-coverage": "Find undocumented decisions",
+  "adr-supersede": "Roll back an accepted ADR (human-run)",
+  "adr-sync": "Refresh the ADR digest in CLAUDE.md (human-run)",
+  // pr
+  "pr-create": "Open a pull request",
+  "pr-review": "Review a PR on GitHub",
+  "pr-resolve": "Address PR review threads",
+  "pr-merge": "Merge a PR, then sync the base",
+  // task
+  "task-start": "Spec out a task (Phase 1)",
+  "task-implement": "Implement a ready spec",
+  "task-verify": "Run the project quality gates",
+  "task-deliver": "Commit and open a PR",
+  "task-summary": "Delivery digest for a task",
+  // sec
+  "sec-scan": "Full OWASP Top-10 audit",
+  "sec-secrets": "Scan for leaked secrets",
+  "sec-deps": "Dependency CVE / license audit",
+  "sec-gate": "Fast pre-commit security gate",
+  "sec-threat-model": "STRIDE threat model",
+  "sec-iac": "Infrastructure-as-Code review",
+  "sec-ci": "CI/CD pipeline audit",
+  "sec-fix": "Patch a vulnerability with tests",
+  "sec-compliance": "OWASP ASVS gap analysis",
+  "sec-pentest": "Tailored pentest checklist",
+  "sec-report": "List saved security reports",
+  // refactor
+  "refactor-audit": "Structural audit + hotspots",
+  "refactor-smells": "Scoped code-smell scan",
+  "refactor-plan": "Sequence findings into steps",
+  "refactor-apply": "Apply one refactor step, gated",
+  // kanban
+  "kanban-menu": "Board action menu",
+  "kanban-bug": "New bug task",
+  "kanban-feature": "New feature task",
+  "kanban-chore": "New chore task",
+  "kanban-spike": "New spike task",
+  "kanban-start": "Move a task to in-progress",
+  "kanban-review": "Move a task to review",
+  "kanban-done": "Move a task to done",
+  "kanban-list": "List board tasks",
+  "kanban-show": "Show one task",
+  "kanban-tracker": "Link a tracker URL",
+  "kanban-status": "Set a task status",
+  "kanban-config": "Show or edit board config",
+  "kanban-help": "Board help"
+};
+var HUMAN_RUN = /* @__PURE__ */ new Set(["adr-accept", "adr-supersede", "adr-sync"]);
+function shortDesc(desc, max = 72) {
   const oneLine = desc.replace(/\s+/g, " ").trim();
   const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
   const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
@@ -31363,6 +31365,186 @@ function shortDesc(desc, max = 80) {
   const cut = base.slice(0, max);
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}\u2026`;
+}
+function projectMcpServers(projectDir) {
+  const names = /* @__PURE__ */ new Set();
+  const disabled = /* @__PURE__ */ new Set();
+  collectServers(join(projectDir, ".mcp.json"), true, names, disabled);
+  collectServers(join(projectDir, ".claude", "settings.json"), false, names, disabled);
+  collectServers(join(projectDir, ".claude", "settings.local.json"), false, names, disabled);
+  return [...names].sort().map((name) => ({ name, enabled: !disabled.has(name) }));
+}
+function collectServers(path, allowFlat, names, disabled) {
+  if (!existsSync(path)) return;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    const wrapped = parsed.mcpServers;
+    const servers = wrapped && typeof wrapped === "object" ? wrapped : allowFlat ? parsed : null;
+    if (servers) for (const k of Object.keys(servers)) names.add(k);
+    const off = parsed.disabledMcpjsonServers;
+    if (Array.isArray(off)) {
+      for (const d of off) if (typeof d === "string") disabled.add(d);
+    }
+  } catch {
+  }
+}
+
+// src/tools/help.ts
+var HelpInput = external_exports.object({
+  section: external_exports.string().optional().describe(
+    "Filter the command reference to one group: core, adr, pr, task, sec, refactor, kanban."
+  )
+});
+function buildHelpTool(env2, version2) {
+  return defineTool({
+    name: "help",
+    description: 'Marvin welcome banner + dashboard: project summary (project, git branch, kanban board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/kanban).',
+    inputSchema: HelpInput,
+    // Bind the help `ui://` widget for MCP Apps hosts (ADR-0024). A plain object
+    // literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: HELP_WIDGET_URI } },
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      return Promise.resolve(renderHelp(env2, config2, version2, input.section));
+    }
+  });
+}
+function renderHelp(env2, config2, version2, section) {
+  const { counts, malformed } = kanbanCounts(env2, config2);
+  const git2 = gitState(env2.projectDir);
+  const art = artifactCounts(env2);
+  const servers = projectMcpServers(env2.projectDir);
+  const project = basename(env2.projectDir) || env2.projectDir;
+  const want = section?.trim().toLowerCase();
+  const known = !!want && GROUP_ORDER.includes(want);
+  const lines = [
+    ...renderBanner(version2),
+    "",
+    "---",
+    "",
+    ...renderSummary(project, config2, git2, counts, malformed, art),
+    "",
+    ...renderMcpServers(servers),
+    "",
+    ...renderCommands(want, known)
+  ];
+  const help = {
+    version: version2,
+    slogan: SLOGAN,
+    project,
+    git: {
+      branch: git2.branch,
+      base_branch: config2.base_branch,
+      has_git: git2.has_git,
+      has_gh: git2.has_gh
+    },
+    // Configured order (the project's lifecycle order — todo → … → blocked by
+    // default), not the role-grouped `orderedStatuses`, so the board reads in the
+    // order the author defined and the widget/mockup agree.
+    statuses: config2.statuses.map((s) => ({
+      key: s.key,
+      role: s.role,
+      count: counts[s.key] ?? 0
+    })),
+    artifacts: {
+      specs: art.specs,
+      handoffs: art.handoffs,
+      audits: art.audits,
+      lessons: art.lessons
+    },
+    servers,
+    groups: GROUP_ORDER.filter((g) => PROMPTS.some((p) => groupOf(p.name) === g)).map((group) => ({
+      group,
+      blurb: GROUP_BLURBS[group] ?? ""
+    })),
+    // Full reference, registry order within each group. Names from the registry
+    // (drift-proof); blurb is curated (guarded to full coverage by a test), so a
+    // missing entry ships an empty blurb the test catches rather than silent drift.
+    commands: GROUP_ORDER.flatMap(
+      (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => ({
+        group,
+        name: p.name,
+        blurb: COMMAND_BLURBS[p.name] ?? "",
+        human: HUMAN_RUN.has(p.name)
+      }))
+    )
+  };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: help
+  };
+}
+function renderBanner(version2) {
+  return ["# >_ MARVIN", "", SLOGAN, `_v${version2}_`];
+}
+function renderSummary(project, config2, git2, counts, malformed, art) {
+  const gitVal = git2.branch ? `\`${git2.branch}\` \xB7 base \`${config2.base_branch}\`` : "not in a git repo";
+  const kanban = config2.statuses.map((s) => {
+    const n = counts[s.key] ?? 0;
+    return `${s.key} ${n > 0 ? `**${n}**` : "0"}`;
+  }).join(" \xB7 ");
+  const artifacts = `specs ${art.specs} \xB7 handoffs ${art.handoffs} \xB7 audits ${art.audits} \xB7 lessons ${art.lessons}`;
+  const lines = [
+    "## Summary",
+    `- **project** \u2014 \`${project}\``,
+    `- **git** \u2014 ${gitVal}`,
+    `- **kanban** \u2014 ${kanban}`,
+    `- **artifacts** \u2014 ${artifacts}`
+  ];
+  const notes = [];
+  if (!git2.has_git) notes.push("git missing \u2014 lifecycle commands disabled");
+  if (!git2.has_gh) notes.push("gh missing \u2014 PR commands print the command instead");
+  if (notes.length > 0) lines.push(`- _${notes.join("; ")}._`);
+  if (malformed > 0) {
+    lines.push(`- \u26A0 ${malformed} malformed board file${malformed === 1 ? "" : "s"}`);
+  }
+  return lines;
+}
+function renderMcpServers(servers) {
+  return [
+    "## MCP servers",
+    servers.length ? servers.map((s) => `${s.enabled ? "\u25CF" : "\u25CB"} \`${s.name}\``).join(" \xB7 ") : "_none configured for this project_"
+  ];
+}
+function renderCommands(want, known) {
+  if (known && want) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === want);
+    const lines2 = [`## Commands \xB7 ${want}`, "", `_${GROUP_BLURBS[want] ?? ""}_`, ""];
+    for (const p of inGroup) {
+      const flag = HUMAN_RUN.has(p.name) ? " \u{1F464}" : "";
+      lines2.push(`- \`/marvin:${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+    }
+    return lines2;
+  }
+  const lines = [];
+  lines.push("## Command groups");
+  if (want) {
+    lines.push(`_Unknown group \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
+  }
+  for (const group of GROUP_ORDER) {
+    if (PROMPTS.some((p) => groupOf(p.name) === group)) {
+      lines.push(`- \`${group}\` \u2014 ${GROUP_BLURBS[group] ?? ""}`);
+    }
+  }
+  lines.push(
+    "",
+    "## Commands",
+    "Run as `/marvin:<name>` or just ask in chat. \u{1F464} = human-run only."
+  );
+  for (const group of GROUP_ORDER) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
+    if (inGroup.length === 0) continue;
+    lines.push("", `### ${group}`);
+    for (const p of inGroup) {
+      const flag = HUMAN_RUN.has(p.name) ? " \u{1F464}" : "";
+      lines.push(`- \`${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+    }
+  }
+  return lines;
+}
+function blurbOf(name, description) {
+  return COMMAND_BLURBS[name] ?? shortDesc(description);
 }
 var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
 var INDEX_FILE = "MEMORY.md";
@@ -33636,7 +33818,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.1.0";
+var VERSION = "0.2.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

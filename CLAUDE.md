@@ -138,8 +138,12 @@ into the server bundle:
   rebuilds `@marvin-toolkit/mcp-shared` then `@marvin-toolkit/widgets`, hash-compares each committed
   `plugins/marvin/widgets/*.html` against the fresh build, and asserts each file is self-contained.
 
-The first widget is `task-list` (a `<ListDetail>` over `TaskListPayload`); the remaining widgets are
-follow-up specs reusing this foundation.
+The committed widgets — `task-list`, `task-detail`, `tracker-list`, `handoffs`, `audit`,
+`task-summary`, `dashboard`, and `help` — reuse this foundation (`<ListDetail>` for the
+master-detail browsers, single-object panels for the rest). The `help` widget renders the welcome
+dashboard from the `help` tool's `HelpState`: a CSS gradient wordmark, the project summary, the
+configured MCP servers lit/dim by enabled state, and the full curated command index — the rich
+counterpart to the tool's markdown/emoji terminal fallback.
 
 ## Shared library
 
@@ -149,7 +153,7 @@ follow-up specs reusing this foundation.
 - `runPackServer({ name, version, promptsDir, packRoot, build, onInvoke? })` — the standard server entry. The optional `onInvoke(event)` middleware hook fires once per prompt-get and per tool-call with `{ kind, name }`, *before* the handler runs; it is fire-and-forget and fail-open (throws and rejected promises are swallowed), leaving dispatch byte-for-byte unchanged. marvin wires it to the `.marvin/usage/` log (ADR-0030); the shared library stays project-agnostic.
 - `elicit(server, message, zodSchema)` + `canElicit(server)` — typed MCP elicitation wrapper with client-capability detection (tools degrade to instructive errors on hosts without elicitation)
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
-- `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
+- `contracts/` — zod data contracts for the MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, `HelpState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
 
 The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//, ...]`) into a single self-contained `dist/server.js`.
 

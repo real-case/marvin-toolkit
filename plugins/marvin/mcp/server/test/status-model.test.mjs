@@ -216,7 +216,7 @@ test("base_branch auto-detects from origin/HEAD when no config file exists", asy
       { name: "help", arguments: {} },
     ]);
 
-    assert.equal(help.structuredContent.config.base_branch, "main");
+    assert.equal(help.structuredContent.git.base_branch, "main");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
