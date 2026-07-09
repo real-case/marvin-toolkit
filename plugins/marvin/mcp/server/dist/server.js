@@ -31356,6 +31356,113 @@ var COMMAND_BLURBS = {
   "kanban-config": "Show or edit board config",
   "kanban-help": "Board help"
 };
+var COMMAND_DETAILS = {
+  // core
+  commit: "Safe commit \u2014 inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current kanban board task.",
+  debug: "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
+  adr: "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
+  changelog: "Generate a changelog from git history between tags, dates, or arbitrary refs.",
+  readme: "Generate or refresh README.md from actual codebase analysis.",
+  "migration-plan": "Plan a migration or major refactor: dependency analysis, sequenced steps, risks, and a rollback strategy.",
+  explain: "Explain how code works \u2014 logic, architecture, and design rationale \u2014 without changing it.",
+  "docs-search": "Search and synthesize project documentation \u2014 ADRs, README, runbooks, conventions.",
+  handoff: "Capture the session's full context into a durable handoff document plus a paste-ready prompt to continue in a fresh session.",
+  "handoff-list": "List the saved session-continuation handoff documents under .marvin/handoff/, newest first.",
+  lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
+  help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
+  dashboard: "Whole-toolbox state report: kanban, config, git, artifact inventories, ADR corpus, and local usage.",
+  // adr
+  "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
+  "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
+  "adr-audit": "Read-only lint of the whole ADR corpus \u2014 dangling references, numbering holes, broken supersede pairs, stale index.",
+  "adr-coverage": "Gap analysis \u2014 recorded ADRs vs the decisions visible in the actual stack, ranked by blast radius.",
+  "adr-supersede": "Roll back an accepted ADR properly \u2014 a successor record supersedes it and the links pair both ways. Human-run.",
+  "adr-sync": "Regenerate the Architecture-decisions digest in CLAUDE.md from accepted ADRs only. Human-run.",
+  // pr
+  "pr-create": "Open a pull request with a structured description and verification checklist; picks up kanban board-task context when present.",
+  "pr-review": "Review a pull request on GitHub and post the review there \u2014 inline comments by severity plus a summary.",
+  "pr-resolve": "Resolve open PR review threads \u2014 fetch the unresolved ones, plan and apply fixes, push, then reply and mark each resolved.",
+  "pr-merge": "Merge a pull request, then switch back to the base branch and pull.",
+  // task
+  "task-start": "Phase 1 of the task pipeline \u2014 a structured dialogue that produces an immutable, testable spec under .marvin/task/.",
+  "task-implement": "Execute a ready spec interactively in the current session, then auto-chain into verify and deliver.",
+  "task-verify": "Run the project quality gates \u2014 tests, lint, type-check, build \u2014 with automatic stack detection, and write verification.md.",
+  "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
+  "task-summary": "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons, and links.",
+  // sec
+  "sec-scan": "Comprehensive security audit aligned with OWASP Top 10:2025 \u2014 orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
+  "sec-secrets": "Deep scan for leaked secrets, credentials, and API keys across code, config, and git history.",
+  "sec-deps": "Audit dependencies for known vulnerabilities, license risk, and maintenance health.",
+  "sec-gate": "Fast security check on staged or recent changes \u2014 a lightweight pre-commit gate.",
+  "sec-threat-model": "Generate a STRIDE-based threat model for a feature, system, or the whole application.",
+  "sec-iac": "Security review of Infrastructure-as-Code \u2014 Terraform, CloudFormation, Kubernetes, Docker, Helm.",
+  "sec-ci": "Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions.",
+  "sec-fix": "Generate and verify a minimal, tested patch for a security finding, with a regression test.",
+  "sec-compliance": "Check code against OWASP ASVS compliance requirements \u2014 a structured compliance matrix.",
+  "sec-pentest": "Generate a penetration-testing checklist tailored to the specific application.",
+  "sec-report": "List the structured security-audit reports under .marvin/security/ \u2014 typed findings by severity, newest first.",
+  // refactor
+  "refactor-audit": "Whole-project structural refactoring audit \u2014 architecture map, churn\xD7size hotspots, dependency tangles, dead-code candidates. Read-only.",
+  "refactor-smells": "Scoped code-smell scan of a path, module, or diff \u2014 smells, anti-patterns, and naming inconsistencies. Read-only.",
+  "refactor-plan": "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
+  "refactor-apply": "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, rollback on red.",
+  // kanban
+  "kanban-menu": "Open the board action menu.",
+  "kanban-bug": "Create a bug task on the board.",
+  "kanban-feature": "Create a feature task on the board.",
+  "kanban-chore": "Create a chore task on the board.",
+  "kanban-spike": "Create a spike \u2014 a time-boxed investigation task.",
+  "kanban-start": "Move a board task to in-progress.",
+  "kanban-review": "Move a board task to review.",
+  "kanban-done": "Move a board task to done.",
+  "kanban-list": "List the tasks on the board.",
+  "kanban-show": "Show one board task in detail.",
+  "kanban-tracker": "Link an external tracker URL to a board task.",
+  "kanban-status": "Set a board task's status directly.",
+  "kanban-config": "Show or edit the board configuration (.marvin/config.json).",
+  "kanban-help": "Show board help."
+};
+var COMMAND_EXAMPLES = {
+  // core
+  commit: '/marvin:commit "fix: guard null session"',
+  debug: '/marvin:debug "TypeError in auth middleware"',
+  adr: '/marvin:adr "Adopt one MCP server"',
+  changelog: "/marvin:changelog since v0.1.0",
+  "migration-plan": '/marvin:migration-plan "bundler to Vite"',
+  explain: "/marvin:explain src/server.ts",
+  "docs-search": '/marvin:docs-search "how does the verify gate work?"',
+  handoff: '/marvin:handoff "widget work WIP"',
+  lessons: '/marvin:lessons search "dist staleness"',
+  help: "/marvin:help sec",
+  // adr
+  "adr-review": "/marvin:adr-review 31",
+  "adr-accept": "/marvin:adr-accept 31",
+  "adr-supersede": "/marvin:adr-supersede 12",
+  // pr
+  "pr-review": "/marvin:pr-review 42",
+  "pr-resolve": "/marvin:pr-resolve 42",
+  "pr-merge": "/marvin:pr-merge 42",
+  // task
+  "task-start": '/marvin:task-start "add pagination"',
+  "task-summary": "/marvin:task-summary add-pagination",
+  // sec
+  "sec-threat-model": '/marvin:sec-threat-model "upload flow"',
+  "sec-fix": '/marvin:sec-fix "CVE-2024-1234"',
+  // refactor
+  "refactor-smells": "/marvin:refactor-smells src/tools",
+  "refactor-plan": "/marvin:refactor-plan F3,F4",
+  // kanban
+  "kanban-bug": '/marvin:kanban-bug "login 500s"',
+  "kanban-feature": '/marvin:kanban-feature "dark mode"',
+  "kanban-chore": '/marvin:kanban-chore "bump deps"',
+  "kanban-spike": '/marvin:kanban-spike "try Preact"',
+  "kanban-start": "/marvin:kanban-start 12",
+  "kanban-review": "/marvin:kanban-review 12",
+  "kanban-done": "/marvin:kanban-done 12",
+  "kanban-show": "/marvin:kanban-show 12",
+  "kanban-tracker": "/marvin:kanban-tracker 12",
+  "kanban-status": "/marvin:kanban-status 12 blocked"
+};
 var HUMAN_RUN = /* @__PURE__ */ new Set(["adr-accept", "adr-supersede", "adr-sync"]);
 function shortDesc(desc, max = 72) {
   const oneLine = desc.replace(/\s+/g, " ").trim();
@@ -31459,15 +31566,23 @@ function renderHelp(env2, config2, version2, section) {
       blurb: GROUP_BLURBS[group] ?? ""
     })),
     // Full reference, registry order within each group. Names from the registry
-    // (drift-proof); blurb is curated (guarded to full coverage by a test), so a
-    // missing entry ships an empty blurb the test catches rather than silent drift.
+    // (drift-proof); blurb + description are curated (each guarded to full coverage
+    // by a test) with a `""` fallback, so a missing entry ships an empty string the
+    // test catches rather than silent drift. `example` is genuinely optional — it is
+    // omitted entirely when absent, so the widget renders the `e.g.` line only when
+    // a command has one.
     commands: GROUP_ORDER.flatMap(
-      (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => ({
-        group,
-        name: p.name,
-        blurb: COMMAND_BLURBS[p.name] ?? "",
-        human: HUMAN_RUN.has(p.name)
-      }))
+      (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
+        const example = COMMAND_EXAMPLES[p.name];
+        return {
+          group,
+          name: p.name,
+          blurb: COMMAND_BLURBS[p.name] ?? "",
+          description: COMMAND_DETAILS[p.name] ?? "",
+          ...example ? { example } : {},
+          human: HUMAN_RUN.has(p.name)
+        };
+      })
     )
   };
   return {
@@ -33818,7 +33933,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

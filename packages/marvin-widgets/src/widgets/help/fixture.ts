@@ -6,7 +6,10 @@ import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
  * group and all 57 commands, a mix of lit/dim MCP servers, and a non-trivial
  * artifact count. All values are fixed literals (no Date.now()) so the story and
  * snapshots stay deterministic. `[group, name, blurb, human]` tuples keep the
- * 57-command reference readable without losing coverage.
+ * 57-command reference readable without losing coverage; the richer `description`
+ * (shown in the widget's "Read more" group-detail view) is derived per command,
+ * and a representative subset carries an `example` so both the present and absent
+ * branches of the optional `e.g.` line are exercised.
  */
 const COMMANDS: Array<[string, string, string, boolean]> = [
   ["core", "commit", "Conventional commit, kanban-linked", false],
@@ -68,6 +71,21 @@ const COMMANDS: Array<[string, string, string, boolean]> = [
   ["kanban", "kanban-help", "Board help", false],
 ];
 
+/**
+ * A representative subset of usage examples. The remaining commands carry no
+ * example, so the fixture exercises both branches of the widget's optional
+ * `e.g.` line. `adr-accept` is included so a human-run command in the detail
+ * view shows the 👤 mark, its description, AND an example together.
+ */
+const EXAMPLES: Record<string, string> = {
+  commit: '/marvin:commit "fix: guard null session"',
+  debug: '/marvin:debug "TypeError in auth middleware"',
+  "adr-accept": "/marvin:adr-accept 31",
+  "task-start": '/marvin:task-start "add pagination"',
+  "sec-threat-model": '/marvin:sec-threat-model "upload flow"',
+  "kanban-bug": '/marvin:kanban-bug "login 500s"',
+};
+
 export const helpFixture: HelpState = {
   version: "0.1.0",
   slogan: "Claude Code toolset for AI development without panic",
@@ -109,5 +127,12 @@ export const helpFixture: HelpState = {
     { group: "refactor", blurb: "Code-health — audit, smells, plan, apply" },
     { group: "kanban", blurb: "Lightweight board tracker — create, move, list, configure" },
   ],
-  commands: COMMANDS.map(([group, name, blurb, human]) => ({ group, name, blurb, human })),
+  commands: COMMANDS.map(([group, name, blurb, human]) => ({
+    group,
+    name,
+    blurb,
+    description: `${blurb} — what /marvin:${name} does, in more detail.`,
+    ...(EXAMPLES[name] ? { example: EXAMPLES[name] } : {}),
+    human,
+  })),
 };

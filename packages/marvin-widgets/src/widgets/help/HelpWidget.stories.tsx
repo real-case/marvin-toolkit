@@ -21,6 +21,32 @@ export const Fixture: StoryObj<typeof HelpView> = {
   args: { data: helpFixture },
 };
 
+/**
+ * Group-detail story — activates a group's "Read more" link and asserts the
+ * focused per-command detail view (with its `e.g.` example) renders; the
+ * client-side drill-down's `test-storybook` oracle.
+ */
+export const GroupDetail: StoryObj<typeof HelpView> = {
+  args: { data: helpFixture },
+  play: async ({ canvasElement }) => {
+    const more = canvasElement.querySelector<HTMLElement>(
+      '[data-testid="help-more"][data-group="core"]',
+    );
+    if (!more) throw new Error("group-detail story: expected a Read more link for core");
+    more.click();
+    for (let i = 0; i < 50; i += 1) {
+      if (canvasElement.querySelector('[data-testid="help-detail"]')) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (!canvasElement.querySelector('[data-testid="help-detail"]')) {
+      throw new Error("group-detail story: expected the detail view after Read more");
+    }
+    if (!canvasElement.querySelector('[data-testid="help-detail-example"]')) {
+      throw new Error("group-detail story: expected an example line in the detail view");
+    }
+  },
+};
+
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
 function MockHostHarness() {
   const [seam, setSeam] = useState<HelpSeam | null>(null);

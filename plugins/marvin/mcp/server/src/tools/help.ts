@@ -8,6 +8,8 @@ import { PROMPTS } from "../prompts/index.js";
 import { artifactCounts, gitState, groupOf, kanbanCounts, GROUP_ORDER } from "../lib/state.js";
 import {
   COMMAND_BLURBS,
+  COMMAND_DETAILS,
+  COMMAND_EXAMPLES,
   GROUP_BLURBS,
   HUMAN_RUN,
   SLOGAN,
@@ -125,15 +127,23 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
       blurb: GROUP_BLURBS[group] ?? "",
     })),
     // Full reference, registry order within each group. Names from the registry
-    // (drift-proof); blurb is curated (guarded to full coverage by a test), so a
-    // missing entry ships an empty blurb the test catches rather than silent drift.
+    // (drift-proof); blurb + description are curated (each guarded to full coverage
+    // by a test) with a `""` fallback, so a missing entry ships an empty string the
+    // test catches rather than silent drift. `example` is genuinely optional — it is
+    // omitted entirely when absent, so the widget renders the `e.g.` line only when
+    // a command has one.
     commands: GROUP_ORDER.flatMap((group) =>
-      PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => ({
-        group,
-        name: p.name,
-        blurb: COMMAND_BLURBS[p.name] ?? "",
-        human: HUMAN_RUN.has(p.name),
-      })),
+      PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
+        const example = COMMAND_EXAMPLES[p.name];
+        return {
+          group,
+          name: p.name,
+          blurb: COMMAND_BLURBS[p.name] ?? "",
+          description: COMMAND_DETAILS[p.name] ?? "",
+          ...(example ? { example } : {}),
+          human: HUMAN_RUN.has(p.name),
+        };
+      }),
     ),
   };
 
