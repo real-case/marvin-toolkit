@@ -136,3 +136,33 @@ export const helpFixture: HelpState = {
     human,
   })),
 };
+
+/**
+ * No MCP servers configured — the host project carries no `.mcp.json`, so the
+ * servers section shows the italic "none configured" note. Smallest delta over
+ * the base fixture: only `servers` changes.
+ */
+export const noServersHelpFixture: HelpState = {
+  ...helpFixture,
+  servers: [],
+};
+
+/**
+ * No board statuses configured — `.marvin/config.json` has an empty `statuses`
+ * vocabulary (ADR-0026), so the kanban summary row degrades to its
+ * "no statuses configured" note. Smallest delta: only `statuses` changes.
+ */
+export const noStatusesHelpFixture: HelpState = {
+  ...helpFixture,
+  statuses: [],
+};
+
+/**
+ * Not inside a git repository — `branch` is null (and the has-flags honest), so
+ * the git summary row shows "not in a git repo". Smallest delta: only `git`
+ * changes; `base_branch` keeps the config default the tool would still report.
+ */
+export const noGitHelpFixture: HelpState = {
+  ...helpFixture,
+  git: { branch: null, base_branch: "main", has_git: false, has_gh: false },
+};

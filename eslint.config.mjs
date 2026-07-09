@@ -9,7 +9,10 @@ import prettier from "eslint-config-prettier";
 
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", ".claude/**"],
+    // storybook-static is the marvin-widgets Storybook build output (gitignored,
+    // regenerated on demand) — without the ignore a stale local build floods
+    // `eslint .` with thousands of errors from the bundled runtime.
+    ignores: ["**/dist/**", "**/node_modules/**", ".claude/**", "**/storybook-static/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrackerListView, TrackerListWidget, type TrackerListSeam } from "./TrackerListWidget";
-import { trackerListFixture } from "./fixture";
+import { trackerListFixture, noUrlTrackerFixture, emptyTrackerFixture } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the tracker-list widget (ADR-0024 #6): a static component story over
- * the fixture (visual/dev), and a mock-host story whose `play` drives the real
- * ext-apps handshake over an in-memory transport and asserts the tracked tasks (and
- * the external link-out button) render — the `@storybook/test-runner` oracle.
+ * Stories for the tracker-list widget (ADR-0024 #6): static stories over the pure
+ * view cover every render state (fixture in both host themes, the url-less
+ * configure-hint branch, empty board, PR link-out, and the connecting/no-data/error
+ * trio) for the visual-regression screenshots, and a mock-host story whose `play`
+ * drives the real ext-apps handshake over an in-memory transport and asserts the
+ * tracked tasks (and the external link-out button) render — the
+ * `@storybook/test-runner` oracle.
  */
 const meta: Meta<typeof TrackerListView> = {
   title: "Widgets/TrackerList",
@@ -19,6 +23,61 @@ export default meta;
 /** Static story — the pure view rendering the fixture directly. */
 export const Fixture: StoryObj<typeof TrackerListView> = {
   args: { data: trackerListFixture },
+};
+
+/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+export const FixtureDark: StoryObj<typeof TrackerListView> = {
+  args: { data: trackerListFixture },
+  parameters: { hostTheme: "dark" },
+};
+
+/** Tracker ids without a tracker_url (AC6): the configure hint, and no dead link button. */
+export const NoTrackerUrl: StoryObj<typeof TrackerListView> = {
+  args: { data: noUrlTrackerFixture },
+  play: async ({ canvasElement }) => {
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="tracker-hint"]') !== null,
+      "the configure hint to render for a url-less tracker id",
+    );
+    if (canvasElement.querySelector('[data-testid="tracker-link"]')) {
+      throw new Error("NoTrackerUrl: expected no tracker link-out button when tracker_url is null");
+    }
+  },
+};
+
+/** No task carries a tracker id — the guidance empty state instead of the split view. */
+export const Empty: StoryObj<typeof TrackerListView> = {
+  args: { data: emptyTrackerFixture },
+};
+
+/** A card carrying both links: the tracker link-out button next to its PR button. */
+export const WithPr: StoryObj<typeof TrackerListView> = {
+  args: { data: { tasks: [trackerListFixture.tasks[0]] } },
+  play: async ({ canvasElement }) => {
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="tracker-link"]') !== null,
+      "the tracker link-out button to render",
+    );
+    const section = canvasElement.querySelector('[data-testid="tracker-section"]');
+    if (!section?.textContent?.includes("PR #12")) {
+      throw new Error("WithPr: expected the PR link button to render beside the tracker link");
+    }
+  },
+};
+
+/** The pre-handshake state — no data yet, the connecting placeholder. */
+export const Connecting: StoryObj<typeof TrackerListView> = {
+  args: { data: null, connecting: true },
+};
+
+/** Connected but no tool-result ever arrived — the no-data copy. */
+export const NoData: StoryObj<typeof TrackerListView> = {
+  args: { data: null, connecting: false },
+};
+
+/** A handshake failure — the error fallback. (Named ErrorState: `Error` shadows the global.) */
+export const ErrorState: StoryObj<typeof TrackerListView> = {
+  args: { data: null, error: "kaboom: transport dropped" },
 };
 
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
@@ -38,19 +97,15 @@ function MockHostHarness() {
   return seam ? <TrackerListWidget seam={seam} /> : <div>Starting mock host…</div>;
 }
 
-async function waitForList(root: HTMLElement) {
-  for (let i = 0; i < 50; i += 1) {
-    if (root.querySelector('[data-testid="tracker-counts"]')) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("mock-host story: expected the tracker list to render");
-}
-
 /** Mock-host story — the handshake delivers a tool-result and the widget renders it. */
 export const MockHost: StoryObj = {
   render: () => <MockHostHarness />,
+  parameters: { visual: false },
   play: async ({ canvasElement }) => {
-    await waitForList(canvasElement);
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="tracker-counts"]') !== null,
+      "the tracker list to render after the mock-host handshake",
+    );
     if (!canvasElement.querySelector('[data-testid="tracker-link"]')) {
       throw new Error("mock-host story: expected the tracker link-out button to render");
     }

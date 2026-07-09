@@ -3,6 +3,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useCallback,
+  useEffect,
+  useId,
+  useRef,
   useState,
 } from "react";
 
@@ -64,6 +67,10 @@ const rowSelectedStyle: CSSProperties = {
 /**
  * Master-detail list. Selection starts on the first row and moves with click or
  * ArrowUp/ArrowDown; the detail pane always reflects the selected row.
+ *
+ * The listbox is the single tab stop (rows are `tabIndex={-1}`), points assistive
+ * tech at the active row via `aria-activedescendant`, and keeps that row visible
+ * by scrolling it into view whenever the selection moves.
  */
 export function ListDetail<T>({
   items,
@@ -74,6 +81,12 @@ export function ListDetail<T>({
   ariaLabel = "items",
 }: ListDetailProps<T>) {
   const [selected, setSelected] = useState(0);
+  // Per-instance id prefix so several ListDetails on one page never collide on
+  // option ids — aria-activedescendant must reference a document-unique id.
+  const idPrefix = useId();
+  // One ref slot per row (callback refs, not id-string DOM queries) so the
+  // scroll effect below can reach the active row's element directly.
+  const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLUListElement>) => {
@@ -94,6 +107,21 @@ export function ListDetail<T>({
     [items.length],
   );
 
+  // Selection can dangle past the end if `items` shrank between renders; clamp on
+  // read so the detail pane never indexes out of bounds.
+  const activeIndex = Math.min(selected, items.length - 1);
+
+  // Keep the active row visible as arrow/Home/End move the selection. An effect
+  // keyed on the index (not code in the key handler) runs after the row has
+  // re-rendered; `block: "nearest"` makes it a no-op for click selection, which
+  // is on-screen by definition. happy-dom may omit scrollIntoView — guard it.
+  useEffect(() => {
+    const el = rowRefs.current[activeIndex];
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeIndex]);
+
   if (items.length === 0) {
     return (
       <div data-testid="list-detail-empty" style={{ padding: "1rem", opacity: 0.7 }}>
@@ -102,9 +130,6 @@ export function ListDetail<T>({
     );
   }
 
-  // Selection can dangle past the end if `items` shrank between renders; clamp on
-  // read so the detail pane never indexes out of bounds.
-  const activeIndex = Math.min(selected, items.length - 1);
   const activeItem = items[activeIndex];
 
   return (
@@ -113,6 +138,7 @@ export function ListDetail<T>({
         role="listbox"
         aria-label={ariaLabel}
         tabIndex={0}
+        aria-activedescendant={`${idPrefix}-opt-${activeIndex}`}
         onKeyDown={onKeyDown}
         style={listStyle}
       >
@@ -123,7 +149,14 @@ export function ListDetail<T>({
               <button
                 type="button"
                 role="option"
+                id={`${idPrefix}-opt-${index}`}
                 aria-selected={isSelected}
+                // The listbox is the one tab stop; rows are reached with the
+                // arrow keys, so they must not add 40 stops to the tab order.
+                tabIndex={-1}
+                ref={(el) => {
+                  rowRefs.current[index] = el;
+                }}
                 onClick={() => setSelected(index)}
                 style={isSelected ? rowSelectedStyle : rowBaseStyle}
               >

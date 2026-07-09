@@ -1,10 +1,34 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (fixtures/stories stay type-only).
+import { HandoffDetailPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { HandoffsView, HandoffsWidget } from "./HandoffsWidget";
-import { handoffsFixture } from "./fixture";
+import {
+  handoffsFixture,
+  emptyHandoffsFixture,
+  minimalHandoffFixture,
+  longPromptHandoffFixture,
+} from "./fixture";
+import { formatDate } from "../../lib/format";
 import { createMockHost } from "../../lib/mock-host";
 
 const FIRST = handoffsFixture.handoffs[0];
+
+describe("handoffs fixtures — contract conformance", () => {
+  // Every fixture the stories render must parse against the real zod contract:
+  // a fixture that drifts from HandoffDetailPayload would render fine (the view
+  // is duck-typed) while silently diverging from what the handoff tool can emit.
+  it.each([
+    ["handoffsFixture", handoffsFixture],
+    ["emptyHandoffsFixture", emptyHandoffsFixture],
+    ["minimalHandoffFixture", minimalHandoffFixture],
+    ["longPromptHandoffFixture", longPromptHandoffFixture],
+  ])("%s parses as HandoffDetailPayload", (_name, fixture) => {
+    const result = HandoffDetailPayload.safeParse(fixture);
+    expect(result.error?.issues ?? []).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+});
 
 describe("HandoffsWidget — pure view over the fixture", () => {
   it("renders the master list and the selected handoff's fields and markdown body", () => {
@@ -23,6 +47,9 @@ describe("HandoffsWidget — pure view over the fixture", () => {
     expect(pane.textContent).toContain(FIRST.branch); // branch
     expect(pane.textContent).toContain("dev"); // base
     expect(pane.textContent).toContain("widget-handoffs"); // spec slug
+    // created renders as the formatted YYYY-MM-DD date, never the raw ISO string
+    expect(pane.textContent).toContain(formatDate(FIRST.created)); // "2026-07-07"
+    expect(pane.textContent).not.toContain(FIRST.created);
     // the PR link renders from pr_url (handoff-specific — no tracker field exists)
     expect(within(pane).getByRole("button", { name: /PR #88/ })).toBeTruthy();
 

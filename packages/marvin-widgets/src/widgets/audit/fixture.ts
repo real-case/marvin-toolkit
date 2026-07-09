@@ -1,5 +1,9 @@
 import type { AuditListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 
+// The fence marker as a const so the fixture's markdown can nest code blocks
+// without backtick-escaping gymnastics inside template strings.
+const FENCE = "```";
+
 /**
  * A representative AuditListPayload (ADR-0024 #7) shared by the tests and the
  * story. Three reports across scanner kinds carry six findings spanning all five
@@ -10,8 +14,6 @@ import type { AuditListPayload } from "@marvin-toolkit/mcp-shared/contracts";
  * LinkRefs. Timestamps are fixed literals (no Date.now()) so snapshots stay
  * deterministic. `summary` is carried verbatim; the widget counts findings itself.
  */
-const FENCE = "```";
-
 export const auditListFixture: AuditListPayload = {
   reports: [
     {
@@ -127,6 +129,124 @@ export const auditListFixture: AuditListPayload = {
           title: "minimist ReDoS reachable through a transitive dep",
           category: "CVE-2021-44906",
           remediation: "Add a resolutions override pinning `minimist` to `>=1.2.6`.",
+        },
+      ],
+    },
+  ],
+};
+
+/** Degraded empty — nothing has been scanned yet; the widget prompts a sec-* run. */
+export const emptyAuditFixture: AuditListPayload = { reports: [] };
+
+/**
+ * Positive empty — two reports (different scanners, different days) with zero
+ * findings each: the "all clear" state, distinct from "never scanned".
+ */
+export const cleanAuditFixture: AuditListPayload = {
+  reports: [
+    {
+      kind: "secrets",
+      scanned_at: "2026-07-06T10:00:00.000Z",
+      target: "acme-api",
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      findings: [],
+    },
+    {
+      kind: "ci",
+      scanned_at: "2026-07-07T16:45:00.000Z",
+      target: "acme-api",
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      findings: [],
+    },
+  ],
+};
+
+/**
+ * A finding carrying ONLY the required fields — no file/line/evidence/
+ * remediation/links, and no report `target` — so the detail pane degrades to
+ * just Category/Scanner/Scanned rows with no empty sections or dangling labels.
+ */
+export const minimalFindingFixture: AuditListPayload = {
+  reports: [
+    {
+      kind: "threat-model",
+      scanned_at: "2026-07-03T11:20:00.000Z",
+      summary: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
+      findings: [
+        {
+          id: "TM-1",
+          severity: "medium",
+          title: "Kanban board files are world-readable on shared checkouts",
+          category: "STRIDE — Information Disclosure",
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * One finding whose evidence and remediation exercise the heavy end of the
+ * `<Markdown>` GFM subset — fenced code, nested prose, ordered + bullet lists
+ * and a table — so the detail pane's long-form layout is a real screenshot.
+ */
+export const longEvidenceFixture: AuditListPayload = {
+  reports: [
+    {
+      kind: "pentest",
+      scanned_at: "2026-07-08T18:05:00.000Z",
+      target: "acme-api",
+      summary: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+      findings: [
+        {
+          id: "PEN-1",
+          severity: "critical",
+          title: "IDOR on /api/tasks/:id lets any user read any board task",
+          category: "OWASP A01:2025",
+          file: "src/routes/tasks.ts",
+          line: 57,
+          evidence: [
+            "The handler loads the task by id without an ownership check:",
+            "",
+            FENCE + "ts",
+            'router.get("/api/tasks/:id", async (req, res) => {',
+            "  const task = await db.tasks.findById(req.params.id);",
+            "  res.json(task); // no owner / team scoping",
+            "});",
+            FENCE,
+            "",
+            "Reproduced against staging with two accounts:",
+            "",
+            "1. Log in as `alice@acme.dev` and create task `1042`.",
+            "2. Log in as `mallory@acme.dev` (no shared team).",
+            "3. `GET /api/tasks/1042` returns Alice's task body — **200**, not 403/404.",
+            "",
+            "Observed responses:",
+            "",
+            "| Requester | Task | Expected | Actual |",
+            "| --- | --- | --- | --- |",
+            "| alice | 1042 | 200 | 200 |",
+            "| mallory | 1042 | 403 | 200 |",
+            "| anonymous | 1042 | 401 | 401 |",
+          ].join("\n"),
+          remediation: [
+            "Scope every task read to the requesting principal:",
+            "",
+            "- Add `owner_id` (or `team_id`) to the `tasks` query predicate.",
+            "- Return **404** (not 403) for foreign ids so existence does not leak.",
+            "- Backfill a regression test per row of the table above.",
+            "",
+            FENCE + "ts",
+            "const task = await db.tasks.findOne({ id: req.params.id, team_id: req.user.team_id });",
+            "if (!task) return res.status(404).end();",
+            FENCE,
+          ].join("\n"),
+          links: [
+            {
+              kind: "external",
+              label: "OWASP A01:2025 — Broken Access Control",
+              url: "https://owasp.org/Top10/A01_2021-Broken_Access_Control/",
+            },
+          ],
         },
       ],
     },

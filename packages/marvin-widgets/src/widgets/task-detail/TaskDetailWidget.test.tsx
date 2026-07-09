@@ -1,8 +1,32 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (fixtures/stories stay type-only).
+import { TaskDetail } from "@marvin-toolkit/mcp-shared/contracts";
 import { TaskDetailView, TaskDetailWidget } from "./TaskDetailWidget";
-import { taskDetailFixture } from "./fixture";
+import {
+  taskDetailFixture,
+  minimalTaskDetailFixture,
+  richBodyTaskDetailFixture,
+  longTitleTaskDetailFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("TaskDetailWidget — fixtures satisfy the TaskDetail contract", () => {
+  // Parse (not safeParse) every fixture through the real zod schema, so a
+  // fixture that drifts from the contract fails loudly with zod's path report —
+  // the stories and visual snapshots can then never render impossible payloads.
+  const fixtures: Record<string, TaskDetail> = {
+    taskDetailFixture,
+    minimalTaskDetailFixture,
+    richBodyTaskDetailFixture,
+    longTitleTaskDetailFixture,
+  };
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`${name} parses against the zod contract`, () => {
+      expect(TaskDetail.parse(fixture)).toEqual(fixture);
+    });
+  }
+});
 
 describe("TaskDetailWidget — pure view over the fixture", () => {
   it("renders the card fields and links from the fixture", () => {
@@ -29,6 +53,22 @@ describe("TaskDetailWidget — pure view over the fixture", () => {
     // tracker + PR render as link buttons (ADR-0024 link model)
     expect(within(pane).getByRole("button", { name: /OSI-101/ })).toBeTruthy();
     expect(within(pane).getByRole("button", { name: /PR #12/ })).toBeTruthy();
+
+    // Updated renders as the deterministic YYYY-MM-DD date, never the raw ISO
+    expect(pane.textContent).toContain("2026-07-03");
+    expect(pane.textContent).not.toContain("2026-07-03T14:15:00.000Z");
+  });
+
+  it("omits the link row and the Spec row for a minimal task", () => {
+    render(<TaskDetailView data={minimalTaskDetailFixture} />);
+    const pane = screen.getByTestId("list-detail-pane");
+
+    // no tracker/PR → no link buttons at all; no spec_slug → no Spec row
+    expect(within(pane).queryAllByRole("button")).toHaveLength(0);
+    expect(pane.textContent).not.toContain("Spec");
+    // the always-present fields still render
+    expect(pane.textContent).toContain("chore");
+    expect(pane.textContent).toContain("2026-07-02");
   });
 
   it("renders the markdown body as elements", () => {

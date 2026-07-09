@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { HandoffsView, HandoffsWidget, type HandoffsSeam } from "./HandoffsWidget";
-import { handoffsFixture } from "./fixture";
+import {
+  handoffsFixture,
+  emptyHandoffsFixture,
+  minimalHandoffFixture,
+  longPromptHandoffFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the handoffs widget (ADR-0024 #5): a static component story over the
- * fixture (visual/dev), and a mock-host story whose `play` drives the real ext-apps
- * handshake over an in-memory transport and asserts the browser (and the selected
- * handoff's markdown body) render — the `@storybook/test-runner` (test-storybook)
- * oracle.
+ * Stories for the handoffs widget (ADR-0024 #5): static component stories over the
+ * fixtures (every data shape plus the connecting/no-data/error trio, each a pure
+ * `HandoffsView` render for screenshots), and a mock-host story whose `play` drives
+ * the real ext-apps handshake over an in-memory transport and asserts the browser
+ * (and the selected handoff's markdown body) render — the `@storybook/test-runner`
+ * (test-storybook) oracle.
  */
 const meta: Meta<typeof HandoffsView> = {
   title: "Widgets/Handoffs",
@@ -20,6 +27,42 @@ export default meta;
 /** Static story — the pure view rendering the fixture directly. */
 export const Fixture: StoryObj<typeof HandoffsView> = {
   args: { data: handoffsFixture },
+};
+
+/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+export const FixtureDark: StoryObj<typeof HandoffsView> = {
+  args: { data: handoffsFixture },
+  parameters: { hostTheme: "dark" },
+};
+
+/** Zero handoffs — the "No handoffs yet — run /marvin:handoff…" empty label. */
+export const Empty: StoryObj<typeof HandoffsView> = {
+  args: { data: emptyHandoffsFixture },
+};
+
+/** The minimal card: no base, no spec_slug, pr_url null — Base/Spec rows and PR button absent. */
+export const MinimalHandoff: StoryObj<typeof HandoffsView> = {
+  args: { data: minimalHandoffFixture },
+};
+
+/** A 30-line continue_prompt plus a long body — the prompt `<pre>`'s pre-wrap stress shot. */
+export const LongPrompt: StoryObj<typeof HandoffsView> = {
+  args: { data: longPromptHandoffFixture },
+};
+
+/** No data yet, handshake in flight — the "Connecting…" placeholder. */
+export const Connecting: StoryObj<typeof HandoffsView> = {
+  args: { data: null, connecting: true },
+};
+
+/** No data and the handshake is over — the "No data." copy. */
+export const NoData: StoryObj<typeof HandoffsView> = {
+  args: { data: null, connecting: false },
+};
+
+/** A transport error — the danger-coloured fallback. Named ErrorState: `Error` shadows the global. */
+export const ErrorState: StoryObj<typeof HandoffsView> = {
+  args: { data: null, error: "kaboom: transport dropped" },
 };
 
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
@@ -39,19 +82,15 @@ function MockHostHarness() {
   return seam ? <HandoffsWidget seam={seam} /> : <div>Starting mock host…</div>;
 }
 
-async function waitForDetail(root: HTMLElement) {
-  for (let i = 0; i < 50; i += 1) {
-    if (root.querySelector('[data-testid="detail-title"]')) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("mock-host story: expected the handoff detail to render");
-}
-
 /** Mock-host story — the handshake delivers a tool-result and the widget renders it. */
 export const MockHost: StoryObj = {
   render: () => <MockHostHarness />,
+  parameters: { visual: false },
   play: async ({ canvasElement }) => {
-    await waitForDetail(canvasElement);
+    await waitForCondition(
+      () => Boolean(canvasElement.querySelector('[data-testid="detail-title"]')),
+      "the handoff detail to render after the mock-host handshake",
+    );
     if (!canvasElement.querySelector('[data-testid="markdown"] pre code')) {
       throw new Error("mock-host story: expected the markdown body to render as elements");
     }

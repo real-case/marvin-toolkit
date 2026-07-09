@@ -1,14 +1,26 @@
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { AuditListView, AuditWidget, type AuditSeam } from "./AuditWidget";
-import { auditListFixture } from "./fixture";
+import {
+  auditListFixture,
+  cleanAuditFixture,
+  emptyAuditFixture,
+  longEvidenceFixture,
+  minimalFindingFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the audit widget (ADR-0024 #7): a static component story over the
- * fixture (visual/dev), and a mock-host story whose `play` drives the real ext-apps
- * handshake over an in-memory transport and asserts the findings (and a finding's
- * markdown evidence) render — the `@storybook/test-runner` (test-storybook) oracle.
+ * Stories for the audit widget (ADR-0024 #7). Static stories drive the pure
+ * {@link AuditListView} straight through args — the full fixture (light + dark
+ * host), both empty shapes (never-scanned vs all-clear), a bare-minimum finding,
+ * a markdown-heavy finding, and the connecting/no-data/error trio — so every
+ * render state is a deterministic screenshot. Two `play` stories add behaviour:
+ * severity filtering over the fixture, and a mock-host story whose `play` drives
+ * the real ext-apps handshake over an in-memory transport and asserts the
+ * findings (and a finding's markdown evidence) render — the
+ * `@storybook/test-runner` (test-storybook) oracle.
  */
 const meta: Meta<typeof AuditListView> = {
   title: "Widgets/Audit",
@@ -16,9 +28,77 @@ const meta: Meta<typeof AuditListView> = {
 };
 export default meta;
 
+type Story = StoryObj<typeof AuditListView>;
+
 /** Static story — the pure view rendering the fixture directly. */
-export const Fixture: StoryObj<typeof AuditListView> = {
+export const Fixture: Story = {
   args: { data: auditListFixture },
+};
+
+/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+export const FixtureDark: Story = {
+  args: { data: auditListFixture },
+  parameters: { hostTheme: "dark" },
+};
+
+/** Degraded empty — no reports at all: the "run a /marvin:sec-* scan" prompt. */
+export const NoReports: Story = {
+  args: { data: emptyAuditFixture },
+};
+
+/** Positive empty — two reports, zero findings: the "all clear" state. */
+export const CleanScan: Story = {
+  args: { data: cleanAuditFixture },
+};
+
+/** A required-fields-only finding — the detail shows just Category/Scanner/Scanned. */
+export const MinimalFinding: Story = {
+  args: { data: minimalFindingFixture },
+};
+
+/** Markdown-heavy evidence + remediation — code fences, lists and a table in the detail. */
+export const LongEvidence: Story = {
+  args: { data: longEvidenceFixture },
+};
+
+/** Click the "critical" chip — only critical rows remain and the chip reads pressed. */
+export const FilteredCritical: Story = {
+  args: { data: auditListFixture },
+  play: async ({ canvasElement }) => {
+    const chip = Array.from(
+      canvasElement.querySelectorAll<HTMLButtonElement>('[data-testid="severity-filter"] button'),
+    ).find((b) => (b.textContent ?? "").trim().startsWith("critical"));
+    if (!chip) throw new Error("FilteredCritical: the critical filter chip did not render");
+    chip.click();
+    await waitForCondition(() => {
+      const options = Array.from(canvasElement.querySelectorAll('[role="option"]'));
+      return (
+        options.length > 0 &&
+        options.every((o) => (o.textContent ?? "").trim().startsWith("critical"))
+      );
+    }, "every rendered finding row to lead with a critical severity badge");
+    const pressed = Array.from(
+      canvasElement.querySelectorAll<HTMLButtonElement>('[data-testid="severity-filter"] button'),
+    ).find((b) => (b.textContent ?? "").trim().startsWith("critical"));
+    if (pressed?.getAttribute("aria-pressed") !== "true") {
+      throw new Error("FilteredCritical: the critical chip is not aria-pressed after the click");
+    }
+  },
+};
+
+/** The pre-handshake state — no data yet, the widget shows "Connecting…". */
+export const Connecting: Story = {
+  args: { data: null, connecting: true },
+};
+
+/** Connected but the tool never delivered a payload — the "No data." copy. */
+export const NoData: Story = {
+  args: { data: null, connecting: false },
+};
+
+/** A transport/handshake failure — the error fallback. (Named to dodge the global Error.) */
+export const ErrorState: Story = {
+  args: { data: null, error: "kaboom: transport dropped" },
 };
 
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
@@ -38,19 +118,15 @@ function MockHostHarness() {
   return seam ? <AuditWidget seam={seam} /> : <div>Starting mock host…</div>;
 }
 
-async function waitForFindings(root: HTMLElement) {
-  for (let i = 0; i < 50; i += 1) {
-    if (root.querySelector('[data-testid="audit-counts"]')) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("mock-host story: expected the audit findings to render");
-}
-
 /** Mock-host story — the handshake delivers a tool-result and the widget renders it. */
 export const MockHost: StoryObj = {
   render: () => <MockHostHarness />,
+  parameters: { visual: false },
   play: async ({ canvasElement }) => {
-    await waitForFindings(canvasElement);
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="audit-counts"]') !== null,
+      "the audit findings to render after the mock-host handshake",
+    );
     if (!canvasElement.querySelector('[data-testid="detail-title"]')) {
       throw new Error("mock-host story: expected a finding detail to render");
     }

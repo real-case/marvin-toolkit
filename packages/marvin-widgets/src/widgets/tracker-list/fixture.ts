@@ -40,5 +40,39 @@ export const trackerListFixture: TrackerListPayload = {
   ],
 };
 
+/**
+ * Every card carries a `tracker_id` but no derived `tracker_url` — the project
+ * has no `tracker_url_template` configured at all, so the whole list renders the
+ * id-as-text + configure hint branch (AC6) and not a single link-out button.
+ */
+export const noUrlTrackerFixture: TrackerListPayload = {
+  tasks: [
+    {
+      id: "003",
+      type: "chore",
+      status: { key: "review", role: "review" },
+      title: "Rotate the staging deploy keys",
+      branch: "chore/003-OPS-52--rotate-deploy-keys",
+      tracker_id: "OPS-52",
+      tracker_url: null,
+      pr: null,
+      created: "2026-07-04T08:30:00.000Z",
+      updated: "2026-07-05T16:45:00.000Z",
+    },
+    {
+      id: "004",
+      type: "spike",
+      status: { key: "todo", role: "todo" },
+      title: "Evaluate OpenTelemetry for the API gateway",
+      branch: "spike/004-OPS-61--otel-gateway",
+      tracker_id: "OPS-61",
+      tracker_url: null,
+      pr: null,
+      created: "2026-07-05T11:20:00.000Z",
+      updated: "2026-07-05T11:20:00.000Z",
+    },
+  ],
+};
+
 /** An empty payload — no task carries a tracker id (AC4 empty state). */
-export const emptyTrackerListFixture: TrackerListPayload = { tasks: [] };
+export const emptyTrackerFixture: TrackerListPayload = { tasks: [] };

@@ -9,6 +9,7 @@ import type {
 import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { formatDate } from "../../lib/format";
 
 /**
  * The handoffs widget (ADR-0024 widget #5) — a master-detail *browser* over the
@@ -126,7 +127,7 @@ function HandoffDetailPane({
           </>
         ) : null}
         <dt style={{ opacity: 0.6 }}>Created</dt>
-        <dd style={{ margin: 0 }}>{handoff.created}</dd>
+        <dd style={{ margin: 0 }}>{formatDate(handoff.created)}</dd>
       </dl>
       {link ? (
         <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -210,7 +211,7 @@ export function HandoffsView({
     return (
       <div
         data-testid="handoffs-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00)" }}
+        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
       >
         Couldn’t load handoffs: {error}
       </div>
@@ -227,7 +228,10 @@ export function HandoffsView({
   return (
     <div
       style={{
-        font: "var(--font-sans, system-ui, sans-serif)",
+        // fontFamily, not the `font` shorthand: the shorthand requires a size, so
+        // a family-only `font:` is invalid CSS — the declaration is dropped and
+        // the widget renders in the host default serif.
+        fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
       }}
     >

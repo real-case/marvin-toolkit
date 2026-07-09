@@ -11,10 +11,11 @@ import { type CSSProperties, type ReactNode, Fragment } from "react";
  * raw HTML in `source` reaches the DOM only as escaped text (no injection surface),
  * and nothing new is inlined into the CSP-constrained widget bundle.
  *
- * It supports a GFM subset — ATX headings, paragraphs, bold/italic, inline and
- * fenced code, ordered/unordered lists, links, blockquotes, thematic breaks and
- * tables. The parser is **total**: any line it does not recognise becomes plain
- * paragraph text, so an arbitrary user-authored task body never throws.
+ * It supports a GFM subset — ATX headings, paragraphs, bold/italic/strikethrough,
+ * inline and fenced code, ordered/unordered lists (including task-list items),
+ * links, blockquotes, thematic breaks and tables. The parser is **total**: any
+ * line it does not recognise becomes plain paragraph text, so an arbitrary
+ * user-authored task body never throws.
  */
 export interface MarkdownProps {
   /** The markdown source to render. */
@@ -66,12 +67,21 @@ const hrStyle: CSSProperties = {
   margin: "0.75rem 0",
 };
 
+const taskCheckboxStyle: CSSProperties = {
+  marginRight: "0.4em",
+  verticalAlign: "middle",
+};
+
 // ── Inline parsing ─────────────────────────────────────────────────────────
 // Each pattern captures the inner text (group 1) and, for links, the href
-// (group 2). Ordered by precedence: a code span suppresses formatting inside it,
-// so it is matched first; emphasis inner text is parsed recursively.
+// (group 2). Array order breaks same-index ties; `tier` carries the GFM
+// precedence (0 code span, 1 link, 2 emphasis/strikethrough): a match whose
+// range CROSSES a higher-precedence match's boundary loses to it, while full
+// containment is fine — the winner re-parses its inner text recursively.
 interface InlineRule {
   re: RegExp;
+  /** GFM precedence tier — lower binds tighter (0 code, 1 link, 2 style). */
+  tier: 0 | 1 | 2;
   render: (m: RegExpMatchArray, key: number) => ReactNode;
 }
 
@@ -92,6 +102,7 @@ function safeHref(url: string): string | null {
 const INLINE_RULES: InlineRule[] = [
   {
     re: /`([^`]+)`/,
+    tier: 0,
     render: (m, k) => (
       <code key={k} style={codeStyle}>
         {m[1]}
@@ -100,12 +111,21 @@ const INLINE_RULES: InlineRule[] = [
   },
   {
     re: /\[([^\]]*)\]\(([^)\s]+)\)/,
+    tier: 1,
     render: (m, k) => {
       const href = safeHref(m[2]);
       // Unsafe scheme → drop the anchor and render the link text only, so a
       // `[x](javascript:…)` never produces a live href.
       return href ? (
-        <a key={k} href={href} rel="noreferrer noopener" target="_blank">
+        // Explicit link colour: the UA default blue/purple is illegible on a
+        // dark host, and the host's info colour is what sibling link buttons use.
+        <a
+          key={k}
+          href={href}
+          rel="noreferrer noopener"
+          target="_blank"
+          style={{ color: "var(--color-text-info, #0b57d0)" }}
+        >
           {parseInline(m[1])}
         </a>
       ) : (
@@ -113,10 +133,15 @@ const INLINE_RULES: InlineRule[] = [
       );
     },
   },
-  { re: /\*\*([^*]+)\*\*/, render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong> },
-  { re: /__([^_]+)__/, render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong> },
-  { re: /\*([^*]+)\*/, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
-  { re: /_([^_]+)_/, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
+  { re: /~~([^~]+)~~/, tier: 2, render: (m, k) => <del key={k}>{parseInline(m[1])}</del> },
+  {
+    re: /\*\*([^*]+)\*\*/,
+    tier: 2,
+    render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong>,
+  },
+  { re: /__([^_]+)__/, tier: 2, render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong> },
+  { re: /\*([^*]+)\*/, tier: 2, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
+  { re: /_([^_]+)_/, tier: 2, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
 ];
 
 /**
@@ -131,21 +156,45 @@ function parseInline(text: string): ReactNode[] {
   let key = 0;
   // Bound the loop by consuming at least one char each iteration.
   while (rest.length > 0) {
-    let best: { index: number; length: number; node: ReactNode } | null = null;
+    interface Candidate {
+      rule: InlineRule;
+      m: RegExpMatchArray;
+      index: number;
+      end: number;
+    }
+    const candidates: Candidate[] = [];
     for (const rule of INLINE_RULES) {
       const m = rest.match(rule.re);
-      if (m && m.index !== undefined && (best === null || m.index < best.index)) {
-        best = { index: m.index, length: m[0].length, node: rule.render(m, key) };
+      if (m && m.index !== undefined) {
+        candidates.push({ rule, m, index: m.index, end: m.index + m[0].length });
       }
+    }
+    // GFM precedence: a candidate whose range CROSSES the boundary of a
+    // higher-precedence candidate loses to it — e.g. in "~~a `b~~ c` d" the del
+    // closing on the `~~` inside the code span must not destroy that span. Full
+    // containment is NOT suppressed: "[`x`](u)" keeps the link, whose render
+    // re-parses the inner code span recursively. A dropped rule re-matches on a
+    // later iteration once the winner is consumed.
+    const crosses = (c: Candidate, o: Candidate) =>
+      c.index < o.end &&
+      o.index < c.end &&
+      !(o.index <= c.index && c.end <= o.end) &&
+      !(c.index <= o.index && o.end <= c.end);
+    const surviving = candidates.filter(
+      (c) => !candidates.some((o) => o.rule.tier < c.rule.tier && crosses(c, o)),
+    );
+    let best: Candidate | null = null;
+    for (const c of surviving) {
+      if (best === null || c.index < best.index) best = c;
     }
     if (!best) {
       nodes.push(rest);
       break;
     }
     if (best.index > 0) nodes.push(rest.slice(0, best.index));
-    nodes.push(best.node);
+    nodes.push(best.rule.render(best.m, key));
     key += 1;
-    rest = rest.slice(best.index + best.length);
+    rest = rest.slice(best.end);
   }
   return nodes;
 }
@@ -155,6 +204,10 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const THEMATIC = /^(?:---+|\*\*\*+|___+)\s*$/;
 const UNORDERED = /^\s*[-*+]\s+(.*)$/;
 const ORDERED = /^\s*\d+\.\s+(.*)$/;
+// GFM task-list marker at the start of a list item's text — exactly `[ ]`, `[x]`
+// or `[X]` plus whitespace. Anything else (e.g. `[y]`) is NOT a marker and the
+// item stays literal text (the total-parser guarantee).
+const TASK_ITEM = /^\[([ xX])\]\s+(.*)$/;
 const TABLE_DELIM = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 /** Split a GFM table row `| a | b |` into its trimmed cell texts. */
@@ -280,7 +333,29 @@ export function Markdown({ source, className }: MarkdownProps) {
         items.push(lines[i].match(itemRe)![1]);
         i += 1;
       }
-      const children = items.map((item, idx) => <li key={idx}>{parseInline(item)}</li>);
+      const children = items.map((item, idx) => {
+        // Task-list item — the marker becomes a disabled checkbox (read-only
+        // rendering; the widget never mutates task state) and the rest of the
+        // item is inline-parsed as usual. Applies to unordered AND ordered items.
+        const task = item.match(TASK_ITEM);
+        return (
+          <li key={idx}>
+            {task ? (
+              <Fragment>
+                <input
+                  type="checkbox"
+                  disabled
+                  checked={task[1] !== " "}
+                  style={taskCheckboxStyle}
+                />
+                {parseInline(task[2])}
+              </Fragment>
+            ) : (
+              parseInline(item)
+            )}
+          </li>
+        );
+      });
       push(ordered ? <ol>{children}</ol> : <ul>{children}</ul>);
       continue;
     }

@@ -1,9 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/preact";
-import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
+// Runtime zod import — the contract schema doubles as the DashboardState type;
+// tests are the one place the widget workspace may import the schema at runtime.
+import { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 import { DashboardView, DashboardWidget } from "./DashboardWidget";
-import { dashboardFixture } from "./fixture";
+import {
+  dashboardFixture,
+  coreOnlyDashboardFixture,
+  freshDashboardFixture,
+  noGitDashboardFixture,
+  longPathsDashboardFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("fixtures — DashboardState contract", () => {
+  // Every fixture the stories render must parse against the real zod contract,
+  // so a contract change can never silently drift the visual fixtures.
+  const fixtures = {
+    dashboardFixture,
+    coreOnlyDashboardFixture,
+    freshDashboardFixture,
+    noGitDashboardFixture,
+    longPathsDashboardFixture,
+  };
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`${name} parses against the DashboardState contract`, () => {
+      const parsed = DashboardState.safeParse(fixture);
+      expect(parsed.success ? true : parsed.error.issues).toBe(true);
+    });
+  }
+});
 
 describe("DashboardView — panel over the full fixture", () => {
   it("renders every section from a full DashboardState", () => {
@@ -185,6 +211,50 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
     rerender(<DashboardView data={null} error="boom" />);
     expect(screen.getByTestId("dashboard-error").textContent).toContain("boom");
     expect(screen.queryByTestId("dashboard-panel")).toBeNull();
+  });
+});
+
+describe("DashboardView — the exported story fixtures", () => {
+  it("coreOnlyDashboardFixture renders only the five always-present cards", () => {
+    render(<DashboardView data={coreOnlyDashboardFixture} />);
+    for (const id of ["card-paths", "card-config", "card-kanban", "card-artifacts"]) {
+      expect(screen.getByTestId(id)).toBeTruthy();
+    }
+    // all seven real command groups reach the title total (10+6+4+6+11+4+14)
+    expect(screen.getByTestId("card-commands").textContent).toContain("Commands (55)");
+    for (const id of ["card-adr", "card-security", "card-refactor", "card-lessons", "card-usage"]) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+  });
+
+  it("freshDashboardFixture renders a zero-state card for every present section", () => {
+    render(<DashboardView data={freshDashboardFixture} />);
+    expect(screen.getByTestId("card-adr").textContent).toContain("No records yet");
+    expect(screen.getByTestId("security-newest").textContent).toContain("none");
+    expect(screen.getByTestId("card-lessons").textContent).toContain("No lessons captured yet");
+    // usage PRESENT at zero → the card renders its empty notes (unlike the absent case)
+    const usage = screen.getByTestId("card-usage");
+    expect(usage.textContent).toContain("Usage (0)");
+    expect(within(usage).getByTestId("usage-window").textContent).toContain("—");
+    expect(usage.textContent).toContain("No events recorded");
+  });
+
+  it("noGitDashboardFixture shows the ✗ badges and the branch placeholder", () => {
+    render(<DashboardView data={noGitDashboardFixture} />);
+    const header = screen.getByTestId("dashboard-header");
+    expect(header.textContent).toContain("git ✗");
+    expect(header.textContent).toContain("gh ✗");
+    expect(screen.getByTestId("dashboard-branch").textContent).toContain("not in a git repo");
+  });
+
+  it("longPathsDashboardFixture renders the deep paths and the long base branch", () => {
+    render(<DashboardView data={longPathsDashboardFixture} />);
+    expect(screen.getByTestId("card-paths").textContent).toContain(
+      "payments-orchestration-gateway/.marvin/config.json",
+    );
+    expect(screen.getByTestId("card-config").textContent).toContain(
+      "release/2026.07-payments-orchestration-long-term-support",
+    );
   });
 });
 

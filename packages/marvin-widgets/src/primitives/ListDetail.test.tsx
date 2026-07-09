@@ -52,9 +52,54 @@ describe("ListDetail", () => {
 
     fireEvent.keyDown(listbox, { key: "ArrowDown" });
     expect(within(pane).getByText("detail:Beta")).toBeTruthy();
+    expect(screen.getAllByRole("option")[1].getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(listbox, { key: "ArrowUp" });
     expect(within(pane).getByText("detail:Alpha")).toBeTruthy();
+    expect(screen.getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("jumps to the last/first row with End/Home", () => {
+    renderList(rows);
+    const listbox = screen.getByRole("listbox");
+    const pane = screen.getByTestId("list-detail-pane");
+
+    fireEvent.keyDown(listbox, { key: "End" });
+    expect(within(pane).getByText("detail:Gamma")).toBeTruthy();
+    expect(screen.getAllByRole("option")[2].getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(listbox, { key: "Home" });
+    expect(within(pane).getByText("detail:Alpha")).toBeTruthy();
+    expect(screen.getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps the listbox as the single tab stop (rows are tabindex -1)", () => {
+    renderList(rows);
+    expect(screen.getByRole("listbox").getAttribute("tabindex")).toBe("0");
+    for (const option of screen.getAllByRole("option")) {
+      expect(option.getAttribute("tabindex")).toBe("-1");
+    }
+  });
+
+  it("points aria-activedescendant at the selected option", () => {
+    renderList(rows);
+    const options = screen.getAllByRole("option");
+
+    // every option carries a stable non-empty id
+    for (const option of options) {
+      expect(option.id).not.toBe("");
+    }
+
+    // initially the first option is the active descendant
+    expect(screen.getByRole("listbox").getAttribute("aria-activedescendant")).toBe(options[0].id);
+
+    // selection by click retargets it
+    fireEvent.click(options[2]);
+    expect(screen.getByRole("listbox").getAttribute("aria-activedescendant")).toBe(options[2].id);
+
+    // selection by keyboard retargets it too
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Home" });
+    expect(screen.getByRole("listbox").getAttribute("aria-activedescendant")).toBe(options[0].id);
   });
 
   it("renders the empty state for an empty list", () => {

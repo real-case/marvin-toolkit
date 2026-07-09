@@ -1,9 +1,33 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/preact";
-import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
+// Runtime zod import — the contract schema doubles as the HelpState type; tests
+// are the one place the widget workspace may import the schema at runtime.
+import { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
 import { HelpView, HelpWidget } from "./HelpWidget";
-import { helpFixture } from "./fixture";
+import {
+  helpFixture,
+  noServersHelpFixture,
+  noStatusesHelpFixture,
+  noGitHelpFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("fixtures — HelpState contract", () => {
+  // Every fixture the stories render must parse against the real zod contract,
+  // so a contract change can never silently drift the visual fixtures.
+  const fixtures = {
+    helpFixture,
+    noServersHelpFixture,
+    noStatusesHelpFixture,
+    noGitHelpFixture,
+  };
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`${name} parses against the HelpState contract`, () => {
+      const parsed = HelpState.safeParse(fixture);
+      expect(parsed.success ? true : parsed.error.issues).toBe(true);
+    });
+  }
+});
 
 describe("HelpView — panel over the full fixture", () => {
   it("renders the banner, summary, servers, groups and command reference", () => {
@@ -67,6 +91,20 @@ describe("HelpView — neutral / connection states", () => {
     render(<HelpView data={bare} />);
     expect(screen.getByTestId("help-git").textContent).toContain("not in a git repo");
     expect(screen.getByTestId("help-servers").textContent).toContain("none configured");
+  });
+
+  it("renders each empty-state fixture's degraded branch", () => {
+    // the same branches the NoServers / NoStatuses / NotGitRepo stories show
+    const noServers = render(<HelpView data={noServersHelpFixture} />);
+    expect(screen.getByTestId("help-servers").textContent).toContain("none configured");
+    noServers.unmount();
+
+    const noStatuses = render(<HelpView data={noStatusesHelpFixture} />);
+    expect(screen.getByTestId("help-kanban").textContent).toContain("no statuses configured");
+    noStatuses.unmount();
+
+    render(<HelpView data={noGitHelpFixture} />);
+    expect(screen.getByTestId("help-git").textContent).toContain("not in a git repo");
   });
 
   it("renders connecting / no-data / error states", () => {

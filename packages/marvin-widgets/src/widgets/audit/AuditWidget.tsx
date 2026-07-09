@@ -12,6 +12,7 @@ import type {
 import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { formatDate } from "../../lib/format";
 
 /**
  * The audit widget (ADR-0024 #7) — a severity-triage viewer over the structured
@@ -215,7 +216,7 @@ function FindingDetail({
           </>
         ) : null}
         <dt style={{ opacity: 0.6 }}>Scanned</dt>
-        <dd style={{ margin: 0 }}>{scanned_at.slice(0, 10)}</dd>
+        <dd style={{ margin: 0 }}>{formatDate(scanned_at)}</dd>
       </dl>
       {finding.evidence ? (
         <section data-testid="finding-evidence" style={{ marginTop: "0.75rem" }}>
@@ -276,7 +277,7 @@ export function AuditListView({ data, connecting, error, onOpenLink }: AuditList
     return (
       <div
         data-testid="audit-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00)" }}
+        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
       >
         Couldn’t load audit reports: {error}
       </div>
@@ -320,7 +321,10 @@ export function AuditListView({ data, connecting, error, onOpenLink }: AuditList
   return (
     <div
       style={{
-        font: "var(--font-sans, system-ui, sans-serif)",
+        // fontFamily, not the `font` shorthand: the shorthand requires a size, so
+        // a family-only `font:` is invalid CSS — the declaration is dropped and
+        // the widget renders in the host default serif.
+        fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
       }}
     >

@@ -236,7 +236,7 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
     return (
       <div
         data-testid="help-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00)" }}
+        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
       >
         Couldn’t load the dashboard: {error}
       </div>

@@ -1,8 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (stories/fixtures stay type-only).
+import { TrackerListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { TrackerListView, TrackerListWidget } from "./TrackerListWidget";
-import { trackerListFixture, emptyTrackerListFixture } from "./fixture";
+import { trackerListFixture, noUrlTrackerFixture, emptyTrackerFixture } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("TrackerListWidget — fixtures satisfy the data contract", () => {
+  it("every fixture parses as a TrackerListPayload", () => {
+    // The fixtures feed the stories and the mock-host handshake; parsing them
+    // here pins them to the real zod contract the `tracker` tool emits.
+    expect(() => TrackerListPayload.parse(trackerListFixture)).not.toThrow();
+    expect(() => TrackerListPayload.parse(noUrlTrackerFixture)).not.toThrow();
+    expect(() => TrackerListPayload.parse(emptyTrackerFixture)).not.toThrow();
+  });
+});
 
 describe("TrackerListWidget — pure view over the fixture", () => {
   it("lists tracked tasks and renders the tracker link-out button", () => {
@@ -23,6 +35,10 @@ describe("TrackerListWidget — pure view over the fixture", () => {
     expect(link.textContent).toContain("↗"); // external marker
     // and the PR link renders alongside it
     expect(within(pane).getByRole("button", { name: /PR #12/ })).toBeTruthy();
+
+    // Updated renders as the deterministic YYYY-MM-DD date, not the raw ISO string
+    expect(pane.textContent).toContain("2026-07-03");
+    expect(pane.textContent).not.toContain("2026-07-03T14:15:00.000Z");
   });
 
   it("a tracker task with no tracker_url renders the id and a configure hint, not a link", () => {
@@ -39,7 +55,7 @@ describe("TrackerListWidget — pure view over the fixture", () => {
   });
 
   it("empty state renders when no task carries a tracker id", () => {
-    render(<TrackerListView data={emptyTrackerListFixture} />);
+    render(<TrackerListView data={emptyTrackerFixture} />);
     expect(screen.getByTestId("tracker-empty").textContent).toMatch(/No tasks carry a tracker id/);
     // no master-detail list at all
     expect(screen.queryByRole("option")).toBeNull();

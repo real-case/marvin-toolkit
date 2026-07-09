@@ -40,6 +40,10 @@ coverage/
 # Storybook static build (marvin-widgets dev/verify harness — regenerated in CI)
 storybook-static/
 
+# Visual-regression diff artifacts (failure output only — the per-platform
+# baseline dirs under __image_snapshots__/ ARE committed)
+packages/marvin-widgets/__image_snapshots__/__diff_output__/
+
 # Claude Code local state — per-machine settings and agent worktrees, never shared
 .claude/settings.local.json
 .claude/worktrees/
