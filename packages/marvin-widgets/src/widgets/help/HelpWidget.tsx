@@ -68,21 +68,80 @@ const sectionStyle: CSSProperties = { margin: "0 0 1.4rem" };
 const accentStyle: CSSProperties = { color: ACCENT };
 const mutedStyle: CSSProperties = { color: textMuted };
 
-/** A titled section: an uppercase eyebrow over its content. */
+/**
+ * A titled section: an uppercase eyebrow over its content. When an `action` is
+ * given (the per-group reference sections' "Read more" link), the header becomes
+ * a two-column grid matching the reference body grid, so the action sits above
+ * the right (description) column instead of beside the title.
+ */
 function Section({
   title,
   testid,
+  action,
   children,
 }: {
   title: string;
   testid: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section data-testid={testid} style={sectionStyle}>
-      <p style={eyebrowStyle}>{title}</p>
+      {action ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(9rem, max-content) 1fr",
+            alignItems: "center",
+            columnGap: "1rem",
+            margin: "0 0 0.6rem",
+          }}
+        >
+          <p style={{ ...eyebrowStyle, margin: 0 }}>{title}</p>
+          <span style={{ justifySelf: "start" }}>{action}</span>
+        </div>
+      ) : (
+        <p style={eyebrowStyle}>{title}</p>
+      )}
       {children}
     </section>
+  );
+}
+
+/**
+ * The "Read more" affordance to the right of a group heading. A plain violet
+ * text link (matching the accent command names), NOT a `<button>` — a button
+ * inherits host chrome that fights the text-link look. Rendered as a
+ * `role="link"` span with keyboard support; underlines on hover/focus (own local
+ * state, since the widget carries no stylesheet).
+ */
+function MoreLink({ group, onOpen }: { group: string; onOpen: () => void }) {
+  const [active, setActive] = useState(false);
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      data-testid="help-more"
+      data-group={group}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
+      style={{
+        cursor: "pointer",
+        color: ACCENT,
+        textDecoration: active ? "underline" : "none",
+      }}
+    >
+      Read more
+    </span>
   );
 }
 
@@ -168,6 +227,11 @@ export interface HelpViewProps {
  * and both wiring paths. Stateless — there is no selection to own.
  */
 export function HelpView({ data, connecting, error }: HelpViewProps) {
+  // Which group's "Read more" detail is open (null = the overview). Declared
+  // above the error / no-data guards so hook order stays stable (rules of hooks)
+  // now that HelpView owns selection state instead of being purely stateless.
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
   if (error) {
     return (
       <div
@@ -184,6 +248,14 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
         {connecting === false ? "No help data." : "Connecting…"}
       </div>
     );
+  }
+
+  // "Read more" is open: swap the whole panel for that group's detail view. The
+  // overview markup below is untouched — this is a pure client-side state swap
+  // over data the widget already holds (no extra tool round-trip).
+  const active = openGroup ? data.groups.find((g) => g.group === openGroup) : undefined;
+  if (active) {
+    return <GroupDetail data={data} group={active} onBack={() => setOpenGroup(null)} />;
   }
 
   return (
@@ -310,7 +382,12 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
         const cmds = data.commands.filter((c) => c.group === g.group);
         if (cmds.length === 0) return null;
         return (
-          <Section key={g.group} title={g.group} testid={`help-ref-${g.group}`}>
+          <Section
+            key={g.group}
+            title={g.group}
+            testid={`help-ref-${g.group}`}
+            action={<MoreLink group={g.group} onOpen={() => setOpenGroup(g.group)} />}
+          >
             <div
               style={{
                 display: "grid",
@@ -366,6 +443,114 @@ function ReferenceRow({
       </span>
       <span style={mutedStyle}>{desc}</span>
     </>
+  );
+}
+
+/**
+ * The focused "Read more" detail view for one command group — the client-side
+ * drill-down rendered from the HelpState the widget already holds (no extra tool
+ * round-trip). Shows a back control, a breadcrumb + wordmark of the group key,
+ * the group blurb, and each command as `/marvin:<name>` with its richer
+ * description and an optional `e.g.` example line; a 👤 legend appears when the
+ * group has any human-run command.
+ */
+function GroupDetail({
+  data,
+  group,
+  onBack,
+}: {
+  data: HelpState;
+  group: HelpState["groups"][number];
+  onBack: () => void;
+}) {
+  const cmds = data.commands.filter((c) => c.group === group.group);
+  const hasHuman = cmds.some((c) => c.human);
+  return (
+    <div data-testid="help-detail" style={panelStyle}>
+      <span
+        role="link"
+        tabIndex={0}
+        data-testid="help-back"
+        onClick={onBack}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onBack();
+          }
+        }}
+        style={{ cursor: "pointer", color: ACCENT, fontSize: "12px" }}
+      >
+        ← All commands
+      </span>
+
+      <div
+        style={{
+          margin: "0.9rem 0 0.1rem",
+          display: "flex",
+          alignItems: "baseline",
+          gap: "0.5rem",
+        }}
+      >
+        <span style={{ ...mutedStyle, fontSize: "12px" }}>&gt;_ MARVIN ›</span>
+        <span
+          data-testid="help-detail-title"
+          style={{ ...wordmarkStyle, fontSize: "clamp(26px, 5vw, 34px)" }}
+        >
+          {group.group}
+        </span>
+      </div>
+      <p style={{ ...mutedStyle, margin: "0.1rem 0 1rem", fontSize: "12.5px" }}>{group.blurb}</p>
+
+      {cmds.map((c) => (
+        <div
+          key={c.name}
+          data-testid="help-detail-command"
+          data-command={c.name}
+          style={{ padding: "0.55rem 0", borderTop: `0.5px solid ${borderColor}` }}
+        >
+          <span style={{ ...accentStyle, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            /marvin:{c.name}
+            {c.human ? <HumanMark /> : null}
+          </span>
+          <div
+            style={{ ...mutedStyle, fontSize: "12.5px", lineHeight: 1.5, margin: "0.15rem 0 0" }}
+          >
+            {c.description}
+          </div>
+          {c.example ? (
+            <div
+              data-testid="help-detail-example"
+              style={{
+                fontSize: "12px",
+                color: textMuted,
+                border: `0.5px solid ${borderColor}`,
+                borderRadius: "6px",
+                padding: "0.15rem 0.45rem",
+                display: "inline-block",
+                marginTop: "0.3rem",
+              }}
+            >
+              e.g.&nbsp; {c.example}
+            </div>
+          ) : null}
+        </div>
+      ))}
+
+      {hasHuman ? (
+        <div
+          style={{
+            ...mutedStyle,
+            fontSize: "11px",
+            marginTop: "0.9rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
+          <HumanMark /> human-run only
+        </div>
+      ) : null}
+    </div>
   );
 }
 

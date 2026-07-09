@@ -104,6 +104,45 @@ test("help emits a HelpState structuredContent (summary, servers, groups, comman
     assert.equal(accept.human, true, "adr-accept marked human-run");
     const commit = sc.commands.find((c) => c.name === "commit");
     assert.equal(commit.human, false, "ordinary command not human-run");
+
+    // richer per-command fields for the widget's "Read more" detail view (ADR-0024):
+    // `description` is always a string; `example` is optional (string when present)
+    assert.ok(
+      sc.commands.every((c) => typeof c.description === "string"),
+      "every command carries a string description",
+    );
+    assert.ok(
+      sc.commands.every((c) => c.example === undefined || typeof c.example === "string"),
+      "example, when present, is a string",
+    );
+    // the optional path is exercised both ways: some commands have one, some omit it
+    assert.ok(
+      sc.commands.some((c) => typeof c.example === "string"),
+      "at least one command carries an example",
+    );
+    assert.ok(
+      sc.commands.some((c) => c.example === undefined),
+      "at least one command omits the example",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("help emits a non-empty curated description for every command (drift guard)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const sc = (await callHelp(dir)).structuredContent;
+    assert.ok(sc.commands.length >= 30, `full registry listed (got ${sc.commands.length})`);
+    // `description` falls back to "" for a missing COMMAND_DETAILS entry (not to the
+    // blurb), so a non-empty assertion is a real drift guard — a new command shipped
+    // without a curated detail fails here, exactly like the blurb guard above.
+    const missing = sc.commands.filter((c) => !c.description || c.description.length === 0);
+    assert.deepEqual(
+      missing.map((c) => c.name),
+      [],
+      "every command has a curated (non-empty) description",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

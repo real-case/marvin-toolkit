@@ -4,6 +4,23 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.3.0] — 2026-07-09
+
+### Added
+
+- **`help` widget "Read more" group drill-down** (`ui://marvin/help.html`, ADR-0024) — each
+  command-group heading now carries a violet "Read more" link that opens a focused, in-widget
+  detail view for that group: every command shown as `/marvin:<name>` with a richer
+  description and an optional usage example, plus the 👤 human-run legend. The welcome panel
+  is unchanged, and the drill-down is a pure client-side state swap over data the widget
+  already holds — no extra tool round-trip. The terminal markdown door is unchanged.
+
+### Changed
+
+- The `help` tool's `HelpState` command entries gain a curated `description` (coverage-guarded
+  like the existing blurb, with a `""` fallback so a missing entry fails CI) and an optional
+  `example`, both curated in `help-data.ts` and surfaced only through the widget.
+
 ## [0.2.0] — 2026-07-09
 
 ### Added
