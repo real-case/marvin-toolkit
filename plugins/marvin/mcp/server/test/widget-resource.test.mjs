@@ -15,6 +15,7 @@ const TRACKER_HTML = join(here, "..", "..", "..", "widgets", "tracker-list.html"
 const AUDIT_HTML = join(here, "..", "..", "..", "widgets", "audit.html");
 const SUMMARY_HTML = join(here, "..", "..", "..", "widgets", "task-summary.html");
 const DASHBOARD_HTML = join(here, "..", "..", "..", "widgets", "dashboard.html");
+const HELP_HTML = join(here, "..", "..", "..", "widgets", "help.html");
 
 const URI = "ui://marvin/task-list.html";
 const DETAIL_URI = "ui://marvin/task-detail.html";
@@ -23,6 +24,7 @@ const TRACKER_URI = "ui://marvin/tracker-list.html";
 const AUDIT_URI = "ui://marvin/audit.html";
 const SUMMARY_URI = "ui://marvin/task-summary.html";
 const DASHBOARD_URI = "ui://marvin/dashboard.html";
+const HELP_URI = "ui://marvin/help.html";
 const MIME = "text/html;profile=mcp-app";
 
 /**
@@ -386,6 +388,67 @@ test("dashboard tool binds the ui:// widget and the resource serves the committe
       const shown = await s.request("tools/call", { name: "dashboard", arguments: {} });
       const text = shown.content.map((c) => c.text).join("\n");
       assert.match(text, /toolbox dashboard/, "dashboard text fallback is present");
+    });
+
+    // 5. the committed server bundle stays ext-apps/React free (ADR-0024).
+    const bundle = readFileSync(SERVER_PATH, "utf8");
+    assert.doesNotMatch(
+      bundle,
+      /@modelcontextprotocol\/ext-apps/,
+      "dist/server.js must not bundle the ext-apps SDK",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The help widget (ADR-0024) binds end-to-end over stdio: the help tool advertises
+ * `_meta.ui.resourceUri`, the resource is listed and read as the committed self-contained
+ * HTML with the mcp-app mimeType, and the terminal markdown fallback still renders. Guards
+ * against the help tool binding (help.ts `meta`) and the resource registration
+ * (resources/widgets.ts) drifting apart.
+ */
+test("help tool binds the ui:// widget and the resource serves the committed html", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-help-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir } }, async (s) => {
+      // 1. tools/list — the help tool advertises the widget binding.
+      const tools = await s.request("tools/list", {});
+      const help = tools.tools.find((t) => t.name === "help");
+      assert.ok(help, "help tool is registered");
+      assert.equal(
+        help._meta?.ui?.resourceUri,
+        HELP_URI,
+        "help tool _meta.ui.resourceUri binds the widget",
+      );
+
+      // 2. resources/list — the ui:// resource is advertised with the mcp-app mime.
+      const resources = await s.request("resources/list", {});
+      const res = resources.resources.find((r) => r.uri === HELP_URI);
+      assert.ok(res, "resources/list includes the help widget uri");
+      assert.equal(res.mimeType, MIME, "listed resource carries the mcp-app mimeType");
+
+      // 3. resources/read — returns the committed HTML with the mcp-app mimeType.
+      const read = await s.request("resources/read", { uri: HELP_URI });
+      const content = read.contents[0];
+      assert.equal(content.uri, HELP_URI);
+      assert.equal(content.mimeType, MIME, "resources/read mimeType is text/html;profile=mcp-app");
+      assert.equal(
+        content.text,
+        readFileSync(HELP_HTML, "utf8"),
+        "served HTML is byte-for-byte the committed build output",
+      );
+      assert.match(content.text, /<!doctype html>/i, "served body is an HTML document");
+
+      // 4. terminal fallback — help on an empty project dir still emits its markdown.
+      const shown = await s.request("tools/call", { name: "help", arguments: {} });
+      const text = shown.content.map((c) => c.text).join("\n");
+      assert.match(
+        text,
+        /toolset for AI development without panic/,
+        "help text fallback is present",
+      );
     });
 
     // 5. the committed server bundle stays ext-apps/React free (ADR-0024).

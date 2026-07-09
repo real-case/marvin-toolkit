@@ -15,3 +15,4 @@ export * from "./lessons.js";
 export * from "./audit.js";
 export * from "./refactor.js";
 export * from "./dashboard.js";
+export * from "./help.js";

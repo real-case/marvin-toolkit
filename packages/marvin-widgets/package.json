@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/widgets",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "MCP Apps widgets for the marvin plugin (ADR-0024) — React ui:// documents built to self-contained HTML the server serves as ui:// resources.",
   "type": "module",
