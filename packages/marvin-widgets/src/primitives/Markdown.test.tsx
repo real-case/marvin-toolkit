@@ -87,6 +87,108 @@ describe("Markdown — AC1 (construct → element mapping)", () => {
   });
 });
 
+describe("Markdown — strikethrough", () => {
+  it("renders ~~text~~ as <del>", () => {
+    const { container } = render(<Markdown source="keep ~~drop this~~ keep" />);
+    expect(container.querySelector("del")?.textContent).toBe("drop this");
+    expect(container.textContent).toBe("keep drop this keep");
+  });
+
+  it("parses nested emphasis inside <del>", () => {
+    const { container } = render(<Markdown source="~~**really** gone~~" />);
+    const del = container.querySelector("del");
+    expect(del?.querySelector("strong")?.textContent).toBe("really");
+    expect(del?.textContent).toBe("really gone");
+  });
+
+  it("keeps tildes inside a code span literal (code precedes strikethrough)", () => {
+    const { container } = render(<Markdown source="`~~not deleted~~`" />);
+    expect(container.querySelector("del")).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe("~~not deleted~~");
+  });
+
+  it("keeps an unclosed ~~ literal", () => {
+    const { container } = render(<Markdown source="~~no closing marker" />);
+    expect(container.querySelector("del")).toBeNull();
+    expect(container.textContent).toContain("~~no closing marker");
+  });
+});
+
+describe("Markdown — inline precedence (boundary crossing)", () => {
+  it("a del crossing into a code span loses to the code span", () => {
+    // The stray ~~ before the span must NOT close on the ~~ inside it.
+    const { container } = render(<Markdown source={"~~a `b~~ c` d"} />);
+    expect(container.querySelector("del")).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe("b~~ c");
+    expect(container.textContent).toBe("~~a b~~ c d");
+  });
+
+  it("a del crossing into a link URL loses to the link", () => {
+    const { container } = render(<Markdown source={"~~x [b](https://ex.com/~~y) z"} />);
+    expect(container.querySelector("del")).toBeNull();
+    const a = container.querySelector("a");
+    expect(a?.getAttribute("href")).toBe("https://ex.com/~~y");
+    expect(a?.textContent).toBe("b");
+  });
+
+  it("emphasis crossing into a code span loses to the code span", () => {
+    const { container } = render(<Markdown source={"**a `b** c` d"} />);
+    expect(container.querySelector("strong")).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe("b** c");
+  });
+
+  it("full containment still nests: a code span inside link text", () => {
+    const { container } = render(<Markdown source={"[`x`](https://ex.com)"} />);
+    const a = container.querySelector("a");
+    expect(a?.getAttribute("href")).toBe("https://ex.com");
+    expect(a?.querySelector("code")?.textContent).toBe("x");
+  });
+
+  it("full containment still nests: a code span inside del", () => {
+    const { container } = render(<Markdown source={"~~a `b` c~~"} />);
+    const del = container.querySelector("del");
+    expect(del?.querySelector("code")?.textContent).toBe("b");
+    expect(del?.textContent).toBe("a b c");
+  });
+});
+
+describe("Markdown — task-list items", () => {
+  it("renders unchecked/checked/uppercase-X markers as disabled checkboxes", () => {
+    const source = ["- [ ] open item", "- [x] done item", "- [X] DONE item"].join("\n");
+    const { container } = render(<Markdown source={source} />);
+
+    const boxes = Array.from(
+      container.querySelectorAll<HTMLInputElement>("ul li input[type=checkbox]"),
+    );
+    expect(boxes).toHaveLength(3);
+    expect(boxes.every((b) => b.disabled)).toBe(true);
+    expect(boxes.map((b) => b.checked)).toEqual([false, true, true]);
+
+    // the item text follows the checkbox and is inline-parsed as usual
+    expect(container.textContent).toContain("open item");
+    expect(container.textContent).toContain("done item");
+    // the marker itself does not leak into the text
+    expect(container.textContent).not.toContain("[x]");
+  });
+
+  it("renders task markers inside ordered lists too", () => {
+    const source = ["1. [x] shipped", "2. [ ] pending"].join("\n");
+    const { container } = render(<Markdown source={source} />);
+
+    const boxes = Array.from(
+      container.querySelectorAll<HTMLInputElement>("ol li input[type=checkbox]"),
+    );
+    expect(boxes).toHaveLength(2);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+  });
+
+  it("keeps a malformed marker literal", () => {
+    const { container } = render(<Markdown source="- [y] not a task" />);
+    expect(container.querySelector("input")).toBeNull();
+    expect(container.textContent).toContain("[y] not a task");
+  });
+});
+
 describe("Markdown — AC2 (graceful degradation)", () => {
   const MALFORMED = [
     "",

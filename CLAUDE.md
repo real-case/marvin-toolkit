@@ -137,6 +137,14 @@ into the server bundle:
 - **`scripts/verify-widgets.mjs`** guards the committed HTML like `verify-dist` guards `dist/`: it
   rebuilds `@marvin-toolkit/mcp-shared` then `@marvin-toolkit/widgets`, hash-compares each committed
   `plugins/marvin/widgets/*.html` against the fresh build, and asserts each file is self-contained.
+- **Visual regression baselines are committed** under
+  `packages/marvin-widgets/__image_snapshots__/<platform>/` (darwin only today, ~5 MB of PNGs — one
+  per story, jest-image-snapshot via the `test-storybook` postVisit hook). They are NOT regenerable
+  junk and NOT guarded by CI (ubuntu has no committed baseline dir, so it skips the comparison by
+  design): after an intentional visual change, update them **on darwin** with
+  `npm run test-storybook:update -w @marvin-toolkit/widgets` and commit the changed PNGs alongside
+  the source. Full workflow (theming, `parameters.visual` opt-out, platform bootstrap) in
+  `packages/marvin-widgets/README.md`.
 
 The committed widgets — `task-list`, `task-detail`, `tracker-list`, `handoffs`, `audit`,
 `task-summary`, `dashboard`, and `help` — reuse this foundation (`<ListDetail>` for the
@@ -174,6 +182,11 @@ node scripts/verify-dist.mjs
 
 # Verify committed widget HTML is in sync + self-contained (ADR-0024)
 node scripts/verify-widgets.mjs
+
+# Storybook interaction + visual tests (widgets; CI runs the same trio)
+npm run build-storybook -w @marvin-toolkit/widgets
+npx http-server packages/marvin-widgets/storybook-static --port 6006 --silent &
+npm run test-storybook -w @marvin-toolkit/widgets
 
 # Local plugin validation
 claude plugin validate .

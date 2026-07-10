@@ -4,6 +4,7 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import type { LinkRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { ListDetail } from "../../primitives/ListDetail";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { formatDate } from "../../lib/format";
 
 /**
  * The task-list widget (ADR-0024) — the first end-to-end `ui://` widget. It is
@@ -81,7 +82,9 @@ function CardDetail({
           </>
         ) : null}
         <dt style={{ opacity: 0.6 }}>Updated</dt>
-        <dd style={{ margin: 0 }}>{card.updated}</dd>
+        <dd data-testid="detail-updated" style={{ margin: 0 }}>
+          {formatDate(card.updated)}
+        </dd>
       </dl>
       {links.length > 0 ? (
         <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -134,7 +137,7 @@ export function TaskListView({ data, connecting, error, onOpenLink }: TaskListVi
     return (
       <div
         data-testid="task-list-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00)" }}
+        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
       >
         Couldn’t load tasks: {error}
       </div>
@@ -155,7 +158,9 @@ export function TaskListView({ data, connecting, error, onOpenLink }: TaskListVi
   return (
     <div
       style={{
-        font: "var(--font-sans, system-ui, sans-serif)",
+        // The `font` shorthand is invalid without a size (the whole declaration
+        // would be dropped and the host serif leaks in), so fontFamily it must be.
+        fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
       }}
     >

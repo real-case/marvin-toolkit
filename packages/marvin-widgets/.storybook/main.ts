@@ -13,6 +13,11 @@ import type { StorybookConfig } from "@storybook/react-vite";
  */
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],
+  // In Storybook 8.x the globalTypes→toolbar UI (the "Host theme" select that
+  // drives preview.ts's hostTheme global) ships as a separate addon; without it
+  // the toolbar block is inert and themes are only reachable via parameters /
+  // ?globals=hostTheme:dark.
+  addons: ["@storybook/addon-toolbars"],
   framework: {
     name: "@storybook/react-vite",
     options: {},

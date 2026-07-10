@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { TaskDetailView, TaskDetailWidget, type TaskDetailSeam } from "./TaskDetailWidget";
-import { taskDetailFixture } from "./fixture";
+import {
+  taskDetailFixture,
+  minimalTaskDetailFixture,
+  richBodyTaskDetailFixture,
+  longTitleTaskDetailFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the task-detail widget (ADR-0024 #2): a static component story over
- * the fixture (visual/dev), and a mock-host story whose `play` drives the real
- * ext-apps handshake over an in-memory transport and asserts the detail (and its
- * markdown body) render — the `@storybook/test-runner` (test-storybook) oracle.
+ * Stories for the task-detail widget (ADR-0024 #2): static component stories over
+ * the fixtures (the visual-regression surface — fully-populated, dark, minimal,
+ * markdown-heavy, overflow, and the connecting/no-data/error states), and a
+ * mock-host story whose `play` drives the real ext-apps handshake over an
+ * in-memory transport and asserts the detail (and its markdown body) render —
+ * the `@storybook/test-runner` (test-storybook) oracle.
  */
 const meta: Meta<typeof TaskDetailView> = {
   title: "Widgets/TaskDetail",
@@ -19,6 +27,42 @@ export default meta;
 /** Static story — the pure view rendering the fixture directly. */
 export const Fixture: StoryObj<typeof TaskDetailView> = {
   args: { data: taskDetailFixture },
+};
+
+/** The same fixture under the dark host palette (pinned via `parameters.hostTheme`). */
+export const FixtureDark: StoryObj<typeof TaskDetailView> = {
+  args: { data: taskDetailFixture },
+  parameters: { hostTheme: "dark" },
+};
+
+/** Sparse task — no tracker, no PR, no spec: the link row and Spec row must vanish. */
+export const MinimalTask: StoryObj<typeof TaskDetailView> = {
+  args: { data: minimalTaskDetailFixture },
+};
+
+/** Markdown-in-context — headings, lists, checkboxes, table, code, quote, strikethrough. */
+export const RichMarkdownBody: StoryObj<typeof TaskDetailView> = {
+  args: { data: richBodyTaskDetailFixture },
+};
+
+/** Overflow probe — a ~140-char title and a long branch stressing row and code cell. */
+export const LongTitle: StoryObj<typeof TaskDetailView> = {
+  args: { data: longTitleTaskDetailFixture },
+};
+
+/** Handshake in flight — no data yet, so the view shows "Connecting…". */
+export const Connecting: StoryObj<typeof TaskDetailView> = {
+  args: { data: null, connecting: true },
+};
+
+/** Connected but empty — the handshake settled without a task, so "No task." shows. */
+export const NoData: StoryObj<typeof TaskDetailView> = {
+  args: { data: null, connecting: false },
+};
+
+/** Transport failure — the error fallback ("ErrorState": `Error` shadows the global). */
+export const ErrorState: StoryObj<typeof TaskDetailView> = {
+  args: { data: null, error: "kaboom: transport dropped" },
 };
 
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
@@ -38,19 +82,15 @@ function MockHostHarness() {
   return seam ? <TaskDetailWidget seam={seam} /> : <div>Starting mock host…</div>;
 }
 
-async function waitForDetail(root: HTMLElement) {
-  for (let i = 0; i < 50; i += 1) {
-    if (root.querySelector('[data-testid="detail-title"]')) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("mock-host story: expected the task detail to render");
-}
-
 /** Mock-host story — the handshake delivers a tool-result and the widget renders it. */
 export const MockHost: StoryObj = {
   render: () => <MockHostHarness />,
+  parameters: { visual: false },
   play: async ({ canvasElement }) => {
-    await waitForDetail(canvasElement);
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="detail-title"]') !== null,
+      "the mock-host task detail to render",
+    );
     if (!canvasElement.querySelector('[data-testid="markdown"] pre code')) {
       throw new Error("mock-host story: expected the markdown body to render as elements");
     }

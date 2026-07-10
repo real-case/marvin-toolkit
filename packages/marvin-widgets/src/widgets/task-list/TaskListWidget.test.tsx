@@ -1,8 +1,28 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (the shared package dist is built);
+// fixtures/stories stay type-only so no zod ever reaches the widget bundle.
+import { TaskListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { TaskListView, TaskListWidget } from "./TaskListWidget";
 import { taskListFixture } from "./fixture";
+import * as fixtures from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("task-list fixtures — contract conformance", () => {
+  it("every exported fixture parses as a TaskListPayload", () => {
+    const entries = Object.entries(fixtures);
+    // Guard the guard: an accidental rename to non-exported must not
+    // silently turn this into a zero-assertion pass.
+    expect(entries.length).toBeGreaterThanOrEqual(5);
+    for (const [name, fixture] of entries) {
+      const result = TaskListPayload.safeParse(fixture);
+      expect(
+        result.success,
+        `${name} violates the contract: ${result.success ? "" : result.error.message}`,
+      ).toBe(true);
+    }
+  });
+});
 
 describe("TaskListWidget — AC2 (pure view over the fixture)", () => {
   it("renders one card per task with counts from the fixture", () => {
@@ -29,6 +49,15 @@ describe("TaskListWidget — AC2 (pure view over the fixture)", () => {
     expect(within(pane).getByTestId("detail-title").textContent).toContain(
       "Add dark-mode toggle to settings",
     );
+  });
+
+  it("renders Updated as the YYYY-MM-DD date, not the raw ISO datetime", () => {
+    render(<TaskListView data={taskListFixture} />);
+
+    // first card starts selected; its updated is 2026-07-01T10:00:00.000Z
+    const updated = screen.getByTestId("detail-updated");
+    expect(updated.textContent?.trim()).toBe("2026-07-01");
+    expect(updated.textContent).not.toContain("T");
   });
 });
 

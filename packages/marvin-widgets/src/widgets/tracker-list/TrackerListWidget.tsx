@@ -4,6 +4,7 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import type { LinkRef, TaskCard, TrackerListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { ListDetail } from "../../primitives/ListDetail";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { formatDate } from "../../lib/format";
 
 /**
  * The tracker-list widget (ADR-0024 widget #6) — the board tasks that carry an
@@ -98,7 +99,7 @@ function TrackerCardDetail({
           </>
         ) : null}
         <dt style={{ opacity: 0.6 }}>Updated</dt>
-        <dd style={{ margin: 0 }}>{card.updated}</dd>
+        <dd style={{ margin: 0 }}>{formatDate(card.updated)}</dd>
       </dl>
       <div
         data-testid="tracker-section"
@@ -170,7 +171,7 @@ export function TrackerListView({ data, connecting, error, onOpenLink }: Tracker
     return (
       <div
         data-testid="tracker-list-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00)" }}
+        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
       >
         Couldn’t load tracked tasks: {error}
       </div>
@@ -196,7 +197,10 @@ export function TrackerListView({ data, connecting, error, onOpenLink }: Tracker
   return (
     <div
       style={{
-        font: "var(--font-sans, system-ui, sans-serif)",
+        // fontFamily, not the `font` shorthand: the shorthand requires a size, so
+        // a family-only `font:` is invalid CSS — the declaration is dropped and
+        // the widget renders in the host default serif.
+        fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
       }}
     >
