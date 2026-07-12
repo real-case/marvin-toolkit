@@ -1,90 +1,89 @@
 import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
+import {
+  COMMAND_BLURBS,
+  COMMAND_DETAILS,
+  COMMAND_EXAMPLES,
+  COMMAND_PROMPTS,
+  GROUP_BLURBS,
+} from "@marvin-toolkit/mcp-shared/help-content";
 
 /**
  * A representative full HelpState (ADR-0024) shared by the tests and the story —
  * the `telegram-publications` project from the approved mockup: every command
  * group and all 57 commands, a mix of lit/dim MCP servers, and a non-trivial
  * artifact count. All values are fixed literals (no Date.now()) so the story and
- * snapshots stay deterministic. `[group, name, blurb, human]` tuples keep the
- * 57-command reference readable without losing coverage; the richer `description`
- * (shown in the widget's "Read more" group-detail view) is derived per command,
- * and a representative subset carries an `example` so both the present and absent
- * branches of the optional `e.g.` line are exercised.
+ * snapshots stay deterministic.
+ *
+ * The command *content* — group blurbs, per-command blurbs, descriptions,
+ * direct-call examples, and prose phrases — is imported from the shared
+ * `help-content` module the `help` tool itself ships, so this preview renders
+ * exactly what production renders and can never drift. Only the mock's *shape* is
+ * local: which commands exist and their group / human-run flag (the
+ * `[group, name, human]` roster below), plus the surrounding project/git/server
+ * context.
  */
-const COMMANDS: Array<[string, string, string, boolean]> = [
-  ["core", "commit", "Conventional commit, kanban-linked", false],
-  ["core", "debug", "Systematic root-cause debugging", false],
-  ["core", "adr", "Create an Architecture Decision Record", false],
-  ["core", "changelog", "Changelog from git history", false],
-  ["core", "readme", "Generate or update README", false],
-  ["core", "migration-plan", "Plan a migration or major refactor", false],
-  ["core", "explain", "Explain code, logic, and design", false],
-  ["core", "docs-search", "Search project documentation", false],
-  ["core", "handoff", "Capture a session handoff", false],
-  ["core", "handoff-list", "List handoff documents", false],
-  ["core", "lessons", "Team lessons-learned store", false],
-  ["core", "help", "This dashboard + command index", false],
-  ["core", "dashboard", "Whole-toolbox state report", false],
-  ["adr", "adr-review", "Review a proposed ADR", false],
-  ["adr", "adr-accept", "Ratify an ADR (human-run)", true],
-  ["adr", "adr-audit", "Lint the whole ADR corpus", false],
-  ["adr", "adr-coverage", "Find undocumented decisions", false],
-  ["adr", "adr-supersede", "Roll back an accepted ADR (human-run)", true],
-  ["adr", "adr-sync", "Refresh the ADR digest in CLAUDE.md (human-run)", true],
-  ["pr", "pr-create", "Open a pull request", false],
-  ["pr", "pr-review", "Review a PR on GitHub", false],
-  ["pr", "pr-resolve", "Address PR review threads", false],
-  ["pr", "pr-merge", "Merge a PR, then sync the base", false],
-  ["task", "task-start", "Spec out a task (Phase 1)", false],
-  ["task", "task-implement", "Implement a ready spec", false],
-  ["task", "task-verify", "Run the project quality gates", false],
-  ["task", "task-deliver", "Commit and open a PR", false],
-  ["task", "task-summary", "Delivery digest for a task", false],
-  ["sec", "sec-scan", "Full OWASP Top-10 audit", false],
-  ["sec", "sec-secrets", "Scan for leaked secrets", false],
-  ["sec", "sec-deps", "Dependency CVE / license audit", false],
-  ["sec", "sec-gate", "Fast pre-commit security gate", false],
-  ["sec", "sec-threat-model", "STRIDE threat model", false],
-  ["sec", "sec-iac", "Infrastructure-as-Code review", false],
-  ["sec", "sec-ci", "CI/CD pipeline audit", false],
-  ["sec", "sec-fix", "Patch a vulnerability with tests", false],
-  ["sec", "sec-compliance", "OWASP ASVS gap analysis", false],
-  ["sec", "sec-pentest", "Tailored pentest checklist", false],
-  ["sec", "sec-report", "List saved security reports", false],
-  ["refactor", "refactor-audit", "Structural audit + hotspots", false],
-  ["refactor", "refactor-smells", "Scoped code-smell scan", false],
-  ["refactor", "refactor-plan", "Sequence findings into steps", false],
-  ["refactor", "refactor-apply", "Apply one refactor step, gated", false],
-  ["kanban", "kanban-menu", "Board action menu", false],
-  ["kanban", "kanban-bug", "New bug task", false],
-  ["kanban", "kanban-feature", "New feature task", false],
-  ["kanban", "kanban-chore", "New chore task", false],
-  ["kanban", "kanban-spike", "New spike task", false],
-  ["kanban", "kanban-start", "Move a task to in-progress", false],
-  ["kanban", "kanban-review", "Move a task to review", false],
-  ["kanban", "kanban-done", "Move a task to done", false],
-  ["kanban", "kanban-list", "List board tasks", false],
-  ["kanban", "kanban-show", "Show one task", false],
-  ["kanban", "kanban-tracker", "Link a tracker URL", false],
-  ["kanban", "kanban-status", "Set a task status", false],
-  ["kanban", "kanban-config", "Show or edit board config", false],
-  ["kanban", "kanban-help", "Board help", false],
+const COMMANDS: Array<[string, string, boolean]> = [
+  ["core", "commit", false],
+  ["core", "debug", false],
+  ["core", "adr", false],
+  ["core", "changelog", false],
+  ["core", "readme", false],
+  ["core", "migration-plan", false],
+  ["core", "explain", false],
+  ["core", "docs-search", false],
+  ["core", "handoff", false],
+  ["core", "handoff-list", false],
+  ["core", "lessons", false],
+  ["core", "help", false],
+  ["core", "dashboard", false],
+  ["adr", "adr-review", false],
+  ["adr", "adr-accept", true],
+  ["adr", "adr-audit", false],
+  ["adr", "adr-coverage", false],
+  ["adr", "adr-supersede", true],
+  ["adr", "adr-sync", true],
+  ["pr", "pr-create", false],
+  ["pr", "pr-review", false],
+  ["pr", "pr-resolve", false],
+  ["pr", "pr-merge", false],
+  ["task", "task-start", false],
+  ["task", "task-implement", false],
+  ["task", "task-verify", false],
+  ["task", "task-deliver", false],
+  ["task", "task-summary", false],
+  ["sec", "sec-scan", false],
+  ["sec", "sec-secrets", false],
+  ["sec", "sec-deps", false],
+  ["sec", "sec-gate", false],
+  ["sec", "sec-threat-model", false],
+  ["sec", "sec-iac", false],
+  ["sec", "sec-ci", false],
+  ["sec", "sec-fix", false],
+  ["sec", "sec-compliance", false],
+  ["sec", "sec-pentest", false],
+  ["sec", "sec-report", false],
+  ["refactor", "refactor-audit", false],
+  ["refactor", "refactor-smells", false],
+  ["refactor", "refactor-plan", false],
+  ["refactor", "refactor-apply", false],
+  ["kanban", "kanban-menu", false],
+  ["kanban", "kanban-bug", false],
+  ["kanban", "kanban-feature", false],
+  ["kanban", "kanban-chore", false],
+  ["kanban", "kanban-spike", false],
+  ["kanban", "kanban-start", false],
+  ["kanban", "kanban-review", false],
+  ["kanban", "kanban-done", false],
+  ["kanban", "kanban-list", false],
+  ["kanban", "kanban-show", false],
+  ["kanban", "kanban-tracker", false],
+  ["kanban", "kanban-status", false],
+  ["kanban", "kanban-config", false],
+  ["kanban", "kanban-help", false],
 ];
 
-/**
- * A representative subset of usage examples. The remaining commands carry no
- * example, so the fixture exercises both branches of the widget's optional
- * `e.g.` line. `adr-accept` is included so a human-run command in the detail
- * view shows the 👤 mark, its description, AND an example together.
- */
-const EXAMPLES: Record<string, string> = {
-  commit: '/marvin:commit "fix: guard null session"',
-  debug: '/marvin:debug "TypeError in auth middleware"',
-  "adr-accept": "/marvin:adr-accept 31",
-  "task-start": '/marvin:task-start "add pagination"',
-  "sec-threat-model": '/marvin:sec-threat-model "upload flow"',
-  "kanban-bug": '/marvin:kanban-bug "login 500s"',
-};
+/** Group keys in first-appearance (board) order, derived from the roster. */
+const GROUP_ORDER = [...new Set(COMMANDS.map(([group]) => group))];
 
 export const helpFixture: HelpState = {
   version: "0.1.0",
@@ -118,21 +117,14 @@ export const helpFixture: HelpState = {
     { name: "chrome-devtools", enabled: true },
     { name: "fetch", enabled: false },
   ],
-  groups: [
-    { group: "core", blurb: "Everyday dev — commits, debugging, docs, ADRs, handoffs" },
-    { group: "adr", blurb: "Architecture Decision Record lifecycle" },
-    { group: "pr", blurb: "Pull-request lifecycle — create, review, resolve, merge" },
-    { group: "task", blurb: "Spec-driven pipeline — start, implement, verify, deliver" },
-    { group: "sec", blurb: "Security scanners — secrets, deps, threat models & more" },
-    { group: "refactor", blurb: "Code-health — audit, smells, plan, apply" },
-    { group: "kanban", blurb: "Lightweight board tracker — create, move, list, configure" },
-  ],
-  commands: COMMANDS.map(([group, name, blurb, human]) => ({
+  groups: GROUP_ORDER.map((group) => ({ group, blurb: GROUP_BLURBS[group] ?? "" })),
+  commands: COMMANDS.map(([group, name, human]) => ({
     group,
     name,
-    blurb,
-    description: `${blurb} — what /marvin:${name} does, in more detail.`,
-    ...(EXAMPLES[name] ? { example: EXAMPLES[name] } : {}),
+    blurb: COMMAND_BLURBS[name] ?? "",
+    description: COMMAND_DETAILS[name] ?? "",
+    ...(COMMAND_EXAMPLES[name] ? { example: COMMAND_EXAMPLES[name] } : {}),
+    phrases: [...(COMMAND_PROMPTS[name] ?? [])],
     human,
   })),
 };

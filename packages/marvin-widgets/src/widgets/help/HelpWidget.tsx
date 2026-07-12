@@ -68,6 +68,33 @@ const sectionStyle: CSSProperties = { margin: "0 0 1.4rem" };
 const accentStyle: CSSProperties = { color: ACCENT };
 const mutedStyle: CSSProperties = { color: textMuted };
 
+// "Two ways to call" detail (ADR-0024): a small uppercase gutter label ("Direct"
+// / "In prose") and the bordered chip that shows the direct call.
+const twoWayLabelStyle: CSSProperties = {
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: textMuted,
+  paddingTop: "2px",
+};
+const directChipStyle: CSSProperties = {
+  justifySelf: "start",
+  fontFamily: mono,
+  fontSize: "12px",
+  color: textPrimary,
+  border: `0.5px solid ${borderColor}`,
+  borderRadius: "6px",
+  padding: "0.1rem 0.45rem",
+};
+
+// A shared key→value axis so every reference section — the summary rows, the
+// command-groups list, the per-command reference, and the section headers'
+// "Read more" — lines its right column up on the same vertical. 9rem clears the
+// widest key (the longest command name), so no key overflows into the value.
+const KEY_COL = "9rem";
+const KEY_GAP = "1rem";
+
 /**
  * A titled section: an uppercase eyebrow over its content. When an `action` is
  * given (the per-group reference sections' "Read more" link), the header becomes
@@ -91,9 +118,9 @@ function Section({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(9rem, max-content) 1fr",
+            gridTemplateColumns: `${KEY_COL} 1fr`,
             alignItems: "center",
-            columnGap: "1rem",
+            columnGap: KEY_GAP,
             margin: "0 0 0.6rem",
           }}
         >
@@ -156,8 +183,8 @@ function SummaryRow({
   children: ReactNode;
 }) {
   return (
-    <div data-testid={testid} style={{ display: "flex", gap: "1.1rem", padding: "0.15rem 0" }}>
-      <span style={{ ...accentStyle, flex: "0 0 5.5rem" }}>{label}</span>
+    <div data-testid={testid} style={{ display: "flex", gap: KEY_GAP, padding: "0.15rem 0" }}>
+      <span style={{ ...accentStyle, flex: `0 0 ${KEY_COL}` }}>{label}</span>
       <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
     </div>
   );
@@ -366,9 +393,9 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "max-content 1fr",
+            gridTemplateColumns: `${KEY_COL} 1fr`,
             rowGap: "0.3rem",
-            columnGap: "1rem",
+            columnGap: KEY_GAP,
           }}
         >
           {data.groups.map((g) => (
@@ -391,9 +418,9 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(9rem, max-content) 1fr",
+                gridTemplateColumns: `${KEY_COL} 1fr`,
                 rowGap: "0.3rem",
-                columnGap: "1rem",
+                columnGap: KEY_GAP,
               }}
             >
               {cmds.map((c) => (
@@ -447,12 +474,35 @@ function ReferenceRow({
 }
 
 /**
+ * Human-readable label per command-group key, used to build the group-detail
+ * heading (e.g. `core` → "Core commands"). Keyed by the registry group key; an
+ * unknown key falls back to its capitalised form so a newly added group never
+ * renders a blank heading. Widget-only presentation — the terminal door renders
+ * the flat reference and needs no group heading.
+ */
+const GROUP_LABELS: Record<string, string> = {
+  core: "Core",
+  adr: "ADR",
+  pr: "PR",
+  task: "Task",
+  sec: "Security",
+  refactor: "Refactor",
+  kanban: "Kanban",
+};
+
+/** The detail-header heading for a group key — "<Label> commands". */
+export function groupTitle(key: string): string {
+  const label = GROUP_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+  return `${label} commands`;
+}
+
+/**
  * The focused "Read more" detail view for one command group — the client-side
  * drill-down rendered from the HelpState the widget already holds (no extra tool
- * round-trip). Shows a back control, a breadcrumb + wordmark of the group key,
- * the group blurb, and each command as `/marvin:<name>` with its richer
- * description and an optional `e.g.` example line; a 👤 legend appears when the
- * group has any human-run command.
+ * round-trip). Shows a back control, a plain heading (e.g. "Core commands"), and
+ * each command as `/marvin:<name>` with its richer description and an optional
+ * `e.g.` example line; a 👤 legend appears when the group has any human-run
+ * command.
  */
 function GroupDetail({
   data,
@@ -483,58 +533,84 @@ function GroupDetail({
         ← All commands
       </span>
 
-      <div
+      <h2
+        data-testid="help-detail-title"
         style={{
-          margin: "0.9rem 0 0.1rem",
-          display: "flex",
-          alignItems: "baseline",
-          gap: "0.5rem",
+          margin: "0.9rem 0 1rem",
+          fontSize: "20px",
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
+          color: textPrimary,
         }}
       >
-        <span style={{ ...mutedStyle, fontSize: "12px" }}>&gt;_ MARVIN ›</span>
-        <span
-          data-testid="help-detail-title"
-          style={{ ...wordmarkStyle, fontSize: "clamp(26px, 5vw, 34px)" }}
-        >
-          {group.group}
-        </span>
-      </div>
-      <p style={{ ...mutedStyle, margin: "0.1rem 0 1rem", fontSize: "12.5px" }}>{group.blurb}</p>
+        {groupTitle(group.group)}
+      </h2>
 
-      {cmds.map((c) => (
-        <div
-          key={c.name}
-          data-testid="help-detail-command"
-          data-command={c.name}
-          style={{ padding: "0.55rem 0", borderTop: `0.5px solid ${borderColor}` }}
-        >
-          <span style={{ ...accentStyle, display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            /marvin:{c.name}
-            {c.human ? <HumanMark /> : null}
-          </span>
+      {cmds.map((c) => {
+        // Two ways to call (ADR-0024): the direct call — the args `example` when a
+        // command has one, else the bare `/marvin:<name>` — and its prose examples.
+        const direct = c.example ?? `/marvin:${c.name}`;
+        return (
           <div
-            style={{ ...mutedStyle, fontSize: "12.5px", lineHeight: 1.5, margin: "0.15rem 0 0" }}
+            key={c.name}
+            data-testid="help-detail-command"
+            data-command={c.name}
+            style={{ padding: "0.6rem 0", borderTop: `0.5px solid ${borderColor}` }}
           >
-            {c.description}
-          </div>
-          {c.example ? (
+            <span style={{ ...accentStyle, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              /marvin:{c.name}
+              {c.human ? <HumanMark /> : null}
+            </span>
             <div
-              data-testid="help-detail-example"
               style={{
-                fontSize: "12px",
-                color: textMuted,
-                border: `0.5px solid ${borderColor}`,
-                borderRadius: "6px",
-                padding: "0.15rem 0.45rem",
-                display: "inline-block",
-                marginTop: "0.3rem",
+                ...mutedStyle,
+                fontSize: "12.5px",
+                lineHeight: 1.5,
+                margin: "0.15rem 0 0.45rem",
               }}
             >
-              e.g.&nbsp; {c.example}
+              {c.description}
             </div>
-          ) : null}
-        </div>
-      ))}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(3.5rem, max-content) 1fr",
+                columnGap: "0.9rem",
+                rowGap: "0.35rem",
+                alignItems: "start",
+              }}
+            >
+              <span style={twoWayLabelStyle}>Direct</span>
+              <code data-testid="help-detail-direct" style={directChipStyle}>
+                {direct}
+              </code>
+              {c.phrases.length > 0 ? (
+                <>
+                  <span style={twoWayLabelStyle}>In prose</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.15rem",
+                      minWidth: 0,
+                    }}
+                  >
+                    {c.phrases.map((p, i) => (
+                      <span
+                        key={i}
+                        data-testid="help-detail-phrase"
+                        style={{ ...mutedStyle, fontSize: "12.5px" }}
+                      >
+                        “{p}”
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
 
       {hasHuman ? (
         <div

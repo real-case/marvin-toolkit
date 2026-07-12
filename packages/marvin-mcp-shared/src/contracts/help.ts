@@ -41,14 +41,17 @@ export type HelpGroup = z.infer<typeof HelpGroup>;
 
 /**
  * One command in the reference: its registry name, group, authored blurb, a
- * richer `description` + optional usage `example` (the rich `ui://` widget's
- * "Read more" group-detail view, ADR-0024), and whether it is human-run only
- * (👤 — the `disable-model-invocation` lifecycle commands, ADR-0027). Names come
- * from the prompt registry (drift-proof); `blurb` and `description` are curated
- * and coverage-guarded so every registry command has both. `example` is
- * genuinely optional — a zero-argument command (e.g. `readme`, `dashboard`) omits
- * it, and the widget renders the `e.g.` line only when it is present. The terminal
- * markdown door renders only `blurb`, so it is unaffected by the richer fields.
+ * richer `description`, an optional direct-call `example`, and `phrases` — the
+ * natural-language ways to invoke it. Together `example`/name and `phrases` are
+ * the widget's "two ways to call" detail (ADR-0024): the direct `/marvin:<name>`
+ * call plus ≥3 prose examples like "marvin, show me the dashboard". `human` marks
+ * the human-run-only commands (👤 — the `disable-model-invocation` lifecycle, ADR
+ * -0027). Names come from the prompt registry (drift-proof); `blurb`, `description`
+ * and `phrases` are curated and coverage-guarded so every registry command carries
+ * all three. `example` is genuinely optional — a zero-argument command (e.g.
+ * `readme`, `dashboard`) omits it and the widget falls back to the bare call. The
+ * terminal markdown door renders only `blurb`, so it is unaffected by the richer
+ * fields.
  */
 export const HelpCommand = z.object({
   group: z.string().min(1),
@@ -56,6 +59,7 @@ export const HelpCommand = z.object({
   blurb: z.string(),
   description: z.string(),
   example: z.string().optional(),
+  phrases: z.array(z.string()),
   human: z.boolean(),
 });
 export type HelpCommand = z.infer<typeof HelpCommand>;

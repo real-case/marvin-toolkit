@@ -148,6 +148,28 @@ test("help emits a non-empty curated description for every command (drift guard)
   }
 });
 
+test("help emits at least three prose invocation phrases for every command (drift guard)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const sc = (await callHelp(dir)).structuredContent;
+    assert.ok(sc.commands.length >= 30, `full registry listed (got ${sc.commands.length})`);
+    // Every command carries the "two ways to call" prose examples (ADR-0024): an
+    // array of ≥3 non-empty strings sourced from the shared COMMAND_PROMPTS. A new
+    // command shipped without an entry lands `[]` and fails here — a real drift
+    // guard, exactly like the blurb/description guards.
+    const short = sc.commands.filter(
+      (c) => !Array.isArray(c.phrases) || c.phrases.filter((p) => p && p.length > 0).length < 3,
+    );
+    assert.deepEqual(
+      short.map((c) => c.name),
+      [],
+      "every command has at least three non-empty prose phrases",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("help renders a registry-derived command index in text (no hand-list drift)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
   try {

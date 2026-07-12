@@ -3,7 +3,7 @@ import { render, screen, within, fireEvent } from "@testing-library/preact";
 // Runtime zod import — the contract schema doubles as the HelpState type; tests
 // are the one place the widget workspace may import the schema at runtime.
 import { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
-import { HelpView, HelpWidget } from "./HelpWidget";
+import { HelpView, HelpWidget, groupTitle } from "./HelpWidget";
 import {
   helpFixture,
   noServersHelpFixture,
@@ -171,19 +171,35 @@ describe("HelpView — group Read more drill-down", () => {
     // the overview is swapped for the core detail view
     expect(screen.queryByTestId("help-panel")).toBeNull();
     const detail = screen.getByTestId("help-detail");
-    expect(screen.getByTestId("help-detail-title").textContent).toContain("core");
+    expect(screen.getByTestId("help-detail-title").textContent).toBe(groupTitle("core"));
 
     // every core command renders as /marvin:<name> with its richer description...
     const rows = within(detail).getAllByTestId("help-detail-command");
     expect(rows).toHaveLength(13);
     const commit = rows.find((r) => r.getAttribute("data-command") === "commit")!;
     expect(commit.textContent).toContain("/marvin:commit");
-    expect(commit.textContent).toContain("what /marvin:commit does");
+    // the detail row renders the command's real (fixture-mirrored) description
+    const commitDesc = helpFixture.commands.find((c) => c.name === "commit")!.description;
+    expect(commit.textContent).toContain(commitDesc);
 
-    // ...and the `e.g.` example line appears only for commands that have one
-    // (the fixture gives core exactly `commit` + `debug` an example)
-    expect(within(detail).getAllByTestId("help-detail-example")).toHaveLength(2);
-    expect(commit.textContent).toContain("e.g.");
+    // ...each showing two ways to call: a Direct chip (always) and ≥3 prose phrases.
+    // core has 13 commands → 13 Direct chips.
+    expect(within(detail).getAllByTestId("help-detail-direct")).toHaveLength(13);
+    // a command with an args example shows it as the direct call; one without falls
+    // back to the bare /marvin:<name> (the fixture gives core `commit` an example,
+    // `dashboard` none)
+    expect(within(commit).getByTestId("help-detail-direct").textContent).toContain(
+      "/marvin:commit fix: guard null session",
+    );
+    const dashboard = rows.find((r) => r.getAttribute("data-command") === "dashboard")!;
+    expect(within(dashboard).getByTestId("help-detail-direct").textContent).toBe(
+      "/marvin:dashboard",
+    );
+    // every command lists at least three prose phrases, quoted
+    for (const r of rows) {
+      expect(within(r).getAllByTestId("help-detail-phrase").length).toBeGreaterThanOrEqual(3);
+    }
+    expect(within(commit).getAllByTestId("help-detail-phrase")[0].textContent).toContain("marvin");
 
     // back control restores the unchanged overview
     fireEvent.click(screen.getByTestId("help-back"));
