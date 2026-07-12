@@ -31280,7 +31280,8 @@ function countMarkdown(dir, exclude = []) {
     return 0;
   }
 }
-var SLOGAN = "Claude Code toolset for AI development without panic";
+
+// ../../../../packages/marvin-mcp-shared/dist/help-content.js
 var GROUP_BLURBS = {
   core: "Everyday dev \u2014 commits, debugging, docs, ADRs, handoffs",
   adr: "Architecture Decision Record lifecycle",
@@ -31424,15 +31425,15 @@ var COMMAND_DETAILS = {
 };
 var COMMAND_EXAMPLES = {
   // core
-  commit: '/marvin:commit "fix: guard null session"',
-  debug: '/marvin:debug "TypeError in auth middleware"',
-  adr: '/marvin:adr "Adopt one MCP server"',
+  commit: "/marvin:commit fix: guard null session",
+  debug: "/marvin:debug TypeError in auth middleware",
+  adr: "/marvin:adr Adopt one MCP server",
   changelog: "/marvin:changelog since v0.1.0",
-  "migration-plan": '/marvin:migration-plan "bundler to Vite"',
+  "migration-plan": "/marvin:migration-plan bundler to Vite",
   explain: "/marvin:explain src/server.ts",
-  "docs-search": '/marvin:docs-search "how does the verify gate work?"',
-  handoff: '/marvin:handoff "widget work WIP"',
-  lessons: '/marvin:lessons search "dist staleness"',
+  "docs-search": "/marvin:docs-search how does the verify gate work?",
+  handoff: "/marvin:handoff widget work WIP",
+  lessons: "/marvin:lessons search dist staleness",
   help: "/marvin:help sec",
   // adr
   "adr-review": "/marvin:adr-review 31",
@@ -31443,19 +31444,19 @@ var COMMAND_EXAMPLES = {
   "pr-resolve": "/marvin:pr-resolve 42",
   "pr-merge": "/marvin:pr-merge 42",
   // task
-  "task-start": '/marvin:task-start "add pagination"',
+  "task-start": "/marvin:task-start add pagination",
   "task-summary": "/marvin:task-summary add-pagination",
   // sec
-  "sec-threat-model": '/marvin:sec-threat-model "upload flow"',
-  "sec-fix": '/marvin:sec-fix "CVE-2024-1234"',
+  "sec-threat-model": "/marvin:sec-threat-model upload flow",
+  "sec-fix": "/marvin:sec-fix CVE-2024-1234",
   // refactor
   "refactor-smells": "/marvin:refactor-smells src/tools",
   "refactor-plan": "/marvin:refactor-plan F3,F4",
   // kanban
-  "kanban-bug": '/marvin:kanban-bug "login 500s"',
-  "kanban-feature": '/marvin:kanban-feature "dark mode"',
-  "kanban-chore": '/marvin:kanban-chore "bump deps"',
-  "kanban-spike": '/marvin:kanban-spike "try Preact"',
+  "kanban-bug": "/marvin:kanban-bug login 500s",
+  "kanban-feature": "/marvin:kanban-feature dark mode",
+  "kanban-chore": "/marvin:kanban-chore bump deps",
+  "kanban-spike": "/marvin:kanban-spike try Preact",
   "kanban-start": "/marvin:kanban-start 12",
   "kanban-review": "/marvin:kanban-review 12",
   "kanban-done": "/marvin:kanban-done 12",
@@ -31463,6 +31464,299 @@ var COMMAND_EXAMPLES = {
   "kanban-tracker": "/marvin:kanban-tracker 12",
   "kanban-status": "/marvin:kanban-status 12 blocked"
 };
+var COMMAND_PROMPTS = {
+  // core
+  commit: [
+    "marvin, commit this",
+    "marvin, stage and commit my changes",
+    "marvin, make a conventional commit linked to the board"
+  ],
+  debug: [
+    "marvin, why is this test failing?",
+    "marvin, help me debug this crash",
+    "marvin, find the root cause of this error"
+  ],
+  adr: [
+    "marvin, record this decision as an ADR",
+    "marvin, write an architecture decision record",
+    "marvin, capture the rationale for this choice"
+  ],
+  changelog: [
+    "marvin, generate a changelog",
+    "marvin, what changed since the last release?",
+    "marvin, draft release notes since v0.1.0"
+  ],
+  readme: [
+    "marvin, update the README",
+    "marvin, generate the project documentation",
+    "marvin, refresh the readme from the code"
+  ],
+  "migration-plan": [
+    "marvin, plan this migration",
+    "marvin, how do we refactor this safely?",
+    "marvin, draft a migration plan with a rollback"
+  ],
+  explain: [
+    "marvin, explain how this works",
+    "marvin, walk me through this module",
+    "marvin, what does this function do?"
+  ],
+  "docs-search": [
+    "marvin, where is this documented?",
+    "marvin, find the docs on the verify gate",
+    "marvin, search the project docs for this"
+  ],
+  handoff: [
+    "marvin, hand off this session",
+    "marvin, save the context so I can continue later",
+    "marvin, prep a handoff for a fresh session"
+  ],
+  "handoff-list": [
+    "marvin, list the handoffs",
+    "marvin, show me the saved handoff docs",
+    "marvin, what handoffs do we have?"
+  ],
+  lessons: [
+    "marvin, save this as a lesson",
+    "marvin, what lessons do we have on this?",
+    "marvin, recall past gotchas for this bug"
+  ],
+  help: ["marvin, show the help dashboard", "marvin, what commands are available?", "marvin, help"],
+  dashboard: [
+    "marvin, show me the dashboard",
+    "marvin, what's the state of the toolbox?",
+    "marvin, give me the whole-project report"
+  ],
+  // adr
+  "adr-review": [
+    "marvin, review this ADR",
+    "marvin, is ADR 31 ready to accept?",
+    "marvin, check this decision record"
+  ],
+  "adr-accept": [
+    "marvin, accept this ADR",
+    "marvin, ratify ADR 31",
+    "marvin, mark the decision record accepted"
+  ],
+  "adr-audit": [
+    "marvin, audit the ADRs",
+    "marvin, lint the decision records",
+    "marvin, are the ADRs consistent?"
+  ],
+  "adr-coverage": [
+    "marvin, what decisions are undocumented?",
+    "marvin, check our ADR coverage",
+    "marvin, which ADRs are we missing?"
+  ],
+  "adr-supersede": [
+    "marvin, supersede this ADR",
+    "marvin, roll back ADR 12",
+    "marvin, replace an accepted decision record"
+  ],
+  "adr-sync": [
+    "marvin, sync the ADR digest",
+    "marvin, refresh the decisions in CLAUDE.md",
+    "marvin, regenerate the ADR summary"
+  ],
+  // pr
+  "pr-create": [
+    "marvin, open a pull request",
+    "marvin, create a PR for this branch",
+    "marvin, push and open a PR"
+  ],
+  "pr-review": [
+    "marvin, review this PR",
+    "marvin, review PR 42 on GitHub",
+    "marvin, start a pull-request review"
+  ],
+  "pr-resolve": [
+    "marvin, address the PR feedback",
+    "marvin, resolve the review comments",
+    "marvin, apply the reviewer's suggestions on PR 42"
+  ],
+  "pr-merge": [
+    "marvin, merge this PR",
+    "marvin, merge PR 42 and sync the base",
+    "marvin, land the pull request"
+  ],
+  // task
+  "task-start": [
+    "marvin, start a new task",
+    "marvin, spec this out",
+    "marvin, define the task for pagination"
+  ],
+  "task-implement": [
+    "marvin, implement the spec",
+    "marvin, run the task",
+    "marvin, build out the ready spec"
+  ],
+  "task-verify": [
+    "marvin, run the quality gates",
+    "marvin, verify the project",
+    "marvin, are the tests and lint green?"
+  ],
+  "task-deliver": [
+    "marvin, deliver the task",
+    "marvin, commit and open a PR for this",
+    "marvin, ship this task"
+  ],
+  "task-summary": [
+    "marvin, summarize what this task delivered",
+    "marvin, give me the delivery digest",
+    "marvin, recap the task's acceptance criteria"
+  ],
+  // sec
+  "sec-scan": [
+    "marvin, run a security scan",
+    "marvin, do a full OWASP audit",
+    "marvin, harden this before release"
+  ],
+  "sec-secrets": [
+    "marvin, scan for leaked secrets",
+    "marvin, check for exposed API keys",
+    "marvin, look for credentials in the git history"
+  ],
+  "sec-deps": [
+    "marvin, audit the dependencies",
+    "marvin, any vulnerable packages?",
+    "marvin, check dependency CVEs and licenses"
+  ],
+  "sec-gate": [
+    "marvin, quick security check on my changes",
+    "marvin, run the pre-commit security gate",
+    "marvin, is this staged diff safe?"
+  ],
+  "sec-threat-model": [
+    "marvin, threat-model this feature",
+    "marvin, run a STRIDE analysis on the upload flow",
+    "marvin, what are the attack surfaces here?"
+  ],
+  "sec-iac": [
+    "marvin, review the Terraform for security",
+    "marvin, scan the Kubernetes manifests",
+    "marvin, check the infrastructure-as-code"
+  ],
+  "sec-ci": [
+    "marvin, audit the CI pipeline",
+    "marvin, check the GitHub Actions for supply-chain risk",
+    "marvin, review the workflow permissions"
+  ],
+  "sec-fix": [
+    "marvin, fix this vulnerability",
+    "marvin, patch CVE-2024-1234 with a test",
+    "marvin, remediate this security finding"
+  ],
+  "sec-compliance": [
+    "marvin, check OWASP ASVS compliance",
+    "marvin, run a compliance gap analysis",
+    "marvin, build the compliance matrix"
+  ],
+  "sec-pentest": [
+    "marvin, give me a pentest checklist",
+    "marvin, plan a penetration test for this app",
+    "marvin, what should I test for exploits?"
+  ],
+  "sec-report": [
+    "marvin, list the security reports",
+    "marvin, show me past audit findings",
+    "marvin, what security scans have we run?"
+  ],
+  // refactor
+  "refactor-audit": [
+    "marvin, audit the code health",
+    "marvin, where is the tech debt?",
+    "marvin, map the refactoring hotspots"
+  ],
+  "refactor-smells": [
+    "marvin, scan this module for code smells",
+    "marvin, check src/tools for anti-patterns",
+    "marvin, find the smells in this diff"
+  ],
+  "refactor-plan": [
+    "marvin, plan the refactoring",
+    "marvin, sequence findings F3 and F4 into steps",
+    "marvin, turn these findings into a plan"
+  ],
+  "refactor-apply": [
+    "marvin, apply the next refactor step",
+    "marvin, execute step 2 of the plan",
+    "marvin, do the refactoring under the gates"
+  ],
+  // kanban
+  "kanban-menu": [
+    "marvin, open the board menu",
+    "marvin, show the board actions",
+    "marvin, what can I do on the board?"
+  ],
+  "kanban-bug": [
+    "marvin, add a bug to the board",
+    "marvin, new bug: login 500s",
+    "marvin, track this bug"
+  ],
+  "kanban-feature": [
+    "marvin, add a feature to the board",
+    "marvin, new feature: dark mode",
+    "marvin, track this feature request"
+  ],
+  "kanban-chore": [
+    "marvin, add a chore",
+    "marvin, new chore: bump deps",
+    "marvin, track this maintenance task"
+  ],
+  "kanban-spike": [
+    "marvin, add a spike",
+    "marvin, new spike: try Preact",
+    "marvin, track this investigation"
+  ],
+  "kanban-start": [
+    "marvin, start task 12",
+    "marvin, move this card to in-progress",
+    "marvin, begin work on this task"
+  ],
+  "kanban-review": [
+    "marvin, move task 12 to review",
+    "marvin, send this card to review",
+    "marvin, mark the task ready for review"
+  ],
+  "kanban-done": [
+    "marvin, mark task 12 done",
+    "marvin, close out this card",
+    "marvin, move this task to done"
+  ],
+  "kanban-list": [
+    "marvin, list the board tasks",
+    "marvin, what's on the board?",
+    "marvin, show me the kanban board"
+  ],
+  "kanban-show": [
+    "marvin, show task 12",
+    "marvin, open this card",
+    "marvin, give me the details of task 12"
+  ],
+  "kanban-tracker": [
+    "marvin, link a tracker URL to task 12",
+    "marvin, attach the Jira link to this card",
+    "marvin, connect this task to the tracker"
+  ],
+  "kanban-status": [
+    "marvin, set task 12 to blocked",
+    "marvin, change this card's status",
+    "marvin, move task 12 to a specific column"
+  ],
+  "kanban-config": [
+    "marvin, show the board config",
+    "marvin, edit the kanban statuses",
+    "marvin, configure the board"
+  ],
+  "kanban-help": [
+    "marvin, board help",
+    "marvin, how does the kanban board work?",
+    "marvin, help me with the tracker"
+  ]
+};
+
+// src/lib/help-data.ts
+var SLOGAN = "Claude Code toolset for AI development without panic";
 var HUMAN_RUN = /* @__PURE__ */ new Set(["adr-accept", "adr-supersede", "adr-sync"]);
 function shortDesc(desc, max = 72) {
   const oneLine = desc.replace(/\s+/g, " ").trim();
@@ -31566,11 +31860,13 @@ function renderHelp(env2, config2, version2, section) {
       blurb: GROUP_BLURBS[group] ?? ""
     })),
     // Full reference, registry order within each group. Names from the registry
-    // (drift-proof); blurb + description are curated (each guarded to full coverage
-    // by a test) with a `""` fallback, so a missing entry ships an empty string the
-    // test catches rather than silent drift. `example` is genuinely optional — it is
-    // omitted entirely when absent, so the widget renders the `e.g.` line only when
-    // a command has one.
+    // (drift-proof); blurb + description + phrases are curated (each guarded to full
+    // coverage by a test) with a `""` / `[]` fallback, so a missing entry ships an
+    // empty value the test catches rather than silent drift. `example` is genuinely
+    // optional — it is omitted entirely when absent, so the widget renders the `e.g.`
+    // line only when a command has one. `phrases` (the widget's "two ways to call"
+    // prose examples, ADR-0024) come from the shared help-content source both the
+    // tool and the widget fixture import, so the preview can never drift.
     commands: GROUP_ORDER.flatMap(
       (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
         const example = COMMAND_EXAMPLES[p.name];
@@ -31580,6 +31876,7 @@ function renderHelp(env2, config2, version2, section) {
           blurb: COMMAND_BLURBS[p.name] ?? "",
           description: COMMAND_DETAILS[p.name] ?? "",
           ...example ? { example } : {},
+          phrases: [...COMMAND_PROMPTS[p.name] ?? []],
           human: HUMAN_RUN.has(p.name)
         };
       })
@@ -33933,7 +34230,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.4.0";
+var VERSION = "0.5.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

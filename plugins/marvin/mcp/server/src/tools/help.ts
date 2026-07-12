@@ -10,6 +10,7 @@ import {
   COMMAND_BLURBS,
   COMMAND_DETAILS,
   COMMAND_EXAMPLES,
+  COMMAND_PROMPTS,
   GROUP_BLURBS,
   HUMAN_RUN,
   SLOGAN,
@@ -127,11 +128,13 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
       blurb: GROUP_BLURBS[group] ?? "",
     })),
     // Full reference, registry order within each group. Names from the registry
-    // (drift-proof); blurb + description are curated (each guarded to full coverage
-    // by a test) with a `""` fallback, so a missing entry ships an empty string the
-    // test catches rather than silent drift. `example` is genuinely optional — it is
-    // omitted entirely when absent, so the widget renders the `e.g.` line only when
-    // a command has one.
+    // (drift-proof); blurb + description + phrases are curated (each guarded to full
+    // coverage by a test) with a `""` / `[]` fallback, so a missing entry ships an
+    // empty value the test catches rather than silent drift. `example` is genuinely
+    // optional — it is omitted entirely when absent, so the widget renders the `e.g.`
+    // line only when a command has one. `phrases` (the widget's "two ways to call"
+    // prose examples, ADR-0024) come from the shared help-content source both the
+    // tool and the widget fixture import, so the preview can never drift.
     commands: GROUP_ORDER.flatMap((group) =>
       PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
         const example = COMMAND_EXAMPLES[p.name];
@@ -141,6 +144,7 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
           blurb: COMMAND_BLURBS[p.name] ?? "",
           description: COMMAND_DETAILS[p.name] ?? "",
           ...(example ? { example } : {}),
+          phrases: [...(COMMAND_PROMPTS[p.name] ?? [])],
           human: HUMAN_RUN.has(p.name),
         };
       }),
