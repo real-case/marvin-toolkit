@@ -18,7 +18,6 @@ Review a pull request **on GitHub** and submit the review there — a summary pl
 ### 1. Identify the PR
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # If $ARGUMENTS is a number, use it. Otherwise detect from the branch:
 gh pr view --json number,headRefName,baseRefName,url,title -q '{number,branch:.headRefName,base:.baseRefName,url,title}'
 ```
@@ -67,7 +66,7 @@ Pick the review **event**:
 Submit one review with inline comments. Build a JSON payload and pipe it to the reviews API so line anchoring is exact:
 
 ```bash
-gh api "repos/$REPO/pulls/<number>/reviews" --method POST --input - <<'JSON'
+gh api "repos/{owner}/{repo}/pulls/<number>/reviews" --method POST --input - <<'JSON'
 {
   "event": "COMMENT",
   "body": "<concise summary: what's good, the headline concerns, overall risk>",
@@ -83,6 +82,8 @@ Notes:
 - `line` is the line number in the file's new version; use `side: "LEFT"` to comment on a removed line. For multi-line comments add `start_line` + `start_side`.
 - A comment whose `path`/`line` is not part of the diff is rejected — keep inline comments on changed lines; raise anything else in the summary `body`.
 - Never include "Claude", "AI", "LLM", or generated-by attribution in the body or comments.
+- Every `gh` command is self-contained — `{owner}`/`{repo}` are gh's own placeholders, filled from the current repo. Never rely on a shell variable set in an earlier step: commands run in separate shells.
+- After posting, confirm the review actually landed (the API response contains the review `id` and `html_url`) — a 404 here usually means a malformed repo path.
 
 ### 6. Report
 
