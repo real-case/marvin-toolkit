@@ -44,6 +44,15 @@ storybook-static/
 # baseline dirs under __image_snapshots__/ ARE committed)
 packages/marvin-widgets/__image_snapshots__/__diff_output__/
 
-# Claude Code local state — per-machine settings and agent worktrees, never shared
+# Claude Code local state — per-machine settings, agent worktrees and agent
+# memory, never shared
 .claude/settings.local.json
 .claude/worktrees/
+.claude/agent-memory/
+
+# Marvin working directory (ADR-0007) — in this repo it holds only local
+# dogfood/test state (board fixtures, usage log), never shared content
+.marvin/
+
+# Runtime markers written next to the installed plugin while a session uses it
+plugins/marvin/.in_use/
