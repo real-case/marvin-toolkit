@@ -70,6 +70,15 @@ function badgeStyle(colors: CSSProperties): CSSProperties {
   };
 }
 
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+  // 0.75rem matches the card grid's own gap, so the inset around the grid reads
+  // as one more gutter rather than a second, competing rhythm.
+  padding: "0.75rem",
+};
+
 const chipStyle: CSSProperties = {
   display: "inline-block",
   padding: "0.1rem 0.45rem",
@@ -484,6 +493,7 @@ export function DashboardView({ data, connecting, error }: DashboardViewProps) {
         // the widget renders in the host default serif.
         fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <Header data={data} />

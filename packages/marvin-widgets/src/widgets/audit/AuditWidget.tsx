@@ -31,6 +31,20 @@ import { formatDate } from "../../lib/format";
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
 
+/**
+ * Marvin's violet — the family accent, matching help and the `<ListDetail>` shell.
+ * Used for chrome only (the link-out, the active filter chip). The severity scale
+ * below keeps its own semantic colours: blue there means "low", not "accent".
+ */
+const ACCENT = "#8b5cf6";
+const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+};
+
 /** A finding flattened out of its report, carrying the report context it needs. */
 interface FindingRow {
   /** Stable React key: report index + finding id, unique across reports. */
@@ -62,25 +76,38 @@ const SEVERITY_COLOR: Record<Severity, CSSProperties> = {
   },
 };
 
+/**
+ * Badge geometry and typography, shared so a severity and a scanner-kind badge are
+ * the same object in two colourways and can never drift apart. Colour is the only
+ * axis that carries meaning: severity takes the semantic scale above, kind stays
+ * neutral because a scanner name ranks nothing.
+ */
+const badgeBaseStyle: CSSProperties = {
+  display: "inline-block",
+  padding: "0.05rem 0.4rem",
+  borderRadius: "var(--border-radius-sm, 4px)",
+  fontSize: "0.75em",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.02em",
+};
+
 function severityBadgeStyle(sev: Severity): CSSProperties {
-  return {
-    display: "inline-block",
-    padding: "0.05rem 0.4rem",
-    borderRadius: "var(--border-radius-sm, 4px)",
-    fontSize: "0.75em",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.02em",
-    ...SEVERITY_COLOR[sev],
-  };
+  return { ...badgeBaseStyle, ...SEVERITY_COLOR[sev] };
 }
+
+const kindBadgeStyle: CSSProperties = {
+  ...badgeBaseStyle,
+  background: "var(--color-background-secondary, #f0f0f0)",
+  color: "var(--color-text-secondary, #555)",
+};
 
 const linkButtonStyle: CSSProperties = {
   font: "inherit",
   border: "1px solid var(--color-border-primary, #d0d0d0)",
   borderRadius: "var(--border-radius-sm, 4px)",
   background: "transparent",
-  color: "var(--color-text-info, #0b57d0)",
+  color: ACCENT,
   padding: "0.2rem 0.5rem",
 };
 
@@ -146,10 +173,8 @@ function FilterChip({
         fontSize: "0.8em",
         cursor: "pointer",
         borderRadius: "var(--border-radius-sm, 4px)",
-        border: active
-          ? "1px solid var(--color-text-info, #0b57d0)"
-          : "1px solid var(--color-border-primary, #d0d0d0)",
-        background: active ? "var(--color-background-info, #eef4ff)" : "transparent",
+        border: active ? `1px solid ${ACCENT}` : "1px solid var(--color-border-primary, #d0d0d0)",
+        background: active ? ACCENT_TINT : "transparent",
         color: "var(--color-text-primary, #1a1a1a)",
         padding: "0.15rem 0.5rem",
       }}
@@ -316,7 +341,6 @@ export function AuditListView({ data, connecting, error, onOpenLink }: AuditList
   const counts = severityCounts(rows);
   const present = SEVERITY_ORDER.filter((s) => counts[s] > 0);
   const visible = filter ? rows.filter((r) => r.finding.severity === filter) : rows;
-  const breakdown = present.map((s) => `${s} ${counts[s]}`).join(" · ");
 
   return (
     <div
@@ -324,31 +348,42 @@ export function AuditListView({ data, connecting, error, onOpenLink }: AuditList
         // fontFamily, not the `font` shorthand: the shorthand requires a size, so
         // a family-only `font:` is invalid CSS — the declaration is dropped and
         // the widget renders in the host default serif.
-        fontFamily: "var(--font-sans, system-ui, sans-serif)",
+        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
+        fontSize: "13px",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <header
         data-testid="audit-counts"
         style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: "0.75rem",
-          padding: "0.5rem 0.25rem",
+          // 0.75rem horizontal matches the list rows' own inset, so the header
+          // text lines up with the row text instead of hanging left of it.
+          padding: "0.75rem",
           borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
-          marginBottom: "0.5rem",
         }}
       >
-        <strong>
-          {rows.length} {rows.length === 1 ? "finding" : "findings"}
-        </strong>
-        <span style={{ opacity: 0.7, fontSize: "0.9em" }}>{breakdown}</span>
+        {/* Title only: the toolbar below already carries the total ("All n") and the
+            per-severity counts, and both zero-finding cases return before this. */}
+        <strong>Audit findings</strong>
       </header>
       <div
         data-testid="severity-filter"
         role="group"
         aria-label="filter by severity"
-        style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.5rem" }}
+        style={{
+          display: "flex",
+          gap: "0.35rem",
+          flexWrap: "wrap",
+          // Same 0.75rem horizontal inset as the header and the list rows, so the
+          // whole widget keeps one left edge. Tighter vertically than the header's
+          // even 0.75rem: these chips bring their own padding, so matching it would
+          // make the toolbar sit heavier than the header it hangs under.
+          padding: "0.5rem 0.75rem",
+          // Replaces the old bottom margin: the rule now does the separating, and a
+          // margin under it would float the line off the list instead of capping it.
+          borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
+        }}
       >
         <FilterChip
           label="All"
@@ -374,10 +409,15 @@ export function AuditListView({ data, connecting, error, onOpenLink }: AuditList
         getKey={(row) => row.key}
         emptyLabel="No findings for this severity."
         renderRow={(row) => (
-          <span>
-            <span style={severityBadgeStyle(row.finding.severity)}>{row.finding.severity}</span>
-            <span style={{ opacity: 0.6, margin: "0 0.4rem" }}>{row.kind}</span>
-            {row.finding.title}
+          // Two stacked rows, not one flow: badges on their own line keep the title
+          // starting at a fixed left edge, so titles scan as a column instead of
+          // each one being indented by whatever the badges ahead of it measured.
+          <span style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <span style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+              <span style={severityBadgeStyle(row.finding.severity)}>{row.finding.severity}</span>
+              <span style={kindBadgeStyle}>{row.kind}</span>
+            </span>
+            <span>{row.finding.title}</span>
           </span>
         )}
         renderDetail={(row) => <FindingDetail row={row} onOpenLink={onOpenLink} />}

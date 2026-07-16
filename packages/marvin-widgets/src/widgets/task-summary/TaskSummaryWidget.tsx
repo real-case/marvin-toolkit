@@ -70,6 +70,16 @@ function badgeStyle(colors: CSSProperties): CSSProperties {
   };
 }
 
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+  // 0.75rem matches the dashboard and audit frames, so the whole widget family
+  // keeps content off its border by the same inset. The full-width section
+  // dividers inset with it rather than butting the frame edge.
+  padding: "0.75rem",
+};
+
 const linkButtonStyle: CSSProperties = {
   font: "inherit",
   border: "1px solid var(--color-border-primary, #d0d0d0)",
@@ -115,31 +125,33 @@ function Section({
   );
 }
 
-/** One acceptance criterion: outcome badge · id + statement (Markdown) + oracle,
- * stacked in the content column so the block-level `<Markdown>` sits on its own line. */
+/** One acceptance criterion: an id · outcome-badge header row, then the statement
+ * (Markdown) and oracle stacked full-width beneath it — no badge gutter, so the
+ * statement runs the whole panel width rather than being indented past the badge. */
 function AcRow({ ac }: { ac: AcOutcome }) {
   return (
-    <li
-      data-testid="ac-row"
-      data-outcome={ac.outcome}
-      style={{ display: "flex", gap: "0.5rem", padding: "0.3rem 0", alignItems: "baseline" }}
-    >
-      <span style={badgeStyle(OUTCOME_COLOR[ac.outcome])}>{ac.outcome}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <li data-testid="ac-row" data-outcome={ac.outcome} style={{ padding: "0.3rem 0" }}>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "baseline" }}>
         <strong>{ac.id}</strong>
-        <div data-testid="ac-statement">
-          <Markdown source={ac.statement} />
-        </div>
-        <div style={mutedStyle}>
-          {ac.oracle_kind}
-          {ac.oracle_ref ? ` · ${ac.oracle_ref}` : ""}
-        </div>
+        <span style={badgeStyle(OUTCOME_COLOR[ac.outcome])}>{ac.outcome}</span>
+      </div>
+      <div data-testid="ac-statement">
+        <Markdown source={ac.statement} />
+      </div>
+      {/* A blank line before the oracle sets it apart as the proof reference, not
+          a continuation of the statement. */}
+      <div style={{ ...mutedStyle, marginTop: "0.5rem" }}>
+        {ac.oracle_kind}
+        {ac.oracle_ref ? ` · ${ac.oracle_ref}` : ""}
       </div>
     </li>
   );
 }
 
-/** One verification gate: status badge · name · optional detail. */
+/** One verification gate: name · status badge · optional detail. Leads with the
+ * gate name (bold), then the status badge — the same identity-first header treatment
+ * as {@link AcRow}, so acceptance and gates read as one pattern. Gates are single-line
+ * (no body), so the detail trails inline rather than dropping to its own row. */
 function GateRow({ gate }: { gate: GateOutcome }) {
   return (
     <li
@@ -147,8 +159,8 @@ function GateRow({ gate }: { gate: GateOutcome }) {
       data-status={gate.status}
       style={{ display: "flex", gap: "0.5rem", padding: "0.2rem 0", alignItems: "baseline" }}
     >
+      <strong>{gate.name}</strong>
       <span style={badgeStyle(GATE_COLOR[gate.status])}>{gate.status}</span>
-      <span>{gate.name}</span>
       {gate.detail ? <span style={mutedStyle}>({gate.detail})</span> : null}
     </li>
   );
@@ -256,6 +268,7 @@ export function TaskSummaryView({ data, connecting, error, onOpenLink }: TaskSum
         // the widget renders in the host default serif.
         fontFamily: "var(--font-sans, system-ui, sans-serif)",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <header

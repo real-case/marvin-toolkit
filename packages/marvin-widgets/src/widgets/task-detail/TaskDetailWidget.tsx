@@ -21,6 +21,26 @@ import { formatDate } from "../../lib/format";
  * `TaskListPayload` wraps the array to carry board counts).
  */
 
+/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
+const ACCENT = "#8b5cf6";
+
+/** The detail pane's task title. */
+const detailTitleStyle: CSSProperties = { margin: "0 0 0.5rem", fontSize: "1rem" };
+
+/** The status + type meta line that sits above a row's title. */
+const metaRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  marginBottom: "0.15rem",
+};
+
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+};
+
 const badgeStyle: CSSProperties = {
   display: "inline-block",
   padding: "0.05rem 0.4rem",
@@ -29,7 +49,6 @@ const badgeStyle: CSSProperties = {
   fontWeight: 600,
   background: "var(--color-background-secondary, #f0f0f0)",
   color: "var(--color-text-secondary, #555)",
-  marginRight: "0.5rem",
 };
 
 const linkButtonStyle: CSSProperties = {
@@ -37,7 +56,7 @@ const linkButtonStyle: CSSProperties = {
   border: "1px solid var(--color-border-primary, #d0d0d0)",
   borderRadius: "var(--border-radius-sm, 4px)",
   background: "transparent",
-  color: "var(--color-text-info, #0b57d0)",
+  color: ACCENT,
   padding: "0.2rem 0.5rem",
 };
 
@@ -62,6 +81,64 @@ function cardLinks(card: TaskCard): LinkRef[] {
  * task-list), then the task's markdown body rendered through `<Markdown>` — the
  * one addition over task-list's card-only detail.
  */
+/**
+ * The detail pane's task title. When the task has a canonical record — its
+ * tracker item, else its PR — the title *is* the link to it, in the same violet
+ * the link buttons use; with no destination it stays plain text.
+ *
+ * Like the link buttons, the link renders whenever a destination exists and only
+ * the cursor and the dispatch depend on a host being wired — the tests and
+ * stories render with no `onOpenLink`, and must still show the styled title.
+ *
+ * Keyboard support and the hover underline mirror the help widget's link spans:
+ * a `role="link"` span, not a `<button>`, which would drag host chrome in.
+ */
+function DetailTitle({
+  title,
+  link,
+  onOpenLink,
+}: {
+  title: string;
+  link: LinkRef | null;
+  onOpenLink?: (link: LinkRef) => void;
+}) {
+  const [active, setActive] = useState(false);
+  if (!link) {
+    return (
+      <h2 data-testid="detail-title" style={detailTitleStyle}>
+        {title}
+      </h2>
+    );
+  }
+  return (
+    <h2 data-testid="detail-title" style={detailTitleStyle}>
+      <span
+        role="link"
+        tabIndex={0}
+        data-testid="detail-title-link"
+        onClick={() => onOpenLink?.(link)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenLink?.(link);
+          }
+        }}
+        onMouseEnter={() => setActive(true)}
+        onMouseLeave={() => setActive(false)}
+        onFocus={() => setActive(true)}
+        onBlur={() => setActive(false)}
+        style={{
+          color: ACCENT,
+          cursor: onOpenLink ? "pointer" : "default",
+          textDecoration: active ? "underline" : "none",
+        }}
+      >
+        {title}
+      </span>
+    </h2>
+  );
+}
+
 function TaskDetailPane({
   task,
   onOpenLink,
@@ -72,9 +149,8 @@ function TaskDetailPane({
   const links = cardLinks(task);
   return (
     <div>
-      <h2 data-testid="detail-title" style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
-        {task.title}
-      </h2>
+      {/* cardLinks pushes tracker before pr, so [0] is the canonical record. */}
+      <DetailTitle title={task.title} link={links[0] ?? null} onOpenLink={onOpenLink} />
       <dl
         style={{
           display: "grid",
@@ -177,8 +253,10 @@ export function TaskDetailView({ data, connecting, error, onOpenLink }: TaskDeta
         // fontFamily, not the `font:` shorthand — the shorthand requires a
         // size, so browsers drop the whole declaration and the widget would
         // silently render in the host's default serif.
-        fontFamily: "var(--font-sans, system-ui, sans-serif)",
+        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
+        fontSize: "13px",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <ListDetail
@@ -187,9 +265,11 @@ export function TaskDetailView({ data, connecting, error, onOpenLink }: TaskDeta
         getKey={(task) => task.id}
         emptyLabel="No task."
         renderRow={(task) => (
-          <span>
-            <span style={badgeStyle}>{task.status.key}</span>
-            <span style={{ opacity: 0.6, marginRight: "0.4rem" }}>{task.type}</span>
+          <span style={{ display: "block" }}>
+            <span style={metaRowStyle}>
+              <span style={badgeStyle}>{task.status.key}</span>
+              <span style={badgeStyle}>{task.type}</span>
+            </span>
             {task.title}
           </span>
         )}

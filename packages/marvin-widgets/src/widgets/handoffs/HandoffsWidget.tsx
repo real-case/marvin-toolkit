@@ -26,6 +26,16 @@ import { formatDate } from "../../lib/format";
  * `continue_prompt` so the whole set browses with no per-handoff fetch.
  */
 
+/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
+const ACCENT = "#8b5cf6";
+const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+};
+
 const badgeStyle: CSSProperties = {
   display: "inline-block",
   padding: "0.05rem 0.4rem",
@@ -42,17 +52,17 @@ const linkButtonStyle: CSSProperties = {
   border: "1px solid var(--color-border-primary, #d0d0d0)",
   borderRadius: "var(--border-radius-sm, 4px)",
   background: "transparent",
-  color: "var(--color-text-info, #0b57d0)",
+  color: ACCENT,
   padding: "0.2rem 0.5rem",
 };
 
 const continueButtonStyle: CSSProperties = {
   font: "inherit",
   fontWeight: 600,
-  border: "1px solid var(--color-border-info, #0b57d0)",
+  border: `1px solid ${ACCENT}`,
   borderRadius: "var(--border-radius-sm, 4px)",
-  background: "var(--color-background-info, #eef4ff)",
-  color: "var(--color-text-info, #0b57d0)",
+  background: ACCENT_TINT,
+  color: ACCENT,
   padding: "0.35rem 0.6rem",
 };
 
@@ -231,8 +241,10 @@ export function HandoffsView({
         // fontFamily, not the `font` shorthand: the shorthand requires a size, so
         // a family-only `font:` is invalid CSS — the declaration is dropped and
         // the widget renders in the host default serif.
-        fontFamily: "var(--font-sans, system-ui, sans-serif)",
+        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
+        fontSize: "13px",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <header
@@ -241,9 +253,10 @@ export function HandoffsView({
           display: "flex",
           alignItems: "baseline",
           gap: "0.75rem",
-          padding: "0.5rem 0.25rem",
+          // 0.75rem horizontal matches the list rows' own inset, so the header
+          // text lines up with the row text instead of hanging left of it.
+          padding: "0.75rem",
           borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
-          marginBottom: "0.5rem",
         }}
       >
         <strong>

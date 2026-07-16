@@ -19,6 +19,12 @@ import {
  * it stays domain-agnostic: `renderRow` draws one item in the list, `renderDetail`
  * draws the selected item's pane. An empty `items` renders `emptyLabel` instead of
  * an empty split — never a crash.
+ *
+ * Styling follows the help widget's language so the widget family reads as one
+ * system: the mono stack, marvin's violet as the only accent, hairline rules, and
+ * flat text-forward rows. The shell sets the mono font and body size once at its
+ * root; rows inherit it (`font: inherit`), so a consumer's `renderRow` needs no
+ * font of its own.
  */
 export interface ListDetailProps<T> {
   /** The rows to render. An empty array renders the empty state. */
@@ -35,13 +41,37 @@ export interface ListDetailProps<T> {
   ariaLabel?: string;
 }
 
+// ── the help widget's palette (HelpWidget.tsx is the reference) ──────────────
+// Marvin's violet is the one brand constant — legible on light and dark grounds.
+// The selection tint is an alpha wash of it rather than a fixed colour, so it
+// composites over whichever ground the host paints.
+const ACCENT = "#8b5cf6";
+const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+const textPrimary = "var(--color-text-primary, #1a1a1a)";
+const textMuted = "var(--color-text-secondary, #6b6b78)";
+const borderColor = "var(--color-border-primary, #e2e2e2)";
+const mono = "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
+
+// The split shell. `fontFamily` (never the `font` shorthand, which is dropped
+// wholesale without a size and lets the host serif in) sets the mono stack once;
+// everything below inherits it.
+const shellStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "stretch",
+  gap: "1.25rem",
+  fontFamily: mono,
+  fontSize: "13px",
+  lineHeight: 1.5,
+  color: textPrimary,
+};
+
 const listStyle: CSSProperties = {
   listStyle: "none",
   margin: 0,
   padding: 0,
   minWidth: "12rem",
   maxWidth: "20rem",
-  borderRight: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRight: `1px solid ${borderColor}`,
   overflowY: "auto",
 };
 
@@ -49,19 +79,32 @@ const rowBaseStyle: CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "left",
-  padding: "0.5rem 0.75rem",
+  padding: "0.4rem 0.75rem",
   border: "none",
-  borderBottom: "1px solid var(--color-border-secondary, #f0f0f0)",
+  // A separator between rows — the render drops it on the last one.
+  borderBottom: `0.5px solid ${borderColor}`,
   background: "transparent",
-  color: "var(--color-text-primary, #1a1a1a)",
+  color: textPrimary,
   font: "inherit",
   cursor: "pointer",
 };
 
 const rowSelectedStyle: CSSProperties = {
   ...rowBaseStyle,
-  background: "var(--color-background-info, #eef4ff)",
-  color: "var(--color-text-info, #0b57d0)",
+  background: ACCENT_TINT,
+  color: ACCENT,
+  // An inset rail, not a left border: a real border would shift the label 2px
+  // sideways every time the selection lands on the row.
+  boxShadow: `inset 2px 0 0 ${ACCENT}`,
+};
+
+// Muted italic, matching help's "none configured for this project" placeholder.
+const emptyStyle: CSSProperties = {
+  fontFamily: mono,
+  fontSize: "13px",
+  color: textMuted,
+  fontStyle: "italic",
+  padding: "1rem",
 };
 
 /**
@@ -124,7 +167,7 @@ export function ListDetail<T>({
 
   if (items.length === 0) {
     return (
-      <div data-testid="list-detail-empty" style={{ padding: "1rem", opacity: 0.7 }}>
+      <div data-testid="list-detail-empty" style={emptyStyle}>
         {emptyLabel ?? "Nothing to show."}
       </div>
     );
@@ -133,7 +176,7 @@ export function ListDetail<T>({
   const activeItem = items[activeIndex];
 
   return (
-    <div style={{ display: "flex", alignItems: "stretch", gap: "1rem" }}>
+    <div style={shellStyle}>
       <ul
         role="listbox"
         aria-label={ariaLabel}
@@ -144,6 +187,11 @@ export function ListDetail<T>({
       >
         {items.map((item, index) => {
           const isSelected = index === activeIndex;
+          // The rule is a separator, so it only belongs *between* rows: the last
+          // row drops it rather than drawing a second line beside the list's own
+          // bottom edge.
+          const base = isSelected ? rowSelectedStyle : rowBaseStyle;
+          const rowStyle = index === items.length - 1 ? { ...base, borderBottom: "none" } : base;
           return (
             <li key={getKey(item, index)} role="presentation">
               <button
@@ -158,7 +206,7 @@ export function ListDetail<T>({
                   rowRefs.current[index] = el;
                 }}
                 onClick={() => setSelected(index)}
-                style={isSelected ? rowSelectedStyle : rowBaseStyle}
+                style={rowStyle}
               >
                 {renderRow(item, isSelected)}
               </button>
