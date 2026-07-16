@@ -14,5 +14,6 @@ export * from "./handoff.js";
 export * from "./lessons.js";
 export * from "./audit.js";
 export * from "./refactor.js";
+export * from "./report.js";
 export * from "./dashboard.js";
 export * from "./help.js";

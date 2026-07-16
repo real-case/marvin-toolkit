@@ -5,32 +5,186 @@ import type { LinkRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-sha
 import { ListDetail } from "../../primitives/ListDetail";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import {
+  MvRoot,
+  MV_FONT_MONO,
+  SEVERITY_TOKENS,
+  TOKENS,
+  type MvSeverityToken,
+  type MvTheme,
+} from "../../theme";
 
 /**
  * The task-list widget (ADR-0024) — the first end-to-end `ui://` widget. It is
  * split into a pure {@link TaskListView} (props-only, no SDK) and the App wiring
  * below, so the rendering is unit-testable without a transport and the same view
  * serves both the production (`useApp`) and the AC3 mock-host seam paths.
+ *
+ * Styling follows the family theme (docs/design/reports-widget.md): the view
+ * renders under its own `<MvRoot>` scope (so both wiring paths get the tokens),
+ * paints the widget canvas itself, and colors everything through `var(--…)`
+ * token references — no literal palette in this file.
  */
 
 type StatusRole = TaskCard["status"]["role"];
 
 const ROLE_ORDER: StatusRole[] = ["todo", "wip", "review", "done", "blocked"];
 
-/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
-const ACCENT = "#8b5cf6";
-const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+/**
+ * Lifecycle role → severity-token tone for the status dot-pill. The vocabulary
+ * is shared with the task-detail widget so a status reads identically across
+ * the family: todo is the neutral tag (no dot), wip is informational blue,
+ * review is amber (waiting on someone), done is pass green, blocked is fail red.
+ */
+const ROLE_TONE: Record<StatusRole, MvSeverityToken | null> = {
+  todo: null,
+  wip: "low",
+  review: "medium",
+  done: "pass",
+  blocked: "fail",
+};
+
+// ── widget-local stylesheet ──────────────────────────────────────────────────
+// Hover states cannot live inline, so the widget injects one id-keyed <style>
+// element at render time — the same idempotent lifecycle as MvRoot's token
+// sheet and ListDetail's row rules.
+
+/** id of the injected `<style>` element — the once-per-document key. */
+const TASK_LIST_STYLE_ID = "mv-task-list-styles";
+
+/** Ghost link buttons (the mockup's `.gbtn` recipe) — quiet until hovered. */
+const TASK_LIST_CSS = `
+.mvtl-gbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;letter-spacing:inherit;color:${TOKENS.t2};background:transparent;border:0.5px solid ${TOKENS.bd};border-radius:4px;padding:3px 10px}
+.mvtl-gbtn:hover{background:${TOKENS.srf2};color:${TOKENS.t1}}
+`;
+
+function ensureTaskListStyles(): void {
+  if (typeof document === "undefined" || document.getElementById(TASK_LIST_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = TASK_LIST_STYLE_ID;
+  style.textContent = TASK_LIST_CSS;
+  document.head.appendChild(style);
+}
+
+// ── shared style recipes (docs/design/reports-widget.md) ────────────────────
+
+/** The widget canvas — the outer panel every state renders on. */
+const panelStyle: CSSProperties = {
+  background: TOKENS.bg,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  padding: 14,
+};
+
+/** Aligned digits everywhere numbers sit next to each other. */
+const numStyle: CSSProperties = {
+  fontVariantNumeric: "tabular-nums",
+  letterSpacing: "-0.02em",
+};
+
+/** The dot-pill / neutral-tag base (tone colors are applied per use). */
+const pillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  padding: "1px 9px",
+  borderRadius: 4,
+  fontSize: 11.5,
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+  textTransform: "lowercase",
+};
+
+/** The pill's 5px currentColor dot. */
+const dotStyle: CSSProperties = {
+  width: 5,
+  height: 5,
+  borderRadius: "50%",
+  background: "currentColor",
+  flex: "none",
+};
+
+/** Microlabel — section/field labels (10.5px caps on meta gray). */
+const microlabelStyle: CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 500,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: TOKENS.t3,
+};
+
+/** Mono code chip for code-like values (branch names). */
+const codeChipStyle: CSSProperties = {
+  fontFamily: MV_FONT_MONO,
+  fontSize: 11,
+  background: TOKENS.srf2,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  padding: "1px 6px",
+  display: "inline-block",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  verticalAlign: "bottom",
+};
+
+/** The segmented control's track (the status filter lives on it). */
+const segTrackStyle: CSSProperties = {
+  display: "inline-flex",
+  background: TOKENS.srf2,
+  borderRadius: 4,
+  padding: 2,
+  gap: 2,
+};
+
+/** The list card the master-detail shell sits in. */
+const cardStyle: CSSProperties = {
+  background: TOKENS.srf,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  overflow: "hidden",
+};
 
 /** The detail pane's task title. */
-const detailTitleStyle: CSSProperties = { margin: "0 0 0.5rem", fontSize: "1rem" };
+const detailTitleStyle: CSSProperties = {
+  margin: "0 0 8px",
+  fontSize: 14.5,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
+};
+
+const ddStyle: CSSProperties = { margin: 0 };
 
 /**
- * One role in the header's breakdown, as a filter toggle. Reads as the plain
- * count text it replaced until it is switched on, so the header stays a summary
- * rather than turning into a toolbar; `aria-pressed` carries the on/off state
- * that the violet fill shows sighted users.
+ * A task's status as the family dot-pill: tinted background, text-grade tone,
+ * lowercase configured key, 5px dot. `todo` stays the neutral tag (second
+ * surface, secondary text, no dot). `data-tone` pins the role→tone mapping for
+ * tests without asserting resolved colors.
  */
-function RoleFilterChip({
+function StatusPill({ status }: { status: TaskCard["status"] }) {
+  const tone = ROLE_TONE[status.role];
+  const palette = tone ? SEVERITY_TOKENS[tone] : { text: TOKENS.t2, bg: TOKENS.srf2 };
+  return (
+    <span
+      data-testid="status-pill"
+      data-role={status.role}
+      data-tone={tone ?? "neutral"}
+      style={{ ...pillStyle, background: palette.bg, color: palette.text, flex: "none" }}
+    >
+      {tone ? <span style={dotStyle} aria-hidden="true" /> : null}
+      {status.key}
+    </span>
+  );
+}
+
+/**
+ * One role in the header's status filter, as a segment on the segmented track.
+ * Multi-select stays: each segment is an independent toggle whose on state is
+ * the raised surface (`srf` + primary text, no shadow); `aria-pressed` carries
+ * the on/off state the fill shows sighted users.
+ */
+function RoleFilterSegment({
   role,
   count,
   active,
@@ -50,44 +204,21 @@ function RoleFilterChip({
       onClick={onClick}
       style={{
         font: "inherit",
-        fontSize: "0.9em",
+        fontSize: 12.5,
+        letterSpacing: "inherit",
+        border: "none",
+        borderRadius: 4,
+        padding: "4px 11px",
         cursor: "pointer",
-        borderRadius: "var(--border-radius-sm, 4px)",
-        border: active ? `1px solid ${ACCENT}` : "1px solid transparent",
-        background: active ? ACCENT_TINT : "transparent",
-        color: active ? ACCENT : "var(--color-text-primary, #1a1a1a)",
-        opacity: active ? 1 : 0.7,
-        padding: "0.1rem 0.4rem",
+        whiteSpace: "nowrap",
+        background: active ? TOKENS.srf : "transparent",
+        color: active ? TOKENS.t1 : TOKENS.t2,
       }}
     >
-      {role} {count}
+      {role} <span style={{ ...numStyle, fontSize: 11, color: TOKENS.t3 }}>{count}</span>
     </button>
   );
 }
-
-/** The status + type meta line that sits above a row's title. */
-const metaRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  marginBottom: "0.15rem",
-};
-
-/** The widget frame — the whole widget as one rounded card on the host canvas. */
-const frameStyle: CSSProperties = {
-  border: "1px solid var(--color-border-primary, #e2e2e2)",
-  borderRadius: "var(--border-radius-md, 8px)",
-};
-
-const badgeStyle: CSSProperties = {
-  display: "inline-block",
-  padding: "0.05rem 0.4rem",
-  borderRadius: "var(--border-radius-sm, 4px)",
-  fontSize: "0.75em",
-  fontWeight: 600,
-  background: "var(--color-background-secondary, #f0f0f0)",
-  color: "var(--color-text-secondary, #555)",
-};
 
 /** Build the display links (ADR-0024 link model) a card carries: tracker + PR. */
 function cardLinks(card: TaskCard): LinkRef[] {
@@ -107,8 +238,8 @@ function cardLinks(card: TaskCard): LinkRef[] {
 
 /**
  * The detail pane's task title. When the task has a canonical record — its
- * tracker item, else its PR — the title *is* the link to it, in the same violet
- * the link buttons use; with no destination it stays plain text.
+ * tracker item, else its PR — the title *is* the link to it, in the accent the
+ * family reserves for links; with no destination it stays plain text.
  *
  * Like the link buttons, the link renders whenever a destination exists and only
  * the cursor and the dispatch depend on a host being wired — the tests and
@@ -152,7 +283,7 @@ function DetailTitle({
         onFocus={() => setActive(true)}
         onBlur={() => setActive(false)}
         style={{
-          color: ACCENT,
+          color: TOKENS.ac,
           cursor: onOpenLink ? "pointer" : "default",
           textDecoration: active ? "underline" : "none",
         }}
@@ -179,51 +310,46 @@ function CardDetail({
         style={{
           display: "grid",
           gridTemplateColumns: "auto 1fr",
-          gap: "0.15rem 0.75rem",
+          gap: "4px 14px",
+          alignItems: "baseline",
           margin: 0,
         }}
       >
-        <dt style={{ opacity: 0.6 }}>ID</dt>
-        <dd style={{ margin: 0 }}>{card.id}</dd>
-        <dt style={{ opacity: 0.6 }}>Type</dt>
-        <dd style={{ margin: 0 }}>{card.type}</dd>
-        <dt style={{ opacity: 0.6 }}>Status</dt>
-        <dd style={{ margin: 0 }}>
-          {card.status.key} <span style={{ opacity: 0.6 }}>({card.status.role})</span>
+        <dt style={microlabelStyle}>ID</dt>
+        <dd style={{ ...ddStyle, ...numStyle }}>{card.id}</dd>
+        <dt style={microlabelStyle}>Type</dt>
+        <dd style={ddStyle}>{card.type}</dd>
+        <dt style={microlabelStyle}>Status</dt>
+        <dd style={ddStyle}>
+          <StatusPill status={card.status} />{" "}
+          <span style={{ fontSize: 12, color: TOKENS.t3 }}>({card.status.role})</span>
         </dd>
-        <dt style={{ opacity: 0.6 }}>Branch</dt>
-        <dd style={{ margin: 0 }}>
-          <code>{card.branch}</code>
+        <dt style={microlabelStyle}>Branch</dt>
+        <dd style={ddStyle}>
+          <code style={codeChipStyle}>{card.branch}</code>
         </dd>
         {card.spec_slug ? (
           <>
-            <dt style={{ opacity: 0.6 }}>Spec</dt>
-            <dd style={{ margin: 0 }}>{card.spec_slug}</dd>
+            <dt style={microlabelStyle}>Spec</dt>
+            <dd style={ddStyle}>{card.spec_slug}</dd>
           </>
         ) : null}
-        <dt style={{ opacity: 0.6 }}>Updated</dt>
-        <dd data-testid="detail-updated" style={{ margin: 0 }}>
+        <dt style={microlabelStyle}>Updated</dt>
+        <dd data-testid="detail-updated" style={{ ...ddStyle, ...numStyle }}>
           {formatDate(card.updated)}
         </dd>
       </dl>
       {links.length > 0 ? (
-        <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
           {links.map((link) => {
             const action = classifyLink(link);
             return (
               <button
                 key={`${link.kind}:${link.url ?? link.ref ?? link.label}`}
                 type="button"
+                className="mvtl-gbtn"
                 onClick={() => onOpenLink?.(link)}
-                style={{
-                  font: "inherit",
-                  cursor: onOpenLink ? "pointer" : "default",
-                  border: "1px solid var(--color-border-primary, #d0d0d0)",
-                  borderRadius: "var(--border-radius-sm, 4px)",
-                  background: "transparent",
-                  color: ACCENT,
-                  padding: "0.2rem 0.5rem",
-                }}
+                style={{ cursor: onOpenLink ? "pointer" : "default" }}
               >
                 {action.type === "external" ? "↗ " : ""}
                 {link.label}
@@ -245,14 +371,22 @@ export interface TaskListViewProps {
   error?: string | null;
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
+  /**
+   * Pin the widget theme (forwarded to `MvRoot`). Stories only — production
+   * omits it so the host/OS `prefers-color-scheme` applies.
+   */
+  theme?: MvTheme;
 }
 
 /**
- * Pure presentational task-list. Renders the board-counts header plus a
- * master-detail list of cards; carries no SDK dependency, so it is driven purely
- * by props in tests, the story, and both wiring paths.
+ * Pure presentational task-list. Renders the board header (title, count pill,
+ * filter summary, status filter) plus a master-detail card of tasks; carries no
+ * SDK dependency, so it is driven purely by props in tests, the story, and both
+ * wiring paths. Every state — error, connecting, data — renders inside the same
+ * `<MvRoot>` scope and canvas panel.
  */
-export function TaskListView({ data, connecting, error, onOpenLink }: TaskListViewProps) {
+export function TaskListView({ data, connecting, error, onOpenLink, theme }: TaskListViewProps) {
+  ensureTaskListStyles();
   // The roles the list is narrowed to; empty means no filter, not "hide
   // everything". Declared above the guards so hook order stays stable.
   const [roles, setRoles] = useState<StatusRole[]>([]);
@@ -263,96 +397,127 @@ export function TaskListView({ data, connecting, error, onOpenLink }: TaskListVi
 
   if (error) {
     return (
-      <div
-        data-testid="task-list-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
-      >
-        Couldn’t load tasks: {error}
-      </div>
+      <MvRoot theme={theme}>
+        <div style={panelStyle}>
+          <div data-testid="task-list-error" style={{ color: TOKENS.red, fontSize: 12.5 }}>
+            Couldn’t load tasks: {error}
+          </div>
+        </div>
+      </MvRoot>
     );
   }
   if (!data) {
     return (
-      <div data-testid="task-list-connecting" style={{ padding: "1rem", opacity: 0.7 }}>
-        {connecting === false ? "No data." : "Connecting…"}
-      </div>
+      <MvRoot theme={theme}>
+        <div style={panelStyle}>
+          <div data-testid="task-list-connecting" style={{ color: TOKENS.t3, fontSize: 12.5 }}>
+            {connecting === false ? "No data." : "Connecting…"}
+          </div>
+        </div>
+      </MvRoot>
     );
   }
 
-  // Only roles the board actually uses get a chip — an empty role is not a
-  // filter anyone can want, and it would strand a chip that yields nothing.
+  // Only roles the board actually uses get a segment — an empty role is not a
+  // filter anyone can want, and it would strand a toggle that yields nothing.
   const present = ROLE_ORDER.filter((role) => (data.role_counts[role] ?? 0) > 0);
   const visible =
     roles.length === 0 ? data.tasks : data.tasks.filter((task) => roles.includes(task.status.role));
 
   return (
-    <div
-      style={{
-        // The `font` shorthand is invalid without a size (the whole declaration
-        // would be dropped and the host serif leaks in), so fontFamily it must be.
-        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
-        fontSize: "13px",
-        color: "var(--color-text-primary, #1a1a1a)",
-        ...frameStyle,
-      }}
-    >
-      <header
-        data-testid="board-counts"
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: "0.75rem",
-          // 0.75rem horizontal matches the list rows' own inset, so the header
-          // text lines up with the row text instead of hanging left of it.
-          padding: "0.75rem",
-          borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
-        }}
-      >
-        <strong>
-          {visible.length === data.tasks.length
-            ? `${data.tasks.length} ${data.tasks.length === 1 ? "task" : "tasks"}`
-            : `${visible.length} of ${data.tasks.length} tasks`}
-        </strong>
-        <span
-          role="group"
-          aria-label="filter by status"
-          style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}
+    <MvRoot theme={theme}>
+      <div style={panelStyle}>
+        <header
+          data-testid="board-counts"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
         >
-          {present.map((role) => (
-            <RoleFilterChip
-              key={role}
-              role={role}
-              count={data.role_counts[role] ?? 0}
-              active={roles.includes(role)}
-              onClick={() => toggleRole(role)}
-            />
-          ))}
-        </span>
-      </header>
-      <ListDetail
-        // Remount when the filter changes so selection resets to the top row:
-        // ListDetail holds the selected INDEX, which would otherwise survive into
-        // a different list and point at an unrelated task. Sorted so toggling
-        // todo→wip and wip→todo are the same filter, not two remounts.
-        key={roles.length === 0 ? "all" : [...roles].sort().join(",")}
-        items={visible}
-        ariaLabel="tasks"
-        getKey={(card) => card.id}
-        emptyLabel={
-          roles.length === 0 ? "No tasks on the board." : "No tasks match the selected statuses."
-        }
-        renderRow={(card) => (
-          <span style={{ display: "block" }}>
-            <span style={metaRowStyle}>
-              <span style={badgeStyle}>{card.status.key}</span>
-              <span style={badgeStyle}>{card.type}</span>
+          <div style={{ flex: "1 1 auto" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.015em" }}>
+                Tasks
+              </span>
+              <span
+                style={{ ...pillStyle, ...numStyle, background: TOKENS.srf2, color: TOKENS.t2 }}
+              >
+                {data.tasks.length}
+              </span>
+            </div>
+            <div style={{ ...numStyle, fontSize: 12, color: TOKENS.t3 }}>
+              {visible.length === data.tasks.length
+                ? `${data.tasks.length} ${data.tasks.length === 1 ? "task" : "tasks"} on the board`
+                : `${visible.length} of ${data.tasks.length} tasks`}
+            </div>
+          </div>
+          {present.length > 0 ? (
+            <span role="group" aria-label="filter by status" style={segTrackStyle}>
+              {present.map((role) => (
+                <RoleFilterSegment
+                  key={role}
+                  role={role}
+                  count={data.role_counts[role] ?? 0}
+                  active={roles.includes(role)}
+                  onClick={() => toggleRole(role)}
+                />
+              ))}
             </span>
-            {card.title}
-          </span>
-        )}
-        renderDetail={(card) => <CardDetail card={card} onOpenLink={onOpenLink} />}
-      />
-    </div>
+          ) : null}
+        </header>
+        <div style={cardStyle}>
+          <ListDetail
+            // Remount when the filter changes so selection resets to the top row:
+            // ListDetail holds the selected INDEX, which would otherwise survive into
+            // a different list and point at an unrelated task. Sorted so toggling
+            // todo→wip and wip→todo are the same filter, not two remounts.
+            key={roles.length === 0 ? "all" : [...roles].sort().join(",")}
+            items={visible}
+            ariaLabel="tasks"
+            getKey={(card) => card.id}
+            emptyLabel={
+              roles.length === 0
+                ? "No tasks on the board."
+                : "No tasks match the selected statuses."
+            }
+            renderRow={(card) => (
+              <span style={{ display: "block", minWidth: 0 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {card.title}
+                  </span>
+                  <StatusPill status={card.status} />
+                </span>
+                <span
+                  style={{
+                    ...numStyle,
+                    display: "block",
+                    marginTop: 2,
+                    fontSize: 11.5,
+                    color: TOKENS.t3,
+                  }}
+                >
+                  {card.type} · {card.id}
+                </span>
+              </span>
+            )}
+            renderDetail={(card) => <CardDetail card={card} onOpenLink={onOpenLink} />}
+          />
+        </div>
+      </div>
+    </MvRoot>
   );
 }
 
@@ -386,7 +551,7 @@ export function TaskListWidget({ seam }: TaskListWidgetProps) {
 function TaskListLiveWidget() {
   const [data, setData] = useState<TaskListPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-task-list", version: "0.15.0" },
+    appInfo: { name: "marvin-task-list", version: "0.8.0" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

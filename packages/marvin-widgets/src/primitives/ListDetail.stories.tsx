@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { ListDetail } from "./ListDetail";
+import { MvRoot, TOKENS } from "../theme";
 import { waitForCondition } from "../lib/story-helpers";
 
 /**
@@ -14,6 +15,21 @@ interface DemoItem {
   title: string;
   note: string;
 }
+
+/**
+ * In production the OWNING WIDGET renders the `.mvroot` theme scope; the
+ * primitive never wraps itself. This decorator stands in for the widget here.
+ * The forced `theme` follows the story's `hostTheme` parameter (or the toolbar
+ * global), so pinned dark variants stay deterministic for visual baselines.
+ */
+const withMvRoot: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return (
+    <MvRoot theme={t === "dark" ? "dark" : t === "light" ? "light" : undefined}>
+      <Story />
+    </MvRoot>
+  );
+};
 
 const demoItems: DemoItem[] = [
   { id: "alpha", title: "Alpha", note: "The first row of the demo board." },
@@ -37,7 +53,16 @@ const baseArgs = {
   renderRow: (item: DemoItem) => <span>{item.title}</span>,
   renderDetail: (item: DemoItem) => (
     <div>
-      <h3 style={{ margin: "0 0 0.5rem" }}>{item.title}</h3>
+      <h3
+        style={{
+          margin: "0 0 0.5rem",
+          fontSize: "14.5px",
+          fontWeight: 500,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {item.title}
+      </h3>
       <p style={{ margin: 0 }}>{item.note}</p>
     </div>
   ),
@@ -47,6 +72,7 @@ const baseArgs = {
 const meta: Meta<typeof ListDetail<DemoItem>> = {
   title: "Primitives/ListDetail",
   component: ListDetail,
+  decorators: [withMvRoot],
 };
 export default meta;
 
@@ -75,22 +101,14 @@ export const CustomEmptyLabel: Story = {
   },
 };
 
-/** Two-line rows (the handoffs shape): a title over a muted secondary line. */
+/** Two-line rows (design D): a 500-weight title over an 11.5px meta line in t3. */
 export const TwoLineRows: Story = {
   args: {
     ...baseArgs,
     renderRow: (item: DemoItem) => (
       <span style={{ display: "block" }}>
-        <span style={{ display: "block", fontWeight: 600 }}>{item.title}</span>
-        <span
-          style={{
-            display: "block",
-            fontSize: "0.85em",
-            color: "var(--color-text-secondary, #555)",
-          }}
-        >
-          {item.note}
-        </span>
+        <span style={{ display: "block", fontWeight: 500 }}>{item.title}</span>
+        <span style={{ display: "block", fontSize: "11.5px", color: TOKENS.t3 }}>{item.note}</span>
       </span>
     ),
   },
@@ -140,7 +158,7 @@ export const KeyboardNavigation: Story = {
   },
 };
 
-/** Default under the dark host theme (the preview decorator applies the host vars). */
+/** Default under the dark theme (forces `data-theme="dark"` on the MvRoot). */
 export const DefaultDark: Story = {
   args: baseArgs,
   parameters: { hostTheme: "dark" },

@@ -71,6 +71,24 @@ describe("TaskDetailWidget — pure view over the fixture", () => {
     expect(pane.textContent).toContain("2026-07-02");
   });
 
+  it("wraps every view state in the MvRoot theme scope", () => {
+    // The view self-wraps in <MvRoot> (family restyle), so the token sheet and
+    // the .mvroot scope are present for data, connecting, AND error states —
+    // whichever wiring path renders it.
+    const states = [
+      { props: { data: taskDetailFixture }, testid: "list-detail-pane" },
+      { props: { data: null, connecting: true }, testid: "task-detail-connecting" },
+      { props: { data: null, error: "boom" }, testid: "task-detail-error" },
+    ] as const;
+    for (const { props, testid } of states) {
+      const { container, unmount } = render(<TaskDetailView {...props} />);
+      const root = container.querySelector('[data-testid="mv-root"]');
+      expect(root, `${testid} should render inside .mvroot`).toBeTruthy();
+      expect(root?.querySelector(`[data-testid="${testid}"]`)).toBeTruthy();
+      unmount();
+    }
+  });
+
   it("renders the markdown body as elements", () => {
     render(<TaskDetailView data={taskDetailFixture} />);
     const body = screen.getByTestId("detail-body");
@@ -100,6 +118,9 @@ describe("TaskDetailWidget — mock-host handshake", () => {
       const title = await screen.findByTestId("detail-title", {}, { timeout: 5000 });
       expect(title.textContent).toContain("Fix login timeout on slow networks");
       expect(screen.queryByTestId("task-detail-connecting")).toBeNull();
+
+      // The seam path renders the same self-wrapped view — the theme scope is there.
+      expect(screen.getByTestId("mv-root")).toBeTruthy();
 
       // the markdown body reached the view too
       expect(screen.getByTestId("markdown").querySelector("pre code")).toBeTruthy();

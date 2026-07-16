@@ -28595,6 +28595,13 @@ var PROMPTS = [
     description: "Marvin toolbox dashboard \u2014 task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
     body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
   },
+  {
+    // Thin tool wrapper (inline body) — the unified read side of every report
+    // marvin writes under .marvin/ (docs/design/reports-widget.md, ADR-0024).
+    name: "reports",
+    description: "Unified viewer over every generated .marvin/ report \u2014 security, refactor, task, handoff \u2014 newest first, with per-report freshness.",
+    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title \u2014 e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble \u2014 just call the tool and present its result.'
+  },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
     name: "adr-review",
@@ -30336,6 +30343,467 @@ function prRefFromUrl(url) {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? { url, number: Number(match[1]) } : { url };
 }
+var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest"
+]);
+var LinkRefSchema = external_exports.object({
+  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+var FindingSchema = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity,
+  title: external_exports.string().min(1),
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRefSchema).optional()
+});
+var AuditReportSchema = external_exports.object({
+  kind: AuditKind,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(FindingSchema)
+});
+function parseAuditBlock(raw) {
+  const m = raw.match(/```json audit-report\n([\s\S]*?)\n```/);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: "audit-report block is not valid JSON" };
+  }
+  const parsed = AuditReportSchema.safeParse(json);
+  if (!parsed.success) {
+    return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
+  }
+  return { kind: "ok", report: parsed.data };
+}
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var STALE_AFTER_DAYS = 7;
+function isStale(group, mtimeMs, nowMs) {
+  if (group !== "security" && group !== "refactor") return false;
+  return nowMs - mtimeMs > STALE_AFTER_DAYS * DAY_MS;
+}
+function readMdFiles(dir, notes) {
+  if (!existsSync(dir)) return [];
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    try {
+      const path = join(dir, filename);
+      files.push({ filename, raw: readFileSync(path, "utf8"), mtimeMs: statSync(path).mtimeMs });
+    } catch {
+      notes.push({ file: filename, reason: "file could not be read" });
+    }
+  }
+  return files;
+}
+function firstHeading(text) {
+  const m = text.match(/^#\s+(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+function splitFrontmatter2(text) {
+  if (!text.startsWith("---\n")) return { frontmatter: "", body: text };
+  const end = text.indexOf("\n---", 4);
+  if (end === -1) return { frontmatter: "", body: text };
+  const after = text.slice(end + 4);
+  return {
+    frontmatter: text.slice(4, end),
+    body: after.startsWith("\n") ? after.slice(1) : after
+  };
+}
+function frontmatterValue(frontmatter, key) {
+  const m = frontmatter.match(new RegExp(`^${key}:\\s*(.+?)\\s*$`, "m"));
+  if (!m) return null;
+  return m[1].replace(/^["']|["']$/g, "") || null;
+}
+function slugTitle(filename) {
+  return filename.replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findingCounts(findings) {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of findings) {
+    if (f.severity !== "info") counts[f.severity] += 1;
+  }
+  return counts;
+}
+function checksSummary(checks) {
+  return {
+    kind: "checks",
+    done: checks.filter((c) => c.status === "pass").length,
+    total: checks.length,
+    failed: checks.filter((c) => c.status === "fail").length
+  };
+}
+var SEC_TITLES = {
+  scan: "Security scan",
+  secrets: "Secrets scan",
+  deps: "Dependency audit",
+  iac: "IaC review",
+  ci: "CI/CD audit",
+  "threat-model": "Threat model",
+  compliance: "Compliance check",
+  pentest: "Pentest checklist"
+};
+function scanSecurityReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/security";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const parsed = parseAuditBlock(file.raw);
+    if (parsed.kind === "none") continue;
+    if (parsed.kind === "invalid") {
+      notes.push({ file: file.filename, reason: parsed.reason });
+      continue;
+    }
+    const report = parsed.report;
+    const command = `sec-${report.kind}`;
+    const findings = report.findings.map((f) => ({
+      ...f,
+      fixCommand: `/marvin:sec-fix ${report.kind} ${f.id}`
+    }));
+    const path = `${relDir}/${file.filename}`;
+    reports.push({
+      id: path,
+      group: "security",
+      kind: "findings",
+      title: SEC_TITLES[report.kind],
+      path,
+      generatedBy: command,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("security", file.mtimeMs, now),
+      summary: { kind: "findings", counts: findingCounts(findings) },
+      body: { findings },
+      links: [],
+      rerunCommand: `/marvin:${command}`
+    });
+  }
+  return { reports, notes };
+}
+var EFFORT_MAP = {
+  trivial: "S",
+  small: "S",
+  medium: "M",
+  large: "L"
+};
+function parseRegisterFindings(raw) {
+  const findings = [];
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^\|\s*(F\d+)\s*\|(.*)\|\s*$/);
+    if (!m) continue;
+    const cells = m[2].split("|").map((c) => c.trim());
+    if (cells.length < 5) continue;
+    const [title, severityRaw, effortRaw, evidenceRaw, direction] = cells;
+    const severity = Severity.safeParse(severityRaw.toLowerCase());
+    if (!severity.success || !title) continue;
+    const evidence = evidenceRaw.replace(/`/g, "").trim();
+    const loc = evidence.match(/([\w./-]+\.[A-Za-z]+)(?::(\d+))?/);
+    const line_ = loc?.[2] ? Number(loc[2]) : void 0;
+    const effort = EFFORT_MAP[effortRaw.toLowerCase()];
+    findings.push({
+      id: m[1],
+      severity: severity.data,
+      title,
+      ...loc?.[1] ? { file: loc[1] } : {},
+      ...line_ && line_ > 0 ? { line: line_ } : {},
+      ...evidence ? { evidence } : {},
+      ...effort ? { effort } : {},
+      ...direction ? { direction } : {}
+    });
+  }
+  return findings;
+}
+function parsePlanChecks(raw) {
+  const checks = [];
+  const re = /^###\s+Step\s+\d+\s+—\s+(.+?)(?:\s+\[([^\]]+)\])?\s*$/gm;
+  for (const m of raw.matchAll(re)) {
+    const marker = (m[2] ?? "pending").trim().toLowerCase();
+    const status = marker.startsWith("done") ? "pass" : marker.startsWith("blocked") ? "fail" : "pending";
+    const note = marker.startsWith("done") && marker.length > 4 ? marker.slice(5) : void 0;
+    checks.push({ name: m[1].trim(), status, ...note ? { note } : {} });
+  }
+  return checks;
+}
+function scanRefactorReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/refactor";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const register = /^\d+-(audit|smells)-.*\.md$/.exec(file.filename);
+    const plan = /^\d+-plan-.*\.md$/.test(file.filename);
+    if (!register && !plan) continue;
+    const path = `${relDir}/${file.filename}`;
+    const heading = firstHeading(file.raw);
+    const common = {
+      id: path,
+      group: "refactor",
+      path,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("refactor", file.mtimeMs, now),
+      links: []
+    };
+    if (register) {
+      const findings = parseRegisterFindings(file.raw);
+      if (!heading && findings.length === 0) {
+        notes.push({ file: file.filename, reason: "no heading or findings register found" });
+        continue;
+      }
+      const command = `refactor-${register[1]}`;
+      reports.push({
+        ...common,
+        kind: "findings",
+        title: heading ?? slugTitle(file.filename),
+        generatedBy: command,
+        summary: { kind: "findings", counts: findingCounts(findings) },
+        body: { findings },
+        rerunCommand: `/marvin:${command}`
+      });
+    } else {
+      const checks = parsePlanChecks(file.raw);
+      if (!heading && checks.length === 0) {
+        notes.push({ file: file.filename, reason: "no heading or plan steps found" });
+        continue;
+      }
+      reports.push({
+        ...common,
+        kind: "checks",
+        title: heading ?? slugTitle(file.filename),
+        generatedBy: "refactor-plan",
+        summary: checksSummary(checks),
+        body: { checks },
+        rerunCommand: "/marvin:refactor-plan"
+      });
+    }
+  }
+  return { reports, notes };
+}
+function parseVerificationChecks(raw) {
+  const m = raw.match(/```json verify-result\n([\s\S]*?)\n```/);
+  if (!m) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const gates = parsed.gates;
+  if (!Array.isArray(gates)) return null;
+  return gates.filter(
+    (g) => typeof g === "object" && g !== null && typeof g.name === "string"
+  ).map((g) => {
+    const status = g.status === "pass" ? "pass" : g.status === "skip" ? "pending" : "fail";
+    const note = status === "fail" ? g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` : void 0;
+    return {
+      name: g.name,
+      status,
+      ...note ? { note } : {}
+    };
+  });
+}
+function scanTaskReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/task";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const common = {
+      id: path,
+      group: "task",
+      path,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("task", file.mtimeMs, now),
+      links: []
+    };
+    if (file.filename === "verification.md") {
+      const checks = parseVerificationChecks(file.raw);
+      if (checks === null) {
+        notes.push({ file: file.filename, reason: "no machine-readable verify-result block" });
+        continue;
+      }
+      reports.push({
+        ...common,
+        kind: "checks",
+        title: "Verification",
+        generatedBy: "task-verify",
+        summary: checksSummary(checks),
+        body: { checks },
+        rerunCommand: "/marvin:task-verify"
+      });
+    } else {
+      const { frontmatter, body } = splitFrontmatter2(file.raw);
+      const title = firstHeading(body) ?? frontmatterValue(frontmatter, "title") ?? slugTitle(file.filename);
+      reports.push({
+        ...common,
+        kind: "document",
+        title,
+        generatedBy: "task-start",
+        summary: { kind: "document", tag: "spec" },
+        body: { markdown: body },
+        rerunCommand: "/marvin:task-start"
+      });
+    }
+  }
+  return { reports, notes };
+}
+function scanHandoffReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/handoff";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const { frontmatter, body } = splitFrontmatter2(file.raw);
+    const title = firstHeading(body) ?? frontmatterValue(frontmatter, "objective") ?? slugTitle(file.filename);
+    reports.push({
+      id: path,
+      group: "handoff",
+      kind: "document",
+      title,
+      path,
+      generatedBy: "handoff",
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("handoff", file.mtimeMs, now),
+      summary: { kind: "document", tag: "handoff" },
+      body: { markdown: body },
+      links: [],
+      rerunCommand: "/marvin:handoff"
+    });
+  }
+  return { reports, notes };
+}
+function buildReportList(dirs, opts = {}) {
+  const now = opts.now ?? Date.now();
+  const scans = [
+    scanSecurityReports(dirs.security, { now }),
+    scanRefactorReports(dirs.refactor, { now }),
+    scanTaskReports(dirs.task, { now }),
+    scanHandoffReports(dirs.handoff, { now })
+  ];
+  const reports = scans.flatMap((s) => s.reports).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.id.localeCompare(b.id));
+  return { reports, notes: scans.flatMap((s) => s.notes) };
+}
+
+// src/tools/report.ts
+var REPORTS_WIDGET_URI = "ui://marvin/reports.html";
+var ReportInput = external_exports.object({
+  action: external_exports.enum(["list"]).optional(),
+  selected: external_exports.string().optional().describe(
+    "Deep-link: report id (project-relative path) to pre-select in the widget, e.g. `.marvin/task/verification.md`."
+  )
+});
+function buildReportTool(env2) {
+  return defineTool({
+    name: "report",
+    description: "List every report marvin generated under .marvin/ \u2014 security scans, refactor registers and plans, task specs, verification.md, handoffs \u2014 as one unified set, newest first, with per-report freshness. Terminals see the grouped text summary; MCP Apps hosts get the ReportListPayload reports widget.",
+    inputSchema: ReportInput,
+    // Bind the reports `ui://` widget for MCP Apps hosts (ADR-0024). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: REPORTS_WIDGET_URI } },
+    // Only one action today (list); the optional enum leaves room to grow
+    // (e.g. a `show` detail action) without a breaking schema change.
+    handler: (input) => Promise.resolve(runList2(env2, input))
+  });
+}
+var GROUP_ORDER = ["security", "refactor", "task", "handoff"];
+var GROUP_LABELS = {
+  security: "Security",
+  refactor: "Refactor",
+  task: "Task",
+  handoff: "Handoff"
+};
+function runList2(env2, input) {
+  const { reports, notes } = buildReportList({
+    security: env2.securityDir,
+    refactor: join(env2.projectDir, ".marvin", "refactor"),
+    task: join(env2.projectDir, ".marvin", "task"),
+    handoff: env2.handoffDir
+  });
+  const payload = {
+    reports,
+    ...input.selected ? { selected: input.selected } : {}
+  };
+  return {
+    content: [{ type: "text", text: renderList(reports, notes) }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the reports viewer.
+    structuredContent: payload
+  };
+}
+function renderList(reports, notes) {
+  const lines = [`# Reports (${reports.length})`, ""];
+  if (reports.length === 0) {
+    lines.push(
+      "_No reports yet \u2014 run `/marvin:sec-scan`, `/marvin:refactor-audit` or `/marvin:task-verify` to generate the first one._"
+    );
+  } else {
+    for (const group of GROUP_ORDER) {
+      const inGroup = reports.filter((r) => r.group === group);
+      if (inGroup.length === 0) continue;
+      lines.push(`## ${GROUP_LABELS[group]} (${inGroup.length})`, "");
+      for (const r of inGroup) lines.push(formatReportLine(r));
+      lines.push("");
+    }
+  }
+  if (notes.length > 0) {
+    lines.push(
+      "",
+      `_\u26A0 skipped ${notes.length} file(s):_`,
+      ...notes.map((n) => `- \`${n.file}\` \u2014 ${n.reason}`)
+    );
+  }
+  return lines.join("\n").trimEnd();
+}
+function formatReportLine(r) {
+  const stale = r.stale ? " \xB7 **stale**" : "";
+  return `- **${r.title}** \u2014 ${formatSummary(r)} \xB7 ${formatAge(r.generatedAt)}${stale} \xB7 \`${r.path}\``;
+}
+function formatSummary(r) {
+  const s = r.summary;
+  if (s.kind === "findings") {
+    const total = s.counts.critical + s.counts.high + s.counts.medium + s.counts.low;
+    const breakdown = ["critical", "high", "medium", "low"].filter((k) => s.counts[k] > 0).map((k) => `${k} ${s.counts[k]}`).join(", ");
+    return `${total} finding(s)${breakdown ? ` (${breakdown})` : ""}`;
+  }
+  if (s.kind === "checks") {
+    return s.total === 0 ? "0 checks" : s.failed > 0 ? `${s.done}/${s.total} checks, ${s.failed} failed` : `${s.done}/${s.total} checks`;
+  }
+  return s.tag;
+}
+function formatAge(iso) {
+  const ms = Math.max(0, Date.now() - Date.parse(iso));
+  const minutes = Math.floor(ms / 6e4);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// src/resources/widgets.ts
 var WIDGET_MIME = "text/html;profile=mcp-app";
 var WIDGETS = [
   {
@@ -30385,6 +30853,12 @@ var WIDGETS = [
     uri: "ui://marvin/help.html",
     file: join("widgets", "help.html"),
     description: "Marvin help \u2014 the welcome dashboard: gradient wordmark, project summary, configured MCP servers, and the full command index grouped by family (ADR-0024)."
+  },
+  {
+    name: "reports",
+    uri: REPORTS_WIDGET_URI,
+    file: join("widgets", "reports.html"),
+    description: "Marvin reports \u2014 the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs \u2014 with KPI strip, group filter, and per-report freshness (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -30474,7 +30948,7 @@ async function dispatchTask(server, env2, config2, input) {
     case "create":
       return runCreate(server, env2, config2, input);
     case "list":
-      return runList2(env2, config2);
+      return runList3(env2, config2);
     case "status":
       return runStatus(server, env2, config2);
     case "start":
@@ -30593,7 +31067,7 @@ To branch off and pick it up, call this tool with action="start", taskId="${crea
 File: \`${created.path}\`${templateWarning}${branchInfo}`
   );
 }
-function runList2(env2, config2) {
+function runList3(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const branch = currentBranch(env2.projectDir);
   const body = renderListTable(tasks, branch, config2);
@@ -31217,13 +31691,13 @@ function gitState(projectDir) {
   };
 }
 var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
-var GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
+var GROUP_ORDER2 = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
 function groupOf(name) {
   const prefix = name.split("-")[0] ?? "";
   return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
 }
 function commandGroups() {
-  return GROUP_ORDER.map((group) => ({
+  return GROUP_ORDER2.map((group) => ({
     group,
     count: PROMPTS.filter((p) => groupOf(p.name) === group).length
   })).filter((g) => g.count > 0);
@@ -31271,6 +31745,7 @@ var COMMAND_BLURBS = {
   lessons: "Team lessons-learned store",
   help: "This dashboard + command index",
   dashboard: "Whole-toolbox state report",
+  reports: "Unified viewer over all reports",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -31330,6 +31805,7 @@ var COMMAND_DETAILS = {
   lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard: "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+  reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs \u2014 newest first, with per-report freshness.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -31471,6 +31947,11 @@ var COMMAND_PROMPTS = {
     "marvin, show me the dashboard",
     "marvin, what's the state of the toolbox?",
     "marvin, give me the whole-project report"
+  ],
+  reports: [
+    "marvin, show me the reports",
+    "marvin, what reports do we have?",
+    "marvin, open the latest security report"
   ],
   // adr
   "adr-review": [
@@ -31728,7 +32209,7 @@ function renderHelp(env2, config2, version2, section) {
   const servers = projectMcpServers(env2.projectDir);
   const project = basename(env2.projectDir) || env2.projectDir;
   const want = section?.trim().toLowerCase();
-  const known = !!want && GROUP_ORDER.includes(want);
+  const known = !!want && GROUP_ORDER2.includes(want);
   const lines = [
     ...renderBanner(version2),
     "",
@@ -31765,7 +32246,7 @@ function renderHelp(env2, config2, version2, section) {
       lessons: art.lessons
     },
     servers,
-    groups: GROUP_ORDER.filter((g) => PROMPTS.some((p) => groupOf(p.name) === g)).map((group) => ({
+    groups: GROUP_ORDER2.filter((g) => PROMPTS.some((p) => groupOf(p.name) === g)).map((group) => ({
       group,
       blurb: GROUP_BLURBS[group] ?? ""
     })),
@@ -31777,7 +32258,7 @@ function renderHelp(env2, config2, version2, section) {
     // line only when a command has one. `phrases` (the widget's "two ways to call"
     // prose examples, ADR-0024) come from the shared help-content source both the
     // tool and the widget fixture import, so the preview can never drift.
-    commands: GROUP_ORDER.flatMap(
+    commands: GROUP_ORDER2.flatMap(
       (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
         const example = COMMAND_EXAMPLES[p.name];
         return {
@@ -31842,9 +32323,9 @@ function renderCommands(want, known) {
   const lines = [];
   lines.push("## Command groups");
   if (want) {
-    lines.push(`_Unknown group \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
+    lines.push(`_Unknown group \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER2.join(", ")}._`);
   }
-  for (const group of GROUP_ORDER) {
+  for (const group of GROUP_ORDER2) {
     if (PROMPTS.some((p) => groupOf(p.name) === group)) {
       lines.push(`- \`${group}\` \u2014 ${GROUP_BLURBS[group] ?? ""}`);
     }
@@ -31854,7 +32335,7 @@ function renderCommands(want, known) {
     "## Commands",
     "Run as `/marvin:<name>` or just ask in chat. \u{1F464} = human-run only."
   );
-  for (const group of GROUP_ORDER) {
+  for (const group of GROUP_ORDER2) {
     const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
     if (inGroup.length === 0) continue;
     lines.push("", `### ${group}`);
@@ -31983,10 +32464,10 @@ function findNearDuplicate(memoryDir, title) {
   }
   return best?.lesson ?? null;
 }
-var STALE_AFTER_DAYS = 180;
+var STALE_AFTER_DAYS2 = 180;
 function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
   const all = readAllLessons(memoryDir);
-  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS2 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
   const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
   const duplicates = [];
   for (let i = 0; i < all.length; i += 1) {
@@ -32141,7 +32622,7 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
     structuredContent: state
   };
 }
-var DAY_MS = 24 * 60 * 60 * 1e3;
+var DAY_MS2 = 24 * 60 * 60 * 1e3;
 function verificationFreshness(projectDir) {
   const path = join(projectDir, ".marvin", "task", "verification.md");
   const age = fileAgeDays(path);
@@ -32149,7 +32630,7 @@ function verificationFreshness(projectDir) {
 }
 function fileAgeDays(path) {
   try {
-    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS));
+    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS2));
   } catch {
     return null;
   }
@@ -32166,7 +32647,7 @@ function newestAgeDays(dir) {
   } catch {
     return null;
   }
-  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS));
+  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS2));
 }
 function refactorInventory(projectDir) {
   const dir = join(projectDir, ".marvin", "refactor");
@@ -33643,12 +34124,12 @@ async function runPrune(server, env2, input) {
     const { stale, duplicates } = pruneCandidates(env2.memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok4(
-        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
+        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS2} days) or duplicated.`
       );
     }
     const out = [`# Prune candidates (${stale.length + duplicates.length})`, ""];
     if (stale.length > 0) {
-      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS} days ago`);
+      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS2} days ago`);
       for (const l of stale) out.push(`- **${l.slug}** \u2014 ${l.title} (\`${l.type}\`, ${l.created})`);
       out.push("");
     }
@@ -33753,10 +34234,10 @@ function buildHandoffTool(env2) {
     // continue prompts) so the bound widget browses the whole set — no separate
     // `show` action (see .marvin/task/001-widget-handoffs.md, Variant A). The
     // optional enum still leaves room to grow without a breaking schema change.
-    handler: () => Promise.resolve(runList3(env2))
+    handler: () => Promise.resolve(runList4(env2))
   });
 }
-function runList3(env2) {
+function runList4(env2) {
   const { handoffs, malformed } = readAllHandoffs(env2.handoffDir);
   const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
   const warning = malformed.length > 0 ? `
@@ -34013,45 +34494,6 @@ function render(s, verify) {
 function errOk3(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
-var AuditKind = external_exports.enum([
-  "scan",
-  "secrets",
-  "deps",
-  "iac",
-  "ci",
-  "threat-model",
-  "compliance",
-  "pentest"
-]);
-var LinkRef = external_exports.object({
-  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
-  label: external_exports.string().min(1),
-  url: external_exports.string().url().optional(),
-  ref: external_exports.string().optional()
-});
-var Finding = external_exports.object({
-  id: external_exports.string(),
-  severity: Severity,
-  title: external_exports.string().min(1),
-  category: external_exports.string(),
-  file: external_exports.string().optional(),
-  line: external_exports.number().int().positive().optional(),
-  evidence: external_exports.string().optional(),
-  remediation: external_exports.string().optional(),
-  links: external_exports.array(LinkRef).optional()
-});
-var AuditReport = external_exports.object({
-  kind: AuditKind,
-  scanned_at: external_exports.string().datetime(),
-  target: external_exports.string().optional(),
-  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
-  findings: external_exports.array(Finding)
-});
-function extractAuditBlock(text) {
-  const m = text.match(/```json audit-report\n([\s\S]*?)\n```/);
-  return m?.[1] ?? null;
-}
 function readAllAuditReports(securityDir) {
   if (!existsSync(securityDir)) return { reports: [], malformed: [] };
   const found = [];
@@ -34070,21 +34512,13 @@ function readAllAuditReports(securityDir) {
     } catch {
       continue;
     }
-    const block = extractAuditBlock(raw);
-    if (block === null) continue;
-    let json;
-    try {
-      json = JSON.parse(block);
-    } catch {
-      malformed.push({ filename, reason: "audit-report block is not valid JSON" });
+    const parsed = parseAuditBlock(raw);
+    if (parsed.kind === "none") continue;
+    if (parsed.kind === "invalid") {
+      malformed.push({ filename, reason: parsed.reason });
       continue;
     }
-    const parsed = AuditReport.safeParse(json);
-    if (!parsed.success) {
-      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
-      continue;
-    }
-    found.push({ report: parsed.data, filename });
+    found.push({ report: parsed.report, filename });
   }
   found.sort(
     (a, b) => b.report.scanned_at.localeCompare(a.report.scanned_at) || a.filename.localeCompare(b.filename)
@@ -34107,13 +34541,13 @@ function buildAuditTool(env2) {
     meta: { ui: { resourceUri: AUDIT_WIDGET_URI } },
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
-    handler: () => Promise.resolve(runList4(env2))
+    handler: () => Promise.resolve(runList5(env2))
   });
 }
 var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
-function runList4(env2) {
+function runList5(env2) {
   const { reports, malformed } = readAllAuditReports(env2.securityDir);
-  const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine).join("\n");
+  const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine2).join("\n");
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} report(s) with an invalid audit-report block: ${malformed.map((m) => m.filename).join(", ")} (re-run the scanner)_` : "";
@@ -34127,7 +34561,7 @@ ${body}${warning}` }
     structuredContent: buildPayload(reports)
   };
 }
-function formatReportLine(r) {
+function formatReportLine2(r) {
   const total = r.findings.length;
   const breakdown = SEVERITY_ORDER.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
   const when = r.scanned_at.slice(0, 10);
@@ -34140,7 +34574,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.7.1";
+var VERSION = "0.8.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -34167,7 +34601,8 @@ await runPackServer({
         buildHandoffTool(env),
         buildSummaryTool(env),
         buildAdrTool(env),
-        buildAuditTool(env)
+        buildAuditTool(env),
+        buildReportTool(env)
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

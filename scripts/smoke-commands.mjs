@@ -36,6 +36,7 @@ const REQUIRED_PROMPTS = [
   "lessons",
   "help",
   "dashboard",
+  "reports",
   // pr-*
   "pr-create",
   "pr-review",
@@ -94,6 +95,7 @@ const REQUIRED_TOOLS = [
   "summary",
   "adr",
   "audit",
+  "report",
 ];
 
 function die(msg) {

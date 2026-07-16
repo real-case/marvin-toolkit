@@ -7,12 +7,17 @@ import { waitForCondition } from "../../lib/story-helpers";
 
 /**
  * Stories for the tracker-list widget (ADR-0024 #6): static stories over the pure
- * view cover every render state (fixture in both host themes, the url-less
+ * view cover every render state (fixture in both themes, the url-less
  * configure-hint branch, empty board, PR link-out, and the connecting/no-data/error
  * trio) for the visual-regression screenshots, and a mock-host story whose `play`
  * drives the real ext-apps handshake over an in-memory transport and asserts the
  * tracked tasks (and the external link-out button) render — the
  * `@storybook/test-runner` oracle.
+ *
+ * The view wraps itself in `MvRoot`, so stories pass no wrapper; the pinned dark
+ * variant forces the theme through the view's story-only `theme` prop (production
+ * omits it, following the host/OS scheme). `parameters.hostTheme` still rides
+ * along so the preview decorator darkens the body canvas behind the panel.
  */
 const meta: Meta<typeof TrackerListView> = {
   title: "Widgets/TrackerList",
@@ -25,9 +30,9 @@ export const Fixture: StoryObj<typeof TrackerListView> = {
   args: { data: trackerListFixture },
 };
 
-/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+/** The fixture pinned dark (`MvRoot theme="dark"` via the view's theme prop). */
 export const FixtureDark: StoryObj<typeof TrackerListView> = {
-  args: { data: trackerListFixture },
+  args: { data: trackerListFixture, theme: "dark" },
   parameters: { hostTheme: "dark" },
 };
 

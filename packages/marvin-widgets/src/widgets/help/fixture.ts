@@ -36,6 +36,7 @@ const COMMANDS: Array<[string, string, boolean]> = [
   ["core", "lessons", false],
   ["core", "help", false],
   ["core", "dashboard", false],
+  ["core", "reports", false],
   ["adr", "adr-review", false],
   ["adr", "adr-accept", true],
   ["adr", "adr-audit", false],

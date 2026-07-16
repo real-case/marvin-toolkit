@@ -107,4 +107,29 @@ describe("ListDetail", () => {
     expect(screen.getByTestId("list-detail-empty").textContent).toContain("nothing here");
     expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
+
+  it("themes the selection from tokens and keeps every row's bottom border", () => {
+    renderList(rows);
+    const options = screen.getAllByRole("option");
+
+    // selection = accent tint + the 2px inset rail, inline so it beats :hover
+    expect(options[0].style.background).toBe("var(--acbg)");
+    expect(options[0].style.boxShadow).toBe("inset 2px 0 0 var(--ac)");
+
+    // unselected rows carry NO inline style — class styling only — and no row
+    // (including the LAST) overrides its bottom border away (design decision D)
+    for (const option of options) {
+      expect(option.className).toContain("mvld-row");
+      expect(option.style.borderBottom).toBe("");
+    }
+    expect(options[1].style.background).toBe("");
+
+    // the injected sheet exists once and carries the row/list rules
+    const sheet = document.getElementById("mv-listdetail-styles");
+    expect(sheet?.textContent).toContain("border-bottom:0.5px solid var(--bd)");
+    expect(sheet?.textContent).toContain("padding:9px 12px");
+    expect(sheet?.textContent).toContain("width:15.5rem");
+    expect(sheet?.textContent).toContain("@media (max-width:640px)");
+    expect(document.querySelectorAll("#mv-listdetail-styles")).toHaveLength(1);
+  });
 });

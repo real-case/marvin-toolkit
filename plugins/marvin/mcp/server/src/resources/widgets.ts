@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ResourceDef } from "@marvin-toolkit/mcp-shared";
+import { REPORTS_WIDGET_URI } from "../tools/report.js";
 
 /**
  * Server-side registration of the MCP Apps `ui://` widget documents (ADR-0024).
@@ -79,6 +80,13 @@ const WIDGETS: WidgetResource[] = [
     file: join("widgets", "help.html"),
     description:
       "Marvin help — the welcome dashboard: gradient wordmark, project summary, configured MCP servers, and the full command index grouped by family (ADR-0024).",
+  },
+  {
+    name: "reports",
+    uri: REPORTS_WIDGET_URI,
+    file: join("widgets", "reports.html"),
+    description:
+      "Marvin reports — the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs — with KPI strip, group filter, and per-report freshness (ADR-0024).",
   },
 ];
 

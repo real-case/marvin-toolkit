@@ -1,87 +1,34 @@
 import { createElement } from "react";
 import type { Decorator, Preview } from "@storybook/react";
+import { MV_ROOT_CLASS, ensureMvThemeStyles } from "../src/theme";
 
 /**
- * Host-style variables so the widgets render standalone in Storybook. A real
- * MCP Apps host pushes these via `ui/notifications/host-context-changed`; the
- * widgets read them through `var(--…, fallback)`, so Storybook only has to set
- * the same custom properties to preview the host look — in BOTH host themes.
+ * Storybook page canvas for the mvroot widget family (ADR-0024 restyle).
  *
- * The theme is a dimension, not a fixed default: the `hostTheme` toolbar global
- * flips it for humans, and `parameters.hostTheme` pins it per story so dark
- * variants are explicit stories (`<Base>Dark`) that the visual-regression
- * screenshots capture deterministically.
+ * The widgets carry their own theme scope — every view wraps itself in
+ * `<MvRoot>` (or, for the primitives, the story's own `withMvRoot` decorator
+ * stands in for the owning widget). Their story files map the `hostTheme`
+ * dimension onto the view's `theme` prop themselves, reading
+ * `parameters.hostTheme ?? globals.hostTheme` — so the toolbar global keeps
+ * flipping every static story, while `parameters.hostTheme` pins explicit
+ * dark variants (`<Base>Dark`) deterministically for the visual baselines.
+ *
+ * What is left for the GLOBAL decorator is the page itself: the preview body
+ * must sit on the active theme's canvas (a dark story on a white page would
+ * poison the dark screenshots). It joins the same token system: the body
+ * becomes an `.mvroot` scope with the resolved theme pinned via `data-theme`,
+ * and paints `var(--bg)` — the exact tokens the widgets render on.
  */
-const LIGHT_HOST_VARS: Record<string, string> = {
-  "--color-background-primary": "#ffffff",
-  "--color-background-secondary": "#f4f4f5",
-  "--color-background-info": "#eef4ff",
-  "--color-background-success": "#e6f4ea",
-  "--color-background-warning": "#fef7e0",
-  "--color-background-danger": "#fdecea",
-  "--color-text-primary": "#1a1a1a",
-  "--color-text-secondary": "#555",
-  "--color-text-info": "#0b57d0",
-  "--color-text-success": "#137333",
-  "--color-text-warning": "#8a6d00",
-  "--color-text-danger": "#b00020",
-  "--color-border-primary": "#e2e2e2",
-  "--color-border-secondary": "#f0f0f0",
-  "--color-border-info": "#0b57d0",
-  "--border-radius-sm": "4px",
-  "--border-radius-md": "8px",
-  "--font-sans": "system-ui, -apple-system, sans-serif",
-  "--font-mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-};
-
-/** A plausible dark host: same keys as light so switching always overwrites. */
-const DARK_HOST_VARS: Record<string, string> = {
-  "--color-background-primary": "#1e1e22",
-  "--color-background-secondary": "#2a2a30",
-  "--color-background-info": "#1c2a45",
-  "--color-background-success": "#16281c",
-  "--color-background-warning": "#2e2812",
-  "--color-background-danger": "#3a1d1d",
-  "--color-text-primary": "#e8e8ea",
-  "--color-text-secondary": "#a0a0ab",
-  "--color-text-info": "#8ab4f8",
-  "--color-text-success": "#81c995",
-  "--color-text-warning": "#fdd663",
-  "--color-text-danger": "#f28b82",
-  "--color-border-primary": "#3a3a42",
-  "--color-border-secondary": "#2f2f36",
-  "--color-border-info": "#8ab4f8",
-  "--border-radius-sm": "4px",
-  "--border-radius-md": "8px",
-  "--font-sans": "system-ui, -apple-system, sans-serif",
-  "--font-mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-};
-
-const HOST_PALETTES: Record<string, Record<string, string>> = {
-  light: LIGHT_HOST_VARS,
-  dark: DARK_HOST_VARS,
-};
-
-/**
- * Apply the host palette for the story's theme. Story-level `parameters.hostTheme`
- * beats the toolbar global (a pinned dark variant must stay dark while a human
- * browses in light). Both palettes carry the identical key set, so re-applying
- * on every render is idempotent AND switching back to light restores every
- * value — no `removeProperty` bookkeeping needed. The body colours are set too
- * because widgets paint on the host's canvas, not their own background.
- */
-const withHostTheme: Decorator = (Story, context) => {
-  const theme: string = context.parameters.hostTheme ?? context.globals.hostTheme ?? "light";
-  const palette = HOST_PALETTES[theme] ?? LIGHT_HOST_VARS;
-  for (const [name, value] of Object.entries(palette)) {
-    document.documentElement.style.setProperty(name, value);
-  }
-  document.body.style.background = palette["--color-background-primary"];
-  document.body.style.color = palette["--color-text-primary"];
-  // Hosts render widgets in a document whose base font is the host sans stack;
-  // without this the primitives' standalone stories (no widget wrapper to set
-  // fontFamily) fall back to the browser's default serif.
-  document.body.style.fontFamily = palette["--font-sans"];
+const withMvCanvas: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  const theme = t === "dark" ? "dark" : "light";
+  // The token stylesheet is id-keyed — safe to call before any widget renders.
+  ensureMvThemeStyles();
+  document.body.classList.add(MV_ROOT_CLASS);
+  document.body.setAttribute("data-theme", theme);
+  // `.mvroot` already carries color + typography; the background is the one
+  // thing it deliberately leaves to the canvas owner.
+  document.body.style.background = "var(--bg)";
   return createElement(Story);
 };
 
@@ -91,7 +38,7 @@ const preview: Preview = {
   },
   globalTypes: {
     hostTheme: {
-      description: "Host theme (the CSS custom properties an MCP Apps host would push)",
+      description: "Host theme (light/dark) — stories map it onto MvRoot's `theme`",
       toolbar: {
         title: "Host theme",
         icon: "paintbrush",
@@ -103,7 +50,7 @@ const preview: Preview = {
   initialGlobals: {
     hostTheme: "light",
   },
-  decorators: [withHostTheme],
+  decorators: [withMvCanvas],
 };
 
 export default preview;

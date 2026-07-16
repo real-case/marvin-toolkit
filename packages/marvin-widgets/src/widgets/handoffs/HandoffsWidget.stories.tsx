@@ -17,6 +17,10 @@ import { waitForCondition } from "../../lib/story-helpers";
  * the real ext-apps handshake over an in-memory transport and asserts the browser
  * (and the selected handoff's markdown body) render — the `@storybook/test-runner`
  * (test-storybook) oracle.
+ *
+ * The view wraps itself in `<MvRoot>` (family theme), so stories need no theme
+ * decorator: the default stories render light, and the pinned dark variant passes
+ * the view's Storybook-only `theme` prop straight through to its MvRoot.
  */
 const meta: Meta<typeof HandoffsView> = {
   title: "Widgets/Handoffs",
@@ -29,9 +33,12 @@ export const Fixture: StoryObj<typeof HandoffsView> = {
   args: { data: handoffsFixture },
 };
 
-/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+/**
+ * The fixture pinned dark: the view's `theme` prop forces the mvroot token set
+ * (deterministic for visual baselines) and `hostTheme` darkens the story backdrop.
+ */
 export const FixtureDark: StoryObj<typeof HandoffsView> = {
-  args: { data: handoffsFixture },
+  args: { data: handoffsFixture, theme: "dark" },
   parameters: { hostTheme: "dark" },
 };
 
@@ -60,7 +67,7 @@ export const NoData: StoryObj<typeof HandoffsView> = {
   args: { data: null, connecting: false },
 };
 
-/** A transport error — the danger-coloured fallback. Named ErrorState: `Error` shadows the global. */
+/** A transport error — the red-token fallback. Named ErrorState: `Error` shadows the global. */
 export const ErrorState: StoryObj<typeof HandoffsView> = {
   args: { data: null, error: "kaboom: transport dropped" },
 };

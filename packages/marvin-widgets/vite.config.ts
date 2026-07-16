@@ -19,6 +19,7 @@ const WIDGETS = [
   { name: "task-summary", entry: "src/widgets/task-summary/index.html" },
   { name: "dashboard", entry: "src/widgets/dashboard/index.html" },
   { name: "help", entry: "src/widgets/help/index.html" },
+  { name: "reports", entry: "src/widgets/reports/index.html" },
 ] as const;
 
 // vite-plugin-singlefile forces `output.inlineDynamicImports`, which rollup

@@ -8,23 +8,25 @@ import {
   useRef,
   useState,
 } from "react";
+import { TOKENS } from "../theme";
 
 /**
  * The reusable master-detail shell (ADR-0024) — a keyboard-navigable list on the
- * left, one selected row's detail on the right. The primitive 4 of the 8 planned
- * widgets reuse (task-list, task-detail, handoffs, tracker-list); this slice ships
- * it with the task-list widget as its first consumer.
+ * left, one selected row's detail on the right. Four widgets reuse the primitive
+ * (task-list, task-detail, handoffs, tracker-list); the audit and reports
+ * browsers build on the same shell.
  *
  * It owns only selection state and renders through caller-supplied renderers, so
  * it stays domain-agnostic: `renderRow` draws one item in the list, `renderDetail`
  * draws the selected item's pane. An empty `items` renders `emptyLabel` instead of
  * an empty split — never a crash.
  *
- * Styling follows the help widget's language so the widget family reads as one
- * system: the mono stack, marvin's violet as the only accent, hairline rules, and
- * flat text-forward rows. The shell sets the mono font and body size once at its
- * root; rows inherit it (`font: inherit`), so a consumer's `renderRow` needs no
- * font of its own.
+ * Styling follows the family theme (docs/design/reports-widget.md): the primitive
+ * carries no palette of its own — every color is a `var(--…)` token reference
+ * resolved by the `.mvroot` scope the OWNING WIDGET renders (primitives are never
+ * wrapped in `MvRoot` themselves), and no font family or size is set here — the
+ * base typography (13px/1.5 system sans) cascades from `.mvroot` through the
+ * shell, and rows reset the UA button font back to it with `font: inherit`.
  */
 export interface ListDetailProps<T> {
   /** The rows to render. An empty array renders the empty state. */
@@ -41,70 +43,60 @@ export interface ListDetailProps<T> {
   ariaLabel?: string;
 }
 
-// ── the help widget's palette (HelpWidget.tsx is the reference) ──────────────
-// Marvin's violet is the one brand constant — legible on light and dark grounds.
-// The selection tint is an alpha wash of it rather than a fixed colour, so it
-// composites over whichever ground the host paints.
-const ACCENT = "#8b5cf6";
-const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
-const textPrimary = "var(--color-text-primary, #1a1a1a)";
-const textMuted = "var(--color-text-secondary, #6b6b78)";
-const borderColor = "var(--color-border-primary, #e2e2e2)";
-const mono = "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
+// ── themed styling ───────────────────────────────────────────────────────────
+// The list column width (media query) and the row hover state (pseudo-class)
+// cannot live inline, so the primitive injects one id-keyed <style> element at
+// render time — the same idempotent lifecycle as MvRoot's token sheet. Being a
+// JS string, the rules survive the vite-singlefile build untouched.
 
-// The split shell. `fontFamily` (never the `font` shorthand, which is dropped
-// wholesale without a size and lets the host serif in) sets the mono stack once;
-// everything below inherits it.
+/** id of the injected `<style>` element — the once-per-document key. */
+const LIST_DETAIL_STYLE_ID = "mv-listdetail-styles";
+
+// Row padding is 9px 12px and EVERY row — including the LAST — keeps its 0.5px
+// bottom border (design decision D: the column closes with a rule even when the
+// detail pane is taller). Do not reintroduce a last-row border drop.
+const LIST_DETAIL_CSS = `
+.mvld-list{list-style:none;margin:0;padding:0;width:15.5rem;flex:none;overflow-y:auto;border-right:0.5px solid ${TOKENS.bd}}
+@media (max-width:640px){.mvld-list{width:11rem}}
+.mvld-row{display:block;width:100%;text-align:left;padding:9px 12px;border:none;border-bottom:0.5px solid ${TOKENS.bd};background:transparent;color:inherit;font:inherit;letter-spacing:inherit;cursor:pointer}
+.mvld-row:hover{background:${TOKENS.srf2}}
+`;
+
+/**
+ * Put the primitive's stylesheet into the document exactly once — keyed by the
+ * element id, so repeat renders and multiple ListDetails are no-ops after the
+ * first. Runs at render time (before the children's first paint), like MvRoot.
+ */
+function ensureListDetailStyles(): void {
+  if (typeof document === "undefined" || document.getElementById(LIST_DETAIL_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = LIST_DETAIL_STYLE_ID;
+  style.textContent = LIST_DETAIL_CSS;
+  document.head.appendChild(style);
+}
+
+// The split shell. Typography and text color are deliberately NOT set here —
+// they cascade from the owning widget's `.mvroot` (the family base).
 const shellStyle: CSSProperties = {
   display: "flex",
   alignItems: "stretch",
-  gap: "1.25rem",
-  fontFamily: mono,
-  fontSize: "13px",
-  lineHeight: 1.5,
-  color: textPrimary,
 };
 
-const listStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  minWidth: "12rem",
-  maxWidth: "20rem",
-  borderRight: `1px solid ${borderColor}`,
-  overflowY: "auto",
-};
-
-const rowBaseStyle: CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  padding: "0.4rem 0.75rem",
-  border: "none",
-  // A separator between rows — the render drops it on the last one.
-  borderBottom: `0.5px solid ${borderColor}`,
-  background: "transparent",
-  color: textPrimary,
-  font: "inherit",
-  cursor: "pointer",
-};
-
+// Selection = accent tint + a 2px inset rail. The rail is an inset box-shadow —
+// a border technique kept deliberately (not an elevation shadow): a real left
+// border would shift the label 2px sideways whenever selection lands on the row.
+// Inline (not a class) so it always beats the `.mvld-row:hover` rule — a hovered
+// selected row stays on the accent tint, matching the approved mockup.
 const rowSelectedStyle: CSSProperties = {
-  ...rowBaseStyle,
-  background: ACCENT_TINT,
-  color: ACCENT,
-  // An inset rail, not a left border: a real border would shift the label 2px
-  // sideways every time the selection lands on the row.
-  boxShadow: `inset 2px 0 0 ${ACCENT}`,
+  background: TOKENS.acbg,
+  boxShadow: `inset 2px 0 0 ${TOKENS.ac}`,
 };
 
-// Muted italic, matching help's "none configured for this project" placeholder.
+// Quiet placeholder: meta-grade text on the inherited canvas.
 const emptyStyle: CSSProperties = {
-  fontFamily: mono,
-  fontSize: "13px",
-  color: textMuted,
-  fontStyle: "italic",
-  padding: "1rem",
+  color: TOKENS.t3,
+  fontSize: "12.5px",
+  padding: "14px 16px",
 };
 
 /**
@@ -123,6 +115,7 @@ export function ListDetail<T>({
   emptyLabel,
   ariaLabel = "items",
 }: ListDetailProps<T>) {
+  ensureListDetailStyles();
   const [selected, setSelected] = useState(0);
   // Per-instance id prefix so several ListDetails on one page never collide on
   // option ids — aria-activedescendant must reference a document-unique id.
@@ -183,15 +176,10 @@ export function ListDetail<T>({
         tabIndex={0}
         aria-activedescendant={`${idPrefix}-opt-${activeIndex}`}
         onKeyDown={onKeyDown}
-        style={listStyle}
+        className="mvld-list"
       >
         {items.map((item, index) => {
           const isSelected = index === activeIndex;
-          // The rule is a separator, so it only belongs *between* rows: the last
-          // row drops it rather than drawing a second line beside the list's own
-          // bottom edge.
-          const base = isSelected ? rowSelectedStyle : rowBaseStyle;
-          const rowStyle = index === items.length - 1 ? { ...base, borderBottom: "none" } : base;
           return (
             <li key={getKey(item, index)} role="presentation">
               <button
@@ -206,7 +194,8 @@ export function ListDetail<T>({
                   rowRefs.current[index] = el;
                 }}
                 onClick={() => setSelected(index)}
-                style={rowStyle}
+                className="mvld-row"
+                style={isSelected ? rowSelectedStyle : undefined}
               >
                 {renderRow(item, isSelected)}
               </button>
@@ -214,7 +203,7 @@ export function ListDetail<T>({
           );
         })}
       </ul>
-      <div data-testid="list-detail-pane" style={{ flex: 1, minWidth: 0, padding: "0.25rem 0" }}>
+      <div data-testid="list-detail-pane" style={{ flex: 1, minWidth: 0, padding: "14px 16px" }}>
         {renderDetail(activeItem)}
       </div>
     </div>

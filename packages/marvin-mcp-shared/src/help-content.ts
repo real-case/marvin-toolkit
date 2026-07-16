@@ -50,6 +50,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
   lessons: "Team lessons-learned store",
   help: "This dashboard + command index",
   dashboard: "Whole-toolbox state report",
+  reports: "Unified viewer over all reports",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -129,6 +130,8 @@ export const COMMAND_DETAILS: Record<string, string> = {
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard:
     "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+  reports:
+    "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
   // adr
   "adr-review":
     "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
@@ -314,6 +317,11 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, show me the dashboard",
     "marvin, what's the state of the toolbox?",
     "marvin, give me the whole-project report",
+  ],
+  reports: [
+    "marvin, show me the reports",
+    "marvin, what reports do we have?",
+    "marvin, open the latest security report",
   ],
   // adr
   "adr-review": [

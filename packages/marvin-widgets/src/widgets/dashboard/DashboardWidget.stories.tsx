@@ -13,12 +13,17 @@ import { waitForCondition } from "../../lib/story-helpers";
 
 /**
  * Stories for the dashboard widget (ADR-0024 #8). Static stories over the fixture
- * family cover the render range — full payload (light + dark host), the help-narrow
- * core-only shape, the present-but-zeroed fresh project, the git-less header, the
- * long-paths stress shape, and the connecting / no-data / error trio — as the
- * visual-regression screenshot surface. The mock-host story's `play` drives the
- * real ext-apps handshake over an in-memory transport and asserts the panel
+ * family cover the render range — full payload (default light + pinned dark), the
+ * help-narrow core-only shape, the present-but-zeroed fresh project, the git-less
+ * header, the long-paths stress shape, and the connecting / no-data / error trio —
+ * as the visual-regression screenshot surface. The mock-host story's `play` drives
+ * the real ext-apps handshake over an in-memory transport and asserts the panel
  * renders — the `@storybook/test-runner` (test-storybook) oracle.
+ *
+ * The view renders its own `<MvRoot>` (family theme), so no decorator wraps it here.
+ * The default stories leave `theme` unset — the OS/host scheme applies, light in the
+ * headless runner — and the dark variant pins the view's MvRoot via the story-only
+ * `theme` prop (plus `hostTheme` so the Storybook canvas behind the widget matches).
  */
 const meta: Meta<typeof DashboardView> = {
   title: "Widgets/Dashboard",
@@ -31,9 +36,9 @@ export const Fixture: StoryObj<typeof DashboardView> = {
   args: { data: dashboardFixture },
 };
 
-/** The full fixture under the dark host theme (the preview decorator applies the host vars). */
+/** The full fixture with the widget's MvRoot pinned dark (deterministic dark baseline). */
 export const FixtureDark: StoryObj<typeof DashboardView> = {
-  args: { data: dashboardFixture },
+  args: { data: dashboardFixture, theme: "dark" },
   parameters: { hostTheme: "dark" },
 };
 

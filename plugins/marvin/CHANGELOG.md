@@ -4,6 +4,34 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.8.0] — 2026-07-16
+
+### Added
+
+- **`/marvin:reports` — a unified viewer over every report marvin generates**
+  (docs/design/reports-widget.md). The new `report` MCP tool scans `.marvin/` in one
+  pass — security scans (via the shared audit-report parser), refactor findings
+  registers and plans, task specs and `verification.md`, handoffs — and emits a
+  `ReportListPayload`: one typed envelope per document, newest first, with
+  server-computed staleness (> 7 days for security/refactor reports) and continuation
+  commands as data. Terminals get a grouped markdown summary; MCP Apps hosts render the
+  new `ui://marvin/reports.html` widget — KPI strip, group segments, a local search
+  filter, per-kind detail bodies (findings with severity triage, checks, documents),
+  and copy-only re-run/fix chips. Registry: 51 prompts / 13 tools / 9 widgets.
+
+### Changed
+
+- **Premium family restyle — all widgets move to one theme module.** A new
+  `packages/marvin-widgets/src/theme/` owns the design language: a token stylesheet on
+  a `.mvroot` scope (light + dark via `prefers-color-scheme`, pinnable with
+  `data-theme`), the `MvRoot` boundary component, and TS token constants
+  (`TOKENS` / `SEVERITY_TOKENS` / `BAR_TOKENS`) that widgets reference inline. All 8
+  existing widgets plus the `<ListDetail>` / `<Markdown>` primitives were restyled to
+  it: lowercase dot-pill statuses on a shared role→tone mapping, mono code chips, ghost
+  link buttons, microlabel headings, segmented filters, no shadows, weights 400/500.
+  The old per-widget host-var palette (`--color-*`) is gone. Darwin visual baselines
+  were regenerated wholesale (92 updated + 9 new for reports).
+
 ## [0.7.1] — 2026-07-16
 
 ### Fixed

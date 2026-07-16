@@ -2,47 +2,51 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
+import { MV_FONT_MONO, MvRoot, SEVERITY_TOKENS, TOKENS, type MvTheme } from "../../theme";
 
 /**
  * The help widget (ADR-0024) — marvin's welcome **panel** over the `HelpState`
- * the `help` tool returns: a gradient wordmark, the per-project summary
- * (project · git · board · artifacts), the configured MCP servers lit/dim by
- * enabled state, the command-group table of contents, and the full per-command
- * reference. Like the dashboard/task-summary widgets it is a single-object panel,
- * not a `<ListDetail>`.
+ * the `help` tool returns: a gradient wordmark, the per-project summary cards
+ * (project · git · board · artifacts), the configured MCP servers as status
+ * pills, the command-group table of contents, and the full per-command
+ * reference. Like the dashboard/task-summary widgets it is a single-object
+ * panel, not a `<ListDetail>`.
  *
  * Split into a pure {@link HelpView} (props-only, no SDK) and the App wiring
  * below — the same shape as the sibling widgets — so the render is unit-testable
  * without a transport and one view serves production (`useApp`), the tests, and
  * the story.
  *
- * Theming: surface and text come from the host theme variables (with literal
- * fallbacks) so the panel blends into a light OR dark host, exactly like the
- * sibling widgets. The one brand constant is marvin's violet — the wordmark
- * gradient and the accent on command names / lit server dots — chosen to read on
- * both grounds. The terminal door (the `help` tool's markdown) is the fallback
- * a text-only host renders instead.
+ * Theming (docs/design/reports-widget.md): the view renders under its own
+ * `<MvRoot>` — both wiring paths get the token scope for free — and paints the
+ * family canvas itself (`--bg` ground, 0.5px `--bd` frame, radius 4). Every
+ * color is a `var(--…)` token reference, so the panel follows the OS scheme
+ * (or a host/story-forced `data-theme`). The one sanctioned exception is the
+ * brand wordmark gradient below. The terminal door (the `help` tool's
+ * markdown) is the fallback a text-only host renders instead.
  */
 
-// ── brand + host-theme palette ───────────────────────────────────────────────
-const ACCENT = "#8b5cf6"; // marvin violet — legible on light and dark grounds
-const GRADIENT = "linear-gradient(100deg, #a78bfa, #7c3aed)";
-const textPrimary = "var(--color-text-primary, #1a1a1a)";
-const textMuted = "var(--color-text-secondary, #6b6b78)";
-const borderColor = "var(--color-border-primary, #e2e2e2)";
-const mono = "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
+// ── the sanctioned brand flourish ────────────────────────────────────────────
+// The MARVIN wordmark keeps its literal violet gradient stops — the one place
+// in the restyled family allowed to carry hex outside the theme module: the
+// gradient is clipped through the glyphs (no text-grade token can express it)
+// and the brand mark must read identically on both themes. Everything else on
+// the panel resolves from `.mvroot` tokens.
+const WORDMARK_VIOLET_FROM = "#a78bfa";
+const WORDMARK_VIOLET_TO = "#7c3aed";
+const WORDMARK_GRADIENT = `linear-gradient(100deg, ${WORDMARK_VIOLET_FROM}, ${WORDMARK_VIOLET_TO})`;
 
+// ── family recipes (inline over tokens) ──────────────────────────────────────
+
+// The widget canvas: the whole panel as one framed card on the host surface.
+// Shared by the overview, the group-detail view, and the connection states, so
+// every screen of the widget sits inside the same frame.
 const panelStyle: CSSProperties = {
-  fontFamily: mono,
-  color: textPrimary,
-  fontSize: "13px",
-  lineHeight: 1.5,
   maxWidth: "760px",
-  // The widget frame — the whole widget as one rounded card on the host canvas.
-  // Shared by the overview and the group-detail view, so the drill-down stays
-  // inside the same card rather than breaking out of it.
-  border: `1px solid ${borderColor}`,
-  borderRadius: "var(--border-radius-md, 8px)",
+  background: TOKENS.bg,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: "4px",
+  padding: "14px",
 };
 
 const wordmarkStyle: CSSProperties = {
@@ -53,55 +57,76 @@ const wordmarkStyle: CSSProperties = {
   lineHeight: 0.95,
   width: "max-content",
   maxWidth: "100%",
-  backgroundImage: GRADIENT,
+  backgroundImage: WORDMARK_GRADIENT,
   WebkitBackgroundClip: "text",
   backgroundClip: "text",
   color: "transparent",
   WebkitTextFillColor: "transparent",
 };
 
-const eyebrowStyle: CSSProperties = {
-  margin: "0 0 0.6rem",
-  fontSize: "11px",
+/** Microlabel — section headings, card labels, the "Direct / In prose" gutter. */
+const microlabelStyle: CSSProperties = {
+  fontSize: "10.5px",
   fontWeight: 500,
-  letterSpacing: "0.16em",
   textTransform: "uppercase",
-  color: textMuted,
+  letterSpacing: "0.06em",
+  color: TOKENS.t3,
 };
 
-const sectionStyle: CSSProperties = { margin: "0 0 1.4rem" };
-const accentStyle: CSSProperties = { color: ACCENT };
-const mutedStyle: CSSProperties = { color: textMuted };
-
-// "Two ways to call" detail (ADR-0024): a small uppercase gutter label ("Direct"
-// / "In prose") and the bordered chip that shows the direct call.
-const twoWayLabelStyle: CSSProperties = {
-  fontSize: "10px",
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: textMuted,
-  paddingTop: "2px",
-};
-const directChipStyle: CSSProperties = {
-  justifySelf: "start",
-  fontFamily: mono,
-  fontSize: "12px",
-  color: textPrimary,
-  border: `0.5px solid ${borderColor}`,
-  borderRadius: "6px",
-  padding: "0.1rem 0.45rem",
+/** Status/neutral pill base — lowercase 11.5px/500 tag, radius 4. */
+const pillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "5px",
+  padding: "1px 9px",
+  borderRadius: "4px",
+  fontSize: "11.5px",
+  fontWeight: 500,
+  whiteSpace: "nowrap",
 };
 
-// A shared key→value axis so every reference section — the summary rows, the
-// command-groups list, the per-command reference, and the section headers'
-// "Read more" — lines its right column up on the same vertical. 9rem clears the
-// widest key (the longest command name), so no key overflows into the value.
+/** The 5px currentColor dot inside a status pill. */
+const pillDotStyle: CSSProperties = {
+  width: "5px",
+  height: "5px",
+  borderRadius: "50%",
+  background: "currentColor",
+  flex: "none",
+};
+
+/** Mono code chip — command names, direct calls: 11px mono on the second surface. */
+const codeChipStyle: CSSProperties = {
+  fontFamily: MV_FONT_MONO,
+  fontSize: "11px",
+  background: TOKENS.srf2,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: "4px",
+  padding: "1px 6px",
+  whiteSpace: "nowrap",
+};
+
+/** Card — summary cells: first surface, hairline border, radius 4. */
+const cardStyle: CSSProperties = {
+  background: TOKENS.srf,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: "4px",
+  padding: "12px 14px",
+  minWidth: 0,
+};
+
+const sectionStyle: CSSProperties = { margin: "0 0 18px" };
+const t2Style: CSSProperties = { color: TOKENS.t2 };
+const t3Style: CSSProperties = { color: TOKENS.t3 };
+
+// A shared key→value axis so the reference sections — the command-groups list,
+// the per-command reference, and the section headers' "Read more" — line their
+// right column up on the same vertical. 9rem clears the widest key (the longest
+// command chip), so no key overflows into the value.
 const KEY_COL = "9rem";
 const KEY_GAP = "1rem";
 
 /**
- * A titled section: an uppercase eyebrow over its content. When an `action` is
+ * A titled section: a microlabel heading over its content. When an `action` is
  * given (the per-group reference sections' "Read more" link), the header becomes
  * a two-column grid matching the reference body grid, so the action sits above
  * the right (description) column instead of beside the title.
@@ -126,14 +151,14 @@ function Section({
             gridTemplateColumns: `${KEY_COL} 1fr`,
             alignItems: "center",
             columnGap: KEY_GAP,
-            margin: "0 0 0.6rem",
+            margin: "0 0 8px",
           }}
         >
-          <p style={{ ...eyebrowStyle, margin: 0 }}>{title}</p>
+          <p style={{ ...microlabelStyle, margin: 0 }}>{title}</p>
           <span style={{ justifySelf: "start" }}>{action}</span>
         </div>
       ) : (
-        <p style={eyebrowStyle}>{title}</p>
+        <p style={{ ...microlabelStyle, margin: "0 0 8px" }}>{title}</p>
       )}
       {children}
     </section>
@@ -141,11 +166,11 @@ function Section({
 }
 
 /**
- * The "Read more" affordance to the right of a group heading. A plain violet
- * text link (matching the accent command names), NOT a `<button>` — a button
- * inherits host chrome that fights the text-link look. Rendered as a
- * `role="link"` span with keyboard support; underlines on hover/focus (own local
- * state, since the widget carries no stylesheet).
+ * The "Read more" affordance to the right of a group heading. A plain accent
+ * text link, NOT a `<button>` — a button inherits UA chrome that fights the
+ * text-link look. Rendered as a `role="link"` span with keyboard support;
+ * underlines on hover/focus (own local state — pseudo-classes cannot live
+ * inline, and the widget carries no stylesheet of its own).
  */
 function MoreLink({ group, onOpen }: { group: string; onOpen: () => void }) {
   const [active, setActive] = useState(false);
@@ -168,7 +193,8 @@ function MoreLink({ group, onOpen }: { group: string; onOpen: () => void }) {
       onBlur={() => setActive(false)}
       style={{
         cursor: "pointer",
-        color: ACCENT,
+        color: TOKENS.ac,
+        fontSize: "12px",
         textDecoration: active ? "underline" : "none",
       }}
     >
@@ -177,8 +203,8 @@ function MoreLink({ group, onOpen }: { group: string; onOpen: () => void }) {
   );
 }
 
-/** A `key → value` summary row: a fixed accent key column and a value. */
-function SummaryRow({
+/** One summary card: a microlabel over the cell content (card recipe). */
+function SummaryCard({
   label,
   testid,
   children,
@@ -188,9 +214,9 @@ function SummaryRow({
   children: ReactNode;
 }) {
   return (
-    <div data-testid={testid} style={{ display: "flex", gap: KEY_GAP, padding: "0.15rem 0" }}>
-      <span style={{ ...accentStyle, flex: `0 0 ${KEY_COL}` }}>{label}</span>
-      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+    <div data-testid={testid} style={cardStyle}>
+      <div style={microlabelStyle}>{label}</div>
+      <div style={{ marginTop: "4px" }}>{children}</div>
     </div>
   );
 }
@@ -198,13 +224,13 @@ function SummaryRow({
 /** A `label count` stat with the count emphasised only when non-zero. */
 function Stat({ label, count }: { label: string; count: number }) {
   return (
-    <span>
-      <span style={mutedStyle}>{label}</span>{" "}
+    <span style={{ whiteSpace: "nowrap", fontSize: "12px" }}>
+      <span style={t3Style}>{label}</span>{" "}
       <span
         style={{
           fontVariantNumeric: "tabular-nums",
-          color: count > 0 ? textPrimary : textMuted,
-          fontWeight: count > 0 ? 600 : 400,
+          color: count > 0 ? TOKENS.t1 : TOKENS.t3,
+          fontWeight: count > 0 ? 500 : 400,
         }}
       >
         {count}
@@ -213,18 +239,9 @@ function Stat({ label, count }: { label: string; count: number }) {
   );
 }
 
-/** A `·`-separated run of stats. */
-function StatRow({ children }: { children: ReactNode[] }) {
-  return (
-    <span>
-      {children.map((c, i) => (
-        <span key={i}>
-          {i > 0 ? <span style={{ ...mutedStyle, margin: "0 0.45rem" }}>·</span> : null}
-          {c}
-        </span>
-      ))}
-    </span>
-  );
+/** A wrapping run of stats inside a summary card. */
+function StatRow({ children }: { children: ReactNode }) {
+  return <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>{children}</div>;
 }
 
 /** The 👤 human-run marker (the `disable-model-invocation` lifecycle commands). */
@@ -236,7 +253,7 @@ function HumanMark() {
       width="11"
       height="11"
       aria-label="human-run only"
-      style={{ flex: "0 0 auto", fill: textMuted, opacity: 0.8 }}
+      style={{ flex: "0 0 auto", fill: TOKENS.t3 }}
     >
       <circle cx="8" cy="5" r="3" />
       <path d="M8 9c-3.4 0-6 2.3-6 5.2V15h12v-.8C14 11.3 11.4 9 8 9z" />
@@ -251,14 +268,19 @@ export interface HelpViewProps {
   connecting?: boolean;
   /** A connection/handshake error message, if any. */
   error?: string | null;
+  /**
+   * Force the MvRoot theme. Story-only: pinned light/dark variants set it;
+   * production omits it so the host/OS scheme applies.
+   */
+  theme?: MvTheme;
 }
 
 /**
- * Pure presentational help panel. Renders the one `HelpState` top-to-bottom;
- * carries no SDK dependency, so it is driven purely by props in tests, the story,
- * and both wiring paths. Stateless — there is no selection to own.
+ * Pure presentational help panel. Renders the one `HelpState` top-to-bottom
+ * under its own `<MvRoot>`; carries no SDK dependency, so it is driven purely
+ * by props in tests, the story, and both wiring paths.
  */
-export function HelpView({ data, connecting, error }: HelpViewProps) {
+export function HelpView({ data, connecting, error, theme }: HelpViewProps) {
   // Which group's "Read more" detail is open (null = the overview). Declared
   // above the error / no-data guards so hook order stays stable (rules of hooks)
   // now that HelpView owns selection state instead of being purely stateless.
@@ -266,19 +288,20 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
 
   if (error) {
     return (
-      <div
-        data-testid="help-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
-      >
-        Couldn’t load the dashboard: {error}
-      </div>
+      <MvRoot theme={theme}>
+        <div data-testid="help-error" style={{ ...panelStyle, color: TOKENS.red }}>
+          Couldn’t load the dashboard: {error}
+        </div>
+      </MvRoot>
     );
   }
   if (!data) {
     return (
-      <div data-testid="help-connecting" style={{ padding: "1rem", opacity: 0.7 }}>
-        {connecting === false ? "No help data." : "Connecting…"}
-      </div>
+      <MvRoot theme={theme}>
+        <div data-testid="help-connecting" style={{ ...panelStyle, color: TOKENS.t3 }}>
+          {connecting === false ? "No help data." : "Connecting…"}
+        </div>
+      </MvRoot>
     );
   }
 
@@ -287,165 +310,188 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
   // over data the widget already holds (no extra tool round-trip).
   const active = openGroup ? data.groups.find((g) => g.group === openGroup) : undefined;
   if (active) {
-    return <GroupDetail data={data} group={active} onBack={() => setOpenGroup(null)} />;
+    return (
+      <MvRoot theme={theme}>
+        <GroupDetail data={data} group={active} onBack={() => setOpenGroup(null)} />
+      </MvRoot>
+    );
   }
 
   return (
-    <div data-testid="help-panel" style={panelStyle}>
-      {/* Banner */}
-      <h1 data-testid="help-wordmark" style={wordmarkStyle}>
-        &gt;_MARVIN
-      </h1>
-      <p style={{ margin: "0.9rem 0 0.2rem", color: textPrimary }}>{data.slogan}</p>
-      <p data-testid="help-version" style={{ ...mutedStyle, margin: 0 }}>
-        v{data.version}
-      </p>
-      <hr style={{ border: 0, borderTop: `1px solid ${borderColor}`, margin: "1.1rem 0 1.3rem" }} />
+    <MvRoot theme={theme}>
+      <div data-testid="help-panel" style={panelStyle}>
+        {/* Banner */}
+        <h1 data-testid="help-wordmark" style={wordmarkStyle}>
+          &gt;_MARVIN
+        </h1>
+        <p style={{ margin: "10px 0 2px" }}>{data.slogan}</p>
+        <p data-testid="help-version" style={{ ...t3Style, margin: 0, fontSize: "12px" }}>
+          v{data.version}
+        </p>
+        <hr style={{ border: 0, borderTop: `0.5px solid ${TOKENS.bd}`, margin: "12px 0 16px" }} />
 
-      {/* Summary */}
-      <Section title="Summary" testid="help-summary">
-        <SummaryRow label="project" testid="help-project">
-          {data.project}
-        </SummaryRow>
-        <SummaryRow label="git" testid="help-git">
-          {data.git.branch ? (
-            <span>
-              {data.git.branch}
-              <span style={mutedStyle}> · base </span>
-              {data.git.base_branch}
-            </span>
-          ) : (
-            <span style={mutedStyle}>not in a git repo</span>
-          )}
-        </SummaryRow>
-        <SummaryRow label="board" testid="help-board">
-          {data.statuses.length > 0 ? (
-            <StatRow>
-              {data.statuses.map((s) => (
-                <Stat key={s.key} label={s.key} count={s.count} />
-              ))}
-            </StatRow>
-          ) : (
-            <span style={mutedStyle}>no statuses configured</span>
-          )}
-        </SummaryRow>
-        <SummaryRow label="artifacts" testid="help-artifacts">
-          <StatRow>
-            <Stat label="specs" count={data.artifacts.specs} />
-            <Stat label="handoffs" count={data.artifacts.handoffs} />
-            <Stat label="audits" count={data.artifacts.audits} />
-            <Stat label="lessons" count={data.artifacts.lessons} />
-          </StatRow>
-        </SummaryRow>
-      </Section>
-
-      {/* MCP servers */}
-      <Section title="MCP servers" testid="help-servers">
-        {data.servers.length > 0 ? (
+        {/* Summary cards (stat-cell recipe: microlabel + value) */}
+        <section data-testid="help-summary" style={sectionStyle}>
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-              gap: "0.4rem 1rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "8px",
             }}
           >
-            {data.servers.map((s) => (
-              <span
-                key={s.name}
-                data-testid="help-server"
-                data-server={s.name}
-                data-enabled={s.enabled}
+            <SummaryCard label="Project" testid="help-project">
+              <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  minWidth: 0,
-                  opacity: s.enabled ? 1 : 0.5,
+                  fontWeight: 500,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
+                {data.project}
+              </div>
+            </SummaryCard>
+            <SummaryCard label="Git" testid="help-git">
+              {data.git.branch ? (
+                <>
+                  <div
+                    style={{
+                      fontFamily: MV_FONT_MONO,
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {data.git.branch}
+                  </div>
+                  <div style={{ ...t3Style, fontSize: "11.5px", marginTop: "2px" }}>
+                    base {data.git.base_branch}
+                  </div>
+                </>
+              ) : (
+                <span style={{ ...t3Style, fontSize: "12px" }}>not in a git repo</span>
+              )}
+            </SummaryCard>
+            <SummaryCard label="Board" testid="help-board">
+              {data.statuses.length > 0 ? (
+                <StatRow>
+                  {data.statuses.map((s) => (
+                    <Stat key={s.key} label={s.key} count={s.count} />
+                  ))}
+                </StatRow>
+              ) : (
+                <span style={{ ...t3Style, fontSize: "12px" }}>no statuses configured</span>
+              )}
+            </SummaryCard>
+            <SummaryCard label="Artifacts" testid="help-artifacts">
+              <StatRow>
+                <Stat label="specs" count={data.artifacts.specs} />
+                <Stat label="handoffs" count={data.artifacts.handoffs} />
+                <Stat label="audits" count={data.artifacts.audits} />
+                <Stat label="lessons" count={data.artifacts.lessons} />
+              </StatRow>
+            </SummaryCard>
+          </div>
+        </section>
+
+        {/* MCP servers — enabled = pass dot-pill, disabled = neutral tag */}
+        <Section title="MCP servers" testid="help-servers">
+          {data.servers.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {data.servers.map((s) => (
                 <span
-                  aria-hidden="true"
+                  key={s.name}
+                  data-testid="help-server"
+                  data-server={s.name}
+                  data-enabled={s.enabled}
                   style={{
-                    width: "7px",
-                    height: "7px",
-                    borderRadius: "50%",
-                    flex: "0 0 auto",
-                    background: s.enabled ? ACCENT : textMuted,
-                  }}
-                />
-                <span
-                  style={{
-                    color: s.enabled ? textPrimary : textMuted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    ...pillStyle,
+                    background: s.enabled ? SEVERITY_TOKENS.pass.bg : TOKENS.srf2,
+                    color: s.enabled ? SEVERITY_TOKENS.pass.text : TOKENS.t2,
                   }}
                 >
+                  {s.enabled ? <span aria-hidden="true" style={pillDotStyle} /> : null}
                   {s.name}
                 </span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p style={{ ...mutedStyle, fontStyle: "italic", margin: 0 }}>
-            none configured for this project
-          </p>
-        )}
-      </Section>
-
-      {/* Command groups */}
-      <Section title="Command groups" testid="help-groups">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `${KEY_COL} 1fr`,
-            rowGap: "0.3rem",
-            columnGap: KEY_GAP,
-          }}
-        >
-          {data.groups.map((g) => (
-            <ReferenceRow key={g.group} name={g.group} desc={g.blurb} />
-          ))}
-        </div>
-      </Section>
-
-      {/* Per-group command reference */}
-      {data.groups.map((g) => {
-        const cmds = data.commands.filter((c) => c.group === g.group);
-        if (cmds.length === 0) return null;
-        return (
-          <Section
-            key={g.group}
-            title={g.group}
-            testid={`help-ref-${g.group}`}
-            action={<MoreLink group={g.group} onOpen={() => setOpenGroup(g.group)} />}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `${KEY_COL} 1fr`,
-                rowGap: "0.3rem",
-                columnGap: KEY_GAP,
-              }}
-            >
-              {cmds.map((c) => (
-                <ReferenceRow
-                  key={c.name}
-                  name={c.name}
-                  desc={c.blurb}
-                  human={c.human}
-                  testid="help-command"
-                />
               ))}
             </div>
-          </Section>
-        );
-      })}
-    </div>
+          ) : (
+            <p style={{ ...t3Style, margin: 0, fontSize: "12.5px" }}>
+              none configured for this project
+            </p>
+          )}
+        </Section>
+
+        {/* Command groups */}
+        <Section title="Command groups" testid="help-groups">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `${KEY_COL} 1fr`,
+              rowGap: "6px",
+              columnGap: KEY_GAP,
+              alignItems: "start",
+            }}
+          >
+            {data.groups.map((g) => (
+              <GroupRow key={g.group} name={g.group} desc={g.blurb} />
+            ))}
+          </div>
+        </Section>
+
+        {/* Per-group command reference */}
+        {data.groups.map((g) => {
+          const cmds = data.commands.filter((c) => c.group === g.group);
+          if (cmds.length === 0) return null;
+          return (
+            <Section
+              key={g.group}
+              title={g.group}
+              testid={`help-ref-${g.group}`}
+              action={<MoreLink group={g.group} onOpen={() => setOpenGroup(g.group)} />}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `${KEY_COL} 1fr`,
+                  rowGap: "6px",
+                  columnGap: KEY_GAP,
+                  alignItems: "start",
+                }}
+              >
+                {cmds.map((c) => (
+                  <ReferenceRow
+                    key={c.name}
+                    name={c.name}
+                    desc={c.blurb}
+                    human={c.human}
+                    testid="help-command"
+                  />
+                ))}
+              </div>
+            </Section>
+          );
+        })}
+      </div>
+    </MvRoot>
   );
 }
 
-/** One `name — description` reference row; the name is the accent column. */
+/** One TOC row: the group key as a neutral tag, its blurb in secondary text. */
+function GroupRow({ name, desc }: { name: string; desc: string }) {
+  return (
+    <>
+      <span style={{ justifySelf: "start", minWidth: 0 }}>
+        <span style={{ ...pillStyle, background: TOKENS.srf2, color: TOKENS.t2 }}>{name}</span>
+      </span>
+      <span style={{ ...t2Style, fontSize: "12.5px" }}>{desc}</span>
+    </>
+  );
+}
+
+/** One `name — description` reference row; the name is a mono code chip. */
 function ReferenceRow({
   name,
   desc,
@@ -463,17 +509,16 @@ function ReferenceRow({
         data-testid={testid}
         data-command={testid ? name : undefined}
         style={{
-          ...accentStyle,
           display: "flex",
           alignItems: "center",
-          gap: "0.4rem",
+          gap: "6px",
           minWidth: 0,
         }}
       >
-        {name}
+        <code style={codeChipStyle}>{name}</code>
         {human ? <HumanMark /> : null}
       </span>
-      <span style={mutedStyle}>{desc}</span>
+      <span style={{ ...t2Style, fontSize: "12.5px" }}>{desc}</span>
     </>
   );
 }
@@ -501,13 +546,17 @@ export function groupTitle(key: string): string {
   return `${label} commands`;
 }
 
+// "Two ways to call" gutter labels ("Direct" / "In prose") share the microlabel
+// recipe; the small padding keeps them on the chip's first text line.
+const twoWayLabelStyle: CSSProperties = { ...microlabelStyle, paddingTop: "3px" };
+
 /**
  * The focused "Read more" detail view for one command group — the client-side
  * drill-down rendered from the HelpState the widget already holds (no extra tool
- * round-trip). Shows a back control, a plain heading (e.g. "Core commands"), and
- * each command as `/marvin:<name>` with its richer description and an optional
- * `e.g.` example line; a 👤 legend appears when the group has any human-run
- * command.
+ * round-trip). Shows a back control, the widget-title heading (e.g. "Core
+ * commands"), and each command as `/marvin:<name>` with its richer description
+ * and an optional direct-call example; a 👤 legend appears when the group has
+ * any human-run command. Rendered inside the caller's MvRoot.
  */
 function GroupDetail({
   data,
@@ -533,7 +582,7 @@ function GroupDetail({
             onBack();
           }
         }}
-        style={{ cursor: "pointer", color: ACCENT, fontSize: "12px" }}
+        style={{ cursor: "pointer", color: TOKENS.ac, fontSize: "12px" }}
       >
         ← All commands
       </span>
@@ -541,11 +590,10 @@ function GroupDetail({
       <h2
         data-testid="help-detail-title"
         style={{
-          margin: "0.9rem 0 1rem",
-          fontSize: "20px",
-          fontWeight: 700,
-          letterSpacing: "-0.01em",
-          color: textPrimary,
+          margin: "10px 0 12px",
+          fontSize: "16px",
+          fontWeight: 500,
+          letterSpacing: "-0.015em",
         }}
       >
         {groupTitle(group.group)}
@@ -560,18 +608,27 @@ function GroupDetail({
             key={c.name}
             data-testid="help-detail-command"
             data-command={c.name}
-            style={{ padding: "0.6rem 0", borderTop: `0.5px solid ${borderColor}` }}
+            style={{ padding: "10px 0", borderTop: `0.5px solid ${TOKENS.bd}` }}
           >
-            <span style={{ ...accentStyle, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontFamily: MV_FONT_MONO,
+                fontSize: "12.5px",
+                fontWeight: 500,
+              }}
+            >
               /marvin:{c.name}
               {c.human ? <HumanMark /> : null}
             </span>
             <div
               style={{
-                ...mutedStyle,
+                ...t2Style,
                 fontSize: "12.5px",
-                lineHeight: 1.5,
-                margin: "0.15rem 0 0.45rem",
+                lineHeight: 1.55,
+                margin: "3px 0 7px",
               }}
             >
               {c.description}
@@ -579,14 +636,17 @@ function GroupDetail({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(3.5rem, max-content) 1fr",
+                gridTemplateColumns: "minmax(4rem, max-content) 1fr",
                 columnGap: "0.9rem",
-                rowGap: "0.35rem",
+                rowGap: "5px",
                 alignItems: "start",
               }}
             >
               <span style={twoWayLabelStyle}>Direct</span>
-              <code data-testid="help-detail-direct" style={directChipStyle}>
+              <code
+                data-testid="help-detail-direct"
+                style={{ ...codeChipStyle, justifySelf: "start", whiteSpace: "normal" }}
+              >
                 {direct}
               </code>
               {c.phrases.length > 0 ? (
@@ -596,7 +656,7 @@ function GroupDetail({
                     style={{
                       display: "flex",
                       flexDirection: "column",
-                      gap: "0.15rem",
+                      gap: "2px",
                       minWidth: 0,
                     }}
                   >
@@ -604,7 +664,7 @@ function GroupDetail({
                       <span
                         key={i}
                         data-testid="help-detail-phrase"
-                        style={{ ...mutedStyle, fontSize: "12.5px" }}
+                        style={{ ...t2Style, fontSize: "12.5px" }}
                       >
                         “{p}”
                       </span>
@@ -620,12 +680,12 @@ function GroupDetail({
       {hasHuman ? (
         <div
           style={{
-            ...mutedStyle,
+            ...t3Style,
             fontSize: "11px",
-            marginTop: "0.9rem",
+            marginTop: "12px",
             display: "flex",
             alignItems: "center",
-            gap: "0.4rem",
+            gap: "6px",
           }}
         >
           <HumanMark /> human-run only
@@ -664,7 +724,7 @@ export function HelpWidget({ seam }: HelpWidgetProps) {
 function HelpLiveWidget() {
   const [data, setData] = useState<HelpState | null>(null);
   const { isConnected, error } = useApp({
-    appInfo: { name: "marvin-help", version: "0.1.0" },
+    appInfo: { name: "marvin-help", version: "0.8.0" },
     capabilities: {},
     onAppCreated: (created) => {
       created.ontoolresult = (result) => {

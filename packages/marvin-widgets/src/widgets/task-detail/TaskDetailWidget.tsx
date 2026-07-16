@@ -1,11 +1,17 @@
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
-import type { LinkRef, TaskCard, TaskDetail } from "@marvin-toolkit/mcp-shared/contracts";
+import type {
+  LinkRef,
+  StatusRole,
+  TaskCard,
+  TaskDetail,
+} from "@marvin-toolkit/mcp-shared/contracts";
 import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import { MvRoot, MV_FONT_MONO, SEVERITY_TOKENS, TOKENS, type MvTheme } from "../../theme";
 
 /**
  * The task-detail widget (ADR-0024 widget #2) — one task's full detail: the
@@ -19,46 +25,207 @@ import { formatDate } from "../../lib/format";
  * Payload is the `TaskDetail` contract directly — it already carries every card
  * field plus `body_markdown`, so no wrapper is needed (unlike task-list, whose
  * `TaskListPayload` wraps the array to carry board counts).
+ *
+ * Styling follows the family theme (docs/design/reports-widget.md): the view
+ * wraps itself in `<MvRoot>` — production AND seam paths render the same view,
+ * so both get the token scope — and every color is a theme token reference.
+ * The outer panel is the canvas recipe (bg / 0.5px bd / radius 4 / 14px pad);
+ * status renders as a lowercase dot-pill, ids and the branch as mono code chips,
+ * and the tracker/PR links as ghost buttons.
  */
 
-/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
-const ACCENT = "#8b5cf6";
+/**
+ * Status-role → pill tone, over the theme's `SEVERITY_TOKENS` pairs. The keys
+ * are borrowed for their color families, not their scanner meaning:
+ *   - `todo`    → `pending` — neutral gray: queued, nothing burning yet
+ *   - `wip`     → `low`     — blue family: work in motion
+ *   - `review`  → `medium`  — amber family: parked with a reviewer, awaiting attention
+ *   - `done`    → `pass`    — green: complete
+ *   - `blocked` → `fail`    — red: stuck, needs unblocking
+ * (Family-wide mapping — task-list, tracker-list, and dashboard use the same.)
+ */
+const ROLE_TONES: Record<StatusRole, { text: string; bg: string }> = {
+  todo: SEVERITY_TOKENS.pending,
+  wip: SEVERITY_TOKENS.low,
+  review: SEVERITY_TOKENS.medium,
+  done: SEVERITY_TOKENS.pass,
+  blocked: SEVERITY_TOKENS.fail,
+};
 
-/** The detail pane's task title. */
-const detailTitleStyle: CSSProperties = { margin: "0 0 0.5rem", fontSize: "1rem" };
+/**
+ * Tone for a role, total over arbitrary input: `structuredContent` reaches the
+ * view as a cast (not a zod parse), so an off-contract role degrades to the
+ * neutral tone instead of crashing on `undefined.bg`.
+ */
+function roleTone(role: StatusRole): { text: string; bg: string } {
+  return ROLE_TONES[role] ?? SEVERITY_TOKENS.pending;
+}
 
-/** The status + type meta line that sits above a row's title. */
-const metaRowStyle: CSSProperties = {
-  display: "flex",
+// ── widget-local stylesheet ──────────────────────────────────────────────────
+// Hover states live on pseudo-classes, which cannot be inline styles, so the
+// widget injects one id-keyed <style> element at render time — the same
+// idempotent lifecycle as MvRoot's token sheet and ListDetail's row styles.
+
+/** id of the injected `<style>` element — the once-per-document key. */
+const TASK_DETAIL_STYLE_ID = "mv-taskdetail-styles";
+
+// Ghost button recipe: transparent ground, hairline border, quiet text that
+// steps up (srf2 ground, t1 text) on hover.
+const TASK_DETAIL_CSS = `
+.mvtd-gbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;color:${TOKENS.t2};background:transparent;border:0.5px solid ${TOKENS.bd};border-radius:4px;padding:3px 10px;letter-spacing:inherit}
+.mvtd-gbtn:hover{background:${TOKENS.srf2};color:${TOKENS.t1}}
+`;
+
+/** Put the widget stylesheet into the document exactly once (id-keyed). */
+function ensureTaskDetailStyles(): void {
+  if (typeof document === "undefined" || document.getElementById(TASK_DETAIL_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = TASK_DETAIL_STYLE_ID;
+  style.textContent = TASK_DETAIL_CSS;
+  document.head.appendChild(style);
+}
+
+// ── themed style constants ───────────────────────────────────────────────────
+
+/** The widget canvas — MvRoot deliberately does not paint it; the panel does. */
+const panelStyle: CSSProperties = {
+  background: TOKENS.bg,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: "4px",
+  padding: "14px",
+};
+
+/** The surface card wrapping the master-detail split (mockup zone D). */
+const cardStyle: CSSProperties = {
+  background: TOKENS.srf,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: "4px",
+  overflow: "hidden",
+};
+
+/** The detail pane's task title — the widget's principal heading. */
+const detailTitleStyle: CSSProperties = {
+  margin: "0 0 8px",
+  fontSize: "16px",
+  fontWeight: 500,
+  letterSpacing: "-0.015em",
+};
+
+/** Section microlabel (the field grid's `<dt>` labels). */
+const microlabelStyle: CSSProperties = {
+  fontSize: "10.5px",
+  fontWeight: 500,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: TOKENS.t3,
+};
+
+/** The field grid — the card fields as label + value meta rows. */
+const fieldGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  gap: "6px 14px",
   alignItems: "center",
-  gap: "0.4rem",
-  marginBottom: "0.15rem",
+  margin: 0,
 };
 
-/** The widget frame — the whole widget as one rounded card on the host canvas. */
-const frameStyle: CSSProperties = {
-  border: "1px solid var(--color-border-primary, #e2e2e2)",
-  borderRadius: "var(--border-radius-md, 8px)",
+/** One field value cell; `minWidth: 0` lets long mono chips wrap, not overflow. */
+const fieldValueStyle: CSSProperties = {
+  margin: 0,
+  minWidth: 0,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "6px",
 };
 
-const badgeStyle: CSSProperties = {
-  display: "inline-block",
-  padding: "0.05rem 0.4rem",
-  borderRadius: "var(--border-radius-sm, 4px)",
-  fontSize: "0.75em",
-  fontWeight: 600,
-  background: "var(--color-background-secondary, #f0f0f0)",
-  color: "var(--color-text-secondary, #555)",
+/** Quiet meta text (the status role note, the updated date). */
+const metaTextStyle: CSSProperties = {
+  fontSize: "11.5px",
+  color: TOKENS.t3,
 };
 
-const linkButtonStyle: CSSProperties = {
-  font: "inherit",
-  border: "1px solid var(--color-border-primary, #d0d0d0)",
-  borderRadius: "var(--border-radius-sm, 4px)",
-  background: "transparent",
-  color: ACCENT,
-  padding: "0.2rem 0.5rem",
-};
+// ── shared recipe atoms ──────────────────────────────────────────────────────
+
+/** Status/severity pill: lowercase label behind a 5px `currentColor` dot. */
+function Pill({ tone, children }: { tone: { text: string; bg: string }; children: ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "1px 9px",
+        borderRadius: "4px",
+        fontSize: "11.5px",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+        textTransform: "lowercase",
+        background: tone.bg,
+        color: tone.text,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: "5px",
+          height: "5px",
+          borderRadius: "50%",
+          background: "currentColor",
+          flex: "none",
+        }}
+      />
+      {children}
+    </span>
+  );
+}
+
+/** Neutral tag — the dot-less pill on the second surface step (task type). */
+function Tag({ children }: { children: ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 9px",
+        borderRadius: "4px",
+        fontSize: "11.5px",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+        textTransform: "lowercase",
+        background: TOKENS.srf2,
+        color: TOKENS.t2,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Mono code chip for code-like values (id, branch, spec slug) — the one place
+ * the mono stack appears; body text stays on the inherited sans. `wrap` lets a
+ * long branch break inside the chip instead of overflowing the pane.
+ */
+function CodeChip({ children, wrap }: { children: ReactNode; wrap?: boolean }) {
+  return (
+    <code
+      style={{
+        fontFamily: MV_FONT_MONO,
+        fontSize: "11px",
+        background: TOKENS.srf2,
+        border: `0.5px solid ${TOKENS.bd}`,
+        borderRadius: "4px",
+        padding: "1px 6px",
+        ...(wrap
+          ? { whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0 }
+          : { whiteSpace: "nowrap" }),
+      }}
+    >
+      {children}
+    </code>
+  );
+}
 
 /** Build the display links (ADR-0024 link model) a card carries: tracker + PR. */
 function cardLinks(card: TaskCard): LinkRef[] {
@@ -77,14 +244,9 @@ function cardLinks(card: TaskCard): LinkRef[] {
 }
 
 /**
- * The detail pane: the card fields grid + tracker/PR link buttons (as in
- * task-list), then the task's markdown body rendered through `<Markdown>` — the
- * one addition over task-list's card-only detail.
- */
-/**
  * The detail pane's task title. When the task has a canonical record — its
- * tracker item, else its PR — the title *is* the link to it, in the same violet
- * the link buttons use; with no destination it stays plain text.
+ * tracker item, else its PR — the title *is* the link to it, in the accent the
+ * theme's links use; with no destination it stays plain text.
  *
  * Like the link buttons, the link renders whenever a destination exists and only
  * the cursor and the dispatch depend on a host being wired — the tests and
@@ -128,7 +290,7 @@ function DetailTitle({
         onFocus={() => setActive(true)}
         onBlur={() => setActive(false)}
         style={{
-          color: ACCENT,
+          color: TOKENS.ac,
           cursor: onOpenLink ? "pointer" : "default",
           textDecoration: active ? "underline" : "none",
         }}
@@ -139,6 +301,12 @@ function DetailTitle({
   );
 }
 
+/**
+ * The detail pane: the card fields as microlabel + value meta rows (mono chips
+ * for id/branch/spec, a role-toned dot-pill for status, a neutral tag for type)
+ * plus tracker/PR ghost buttons, then the task's markdown body rendered through
+ * `<Markdown>` — the one addition over task-list's card-only detail.
+ */
 function TaskDetailPane({
   task,
   onOpenLink,
@@ -151,45 +319,56 @@ function TaskDetailPane({
     <div>
       {/* cardLinks pushes tracker before pr, so [0] is the canonical record. */}
       <DetailTitle title={task.title} link={links[0] ?? null} onOpenLink={onOpenLink} />
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "0.15rem 0.75rem",
-          margin: 0,
-        }}
-      >
-        <dt style={{ opacity: 0.6 }}>ID</dt>
-        <dd style={{ margin: 0 }}>{task.id}</dd>
-        <dt style={{ opacity: 0.6 }}>Type</dt>
-        <dd style={{ margin: 0 }}>{task.type}</dd>
-        <dt style={{ opacity: 0.6 }}>Status</dt>
-        <dd style={{ margin: 0 }}>
-          {task.status.key} <span style={{ opacity: 0.6 }}>({task.status.role})</span>
+      <dl style={fieldGridStyle}>
+        <dt style={microlabelStyle}>ID</dt>
+        <dd style={fieldValueStyle}>
+          <CodeChip>{task.id}</CodeChip>
         </dd>
-        <dt style={{ opacity: 0.6 }}>Branch</dt>
-        <dd style={{ margin: 0 }}>
-          <code>{task.branch}</code>
+        <dt style={microlabelStyle}>Type</dt>
+        <dd style={fieldValueStyle}>
+          <Tag>{task.type}</Tag>
+        </dd>
+        <dt style={microlabelStyle}>Status</dt>
+        <dd style={fieldValueStyle}>
+          <Pill tone={roleTone(task.status.role)}>{task.status.key}</Pill>
+          <span style={metaTextStyle}>({task.status.role})</span>
+        </dd>
+        <dt style={microlabelStyle}>Branch</dt>
+        <dd style={fieldValueStyle}>
+          <CodeChip wrap>{task.branch}</CodeChip>
         </dd>
         {task.spec_slug ? (
           <>
-            <dt style={{ opacity: 0.6 }}>Spec</dt>
-            <dd style={{ margin: 0 }}>{task.spec_slug}</dd>
+            <dt style={microlabelStyle}>Spec</dt>
+            <dd style={fieldValueStyle}>
+              <CodeChip wrap>{task.spec_slug}</CodeChip>
+            </dd>
           </>
         ) : null}
-        <dt style={{ opacity: 0.6 }}>Updated</dt>
-        <dd style={{ margin: 0 }}>{formatDate(task.updated)}</dd>
+        <dt style={microlabelStyle}>Updated</dt>
+        <dd style={fieldValueStyle}>
+          <span
+            style={{
+              fontSize: "12.5px",
+              color: TOKENS.t2,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {formatDate(task.updated)}
+          </span>
+        </dd>
       </dl>
       {links.length > 0 ? (
-        <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ marginTop: "12px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {links.map((link) => {
             const action = classifyLink(link);
             return (
               <button
                 key={`${link.kind}:${link.url ?? link.ref ?? link.label}`}
                 type="button"
+                className="mvtd-gbtn"
                 onClick={() => onOpenLink?.(link)}
-                style={{ ...linkButtonStyle, cursor: onOpenLink ? "pointer" : "default" }}
+                style={{ cursor: onOpenLink ? "pointer" : "default" }}
               >
                 {action.type === "external" ? "↗ " : ""}
                 {link.label}
@@ -201,9 +380,9 @@ function TaskDetailPane({
       <div
         data-testid="detail-body"
         style={{
-          marginTop: "1rem",
-          paddingTop: "0.75rem",
-          borderTop: "1px solid var(--color-border-primary, #e2e2e2)",
+          marginTop: "12px",
+          paddingTop: "10px",
+          borderTop: `0.5px solid ${TOKENS.bd}`,
         }}
       >
         <Markdown source={task.body_markdown} />
@@ -221,61 +400,98 @@ export interface TaskDetailViewProps {
   error?: string | null;
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
+  /**
+   * Pin the mvroot theme (Storybook pinned variants only). Production omits it
+   * so the host/OS `prefers-color-scheme` applies.
+   */
+  theme?: MvTheme;
+}
+
+/** The theme scope + canvas panel every view state renders inside. */
+function Shell({ theme, children }: { theme?: MvTheme; children: ReactNode }) {
+  return (
+    <MvRoot theme={theme}>
+      <div style={panelStyle}>{children}</div>
+    </MvRoot>
+  );
 }
 
 /**
  * Pure presentational task-detail. Renders the one task in a `<ListDetail>`
  * (single-row master + rich detail pane); carries no SDK dependency, so it is
- * driven purely by props in tests, the story, and both wiring paths.
+ * driven purely by props in tests, the story, and both wiring paths. Every
+ * state — loading, error, empty, data — renders inside the same `<MvRoot>`
+ * scope and canvas panel, so both wiring paths get the token sheet.
  */
-export function TaskDetailView({ data, connecting, error, onOpenLink }: TaskDetailViewProps) {
+export function TaskDetailView({
+  data,
+  connecting,
+  error,
+  onOpenLink,
+  theme,
+}: TaskDetailViewProps) {
+  ensureTaskDetailStyles();
   if (error) {
     return (
-      <div
-        data-testid="task-detail-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
-      >
-        Couldn’t load task: {error}
-      </div>
+      <Shell theme={theme}>
+        <div data-testid="task-detail-error" style={{ fontSize: "12.5px", color: TOKENS.red }}>
+          Couldn’t load task: {error}
+        </div>
+      </Shell>
     );
   }
   if (!data) {
     return (
-      <div data-testid="task-detail-connecting" style={{ padding: "1rem", opacity: 0.7 }}>
-        {connecting === false ? "No task." : "Connecting…"}
-      </div>
+      <Shell theme={theme}>
+        <div data-testid="task-detail-connecting" style={{ fontSize: "12.5px", color: TOKENS.t3 }}>
+          {connecting === false ? "No task." : "Connecting…"}
+        </div>
+      </Shell>
     );
   }
 
   return (
-    <div
-      style={{
-        // fontFamily, not the `font:` shorthand — the shorthand requires a
-        // size, so browsers drop the whole declaration and the widget would
-        // silently render in the host's default serif.
-        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
-        fontSize: "13px",
-        color: "var(--color-text-primary, #1a1a1a)",
-        ...frameStyle,
-      }}
-    >
-      <ListDetail
-        items={[data]}
-        ariaLabel="task"
-        getKey={(task) => task.id}
-        emptyLabel="No task."
-        renderRow={(task) => (
-          <span style={{ display: "block" }}>
-            <span style={metaRowStyle}>
-              <span style={badgeStyle}>{task.status.key}</span>
-              <span style={badgeStyle}>{task.type}</span>
+    <Shell theme={theme}>
+      <div style={cardStyle}>
+        <ListDetail
+          items={[data]}
+          ariaLabel="task"
+          getKey={(task) => task.id}
+          emptyLabel="No task."
+          renderRow={(task) => (
+            <span style={{ display: "block" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {task.title}
+                </span>
+                <Pill tone={roleTone(task.status.role)}>{task.status.key}</Pill>
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "2px",
+                  fontSize: "11.5px",
+                  color: TOKENS.t3,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {task.type} · {task.id}
+              </span>
             </span>
-            {task.title}
-          </span>
-        )}
-        renderDetail={(task) => <TaskDetailPane task={task} onOpenLink={onOpenLink} />}
-      />
-    </div>
+          )}
+          renderDetail={(task) => <TaskDetailPane task={task} onOpenLink={onOpenLink} />}
+        />
+      </div>
+    </Shell>
   );
 }
 
@@ -309,7 +525,7 @@ export function TaskDetailWidget({ seam }: TaskDetailWidgetProps) {
 function TaskDetailLiveWidget() {
   const [data, setData] = useState<TaskDetail | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-task-detail", version: "0.17.0" },
+    appInfo: { name: "marvin-task-detail", version: "0.8.0" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

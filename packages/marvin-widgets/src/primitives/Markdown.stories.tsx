@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { Markdown } from "./Markdown";
+import { MvRoot } from "../theme";
 import { waitForCondition } from "../lib/story-helpers";
 
 /**
@@ -75,9 +76,25 @@ const KITCHEN_SINK = [
   "The end.",
 ].join("\n");
 
+/**
+ * In production the OWNING WIDGET renders the `.mvroot` theme scope; the
+ * primitive never wraps itself. This decorator stands in for the widget here.
+ * The forced `theme` follows the story's `hostTheme` parameter (or the toolbar
+ * global), so pinned dark variants stay deterministic for visual baselines.
+ */
+const withMvRoot: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return (
+    <MvRoot theme={t === "dark" ? "dark" : t === "light" ? "light" : undefined}>
+      <Story />
+    </MvRoot>
+  );
+};
+
 const meta: Meta<typeof Markdown> = {
   title: "Primitives/Markdown",
   component: Markdown,
+  decorators: [withMvRoot],
 };
 export default meta;
 
@@ -226,7 +243,7 @@ export const UnterminatedFence: StoryObj<typeof Markdown> = {
   },
 };
 
-/** The kitchen sink under the dark host theme (preview decorator applies host vars). */
+/** The kitchen sink under the dark theme (forces `data-theme="dark"` on the MvRoot). */
 export const KitchenSinkDark: StoryObj<typeof Markdown> = {
   args: { source: KITCHEN_SINK },
   parameters: { hostTheme: "dark" },

@@ -17,6 +17,11 @@ import { waitForCondition } from "../../lib/story-helpers";
  * mock-host story whose `play` drives the real ext-apps handshake over an
  * in-memory transport and asserts the detail (and its markdown body) render —
  * the `@storybook/test-runner` (test-storybook) oracle.
+ *
+ * The view wraps itself in `<MvRoot>` (the family theme scope), so stories need
+ * no decorator; the pinned dark variant forces the scope via the view's
+ * stories-only `theme` prop AND pins `parameters.hostTheme` so the page canvas
+ * behind the widget matches in the visual baseline.
  */
 const meta: Meta<typeof TaskDetailView> = {
   title: "Widgets/TaskDetail",
@@ -24,14 +29,14 @@ const meta: Meta<typeof TaskDetailView> = {
 };
 export default meta;
 
-/** Static story — the pure view rendering the fixture directly. */
+/** Static story — the pure view rendering the fixture directly (light theme). */
 export const Fixture: StoryObj<typeof TaskDetailView> = {
   args: { data: taskDetailFixture },
 };
 
-/** The same fixture under the dark host palette (pinned via `parameters.hostTheme`). */
+/** The same fixture with the mvroot theme pinned dark (plus the dark page canvas). */
 export const FixtureDark: StoryObj<typeof TaskDetailView> = {
-  args: { data: taskDetailFixture },
+  args: { data: taskDetailFixture, theme: "dark" },
   parameters: { hostTheme: "dark" },
 };
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TaskListView, TaskListWidget, type TaskListSeam } from "./TaskListWidget";
 import {
   emptyTaskListFixture,
@@ -10,28 +10,44 @@ import {
 } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
 import { waitForCondition } from "../../lib/story-helpers";
+import type { MvTheme } from "../../theme";
 
 /**
  * Stories for the task-list widget (ADR-0024): static stories over the fixtures
- * cover every render shape the pure view has (board, dark host, empty, single,
- * minimal card, stress content, connecting/no-data/error), a `play` story drives
- * row selection, and the mock-host story runs the real ext-apps handshake over an
- * in-memory transport — the `@storybook/test-runner` (test-storybook) oracle.
+ * cover every render shape the pure view has (board, pinned dark theme, empty,
+ * single, minimal card, stress content, connecting/no-data/error), a `play` story
+ * drives row selection, and the mock-host story runs the real ext-apps handshake
+ * over an in-memory transport — the `@storybook/test-runner` (test-storybook)
+ * oracle.
  */
+
+/**
+ * The view renders its own `<MvRoot>` (production follows the OS scheme), so a
+ * story pins a theme by forwarding the `hostTheme` parameter/toolbar global into
+ * the view's `theme` prop — the `data-theme` attribute override, deterministic
+ * for visual baselines regardless of the browser's `prefers-color-scheme`.
+ */
+const withHostTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  const theme: MvTheme | undefined = t === "dark" ? "dark" : t === "light" ? "light" : undefined;
+  return <Story args={{ ...context.args, theme }} />;
+};
+
 const meta: Meta<typeof TaskListView> = {
   title: "Widgets/TaskList",
   component: TaskListView,
+  decorators: [withHostTheme],
 };
 export default meta;
 
 type Story = StoryObj<typeof TaskListView>;
 
-/** Static story — the pure view rendering the fixture directly. */
+/** Static story — the pure view rendering the fixture directly (light theme). */
 export const Fixture: Story = {
   args: { data: taskListFixture },
 };
 
-/** The fixture under the dark host theme (the preview decorator applies the vars). */
+/** The fixture with the dark theme pinned via `MvRoot`'s attribute override. */
 export const FixtureDark: Story = {
   args: { data: taskListFixture },
   parameters: { hostTheme: "dark" },

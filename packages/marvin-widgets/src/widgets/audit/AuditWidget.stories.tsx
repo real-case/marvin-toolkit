@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { AuditListView, AuditWidget, type AuditSeam } from "./AuditWidget";
 import {
   auditListFixture,
@@ -14,7 +14,7 @@ import { waitForCondition } from "../../lib/story-helpers";
 /**
  * Stories for the audit widget (ADR-0024 #7). Static stories drive the pure
  * {@link AuditListView} straight through args — the full fixture (light + dark
- * host), both empty shapes (never-scanned vs all-clear), a bare-minimum finding,
+ * theme), both empty shapes (never-scanned vs all-clear), a bare-minimum finding,
  * a markdown-heavy finding, and the connecting/no-data/error trio — so every
  * render state is a deterministic screenshot. Two `play` stories add behaviour:
  * severity filtering over the fixture, and a mock-host story whose `play` drives
@@ -22,9 +22,26 @@ import { waitForCondition } from "../../lib/story-helpers";
  * findings (and a finding's markdown evidence) render — the
  * `@storybook/test-runner` (test-storybook) oracle.
  */
+
+/**
+ * The view renders its own `MvRoot`, so theme pinning goes through the view's
+ * `theme` prop rather than a wrapping decorator (a nested unpinned `.mvroot`
+ * would re-declare the light tokens and defeat the pin). The forced theme
+ * follows the story's `hostTheme` parameter (or the toolbar global), matching
+ * the primitives' stories convention — `FixtureDark` stays a pinned screenshot
+ * while the toolbar keeps flipping every other story for humans.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof AuditListView> = {
   title: "Widgets/Audit",
   component: AuditListView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -35,7 +52,7 @@ export const Fixture: Story = {
   args: { data: auditListFixture },
 };
 
-/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+/** The fixture under the dark theme (forces `data-theme="dark"` on the MvRoot). */
 export const FixtureDark: Story = {
   args: { data: auditListFixture },
   parameters: { hostTheme: "dark" },
@@ -76,7 +93,7 @@ export const FilteredCritical: Story = {
         options.length > 0 &&
         options.every((o) => (o.textContent ?? "").trim().startsWith("critical"))
       );
-    }, "every rendered finding row to lead with a critical severity badge");
+    }, "every rendered finding row to lead with a critical severity pill");
     const pressed = Array.from(
       canvasElement.querySelectorAll<HTMLButtonElement>('[data-testid="severity-filter"] button'),
     ).find((b) => (b.textContent ?? "").trim().startsWith("critical"));
