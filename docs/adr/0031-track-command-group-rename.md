@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed**                                                |
-| Date          | 2026-07-16                                                  |
+| Status        | **Accepted** |
+| Date          | 2026-07-16 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0007](0007-marvin-working-directory.md) (`.marvin/` layout), [ADR-0024](0024-mcp-apps-widget-architecture.md) (shared contracts), [ADR-0025](0025-kanban-board-only.md) (board-only scope), [ADR-0026](0026-configurable-status-model.md) (configurable statuses) |

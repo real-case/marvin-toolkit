@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed**                                                |
-| Date          | 2026-07-16                                                  |
+| Status        | **Accepted** |
+| Date          | 2026-07-16 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0025](0025-kanban-board-only.md) (board-only scope), [ADR-0026](0026-configurable-status-model.md) (role-driven statuses), [ADR-0031](0031-track-command-group-rename.md) (group rename), [ADR-0024](0024-mcp-apps-widget-architecture.md) (one tool ⇄ one widget) |

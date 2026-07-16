@@ -52,8 +52,8 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0028](./adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
-| [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Proposed |
-| [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Proposed |
+| [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
+| [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
 
 ## Work in progress
 
