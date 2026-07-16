@@ -38,6 +38,11 @@ const panelStyle: CSSProperties = {
   fontSize: "13px",
   lineHeight: 1.5,
   maxWidth: "760px",
+  // The widget frame — the whole widget as one rounded card on the host canvas.
+  // Shared by the overview and the group-detail view, so the drill-down stays
+  // inside the same card rather than breaking out of it.
+  border: `1px solid ${borderColor}`,
+  borderRadius: "var(--border-radius-md, 8px)",
 };
 
 const wordmarkStyle: CSSProperties = {

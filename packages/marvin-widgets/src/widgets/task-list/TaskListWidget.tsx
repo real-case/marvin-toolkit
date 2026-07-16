@@ -13,7 +13,71 @@ import { formatDate } from "../../lib/format";
  * serves both the production (`useApp`) and the AC3 mock-host seam paths.
  */
 
-const ROLE_ORDER: TaskCard["status"]["role"][] = ["todo", "wip", "review", "done", "blocked"];
+type StatusRole = TaskCard["status"]["role"];
+
+const ROLE_ORDER: StatusRole[] = ["todo", "wip", "review", "done", "blocked"];
+
+/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
+const ACCENT = "#8b5cf6";
+const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+
+/** The detail pane's task title. */
+const detailTitleStyle: CSSProperties = { margin: "0 0 0.5rem", fontSize: "1rem" };
+
+/**
+ * One role in the header's breakdown, as a filter toggle. Reads as the plain
+ * count text it replaced until it is switched on, so the header stays a summary
+ * rather than turning into a toolbar; `aria-pressed` carries the on/off state
+ * that the violet fill shows sighted users.
+ */
+function RoleFilterChip({
+  role,
+  count,
+  active,
+  onClick,
+}: {
+  role: StatusRole;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      data-testid="role-filter"
+      data-role={role}
+      onClick={onClick}
+      style={{
+        font: "inherit",
+        fontSize: "0.9em",
+        cursor: "pointer",
+        borderRadius: "var(--border-radius-sm, 4px)",
+        border: active ? `1px solid ${ACCENT}` : "1px solid transparent",
+        background: active ? ACCENT_TINT : "transparent",
+        color: active ? ACCENT : "var(--color-text-primary, #1a1a1a)",
+        opacity: active ? 1 : 0.7,
+        padding: "0.1rem 0.4rem",
+      }}
+    >
+      {role} {count}
+    </button>
+  );
+}
+
+/** The status + type meta line that sits above a row's title. */
+const metaRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  marginBottom: "0.15rem",
+};
+
+/** The widget frame — the whole widget as one rounded card on the host canvas. */
+const frameStyle: CSSProperties = {
+  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderRadius: "var(--border-radius-md, 8px)",
+};
 
 const badgeStyle: CSSProperties = {
   display: "inline-block",
@@ -23,7 +87,6 @@ const badgeStyle: CSSProperties = {
   fontWeight: 600,
   background: "var(--color-background-secondary, #f0f0f0)",
   color: "var(--color-text-secondary, #555)",
-  marginRight: "0.5rem",
 };
 
 /** Build the display links (ADR-0024 link model) a card carries: tracker + PR. */
@@ -42,6 +105,64 @@ function cardLinks(card: TaskCard): LinkRef[] {
   return links;
 }
 
+/**
+ * The detail pane's task title. When the task has a canonical record — its
+ * tracker item, else its PR — the title *is* the link to it, in the same violet
+ * the link buttons use; with no destination it stays plain text.
+ *
+ * Like the link buttons, the link renders whenever a destination exists and only
+ * the cursor and the dispatch depend on a host being wired — the tests and
+ * stories render with no `onOpenLink`, and must still show the styled title.
+ *
+ * Keyboard support and the hover underline mirror the help widget's link spans:
+ * a `role="link"` span, not a `<button>`, which would drag host chrome in.
+ */
+function DetailTitle({
+  title,
+  link,
+  onOpenLink,
+}: {
+  title: string;
+  link: LinkRef | null;
+  onOpenLink?: (link: LinkRef) => void;
+}) {
+  const [active, setActive] = useState(false);
+  if (!link) {
+    return (
+      <h2 data-testid="detail-title" style={detailTitleStyle}>
+        {title}
+      </h2>
+    );
+  }
+  return (
+    <h2 data-testid="detail-title" style={detailTitleStyle}>
+      <span
+        role="link"
+        tabIndex={0}
+        data-testid="detail-title-link"
+        onClick={() => onOpenLink?.(link)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenLink?.(link);
+          }
+        }}
+        onMouseEnter={() => setActive(true)}
+        onMouseLeave={() => setActive(false)}
+        onFocus={() => setActive(true)}
+        onBlur={() => setActive(false)}
+        style={{
+          color: ACCENT,
+          cursor: onOpenLink ? "pointer" : "default",
+          textDecoration: active ? "underline" : "none",
+        }}
+      >
+        {title}
+      </span>
+    </h2>
+  );
+}
+
 function CardDetail({
   card,
   onOpenLink,
@@ -52,9 +173,8 @@ function CardDetail({
   const links = cardLinks(card);
   return (
     <div>
-      <h2 data-testid="detail-title" style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
-        {card.title}
-      </h2>
+      {/* cardLinks pushes tracker before pr, so [0] is the canonical record. */}
+      <DetailTitle title={card.title} link={links[0] ?? null} onOpenLink={onOpenLink} />
       <dl
         style={{
           display: "grid",
@@ -101,7 +221,7 @@ function CardDetail({
                   border: "1px solid var(--color-border-primary, #d0d0d0)",
                   borderRadius: "var(--border-radius-sm, 4px)",
                   background: "transparent",
-                  color: "var(--color-text-info, #0b57d0)",
+                  color: ACCENT,
                   padding: "0.2rem 0.5rem",
                 }}
               >
@@ -133,6 +253,14 @@ export interface TaskListViewProps {
  * by props in tests, the story, and both wiring paths.
  */
 export function TaskListView({ data, connecting, error, onOpenLink }: TaskListViewProps) {
+  // The roles the list is narrowed to; empty means no filter, not "hide
+  // everything". Declared above the guards so hook order stays stable.
+  const [roles, setRoles] = useState<StatusRole[]>([]);
+  const toggleRole = (role: StatusRole) =>
+    setRoles((current) =>
+      current.includes(role) ? current.filter((r) => r !== role) : [...current, role],
+    );
+
   if (error) {
     return (
       <div
@@ -151,17 +279,21 @@ export function TaskListView({ data, connecting, error, onOpenLink }: TaskListVi
     );
   }
 
-  const roleSummary = ROLE_ORDER.filter((role) => (data.role_counts[role] ?? 0) > 0)
-    .map((role) => `${role} ${data.role_counts[role]}`)
-    .join(" · ");
+  // Only roles the board actually uses get a chip — an empty role is not a
+  // filter anyone can want, and it would strand a chip that yields nothing.
+  const present = ROLE_ORDER.filter((role) => (data.role_counts[role] ?? 0) > 0);
+  const visible =
+    roles.length === 0 ? data.tasks : data.tasks.filter((task) => roles.includes(task.status.role));
 
   return (
     <div
       style={{
         // The `font` shorthand is invalid without a size (the whole declaration
         // would be dropped and the host serif leaks in), so fontFamily it must be.
-        fontFamily: "var(--font-sans, system-ui, sans-serif)",
+        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
+        fontSize: "13px",
         color: "var(--color-text-primary, #1a1a1a)",
+        ...frameStyle,
       }}
     >
       <header
@@ -170,25 +302,51 @@ export function TaskListView({ data, connecting, error, onOpenLink }: TaskListVi
           display: "flex",
           alignItems: "baseline",
           gap: "0.75rem",
-          padding: "0.5rem 0.25rem",
+          // 0.75rem horizontal matches the list rows' own inset, so the header
+          // text lines up with the row text instead of hanging left of it.
+          padding: "0.75rem",
           borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
-          marginBottom: "0.5rem",
         }}
       >
         <strong>
-          {data.tasks.length} {data.tasks.length === 1 ? "task" : "tasks"}
+          {visible.length === data.tasks.length
+            ? `${data.tasks.length} ${data.tasks.length === 1 ? "task" : "tasks"}`
+            : `${visible.length} of ${data.tasks.length} tasks`}
         </strong>
-        <span style={{ opacity: 0.7, fontSize: "0.9em" }}>{roleSummary}</span>
+        <span
+          role="group"
+          aria-label="filter by status"
+          style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}
+        >
+          {present.map((role) => (
+            <RoleFilterChip
+              key={role}
+              role={role}
+              count={data.role_counts[role] ?? 0}
+              active={roles.includes(role)}
+              onClick={() => toggleRole(role)}
+            />
+          ))}
+        </span>
       </header>
       <ListDetail
-        items={data.tasks}
+        // Remount when the filter changes so selection resets to the top row:
+        // ListDetail holds the selected INDEX, which would otherwise survive into
+        // a different list and point at an unrelated task. Sorted so toggling
+        // todo→wip and wip→todo are the same filter, not two remounts.
+        key={roles.length === 0 ? "all" : [...roles].sort().join(",")}
+        items={visible}
         ariaLabel="tasks"
         getKey={(card) => card.id}
-        emptyLabel="No tasks on the board."
+        emptyLabel={
+          roles.length === 0 ? "No tasks on the board." : "No tasks match the selected statuses."
+        }
         renderRow={(card) => (
-          <span>
-            <span style={badgeStyle}>{card.status.key}</span>
-            <span style={{ opacity: 0.6, marginRight: "0.4rem" }}>{card.type}</span>
+          <span style={{ display: "block" }}>
+            <span style={metaRowStyle}>
+              <span style={badgeStyle}>{card.status.key}</span>
+              <span style={badgeStyle}>{card.type}</span>
+            </span>
             {card.title}
           </span>
         )}

@@ -75,6 +75,24 @@ export const SecondTaskSelected: Story = {
   },
 };
 
+/** Two statuses picked — the multi-select filter narrows the board to wip + blocked. */
+export const FilteredByStatus: Story = {
+  args: { data: taskListFixture },
+  play: async ({ canvasElement }) => {
+    const chip = (role: string) =>
+      canvasElement.querySelector<HTMLElement>(`[data-testid="role-filter"][data-role="${role}"]`);
+    for (const role of ["wip", "blocked"]) {
+      const target = chip(role);
+      if (!target) throw new Error(`FilteredByStatus: no "${role}" filter chip rendered`);
+      target.click();
+    }
+    await waitForCondition(
+      () => canvasElement.querySelectorAll('[role="option"]').length === 2,
+      "the list to narrow to the two selected statuses",
+    );
+  },
+};
+
 /** The handshake-in-flight state — no data yet, "Connecting…" placeholder. */
 export const Connecting: Story = {
   args: { data: null, connecting: true },
