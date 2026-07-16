@@ -4,6 +4,25 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.7.1] — 2026-07-16
+
+### Fixed
+
+- **`/marvin:pr-resolve` never actually replied to or resolved review threads.** The
+  reply step depended on a `$REPO` shell variable set in an earlier step — commands run
+  in separate shells, so the variable was empty and the REST reply silently 404'd, after
+  which the reply-then-resolve pair was abandoned. Every `gh` command in `pr-resolve`,
+  `pr-review`, and the `marvin-tm-review-fixer` agent is now self-contained
+  (`{owner}`/`{repo}` placeholders); thread replies moved to the GraphQL
+  `addPullRequestReviewThreadReply` mutation keyed on the same thread node id as
+  `resolveReviewThread` (the REST `/replies` + `databaseId` path is gone); a new
+  "Verify closure" step re-queries the threads and forbids reporting success over a
+  silent failure; and the change plan now includes per-thread draft replies discussed
+  with the user before anything is applied — posted replies must answer the comment's
+  substance, not just say "Fixed". Reply bodies pass through raw `-f` (`-F` magic-types
+  values and substitutes `{owner}`/`{repo}` inside the text). The same `$REPO` bug is
+  fixed in `pr-review`'s review POST; ADR-0023 carries a dated update note.
+
 ## [0.7.0] — 2026-07-16
 
 ### Changed

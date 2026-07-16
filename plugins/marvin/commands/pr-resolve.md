@@ -12,7 +12,7 @@ Address the unresolved review comments on a pull request and close out the threa
 
 ## Instructions
 
-**Read `skills/pr-resolve/SKILL.md`** and follow its full workflow (Checkout → Fetch unresolved threads → Classify + plan → Apply → Commit + push → Reply + resolve → Report).
+**Read `skills/pr-resolve/SKILL.md`** and follow its full workflow (Checkout → Fetch unresolved threads → Classify + plan with the user → Apply → Commit + push → Reply + resolve → Verify closure → Report).
 
 Pass `$ARGUMENTS` as the PR number if provided.
 

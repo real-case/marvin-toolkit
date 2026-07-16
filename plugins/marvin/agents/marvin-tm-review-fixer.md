@@ -43,13 +43,12 @@ Refuse to proceed if the working tree is dirty:
 test -z "$(git status --porcelain)" || { echo "Working tree not clean — aborting"; exit 1; }
 ```
 
-Resolve repo identifier once and reuse it:
-
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh pr checkout <number>
 gh pr view <number> --json number,headRefName,baseRefName,url,title
 ```
+
+Every `gh` command in this workflow is self-contained: repository identity comes from gh's own `{owner}`/`{repo}` placeholders, never from a shell variable set in an earlier step — commands run in separate shells, so exported variables do not survive between steps.
 
 Read the PR body to find the spec reference (`.marvin/task/<NNN>-<slug>.md`). Load the spec — you will need it to detect spec-contradicting comments.
 
@@ -67,16 +66,16 @@ query($owner:String!, $repo:String!, $pr:Int!) {
       reviewThreads(first:100) {
         nodes {
           id isResolved
-          comments(first:50) { nodes { databaseId body path line author { login } } }
+          comments(first:50) { nodes { body path line author { login } } }
         }
       }
     }
   }
 }'
-gh api "repos/$REPO/issues/<number>/comments"      # general discussion (not threaded)
+gh api "repos/{owner}/{repo}/issues/<number>/comments"      # general discussion (not threaded)
 ```
 
-Keep only threads where `isResolved == false`. If there are zero unresolved threads, report "No unresolved review comments to address" and exit.
+Keep only threads where `isResolved == false`. If there are zero unresolved threads **and** no actionable general discussion, report "No unresolved review comments to address" and exit.
 
 ### 3. Classify each comment
 
@@ -135,27 +134,41 @@ If multiple unrelated review streams exist (e.g., two reviewers on different sub
 
 ### 8. Reply to every thread, then resolve it
 
-For each addressed thread, **reply first** (so the resolution carries a reason), **then resolve**. Reply in-thread via REST:
+This step is the deliverable the reviewer sees — a pushed commit with silent threads reads as ignored feedback. For each addressed thread, **reply first** (so the resolution carries a reason), **then resolve**. Both mutations key on the same thread `id` captured in step 2.
 
-```bash
-gh api "repos/$REPO/pulls/<number>/comments/<comment_databaseId>/replies" \
-  --method POST -f body='Fixed in <short_sha>.'
-```
-
-Reply text by class:
-- **Applied change:** `Fixed in <short_sha>.`
-- **Skipped suggestion:** `Noted — skipping, out of scope for this PR.`
-- **Answered question:** post the drafted factual answer
+Replies must be meaningful — a sentence or two answering the comment's substance, not a bare acknowledgement:
+- **Applied change:** what changed and where — `Renamed resolvePath to resolveSpecPath and updated both call sites — fixed in <short_sha>.`
+- **Skipped suggestion:** the actual reason — `Noted — skipping: <why it's out of scope or not worth the churn here>.`
+- **Answered question:** post the drafted factual answer (cite file/line where it helps)
 - **Spec-conflict:** `This change contradicts <spec section>. Could you confirm you want to override the spec, or should we address this in a follow-up?`
 
-Then resolve the thread via GraphQL — **except spec-conflicts, which stay open** for the reviewer:
+Reply to the thread:
+
+```bash
+gh api graphql -F threadId='<thread_node_id>' -f body='<reply text>' -f query='
+mutation($threadId:ID!, $body:String!) {
+  addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}) {
+    comment { url }
+  }
+}'
+```
+
+The body must go through `-f` (raw string), never `-F` — `-F` magic-types values (`true`/`42` fail String coercion) and substitutes `{owner}`/`{repo}` anywhere inside the text. For replies containing single quotes or newlines, pass the body on stdin instead: replace `-f body='…'` with `-F body=@-` and feed the text with a quoted heredoc (`<<'EOF' … EOF`) — `@`-file/stdin values are passed verbatim, and the whole call stays a single `gh` invocation.
+
+Then resolve the thread — **except spec-conflicts, which stay open** for the reviewer:
 
 ```bash
 gh api graphql -F threadId='<thread_node_id>' -f query='
 mutation($threadId:ID!) { resolveReviewThread(input:{threadId:$threadId}) { thread { id isResolved } } }'
 ```
 
-### 9. Final report
+General discussion (issue-level comments outside review threads) has no resolved state — if one asked a question you can answer or requested a change you addressed, reply with `gh pr comment <number> --body '<answer>'` and count it in the report.
+
+### 9. Verify closure
+
+Re-run the step-2 query: every thread you replied to and resolved must now report `isResolved: true`. If one is still unresolved, retry it once; if it still fails, list it in the final report as **failed to resolve** with the error. Never report success over a silent failure.
+
+### 10. Final report
 
 Print a summary to stdout:
 
@@ -165,15 +178,22 @@ Print a summary to stdout:
 **Commit:** <sha> pushed to <branch>
 **Applied:** <N> changes
   - <one line per fix>
+**Resolved:** <N> of <M> unresolved threads (confirmed by re-query)
 **Answered:** <N> questions
 **Skipped:** <N> suggestions
 **Spec conflicts flagged:** <N>
   - <comment url> — <why>
+**Failed to resolve:** <N>
+  - <thread url> — <error>
 ```
+
+Omit the "Failed to resolve" section when step 9 confirmed everything.
 
 ## Guidelines
 
 - **Don't batch unrelated intents.** If one reviewer asks for renames in file A and another asks for logic changes in file B, that's two commits.
 - **Don't silently widen scope.** A reviewer saying "also this looks weird here" is a suggestion, not a mandate. Ask before expanding.
 - **Don't change the spec.** The spec is immutable. If the review exposes a spec gap, flag it — the author opens a new spec if needed.
+- **The push is not the finish line.** Replying and resolving (steps 8–9) is the part the reviewer actually sees; skipping it leaves the review loop open no matter how good the fixes are.
+- **Self-contained commands.** Each `gh` call runs in a fresh shell — use `{owner}`/`{repo}` placeholders and literal values, never a variable exported in an earlier step.
 - **Stop on auth failures.** If `gh` fails auth, do not retry in a loop — exit with a clear error.
