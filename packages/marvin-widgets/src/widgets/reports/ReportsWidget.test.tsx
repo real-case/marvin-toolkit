@@ -360,8 +360,10 @@ describe("ReportsView — copy chips when the clipboard is denied", () => {
       // Select-on-click fallback: the raw command replaces the label…
       await waitFor(() => expect(chip.textContent).toContain("/marvin:refactor-smells"));
       expect(chip.textContent).not.toContain("Copied"); // no false success claim
-      // …and its text is selected so a manual copy lands in one gesture.
-      expect(deny.addRange).toHaveBeenCalledTimes(1);
+      // …and its text is selected so a manual copy lands in one gesture. The
+      // selection happens in an effect AFTER the manual state renders — await
+      // it (effect scheduling lags the text assertion by a tick on node 20).
+      await waitFor(() => expect(deny.addRange).toHaveBeenCalledTimes(1));
       const range = deny.addRange.mock.calls[0][0] as Range;
       expect(
         range.commonAncestorContainer === chip || chip.contains(range.commonAncestorContainer),
@@ -379,7 +381,8 @@ describe("ReportsView — copy chips when the clipboard is denied", () => {
       fireEvent.click(cta);
       await waitFor(() => expect(cta.textContent).toContain("/marvin:sec-scan"));
       expect(cta.textContent).not.toContain("Copied");
-      expect(deny.addRange).toHaveBeenCalledTimes(1);
+      // Same effect-lag guard as the Re-run case above.
+      await waitFor(() => expect(deny.addRange).toHaveBeenCalledTimes(1));
     } finally {
       deny.restore();
     }
