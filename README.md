@@ -264,8 +264,8 @@ rationale is folded into 0001, 0013, and 0018.
 | [0028](./docs/adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
-| [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Proposed |
-| [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Proposed |
+| [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
+| [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
 
 ## Contributing
 
