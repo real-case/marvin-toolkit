@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TaskDetailView, TaskDetailWidget, type TaskDetailSeam } from "./TaskDetailWidget";
 import {
   taskDetailFixture,
@@ -23,9 +23,24 @@ import { waitForCondition } from "../../lib/story-helpers";
  * stories-only `theme` prop AND pins `parameters.hostTheme` so the page canvas
  * behind the widget matches in the visual baseline.
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof TaskDetailView> = {
   title: "Widgets/TaskDetail",
   component: TaskDetailView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -36,7 +51,7 @@ export const Fixture: StoryObj<typeof TaskDetailView> = {
 
 /** The same fixture with the mvroot theme pinned dark (plus the dark page canvas). */
 export const FixtureDark: StoryObj<typeof TaskDetailView> = {
-  args: { data: taskDetailFixture, theme: "dark" },
+  args: { data: taskDetailFixture },
   parameters: { hostTheme: "dark" },
 };
 

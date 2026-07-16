@@ -536,7 +536,7 @@ export function AuditWidget({ seam }: AuditWidgetProps) {
 function AuditLiveWidget() {
   const [data, setData] = useState<AuditListPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-audit", version: "0.8.0" },
+    appInfo: { name: "marvin-audit", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

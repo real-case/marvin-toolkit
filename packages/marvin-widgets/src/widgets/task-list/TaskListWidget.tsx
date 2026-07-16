@@ -551,7 +551,7 @@ export function TaskListWidget({ seam }: TaskListWidgetProps) {
 function TaskListLiveWidget() {
   const [data, setData] = useState<TaskListPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-task-list", version: "0.8.0" },
+    appInfo: { name: "marvin-task-list", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

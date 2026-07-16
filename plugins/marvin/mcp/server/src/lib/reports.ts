@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type {
@@ -155,6 +155,9 @@ function readMdFiles(dir: string, notes: ScanNote[]): MdFile[] {
     if (!filename.endsWith(".md")) continue;
     try {
       const path = join(dir, filename);
+      // Symlinked entries are skipped outright: a planted link under .marvin
+      // must not pull out-of-tree file content into structuredContent.
+      if (lstatSync(path).isSymbolicLink()) continue;
       files.push({ filename, raw: readFileSync(path, "utf8"), mtimeMs: statSync(path).mtimeMs });
     } catch {
       notes.push({ file: filename, reason: "file could not be read" });
@@ -287,7 +290,10 @@ export function parseRegisterFindings(raw: string): ReportFinding[] {
   for (const line of raw.split("\n")) {
     const m = line.match(/^\|\s*(F\d+)\s*\|(.*)\|\s*$/);
     if (!m) continue;
-    const cells = m[2]!.split("|").map((c) => c.trim());
+    // Split on unescaped pipes only: markdown writes a literal "|" inside a
+    // cell as "\|" (routine in evidence carrying union types or "||"), so a
+    // bare split would shift every column after it. Unescape once split.
+    const cells = m[2]!.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
     if (cells.length < 5) continue;
     const [title, severityRaw, effortRaw, evidenceRaw, direction] = cells as [
       string,

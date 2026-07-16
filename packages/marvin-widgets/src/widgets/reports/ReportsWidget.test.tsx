@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 // Value import (the zod schema, not just the type) — allowed in tests only,
 // where the built mcp-shared dist is available; fixtures/stories stay type-only.
 import { ReportListPayload } from "@marvin-toolkit/mcp-shared/contracts";
@@ -42,6 +42,21 @@ describe("reports fixtures — contract conformance", () => {
 });
 
 describe("ReportsView — header, KPIs and list over the fixture", () => {
+  it("zone-A Sync is a ghost action wired to onSync (quiet no-op without it)", () => {
+    const onSync = vi.fn();
+    render(<ReportsView data={reportsFixture} now={REPORTS_NOW} onSync={onSync} />);
+
+    const sync = screen.getByTestId("reports-sync");
+    expect(sync.textContent).toContain("Sync");
+    fireEvent.click(sync);
+    expect(onSync).toHaveBeenCalledTimes(1);
+
+    // Pure-render contexts omit onSync — the button still renders, click no-ops.
+    cleanup();
+    render(<ReportsView data={reportsFixture} now={REPORTS_NOW} />);
+    fireEvent.click(screen.getByTestId("reports-sync"));
+  });
+
   it("renders the count, all rows newest-first, deterministic ages and the KPI strip", () => {
     renderFixture();
 
@@ -419,6 +434,23 @@ describe("ReportsWidget — mock-host handshake", () => {
       expect(screen.getAllByRole("option")).toHaveLength(8);
       expect(screen.queryByTestId("reports-connecting")).toBeNull();
       expect(screen.getByTestId("detail-title").textContent).toBe("Verification");
+    } finally {
+      host.close();
+    }
+  });
+
+  it("Sync asks the conversation to re-run /marvin:reports through app.sendMessage", async () => {
+    const host = createMockHost(reportsFixture);
+    await host.start();
+    try {
+      render(<ReportsWidget seam={host.seam} />);
+      await screen.findByTestId("reports-kpis", {}, { timeout: 5000 });
+      const spy = vi.spyOn(host.seam.app, "sendMessage").mockResolvedValue(undefined as never);
+      fireEvent.click(screen.getByTestId("reports-sync"));
+      expect(spy).toHaveBeenCalledWith({
+        role: "user",
+        content: [{ type: "text", text: "/marvin:reports" }],
+      });
     } finally {
       host.close();
     }

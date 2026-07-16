@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync } from 'fs';
+import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync, lstatSync } from 'fs';
 import { join, dirname, basename, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -30412,6 +30412,7 @@ function readMdFiles(dir, notes) {
     if (!filename.endsWith(".md")) continue;
     try {
       const path = join(dir, filename);
+      if (lstatSync(path).isSymbolicLink()) continue;
       files.push({ filename, raw: readFileSync(path, "utf8"), mtimeMs: statSync(path).mtimeMs });
     } catch {
       notes.push({ file: filename, reason: "file could not be read" });
@@ -30513,7 +30514,7 @@ function parseRegisterFindings(raw) {
   for (const line of raw.split("\n")) {
     const m = line.match(/^\|\s*(F\d+)\s*\|(.*)\|\s*$/);
     if (!m) continue;
-    const cells = m[2].split("|").map((c) => c.trim());
+    const cells = m[2].split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
     if (cells.length < 5) continue;
     const [title, severityRaw, effortRaw, evidenceRaw, direction] = cells;
     const severity = Severity.safeParse(severityRaw.toLowerCase());
@@ -34574,7 +34575,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.8.0";
+var VERSION = "0.8.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

@@ -494,7 +494,7 @@ export function TrackerListWidget({ seam }: TrackerListWidgetProps) {
 function TrackerListLiveWidget() {
   const [data, setData] = useState<TrackerListPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-tracker-list", version: "0.8.0" },
+    appInfo: { name: "marvin-tracker-list", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

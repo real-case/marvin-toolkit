@@ -525,7 +525,7 @@ export function TaskDetailWidget({ seam }: TaskDetailWidgetProps) {
 function TaskDetailLiveWidget() {
   const [data, setData] = useState<TaskDetail | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-task-detail", version: "0.8.0" },
+    appInfo: { name: "marvin-task-detail", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

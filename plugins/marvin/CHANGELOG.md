@@ -4,6 +4,28 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.8.1] — 2026-07-16
+
+### Added
+
+- **Reports zone-A `Sync` action** (design §A): a ghost header button that asks the
+  conversation to re-run `/marvin:reports` through the host's `sendMessage` chat
+  action — the handoffs continue-button precedent, and the first partial answer to
+  the design doc's prompt-bridge open question.
+
+### Fixed
+
+- Register-table parsing no longer shifts columns when a cell carries an escaped
+  pipe (`\|`) — cells split on unescaped pipes only and unescape afterwards.
+- The `.marvin` report scan skips symlinked entries, so a planted symlink can no
+  longer pull out-of-tree file content into `structuredContent`.
+- Storybook: all widget story files now map the `hostTheme` toolbar onto the view's
+  `theme` prop (previously 6 of 11 ignored the toolbar and stayed light on a dark
+  canvas); the preview contract comment is true again.
+- Server test loader: `esbuild` is a declared devDependency (was a phantom hoisted
+  transitive) and compiled test bundles reuse one hash-keyed cache directory via
+  atomic renames instead of leaking a temp dir per run.
+
 ## [0.8.0] — 2026-07-16
 
 ### Added

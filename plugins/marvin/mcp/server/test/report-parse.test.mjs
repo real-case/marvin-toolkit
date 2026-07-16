@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { importTs } from "./_tsload.mjs";
 
@@ -9,9 +9,9 @@ import { importTs } from "./_tsload.mjs";
  * Unit tests for the pure report-envelope parsers (`src/lib/reports.ts`) that
  * feed the `report` tool — per-group parsing against tmp-dir fixtures, the
  * staleness boundary, malformed-file skipping, and the merged newest-first
- * ordering. The parsers are exercised directly (compiled via `_tsload.mjs`):
- * the tool is not registered with the server yet (WP-E owns the wiring), so
- * the stdio driver cannot reach this surface.
+ * ordering. The parsers are exercised directly (compiled via `_tsload.mjs`) —
+ * a unit seam independent of the committed dist bundle; the registered stdio
+ * surface is covered separately by `widget-resource.test.mjs`.
  */
 const lib = await importTs("src/lib/reports.ts");
 
@@ -186,6 +186,53 @@ test(
     assert.equal(f1.direction, "Split registration, config and IO");
     assert.equal(f2.effort, "S");
     assert.deepEqual(r.summary.counts, { critical: 0, high: 1, medium: 0, low: 1 });
+  }),
+);
+
+const REGISTER_PIPES = `# Refactoring smells — fixture (2026-07-11)
+
+## Findings register
+
+| ID | Title | Severity | Effort | Evidence | Direction |
+|----|-------|----------|--------|----------|-----------|
+| F1 | Stringly-typed gate keys | medium | small | \`"lint"\\|"test"\` compared as strings \\|\\| defaulted | Union type + const map |
+`;
+
+test(
+  "refactor: escaped pipes inside register cells do not shift columns",
+  withDir((dir) => {
+    writeAt(dir, "003-smells-api.md", REGISTER_PIPES, NOW - DAY_MS);
+    const { reports, notes } = lib.scanRefactorReports(dir, { now: NOW });
+
+    assert.equal(notes.length, 0);
+    const [r] = reports;
+    assert.equal(r.body.findings.length, 1);
+    const [f] = r.body.findings;
+    // The escaped pipes stay inside their cells, unescaped to literal "|"s
+    // (the parser also unwraps inline-code backticks while lifting file:line)…
+    assert.equal(f.evidence, '"lint"|"test" compared as strings || defaulted');
+    // …and the Direction cell survives instead of absorbing the severed tail.
+    assert.equal(f.direction, "Union type + const map");
+  }),
+);
+
+test(
+  "scan: symlinked .md entries are skipped — no out-of-tree content in the payload",
+  withDir((dir) => {
+    const outside = mkdtempSync(join(tmpdir(), "marvin-outside-"));
+    try {
+      const target = writeAt(outside, "outside.md", REGISTER, NOW - DAY_MS);
+      writeAt(dir, "001-audit-core.md", REGISTER, NOW - 3 * DAY_MS);
+      symlinkSync(target, join(dir, "002-audit-planted.md"));
+      const { reports, notes } = lib.scanRefactorReports(dir, { now: NOW });
+
+      // Only the real file is scanned; the planted symlink is skipped silently.
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].id, ".marvin/refactor/001-audit-core.md");
+      assert.equal(notes.length, 0);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   }),
 );
 

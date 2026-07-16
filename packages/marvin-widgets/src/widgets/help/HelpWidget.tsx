@@ -724,7 +724,7 @@ export function HelpWidget({ seam }: HelpWidgetProps) {
 function HelpLiveWidget() {
   const [data, setData] = useState<HelpState | null>(null);
   const { isConnected, error } = useApp({
-    appInfo: { name: "marvin-help", version: "0.8.0" },
+    appInfo: { name: "marvin-help", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       created.ontoolresult = (result) => {

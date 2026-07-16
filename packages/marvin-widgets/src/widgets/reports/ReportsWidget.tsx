@@ -962,6 +962,12 @@ export interface ReportsViewProps {
   error?: string | null;
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
+  /**
+   * The zone-A Sync action (design §A): ask the conversation to re-run
+   * `/marvin:reports` — the handoffs chat-action precedent. Omitted in
+   * pure-render contexts; the button then renders as a quiet no-op.
+   */
+  onSync?: () => void;
   /** Clock for age labels — injectable so tests and visual stories stay deterministic. */
   now?: number;
   /** Pin a theme (Storybook only); production omits it so the host/OS scheme applies. */
@@ -977,7 +983,15 @@ export interface ReportsViewProps {
  * pattern that leaves the primitive untouched and keeps every path (click,
  * keyboard, programmatic) flowing through the same internal state.
  */
-export function ReportsView({ data, connecting, error, onOpenLink, now, theme }: ReportsViewProps) {
+export function ReportsView({
+  data,
+  connecting,
+  error,
+  onOpenLink,
+  onSync,
+  now,
+  theme,
+}: ReportsViewProps) {
   ensureReportsStyles();
   const nowMs = now ?? Date.now();
   const reports = data?.reports ?? [];
@@ -1156,16 +1170,29 @@ export function ReportsView({ data, connecting, error, onOpenLink, now, theme }:
   return frame(
     <>
       {/* A — header */}
-      <div style={{ margin: "2px 2px 12px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.015em" }}>Reports</span>
-          <NeutralPill tabular>
-            <span data-testid="reports-count">{reports.length}</span>
-          </NeutralPill>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, margin: "2px 2px 12px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.015em" }}>
+              Reports
+            </span>
+            <NeutralPill tabular>
+              <span data-testid="reports-count">{reports.length}</span>
+            </NeutralPill>
+          </div>
+          <div style={{ fontSize: 12, color: TOKENS.t3 }}>
+            <span style={num}>.marvin/</span> · all generated documents
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: TOKENS.t3 }}>
-          <span style={num}>.marvin/</span> · all generated documents
-        </div>
+        <button
+          type="button"
+          className="mvrep-gbtn"
+          data-testid="reports-sync"
+          onClick={() => onSync?.()}
+        >
+          <Icon name="refresh" size={12} />
+          Sync
+        </button>
       </div>
 
       {/* B — KPI strip */}
@@ -1426,7 +1453,7 @@ export function ReportsWidget({ seam }: ReportsWidgetProps) {
 function ReportsLiveWidget() {
   const [data, setData] = useState<ReportListPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-reports", version: "0.8.0" },
+    appInfo: { name: "marvin-reports", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.
@@ -1440,12 +1467,22 @@ function ReportsLiveWidget() {
   const onOpenLink = (link: LinkRef) => {
     if (app) void dispatchLink(app, link).catch(() => {});
   };
+  // Zone-A Sync: refresh by asking the conversation to re-run the report tool —
+  // the same chat-action path as the handoffs continue button.
+  const onSync = () => {
+    if (app) {
+      void app
+        .sendMessage({ role: "user", content: [{ type: "text", text: "/marvin:reports" }] })
+        .catch(() => {});
+    }
+  };
   return (
     <ReportsView
       data={data}
       connecting={!isConnected}
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
+      onSync={onSync}
     />
   );
 }
@@ -1480,6 +1517,19 @@ function ReportsSeamWidget({ seam }: { seam: ReportsSeam }) {
   const onOpenLink = (link: LinkRef) => {
     void dispatchLink(seam.app, link).catch(() => {});
   };
+  const onSync = () => {
+    void seam.app
+      .sendMessage({ role: "user", content: [{ type: "text", text: "/marvin:reports" }] })
+      .catch(() => {});
+  };
 
-  return <ReportsView data={data} connecting={!connected} error={error} onOpenLink={onOpenLink} />;
+  return (
+    <ReportsView
+      data={data}
+      connecting={!connected}
+      error={error}
+      onOpenLink={onOpenLink}
+      onSync={onSync}
+    />
+  );
 }

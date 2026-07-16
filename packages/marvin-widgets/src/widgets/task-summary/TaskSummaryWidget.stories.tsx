@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TaskSummaryView, TaskSummaryWidget, type TaskSummarySeam } from "./TaskSummaryWidget";
 import {
   taskSummaryFixture,
@@ -24,9 +24,24 @@ import { waitForCondition } from "../../lib/story-helpers";
  * variant pins the scope via the view's story-only `theme` prop (production omits
  * it and follows the host/OS scheme).
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof TaskSummaryView> = {
   title: "Widgets/TaskSummary",
   component: TaskSummaryView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -37,7 +52,7 @@ export const Fixture: StoryObj<typeof TaskSummaryView> = {
 
 /** The same mixed fixture with the mvroot theme pinned dark (`data-theme="dark"`). */
 export const FixtureDark: StoryObj<typeof TaskSummaryView> = {
-  args: { data: taskSummaryFixture, theme: "dark" },
+  args: { data: taskSummaryFixture },
   parameters: { hostTheme: "dark" },
 };
 

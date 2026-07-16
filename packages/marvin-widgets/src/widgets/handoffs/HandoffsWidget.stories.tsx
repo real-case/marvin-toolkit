@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { HandoffsView, HandoffsWidget, type HandoffsSeam } from "./HandoffsWidget";
 import {
   handoffsFixture,
@@ -22,9 +22,24 @@ import { waitForCondition } from "../../lib/story-helpers";
  * decorator: the default stories render light, and the pinned dark variant passes
  * the view's Storybook-only `theme` prop straight through to its MvRoot.
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof HandoffsView> = {
   title: "Widgets/Handoffs",
   component: HandoffsView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -38,7 +53,7 @@ export const Fixture: StoryObj<typeof HandoffsView> = {
  * (deterministic for visual baselines) and `hostTheme` darkens the story backdrop.
  */
 export const FixtureDark: StoryObj<typeof HandoffsView> = {
-  args: { data: handoffsFixture, theme: "dark" },
+  args: { data: handoffsFixture },
   parameters: { hostTheme: "dark" },
 };
 

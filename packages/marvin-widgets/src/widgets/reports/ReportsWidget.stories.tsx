@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { ReportsView, ReportsWidget, type ReportsSeam } from "./ReportsWidget";
 import {
   REPORTS_NOW,
@@ -23,9 +23,24 @@ import { waitForCondition } from "../../lib/story-helpers";
  * mock-host story that drives the real ext-apps handshake over an in-memory
  * transport — the `@storybook/test-runner` oracle.
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof ReportsView> = {
   title: "Widgets/Reports",
   component: ReportsView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -38,7 +53,7 @@ export const Fixture: Story = {
 
 /** The same fixture with the dark palette pinned via MvRoot's theme override. */
 export const FixtureDark: Story = {
-  args: { data: reportsFixture, now: REPORTS_NOW, theme: "dark" },
+  args: { data: reportsFixture, now: REPORTS_NOW },
   parameters: { hostTheme: "dark" },
 };
 

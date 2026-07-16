@@ -611,7 +611,7 @@ export function TaskSummaryWidget({ seam }: TaskSummaryWidgetProps) {
 function TaskSummaryLiveWidget() {
   const [data, setData] = useState<TaskSummary | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-task-summary", version: "0.8.0" },
+    appInfo: { name: "marvin-task-summary", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

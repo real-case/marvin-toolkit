@@ -9,9 +9,9 @@ import { importTs } from "./_tsload.mjs";
 /**
  * Tests for the `report` tool module (`src/tools/report.ts`) — text fallback,
  * payload contract, selected passthrough and the widget binding. The tool is
- * driven through its `handler` directly (compiled via `_tsload.mjs`): it is
- * deliberately not registered with the server yet — WP-E owns `server.ts` /
- * `resources/widgets.ts` wiring — so the stdio driver cannot reach it.
+ * driven through its `handler` directly (compiled via `_tsload.mjs`) — a unit
+ * seam that stays independent of the committed dist bundle; the registered
+ * stdio surface is covered separately by `widget-resource.test.mjs`.
  */
 const mod = await importTs("src/tools/report.ts");
 

@@ -180,6 +180,7 @@ The design went through four review iterations, all preserved as artifact versio
 2. `flat-4px-no-shadows` — removed every container shadow (`--sh` token deleted) and set all rectangular radii to 4px; pills became 4px tags, which shifted the language from SaaS-friendly toward instrumental.
 3. `kpi-active-search-h-list-border` — closed the review notes: the last list row keeps its bottom border, the search field stretches to the segmented control's height, and KPI cards gained press and engaged states.
 4. Approval on 2026-07-16 fixed this document as the implementation contract.
+5. 0.8.1 follow-up: the zone-A `Sync` action ships as a chat action (`app.sendMessage` → `/marvin:reports`), reusing the handoffs continue-button precedent — a first partial answer to open question 3; command chips elsewhere stay copy-only.
 
 ## Open questions
 
