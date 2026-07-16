@@ -33,8 +33,13 @@ describe("AuditListView — severity triage over the fixture", () => {
   it("flattens and sorts findings critical-first, and the severity filter narrows the list", () => {
     render(<AuditListView data={auditListFixture} />);
 
-    // header counts every finding across all three reports
-    expect(screen.getByTestId("audit-counts").textContent).toContain("6 findings");
+    // header is the bare title; the toolbar's "All" chip is what now carries the
+    // total, and it counts every finding across all three reports
+    expect(screen.getByTestId("audit-counts").textContent).toContain("Audit");
+    expect(
+      within(screen.getByTestId("severity-filter")).getByRole("button", { name: /^all/i })
+        .textContent,
+    ).toContain("6");
 
     // master list is flattened + sorted critical → high → medium → low → info; the
     // two highs tie-break by report scanned_at desc (SCAN-1 07-05 before DEP-2 07-04),
@@ -186,9 +191,13 @@ describe("AuditWidget — mock-host handshake", () => {
     try {
       render(<AuditWidget seam={host.seam} />);
 
-      // starts connecting, then the pushed tool-result's findings render
-      const counts = await screen.findByTestId("audit-counts", {}, { timeout: 5000 });
-      expect(counts.textContent).toContain("6 findings");
+      // starts connecting, then the pushed tool-result's findings render — all six
+      // of them, which the toolbar's "All" chip is what now attests to
+      await screen.findByTestId("audit-counts", {}, { timeout: 5000 });
+      expect(
+        within(screen.getByTestId("severity-filter")).getByRole("button", { name: /^all/i })
+          .textContent,
+      ).toContain("6");
       expect(screen.queryByTestId("audit-connecting")).toBeNull();
       // a finding from the payload reached the view (the top-sorted critical one)
       expect(screen.getByTestId("detail-title").textContent).toContain("AWS secret key");
