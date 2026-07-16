@@ -59,7 +59,7 @@ function seedTask(tasksDir, { id = "001", status = "todo", branch = `${id}--seed
 
 test("create with all fields as arguments runs with no elicitation round-trip", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
       {
@@ -95,7 +95,7 @@ test("create with all fields as arguments runs with no elicitation round-trip", 
 
 test("create with type+title only skips the form; optionals stay optional", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
       { name: "task", arguments: { action: "create", type: "feature", title: "Dark mode" } },
@@ -131,7 +131,7 @@ test("create validates argument values: bad tracker_id is an instructive isError
 
 test("move with a valid status argument skips the picker", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -150,7 +150,7 @@ test("move with a valid status argument skips the picker", async () => {
 
 test("move with an unknown status key lists the configured keys", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -170,7 +170,7 @@ test("move with an unknown status key lists the configured keys", async () => {
 
 test("host without elicitation: create missing title gets an instructive error, not a wire error", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive(
       { CLAUDE_PROJECT_DIR: dir },
@@ -192,7 +192,7 @@ test("host without elicitation: create missing title gets an instructive error, 
 
 test("host without elicitation: argument-complete calls still work end to end", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive(
       { CLAUDE_PROJECT_DIR: dir },
@@ -218,7 +218,7 @@ test("host without elicitation: argument-complete calls still work end to end", 
 
 test("Unicode title round-trips; slug falls back to the task type", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const title = "Исправить таймаут логина";
     const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
@@ -243,7 +243,7 @@ test("Unicode title round-trips; slug falls back to the task type", async () => 
 
 test("nextSeq counts malformed files too — no duplicate ids (regression)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
     // 002 has broken frontmatter (no title): invisible to readAllTasks, but its

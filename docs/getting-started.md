@@ -15,7 +15,7 @@ Before you start, make sure you have the following in place:
 
 - **Claude Code**, in the terminal, the desktop app, or an IDE extension. Marvin is a Claude Code plugin and does not run on its own.
 - **Node.js 20 or later**, which the bundled MCP server needs at runtime. Confirm your version with `node --version`.
-- **git**, and ideally the **GitHub CLI (`gh`)** authenticated, since the commit, pull-request, and kanban workflows build on them.
+- **git**, and ideally the **GitHub CLI (`gh`)** authenticated, since the commit, pull-request, and board workflows build on them.
 
 You do not need to clone this repository or run a build step. The plugin ships with its
 server already bundled, so installing it is the only setup.
@@ -84,16 +84,16 @@ skill body, with diagrams.
 
 ## Step 5 — Track a task on the board
 
-Marvin includes a lightweight per-project kanban board. Create your first task:
+Marvin includes a lightweight per-project task board. Create your first task:
 
 ```text
-/marvin:kanban-feature
+/marvin:track-new feature
 ```
 
 On a host that supports interactive forms, Marvin prompts for a title and details; on
 other hosts it tells you exactly which arguments to pass. The task is written as a markdown
-file under `.marvin/kanban/`. Running `/marvin:kanban-start` then picks it up, creates a
-topic branch, and marks it in progress. List the board at any time with `/marvin:kanban-list`:
+file under `.marvin/track/`. Running `/marvin:track-start` then picks it up, creates a
+topic branch, and marks it in progress. List the board at any time with `/marvin:track-list`:
 
 ```text
 todo        1  ▸ 001--support-nested-config

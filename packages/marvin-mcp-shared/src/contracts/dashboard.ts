@@ -6,14 +6,14 @@ import { LessonsStats } from "./lessons.js";
 /**
  * Marvin infrastructure dashboard contract (ADR-0024 → ADR-0030) — feeds the
  * dashboard widget (#8). The base shape is what the `help` tool computes
- * (project paths, config, kanban counts, git availability, flat artifact
+ * (project paths, config, board counts, git availability, flat artifact
  * counts); the `dashboard` tool extends it with the whole-toolbox sections —
  * ADR corpus by status, security/refactor report inventories with ages,
  * lessons statistics, and the usage-log summary. Every extension is an
  * OPTIONAL field, so the `help` tool's narrower payload keeps conforming
  * (ADR-0030: the extension is not a schema break).
  *
- * Kanban counts follow ADR-0026: an open per-status-key record plus a closed
+ * Board counts follow ADR-0026: an open per-status-key record plus a closed
  * per-role roll-up, with the configured status set exposed under `config` so a
  * widget can label and order the keys.
  */
@@ -110,8 +110,8 @@ export const DashboardState = z.object({
     gates: GateCommands.optional(),
     statuses: z.array(StatusDef),
   }),
-  kanban_counts: z.record(z.string(), z.number().int().nonnegative()),
-  kanban_role_counts: z.record(StatusRole, z.number().int().nonnegative()),
+  board_counts: z.record(z.string(), z.number().int().nonnegative()),
+  board_role_counts: z.record(StatusRole, z.number().int().nonnegative()),
   git: z.object({
     has_git: z.boolean(),
     has_gh: z.boolean(),

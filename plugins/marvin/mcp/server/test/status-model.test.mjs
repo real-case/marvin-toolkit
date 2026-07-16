@@ -69,7 +69,7 @@ function customProject() {
 
 test("configured statuses flow through list: {key, role} cards, open counts, role roll-up", async () => {
   const dir = customProject();
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "qa" });
     seedTask(tasksDir, { id: "002", status: "backlog" });
@@ -104,7 +104,7 @@ test("configured statuses flow through list: {key, role} cards, open counts, rol
 
 test("a status key outside the configured set goes to the malformed channel", async () => {
   const dir = customProject();
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "qa" });
     seedTask(tasksDir, { id: "002", status: "weird" });
@@ -123,7 +123,7 @@ test("a status key outside the configured set goes to the malformed channel", as
 
 test("review targets the first review-role status and detects the branch-linked task", async () => {
   const dir = customProject();
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const branch = seedTask(tasksDir, { id: "001", status: "in-progress" });
     execFileSync("git", ["init", "-q"], { cwd: dir });
@@ -145,7 +145,7 @@ test("review targets the first review-role status and detects the branch-linked 
 
 test("move reaches any configured status — blocked becomes reachable (finding 5)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-status-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -167,7 +167,7 @@ test("move reaches any configured status — blocked becomes reachable (finding 
 
 test("empty candidate sets get an honest answer, not 'Cancelled' (finding 8)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-status-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" }); // nothing in wip/review-able state
 
@@ -185,7 +185,7 @@ test("empty candidate sets get an honest answer, not 'Cancelled' (finding 8)", a
 
 test("start with a preselected id respects the todo-role filter (finding 14)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-status-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" });
 
@@ -224,7 +224,7 @@ test("base_branch auto-detects from origin/HEAD when no config file exists", asy
 
 test("an invalid statuses config warns and falls back to the default set", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-status-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     mkdirSync(join(dir, ".marvin"), { recursive: true });
     // no todo-role status — violates the role invariant

@@ -71,7 +71,7 @@ export const taskListFixture: TaskListPayload = {
 };
 
 /**
- * An empty board — the shape the `task` tool emits right after `.marvin/kanban/`
+ * An empty board — the shape the `task` tool emits right after `.marvin/track/`
  * is initialised: every configured status key present at 0 (ADR-0026 says the
  * open record always carries the full vocabulary) but no role roll-ups, because
  * there are no cards to roll up.
@@ -92,12 +92,12 @@ export const singleTaskFixture: TaskListPayload = {
       id: "007",
       type: "feature",
       status: { key: "wip", role: "wip" },
-      title: "Ship the kanban board ui:// widget",
-      branch: "feat/007-OSI-142--kanban-board-widget",
+      title: "Ship the task board ui:// widget",
+      branch: "feat/007-OSI-142--task-board-widget",
       tracker_id: "OSI-142",
       tracker_url: "https://tracker.example/browse/OSI-142",
       pr: { url: "https://github.com/acme/app/pull/83", number: 83, state: "open" },
-      spec_slug: "kanban-board-widget",
+      spec_slug: "task-board-widget",
       created: "2026-07-05T09:15:00.000Z",
       updated: "2026-07-06T17:40:00.000Z",
     },
@@ -128,7 +128,7 @@ export const minimalCardFixture: TaskListPayload = {
   role_counts: { todo: 1 },
 };
 
-/** Branch prefixes mirroring the kanban tool's `branch_template` conventions. */
+/** Branch prefixes mirroring the board `task` tool's `branch_template` conventions. */
 const BRANCH_PREFIX: Record<TaskCard["type"], string> = {
   bug: "fix",
   feature: "feat",

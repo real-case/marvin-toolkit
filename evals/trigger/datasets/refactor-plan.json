@@ -172,7 +172,7 @@
       "split": "validation",
       "kind": "negative",
       "mock_rate": 0,
-      "note": "board task creation → kanban task tool, not producing a sequenced plan"
+      "note": "board task creation → the board `task` tool, not producing a sequenced plan"
     },
 
     {

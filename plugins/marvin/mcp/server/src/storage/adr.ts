@@ -7,7 +7,7 @@
  * (`## Status`) — into one record shape, and performs the surgical header
  * mutations (`accept` stamp, supersede link flips) that must never touch a
  * record's prose. Files the tolerant parser cannot read are surfaced through a
- * malformed channel (the kanban precedent), never silently dropped and never
+ * malformed channel (the board-storage precedent), never silently dropped and never
  * fatal to the rest of the corpus.
  *
  * The record shape mirrors the `AdrRecord` contract in
@@ -512,7 +512,7 @@ export function renderAdrSkeleton(opts: {
 }
 
 /**
- * Crash-safe write (the kanban pattern): land the bytes next to the target,
+ * Crash-safe write (the board-storage pattern): land the bytes next to the target,
  * then rename over it — readers see the old record or the new one, never a
  * torn half-write. The temp name never matches `NNNN-*.md`, so a crash
  * leftover is invisible to `readAdrCorpus`.

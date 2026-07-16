@@ -588,7 +588,7 @@ test("index: appends a managed block to a marker-less README detected inside the
   }
 });
 
-// ── config round-trip with the kanban surface ──────────────────────────────
+// ── config round-trip with the board config surface ──────────────────────────────
 
 test("config: the adr block and foreign keys survive a task-config read-modify-write", async () => {
   const proj = freshProject();
@@ -599,7 +599,7 @@ test("config: the adr block and foreign keys survive a task-config read-modify-w
       future_tool_key: { keep: true },
     });
 
-    // The kanban config surface writes through the shared fail-closed path.
+    // The board config surface writes through the shared fail-closed path.
     const configured = await callTool(proj, "task", { action: "config", base_branch: "main" });
     assert.equal(configured.isError, false, configured.text);
 

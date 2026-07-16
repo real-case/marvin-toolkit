@@ -5,7 +5,7 @@ import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
 import { loadConfig } from "../storage/config.js";
 import { type Config } from "../storage/schema.js";
 import { PROMPTS } from "../prompts/index.js";
-import { artifactCounts, gitState, groupOf, kanbanCounts, GROUP_ORDER } from "../lib/state.js";
+import { artifactCounts, gitState, groupOf, boardCounts, GROUP_ORDER } from "../lib/state.js";
 import {
   COMMAND_BLURBS,
   COMMAND_DETAILS,
@@ -27,7 +27,7 @@ import type { ServerEnv } from "../lib/env.js";
  *   1. Heading      — a text `>_ MARVIN` wordmark heading, the slogan, and the
  *                     version (the version is injected at build).
  *   2. Summary      — DYNAMIC, per project: project name, git branch + base,
- *                     the kanban counts, and the artifact inventory.
+ *                     the board counts, and the artifact inventory.
  *   3. MCP servers  — DYNAMIC: the MCP servers configured for this project,
  *                     lit (enabled) / dim (disabled).
  *   4. Command groups — the group taxonomy + one-line blurbs (a TOC).
@@ -49,7 +49,7 @@ const HelpInput = z.object({
     .string()
     .optional()
     .describe(
-      "Filter the command reference to one group: core, adr, pr, task, sec, refactor, kanban.",
+      "Filter the command reference to one group: core, adr, pr, task, sec, refactor, track.",
     ),
 });
 
@@ -57,7 +57,7 @@ export function buildHelpTool(env: ServerEnv, version: string): AnyToolDef {
   return defineTool({
     name: "help",
     description:
-      'Marvin welcome banner + dashboard: project summary (project, git branch, kanban board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/kanban).',
+      'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/track).',
     inputSchema: HelpInput,
     // Bind the help `ui://` widget for MCP Apps hosts (ADR-0024). A plain object
     // literal — no ext-apps import — so tsup never bundles the SDK into
@@ -75,7 +75,7 @@ export function buildHelpTool(env: ServerEnv, version: string): AnyToolDef {
 function renderHelp(env: ServerEnv, config: Config, version: string, section?: string): ToolResult {
   // Per-status counts over the configured set (ADR-0026), computed by the shared
   // state module (ADR-0030).
-  const { counts, malformed } = kanbanCounts(env, config);
+  const { counts, malformed } = boardCounts(env, config);
   const git = gitState(env.projectDir);
   const art = artifactCounts(env);
   const servers = projectMcpServers(env.projectDir);
@@ -169,7 +169,7 @@ function renderBanner(version: string): string[] {
 
 /**
  * The project summary — everything that depends on *this* repo: the project
- * name, git branch + base, the kanban counts over the configured status set,
+ * name, git branch + base, the board counts over the configured status set,
  * and the artifact inventory. Regenerated on every call.
  */
 function renderSummary(
@@ -183,7 +183,7 @@ function renderSummary(
   const gitVal = git.branch
     ? `\`${git.branch}\` · base \`${config.base_branch}\``
     : "not in a git repo";
-  const kanban = config.statuses
+  const board = config.statuses
     .map((s) => {
       const n = counts[s.key] ?? 0;
       return `${s.key} ${n > 0 ? `**${n}**` : "0"}`;
@@ -195,7 +195,7 @@ function renderSummary(
     "## Summary",
     `- **project** — \`${project}\``,
     `- **git** — ${gitVal}`,
-    `- **kanban** — ${kanban}`,
+    `- **board** — ${board}`,
     `- **artifacts** — ${artifacts}`,
   ];
 

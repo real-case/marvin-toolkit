@@ -66,20 +66,13 @@ const COMMANDS: Array<[string, string, boolean]> = [
   ["refactor", "refactor-smells", false],
   ["refactor", "refactor-plan", false],
   ["refactor", "refactor-apply", false],
-  ["kanban", "kanban-menu", false],
-  ["kanban", "kanban-bug", false],
-  ["kanban", "kanban-feature", false],
-  ["kanban", "kanban-chore", false],
-  ["kanban", "kanban-spike", false],
-  ["kanban", "kanban-start", false],
-  ["kanban", "kanban-review", false],
-  ["kanban", "kanban-done", false],
-  ["kanban", "kanban-list", false],
-  ["kanban", "kanban-show", false],
-  ["kanban", "kanban-tracker", false],
-  ["kanban", "kanban-status", false],
-  ["kanban", "kanban-config", false],
-  ["kanban", "kanban-help", false],
+  ["track", "track-menu", false],
+  ["track", "track-new", false],
+  ["track", "track-list", false],
+  ["track", "track-show", false],
+  ["track", "track-start", false],
+  ["track", "track-move", false],
+  ["track", "track-config", false],
 ];
 
 /** Group keys in first-appearance (board) order, derived from the roster. */
@@ -141,7 +134,7 @@ export const noServersHelpFixture: HelpState = {
 
 /**
  * No board statuses configured — `.marvin/config.json` has an empty `statuses`
- * vocabulary (ADR-0026), so the kanban summary row degrades to its
+ * vocabulary (ADR-0026), so the board summary row degrades to its
  * "no statuses configured" note. Smallest delta: only `statuses` changes.
  */
 export const noStatusesHelpFixture: HelpState = {

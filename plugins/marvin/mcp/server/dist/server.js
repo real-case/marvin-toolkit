@@ -28584,16 +28584,16 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
-    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim \u2014 reproduce the fenced banner block exactly, do not summarise or add preamble."
+    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim \u2014 reproduce the fenced banner block exactly, do not summarise or add preamble."
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
     // by the deterministic `dashboard` tool (ADR-0030). The command index
     // stays on `help`; this aggregates the artifact/corpus/usage state.
     name: "dashboard",
-    description: "Marvin toolbox dashboard \u2014 kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
-    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
+    description: "Marvin toolbox dashboard \u2014 task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
   },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
@@ -28733,9 +28733,10 @@ var PROMPTS = [
     description: "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
     skill: "refactor-apply"
   },
-  // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
+  // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─
+  // Seven commands over the same tools: the prompts route, the tools decide.
   {
-    name: "kanban-menu",
+    name: "track-menu",
     description: "Marvin tasks main menu",
     body: callTool(
       "task",
@@ -28744,61 +28745,26 @@ var PROMPTS = [
     )
   },
   {
-    name: "kanban-bug",
-    description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-feature",
-    description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-chore",
-    description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-spike",
-    description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-start",
-    description: "Pick a todo task, branch off, and mark it WIP",
+    name: "track-new",
+    description: "Create a board task \u2014 bug, feature, chore, or spike",
     body: callTool(
       "task",
-      { action: "start" },
-      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+      { action: "create" },
+      `Pass \`type\` (bug / feature / chore / spike) when the user named or implied one. ${CREATE_HINT}`
     )
   },
   {
-    name: "kanban-review",
-    description: "Move current task to review",
-    body: callTool(
-      "task",
-      { action: "review" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
-    )
-  },
-  {
-    name: "kanban-done",
-    description: "Mark current task done",
-    body: callTool(
-      "task",
-      { action: "done" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
-    )
-  },
-  {
-    name: "kanban-list",
-    description: "List all tasks grouped by status",
-    body: callTool("task", { action: "list" })
+    // Routing wrapper (ADR-0032): three read views of the same board — the
+    // full list, the current-branch + WIP view (`status`), and the tracked
+    // link-out view (the `tracker` tool + widget, ADR-0024 #6).
+    name: "track-list",
+    description: "List board tasks \u2014 all, work-in-progress, or tracked",
+    body: 'Show the board. Default: invoke the `task` MCP tool from the `marvin` server with action="list". If the user asked what they are working on (the current branch / work-in-progress view), invoke `task` with action="status" instead. If they asked for the tracked tasks (external tracker ids, linking out), invoke the `tracker` MCP tool with no arguments. Do not add preamble \u2014 just call the right tool.'
   },
   {
     // Thin tool wrapper (inline body) — one task's full detail (fields +
     // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
-    name: "kanban-show",
+    name: "track-show",
     description: "Show one task in full \u2014 fields + markdown body",
     body: callTool(
       "task-detail",
@@ -28807,35 +28773,35 @@ var PROMPTS = [
     )
   },
   {
-    // Thin tool wrapper (inline body) — the board tasks that carry an external
-    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
-    name: "kanban-tracker",
-    description: "Show tracked tasks (external tracker id) \u2014 link out to each",
-    body: callTool("tracker", {})
+    name: "track-start",
+    description: "Pick a todo task, branch off, and mark it WIP",
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+    )
   },
   {
-    name: "kanban-status",
-    description: "Current branch + WIP tasks",
-    body: callTool("task", { action: "status" })
+    // Routing wrapper (ADR-0032): one verb for every status transition. The
+    // role-driven `review` / `done` actions (ADR-0026) stay preferred when the
+    // user names a lifecycle stage; `move` covers any configured status key.
+    name: "track-move",
+    description: "Move a task \u2014 to review, done, or any configured status",
+    body: 'Move a board task between statuses via the `task` MCP tool from the `marvin` server. When the user names a lifecycle stage, prefer the role-driven actions: action="review" (send to review) or action="done" (finish) \u2014 both default to the current branch\'s task and take `taskId` if a task was named. For any other target, call action="move" with `taskId` and `status` (the target status key). Do not add preamble \u2014 just call the tool.'
   },
   {
-    name: "kanban-config",
+    name: "track-config",
     description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses",
     body: callTool(
       "task",
       { action: "config" },
       "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown."
     )
-  },
-  {
-    name: "kanban-help",
-    description: "Marvin dashboard scoped to the kanban group \u2014 board state + kanban commands",
-    body: callTool("help", { section: "kanban" })
   }
 ];
 function loadEnv(env2 = process.env) {
   const projectDir = env2.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "track");
   const configPath = env2.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env2.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env2.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
@@ -30214,7 +30180,7 @@ function createTask(tasksDir, config2, input) {
     if (rendered !== null) {
       branch = rendered;
     } else {
-      branchWarning = `the configured branch_template ${JSON.stringify(config2.branch_template)} renders an invalid git branch name \u2014 used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+      branchWarning = `the configured branch_template ${JSON.stringify(config2.branch_template)} renders an invalid git branch name \u2014 used the default \`${branch}\` instead. Fix the template with /marvin:track-config.`;
     }
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -30323,8 +30289,7 @@ function groupByStatus(tasks) {
   return groups;
 }
 function renderListTable(tasks, currentBranch2, config2) {
-  if (tasks.length === 0)
-    return "_No tasks yet \u2014 use `/marvin:kanban-bug` or similar to create one._";
+  if (tasks.length === 0) return "_No tasks yet \u2014 use `/marvin:track-new` to create one._";
   const groups = groupByStatus(tasks);
   const sections = [];
   for (const status of orderedStatuses(config2)) {
@@ -30377,7 +30342,7 @@ var WIDGETS = [
     name: "task-list",
     uri: "ui://marvin/task-list.html",
     file: join("widgets", "task-list.html"),
-    description: "Marvin kanban board \u2014 the task-list widget (ADR-0024)."
+    description: "Marvin task board \u2014 the task-list widget (ADR-0024)."
   },
   {
     name: "task-detail",
@@ -30413,7 +30378,7 @@ var WIDGETS = [
     name: "dashboard",
     uri: "ui://marvin/dashboard.html",
     file: join("widgets", "dashboard.html"),
-    description: "Marvin toolbox dashboard \u2014 the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024)."
+    description: "Marvin toolbox dashboard \u2014 the whole-toolbox status panel: project paths, config, board counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024)."
   },
   {
     name: "help",
@@ -30480,7 +30445,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env2) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
+    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -30680,7 +30645,7 @@ function runStatus(_server, env2, config2) {
   lines.push("");
   lines.push(`**WIP tasks (${wip.length}):**`);
   if (wip.length === 0) {
-    lines.push("_None \u2014 use `/marvin:kanban-start` to pick one up._");
+    lines.push("_None \u2014 use `/marvin:track-start` to pick one up._");
   } else {
     for (const t of wip) lines.push(`- ${formatTaskLine(t)}`);
   }
@@ -30702,7 +30667,7 @@ async function runStart(server, env2, config2, preselected) {
   } else {
     if (todo.length === 0) {
       return ok(
-        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
+        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:track-new\` (bug / feature / chore / spike) to create one.`
       );
     }
     if (!canElicit(server)) {
@@ -30773,7 +30738,7 @@ async function runMove(server, env2, config2, input) {
   const { tasks } = readAllTasks(env2.tasksDir, config2);
   if (tasks.length === 0) {
     return ok(
-      "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+      "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one."
     );
   }
   const keys = statusKeys(config2);
@@ -31101,7 +31066,7 @@ var TaskDetailInput = external_exports.object({
 function buildTaskDetailTool(env2) {
   return defineTool({
     name: "task-detail",
-    description: 'Show one kanban task in full \u2014 its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
+    description: 'Show one board task in full \u2014 its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
     inputSchema: TaskDetailInput,
     // Bind the task-detail `ui://` widget for MCP Apps hosts (ADR-0024). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -31122,7 +31087,7 @@ function buildTaskDetailTool(env2) {
         if (!task) {
           if (tasks.length === 0) {
             return ok2(
-              "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+              "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one."
             );
           }
           return errOk2(
@@ -31208,7 +31173,7 @@ function renderTrackerText(cards) {
       "# Tracked tasks (0)",
       "",
       "No tasks carry a tracker id. Add one when you create a task (e.g. `tracker_id: OSI-123`),",
-      "and set `tracker_url_template` via `/marvin:kanban-config` to link out."
+      "and set `tracker_url_template` via `/marvin:track-config` to link out."
     ].join("\n");
   }
   const lines = [`# Tracked tasks (${cards.length})`, ""];
@@ -31222,12 +31187,12 @@ function renderTrackerText(cards) {
   if (anyUnlinked) {
     lines.push("");
     lines.push(
-      "_Some tasks have no tracker URL \u2014 set `tracker_url_template` via `/marvin:kanban-config` to link out._"
+      "_Some tasks have no tracker URL \u2014 set `tracker_url_template` via `/marvin:track-config` to link out._"
     );
   }
   return lines.join("\n");
 }
-function kanbanCounts(env2, config2) {
+function boardCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const counts = {};
   for (const s of config2.statuses) counts[s.key] = 0;
@@ -31251,8 +31216,8 @@ function gitState(projectDir) {
     branch: inGitRepo(projectDir) ? currentBranch(projectDir) : null
   };
 }
-var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "kanban"];
-var GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "kanban"];
+var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
+var GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
 function groupOf(name) {
   const prefix = name.split("-")[0] ?? "";
   return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
@@ -31289,11 +31254,11 @@ var GROUP_BLURBS = {
   task: "Spec-driven pipeline \u2014 start, implement, verify, deliver",
   sec: "Security scanners \u2014 secrets, deps, threat models & more",
   refactor: "Code-health \u2014 audit, smells, plan, apply",
-  kanban: "Lightweight board tracker \u2014 create, move, list, configure"
+  track: "Lightweight board tracker \u2014 create, move, list, configure"
 };
 var COMMAND_BLURBS = {
   // core
-  commit: "Conventional commit, kanban-linked",
+  commit: "Conventional commit, board-linked",
   debug: "Systematic root-cause debugging",
   adr: "Create an Architecture Decision Record",
   changelog: "Changelog from git history",
@@ -31341,25 +31306,18 @@ var COMMAND_BLURBS = {
   "refactor-smells": "Scoped code-smell scan",
   "refactor-plan": "Sequence findings into steps",
   "refactor-apply": "Apply one refactor step, gated",
-  // kanban
-  "kanban-menu": "Board action menu",
-  "kanban-bug": "New bug task",
-  "kanban-feature": "New feature task",
-  "kanban-chore": "New chore task",
-  "kanban-spike": "New spike task",
-  "kanban-start": "Move a task to in-progress",
-  "kanban-review": "Move a task to review",
-  "kanban-done": "Move a task to done",
-  "kanban-list": "List board tasks",
-  "kanban-show": "Show one task",
-  "kanban-tracker": "Link a tracker URL",
-  "kanban-status": "Set a task status",
-  "kanban-config": "Show or edit board config",
-  "kanban-help": "Board help"
+  // track
+  "track-menu": "Board action menu",
+  "track-new": "New board task",
+  "track-list": "List tasks \u2014 all, WIP, tracked",
+  "track-show": "Show one task",
+  "track-start": "Pick up a task, branch off",
+  "track-move": "Move a task between statuses",
+  "track-config": "Show or edit board config"
 };
 var COMMAND_DETAILS = {
   // core
-  commit: "Safe commit \u2014 inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current kanban board task.",
+  commit: "Safe commit \u2014 inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
   debug: "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
   adr: "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
   changelog: "Generate a changelog from git history between tags, dates, or arbitrary refs.",
@@ -31371,7 +31329,7 @@ var COMMAND_DETAILS = {
   "handoff-list": "List the saved session-continuation handoff documents under .marvin/handoff/, newest first.",
   lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
-  dashboard: "Whole-toolbox state report: kanban, config, git, artifact inventories, ADR corpus, and local usage.",
+  dashboard: "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -31380,7 +31338,7 @@ var COMMAND_DETAILS = {
   "adr-supersede": "Roll back an accepted ADR properly \u2014 a successor record supersedes it and the links pair both ways. Human-run.",
   "adr-sync": "Regenerate the Architecture-decisions digest in CLAUDE.md from accepted ADRs only. Human-run.",
   // pr
-  "pr-create": "Open a pull request with a structured description and verification checklist; picks up kanban board-task context when present.",
+  "pr-create": "Open a pull request with a structured description and verification checklist; picks up board-task context when present.",
   "pr-review": "Review a pull request on GitHub and post the review there \u2014 inline comments by severity plus a summary.",
   "pr-resolve": "Resolve open PR review threads \u2014 fetch the unresolved ones, plan and apply fixes, push, then reply and mark each resolved.",
   "pr-merge": "Merge a pull request, then switch back to the base branch and pull.",
@@ -31407,21 +31365,14 @@ var COMMAND_DETAILS = {
   "refactor-smells": "Scoped code-smell scan of a path, module, or diff \u2014 smells, anti-patterns, and naming inconsistencies. Read-only.",
   "refactor-plan": "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
   "refactor-apply": "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, rollback on red.",
-  // kanban
-  "kanban-menu": "Open the board action menu.",
-  "kanban-bug": "Create a bug task on the board.",
-  "kanban-feature": "Create a feature task on the board.",
-  "kanban-chore": "Create a chore task on the board.",
-  "kanban-spike": "Create a spike \u2014 a time-boxed investigation task.",
-  "kanban-start": "Move a board task to in-progress.",
-  "kanban-review": "Move a board task to review.",
-  "kanban-done": "Move a board task to done.",
-  "kanban-list": "List the tasks on the board.",
-  "kanban-show": "Show one board task in detail.",
-  "kanban-tracker": "Link an external tracker URL to a board task.",
-  "kanban-status": "Set a board task's status directly.",
-  "kanban-config": "Show or edit the board configuration (.marvin/config.json).",
-  "kanban-help": "Show board help."
+  // track
+  "track-menu": "Open the board action menu.",
+  "track-new": "Create a board task \u2014 bug, feature, chore, or spike \u2014 through an interactive form.",
+  "track-list": "List the board \u2014 the full status-grouped list, the current-branch + work-in-progress view, or the tracked tasks linking out to the external tracker.",
+  "track-show": "Show one board task in detail.",
+  "track-start": "Pick a todo task, create its branch, and mark it work-in-progress.",
+  "track-move": "Move a board task \u2014 to review, to done, or to any configured status.",
+  "track-config": "Show or edit the board configuration (.marvin/config.json)."
 };
 var COMMAND_EXAMPLES = {
   // core
@@ -31452,17 +31403,11 @@ var COMMAND_EXAMPLES = {
   // refactor
   "refactor-smells": "/marvin:refactor-smells src/tools",
   "refactor-plan": "/marvin:refactor-plan F3,F4",
-  // kanban
-  "kanban-bug": "/marvin:kanban-bug login 500s",
-  "kanban-feature": "/marvin:kanban-feature dark mode",
-  "kanban-chore": "/marvin:kanban-chore bump deps",
-  "kanban-spike": "/marvin:kanban-spike try Preact",
-  "kanban-start": "/marvin:kanban-start 12",
-  "kanban-review": "/marvin:kanban-review 12",
-  "kanban-done": "/marvin:kanban-done 12",
-  "kanban-show": "/marvin:kanban-show 12",
-  "kanban-tracker": "/marvin:kanban-tracker 12",
-  "kanban-status": "/marvin:kanban-status 12 blocked"
+  // track
+  "track-new": "/marvin:track-new bug login 500s",
+  "track-start": "/marvin:track-start 12",
+  "track-move": "/marvin:track-move 12 blocked",
+  "track-show": "/marvin:track-show 12"
 };
 var COMMAND_PROMPTS = {
   // core
@@ -31682,76 +31627,41 @@ var COMMAND_PROMPTS = {
     "marvin, execute step 2 of the plan",
     "marvin, do the refactoring under the gates"
   ],
-  // kanban
-  "kanban-menu": [
+  // track
+  "track-menu": [
     "marvin, open the board menu",
     "marvin, show the board actions",
     "marvin, what can I do on the board?"
   ],
-  "kanban-bug": [
+  "track-new": [
     "marvin, add a bug to the board",
-    "marvin, new bug: login 500s",
-    "marvin, track this bug"
-  ],
-  "kanban-feature": [
-    "marvin, add a feature to the board",
     "marvin, new feature: dark mode",
-    "marvin, track this feature request"
+    "marvin, track this chore"
   ],
-  "kanban-chore": [
-    "marvin, add a chore",
-    "marvin, new chore: bump deps",
-    "marvin, track this maintenance task"
-  ],
-  "kanban-spike": [
-    "marvin, add a spike",
-    "marvin, new spike: try Preact",
-    "marvin, track this investigation"
-  ],
-  "kanban-start": [
-    "marvin, start task 12",
-    "marvin, move this card to in-progress",
-    "marvin, begin work on this task"
-  ],
-  "kanban-review": [
-    "marvin, move task 12 to review",
-    "marvin, send this card to review",
-    "marvin, mark the task ready for review"
-  ],
-  "kanban-done": [
-    "marvin, mark task 12 done",
-    "marvin, close out this card",
-    "marvin, move this task to done"
-  ],
-  "kanban-list": [
-    "marvin, list the board tasks",
+  "track-list": [
     "marvin, what's on the board?",
-    "marvin, show me the kanban board"
+    "marvin, what am I working on?",
+    "marvin, show the tracked tasks"
   ],
-  "kanban-show": [
+  "track-show": [
     "marvin, show task 12",
     "marvin, open this card",
     "marvin, give me the details of task 12"
   ],
-  "kanban-tracker": [
-    "marvin, link a tracker URL to task 12",
-    "marvin, attach the Jira link to this card",
-    "marvin, connect this task to the tracker"
+  "track-start": [
+    "marvin, start task 12",
+    "marvin, pick up the next todo",
+    "marvin, begin work on this task"
   ],
-  "kanban-status": [
-    "marvin, set task 12 to blocked",
-    "marvin, change this card's status",
-    "marvin, move task 12 to a specific column"
+  "track-move": [
+    "marvin, move task 12 to review",
+    "marvin, mark this task done",
+    "marvin, set task 12 to blocked"
   ],
-  "kanban-config": [
+  "track-config": [
     "marvin, show the board config",
-    "marvin, edit the kanban statuses",
+    "marvin, edit the board statuses",
     "marvin, configure the board"
-  ],
-  "kanban-help": [
-    "marvin, board help",
-    "marvin, how does the kanban board work?",
-    "marvin, help me with the tracker"
   ]
 };
 
@@ -31793,13 +31703,13 @@ function collectServers(path, allowFlat, names, disabled) {
 // src/tools/help.ts
 var HelpInput = external_exports.object({
   section: external_exports.string().optional().describe(
-    "Filter the command reference to one group: core, adr, pr, task, sec, refactor, kanban."
+    "Filter the command reference to one group: core, adr, pr, task, sec, refactor, track."
   )
 });
 function buildHelpTool(env2, version2) {
   return defineTool({
     name: "help",
-    description: 'Marvin welcome banner + dashboard: project summary (project, git branch, kanban board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/kanban).',
+    description: 'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/track).',
     inputSchema: HelpInput,
     // Bind the help `ui://` widget for MCP Apps hosts (ADR-0024). A plain object
     // literal — no ext-apps import — so tsup never bundles the SDK into
@@ -31812,7 +31722,7 @@ function buildHelpTool(env2, version2) {
   });
 }
 function renderHelp(env2, config2, version2, section) {
-  const { counts, malformed } = kanbanCounts(env2, config2);
+  const { counts, malformed } = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const art = artifactCounts(env2);
   const servers = projectMcpServers(env2.projectDir);
@@ -31892,7 +31802,7 @@ function renderBanner(version2) {
 }
 function renderSummary(project, config2, git2, counts, malformed, art) {
   const gitVal = git2.branch ? `\`${git2.branch}\` \xB7 base \`${config2.base_branch}\`` : "not in a git repo";
-  const kanban = config2.statuses.map((s) => {
+  const board = config2.statuses.map((s) => {
     const n = counts[s.key] ?? 0;
     return `${s.key} ${n > 0 ? `**${n}**` : "0"}`;
   }).join(" \xB7 ");
@@ -31901,7 +31811,7 @@ function renderSummary(project, config2, git2, counts, malformed, art) {
     "## Summary",
     `- **project** \u2014 \`${project}\``,
     `- **git** \u2014 ${gitVal}`,
-    `- **kanban** \u2014 ${kanban}`,
+    `- **board** \u2014 ${board}`,
     `- **artifacts** \u2014 ${artifacts}`
   ];
   const notes = [];
@@ -32106,7 +32016,7 @@ function removeIndexLine(memoryDir, slug) {
 // src/tools/dashboard.ts
 var SECTION_ORDER = [
   "project",
-  "kanban",
+  "board",
   "artifacts",
   "adr",
   "lessons",
@@ -32119,7 +32029,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git, task-board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -32132,7 +32042,7 @@ function buildDashboardTool(env2, version2) {
   });
 }
 function renderDashboard(env2, config2, configWarning, version2, input) {
-  const kanban = kanbanCounts(env2, config2);
+  const board = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const verification = verificationFreshness(env2.projectDir);
   const artifacts = { ...artifactCounts(env2), verification };
@@ -32155,13 +32065,13 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       `- git: ${git2.has_git ? "\u2713" : "\u2717"} \xB7 gh: ${git2.has_gh ? "\u2713" : "\u2717"} \xB7 branch: \`${git2.branch ?? "(not in a git repo)"}\``,
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : []
     ],
-    kanban: [
-      "## Kanban",
+    board: [
+      "## Board",
       ...orderedStatuses(config2).map((s) => {
         const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-        return `- ${s.key}${roleNote}: ${kanban.counts[s.key] ?? 0}`;
+        return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
-      ...kanban.malformed > 0 ? [`- \u26A0 malformed files: ${kanban.malformed}`] : []
+      ...board.malformed > 0 ? [`- \u26A0 malformed files: ${board.malformed}`] : []
     ],
     artifacts: [
       "## Artifacts",
@@ -32215,8 +32125,8 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       ...config2.gates ? { gates: config2.gates } : {},
       statuses: config2.statuses
     },
-    kanban_counts: kanban.counts,
-    kanban_role_counts: kanban.roleCounts,
+    board_counts: board.counts,
+    board_role_counts: board.roleCounts,
     git: git2,
     artifacts,
     command_groups: groups,
@@ -33183,7 +33093,7 @@ function checkFrontmatter(fm, type) {
       fail(
         "spike-required",
         "Frontmatter",
-        "spike_required: true \u2014 resolve the unknown (e.g. /marvin:kanban-spike) before DoR"
+        "spike_required: true \u2014 resolve the unknown (e.g. a spike via /marvin:track-new) before DoR"
       )
     );
   }
@@ -34230,7 +34140,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.5.0";
+var VERSION = "0.7.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

@@ -8,7 +8,7 @@ import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
  * over the `DashboardState` the existing read-only `dashboard` tool already returns.
  * Like task-summary / audit it is not a `<ListDetail>`: a `DashboardState` is a single
  * object of heterogeneous sections, so it renders as a header strip plus a responsive
- * grid of section cards (paths · config · kanban · artifacts · adr · security · refactor
+ * grid of section cards (paths · config · board · artifacts · adr · security · refactor
  * · lessons · usage · commands).
  *
  * Split into a pure {@link DashboardView} (props-only, no SDK) and the App wiring below —
@@ -47,7 +47,7 @@ const WARNING: CSSProperties = {
   color: "var(--color-text-warning, #8a6d00)",
 };
 
-// The kanban role roll-up (ADR-0026): every StatusRole, in lifecycle order. `todo`
+// The board role roll-up (ADR-0026): every StatusRole, in lifecycle order. `todo`
 // reads as neutral; the rest carry a subtle progress/terminal colour.
 const ROLE_ORDER = ["todo", "wip", "review", "done", "blocked"] as const;
 const ROLE_COLOR: Record<string, CSSProperties> = {
@@ -270,20 +270,20 @@ function ConfigCard({ config }: { config: DashboardState["config"] }) {
   );
 }
 
-function KanbanCard({
+function BoardCard({
   counts,
   roleCounts,
   statuses,
 }: {
-  counts: DashboardState["kanban_counts"];
-  roleCounts: DashboardState["kanban_role_counts"];
+  counts: DashboardState["board_counts"];
+  roleCounts: DashboardState["board_role_counts"];
   statuses: DashboardState["config"]["statuses"];
 }) {
   const total = Object.values(counts).reduce((n, c) => n + c, 0);
   return (
-    <Card title={`Kanban (${total})`} testid="card-kanban">
+    <Card title={`Board (${total})`} testid="card-board">
       <div
-        data-testid="kanban-roles"
+        data-testid="board-roles"
         style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginBottom: "0.45rem" }}
       >
         {ROLE_ORDER.map((role) => (
@@ -296,7 +296,7 @@ function KanbanCard({
         {statuses.map((s) => (
           <li
             key={s.key}
-            data-testid="kanban-status"
+            data-testid="board-status"
             data-status={s.key}
             style={{ display: "flex", justifyContent: "space-between", padding: "0.1rem 0" }}
           >
@@ -508,9 +508,9 @@ export function DashboardView({ data, connecting, error }: DashboardViewProps) {
       >
         <PathsCard paths={data.paths} />
         <ConfigCard config={data.config} />
-        <KanbanCard
-          counts={data.kanban_counts}
-          roleCounts={data.kanban_role_counts}
+        <BoardCard
+          counts={data.board_counts}
+          roleCounts={data.board_role_counts}
           statuses={data.config.statuses}
         />
         <ArtifactsCard artifacts={data.artifacts} />

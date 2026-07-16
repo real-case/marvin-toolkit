@@ -135,7 +135,7 @@ re-deciding. "none" if there are none.}
 ## Open Questions
 {Unresolved questions. MUST be "none" before the DoR gate passes — an open question is a
 reason to keep authoring, not to dispatch. A genuine unknown that needs investigation is NOT an
-Assumption: set `spike_required: true` and resolve it (e.g. via `/marvin:kanban-spike`) first.}
+Assumption: set `spike_required: true` and resolve it (e.g. a spike via `/marvin:track-new`) first.}
 
 ## Security / NFR
 {Does this touch auth, crypto, PII, input parsing, or infra? Note observability,

@@ -95,7 +95,7 @@ interface AdrContext {
 }
 
 function loadContext(env: ServerEnv): AdrContext {
-  // Config is (re)loaded per call — the kanban `config` action and hand edits
+  // Config is (re)loaded per call — the board `config` action and hand edits
   // must apply immediately. No projectDir arg: base_branch detection is the
   // task tool's concern, the adr tool only reads the `adr` block.
   const { config, warning } = loadConfig(env.configPath);

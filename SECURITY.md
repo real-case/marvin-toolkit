@@ -31,7 +31,7 @@ advisory is published with appropriate credit unless you prefer to remain anonym
 Marvin ships an MCP server and prompt content that run inside Claude Code on your machine.
 The areas of particular interest are:
 
-- how the kanban MCP tools handle untrusted input, under `plugins/marvin/mcp/server/src/tools/`,
+- how the board MCP tools handle untrusted input, under `plugins/marvin/mcp/server/src/tools/`,
 - the git and shell operations that tools and skills perform,
 - the secret-handling guidance in the `sec-*` and core skills, under `plugins/marvin/skills/`.
 

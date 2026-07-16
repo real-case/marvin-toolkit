@@ -65,7 +65,7 @@ function renderTrackerText(cards: TaskCard[]): string {
       "# Tracked tasks (0)",
       "",
       "No tasks carry a tracker id. Add one when you create a task (e.g. `tracker_id: OSI-123`),",
-      "and set `tracker_url_template` via `/marvin:kanban-config` to link out.",
+      "and set `tracker_url_template` via `/marvin:track-config` to link out.",
     ].join("\n");
   }
 
@@ -86,7 +86,7 @@ function renderTrackerText(cards: TaskCard[]): string {
   if (anyUnlinked) {
     lines.push("");
     lines.push(
-      "_Some tasks have no tracker URL — set `tracker_url_template` via `/marvin:kanban-config` to link out._",
+      "_Some tasks have no tracker URL — set `tracker_url_template` via `/marvin:track-config` to link out._",
     );
   }
   return lines.join("\n");

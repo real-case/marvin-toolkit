@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files (.env, keys, tokens), drafts a Conventional Commits message, links the current kanban board task as a Refs footer, confirms with the user, and handles pre-commit hook failures cleanly. No AI attribution in messages. Use when the user says "commit", "commit this", "git commit", "stage and commit", "make a commit", "commit with task context", "kanban commit", "/marvin:commit", "marvin commit this", or when ready to persist changes after finishing a unit of work.
+description: Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files (.env, keys, tokens), drafts a Conventional Commits message, links the current board task as a Refs footer, confirms with the user, and handles pre-commit hook failures cleanly. No AI attribution in messages. Use when the user says "commit", "commit this", "git commit", "stage and commit", "make a commit", "commit with task context", "board commit", "/marvin:commit", "marvin commit this", or when ready to persist changes after finishing a unit of work.
 ---
 
 Analyze staged git changes and generate a conventional commit message. Follow the full workflow below.
@@ -63,9 +63,9 @@ Otherwise, analyze the staged diff and generate a message per the format below.
 
 Match the existing commit style from `git log`.
 
-### 4. Link the Kanban Task
+### 4. Link the Board Task
 
-If the project has a kanban board (task files under `.marvin/kanban/`), check whether the
+If the project has a task board (task files under `.marvin/track/`), check whether the
 current branch belongs to a board task: compare `git branch --show-current` against the
 `branch` frontmatter field of the task files.
 

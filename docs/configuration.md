@@ -15,13 +15,13 @@ makes them easy to include in or exclude from version control as a unit.
 | Path | Written by | Contents |
 | ---- | ---------- | -------- |
 | `.marvin/task/` | The `task-*` pipeline | Immutable specs and the current `verification.md`. |
-| `.marvin/kanban/` | The `kanban-*` tracker | The task board as markdown files. |
+| `.marvin/track/` | The `track-*` tracker | The task board as markdown files. |
 | `.marvin/security/` | The `sec-*` scanners | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |
 | `.marvin/memory/` | The `lessons` tool | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | The `handoff` tool | Session-continuation documents. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
-| `.marvin/config.json` | `kanban-config` and `verify` | The settings documented below. |
+| `.marvin/config.json` | `track-config` and `verify` | The settings documented below. |
 
 Spec storage is host-adaptive. `.marvin/task/` is the default, but Marvin prefers an
 existing host convention when it finds one, searching `.marvin/task/` first and then
@@ -30,7 +30,7 @@ existing host convention when it finds one, searching `.marvin/task/` first and 
 ## `.marvin/config.json`
 
 This file holds the project settings. It is optional, and when it is absent every field
-falls back to the default described below. You do not edit it by hand; `/marvin:kanban-config`
+falls back to the default described below. You do not edit it by hand; `/marvin:track-config`
 shows and changes each setting with fail-closed validation and preserves keys owned by
 other tools when it writes. Invalid JSON or a schema violation makes Marvin fall back to
 defaults and surface a warning through `/marvin:dashboard` rather than failing.
@@ -96,7 +96,7 @@ the classic set of `todo`, `wip`, `review`, `done`, and `blocked`. Each entry ha
 fields:
 
 - `key` is the identifier stored in task files, written in lowercase alphanumerics and hyphens.
-- `role` is one of `todo`, `wip`, `review`, `done`, or `blocked`. The lifecycle commands act by role, so `kanban-start` targets the first `wip`-role status and so on.
+- `role` is one of `todo`, `wip`, `review`, `done`, or `blocked`. The lifecycle commands act by role, so `track-start` targets the first `wip`-role status and so on.
 - `tracker_status` is an optional exact name from your external tracker's workflow, which a future connector will use as its mapping key.
 
 You must define at least one status for each of the `todo`, `wip`, and `done` roles, while
@@ -126,7 +126,7 @@ the rest exist mainly for test isolation, and each defaults to a subdirectory of
 
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
-| `MARVIN_TASKS_DIR` | `.marvin/kanban` | Where the kanban task files live. |
+| `MARVIN_TASKS_DIR` | `.marvin/track` | Where the board task files live. |
 | `MARVIN_TASKS_CONFIG` | `.marvin/config.json` | The config file path. |
 | `MARVIN_MEMORY_DIR` | `.marvin/memory` | The lessons-learned store. |
 | `MARVIN_HANDOFF_DIR` | `.marvin/handoff` | The session-continuation documents. |
@@ -162,11 +162,11 @@ fail-open, meaning a logging error never interferes with the command you ran.
 
 Whether to version the `.marvin/` directory depends on how you use each part of it.
 
-- **Commit it for a team.** For a shared board, commit `.marvin/kanban/` and `.marvin/config.json` together so the tasks and their status vocabulary travel with the repository. Specs in `.marvin/task/` and lessons in `.marvin/memory/` are likewise team assets worth committing.
+- **Commit it for a team.** For a shared board, commit `.marvin/track/` and `.marvin/config.json` together so the tasks and their status vocabulary travel with the repository. Specs in `.marvin/task/` and lessons in `.marvin/memory/` are likewise team assets worth committing.
 - **Ignore the point-in-time artifacts.** Security reports in `.marvin/security/` and session handoffs in `.marvin/handoff/` are moments in time that most teams gitignore.
 - **Leave the usage log alone.** `.marvin/usage/` ignores itself, so it stays local regardless.
 
-Keep the board and its configuration together. Whichever location holds `.marvin/kanban/`
+Keep the board and its configuration together. Whichever location holds `.marvin/track/`
 should also hold `.marvin/config.json`, because task files store status keys that only
 parse against the matching `statuses` configuration.
 

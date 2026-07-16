@@ -159,7 +159,7 @@ test("config update via args round-trips statuses JSON and applies within the sa
     // and creation targets the new todo-role status
     assert.notEqual(create.isError, true);
     const taskFile = readFileSync(
-      join(dir, ".marvin", "kanban", "001--after-the-config.md"),
+      join(dir, ".marvin", "track", "001--after-the-config.md"),
       "utf8",
     );
     assert.match(taskFile, /status: backlog/);
@@ -292,7 +292,7 @@ test("empty string clears a setting; invalid base_branch is rejected", async () 
 
 test("switching statuses on a live board warns about tasks stranded outside the new set", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" }); // "todo" is not in CUSTOM_STATUSES
 
@@ -356,7 +356,7 @@ test("host without elicitation: edit=true answers with the exact arguments to pa
 
 test("branch_template drives new-task branches; {tracker} collapses when absent", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     mkdirSync(join(dir, ".marvin"), { recursive: true });
     writeFileSync(
@@ -387,7 +387,7 @@ test("branch_template drives new-task branches; {tracker} collapses when absent"
 
 test("a bad branch_template falls back to the default scheme and warns instead of failing", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     mkdirSync(join(dir, ".marvin"), { recursive: true });
     writeFileSync(

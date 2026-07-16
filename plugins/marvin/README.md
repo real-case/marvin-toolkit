@@ -5,8 +5,8 @@
 The complete Marvin toolkit as **one plugin, one MCP server, and one slash prefix** —
 `/marvin:`. It covers the whole development lifecycle: core developer tools, the ADR
 decision-record lifecycle, a spec-driven task pipeline, security scanners, a code-health
-refactoring family, and a lightweight kanban tracker. Under the hood it ships **57 prompts,
-12 MCP tools, 10 agents, and 7 interactive widgets**.
+refactoring family, and a lightweight task tracker. Under the hood it ships **50 prompts,
+12 MCP tools, 10 agents, and 8 interactive widgets**.
 
 ## Install
 
@@ -30,7 +30,7 @@ This registers the `marvin` MCP server, and its commands appear as
 | `task-*` | Spec-driven task pipeline | 5 | `/marvin:task-start`, `/marvin:task-verify` |
 | `sec-*` | Security scanners | 11 | `/marvin:sec-scan`, `/marvin:sec-threat-model` |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 | `/marvin:refactor-audit`, `/marvin:refactor-plan`, `/marvin:refactor-apply` |
-| `kanban-*` | Lightweight task tracker | 14 | `/marvin:kanban-menu`, `/marvin:kanban-start`, `/marvin:kanban-config` |
+| `track-*` | Lightweight task tracker | 7 | `/marvin:track-menu`, `/marvin:track-new`, `/marvin:track-start` |
 
 Most commands are reachable three ways — by chat, by `/<command>`, and by
 `/marvin:<command>` — all backed by the same skill.

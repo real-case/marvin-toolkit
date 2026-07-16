@@ -6,7 +6,7 @@ import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
 /**
  * The help widget (ADR-0024) — marvin's welcome **panel** over the `HelpState`
  * the `help` tool returns: a gradient wordmark, the per-project summary
- * (project · git · kanban · artifacts), the configured MCP servers lit/dim by
+ * (project · git · board · artifacts), the configured MCP servers lit/dim by
  * enabled state, the command-group table of contents, and the full per-command
  * reference. Like the dashboard/task-summary widgets it is a single-object panel,
  * not a `<ListDetail>`.
@@ -318,7 +318,7 @@ export function HelpView({ data, connecting, error }: HelpViewProps) {
             <span style={mutedStyle}>not in a git repo</span>
           )}
         </SummaryRow>
-        <SummaryRow label="kanban" testid="help-kanban">
+        <SummaryRow label="board" testid="help-board">
           {data.statuses.length > 0 ? (
             <StatRow>
               {data.statuses.map((s) => (
@@ -492,7 +492,7 @@ const GROUP_LABELS: Record<string, string> = {
   task: "Task",
   sec: "Security",
   refactor: "Refactor",
-  kanban: "Kanban",
+  track: "Track",
 };
 
 /** The detail-header heading for a group key — "<Label> commands". */

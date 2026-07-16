@@ -86,7 +86,7 @@ Maintainers cut a release by promoting `dev → main` through a PR and tagging `
 ## Commit messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/), for example
-`feat(core): add migration-plan prompt` or `fix(kanban): handle missing config`.
+`feat(core): add migration-plan prompt` or `fix(track): handle missing config`.
 
 ## Versioning
 

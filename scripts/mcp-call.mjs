@@ -14,7 +14,7 @@
 //
 // Point storage at fixtures with the server's env vars, e.g.
 //   MARVIN_HANDOFF_DIR=/tmp/h node scripts/mcp-call.mjs handoff '{"action":"list"}'
-//   MARVIN_TASKS_DIR=.marvin/kanban node scripts/mcp-call.mjs task '{"action":"list"}'
+//   MARVIN_TASKS_DIR=.marvin/track node scripts/mcp-call.mjs task '{"action":"list"}'
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";

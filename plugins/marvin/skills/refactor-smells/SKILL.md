@@ -124,7 +124,7 @@ sections are mandatory for `critical`/`high` findings, optional below that.
 ## Closing — file findings to the board
 
 Present the register summary (counts by severity) and the report path, then **offer to
-file selected findings as kanban chores** via the `task` MCP tool — one call per finding
+file selected findings as board chores** via the `task` MCP tool — one call per finding
 the user picks:
 
 - `action: "create"`, `type: "chore"`, `title`: `"F<n>: <finding title>"`,

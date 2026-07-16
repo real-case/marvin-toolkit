@@ -11,7 +11,7 @@ function callDashboard(dir, args = {}) {
   return callTool("dashboard", args, {
     env: {
       CLAUDE_PROJECT_DIR: dir,
-      MARVIN_TASKS_DIR: join(dir, ".marvin", "kanban"),
+      MARVIN_TASKS_DIR: join(dir, ".marvin", "track"),
       MARVIN_TASKS_CONFIG: join(dir, ".marvin", "config.json"),
       MARVIN_MEMORY_DIR: join(dir, ".marvin", "memory"),
       MARVIN_HANDOFF_DIR: join(dir, ".marvin", "handoff"),
@@ -28,7 +28,7 @@ const textOf = (result) => result.content.map((c) => c.text).join("\n");
 
 /** A fully populated `.marvin/` tree + ADR corpus + usage log. */
 function populate(dir) {
-  for (const sub of ["task", "kanban", "security", "refactor", "handoff", "memory", "usage"]) {
+  for (const sub of ["task", "track", "security", "refactor", "handoff", "memory", "usage"]) {
     mkdirSync(join(dir, ".marvin", sub), { recursive: true });
   }
   mkdirSync(join(dir, "docs", "adr"), { recursive: true });
@@ -37,9 +37,9 @@ function populate(dir) {
   writeFileSync(join(dir, ".marvin", "task", "001-thing.md"), "# spec");
   writeFileSync(join(dir, ".marvin", "task", "verification.md"), "# verification");
 
-  // kanban: one wip task (default status vocabulary)
+  // board: one wip task (default status vocabulary)
   writeFileSync(
-    join(dir, ".marvin", "kanban", "001--demo.md"),
+    join(dir, ".marvin", "track", "001--demo.md"),
     [
       "---",
       "id: '001'",
@@ -127,7 +127,7 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
     // every section renders
     for (const heading of [
       "## Project",
-      "## Kanban",
+      "## Board",
       "## Artifacts",
       "## Decisions (ADR)",
       "## Lessons",
@@ -155,8 +155,8 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
     const parsed = DashboardState.safeParse(sc);
     assert.ok(parsed.success, `contract accepts payload: ${JSON.stringify(parsed.error?.issues)}`);
 
-    assert.equal(sc.kanban_counts.wip, 1);
-    assert.equal(sc.kanban_role_counts.wip, 1);
+    assert.equal(sc.board_counts.wip, 1);
+    assert.equal(sc.board_role_counts.wip, 1);
     assert.deepEqual(sc.artifacts, {
       specs: 1,
       handoffs: 1,
@@ -221,7 +221,7 @@ test("dashboard zero-state: a fresh project renders every section and validates"
 
     // command groups cover the whole registry
     const groups = Object.fromEntries(sc.command_groups.map((g) => [g.group, g.count]));
-    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "kanban"]) {
+    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       assert.ok(groups[g] > 0, `group ${g} present`);
     }
   } finally {
@@ -256,7 +256,7 @@ test("dashboard `section` narrows the text; structuredContent stays complete", a
     const result = await callDashboard(dir, { section: "adr" });
     const text = textOf(result);
     assert.ok(text.includes("## Decisions (ADR)"), "requested section rendered");
-    assert.ok(!text.includes("## Kanban"), "other sections omitted");
+    assert.ok(!text.includes("## Board"), "other sections omitted");
     assert.ok(!text.includes("## Usage"), "other sections omitted");
     // the payload ignores the filter
     const sc = result.structuredContent;
@@ -272,7 +272,7 @@ test("dashboard unknown `section` falls back to the full report with a hint", as
   try {
     const text = textOf(await callDashboard(dir, { section: "zzz" }));
     assert.match(text, /Unknown section `zzz`/);
-    assert.ok(text.includes("## Kanban"), "still renders all sections");
+    assert.ok(text.includes("## Board"), "still renders all sections");
     assert.ok(text.includes("## Commands"), "still renders all sections");
   } finally {
     rmSync(dir, { recursive: true, force: true });

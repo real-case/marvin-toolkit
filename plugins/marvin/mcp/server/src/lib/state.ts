@@ -9,13 +9,13 @@ import type { ServerEnv } from "./env.js";
 
 /**
  * Shared project-state computation (ADR-0024 → ADR-0030). The `help` tool has
- * always computed the kanban counters, git availability, artifact counts, and
+ * always computed the board counters, git availability, artifact counts, and
  * the registry-derived command groups for its `DashboardState` payload; the
  * `dashboard` tool aggregates the same state into the whole-toolbox report, so
  * the computation lives here once instead of being copy-pasted.
  */
 
-export interface KanbanCounts {
+export interface BoardCounts {
   /** Per-status counts over the configured set — every key present, even at 0. */
   counts: Record<string, number>;
   /** The closed per-role roll-up (ADR-0026). */
@@ -25,7 +25,7 @@ export interface KanbanCounts {
 }
 
 /** Board counters over the configured status set (ADR-0026). */
-export function kanbanCounts(env: ServerEnv, config: Config): KanbanCounts {
+export function boardCounts(env: ServerEnv, config: Config): BoardCounts {
   const { tasks, malformed } = readAllTasks(env.tasksDir, config);
   const counts: Record<string, number> = {};
   for (const s of config.statuses) counts[s.key] = 0;
@@ -52,8 +52,8 @@ export function gitState(projectDir: string): DashboardState["git"] {
   };
 }
 
-const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "kanban"];
-export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "kanban"];
+const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
+export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
 
 /**
  * Group of a prompt by its `<group>-<command>` prefix; bare names are "core" —

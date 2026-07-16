@@ -6,7 +6,7 @@ the key decisions were made, and where the work is heading.
 ## Start here
 
 - **[Getting started](./getting-started.md)** teaches you to install the plugin, confirm it works, and run your first commands.
-- **[Usage guide](./usage.md)** walks through the common workflows: committing and opening a PR, the task pipeline, the kanban board, security, and refactoring.
+- **[Usage guide](./usage.md)** walks through the common workflows: committing and opening a PR, the task pipeline, the task board, security, and refactoring.
 - **[Architecture](./architecture.md)** is the visual tour of how the plugin is built, covering the "three doors" model, the task pipeline, the widget layer, and the working directory, with diagrams.
 - **[Command reference](./commands.md)** lists every `/marvin:` command with a synopsis and the phrases that invoke it from chat.
 - **[Configuration](./configuration.md)** documents the `.marvin/` working directory, the `.marvin/config.json` schema, and the `MARVIN_*` environment variables.
@@ -52,6 +52,8 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0028](./adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
+| [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Proposed |
+| [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Proposed |
 
 ## Work in progress
 

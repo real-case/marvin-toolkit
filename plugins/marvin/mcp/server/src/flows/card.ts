@@ -3,7 +3,7 @@ import { roleOfStatus, type Config, type Task } from "../storage/schema.js";
 import { trackerUrl } from "../storage/config.js";
 
 /**
- * Map one kanban task to the TaskCard widget contract (ADR-0024). Shared by the
+ * Map one board task to the TaskCard widget contract (ADR-0024). Shared by the
  * `task` list payload (`buildTaskListPayload`) and the `task-detail` tool, so the
  * two payloads describe a card identically and cannot drift as fields are added.
  *

@@ -99,8 +99,8 @@ export const MockHost: StoryObj = {
       () => canvasElement.querySelector('[data-testid="dashboard-header"]') !== null,
       "the dashboard panel to render after the mock-host handshake",
     );
-    if (!canvasElement.querySelector('[data-testid="card-kanban"]')) {
-      throw new Error("mock-host story: expected the kanban card to render");
+    if (!canvasElement.querySelector('[data-testid="card-board"]')) {
+      throw new Error("mock-host story: expected the board card to render");
     }
     if (!canvasElement.querySelector('[data-testid="card-usage"]')) {
       throw new Error("mock-host story: expected the usage card to render from the payload");

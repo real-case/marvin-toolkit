@@ -16,7 +16,7 @@ body:
       label: Proposed solution
       description: >
         What would you like to happen? Which command group does it fit —
-        core, `pr-*`, `task-*`, `sec-*`, or `kanban-*`?
+        core, `pr-*`, `task-*`, `sec-*`, or `track-*`?
     validations:
       required: true
   - type: textarea

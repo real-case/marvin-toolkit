@@ -8,7 +8,7 @@ import { callTool } from "./_driver.mjs";
 /** Call the `help` tool once against the given project dir and return its result. */
 function callHelp(dir, args = {}) {
   return callTool("help", args, {
-    env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: join(dir, ".marvin", "kanban") },
+    env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: join(dir, ".marvin", "track") },
   });
 }
 
@@ -78,7 +78,7 @@ test("help emits a HelpState structuredContent (summary, servers, groups, comman
 
     // command groups TOC — each group with an authored blurb, registry-ordered
     const groupKeys = sc.groups.map((g) => g.group);
-    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "kanban"]) {
+    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       assert.ok(groupKeys.includes(g), `group ${g} present in the TOC`);
     }
     assert.ok(
@@ -93,7 +93,7 @@ test("help emits a HelpState structuredContent (summary, servers, groups, comman
       sc.commands.every((c) => c.blurb.length > 0),
       "every command has a curated blurb (no drift)",
     );
-    for (const name of ["commit", "sec-scan", "pr-create", "task-start", "kanban-bug"]) {
+    for (const name of ["commit", "sec-scan", "pr-create", "task-start", "track-new"]) {
       assert.ok(
         sc.commands.some((c) => c.name === name),
         `reference lists ${name}`,
@@ -178,11 +178,11 @@ test("help renders a registry-derived command index in text (no hand-list drift)
     assert.match(text, /## Command groups/);
     assert.match(text, /## Commands/);
     // the groups TOC lists each group with its blurb...
-    for (const g of ["core", "pr", "task", "sec", "kanban"]) {
+    for (const g of ["core", "pr", "task", "sec", "track"]) {
       assert.ok(text.includes(`\`${g}\` — `), `group ${g} in the TOC`);
     }
     // ...and the reference is grouped under per-group headings
-    for (const g of ["core", "sec", "kanban"]) {
+    for (const g of ["core", "sec", "track"]) {
       assert.ok(text.includes(`### ${g}`), `group ${g} reference heading`);
     }
     // counts are deliberately absent from the reference
@@ -204,8 +204,8 @@ test("help `section` narrows the index to one group", async () => {
     const text = (await callHelp(dir, { section: "sec" })).content.map((c) => c.text).join("\n");
     assert.match(text, /## Commands · sec/);
     assert.ok(text.includes("/marvin:sec-scan"), "sec group listed");
-    assert.ok(!text.includes("/marvin:kanban-bug"), "other groups excluded");
-    assert.ok(!/### kanban/.test(text), "no other reference group headings");
+    assert.ok(!text.includes("/marvin:track-new"), "other groups excluded");
+    assert.ok(!/### track/.test(text), "no other reference group headings");
     assert.ok(!/## Command groups/.test(text), "no groups TOC in the focused view");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -217,7 +217,7 @@ test("help unknown `section` falls back to the full index with a hint", async ()
   try {
     const text = (await callHelp(dir, { section: "zzz" })).content.map((c) => c.text).join("\n");
     assert.match(text, /Unknown group `zzz`/);
-    assert.match(text, /### kanban/, "still shows the full reference");
+    assert.match(text, /### track/, "still shows the full reference");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

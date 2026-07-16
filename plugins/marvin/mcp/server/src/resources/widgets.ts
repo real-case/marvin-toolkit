@@ -30,7 +30,7 @@ const WIDGETS: WidgetResource[] = [
     name: "task-list",
     uri: "ui://marvin/task-list.html",
     file: join("widgets", "task-list.html"),
-    description: "Marvin kanban board — the task-list widget (ADR-0024).",
+    description: "Marvin task board — the task-list widget (ADR-0024).",
   },
   {
     name: "task-detail",
@@ -71,7 +71,7 @@ const WIDGETS: WidgetResource[] = [
     uri: "ui://marvin/dashboard.html",
     file: join("widgets", "dashboard.html"),
     description:
-      "Marvin toolbox dashboard — the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024).",
+      "Marvin toolbox dashboard — the whole-toolbox status panel: project paths, config, board counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024).",
   },
   {
     name: "help",

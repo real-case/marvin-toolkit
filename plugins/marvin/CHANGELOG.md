@@ -4,6 +4,68 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.7.0] — 2026-07-16
+
+### Changed
+
+- **BREAKING — the `track-*` surface shrinks 14 → 7 commands** (ADR-0032). Removed:
+  `/marvin:track-bug`, `-feature`, `-chore`, `-spike` (→ `/marvin:track-new` with the
+  type as an argument/form field), `-review`, `-done` (→ `/marvin:track-move`, which
+  also reaches any configured status), `-status`, `-tracker` (→ `/marvin:track-list`,
+  which now routes between the full list, the work-in-progress view, and the tracked
+  link-out view), and `-help` (→ `/marvin:help track`). The registry drops from 57 to
+  50 prompts; the tools, their actions, and the widget bindings are unchanged, and
+  natural-language phrasing keeps reaching the same tool actions.
+
+## [0.6.0] — 2026-07-16
+
+### Changed
+
+- **BREAKING — the `kanban-*` command group is renamed `track-*`** (ADR-0031). All 14
+  prompts rename mechanically (`/marvin:kanban-menu` → `/marvin:track-menu`, …
+  `/marvin:kanban-help` → `/marvin:track-help`); the group key in the command registry,
+  the `help` tool's `section` filter, and the widget fixtures now use `track`. The
+  methodology-neutral vocabulary follows through the prose: the artifact is the "task
+  board", the `commit`/`pr-create` skills are board-aware.
+- **BREAKING — the board directory default moves to `.marvin/track/`** (archive:
+  `.marvin/track/archive/`). Existing boards migrate with a single
+  `mv .marvin/kanban .marvin/track`, or keep their location via `MARVIN_TASKS_DIR`.
+- **BREAKING — `DashboardState` renames its board fields**: `kanban_counts` →
+  `board_counts`, `kanban_role_counts` → `board_role_counts`; the `dashboard` tool's
+  report section is now `board` (`## Board`).
+- The curated help content for `track-tracker` and `track-status` now matches what the
+  commands actually do (the read-only tracked-tasks list and the branch + WIP report);
+  both previously described status/link *mutations*.
+
+## [0.5.0] — 2026-07-12
+
+### Changed
+
+- **Help reference: two ways to call, one content source** (#101). The help widget's
+  group-detail view shows each command with a Direct call chip plus ≥3 natural-language
+  "marvin, …" phrases (new coverage-guarded `HelpCommand.phrases` contract field), and
+  all curated reference data (`GROUP_BLURBS`, `COMMAND_BLURBS`, `COMMAND_DETAILS`,
+  `COMMAND_EXAMPLES`, `COMMAND_PROMPTS`) moves into
+  `@marvin-toolkit/mcp-shared/help-content` as the single source the server tool and the
+  widget fixture both import. Help tool text output is byte-identical.
+
+## [0.4.0] — 2026-07-10
+
+### Fixed
+
+- **Widgets rendered in the host serif font in production** (#99) — the CSS `font:`
+  shorthand without a size is invalid and was silently dropped; fixed to `fontFamily`
+  across all affected widgets.
+
+### Added
+
+- `<ListDetail>` keyboard a11y (single tab stop, `aria-activedescendant`), Markdown GFM
+  strikethrough/task checkboxes with tiered inline precedence, an explicit link colour
+  for dark hosts, and deterministic shared date formatting (#99).
+- Storybook grows 19 → 93 stories (dark host theme, empty/minimal/stress states,
+  interaction plays); every story is screenshot-gated via test-storybook +
+  jest-image-snapshot with committed darwin baselines (#99).
+
 ## [0.3.0] — 2026-07-09
 
 ### Added
