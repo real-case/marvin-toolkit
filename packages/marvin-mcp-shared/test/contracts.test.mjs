@@ -143,7 +143,7 @@ test("RefactorFinding carries the register fields and requires evidenced finding
 test("DashboardState mirrors the help tool's computed state", () => {
   const ok = DashboardState.safeParse({
     version: "2.0.0",
-    paths: { project: "/p", tasks_dir: "/p/.marvin/kanban", config_path: "/p/.marvin/config.json" },
+    paths: { project: "/p", tasks_dir: "/p/.marvin/track", config_path: "/p/.marvin/config.json" },
     config: {
       base_branch: "dev",
       tracker_url_template: null,
@@ -153,8 +153,8 @@ test("DashboardState mirrors the help tool's computed state", () => {
         { key: "done", role: "done" },
       ],
     },
-    kanban_counts: { todo: 1, "in-progress": 2 },
-    kanban_role_counts: { todo: 1, wip: 2 },
+    board_counts: { todo: 1, "in-progress": 2 },
+    board_role_counts: { todo: 1, wip: 2 },
     git: { has_git: true, has_gh: false, branch: "dev" },
     artifacts: { specs: 0, handoffs: 1, audits: 0, lessons: 3 },
     command_groups: [{ group: "task", count: 4 }],

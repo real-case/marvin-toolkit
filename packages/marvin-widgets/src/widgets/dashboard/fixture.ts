@@ -15,7 +15,7 @@ export const dashboardFixture: DashboardState = {
   version: "0.1.0",
   paths: {
     project: "/Users/dev/acme-api",
-    tasks_dir: "/Users/dev/acme-api/.marvin/kanban",
+    tasks_dir: "/Users/dev/acme-api/.marvin/track",
     config_path: "/Users/dev/acme-api/.marvin/config.json",
   },
   config: {
@@ -35,8 +35,8 @@ export const dashboardFixture: DashboardState = {
       { key: "blocked", role: "blocked" },
     ],
   },
-  kanban_counts: { backlog: 4, "in-progress": 2, "in-review": 1, done: 7, blocked: 1 },
-  kanban_role_counts: { todo: 4, wip: 2, review: 1, done: 7, blocked: 1 },
+  board_counts: { backlog: 4, "in-progress": 2, "in-review": 1, done: 7, blocked: 1 },
+  board_role_counts: { todo: 4, wip: 2, review: 1, done: 7, blocked: 1 },
   git: { has_git: true, has_gh: true, branch: "feat/widget-dashboard" },
   artifacts: {
     specs: 3,
@@ -50,7 +50,7 @@ export const dashboardFixture: DashboardState = {
     { group: "pr", count: 4 },
     { group: "task", count: 5 },
     { group: "sec", count: 10 },
-    { group: "kanban", count: 12 },
+    { group: "track", count: 7 },
   ],
   adr: {
     dir: "docs/adr",
@@ -80,14 +80,14 @@ export const dashboardFixture: DashboardState = {
  * The narrower `help`-shaped payload (ADR-0030): every optional extended section —
  * adr / security / refactor / lessons / usage, and `artifacts.verification` — is
  * ABSENT, not zeroed, so only the five always-present cards (paths · config ·
- * kanban · artifacts · commands) render. Built standalone rather than spread from
+ * board · artifacts · commands) render. Built standalone rather than spread from
  * the full fixture because a spread can only add fields, never remove them.
  */
 export const coreOnlyDashboardFixture: DashboardState = {
   version: "0.1.0",
   paths: {
     project: "/Users/dev/blog-engine",
-    tasks_dir: "/Users/dev/blog-engine/.marvin/kanban",
+    tasks_dir: "/Users/dev/blog-engine/.marvin/track",
     config_path: "/Users/dev/blog-engine/.marvin/config.json",
   },
   config: {
@@ -101,8 +101,8 @@ export const coreOnlyDashboardFixture: DashboardState = {
       { key: "blocked", role: "blocked" },
     ],
   },
-  kanban_counts: { todo: 3, wip: 1, review: 0, done: 12, blocked: 0 },
-  kanban_role_counts: { todo: 3, wip: 1, review: 0, done: 12, blocked: 0 },
+  board_counts: { todo: 3, wip: 1, review: 0, done: 12, blocked: 0 },
+  board_role_counts: { todo: 3, wip: 1, review: 0, done: 12, blocked: 0 },
   git: { has_git: true, has_gh: true, branch: "main" },
   artifacts: { specs: 2, handoffs: 1, audits: 0, lessons: 3 },
   command_groups: [
@@ -112,7 +112,7 @@ export const coreOnlyDashboardFixture: DashboardState = {
     { group: "task", count: 6 },
     { group: "sec", count: 11 },
     { group: "refactor", count: 4 },
-    { group: "kanban", count: 14 },
+    { group: "track", count: 7 },
   ],
 };
 
@@ -126,7 +126,7 @@ export const freshDashboardFixture: DashboardState = {
   version: "0.1.0",
   paths: {
     project: "/Users/dev/greenfield",
-    tasks_dir: "/Users/dev/greenfield/.marvin/kanban",
+    tasks_dir: "/Users/dev/greenfield/.marvin/track",
     config_path: "/Users/dev/greenfield/.marvin/config.json",
   },
   config: {
@@ -140,8 +140,8 @@ export const freshDashboardFixture: DashboardState = {
       { key: "blocked", role: "blocked" },
     ],
   },
-  kanban_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
-  kanban_role_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
+  board_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
+  board_role_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
   git: { has_git: true, has_gh: true, branch: "main" },
   artifacts: {
     specs: 0,
@@ -157,7 +157,7 @@ export const freshDashboardFixture: DashboardState = {
     { group: "task", count: 6 },
     { group: "sec", count: 11 },
     { group: "refactor", count: 4 },
-    { group: "kanban", count: 14 },
+    { group: "track", count: 7 },
   ],
   adr: {
     dir: "docs/adr",
@@ -193,7 +193,7 @@ export const longPathsDashboardFixture: DashboardState = {
     project:
       "/Users/dev/workspace/clients/megacorp/platform-engineering/services/payments-orchestration-gateway",
     tasks_dir:
-      "/Users/dev/workspace/clients/megacorp/platform-engineering/services/payments-orchestration-gateway/.marvin/kanban",
+      "/Users/dev/workspace/clients/megacorp/platform-engineering/services/payments-orchestration-gateway/.marvin/track",
     config_path:
       "/Users/dev/workspace/clients/megacorp/platform-engineering/services/payments-orchestration-gateway/.marvin/config.json",
   },

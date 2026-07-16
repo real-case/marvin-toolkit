@@ -70,8 +70,8 @@ export const taskSummaryFixture: TaskSummary = {
  * acceptance passed · 4 gates passed" with no failure clause.
  */
 export const allPassingSummaryFixture: TaskSummary = {
-  slug: "kanban-link-pr",
-  title: "Capture the PR URL on the kanban board task",
+  slug: "board-link-pr",
+  title: "Capture the PR URL on the board task",
   status: "done",
   acceptance: [
     {
@@ -83,7 +83,7 @@ export const allPassingSummaryFixture: TaskSummary = {
     },
     {
       id: "AC2",
-      statement: "kanban-show renders the captured PR link next to the tracker link.",
+      statement: "track-show renders the captured PR link next to the tracker link.",
       oracle_kind: "test",
       oracle_ref: "plugins/marvin/mcp/server/test/task.test.ts::show renders links",
       outcome: "pass",
@@ -103,12 +103,12 @@ export const allPassingSummaryFixture: TaskSummary = {
     { name: "build", status: "pass" },
   ],
   commits: [
-    { sha: "9f8e7d6", subject: "feat(kanban): link-pr captures the PR URL" },
-    { sha: "5c4b3a2", subject: "test(kanban): frontmatter round-trip coverage" },
+    { sha: "9f8e7d6", subject: "feat(track): link-pr captures the PR URL" },
+    { sha: "5c4b3a2", subject: "test(track): frontmatter round-trip coverage" },
   ],
   lessons: [{ id: "frontmatter-roundtrip", title: "Read-modify-write must preserve foreign keys" }],
   links: [
-    { kind: "spec", label: "kanban-link-pr", ref: "kanban-link-pr" },
+    { kind: "spec", label: "board-link-pr", ref: "board-link-pr" },
     { kind: "pr", label: "PR #64", url: "https://github.com/real-case/marvin-toolkit/pull/64" },
   ],
 };
@@ -197,7 +197,7 @@ export const longSummaryFixture: TaskSummary = {
     {
       id: "AC2",
       statement:
-        "The manifest linter and the committed-dist guard both pass after the merge, proving the single `dist/server.js` bundle registers **all 57 prompts and 12 tools** under the one `marvin` server key with no orphaned pack-era registrations left behind.",
+        "The manifest linter and the committed-dist guard both pass after the merge, proving the single `dist/server.js` bundle registers **every prompt and tool** under the one `marvin` server key with no orphaned pack-era registrations left behind.",
       oracle_kind: "command",
       oracle_ref: "node scripts/lint-manifests.mjs && node scripts/verify-dist.mjs",
       outcome: "pass",
@@ -205,7 +205,7 @@ export const longSummaryFixture: TaskSummary = {
     {
       id: "AC3",
       statement:
-        "A reviewer following the migration notes in `docs/adr/0001-single-plugin-consolidation.md` can reinstall from a clean profile and reach every workflow — core, sec, task pipeline, kanban — without consulting the retired pack READMEs.",
+        "A reviewer following the migration notes in `docs/adr/0001-single-plugin-consolidation.md` can reinstall from a clean profile and reach every workflow — core, sec, task pipeline, track — without consulting the retired pack READMEs.",
       oracle_kind: "prose-review",
       outcome: "unknown",
     },

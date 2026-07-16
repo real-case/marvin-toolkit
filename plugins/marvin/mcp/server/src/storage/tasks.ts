@@ -140,7 +140,7 @@ export function createTask(tasksDir: string, config: Config, input: NewTaskInput
     if (rendered !== null) {
       branch = rendered;
     } else {
-      branchWarning = `the configured branch_template ${JSON.stringify(config.branch_template)} renders an invalid git branch name — used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+      branchWarning = `the configured branch_template ${JSON.stringify(config.branch_template)} renders an invalid git branch name — used the default \`${branch}\` instead. Fix the template with /marvin:track-config.`;
     }
   }
   const now = new Date().toISOString();

@@ -9,7 +9,7 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
  *    through its own frontmatter `description`, while this server exposes
  *    the same prose under `/marvin:<name>` (frontmatter stripped at
  *    request time).
- *  - **inline-body** (kanban group): thin wrappers that just instruct the
+ *  - **inline-body** (track group): thin wrappers that just instruct the
  *    model to call the matching MCP tool (`task` / `help`) with the right
  *    pre-fills. Bodies are one sentence, so a SKILL.md would be noise.
  *
@@ -24,7 +24,7 @@ function callTool(tool: string, args: Record<string, string> = {}, hint = ""): s
   return `Invoke the \`${tool}\` MCP tool from the \`marvin\` server${argText}.${hintText} The form (if any) covers only what is missing; use the user's choices from it to fill the remaining fields. Do not add preamble — just call the tool.`;
 }
 
-/** Shared hint for the four create prompts: mine the user's message for arguments. */
+/** Hint for the create prompt: mine the user's message for arguments. */
 const CREATE_HINT =
   "If the user's message already contains a title, a description, or a tracker id (like ABC-123) for the task, pass them as the `title` / `description` / `tracker_id` arguments instead of leaving them to the form.";
 
@@ -132,8 +132,8 @@ export const PROMPTS: PromptDef[] = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim — reproduce the fenced banner block exactly, do not summarise or add preamble.",
+      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim — reproduce the fenced banner block exactly, do not summarise or add preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -141,8 +141,8 @@ export const PROMPTS: PromptDef[] = [
     // stays on `help`; this aggregates the artifact/corpus/usage state.
     name: "dashboard",
     description:
-      "Marvin toolbox dashboard — kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
-    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
+      "Marvin toolbox dashboard — task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
   },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
@@ -313,9 +313,10 @@ export const PROMPTS: PromptDef[] = [
     skill: "refactor-apply",
   },
 
-  // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
+  // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─
+  // Seven commands over the same tools: the prompts route, the tools decide.
   {
-    name: "kanban-menu",
+    name: "track-menu",
     description: "Marvin tasks main menu",
     body: callTool(
       "task",
@@ -324,61 +325,26 @@ export const PROMPTS: PromptDef[] = [
     ),
   },
   {
-    name: "kanban-bug",
-    description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT),
-  },
-  {
-    name: "kanban-feature",
-    description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT),
-  },
-  {
-    name: "kanban-chore",
-    description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT),
-  },
-  {
-    name: "kanban-spike",
-    description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT),
-  },
-  {
-    name: "kanban-start",
-    description: "Pick a todo task, branch off, and mark it WIP",
+    name: "track-new",
+    description: "Create a board task — bug, feature, chore, or spike",
     body: callTool(
       "task",
-      { action: "start" },
-      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument.",
+      { action: "create" },
+      `Pass \`type\` (bug / feature / chore / spike) when the user named or implied one. ${CREATE_HINT}`,
     ),
   },
   {
-    name: "kanban-review",
-    description: "Move current task to review",
-    body: callTool(
-      "task",
-      { action: "review" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument.",
-    ),
-  },
-  {
-    name: "kanban-done",
-    description: "Mark current task done",
-    body: callTool(
-      "task",
-      { action: "done" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument.",
-    ),
-  },
-  {
-    name: "kanban-list",
-    description: "List all tasks grouped by status",
-    body: callTool("task", { action: "list" }),
+    // Routing wrapper (ADR-0032): three read views of the same board — the
+    // full list, the current-branch + WIP view (`status`), and the tracked
+    // link-out view (the `tracker` tool + widget, ADR-0024 #6).
+    name: "track-list",
+    description: "List board tasks — all, work-in-progress, or tracked",
+    body: 'Show the board. Default: invoke the `task` MCP tool from the `marvin` server with action="list". If the user asked what they are working on (the current branch / work-in-progress view), invoke `task` with action="status" instead. If they asked for the tracked tasks (external tracker ids, linking out), invoke the `tracker` MCP tool with no arguments. Do not add preamble — just call the right tool.',
   },
   {
     // Thin tool wrapper (inline body) — one task's full detail (fields +
     // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
-    name: "kanban-show",
+    name: "track-show",
     description: "Show one task in full — fields + markdown body",
     body: callTool(
       "task-detail",
@@ -387,19 +353,24 @@ export const PROMPTS: PromptDef[] = [
     ),
   },
   {
-    // Thin tool wrapper (inline body) — the board tasks that carry an external
-    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
-    name: "kanban-tracker",
-    description: "Show tracked tasks (external tracker id) — link out to each",
-    body: callTool("tracker", {}),
+    name: "track-start",
+    description: "Pick a todo task, branch off, and mark it WIP",
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument.",
+    ),
   },
   {
-    name: "kanban-status",
-    description: "Current branch + WIP tasks",
-    body: callTool("task", { action: "status" }),
+    // Routing wrapper (ADR-0032): one verb for every status transition. The
+    // role-driven `review` / `done` actions (ADR-0026) stay preferred when the
+    // user names a lifecycle stage; `move` covers any configured status key.
+    name: "track-move",
+    description: "Move a task — to review, done, or any configured status",
+    body: 'Move a board task between statuses via the `task` MCP tool from the `marvin` server. When the user names a lifecycle stage, prefer the role-driven actions: action="review" (send to review) or action="done" (finish) — both default to the current branch\'s task and take `taskId` if a task was named. For any other target, call action="move" with `taskId` and `status` (the target status key). Do not add preamble — just call the tool.',
   },
   {
-    name: "kanban-config",
+    name: "track-config",
     description:
       "Show or edit the board configuration — base branch, tracker URL template, branch template, statuses",
     body: callTool(
@@ -407,10 +378,5 @@ export const PROMPTS: PromptDef[] = [
       { action: "config" },
       "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} — roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.",
     ),
-  },
-  {
-    name: "kanban-help",
-    description: "Marvin dashboard scoped to the kanban group — board state + kanban commands",
-    body: callTool("help", { section: "kanban" }),
   },
 ];

@@ -16,7 +16,7 @@ import { loadConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
 import { orderedStatuses, type Config } from "../storage/schema.js";
-import { artifactCounts, commandGroups, gitState, kanbanCounts } from "../lib/state.js";
+import { artifactCounts, commandGroups, gitState, boardCounts } from "../lib/state.js";
 import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -32,7 +32,7 @@ import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 const SECTION_ORDER = [
   "project",
-  "kanban",
+  "board",
   "artifacts",
   "adr",
   "lessons",
@@ -51,7 +51,7 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
   return defineTool({
     name: "dashboard",
     description:
-      "Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, " +
+      "Whole-toolbox state report (ADR-0030): project paths/config/git, task-board counters, " +
       "artifact inventories with freshness (task specs + verification.md age, security reports + " +
       "newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus " +
       'by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what ' +
@@ -82,7 +82,7 @@ function renderDashboard(
   input: DashboardInput,
 ): ToolResult {
   // ── aggregate (every source degrades to zeros on a fresh project) ────────
-  const kanban = kanbanCounts(env, config);
+  const board = boardCounts(env, config);
   const git = gitState(env.projectDir);
   const verification = verificationFreshness(env.projectDir);
   const artifacts = { ...artifactCounts(env), verification };
@@ -107,13 +107,13 @@ function renderDashboard(
       `- git: ${git.has_git ? "✓" : "✗"} · gh: ${git.has_gh ? "✓" : "✗"} · branch: \`${git.branch ?? "(not in a git repo)"}\``,
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
     ],
-    kanban: [
-      "## Kanban",
+    board: [
+      "## Board",
       ...orderedStatuses(config).map((s) => {
         const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-        return `- ${s.key}${roleNote}: ${kanban.counts[s.key] ?? 0}`;
+        return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
-      ...(kanban.malformed > 0 ? [`- ⚠ malformed files: ${kanban.malformed}`] : []),
+      ...(board.malformed > 0 ? [`- ⚠ malformed files: ${board.malformed}`] : []),
     ],
     artifacts: [
       "## Artifacts",
@@ -179,8 +179,8 @@ function renderDashboard(
       ...(config.gates ? { gates: config.gates } : {}),
       statuses: config.statuses,
     },
-    kanban_counts: kanban.counts,
-    kanban_role_counts: kanban.roleCounts,
+    board_counts: board.counts,
+    board_role_counts: board.roleCounts,
     git,
     artifacts,
     command_groups: groups,

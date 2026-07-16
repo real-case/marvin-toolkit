@@ -58,11 +58,11 @@ describe("DashboardView — panel over the full fixture", () => {
     expect(statuses.textContent).toContain("backlog");
     expect(statuses.textContent).toContain("in-review · review"); // key ≠ role gets the role note
 
-    // kanban: role roll-up + one row per configured status, count from the right field
-    const kanban = screen.getByTestId("card-kanban");
-    expect(kanban.textContent).toContain("Kanban (15)"); // total across statuses
-    expect(within(kanban).getByTestId("kanban-roles").textContent).toContain("done 7");
-    const statusRows = within(kanban).getAllByTestId("kanban-status");
+    // board: role roll-up + one row per configured status, count from the right field
+    const board = screen.getByTestId("card-board");
+    expect(board.textContent).toContain("Board (15)"); // total across statuses
+    expect(within(board).getByTestId("board-roles").textContent).toContain("done 7");
+    const statusRows = within(board).getAllByTestId("board-status");
     expect(statusRows).toHaveLength(5);
     const doneRow = statusRows.find((r) => r.getAttribute("data-status") === "done");
     expect(doneRow?.textContent).toContain("7");
@@ -105,7 +105,7 @@ describe("DashboardView — panel over the full fixture", () => {
 
     // commands: group tallies + the total in the title
     const commands = screen.getByTestId("card-commands");
-    expect(commands.textContent).toContain("Commands (40)"); // 9+4+5+10+12
+    expect(commands.textContent).toContain("Commands (35)"); // 9+4+5+10+7
     expect(commands.textContent).toContain("sec 10");
   });
 });
@@ -117,7 +117,7 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
     version: "0.1.0",
     paths: {
       project: "/tmp/new",
-      tasks_dir: "/tmp/new/.marvin/kanban",
+      tasks_dir: "/tmp/new/.marvin/track",
       config_path: "/tmp/new/.marvin/config.json",
     },
     config: {
@@ -129,8 +129,8 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
         { key: "done", role: "done" },
       ],
     },
-    kanban_counts: { todo: 0, doing: 0, done: 0 },
-    kanban_role_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
+    board_counts: { todo: 0, doing: 0, done: 0 },
+    board_role_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
     git: { has_git: false, has_gh: false, branch: null },
     artifacts: {
       specs: 0,
@@ -141,7 +141,7 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
     },
     command_groups: [
       { group: "core", count: 9 },
-      { group: "kanban", count: 12 },
+      { group: "track", count: 12 },
     ],
     adr: {
       dir: "docs/adr",
@@ -187,8 +187,8 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
       version: fresh.version,
       paths: fresh.paths,
       config: fresh.config,
-      kanban_counts: fresh.kanban_counts,
-      kanban_role_counts: fresh.kanban_role_counts,
+      board_counts: fresh.board_counts,
+      board_role_counts: fresh.board_role_counts,
       git: fresh.git,
       artifacts: { specs: 0, handoffs: 0, audits: 0, lessons: 0 }, // no verification either
       command_groups: fresh.command_groups,
@@ -199,7 +199,7 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
       expect(screen.queryByTestId(id)).toBeNull();
     }
     // the always-present cards survive, and an absent verification renders as "—"
-    expect(screen.getByTestId("card-kanban")).toBeTruthy();
+    expect(screen.getByTestId("card-board")).toBeTruthy();
     expect(screen.getByTestId("card-commands")).toBeTruthy();
     expect(screen.getByTestId("artifacts-verification").textContent).toContain("—");
 
@@ -217,11 +217,11 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
 describe("DashboardView — the exported story fixtures", () => {
   it("coreOnlyDashboardFixture renders only the five always-present cards", () => {
     render(<DashboardView data={coreOnlyDashboardFixture} />);
-    for (const id of ["card-paths", "card-config", "card-kanban", "card-artifacts"]) {
+    for (const id of ["card-paths", "card-config", "card-board", "card-artifacts"]) {
       expect(screen.getByTestId(id)).toBeTruthy();
     }
-    // all seven real command groups reach the title total (10+6+4+6+11+4+14)
-    expect(screen.getByTestId("card-commands").textContent).toContain("Commands (55)");
+    // all seven real command groups reach the title total (10+6+4+6+11+4+7)
+    expect(screen.getByTestId("card-commands").textContent).toContain("Commands (48)");
     for (const id of ["card-adr", "card-security", "card-refactor", "card-lessons", "card-usage"]) {
       expect(screen.queryByTestId(id)).toBeNull();
     }

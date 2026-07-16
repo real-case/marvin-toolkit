@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-kanban tracker, and it ships **57 prompts, 12 MCP tools, 10 agents, and 7 interactive
+task tracker, and it ships **50 prompts, 12 MCP tools, 10 agents, and 8 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -25,7 +25,7 @@ Code on `/plugin install`:
 
 The server itself is a TypeScript MCP server that targets Node.js 20 or later. It is
 bundled with `tsup` into a single self-contained `dist/server.js` that is committed to
-the repository, so installation never runs a build step. The seven widgets are a
+the repository, so installation never runs a build step. The eight widgets are a
 separate browser workspace built to committed, self-contained HTML.
 
 ## System at a glance
@@ -62,7 +62,7 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-57 prompts divide into seven groups. The [command reference](./commands.md) lists every
+50 prompts divide into seven groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
@@ -73,10 +73,10 @@ entry with a synopsis and the phrases that invoke it from chat.
 | `task-*` | Spec-driven task pipeline | 5 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
-| `kanban-*` | Lightweight task tracker | 14 |
+| `track-*` | Lightweight task tracker | 7 |
 
-The `task-*` pipeline and the `kanban-*` tracker are deliberately separate domains. Reach
-for `task-*` when a change is large enough to deserve a written spec, and for `kanban-*`
+The `task-*` pipeline and the `track-*` tracker are deliberately separate domains. Reach
+for `task-*` when a change is large enough to deserve a written spec, and for `track-*`
 when you want fast day-to-day tracking.
 
 ## Three doors, one room
@@ -103,7 +103,7 @@ Each door resolves the skill a different way, but the reader ends up in the same
 | Markdown command | `/commit` | `commands/commit.md` instructs the model to read the skill. |
 | MCP prompt | `/marvin:commit` | The server reads the skill, strips its frontmatter, and returns the body. |
 
-The `kanban-*` group is the deliberate exception. Its 14 prompts are thin
+The `track-*` group is the deliberate exception. Its 7 prompts (ADR-0032) are thin
 tool-invocation wrappers that carry an inline body rather than pointing at a skill, so
 only the MCP door exists for them. There is no separate workflow prose to share, because
 the work is done by the underlying tools.
@@ -133,9 +133,9 @@ the job they do.
 
 | Tool | Group | Role |
 |------|-------|------|
-| `task` | Kanban board | Task CRUD, role-driven transitions, PR-URL capture, archive, and board configuration. |
-| `task-detail` | Kanban board | A single task's fields and body, for the detail widget. |
-| `tracker` | Kanban board | Read-only list of tasks that carry an external tracker id. |
+| `task` | Task board | Task CRUD, role-driven transitions, PR-URL capture, archive, and board configuration. |
+| `task-detail` | Task board | A single task's fields and body, for the detail widget. |
+| `tracker` | Task board | Read-only list of tasks that carry an external tracker id. |
 | `help` | Toolbox state | The project dashboard and the registry-derived command index. |
 | `dashboard` | Toolbox state | The whole-toolbox status report. |
 | `verify` | Task pipeline | The concurrent quality-gate runner that writes `verification.md`. |
@@ -198,8 +198,8 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 ## The MCP Apps widget layer
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
-Marvin ships seven such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Seven of the twelve tools bind a widget, so on a capable host the same command that prints
+Marvin ships eight such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
+Eight of the twelve tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid
@@ -212,8 +212,9 @@ flowchart LR
     T5["audit"] --> W5["audit"]
     T6["handoff"] --> W6["handoffs"]
     T7["dashboard"] --> W7["dashboard"]
+    T8["help"] --> W8["help"]
   end
-  W1 & W2 & W3 & W4 & W5 & W6 & W7 --> HOST["Rich MCP host<br/>ui:// iframe"]
+  W1 & W2 & W3 & W4 & W5 & W6 & W7 & W8 --> HOST["Rich MCP host<br/>ui:// iframe"]
 ```
 
 Three properties keep this layer from leaking complexity into the rest of the project:
@@ -241,7 +242,7 @@ flowchart LR
 | Document | `readme`, `changelog` |
 | Ship | `commit`, `pr-create`, `pr-resolve`, `pr-merge` |
 
-Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking, and run
+Layer the `track-*` tracker on top of any of these for day-to-day task tracking, and run
 `/marvin:dashboard` to see the whole toolbox's state at a glance.
 
 ## The working directory
@@ -256,11 +257,11 @@ together and easy to include in or exclude from version control.
 | `.marvin/task/` | `task-*` | Immutable specs and the current `verification.md`. |
 | `.marvin/security/` | `sec-*` | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | `refactor-*` | Numbered findings registers and sequenced step plans. |
-| `.marvin/kanban/` | `kanban-*` | The task board as markdown files. |
+| `.marvin/track/` | `track-*` | The task board as markdown files. |
 | `.marvin/memory/` | `lessons` | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | `handoff` | Session-continuation documents. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
-| `.marvin/config.json` | `kanban-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
+| `.marvin/config.json` | `track-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
 
 Project deliverables are deliberately left out of this sweep. Architecture Decision
 Records stay under `docs/adr/`, and `CHANGELOG.md` and `README.md` stay at the root.

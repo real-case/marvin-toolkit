@@ -207,7 +207,7 @@ function TrackerCardDetail({
               style={{ opacity: 0.7, fontSize: "0.85em", marginTop: "0.25rem" }}
             >
               No tracker URL — set <code>tracker_url_template</code> via{" "}
-              <code>/marvin:kanban-config</code> to link out.
+              <code>/marvin:track-config</code> to link out.
             </div>
           </div>
         )}
@@ -265,7 +265,7 @@ export function TrackerListView({ data, connecting, error, onOpenLink }: Tracker
       <div data-testid="tracker-empty" style={{ padding: "1rem", opacity: 0.75 }}>
         No tasks carry a tracker id. Add one when you create a task (e.g.{" "}
         <code>tracker_id: OSI-123</code>), and set <code>tracker_url_template</code> via{" "}
-        <code>/marvin:kanban-config</code> to link out.
+        <code>/marvin:track-config</code> to link out.
       </div>
     );
   }

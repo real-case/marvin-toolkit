@@ -420,7 +420,7 @@ function checkFrontmatter(fm: Record<string, string>, type: string | null): Chec
       fail(
         "spike-required",
         "Frontmatter",
-        "spike_required: true — resolve the unknown (e.g. /marvin:kanban-spike) before DoR",
+        "spike_required: true — resolve the unknown (e.g. a spike via /marvin:track-new) before DoR",
       ),
     );
   }

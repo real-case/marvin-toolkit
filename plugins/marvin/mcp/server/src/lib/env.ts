@@ -8,7 +8,7 @@ import { join } from "node:path";
 export interface ServerEnv {
   /** Project root, from CLAUDE_PROJECT_DIR or process.cwd(). */
   projectDir: string;
-  /** Directory where kanban task `.md` files live (default `.marvin/kanban`). */
+  /** Directory where board task `.md` files live (default `.marvin/track`). */
   tasksDir: string;
   /** Path to optional `.marvin/config.json`. */
   configPath: string;
@@ -30,7 +30,7 @@ export interface ServerEnv {
 
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "track");
   const configPath = env.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");

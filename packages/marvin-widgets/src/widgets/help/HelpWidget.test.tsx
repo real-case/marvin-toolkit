@@ -39,14 +39,14 @@ describe("HelpView — panel over the full fixture", () => {
     expect(panel.textContent).toContain("toolset for AI development without panic");
     expect(screen.getByTestId("help-version").textContent).toContain("v0.1.0");
 
-    // summary: project, git branch + base, kanban statuses, artifacts (specs bold)
+    // summary: project, git branch + base, board statuses, artifacts (specs bold)
     expect(screen.getByTestId("help-project").textContent).toContain("telegram-publications");
     const git = screen.getByTestId("help-git");
     expect(git.textContent).toContain("task/telegram-publications-ingestion");
     expect(git.textContent).toContain("main");
-    const kanban = screen.getByTestId("help-kanban");
+    const board = screen.getByTestId("help-board");
     for (const s of ["todo", "wip", "review", "done", "blocked"]) {
-      expect(kanban.textContent).toContain(s);
+      expect(board.textContent).toContain(s);
     }
     expect(screen.getByTestId("help-artifacts").textContent).toContain("specs");
     expect(screen.getByTestId("help-artifacts").textContent).toContain("40");
@@ -65,11 +65,11 @@ describe("HelpView — panel over the full fixture", () => {
     expect(groups.textContent).toContain("Everyday dev");
 
     // per-group reference: a section per group, all 57 commands, blurbs, human mark
-    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "kanban"]) {
+    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       expect(screen.getByTestId(`help-ref-${g}`)).toBeTruthy();
     }
     const commands = screen.getAllByTestId("help-command");
-    expect(commands).toHaveLength(57);
+    expect(commands).toHaveLength(50);
     const commit = commands.find((c) => c.getAttribute("data-command") === "commit");
     expect(commit).toBeTruthy();
     // the human-run lifecycle commands carry the 👤 mark; ordinary ones do not
@@ -100,7 +100,7 @@ describe("HelpView — neutral / connection states", () => {
     noServers.unmount();
 
     const noStatuses = render(<HelpView data={noStatusesHelpFixture} />);
-    expect(screen.getByTestId("help-kanban").textContent).toContain("no statuses configured");
+    expect(screen.getByTestId("help-board").textContent).toContain("no statuses configured");
     noStatuses.unmount();
 
     render(<HelpView data={noGitHelpFixture} />);
@@ -143,8 +143,8 @@ describe("HelpView — group Read more drill-down", () => {
     // overview is unchanged: the whole 57-command reference and every group
     // section are still rendered inline (no regression from the new link)
     expect(screen.getByTestId("help-panel")).toBeTruthy();
-    expect(screen.getAllByTestId("help-command")).toHaveLength(57);
-    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "kanban"]) {
+    expect(screen.getAllByTestId("help-command")).toHaveLength(50);
+    for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       expect(screen.getByTestId(`help-ref-${g}`)).toBeTruthy();
     }
 
@@ -152,7 +152,7 @@ describe("HelpView — group Read more drill-down", () => {
     const more = screen.getAllByTestId("help-more");
     expect(more).toHaveLength(7);
     expect(more.map((m) => m.getAttribute("data-group")).sort()).toEqual(
-      ["adr", "core", "kanban", "pr", "refactor", "sec", "task"].sort(),
+      ["adr", "core", "pr", "refactor", "sec", "task", "track"].sort(),
     );
 
     // no detail view is open initially
@@ -205,7 +205,7 @@ describe("HelpView — group Read more drill-down", () => {
     fireEvent.click(screen.getByTestId("help-back"));
     expect(screen.queryByTestId("help-detail")).toBeNull();
     expect(screen.getByTestId("help-panel")).toBeTruthy();
-    expect(screen.getAllByTestId("help-command")).toHaveLength(57);
+    expect(screen.getAllByTestId("help-command")).toHaveLength(50);
   });
 
   it("the detail view shows the human-run legend for a group with human commands", () => {

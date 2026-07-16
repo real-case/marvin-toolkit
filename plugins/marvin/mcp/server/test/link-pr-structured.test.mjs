@@ -10,7 +10,7 @@ const BRANCH = "001--capture-the-pr-url";
 const PR_URL = "https://github.com/acme/widget/pull/42";
 
 /**
- * Seed a task .md the kanban storage layer accepts (numeric-prefixed filename,
+ * Seed a task .md the board storage layer accepts (numeric-prefixed filename,
  * frontmatter id matching the seq, no `pr` yet) into a tasks dir kept SEPARATE
  * from the git repo so it never dirties the worktree.
  */

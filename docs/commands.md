@@ -2,7 +2,7 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **57** in total,
+`/marvin:<group>-<command>`, and singletons stay bare. There are **50** in total,
 divided into seven groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
@@ -19,7 +19,7 @@ whichever suits the moment.
 - **`/<command>`.** Type the terse markdown slash command, such as `/commit` or `/sec-scan`.
 - **`/marvin:<command>`.** Type the namespaced MCP prompt, such as `/marvin:commit`, which the bundled server serves.
 
-The `kanban-*` group and five read-side commands — `help`, `dashboard`, `handoff-list`,
+The `track-*` group and five read-side commands — `help`, `dashboard`, `handoff-list`,
 `lessons`, and `task-summary` — have no skill. For those, a chat phrase is served by
 Claude calling the underlying tool rather than by skill auto-discovery, but the effect is
 the same.
@@ -67,7 +67,7 @@ These are language-agnostic and used by every engineer.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files such as `.env` and keys, draft a Conventional Commits message with a `Refs:` footer when the branch belongs to a kanban task, and confirm before committing. | `marvin commit this`, `commit my changes`, `stage and commit` |
+| `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files such as `.env` and keys, draft a Conventional Commits message with a `Refs:` footer when the branch belongs to a board task, and confirm before committing. | `marvin commit this`, `commit my changes`, `stage and commit` |
 | `/marvin:debug` | Run hypothesis-driven root-cause analysis — gather evidence, form hypotheses, and build a minimal reproduction instead of guessing. | `marvin debug this`, `why is this failing?`, `the tests only flake on CI` |
 | `/marvin:adr` | Draft an Architecture Decision Record, with the numbering, path, and index coming from the `adr` tool; drafts always land `proposed`. | `marvin write an ADR`, `record this decision`, `document this design choice` |
 | `/marvin:changelog` | Generate a changelog or release notes from git history between tags, dates, or refs, in Keep a Changelog form. | `marvin changelog since v0.1.0`, `what changed since the last tag?`, `generate release notes` |
@@ -110,7 +110,7 @@ These commands cover the pull request from open to merge.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:pr-create` | Open a PR with a structured description, a verification checklist, and issue linking, after running pre-flight checks. Picks up kanban task context and captures the PR URL onto the task. | `marvin create a PR`, `open a pull request`, `push and open a PR` |
+| `/marvin:pr-create` | Open a PR with a structured description, a verification checklist, and issue linking, after running pre-flight checks. Picks up board task context and captures the PR URL onto the task. | `marvin create a PR`, `open a pull request`, `push and open a PR` |
 | `/marvin:pr-review` | Review a PR for bugs, security, performance, and style, and post the review with severity-tagged inline comments. | `marvin review PR 51`, `review this PR on GitHub`, `post a review on #51` |
 | `/marvin:pr-resolve` | Work through unresolved review threads — plan, fix, push, then reply to and resolve each. | `marvin resolve PR 51`, `address the review comments on #51`, `fix the PR feedback` |
 | `/marvin:pr-merge` | Merge a PR, then check out the base branch and pull. | `marvin merge PR 51`, `land this PR`, `merge it and pull the base` |
@@ -141,7 +141,7 @@ These commands cover OWASP-aligned scanning, threat modeling, and remediation.
 | `/marvin:sec-secrets` | Scan deeply for leaked secrets and keys across code, config, and the full git history. | `marvin scan for secrets`, `did I commit a key?`, `find leaked credentials` |
 | `/marvin:sec-deps` | Audit dependencies for known CVEs, license risks, and unmaintained or typosquatted packages. | `marvin audit dependencies`, `check for vulnerable packages`, `run npm audit` |
 | `/marvin:sec-gate` | Run a fast, diff-scoped security check on staged or recent changes, as a pre-commit gate. | `marvin quick sec check`, `gate this commit`, `security-check my diff` |
-| `/marvin:sec-threat-model` | Build a STRIDE threat model for a feature, service, or the whole app, covering data flows, trust boundaries, threats, and mitigations. | `marvin threat model the kanban tools`, `STRIDE analysis`, `what can go wrong here?` |
+| `/marvin:sec-threat-model` | Build a STRIDE threat model for a feature, service, or the whole app, covering data flows, trust boundaries, threats, and mitigations. | `marvin threat model the board tools`, `STRIDE analysis`, `what can go wrong here?` |
 | `/marvin:sec-iac` | Review Infrastructure-as-Code across Terraform, CloudFormation, Kubernetes, Docker, and Helm. | `marvin review the Terraform`, `scan the Dockerfile`, `IaC security review` |
 | `/marvin:sec-ci` | Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions. | `marvin audit the CI pipeline`, `review the GitHub Actions`, `harden the workflows` |
 | `/marvin:sec-fix` | Generate and verify a minimal, tested patch for a vulnerability from any scanner or manual finding. | `marvin fix this vulnerability`, `patch the finding`, `remediate the CVE` |
@@ -170,7 +170,7 @@ one behavior-preserving step at a time behind the verify gate.
 
 The `marvin-refactor-auditor` agent supports these commands.
 
-## Kanban tracker — `kanban-*`
+## Task tracker — `track-*`
 
 These commands drive a lightweight per-project board with interactive forms, giving
 inquirer-style speed inside Claude Code. Every form field is also a tool argument, so
@@ -178,49 +178,46 @@ details you already stated skip the form, and on hosts without form support the 
 answer with the exact arguments to pass instead. New tasks branch off following the
 convention `<type-prefix>/<seq>[-<tracker>]--<slug>`, with `bug` becoming `fix`, `feature`
 becoming `feat`, `chore` becoming `chore`, and `spike` becoming `spike`, as in
-`fix/007-OSI-123--login-timeout`. Tasks are stored under `.marvin/kanban/`, with an
-optional `.marvin/config.json` managed through `/marvin:kanban-config`.
+`fix/007-OSI-123--login-timeout`. Tasks are stored under `.marvin/track/`, with an
+optional `.marvin/config.json` managed through `/marvin:track-config`.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:kanban-menu` | Open the kanban main menu. | `marvin open the board`, `kanban menu` |
-| `/marvin:kanban-bug` | Quick-create a bug task through an interactive form. | `marvin add a bug to the board`, `new bug task` |
-| `/marvin:kanban-feature` | Quick-create a feature task. | `marvin add a feature to the board`, `new feature task` |
-| `/marvin:kanban-chore` | Quick-create a chore task. | `marvin add a chore`, `new chore task` |
-| `/marvin:kanban-spike` | Quick-create a spike, or research, task. | `marvin add a spike`, `new research task` |
-| `/marvin:kanban-start` | Pick a todo task, branch off, and mark it work-in-progress. | `marvin start a board task`, `pick a todo and branch off` |
-| `/marvin:kanban-review` | Move the current task to review. | `marvin move my task to review`, `mark this in review` |
-| `/marvin:kanban-done` | Mark the current task done. | `marvin mark the task done`, `finish this board task` |
-| `/marvin:kanban-list` | List all tasks grouped by status. | `marvin list board tasks`, `show the kanban` |
-| `/marvin:kanban-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `open the login-timeout task` |
-| `/marvin:kanban-tracker` | List tasks that carry an external tracker id, each linking out to the tracker. | `marvin show tracked tasks`, `which tasks link to Jira?` |
-| `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. | `marvin what am I working on?`, `board status` |
-| `/marvin:kanban-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, and statuses — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
-| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands. | `marvin board dashboard`, `kanban help` |
+| `/marvin:track-menu` | Open the board main menu — every action, including `link-pr` and `archive`. | `marvin open the board`, `board menu` |
+| `/marvin:track-new` | Create a task — bug, feature, chore, or spike — through an interactive form. | `marvin add a bug to the board`, `new feature task` |
+| `/marvin:track-list` | List the board: all tasks by status, the current-branch + work-in-progress view, or the tracked tasks linking out to the tracker. | `marvin what's on the board?`, `what am I working on?`, `show tracked tasks` |
+| `/marvin:track-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `open the login-timeout task` |
+| `/marvin:track-start` | Pick a todo task, branch off, and mark it work-in-progress. | `marvin start a board task`, `pick a todo and branch off` |
+| `/marvin:track-move` | Move a task — to review, to done, or to any configured status. | `marvin move task 3 to review`, `mark this done`, `set task 3 to blocked` |
+| `/marvin:track-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, and statuses — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
 
-Committing and opening PRs for board tasks is handled by the kanban-aware
+The board dashboard scoped to these commands is `/marvin:help track`
+([ADR-0032](./adr/0032-track-surface-reduction.md) records the seven-command surface).
+
+Committing and opening PRs for board tasks is handled by the board-aware
 [`/marvin:commit`](#core-developer-tools) and
 [`/marvin:pr-create`](#pull-request-lifecycle--pr-), which pick up the linked task
 automatically ([ADR-0025](./adr/0025-kanban-board-only.md)). Finished work archives off
-the board into `.marvin/kanban/archive/`; its ids stay reserved, and `kanban-list` shows
+the board into `.marvin/track/archive/`; its ids stay reserved, and `track-list` shows
 an `N archived` footer while the archive holds anything. The
 [configuration reference](./configuration.md) documents connecting an external tracker.
 
 ## Widgets on rich hosts
 
-On an MCP host that supports the Apps widget layer, seven commands render an interactive
-panel in addition to their text output ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
+On an MCP host that supports the Apps widget layer, eight widgets render an interactive
+panel in addition to the text output ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
 The panel is additive, so a text-only host shows the same information as text.
 
 | Command | Widget |
 |---------|--------|
-| `/marvin:kanban-list` | The board as a master-detail task list. |
-| `/marvin:kanban-show` | A single task's fields and body. |
-| `/marvin:kanban-tracker` | Tasks with a tracker id, linking out. |
+| `/marvin:track-list` | The board as a master-detail task list. |
+| `/marvin:track-list` (tracked view) | Tasks with a tracker id, linking out. |
+| `/marvin:track-show` | A single task's fields and body. |
 | `/marvin:task-summary` | The delivery digest for a finished task. |
 | `/marvin:sec-report` | The security findings viewer with severity triage. |
 | `/marvin:handoff-list` | A browser over the session-continuation docs. |
 | `/marvin:dashboard` | The whole-toolbox status panel. |
+| `/marvin:help` | The welcome dashboard — summary, MCP servers, and the command index. |
 
 ## Deterministic MCP tools
 
@@ -230,7 +227,7 @@ but they are not typed as slash commands.
 
 | Tool | Purpose |
 |------|---------|
-| `task` | The kanban board — task CRUD, role-driven transitions over the configured statuses, PR-URL capture, done-task archive, and board configuration. |
+| `task` | The task board — task CRUD, role-driven transitions over the configured statuses, PR-URL capture, done-task archive, and board configuration. |
 | `task-detail` | A single task's fields and body, backing the detail view. |
 | `tracker` | A read-only list of tasks that carry an external tracker id. |
 | `help` | The dashboard and the registry-derived command index. |

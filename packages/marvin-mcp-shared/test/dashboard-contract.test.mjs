@@ -17,7 +17,7 @@ import {
 
 const BASE = {
   version: "0.12.0",
-  paths: { project: "/p", tasks_dir: "/p/.marvin/kanban", config_path: "/p/.marvin/config.json" },
+  paths: { project: "/p", tasks_dir: "/p/.marvin/track", config_path: "/p/.marvin/config.json" },
   config: {
     base_branch: "dev",
     tracker_url_template: null,
@@ -27,8 +27,8 @@ const BASE = {
       { key: "done", role: "done" },
     ],
   },
-  kanban_counts: { todo: 1, wip: 0, done: 2 },
-  kanban_role_counts: { todo: 1, wip: 0, done: 2 },
+  board_counts: { todo: 1, wip: 0, done: 2 },
+  board_role_counts: { todo: 1, wip: 0, done: 2 },
   git: { has_git: true, has_gh: false, branch: "dev" },
   artifacts: { specs: 1, handoffs: 0, audits: 2, lessons: 3 },
   command_groups: [{ group: "core", count: 13 }],

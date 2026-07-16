@@ -1,6 +1,6 @@
 ---
 name: pr-create
-description: Create a pull request with structured description, verification checklist, and issue linking; picks up kanban board task context (title prefix, task/tracker links, PR-URL capture) when the branch belongs to a board task. Use when the user asks to "create a PR", "make a PR", "open a pull request", "submit PR", "push and open a PR", "open a PR for this board task", "marvin create a PR", or just "PR" — when a feature/bugfix branch is ready to be proposed. This is the OPEN step only; it does not review, update, or merge an existing PR.
+description: Create a pull request with structured description, verification checklist, and issue linking; picks up board task context (title prefix, task/tracker links, PR-URL capture) when the branch belongs to a board task. Use when the user asks to "create a PR", "make a PR", "open a pull request", "submit PR", "push and open a PR", "open a PR for this board task", "marvin create a PR", or just "PR" — when a feature/bugfix branch is ready to be proposed. This is the OPEN step only; it does not review, update, or merge an existing PR.
 ---
 
 Create a well-structured pull request for the current branch.
@@ -13,9 +13,9 @@ Create a well-structured pull request for the current branch.
 4. `git diff <base>...HEAD --stat` — see changed files
 5. Read the key changed files to understand the full context
 
-## Kanban board task
+## Board task
 
-If the project has a board (task files under `.marvin/kanban/`), find the task whose
+If the project has a board (task files under `.marvin/track/`), find the task whose
 frontmatter `branch` equals the current branch. When one is linked, note its `id`,
 `tracker_id`, `title`, and filename, and read `tracker_url_template` from
 `.marvin/config.json` (the `{tracker_id}` placeholder expands to the task's `tracker_id`).
@@ -68,7 +68,7 @@ Use the template, dropping sections that don't apply:
 When a board task is linked, open the body with its links (before `## Summary`):
 
 ```markdown
-Task: `.marvin/kanban/<filename>`
+Task: `.marvin/track/<filename>`
 Tracker: <url>
 ```
 

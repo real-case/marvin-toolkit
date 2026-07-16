@@ -131,9 +131,9 @@ export const longTitleTaskDetailFixture: TaskDetail = {
   status: { key: "wip", role: "wip" },
   // ~140 chars — long enough to wrap the master row and the detail heading.
   title:
-    "Reconcile the kanban storage schema's status vocabulary with the shared contracts " +
+    "Reconcile the board storage schema's status vocabulary with the shared contracts " +
     "package so widgets, gates and the task tool share one source",
-  branch: "feat/004-OSI-215--reconcile-kanban-storage-status-vocabulary-with-shared-contracts",
+  branch: "feat/004-OSI-215--reconcile-board-storage-status-vocabulary-with-shared-contracts",
   tracker_id: "OSI-215",
   tracker_url: "https://tracker.example/browse/OSI-215",
   pr: null,

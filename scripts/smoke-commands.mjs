@@ -71,21 +71,14 @@ const REQUIRED_PROMPTS = [
   "refactor-smells",
   "refactor-plan",
   "refactor-apply",
-  // kanban-*
-  "kanban-menu",
-  "kanban-bug",
-  "kanban-feature",
-  "kanban-chore",
-  "kanban-spike",
-  "kanban-start",
-  "kanban-review",
-  "kanban-done",
-  "kanban-list",
-  "kanban-show",
-  "kanban-tracker",
-  "kanban-status",
-  "kanban-config",
-  "kanban-help",
+  // track-*
+  "track-menu",
+  "track-new",
+  "track-list",
+  "track-show",
+  "track-start",
+  "track-move",
+  "track-config",
 ];
 
 const REQUIRED_TOOLS = [

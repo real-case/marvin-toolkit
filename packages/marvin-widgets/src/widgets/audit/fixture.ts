@@ -176,7 +176,7 @@ export const minimalFindingFixture: AuditListPayload = {
         {
           id: "TM-1",
           severity: "medium",
-          title: "Kanban board files are world-readable on shared checkouts",
+          title: "Board task files are world-readable on shared checkouts",
           category: "STRIDE — Information Disclosure",
         },
       ],

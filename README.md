@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **57 prompts, 12 MCP tools, 10 agents, and 7 interactive widgets**
+Under the hood it ships **50 prompts, 12 MCP tools, 10 agents, and 8 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -43,14 +43,14 @@ bundled.
 ## Documentation
 
 - **[Getting started](./docs/getting-started.md)** — install, confirm it works, and run your first commands.
-- **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, kanban, security, and refactoring.
+- **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, the task board, security, and refactoring.
 - **[Configuration](./docs/configuration.md)** — the `.marvin/` working directory, `.marvin/config.json`, and the `MARVIN_*` environment variables.
 - **[Command reference](./docs/commands.md)** — every `/marvin:` command with a synopsis and the phrases that invoke it.
 - **[Architecture](./docs/architecture.md)** — how the plugin is built, with diagrams.
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 57
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 50
 prompts divide into seven groups:
 
 | Group | Purpose | Count |
@@ -61,7 +61,7 @@ prompts divide into seven groups:
 | `task-*` | Spec-driven task pipeline | 5 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
-| `kanban-*` | Lightweight task tracker | 14 |
+| `track-*` | Lightweight task tracker | 7 |
 
 The tables below give a one-line synopsis per command. The
 [command reference](./docs/commands.md) adds the natural-language phrases that invoke each
@@ -166,42 +166,42 @@ split by mutation into read, plan, and apply.
 
 The `marvin-refactor-auditor` agent supports these commands.
 
-### Kanban tracker — `kanban-*`
+### Task tracker — `track-*`
 
 These drive a lightweight per-project board with interactive forms
 ([ADR-0025](./docs/adr/0025-kanban-board-only.md)). New tasks branch off following the
 convention `<type-prefix>/<seq>[-<tracker>]--<slug>`, and committing or opening a PR for a
-board task goes through the kanban-aware `/marvin:commit` and `/marvin:pr-create`, which
+board task goes through the board-aware `/marvin:commit` and `/marvin:pr-create`, which
 pick up the linked task automatically.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin:kanban-menu` | Open the main menu. |
-| `/marvin:kanban-bug`, `-feature`, `-chore`, `-spike` | Quick-create a task of the given type. |
-| `/marvin:kanban-start` | Pick a todo task, branch off, and mark it in progress. |
-| `/marvin:kanban-review` | Move the current task to review. |
-| `/marvin:kanban-done` | Mark the current task done. |
-| `/marvin:kanban-list` | List all tasks grouped by status. |
-| `/marvin:kanban-show` | Show one task in full. |
-| `/marvin:kanban-tracker` | List tasks with an external tracker id, linking out. |
-| `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. |
-| `/marvin:kanban-config` | Show or edit the board configuration. |
-| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands. |
+| `/marvin:track-menu` | Open the main menu — every board action, including `link-pr` and `archive`. |
+| `/marvin:track-new` | Create a task — bug, feature, chore, or spike. |
+| `/marvin:track-list` | List the board: all tasks by status, the work-in-progress view, or the tracked tasks linking out. |
+| `/marvin:track-show` | Show one task in full. |
+| `/marvin:track-start` | Pick a todo task, branch off, and mark it in progress. |
+| `/marvin:track-move` | Move a task — to review, done, or any configured status. |
+| `/marvin:track-config` | Show or edit the board configuration. |
+
+The board dashboard and command reference stay one call away as `/marvin:help track`
+([ADR-0032](./docs/adr/0032-track-surface-reduction.md) records the seven-command
+surface).
 
 Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)):
-configure your tracker's vocabulary through `/marvin:kanban-config`, and the lifecycle
+configure your tracker's vocabulary through `/marvin:track-config`, and the lifecycle
 commands drive it by role. The [configuration reference](./docs/configuration.md) documents
 every setting.
 
 ## Interactive widgets
 
-On an MCP host that supports the Apps widget layer, seven commands render an interactive
-panel in addition to their text output
+On an MCP host that supports the Apps widget layer, eight widgets render an interactive
+panel in addition to the text output
 ([ADR-0024](./docs/adr/0024-mcp-apps-widget-architecture.md)). The panel is additive, so a
 text-only host shows the same information as text and no command depends on a rich host.
-The widget-backed commands are `/marvin:kanban-list`, `/marvin:kanban-show`,
-`/marvin:kanban-tracker`, `/marvin:task-summary`, `/marvin:sec-report`,
-`/marvin:handoff-list`, and `/marvin:dashboard`.
+The widget-backed commands are `/marvin:track-list` (which fronts both the board list and
+the tracked link-out view), `/marvin:track-show`, `/marvin:task-summary`,
+`/marvin:sec-report`, `/marvin:handoff-list`, `/marvin:dashboard`, and `/marvin:help`.
 
 ## Development lifecycle
 
@@ -222,7 +222,7 @@ flowchart LR
 | Document | `readme`, `changelog` |
 | Ship | `commit`, `pr-create`, `pr-resolve`, `pr-merge` |
 
-Layer the `kanban-*` tracker on top of any of these for day-to-day tracking, and run
+Layer the `track-*` tracker on top of any of these for day-to-day tracking, and run
 `/marvin:dashboard` to see the whole toolbox's state at a glance.
 
 ## Architecture decisions
@@ -264,6 +264,8 @@ rationale is folded into 0001, 0013, and 0018.
 | [0028](./docs/adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
+| [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Proposed |
+| [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Proposed |
 
 ## Contributing
 

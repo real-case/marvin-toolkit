@@ -24,7 +24,7 @@ export const GROUP_BLURBS: Record<string, string> = {
   task: "Spec-driven pipeline — start, implement, verify, deliver",
   sec: "Security scanners — secrets, deps, threat models & more",
   refactor: "Code-health — audit, smells, plan, apply",
-  kanban: "Lightweight board tracker — create, move, list, configure",
+  track: "Lightweight board tracker — create, move, list, configure",
 };
 
 /**
@@ -37,7 +37,7 @@ export const GROUP_BLURBS: Record<string, string> = {
  */
 export const COMMAND_BLURBS: Record<string, string> = {
   // core
-  commit: "Conventional commit, kanban-linked",
+  commit: "Conventional commit, board-linked",
   debug: "Systematic root-cause debugging",
   adr: "Create an Architecture Decision Record",
   changelog: "Changelog from git history",
@@ -85,21 +85,14 @@ export const COMMAND_BLURBS: Record<string, string> = {
   "refactor-smells": "Scoped code-smell scan",
   "refactor-plan": "Sequence findings into steps",
   "refactor-apply": "Apply one refactor step, gated",
-  // kanban
-  "kanban-menu": "Board action menu",
-  "kanban-bug": "New bug task",
-  "kanban-feature": "New feature task",
-  "kanban-chore": "New chore task",
-  "kanban-spike": "New spike task",
-  "kanban-start": "Move a task to in-progress",
-  "kanban-review": "Move a task to review",
-  "kanban-done": "Move a task to done",
-  "kanban-list": "List board tasks",
-  "kanban-show": "Show one task",
-  "kanban-tracker": "Link a tracker URL",
-  "kanban-status": "Set a task status",
-  "kanban-config": "Show or edit board config",
-  "kanban-help": "Board help",
+  // track
+  "track-menu": "Board action menu",
+  "track-new": "New board task",
+  "track-list": "List tasks — all, WIP, tracked",
+  "track-show": "Show one task",
+  "track-start": "Pick up a task, branch off",
+  "track-move": "Move a task between statuses",
+  "track-config": "Show or edit board config",
 };
 
 /**
@@ -115,7 +108,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
 export const COMMAND_DETAILS: Record<string, string> = {
   // core
   commit:
-    "Safe commit — inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current kanban board task.",
+    "Safe commit — inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
   debug:
     "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
   adr: "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
@@ -135,7 +128,7 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Team lessons-learned store — capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard:
-    "Whole-toolbox state report: kanban, config, git, artifact inventories, ADR corpus, and local usage.",
+    "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
   // adr
   "adr-review":
     "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
@@ -151,7 +144,7 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Regenerate the Architecture-decisions digest in CLAUDE.md from accepted ADRs only. Human-run.",
   // pr
   "pr-create":
-    "Open a pull request with a structured description and verification checklist; picks up kanban board-task context when present.",
+    "Open a pull request with a structured description and verification checklist; picks up board-task context when present.",
   "pr-review":
     "Review a pull request on GitHub and post the review there — inline comments by severity plus a summary.",
   "pr-resolve":
@@ -196,21 +189,15 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
   "refactor-apply":
     "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, rollback on red.",
-  // kanban
-  "kanban-menu": "Open the board action menu.",
-  "kanban-bug": "Create a bug task on the board.",
-  "kanban-feature": "Create a feature task on the board.",
-  "kanban-chore": "Create a chore task on the board.",
-  "kanban-spike": "Create a spike — a time-boxed investigation task.",
-  "kanban-start": "Move a board task to in-progress.",
-  "kanban-review": "Move a board task to review.",
-  "kanban-done": "Move a board task to done.",
-  "kanban-list": "List the tasks on the board.",
-  "kanban-show": "Show one board task in detail.",
-  "kanban-tracker": "Link an external tracker URL to a board task.",
-  "kanban-status": "Set a board task's status directly.",
-  "kanban-config": "Show or edit the board configuration (.marvin/config.json).",
-  "kanban-help": "Show board help.",
+  // track
+  "track-menu": "Open the board action menu.",
+  "track-new": "Create a board task — bug, feature, chore, or spike — through an interactive form.",
+  "track-list":
+    "List the board — the full status-grouped list, the current-branch + work-in-progress view, or the tracked tasks linking out to the external tracker.",
+  "track-show": "Show one board task in detail.",
+  "track-start": "Pick a todo task, create its branch, and mark it work-in-progress.",
+  "track-move": "Move a board task — to review, to done, or to any configured status.",
+  "track-config": "Show or edit the board configuration (.marvin/config.json).",
 };
 
 /**
@@ -249,17 +236,11 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   // refactor
   "refactor-smells": "/marvin:refactor-smells src/tools",
   "refactor-plan": "/marvin:refactor-plan F3,F4",
-  // kanban
-  "kanban-bug": "/marvin:kanban-bug login 500s",
-  "kanban-feature": "/marvin:kanban-feature dark mode",
-  "kanban-chore": "/marvin:kanban-chore bump deps",
-  "kanban-spike": "/marvin:kanban-spike try Preact",
-  "kanban-start": "/marvin:kanban-start 12",
-  "kanban-review": "/marvin:kanban-review 12",
-  "kanban-done": "/marvin:kanban-done 12",
-  "kanban-show": "/marvin:kanban-show 12",
-  "kanban-tracker": "/marvin:kanban-tracker 12",
-  "kanban-status": "/marvin:kanban-status 12 blocked",
+  // track
+  "track-new": "/marvin:track-new bug login 500s",
+  "track-start": "/marvin:track-start 12",
+  "track-move": "/marvin:track-move 12 blocked",
+  "track-show": "/marvin:track-show 12",
 };
 
 /**
@@ -489,75 +470,40 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, execute step 2 of the plan",
     "marvin, do the refactoring under the gates",
   ],
-  // kanban
-  "kanban-menu": [
+  // track
+  "track-menu": [
     "marvin, open the board menu",
     "marvin, show the board actions",
     "marvin, what can I do on the board?",
   ],
-  "kanban-bug": [
+  "track-new": [
     "marvin, add a bug to the board",
-    "marvin, new bug: login 500s",
-    "marvin, track this bug",
-  ],
-  "kanban-feature": [
-    "marvin, add a feature to the board",
     "marvin, new feature: dark mode",
-    "marvin, track this feature request",
+    "marvin, track this chore",
   ],
-  "kanban-chore": [
-    "marvin, add a chore",
-    "marvin, new chore: bump deps",
-    "marvin, track this maintenance task",
-  ],
-  "kanban-spike": [
-    "marvin, add a spike",
-    "marvin, new spike: try Preact",
-    "marvin, track this investigation",
-  ],
-  "kanban-start": [
-    "marvin, start task 12",
-    "marvin, move this card to in-progress",
-    "marvin, begin work on this task",
-  ],
-  "kanban-review": [
-    "marvin, move task 12 to review",
-    "marvin, send this card to review",
-    "marvin, mark the task ready for review",
-  ],
-  "kanban-done": [
-    "marvin, mark task 12 done",
-    "marvin, close out this card",
-    "marvin, move this task to done",
-  ],
-  "kanban-list": [
-    "marvin, list the board tasks",
+  "track-list": [
     "marvin, what's on the board?",
-    "marvin, show me the kanban board",
+    "marvin, what am I working on?",
+    "marvin, show the tracked tasks",
   ],
-  "kanban-show": [
+  "track-show": [
     "marvin, show task 12",
     "marvin, open this card",
     "marvin, give me the details of task 12",
   ],
-  "kanban-tracker": [
-    "marvin, link a tracker URL to task 12",
-    "marvin, attach the Jira link to this card",
-    "marvin, connect this task to the tracker",
+  "track-start": [
+    "marvin, start task 12",
+    "marvin, pick up the next todo",
+    "marvin, begin work on this task",
   ],
-  "kanban-status": [
+  "track-move": [
+    "marvin, move task 12 to review",
+    "marvin, mark this task done",
     "marvin, set task 12 to blocked",
-    "marvin, change this card's status",
-    "marvin, move task 12 to a specific column",
   ],
-  "kanban-config": [
+  "track-config": [
     "marvin, show the board config",
-    "marvin, edit the kanban statuses",
+    "marvin, edit the board statuses",
     "marvin, configure the board",
-  ],
-  "kanban-help": [
-    "marvin, board help",
-    "marvin, how does the kanban board work?",
-    "marvin, help me with the tracker",
   ],
 };

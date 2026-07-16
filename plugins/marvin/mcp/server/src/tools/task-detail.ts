@@ -10,7 +10,7 @@ import type { ServerEnv } from "../lib/env.js";
 import { TASK_DETAIL_WIDGET_URI } from "../resources/widgets.js";
 
 /**
- * The task-detail read tool (ADR-0024 widget #2). It surfaces ONE kanban task's
+ * The task-detail read tool (ADR-0024 widget #2). It surfaces ONE board task's
  * full detail — the TaskCard fields plus its markdown body — as text (the
  * terminal fallback) and as a `TaskDetail` `structuredContent` payload the
  * task-detail `ui://` widget renders in an MCP Apps host.
@@ -34,7 +34,7 @@ export function buildTaskDetailTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "task-detail",
     description:
-      'Show one kanban task in full — its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
+      'Show one board task in full — its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
     inputSchema: TaskDetailInput,
     // Bind the task-detail `ui://` widget for MCP Apps hosts (ADR-0024). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -58,7 +58,7 @@ export function buildTaskDetailTool(env: ServerEnv): AnyToolDef {
         if (!task) {
           if (tasks.length === 0) {
             return ok(
-              "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one.",
+              "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one.",
             );
           }
           return errOk(

@@ -40,7 +40,7 @@ export const NoServers: StoryObj<typeof HelpView> = {
   args: { data: noServersHelpFixture },
 };
 
-/** Empty status vocabulary — the kanban row shows "no statuses configured". */
+/** Empty status vocabulary — the board row shows "no statuses configured". */
 export const NoStatuses: StoryObj<typeof HelpView> = {
   args: { data: noStatusesHelpFixture },
 };
@@ -95,7 +95,7 @@ export const PrDetail = groupDetailStory("pr");
 export const TaskDetail = groupDetailStory("task");
 export const SecDetail = groupDetailStory("sec");
 export const RefactorDetail = groupDetailStory("refactor");
-export const KanbanDetail = groupDetailStory("kanban");
+export const TrackDetail = groupDetailStory("track");
 
 /** Handshake in flight, no data yet — the "Connecting…" placeholder. */
 export const Connecting: StoryObj<typeof HelpView> = {

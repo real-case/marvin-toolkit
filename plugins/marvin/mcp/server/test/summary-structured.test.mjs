@@ -64,7 +64,7 @@ const VERIFICATION = [
   "",
 ].join("\n");
 
-const KANBAN_TASK = [
+const BOARD_TASK = [
   "---",
   'id: "001"',
   "type: feature",
@@ -115,8 +115,8 @@ function seedRepo() {
   mkdirSync(taskDir, { recursive: true });
   writeFileSync(join(taskDir, "001-demo.md"), SPEC);
   writeFileSync(join(taskDir, "verification.md"), VERIFICATION);
-  mkdirSync(join(repo, ".marvin", "kanban"), { recursive: true });
-  writeFileSync(join(repo, ".marvin", "kanban", "001--demo.md"), KANBAN_TASK);
+  mkdirSync(join(repo, ".marvin", "track"), { recursive: true });
+  writeFileSync(join(repo, ".marvin", "track", "001--demo.md"), BOARD_TASK);
   mkdirSync(join(repo, ".marvin", "memory"), { recursive: true });
   writeFileSync(join(repo, ".marvin", "memory", "demo-gotcha.md"), LESSON);
   writeFileSync(
