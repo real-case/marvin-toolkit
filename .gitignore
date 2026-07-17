@@ -56,3 +56,6 @@ packages/marvin-widgets/__image_snapshots__/__diff_output__/
 
 # Runtime markers written next to the installed plugin while a session uses it
 plugins/marvin/.in_use/
+
+# Playwright MCP scratch screenshots (local verification, never shared)
+.playwright-mcp/
