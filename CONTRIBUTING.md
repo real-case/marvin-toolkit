@@ -39,7 +39,7 @@ workspace that builds the committed widget HTML. Every command is
 
 The architectural rationale is recorded in [`docs/adr/`](./docs/adr/); start with
 [ADR-0001](./docs/adr/0001-single-plugin-consolidation.md). For the full architecture
-reference, including the "three doors, one room" model and step-by-step recipes for adding
+reference, including the "call it your way" model and step-by-step recipes for adding
 prompts, tools, and agents, read [CLAUDE.md](./CLAUDE.md).
 
 ## Quality gates

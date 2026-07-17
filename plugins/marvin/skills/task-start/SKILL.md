@@ -208,7 +208,7 @@ Before crystallizing, sanity-check that this is **one pull request**.
 
 ### Step 5F: Crystallization
 
-Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three doors — doors 1/2 natively, door 3 via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section from the dialogue context — write "N/A" / "none" deliberately rather than leaving a section blank or a `{placeholder}` unfilled:
 - **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk`, `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
@@ -325,7 +325,7 @@ Determine the fix:
 
 ### Step 6B: Crystallization
 
-Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three doors — doors 1/2 natively, door 3 via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section (write "N/A"/"none" deliberately), including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
 
