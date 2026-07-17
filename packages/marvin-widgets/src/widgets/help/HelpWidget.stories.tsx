@@ -12,15 +12,28 @@ import { waitForCondition } from "../../lib/story-helpers";
 
 /**
  * Stories for the help widget (ADR-0024): static visual states over the pure
- * `HelpView` (both host themes, the empty-data branches, the connection trio),
+ * `HelpView` (both themes, the empty-data branches, the connection trio),
  * a play-driven drill-down per command group whose post-play DOM is that group's
  * detail screenshot, and a mock-host story whose `play` drives the real ext-apps
  * handshake over an in-memory transport — the `@storybook/test-runner`
  * (test-storybook) oracle.
+ *
+ * Theming: the view renders under its OWN `<MvRoot>` (family restyle), so the
+ * stories pin a theme through the view's story-only `theme` prop instead of a
+ * wrapping decorator — a nested MvRoot could not override the inner scope's
+ * tokens. The meta-level `render` threads the story's `hostTheme` parameter (or
+ * the toolbar global, defaulted to light) into that prop, so pinned dark
+ * variants set `data-theme="dark"` on the widget's MvRoot deterministically and
+ * unpinned stories never follow the machine's OS scheme in screenshots.
  */
 const meta: Meta<typeof HelpView> = {
   title: "Widgets/Help",
   component: HelpView,
+  render: (args, context) => {
+    const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+    const theme = args.theme ?? (t === "dark" ? "dark" : t === "light" ? "light" : undefined);
+    return <HelpView {...args} theme={theme} />;
+  },
 };
 export default meta;
 
@@ -29,7 +42,7 @@ export const Fixture: StoryObj<typeof HelpView> = {
   args: { data: helpFixture },
 };
 
-/** The same full fixture under the dark host palette (pinned via parameters). */
+/** The same full fixture with the MvRoot pinned dark (via `parameters.hostTheme`). */
 export const FixtureDark: StoryObj<typeof HelpView> = {
   args: { data: helpFixture },
   parameters: { hostTheme: "dark" },

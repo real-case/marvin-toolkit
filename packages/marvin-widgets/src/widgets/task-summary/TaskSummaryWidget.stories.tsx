@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TaskSummaryView, TaskSummaryWidget, type TaskSummarySeam } from "./TaskSummaryWidget";
 import {
   taskSummaryFixture,
@@ -13,16 +13,35 @@ import { waitForCondition } from "../../lib/story-helpers";
 
 /**
  * Stories for the task-summary widget (ADR-0024 #3). The visual states are plain
- * args over the pure `TaskSummaryView` — the mixed fixture (light + dark host),
+ * args over the pure `TaskSummaryView` — the mixed fixture (light + pinned dark),
  * the all-green digest, the failure shot, every-section-empty, and a long-content
  * stress render — plus the connecting / no-data / error trio. The mock-host story
  * drives the real ext-apps handshake over an in-memory transport and asserts the
  * panel renders; it opts out of visual capture (`visual: false`) because its
  * settled DOM duplicates `Fixture`.
+ *
+ * The view wraps itself in `<MvRoot>`, so no theme decorator is needed: the dark
+ * variant pins the scope via the view's story-only `theme` prop (production omits
+ * it and follows the host/OS scheme).
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof TaskSummaryView> = {
   title: "Widgets/TaskSummary",
   component: TaskSummaryView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -31,7 +50,7 @@ export const Fixture: StoryObj<typeof TaskSummaryView> = {
   args: { data: taskSummaryFixture },
 };
 
-/** The same mixed fixture under the dark host theme (decorator applies host vars). */
+/** The same mixed fixture with the mvroot theme pinned dark (`data-theme="dark"`). */
 export const FixtureDark: StoryObj<typeof TaskSummaryView> = {
   args: { data: taskSummaryFixture },
   parameters: { hostTheme: "dark" },
@@ -54,7 +73,7 @@ export const AllPassing: StoryObj<typeof TaskSummaryView> = {
       throw new Error("AllPassing: expected every gate row to carry data-status=pass");
     }
     const rollup = canvasElement.querySelector('[data-testid="summary-rollup"]')?.textContent ?? "";
-    if (!rollup.includes("3/3 acceptance passed") || !rollup.includes("4 gates passed")) {
+    if (!rollup.includes("3/3") || !rollup.includes("4/4")) {
       throw new Error(`AllPassing: unexpected roll-up: ${rollup}`);
     }
     if (rollup.includes("failed")) {

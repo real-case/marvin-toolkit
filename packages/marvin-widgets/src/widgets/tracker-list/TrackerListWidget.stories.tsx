@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TrackerListView, TrackerListWidget, type TrackerListSeam } from "./TrackerListWidget";
 import { trackerListFixture, noUrlTrackerFixture, emptyTrackerFixture } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
@@ -7,16 +7,36 @@ import { waitForCondition } from "../../lib/story-helpers";
 
 /**
  * Stories for the tracker-list widget (ADR-0024 #6): static stories over the pure
- * view cover every render state (fixture in both host themes, the url-less
+ * view cover every render state (fixture in both themes, the url-less
  * configure-hint branch, empty board, PR link-out, and the connecting/no-data/error
  * trio) for the visual-regression screenshots, and a mock-host story whose `play`
  * drives the real ext-apps handshake over an in-memory transport and asserts the
  * tracked tasks (and the external link-out button) render — the
  * `@storybook/test-runner` oracle.
+ *
+ * The view wraps itself in `MvRoot`, so stories pass no wrapper; the pinned dark
+ * variant forces the theme through the view's story-only `theme` prop (production
+ * omits it, following the host/OS scheme). `parameters.hostTheme` still rides
+ * along so the preview decorator darkens the body canvas behind the panel.
  */
+/**
+ * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
+ * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
+ * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
+ * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
+ * keeps flipping every static story.
+ */
+const withMvTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  return Story({
+    args: { ...context.args, theme: t === "dark" ? "dark" : t === "light" ? "light" : undefined },
+  });
+};
+
 const meta: Meta<typeof TrackerListView> = {
   title: "Widgets/TrackerList",
   component: TrackerListView,
+  decorators: [withMvTheme],
 };
 export default meta;
 
@@ -25,7 +45,7 @@ export const Fixture: StoryObj<typeof TrackerListView> = {
   args: { data: trackerListFixture },
 };
 
-/** The fixture under the dark host theme (the preview decorator applies the host vars). */
+/** The fixture pinned dark (`MvRoot theme="dark"` via the view's theme prop). */
 export const FixtureDark: StoryObj<typeof TrackerListView> = {
   args: { data: trackerListFixture },
   parameters: { hostTheme: "dark" },

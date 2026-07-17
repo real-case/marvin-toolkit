@@ -33,9 +33,16 @@ describe("HelpView — panel over the full fixture", () => {
   it("renders the banner, summary, servers, groups and command reference", () => {
     render(<HelpView data={helpFixture} />);
 
-    // banner: gradient wordmark + slogan + version
-    expect(screen.getByTestId("help-wordmark").textContent).toContain(">_MARVIN");
+    // the view renders under its own MvRoot theme scope (family restyle) —
+    // without the .mvroot ancestor every var(--…) token would resolve to nothing
     const panel = screen.getByTestId("help-panel");
+    expect(panel.closest(".mvroot")).not.toBeNull();
+
+    // banner: gradient wordmark + slogan + version. The wordmark keeps the
+    // sanctioned brand gradient (the one literal-hex flourish of the restyle).
+    const wordmark = screen.getByTestId("help-wordmark");
+    expect(wordmark.textContent).toContain(">_MARVIN");
+    expect(wordmark.style.backgroundImage).toContain("linear-gradient");
     expect(panel.textContent).toContain("toolset for AI development without panic");
     expect(screen.getByTestId("help-version").textContent).toContain("v0.1.0");
 
@@ -51,25 +58,28 @@ describe("HelpView — panel over the full fixture", () => {
     expect(screen.getByTestId("help-artifacts").textContent).toContain("specs");
     expect(screen.getByTestId("help-artifacts").textContent).toContain("40");
 
-    // MCP servers: every configured server present, lit/dim by enabled state
+    // MCP servers: every configured server present, lit/dim by enabled state —
+    // an enabled pill carries the status dot, a disabled (neutral) one does not
     const servers = within(screen.getByTestId("help-servers")).getAllByTestId("help-server");
     expect(servers).toHaveLength(12);
     const marvin = servers.find((s) => s.getAttribute("data-server") === "marvin");
     expect(marvin?.getAttribute("data-enabled")).toBe("true");
+    expect(marvin?.querySelector('[aria-hidden="true"]')).not.toBeNull();
     const playwright = servers.find((s) => s.getAttribute("data-server") === "playwright");
     expect(playwright?.getAttribute("data-enabled")).toBe("false");
+    expect(playwright?.querySelector('[aria-hidden="true"]')).toBeNull();
 
     // command groups TOC: each group with its blurb
     const groups = screen.getByTestId("help-groups");
     expect(groups.textContent).toContain("core");
     expect(groups.textContent).toContain("Everyday dev");
 
-    // per-group reference: a section per group, all 57 commands, blurbs, human mark
+    // per-group reference: a section per group, all 51 commands, blurbs, human mark
     for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       expect(screen.getByTestId(`help-ref-${g}`)).toBeTruthy();
     }
     const commands = screen.getAllByTestId("help-command");
-    expect(commands).toHaveLength(50);
+    expect(commands).toHaveLength(51);
     const commit = commands.find((c) => c.getAttribute("data-command") === "commit");
     expect(commit).toBeTruthy();
     // the human-run lifecycle commands carry the 👤 mark; ordinary ones do not
@@ -143,7 +153,7 @@ describe("HelpView — group Read more drill-down", () => {
     // overview is unchanged: the whole 57-command reference and every group
     // section are still rendered inline (no regression from the new link)
     expect(screen.getByTestId("help-panel")).toBeTruthy();
-    expect(screen.getAllByTestId("help-command")).toHaveLength(50);
+    expect(screen.getAllByTestId("help-command")).toHaveLength(51);
     for (const g of ["core", "adr", "pr", "task", "sec", "refactor", "track"]) {
       expect(screen.getByTestId(`help-ref-${g}`)).toBeTruthy();
     }
@@ -175,7 +185,7 @@ describe("HelpView — group Read more drill-down", () => {
 
     // every core command renders as /marvin:<name> with its richer description...
     const rows = within(detail).getAllByTestId("help-detail-command");
-    expect(rows).toHaveLength(13);
+    expect(rows).toHaveLength(14);
     const commit = rows.find((r) => r.getAttribute("data-command") === "commit")!;
     expect(commit.textContent).toContain("/marvin:commit");
     // the detail row renders the command's real (fixture-mirrored) description
@@ -183,8 +193,8 @@ describe("HelpView — group Read more drill-down", () => {
     expect(commit.textContent).toContain(commitDesc);
 
     // ...each showing two ways to call: a Direct chip (always) and ≥3 prose phrases.
-    // core has 13 commands → 13 Direct chips.
-    expect(within(detail).getAllByTestId("help-detail-direct")).toHaveLength(13);
+    // core has 14 commands → 14 Direct chips.
+    expect(within(detail).getAllByTestId("help-detail-direct")).toHaveLength(14);
     // a command with an args example shows it as the direct call; one without falls
     // back to the bare /marvin:<name> (the fixture gives core `commit` an example,
     // `dashboard` none)
@@ -205,7 +215,7 @@ describe("HelpView — group Read more drill-down", () => {
     fireEvent.click(screen.getByTestId("help-back"));
     expect(screen.queryByTestId("help-detail")).toBeNull();
     expect(screen.getByTestId("help-panel")).toBeTruthy();
-    expect(screen.getAllByTestId("help-command")).toHaveLength(50);
+    expect(screen.getAllByTestId("help-command")).toHaveLength(51);
   });
 
   it("the detail view shows the human-run legend for a group with human commands", () => {

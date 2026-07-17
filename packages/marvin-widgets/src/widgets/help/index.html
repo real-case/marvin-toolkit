@@ -5,28 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Marvin · Help</title>
     <style>
+      /* The widget paints its own canvas (the MvRoot token panel), so the entry
+         document stays transparent — the host surface shows through around the
+         framed panel in both schemes. color-scheme keeps UA chrome (scrollbars,
+         form controls) matched to the host theme. */
       :root {
         color-scheme: light dark;
       }
       body {
         margin: 0;
         padding: 1.1rem 1.25rem;
-      }
-      /* Light theme: no widget background — the host's light surface shows
-         through (removes the violet tint). Dark theme: the branded dark
-         terminal panel. The background value is the host's own surface var so it
-         can never desync from the host-driven text colours (falling back to the
-         terminal black only when the host exposes no surface var). */
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: var(--color-background-primary, #0d0d13);
-        }
-      }
-      :root[data-theme="light"] body {
-        background: transparent;
-      }
-      :root[data-theme="dark"] body {
-        background: var(--color-background-primary, #0d0d13);
       }
     </style>
   </head>

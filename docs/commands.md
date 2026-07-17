@@ -19,8 +19,8 @@ whichever suits the moment.
 - **`/<command>`.** Type the terse markdown slash command, such as `/commit` or `/sec-scan`.
 - **`/marvin:<command>`.** Type the namespaced MCP prompt, such as `/marvin:commit`, which the bundled server serves.
 
-The `track-*` group and five read-side commands — `help`, `dashboard`, `handoff-list`,
-`lessons`, and `task-summary` — have no skill. For those, a chat phrase is served by
+The `track-*` group and six read-side commands — `help`, `dashboard`, `reports`,
+`handoff-list`, `lessons`, and `task-summary` — have no skill. For those, a chat phrase is served by
 Claude calling the underlying tool rather than by skill auto-discovery, but the effect is
 the same.
 
@@ -80,6 +80,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, count by type or tag, or prune stale and duplicate lessons. | `marvin what did we learn about auth?`, `lessons stats`, `prune the lessons` |
 | `/marvin:help` | Show the project dashboard and the full command index, filtered by group. | `marvin help`, `what commands are there?`, `marvin help sec` |
 | `/marvin:dashboard` | Report the whole-toolbox state — board counters, artifact inventories with freshness, the ADR corpus by status, lessons stats, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
+| `/marvin:reports` | List every report marvin generated under `.marvin/` — security, refactor, task, handoff — newest first, with freshness. | `marvin show the reports`, `what reports do we have?`, `open the latest security report` |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands.
@@ -204,7 +205,7 @@ an `N archived` footer while the archive holds anything. The
 
 ## Widgets on rich hosts
 
-On an MCP host that supports the Apps widget layer, eight widgets render an interactive
+On an MCP host that supports the Apps widget layer, nine widgets render an interactive
 panel in addition to the text output ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
 The panel is additive, so a text-only host shows the same information as text.
 
@@ -218,10 +219,11 @@ The panel is additive, so a text-only host shows the same information as text.
 | `/marvin:handoff-list` | A browser over the session-continuation docs. |
 | `/marvin:dashboard` | The whole-toolbox status panel. |
 | `/marvin:help` | The welcome dashboard — summary, MCP servers, and the command index. |
+| `/marvin:reports` | The unified viewer over every generated `.marvin/` report. |
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to twelve typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to thirteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -239,6 +241,7 @@ but they are not typed as slash commands.
 | `handoff` | The session-continuation handoff documents. |
 | `adr` | The ADR-lifecycle mechanics — numbering, corpus list, lint, managed index, the accept gate, and paired supersede. |
 | `audit` | The structured `sec-*` findings recovered from `.marvin/security/`. |
+| `report` | The unified report list scanned from `.marvin/` — security, refactor, task, handoff. |
 
 ## Agents
 

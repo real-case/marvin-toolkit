@@ -105,6 +105,58 @@ describe("HandoffsWidget — continue prompt copy-to-chat", () => {
   });
 });
 
+describe("HandoffsWidget — copy prompt affordance", () => {
+  it("copies the selected handoff's continue_prompt through the clipboard when available", async () => {
+    // happy-dom has no navigator.clipboard by default; install a configurable
+    // stub for this test and remove it after, so the environment stays untouched.
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      render(<HandoffsView data={handoffsFixture} />);
+      fireEvent.click(screen.getByTestId("copy-prompt"));
+      expect(writeText).toHaveBeenCalledWith(FIRST.continue_prompt);
+      // the chip acknowledges the successful write ("Copied" feedback state)
+      await screen.findByText("Copied");
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+    }
+  });
+
+  it("falls back to selecting the prompt text when no clipboard is available", () => {
+    // Mask happy-dom's native navigator.clipboard — the deny path. Its Selection
+    // is a stub (addRange never registers), so prove the fallback through a spied
+    // getSelection: the widget selects the prompt <pre>'s contents so a manual
+    // copy still lands in one gesture.
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const removeAllRanges = vi.fn();
+    const addRange = vi.fn();
+    const getSelection = vi
+      .spyOn(window, "getSelection")
+      .mockReturnValue({ removeAllRanges, addRange } as unknown as Selection);
+    try {
+      render(<HandoffsView data={handoffsFixture} />);
+      fireEvent.click(screen.getByTestId("copy-prompt"));
+      const chip = screen.getByTestId("copy-prompt");
+      expect(chip.textContent).toContain("Copy prompt"); // no false "Copied" claim
+      expect(removeAllRanges).toHaveBeenCalled();
+      expect(addRange).toHaveBeenCalledTimes(1);
+      const range = addRange.mock.calls[0][0] as Range;
+      const promptEl = screen.getByTestId("continue-prompt");
+      expect(
+        range.commonAncestorContainer === promptEl ||
+          promptEl.contains(range.commonAncestorContainer),
+      ).toBe(true);
+    } finally {
+      getSelection.mockRestore();
+      // drop the own-property mask so the prototype clipboard shows through again
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+    }
+  });
+});
+
 describe("HandoffsWidget — mock-host handshake", () => {
   it("mock-host handshake delivers a HandoffDetailPayload the widget renders", async () => {
     const host = createMockHost(handoffsFixture);

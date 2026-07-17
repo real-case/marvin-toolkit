@@ -35,9 +35,12 @@ describe("DashboardView — panel over the full fixture", () => {
   it("renders every section from a full DashboardState", () => {
     render(<DashboardView data={dashboardFixture} />);
 
+    // the view wraps its own root in the MvRoot theme scope, panel inside it
+    expect(within(screen.getByTestId("mv-root")).getByTestId("dashboard-panel")).toBeTruthy();
+
     // header: title + version + git/gh availability + branch
     const header = screen.getByTestId("dashboard-header");
-    expect(header.textContent).toContain("toolbox dashboard");
+    expect(header.textContent).toContain("Toolbox dashboard");
     expect(screen.getByTestId("dashboard-version").textContent).toContain("v0.1.0");
     expect(header.textContent).toContain("git ✓");
     expect(header.textContent).toContain("gh ✓");
@@ -211,6 +214,8 @@ describe("DashboardView — fresh-project and narrow (help-shaped) states", () =
     rerender(<DashboardView data={null} error="boom" />);
     expect(screen.getByTestId("dashboard-error").textContent).toContain("boom");
     expect(screen.queryByTestId("dashboard-panel")).toBeNull();
+    // the state branches render inside the same MvRoot theme scope as the panel
+    expect(within(screen.getByTestId("mv-root")).getByTestId("dashboard-error")).toBeTruthy();
   });
 });
 
@@ -267,7 +272,7 @@ describe("DashboardWidget — mock-host handshake", () => {
 
       // starts connecting, then the pushed tool-result's dashboard renders
       const header = await screen.findByTestId("dashboard-header", {}, { timeout: 5000 });
-      expect(header.textContent).toContain("toolbox dashboard");
+      expect(header.textContent).toContain("Toolbox dashboard");
       expect(screen.queryByTestId("dashboard-connecting")).toBeNull();
       // a section from the delivered payload reached the view
       expect(screen.getByTestId("card-usage").textContent).toContain("Usage (128)");

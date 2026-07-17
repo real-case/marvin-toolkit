@@ -20,13 +20,19 @@ describe("TrackerListWidget — pure view over the fixture", () => {
   it("lists tracked tasks and renders the tracker link-out button", () => {
     render(<TrackerListView data={trackerListFixture} />);
 
+    // the view provides its own theme scope — the family token boundary
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+
     // thin payload: a count header, no board-role roll-up
     expect(screen.getByTestId("tracker-counts").textContent).toContain("2 tracked tasks");
 
-    // one row per tracked task, in payload order
+    // one row per tracked task, in payload order — two-line rows: the title
+    // plus a meta line carrying the tracker id (as a mono chip) and the type
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
     expect(options[0].textContent).toContain("Fix login timeout on slow networks");
+    expect(options[0].textContent).toContain("OSI-101");
+    expect(options[0].textContent).toContain("bug");
 
     // the first (selected) card has a tracker_url → an external link-out button
     const pane = screen.getByTestId("list-detail-pane");

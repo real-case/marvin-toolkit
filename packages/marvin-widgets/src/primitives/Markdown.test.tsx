@@ -224,6 +224,39 @@ describe("Markdown — AC2 (graceful degradation)", () => {
   });
 });
 
+describe("Markdown — theme tokens", () => {
+  it("styles links, code, headings, del and checkboxes from the theme tokens", () => {
+    const source = [
+      "# Heading",
+      "",
+      "A [link](https://example.com) with `code` and ~~gone~~.",
+      "",
+      "- [ ] task item",
+    ].join("\n");
+    const { container } = render(<Markdown source={source} />);
+
+    // link carries the single family accent
+    expect(container.querySelector("a")?.style.color).toBe("var(--ac)");
+
+    // code sits on the second surface step, mono at 0.92em, 4px radius
+    const code = container.querySelector("code");
+    expect(code?.style.background).toBe("var(--srf2)");
+    expect(code?.style.fontSize).toBe("0.92em");
+    expect(code?.style.borderRadius).toBe("4px");
+
+    // headings at 500 (the family uses weights 400/500 only)
+    expect(container.querySelector("h1")?.style.fontWeight).toBe("500");
+
+    // del is meta-grade text; the checkbox paints in the accent
+    expect(container.querySelector("del")?.style.color).toBe("var(--t3)");
+    const checkbox = container.querySelector<HTMLInputElement>("input[type=checkbox]");
+    expect(checkbox?.getAttribute("style")).toContain("var(--ac)");
+
+    // no host-theme variables remain anywhere in the rendered tree
+    expect(container.innerHTML).not.toContain("--color-");
+  });
+});
+
 describe("Markdown — AC3 (no HTML injection)", () => {
   it("escapes raw HTML and never injects markup", () => {
     const source = "Danger: <script>alert(1)</script> and <img src=x onerror=alert(2)>.";

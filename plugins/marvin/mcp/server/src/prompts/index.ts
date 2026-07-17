@@ -144,6 +144,14 @@ export const PROMPTS: PromptDef[] = [
       "Marvin toolbox dashboard — task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
     body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
   },
+  {
+    // Thin tool wrapper (inline body) — the unified read side of every report
+    // marvin writes under .marvin/ (docs/design/reports-widget.md, ADR-0024).
+    name: "reports",
+    description:
+      "Unified viewer over every generated .marvin/ report — security, refactor, task, handoff — newest first, with per-report freshness.",
+    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title — e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble — just call the tool and present its result.',
+  },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {

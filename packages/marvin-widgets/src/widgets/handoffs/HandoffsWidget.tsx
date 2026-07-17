@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type {
@@ -10,73 +10,232 @@ import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import { MvRoot, TOKENS, MV_FONT_MONO, type MvTheme } from "../../theme";
 
 /**
  * The handoffs widget (ADR-0024 widget #5) — a master-detail *browser* over the
  * session-continuation handoff docs: a multi-row `<ListDetail>` master (newest
- * first, the real multi-row shape task-list has but task-detail does not) and, for
- * the selected handoff, a detail pane with its fields, a PR link, the paste-ready
- * `continue_prompt` (offered as a one-click copy-to-chat action), and its body via
+ * first, two-line rows: title + meta) and, for the selected handoff, a detail pane
+ * with its fields, a PR ghost-link, the paste-ready `continue_prompt` (a mono block
+ * with a copy affordance plus the filled continue-to-chat CTA), and its body via
  * the `<Markdown>` primitive. Split into a pure {@link HandoffsView} (props-only,
  * no SDK) and the App wiring below, so the render is unit-testable without a
  * transport and the same view serves production (`useApp`) and the mock-host seam.
+ *
+ * Styling follows the family theme (docs/design/reports-widget.md): the view wraps
+ * itself in `<MvRoot>` — both wiring paths render the same themed tree — and every
+ * color is a `.mvroot` token reference; the widget declares no palette of its own.
  *
  * Payload is `HandoffDetailPayload` (`{ handoffs: HandoffDetail[] }`) — the `handoff`
  * tool's enriched `list` result, carrying every card plus `body_markdown` and
  * `continue_prompt` so the whole set browses with no per-handoff fetch.
  */
 
-/** Marvin's violet — the family accent, matching help and the `<ListDetail>` shell. */
-const ACCENT = "#8b5cf6";
-const ACCENT_TINT = "rgba(139, 92, 246, 0.12)";
+// ── family recipes (docs/design/reports-widget.md), widget-inline ────────────
 
-/** The widget frame — the whole widget as one rounded card on the host canvas. */
-const frameStyle: CSSProperties = {
-  border: "1px solid var(--color-border-primary, #e2e2e2)",
-  borderRadius: "var(--border-radius-md, 8px)",
+/** The widget canvas — the bordered panel every state renders inside. */
+const panelStyle: CSSProperties = {
+  background: TOKENS.bg,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  padding: 14,
 };
 
-const badgeStyle: CSSProperties = {
+/** Widget title: 16px/500, tight tracking. */
+const titleStyle: CSSProperties = {
+  fontSize: 16,
+  fontWeight: 500,
+  letterSpacing: "-0.015em",
+};
+
+/** Neutral tag — second-surface ground, secondary text, no dot. */
+const neutralPillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "1px 9px",
+  borderRadius: 4,
+  fontSize: 11.5,
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+  background: TOKENS.srf2,
+  color: TOKENS.t2,
+  fontVariantNumeric: "tabular-nums",
+};
+
+/** Microlabel — the 10.5px uppercase meta heading. */
+const microlabelStyle: CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 500,
+  textTransform: "uppercase",
+  letterSpacing: ".06em",
+  color: TOKENS.t3,
+};
+
+/** Mono code chip for code-like values (branch, base, spec slug). */
+const codeChipStyle: CSSProperties = {
+  fontFamily: MV_FONT_MONO,
+  fontSize: 11,
+  background: TOKENS.srf2,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  padding: "1px 6px",
+  whiteSpace: "nowrap",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
   display: "inline-block",
-  padding: "0.05rem 0.4rem",
-  borderRadius: "var(--border-radius-sm, 4px)",
-  fontSize: "0.75em",
-  fontWeight: 600,
-  background: "var(--color-background-secondary, #f0f0f0)",
-  color: "var(--color-text-secondary, #555)",
-  marginRight: "0.5rem",
+  verticalAlign: "bottom",
 };
 
-const linkButtonStyle: CSSProperties = {
+/**
+ * Ghost button — the quiet bordered action (the PR link). `font: inherit` first so
+ * the later size/spacing keys override the UA button font; hover lives in the
+ * widget-local stylesheet (`.mvho-ghost`).
+ */
+const ghostButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
   font: "inherit",
-  border: "1px solid var(--color-border-primary, #d0d0d0)",
-  borderRadius: "var(--border-radius-sm, 4px)",
+  fontSize: 12,
+  color: TOKENS.t2,
   background: "transparent",
-  color: ACCENT,
-  padding: "0.2rem 0.5rem",
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  padding: "3px 10px",
+  cursor: "pointer",
+  letterSpacing: "inherit",
 };
 
-const continueButtonStyle: CSSProperties = {
+/** Filled CTA — the widget's one primary action (continue in a new session). */
+const ctaButtonStyle: CSSProperties = {
   font: "inherit",
-  fontWeight: 600,
-  border: `1px solid ${ACCENT}`,
-  borderRadius: "var(--border-radius-sm, 4px)",
-  background: ACCENT_TINT,
-  color: ACCENT,
-  padding: "0.35rem 0.6rem",
+  fontSize: 12,
+  fontWeight: 500,
+  background: TOKENS.acfill,
+  color: TOKENS.acfillt,
+  border: "none",
+  borderRadius: 4,
+  padding: "5px 12px",
+  cursor: "pointer",
+  letterSpacing: "inherit",
 };
 
+/** Violet-tinted chip — the copy affordance beside the CTA. */
+const copyChipStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  font: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  color: TOKENS.act,
+  background: TOKENS.acbg,
+  border: "0.5px solid transparent",
+  borderRadius: 4,
+  padding: "3px 10px",
+  cursor: "pointer",
+  letterSpacing: "inherit",
+};
+
+/** The continue prompt — a mono block on the second surface step. */
 const promptStyle: CSSProperties = {
-  margin: "0.35rem 0 0.5rem",
-  padding: "0.6rem",
+  margin: "6px 0 8px",
+  padding: "8px 10px",
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
-  fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)",
-  fontSize: "0.82em",
-  background: "var(--color-background-secondary, #f4f4f5)",
-  borderRadius: "var(--border-radius-sm, 4px)",
-  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  fontFamily: MV_FONT_MONO,
+  fontSize: 11.5,
+  lineHeight: 1.55,
+  color: TOKENS.t2,
+  background: TOKENS.srf2,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
 };
+
+/** A detail section separated by a top hairline (continue block, body). */
+const sectionStyle: CSSProperties = {
+  marginTop: 14,
+  paddingTop: 12,
+  borderTop: `0.5px solid ${TOKENS.bd}`,
+};
+
+/** The master-detail card the `<ListDetail>` shell sits in. */
+const cardStyle: CSSProperties = {
+  background: TOKENS.srf,
+  border: `0.5px solid ${TOKENS.bd}`,
+  borderRadius: 4,
+  overflow: "hidden",
+};
+
+/** Field grid under the detail title: microlabel column + value column. */
+const fieldsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  gap: "5px 14px",
+  alignItems: "baseline",
+  margin: "10px 0 0",
+};
+
+const fieldValueStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 12.5,
+  minWidth: 0,
+};
+
+/** Master-row line 1 — the handoff objective (500, ellipsized). */
+const rowTitleStyle: CSSProperties = {
+  fontWeight: 500,
+  flex: 1,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+/** Master-row line 2 — id · branch · date in meta grey. */
+const rowMetaStyle: CSSProperties = {
+  display: "block",
+  marginTop: 2,
+  fontSize: 11.5,
+  color: TOKENS.t3,
+  fontVariantNumeric: "tabular-nums",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+// ── widget-local stylesheet — hover states (pseudo-classes cannot be inline) ─
+
+/** id of the injected `<style>` element — the once-per-document key. */
+const HANDOFFS_STYLE_ID = "mv-handoffs-styles";
+
+const HANDOFFS_CSS = `
+.mvho-ghost:hover{background:${TOKENS.srf2};color:${TOKENS.t1}}
+`;
+
+/** Put the hover rules into the document exactly once (same lifecycle as MvRoot). */
+function ensureHandoffsStyles(): void {
+  if (typeof document === "undefined" || document.getElementById(HANDOFFS_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = HANDOFFS_STYLE_ID;
+  style.textContent = HANDOFFS_CSS;
+  document.head.appendChild(style);
+}
+
+/**
+ * The themed canvas every view state renders inside: the `MvRoot` token scope
+ * (inside the view itself, so the production and seam paths get identical trees)
+ * plus the bordered widget panel.
+ */
+function Shell({ theme, children }: { theme?: MvTheme; children?: ReactNode }) {
+  ensureHandoffsStyles();
+  return (
+    <MvRoot theme={theme}>
+      <div style={panelStyle}>{children}</div>
+    </MvRoot>
+  );
+}
 
 /**
  * The single link a handoff card can carry: its PR. Handoff cards have no tracker
@@ -89,9 +248,49 @@ function prLink(prUrl: string | null): LinkRef | null {
   return { kind: "pr", label: match ? `PR #${match[1]}` : "PR", url: prUrl };
 }
 
+/** The 12px copy glyph on the prompt chip (stroke = currentColor, decorative). */
+function CopyIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 /**
- * The detail pane: the handoff's fields, its PR link, the continue-to-chat block,
- * then its markdown body through `<Markdown>`.
+ * Select-on-click fallback for the copy affordance: when no clipboard is
+ * available (or the write is refused), select the prompt block's text so a
+ * manual ⌘C still lands in one gesture. Best-effort — never throws.
+ */
+function selectNodeText(el: HTMLElement | null): void {
+  if (!el || typeof window === "undefined") return;
+  const selection = window.getSelection?.();
+  if (!selection) return;
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } catch {
+    // selection is best-effort — the prompt text stays hand-selectable
+  }
+}
+
+/**
+ * The detail pane: the handoff's title row (objective + PR ghost-link), its field
+ * grid, the continue-prompt block with the filled CTA and the copy chip, then its
+ * markdown body through `<Markdown>`.
  */
 function HandoffDetailPane({
   handoff,
@@ -103,89 +302,119 @@ function HandoffDetailPane({
   onContinue?: (prompt: string) => void;
 }) {
   const link = prLink(handoff.pr_url);
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
+
+  // Copy is widget-local (no host call): clipboard when the host grants it,
+  // select-on-click otherwise, mirroring the reports family's copy-only chips.
+  const onCopy = () => {
+    void (async () => {
+      let ok = false;
+      const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+      if (clipboard && typeof clipboard.writeText === "function") {
+        try {
+          await clipboard.writeText(handoff.continue_prompt);
+          ok = true;
+        } catch {
+          ok = false;
+        }
+      }
+      if (ok) {
+        setCopied(true);
+        if (resetTimer.current) clearTimeout(resetTimer.current);
+        resetTimer.current = setTimeout(() => setCopied(false), 2000);
+      } else {
+        selectNodeText(preRef.current);
+      }
+    })();
+  };
+
   return (
     <div>
-      <h2 data-testid="detail-title" style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
-        {handoff.objective}
-      </h2>
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "0.15rem 0.75rem",
-          margin: 0,
-        }}
-      >
-        <dt style={{ opacity: 0.6 }}>ID</dt>
-        <dd style={{ margin: 0 }}>{handoff.id}</dd>
-        <dt style={{ opacity: 0.6 }}>Branch</dt>
-        <dd style={{ margin: 0 }}>
-          <code>{handoff.branch}</code>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <h2
+          data-testid="detail-title"
+          style={{
+            margin: 0,
+            fontSize: 14.5,
+            fontWeight: 500,
+            letterSpacing: "-0.01em",
+            flex: 1,
+            minWidth: "12rem",
+          }}
+        >
+          {handoff.objective}
+        </h2>
+        {link ? (
+          <button
+            type="button"
+            className="mvho-ghost"
+            onClick={() => onOpenLink?.(link)}
+            style={{ ...ghostButtonStyle, cursor: onOpenLink ? "pointer" : "default" }}
+          >
+            {classifyLink(link).type === "external" ? "↗ " : ""}
+            {link.label}
+          </button>
+        ) : null}
+      </div>
+      <dl style={fieldsStyle}>
+        <dt style={microlabelStyle}>Id</dt>
+        <dd style={{ ...fieldValueStyle, fontVariantNumeric: "tabular-nums" }}>{handoff.id}</dd>
+        <dt style={microlabelStyle}>Branch</dt>
+        <dd style={fieldValueStyle}>
+          <span style={codeChipStyle}>{handoff.branch}</span>
         </dd>
         {handoff.base ? (
           <>
-            <dt style={{ opacity: 0.6 }}>Base</dt>
-            <dd style={{ margin: 0 }}>
-              <code>{handoff.base}</code>
+            <dt style={microlabelStyle}>Base</dt>
+            <dd style={fieldValueStyle}>
+              <span style={codeChipStyle}>{handoff.base}</span>
             </dd>
           </>
         ) : null}
         {handoff.spec_slug ? (
           <>
-            <dt style={{ opacity: 0.6 }}>Spec</dt>
-            <dd style={{ margin: 0 }}>{handoff.spec_slug}</dd>
+            <dt style={microlabelStyle}>Spec</dt>
+            <dd style={fieldValueStyle}>
+              <span style={codeChipStyle}>{handoff.spec_slug}</span>
+            </dd>
           </>
         ) : null}
-        <dt style={{ opacity: 0.6 }}>Created</dt>
-        <dd style={{ margin: 0 }}>{formatDate(handoff.created)}</dd>
+        <dt style={microlabelStyle}>Created</dt>
+        <dd style={{ ...fieldValueStyle, fontVariantNumeric: "tabular-nums" }}>
+          {formatDate(handoff.created)}
+        </dd>
       </dl>
-      {link ? (
-        <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {(() => {
-            const action = classifyLink(link);
-            return (
-              <button
-                type="button"
-                onClick={() => onOpenLink?.(link)}
-                style={{ ...linkButtonStyle, cursor: onOpenLink ? "pointer" : "default" }}
-              >
-                {action.type === "external" ? "↗ " : ""}
-                {link.label}
-              </button>
-            );
-          })()}
-        </div>
-      ) : null}
-      <div
-        style={{
-          marginTop: "1rem",
-          paddingTop: "0.75rem",
-          borderTop: "1px solid var(--color-border-primary, #e2e2e2)",
-        }}
-      >
-        <div style={{ fontSize: "0.8em", fontWeight: 600, opacity: 0.7 }}>Continue prompt</div>
+      <div style={sectionStyle}>
+        <div style={microlabelStyle}>Continue prompt</div>
         {/* Selectable text so the prompt is always available even on a host that
-            rejects the chat action; the button is the one-click copy-to-chat. */}
-        <pre data-testid="continue-prompt" style={promptStyle}>
+            rejects the chat action; the CTA is the one-click copy-to-chat. */}
+        <pre data-testid="continue-prompt" ref={preRef} style={promptStyle}>
           {handoff.continue_prompt}
         </pre>
-        <button
-          type="button"
-          data-testid="continue-button"
-          onClick={() => onContinue?.(handoff.continue_prompt)}
-          style={{ ...continueButtonStyle, cursor: onContinue ? "pointer" : "default" }}
-        >
-          ▸ Continue in a new session
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            data-testid="continue-button"
+            onClick={() => onContinue?.(handoff.continue_prompt)}
+            style={{ ...ctaButtonStyle, cursor: onContinue ? "pointer" : "default" }}
+          >
+            Continue in a new session
+          </button>
+          <button type="button" data-testid="copy-prompt" onClick={onCopy} style={copyChipStyle}>
+            <CopyIcon />
+            {copied ? "Copied" : "Copy prompt"}
+          </button>
+        </div>
       </div>
-      <div
-        data-testid="detail-body"
-        style={{
-          marginTop: "1rem",
-          paddingTop: "0.75rem",
-          borderTop: "1px solid var(--color-border-primary, #e2e2e2)",
-        }}
-      >
+      <div data-testid="detail-body" style={sectionStyle}>
         <Markdown source={handoff.body_markdown} />
       </div>
     </div>
@@ -203,12 +432,18 @@ export interface HandoffsViewProps {
   onOpenLink?: (link: LinkRef) => void;
   /** Send a handoff's continue prompt to chat. Omitted in pure-render contexts. */
   onContinue?: (prompt: string) => void;
+  /**
+   * Pin the mvroot theme (Storybook-only). Production omits it, so the widget
+   * follows the host/OS `prefers-color-scheme`.
+   */
+  theme?: MvTheme;
 }
 
 /**
- * Pure presentational handoffs browser. Renders a count header plus a master-detail
- * list of handoffs; carries no SDK dependency, so it is driven purely by props in
- * tests, the story, and both wiring paths.
+ * Pure presentational handoffs browser. Renders the widget header plus a
+ * master-detail list of handoffs inside its own `<MvRoot>` scope; carries no SDK
+ * dependency, so it is driven purely by props in tests, the story, and both
+ * wiring paths.
  */
 export function HandoffsView({
   data,
@@ -216,72 +451,69 @@ export function HandoffsView({
   error,
   onOpenLink,
   onContinue,
+  theme,
 }: HandoffsViewProps) {
   if (error) {
     return (
-      <div
-        data-testid="handoffs-error"
-        style={{ padding: "1rem", color: "var(--color-text-danger, #b00020)" }}
-      >
-        Couldn’t load handoffs: {error}
-      </div>
+      <Shell theme={theme}>
+        <div data-testid="handoffs-error" style={{ color: TOKENS.red, fontSize: 12.5 }}>
+          Couldn’t load handoffs: {error}
+        </div>
+      </Shell>
     );
   }
   if (!data) {
     return (
-      <div data-testid="handoffs-connecting" style={{ padding: "1rem", opacity: 0.7 }}>
-        {connecting === false ? "No data." : "Connecting…"}
-      </div>
+      <Shell theme={theme}>
+        <div data-testid="handoffs-connecting" style={{ color: TOKENS.t3, fontSize: 12.5 }}>
+          {connecting === false ? "No data." : "Connecting…"}
+        </div>
+      </Shell>
     );
   }
 
   return (
-    <div
-      style={{
-        // fontFamily, not the `font` shorthand: the shorthand requires a size, so
-        // a family-only `font:` is invalid CSS — the declaration is dropped and
-        // the widget renders in the host default serif.
-        fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)",
-        fontSize: "13px",
-        color: "var(--color-text-primary, #1a1a1a)",
-        ...frameStyle,
-      }}
-    >
-      <header
-        data-testid="handoffs-count"
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: "0.75rem",
-          // 0.75rem horizontal matches the list rows' own inset, so the header
-          // text lines up with the row text instead of hanging left of it.
-          padding: "0.75rem",
-          borderBottom: "1px solid var(--color-border-primary, #e2e2e2)",
-        }}
-      >
-        <strong>
-          {data.handoffs.length} {data.handoffs.length === 1 ? "handoff" : "handoffs"}
-        </strong>
+    <Shell theme={theme}>
+      <header data-testid="handoffs-count" style={{ margin: "2px 2px 12px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={titleStyle}>Handoffs</span>
+          <span style={neutralPillStyle}>{data.handoffs.length}</span>
+        </div>
+        <div style={{ fontSize: 12, color: TOKENS.t3 }}>
+          .marvin/handoff/ · session continuation docs
+        </div>
       </header>
-      <ListDetail
-        items={data.handoffs}
-        ariaLabel="handoffs"
-        getKey={(handoff) => handoff.id}
-        emptyLabel="No handoffs yet — run /marvin:handoff to capture the current work."
-        renderRow={(handoff) => (
-          <span>
-            <span style={badgeStyle}>{handoff.id}</span>
-            {handoff.objective}
-            <span style={{ display: "block", opacity: 0.6, fontSize: "0.85em" }}>
-              {handoff.branch}
-            </span>
-          </span>
-        )}
-        renderDetail={(handoff) => (
-          <HandoffDetailPane handoff={handoff} onOpenLink={onOpenLink} onContinue={onContinue} />
-        )}
-      />
-    </div>
+      <div style={cardStyle}>
+        <ListDetail
+          items={data.handoffs}
+          ariaLabel="handoffs"
+          getKey={(handoff) => handoff.id}
+          emptyLabel="No handoffs yet — run /marvin:handoff to capture the current work."
+          renderRow={(handoff) => {
+            const link = prLink(handoff.pr_url);
+            return (
+              <span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={rowTitleStyle}>{handoff.objective}</span>
+                  {link ? <span style={neutralPillStyle}>{link.label}</span> : null}
+                </span>
+                <span style={rowMetaStyle}>
+                  {handoff.id} · {handoff.branch} · {formatDate(handoff.created)}
+                </span>
+              </span>
+            );
+          }}
+          renderDetail={(handoff) => (
+            <HandoffDetailPane
+              key={handoff.id}
+              handoff={handoff}
+              onOpenLink={onOpenLink}
+              onContinue={onContinue}
+            />
+          )}
+        />
+      </div>
+    </Shell>
   );
 }
 
@@ -320,7 +552,7 @@ function sendContinue(app: App, prompt: string): void {
 function HandoffsLiveWidget() {
   const [data, setData] = useState<HandoffDetailPayload | null>(null);
   const { app, isConnected, error } = useApp({
-    appInfo: { name: "marvin-handoffs", version: "0.18.0" },
+    appInfo: { name: "marvin-handoffs", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
       // Handler set before connect so the first tool-result is never missed.

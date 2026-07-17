@@ -157,6 +157,42 @@ describe("TaskListWidget — the status filter", () => {
   });
 });
 
+describe("TaskListWidget — family theme (mvroot scope + status pill tones)", () => {
+  it("renders the board inside the MvRoot token scope", () => {
+    render(<TaskListView data={taskListFixture} />);
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+    expect(document.getElementById("mv-theme-styles")).toBeTruthy();
+  });
+
+  it("wraps the connecting and error states in the theme scope too", () => {
+    const connecting = render(<TaskListView data={null} connecting />);
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+    expect(screen.getByTestId("task-list-connecting")).toBeTruthy();
+    connecting.unmount();
+
+    render(<TaskListView data={null} error="kaboom" />);
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+    expect(screen.getByTestId("task-list-error")).toBeTruthy();
+  });
+
+  it("maps lifecycle roles onto the family pill tones (shared with task-detail)", () => {
+    render(<TaskListView data={taskListFixture} />);
+    // Rows and the detail pane both render pills; collapsing by role must yield
+    // exactly the shared mapping — todo neutral, wip/review/done/blocked toned.
+    const tones: Record<string, string | undefined> = {};
+    for (const pill of screen.getAllByTestId("status-pill")) {
+      tones[pill.dataset.role ?? ""] = pill.dataset.tone;
+    }
+    expect(tones).toEqual({
+      todo: "neutral",
+      wip: "low",
+      review: "medium",
+      done: "pass",
+      blocked: "fail",
+    });
+  });
+});
+
 describe("TaskListWidget — the detail title opens the task's canonical record", () => {
   /** Render the view capturing every link it dispatches. */
   function renderCapturing(data: TaskListPayload) {

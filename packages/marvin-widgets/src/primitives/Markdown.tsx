@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode, Fragment } from "react";
+import { MV_FONT_MONO, TOKENS } from "../theme";
 
 /**
  * The reusable markdown primitive (ADR-0024) — the second widget primitive
@@ -24,29 +25,52 @@ export interface MarkdownProps {
   className?: string;
 }
 
+// ── themed styling (docs/design/reports-widget.md) ──────────────────────────
+// Every color is a `var(--…)` token reference resolved by the `.mvroot` scope
+// the OWNING WIDGET renders (the primitive is never wrapped in MvRoot itself).
+// The family language: srf2 code grounds, 4px radius, 0.5px hairlines in bd,
+// the violet accent for links, and weights 400/500 only (headings, strong and
+// table headers sit at 500 — never the UA's 700).
+
 const codeStyle: CSSProperties = {
-  fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)",
-  fontSize: "0.9em",
-  background: "var(--color-background-secondary, #f4f4f5)",
-  borderRadius: "var(--border-radius-sm, 4px)",
+  fontFamily: MV_FONT_MONO,
+  fontSize: "0.92em",
+  background: TOKENS.srf2,
+  borderRadius: "4px",
   padding: "0.1em 0.3em",
 };
 
 const preStyle: CSSProperties = {
-  fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)",
-  fontSize: "0.85em",
-  background: "var(--color-background-secondary, #f4f4f5)",
-  borderRadius: "var(--border-radius-sm, 4px)",
+  fontFamily: MV_FONT_MONO,
+  fontSize: "0.92em",
+  background: TOKENS.srf2,
+  borderRadius: "4px",
   padding: "0.75rem",
   overflowX: "auto",
   margin: "0.5rem 0",
 };
 
+const headingStyle: CSSProperties = {
+  fontWeight: 500,
+};
+
+const strongStyle: CSSProperties = {
+  fontWeight: 500,
+};
+
+// Struck-through content reads as removed — meta-grade text; the line-through
+// itself is the UA default.
+const delStyle: CSSProperties = {
+  color: TOKENS.t3,
+};
+
 const blockquoteStyle: CSSProperties = {
   margin: "0.5rem 0",
   padding: "0.25rem 0 0.25rem 0.75rem",
-  borderLeft: "3px solid var(--color-border-primary, #e2e2e2)",
-  color: "var(--color-text-secondary, #555)",
+  // The quote bar is 3px wide, so it takes the stronger border step — the
+  // 0.5px-hairline grade would wash out at this width.
+  borderLeft: `3px solid ${TOKENS.bd2}`,
+  color: TOKENS.t2,
 };
 
 const tableStyle: CSSProperties = {
@@ -56,20 +80,27 @@ const tableStyle: CSSProperties = {
 };
 
 const cellStyle: CSSProperties = {
-  border: "1px solid var(--color-border-primary, #e2e2e2)",
+  border: `0.5px solid ${TOKENS.bd}`,
   padding: "0.3rem 0.6rem",
   textAlign: "left",
 };
 
+const headerCellStyle: CSSProperties = {
+  ...cellStyle,
+  fontWeight: 500,
+};
+
 const hrStyle: CSSProperties = {
   border: "none",
-  borderTop: "1px solid var(--color-border-primary, #e2e2e2)",
+  borderTop: `0.5px solid ${TOKENS.bd}`,
   margin: "0.75rem 0",
 };
 
 const taskCheckboxStyle: CSSProperties = {
   marginRight: "0.4em",
   verticalAlign: "middle",
+  // Paints the native checkbox (checked fill + glyph) in the accent.
+  accentColor: TOKENS.ac,
 };
 
 // ── Inline parsing ─────────────────────────────────────────────────────────
@@ -117,14 +148,14 @@ const INLINE_RULES: InlineRule[] = [
       // Unsafe scheme → drop the anchor and render the link text only, so a
       // `[x](javascript:…)` never produces a live href.
       return href ? (
-        // Explicit link colour: the UA default blue/purple is illegible on a
-        // dark host, and the host's info colour is what sibling link buttons use.
+        // Explicit link color: the UA default blue/purple is illegible on a
+        // dark ground, and the family's single accent is what links carry.
         <a
           key={k}
           href={href}
           rel="noreferrer noopener"
           target="_blank"
-          style={{ color: "var(--color-text-info, #0b57d0)" }}
+          style={{ color: TOKENS.ac }}
         >
           {parseInline(m[1])}
         </a>
@@ -133,13 +164,33 @@ const INLINE_RULES: InlineRule[] = [
       );
     },
   },
-  { re: /~~([^~]+)~~/, tier: 2, render: (m, k) => <del key={k}>{parseInline(m[1])}</del> },
+  {
+    re: /~~([^~]+)~~/,
+    tier: 2,
+    render: (m, k) => (
+      <del key={k} style={delStyle}>
+        {parseInline(m[1])}
+      </del>
+    ),
+  },
   {
     re: /\*\*([^*]+)\*\*/,
     tier: 2,
-    render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong>,
+    render: (m, k) => (
+      <strong key={k} style={strongStyle}>
+        {parseInline(m[1])}
+      </strong>
+    ),
   },
-  { re: /__([^_]+)__/, tier: 2, render: (m, k) => <strong key={k}>{parseInline(m[1])}</strong> },
+  {
+    re: /__([^_]+)__/,
+    tier: 2,
+    render: (m, k) => (
+      <strong key={k} style={strongStyle}>
+        {parseInline(m[1])}
+      </strong>
+    ),
+  },
   { re: /\*([^*]+)\*/, tier: 2, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
   { re: /_([^_]+)_/, tier: 2, render: (m, k) => <em key={k}>{parseInline(m[1])}</em> },
 ];
@@ -272,7 +323,7 @@ export function Markdown({ source, className }: MarkdownProps) {
     if (heading) {
       const level = heading[1].length;
       const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
-      push(<Tag>{parseInline(heading[2].trim())}</Tag>);
+      push(<Tag style={headingStyle}>{parseInline(heading[2].trim())}</Tag>);
       i += 1;
       continue;
     }
@@ -291,7 +342,7 @@ export function Markdown({ source, className }: MarkdownProps) {
           <thead>
             <tr>
               {header.map((cell, c) => (
-                <th key={c} style={cellStyle}>
+                <th key={c} style={headerCellStyle}>
                   {parseInline(cell)}
                 </th>
               ))}

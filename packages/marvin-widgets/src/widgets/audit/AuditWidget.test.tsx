@@ -33,6 +33,9 @@ describe("AuditListView — severity triage over the fixture", () => {
   it("flattens and sorts findings critical-first, and the severity filter narrows the list", () => {
     render(<AuditListView data={auditListFixture} />);
 
+    // the pure view renders inside the family theme scope (the `.mvroot` tokens)
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+
     // header is the bare title; the toolbar's "All" chip is what now carries the
     // total, and it counts every finding across all three reports
     expect(screen.getByTestId("audit-counts").textContent).toContain("Audit");
@@ -201,6 +204,8 @@ describe("AuditWidget — mock-host handshake", () => {
       expect(screen.queryByTestId("audit-connecting")).toBeNull();
       // a finding from the payload reached the view (the top-sorted critical one)
       expect(screen.getByTestId("detail-title").textContent).toContain("AWS secret key");
+      // the seam path renders inside the same MvRoot theme scope as the pure view
+      expect(screen.getByTestId("mv-root")).toBeTruthy();
     } finally {
       host.close();
     }
