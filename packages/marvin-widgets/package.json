@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.4",
-    "preact": "^10.24.0"
+    "preact": "^10.29.7"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -27,7 +27,7 @@
     "@testing-library/preact": "^3.2.4",
     "@types/jest-image-snapshot": "^6.4.1",
     "@vitejs/plugin-react": "^4.3.0",
-    "happy-dom": "^15.11.0",
+    "happy-dom": "^20.10.6",
     "jest-image-snapshot": "^6.5.2",
     "storybook": "^8.6.0",
     "typescript": "^5.4.0",
