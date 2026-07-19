@@ -16,6 +16,11 @@ packages/site/src/data/catalog.json
 # tables and prompt formatting that Prettier would reflow. Left as-is.
 **/*.md
 
+# Committed hi-fi design reference (website Phase 3) — the stripped mockup HTML is a read-only
+# porting source preserved verbatim from the private artifact; reformatting it would defeat the
+# "verbatim" contract. Like the committed widget HTML above, it is an artifact, not source.
+docs/design/mockups/
+
 # Local Claude Code state, not part of the published packages.
 .claude/
 

@@ -1,0 +1,446 @@
+<!--
+  COMMITTED DESIGN REFERENCE — Inner pages hi-fi — Commands / Pipeline / Toolbox / Quickstart
+  Source: private hi-fi artifact (Marvin Site hi-fi, 2026-07-17), retrieved for website Phase 3.
+  Frame-runtime, embedded fonts, and data: URIs removed; copy / section structure / CSS preserved verbatim.
+  This is the PORTING SOURCE for the Astro pages — read-only. The live site reuses the scaffold
+  tokens (theme.css) + primitives; adapt these classes onto them rather than copying 1:1.
+-->
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<meta charset="utf-8">
+<title>Marvin Site — Inner Pages Hi-fi</title>
+<style>
+  /* @font-face removed — real site self-hosts Hanken Grotesk + JetBrains Mono via Fontsource */
+  :root {
+    --bg:#fbfbfc; --srf:#ffffff; --srf2:#f4f4f5; --bd:#e9e9ec; --bd2:#d9d9de;
+    --t1:#18181b; --t2:#52525b; --t3:#a1a1aa;
+    --ac:#8b5cf6; --act:#6d28d9; --acbg:rgba(139,92,246,.09); --acfill:#7c3aed; --acfillt:#ffffff;
+    --red:#dc2626; --redbg:#fef2f2; --org:#c2410c; --orgbg:#fff7ed;
+    --amb:#b45309; --ambbg:#fffbeb; --grn:#15803d; --grnbg:#f0fdf4; --blu:#1d4ed8; --blubg:#eff6ff;
+    --barR:#ef4444; --barO:#f97316; --barA:#f59e0b; --barB:#3b82f6;
+    --term:#101014; --termt:#d6d6dc; --termd:#8a8a93; --termg:#7ee2a8;
+    --gridln:rgba(24,24,27,.045);
+  }
+  @media (prefers-color-scheme: dark){ :root{
+    --bg:#0b0b0d; --srf:#141417; --srf2:#1d1d22; --bd:#26262c; --bd2:#3a3a42;
+    --t1:#f4f4f5; --t2:#a1a1aa; --t3:#70707a;
+    --ac:#a78bfa; --act:#c4b5fd; --acbg:rgba(167,139,250,.13); --acfill:#7c3aed;
+    --red:#f87171; --redbg:rgba(248,113,113,.11); --org:#fb923c; --orgbg:rgba(251,146,60,.11);
+    --amb:#fbbf24; --ambbg:rgba(251,191,36,.10); --grn:#4ade80; --grnbg:rgba(74,222,128,.10); --blu:#60a5fa; --blubg:rgba(96,165,250,.11);
+    --gridln:rgba(244,244,245,.05);
+  }}
+  :root[data-theme="dark"]{ --bg:#0b0b0d; --srf:#141417; --srf2:#1d1d22; --bd:#26262c; --bd2:#3a3a42; --t1:#f4f4f5; --t2:#a1a1aa; --t3:#70707a; --ac:#a78bfa; --act:#c4b5fd; --acbg:rgba(167,139,250,.13); --acfill:#7c3aed; --red:#f87171; --redbg:rgba(248,113,113,.11); --org:#fb923c; --orgbg:rgba(251,146,60,.11); --amb:#fbbf24; --ambbg:rgba(251,191,36,.10); --grn:#4ade80; --grnbg:rgba(74,222,128,.10); --blu:#60a5fa; --blubg:rgba(96,165,250,.11); --gridln:rgba(244,244,245,.05); }
+  :root[data-theme="light"]{ --bg:#fbfbfc; --srf:#ffffff; --srf2:#f4f4f5; --bd:#e9e9ec; --bd2:#d9d9de; --t1:#18181b; --t2:#52525b; --t3:#a1a1aa; --ac:#8b5cf6; --act:#6d28d9; --acbg:rgba(139,92,246,.09); --acfill:#7c3aed; --red:#dc2626; --redbg:#fef2f2; --org:#c2410c; --orgbg:#fff7ed; --amb:#b45309; --ambbg:#fffbeb; --grn:#15803d; --grnbg:#f0fdf4; --blu:#1d4ed8; --blubg:#eff6ff; --gridln:rgba(24,24,27,.045); }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--t1); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:15px; line-height:1.6; letter-spacing:-0.006em; -webkit-font-smoothing:antialiased; }
+  .disp { font-family:'Hanken Grotesk',system-ui,sans-serif; }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  a { color:inherit; text-decoration:none; }
+  .wrap { max-width:1200px; margin:0 auto; padding:0 28px; }
+
+  /* page divider */
+  .divider { background:var(--t1); color:var(--bg); font-family:ui-monospace,Menlo,monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:9px 0; }
+  .divider .wrap { display:flex; gap:14px; align-items:center; }
+  .divider .n { opacity:.55; }
+  .divider .r { color:#a78bfa; }
+
+  /* nav */
+  nav { border-bottom:1px solid var(--bd); background:var(--bg); position:sticky; top:0; z-index:5; }
+  .navrow { display:flex; align-items:center; gap:26px; height:60px; }
+  .logo { font-family:'Hanken Grotesk',system-ui,sans-serif; font-weight:700; font-size:17px; letter-spacing:-0.01em; display:flex; align-items:center; gap:7px; }
+  .logo .dia { color:var(--acfill); font-size:13px; }
+  .navlink { font-size:13.5px; color:var(--t2); font-weight:500; }
+  .navlink.on { color:var(--t1); font-weight:600; }
+  .nav-sp { flex:1; }
+  .nav-gh { font-size:13px; font-weight:600; border:1px solid var(--bd2); border-radius:7px; padding:5px 13px; }
+  .nav-th { font-size:13px; color:var(--t3); border:1px solid var(--bd); border-radius:7px; padding:5px 9px; }
+
+  .blueprint { background-image:linear-gradient(var(--gridln) 1px,transparent 1px),linear-gradient(90deg,var(--gridln) 1px,transparent 1px); background-size:40px 40px; }
+
+  /* headers */
+  .phead { padding:56px 0 8px; }
+  .eyebrow { font-family:ui-monospace,Menlo,monospace; font-size:11px; font-weight:600; letter-spacing:.15em; text-transform:uppercase; color:var(--act); margin:0 0 10px; }
+  h1.h { font-family:'Hanken Grotesk',system-ui,sans-serif; font-size:clamp(34px,5vw,46px); font-weight:800; letter-spacing:-0.026em; line-height:1.02; margin:0 0 10px; }
+  h2.h { font-family:'Hanken Grotesk',system-ui,sans-serif; font-size:clamp(24px,3vw,32px); font-weight:750; letter-spacing:-0.02em; line-height:1.08; margin:0 0 12px; }
+  .lead { color:var(--t2); font-size:15.5px; margin:0 0 6px; max-width:64ch; }
+  .lead b { color:var(--t1); }
+  .chip { display:inline-block; font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--t2); border:1px solid var(--bd); border-radius:999px; padding:3px 12px; background:var(--srf); }
+
+  section.s { padding:26px 0 0; }
+  .btn { border-radius:9px; padding:9px 18px; font-size:13.5px; font-weight:600; border:1px solid var(--bd2); color:var(--t1); display:inline-block; }
+  .btn.pri { background:var(--acfill); border-color:var(--acfill); color:var(--acfillt); }
+  .cta { font-size:14px; font-weight:600; color:var(--act); }
+  .code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; background:var(--srf2); border:1px solid var(--bd); border-radius:9px; padding:11px 14px; display:flex; justify-content:space-between; align-items:center; gap:14px; }
+  .code > div { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cp { flex:none; font-family:ui-monospace,Menlo,monospace; font-size:10.5px; font-weight:600; color:var(--act); background:var(--acbg); border-radius:5px; padding:2px 9px; }
+  .badge { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; font-weight:600; border-radius:6px; padding:3px 10px; display:inline-block; }
+  .b-grn{color:var(--grn);background:var(--grnbg);} .b-acc{color:var(--act);background:var(--acbg);} .b-amb{color:var(--amb);background:var(--ambbg);} .b-blu{color:var(--blu);background:var(--blubg);} .b-red{color:var(--red);background:var(--redbg);}
+
+  footer { border-top:1px solid var(--bd); margin-top:64px; }
+  .frow { display:flex; align-items:center; gap:22px; flex-wrap:wrap; padding:24px 0 30px; font-size:13px; color:var(--t2); }
+  .frow .sp { flex:1; } .frow .meta { font-size:11.5px; color:var(--t3); }
+
+  /* ---------- COMMANDS ---------- */
+  .searchisland { border:1px solid var(--bd); border-radius:12px; background:var(--srf); padding:16px 18px; margin-top:18px; }
+  .searchrow { display:flex; align-items:center; gap:12px; }
+  .search { flex:1; display:flex; align-items:center; gap:10px; border:1.5px solid var(--bd2); border-radius:9px; background:var(--bg); padding:9px 13px; color:var(--t3); font-size:13.5px; }
+  .kbd { font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--t2); border:1px solid var(--bd2); border-bottom-width:2px; border-radius:5px; padding:1px 7px; background:var(--srf); }
+  .shown { font-size:12.5px; color:var(--t3); white-space:nowrap; }
+  .filters { display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; }
+  .fchip { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--t2); border:1px solid var(--bd); border-radius:999px; padding:3px 12px; background:var(--srf); }
+  .fchip.on { background:var(--acfill); color:var(--acfillt); border-color:var(--acfill); }
+  .cmdgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  @media (max-width:860px){ .cmdgrid{ grid-template-columns:1fr; } }
+  .cmd { border:1px solid var(--bd); border-radius:11px; background:var(--srf); padding:16px 16px 14px; }
+  .cmd .name { font-family:ui-monospace,Menlo,monospace; font-size:13px; font-weight:600; color:var(--t1); }
+  .cmd .name b { color:var(--act); font-weight:600; }
+  .cmd .desc { font-size:13px; color:var(--t2); margin:9px 0 0; }
+  .cmd .trig { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; color:var(--t3); margin-top:10px; display:flex; flex-wrap:wrap; gap:5px; }
+  .cmd .trig i { border:1px solid var(--bd); border-radius:5px; padding:1px 7px; font-style:normal; }
+  .cmd .g { margin-top:9px; }
+  .empty { border:1px dashed var(--bd2); border-radius:10px; text-align:center; color:var(--t3); font-size:13px; padding:16px; margin-top:14px; }
+
+  /* ---------- PIPELINE ---------- */
+  .rail { display:flex; align-items:center; gap:0; margin:18px 0 6px; flex-wrap:wrap; }
+  .rnode { display:flex; align-items:center; gap:0; }
+  .rdot { width:11px; height:11px; border-radius:50%; border:2px solid var(--bd2); background:var(--srf); flex:none; }
+  .rdot.on { border-color:var(--acfill); background:var(--acfill); }
+  .rseg { width:34px; height:2px; background:var(--bd2); flex:none; }
+  .rseg.loop { background:linear-gradient(90deg,var(--bd2),var(--acfill)); }
+  .rstep { font-size:13px; font-weight:600; padding:0 9px 0 7px; }
+  .rstep small { font-family:ui-monospace,Menlo,monospace; color:var(--t3); font-weight:400; font-size:10.5px; margin-right:5px; }
+  .rstep.loop { color:var(--act); }
+  .stage { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:center; margin-top:16px; }
+  @media (max-width:860px){ .stage{ grid-template-columns:1fr; } }
+  .stagecard { border:1px solid var(--bd); border-radius:12px; background:var(--srf); padding:20px 22px; position:relative; }
+  .stagecard .snum { font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--act); letter-spacing:.08em; }
+  .stagecard h3 { font-size:17px; font-weight:700; letter-spacing:-0.01em; margin:4px 0 6px; }
+  .stagecard p { font-size:13.5px; color:var(--t2); margin:0 0 10px; }
+  .achips { display:flex; flex-wrap:wrap; gap:5px; }
+  .achip { font-family:ui-monospace,Menlo,monospace; font-size:10px; border:1px solid var(--bd); border-radius:5px; padding:2px 8px; color:var(--t2); background:var(--srf); }
+  .snote { font-size:11.5px; color:var(--t3); margin-top:9px; }
+  /* poster-first asciinema */
+  .poster { border-radius:12px; background:var(--term); border:1px solid #26262c; padding:18px 20px; font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--termd); line-height:1.7; min-height:130px; position:relative; display:flex; flex-direction:column; justify-content:center; box-shadow:0 8px 26px rgba(0,0,0,.10); }
+  .poster .cmd0 { color:var(--termg); }
+  .poster .play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .poster .play .circ { width:52px; height:52px; border-radius:50%; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.28); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+  .poster .play .tri { width:0; height:0; border-left:15px solid #fff; border-top:9px solid transparent; border-bottom:9px solid transparent; margin-left:4px; }
+  .poster .dur { position:absolute; right:12px; bottom:10px; font-size:10px; color:var(--termd); border:1px solid #26262c; border-radius:5px; padding:1px 7px; }
+  .uth { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  @media (max-width:860px){ .uth{ grid-template-columns:1fr; } }
+  .uthc { border:1px solid var(--bd); border-radius:11px; background:var(--srf); padding:16px 18px; }
+  .uthc .t { font-size:14px; font-weight:700; margin:0 0 4px; }
+  .uthc .t code { font-family:ui-monospace,Menlo,monospace; color:var(--act); font-size:12.5px; }
+  .uthc p { font-size:12.5px; color:var(--t2); margin:0; }
+  .looprow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  .looprow .c { font-family:ui-monospace,Menlo,monospace; font-size:11px; border:1px solid var(--bd2); border-radius:7px; padding:5px 11px; background:var(--srf2); }
+  .looprow .a { color:var(--t3); }
+
+  /* ---------- TOOLBOX ---------- */
+  .journey { border:1px solid var(--bd); border-radius:14px; background:var(--srf); padding:20px 22px; margin-top:16px; }
+  .jhead { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
+  .jhead .step { font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--act); letter-spacing:.1em; text-transform:uppercase; }
+  .jhead .lbl { font-size:16px; font-weight:700; }
+  .jhead .sub { font-size:12.5px; color:var(--t3); }
+  .wgrid { display:grid; gap:14px; }
+  .wgrid.c3 { grid-template-columns:repeat(3,1fr); } .wgrid.c2 { grid-template-columns:1.1fr 1fr; }
+  @media (max-width:860px){ .wgrid.c3,.wgrid.c2{ grid-template-columns:1fr; } }
+  .wmini { border:1px solid var(--bd); border-radius:10px; background:var(--bg); overflow:hidden; }
+  .wmini .h { display:flex; justify-content:space-between; align-items:center; padding:9px 13px; border-bottom:1px solid var(--bd); font-family:ui-monospace,Menlo,monospace; font-size:10.5px; color:var(--t3); }
+  .wmini .b { padding:13px; }
+  .wordmark { font-family:'Hanken Grotesk',system-ui,sans-serif; font-weight:750; font-size:19px; letter-spacing:-0.02em; background:linear-gradient(100deg,var(--acfill),var(--ac)); -webkit-background-clip:text; background-clip:text; color:transparent; margin:0 0 9px; }
+  .kpis { display:flex; gap:8px; margin-bottom:9px; }
+  .kpi { flex:1; border:1px solid var(--bd); border-radius:8px; padding:7px 9px; }
+  .kpi .kn { font-family:'Hanken Grotesk',system-ui,sans-serif; font-size:16px; font-weight:750; }
+  .kpi .kl { font-size:9.5px; color:var(--t3); }
+  .spark { display:flex; height:7px; border-radius:4px; overflow:hidden; }
+  .spark i { display:block; height:100%; }
+  .rrow { display:flex; justify-content:space-between; align-items:center; padding:6px 2px; border-bottom:1px solid var(--bd); font-size:12px; }
+  .rrow:last-child { border-bottom:none; }
+  .rrow .rn { font-family:ui-monospace,Menlo,monospace; font-size:11px; }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:7px; }
+  .parity-mini { border:1px dashed var(--bd2); border-radius:10px; padding:12px 14px; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--t3); background:transparent; display:flex; align-items:center; }
+  .canvas { border:1px solid var(--acfill); border-radius:14px; background:var(--acbg); padding:18px 20px; margin-top:20px; }
+  .canvas .toggle { display:inline-flex; border:1px solid var(--bd2); border-radius:8px; overflow:hidden; }
+  .canvas .toggle span { font-size:12px; padding:5px 14px; color:var(--t2); }
+  .canvas .toggle span.on { background:var(--acfill); color:var(--acfillt); }
+  .canvas .stage-area { margin-top:12px; border:1px solid var(--bd); border-radius:10px; background:var(--srf); min-height:150px; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--t3); font-family:ui-monospace,Menlo,monospace; font-size:11.5px; line-height:1.7; }
+
+  /* ---------- QUICKSTART ---------- */
+  .prereq { border:1px solid var(--bd2); border-left:3px solid var(--acfill); border-radius:8px; background:var(--srf); padding:12px 16px; font-size:13.5px; color:var(--t2); margin-top:16px; }
+  .prereq b { color:var(--t1); }
+  .qstep { display:grid; grid-template-columns:44px 1fr; gap:16px; margin-top:18px; align-items:start; }
+  .qmark { width:44px; height:44px; border-radius:50%; border:2px solid var(--bd2); display:flex; align-items:center; justify-content:center; font-family:'Hanken Grotesk',system-ui,sans-serif; font-weight:750; font-size:18px; color:var(--act); background:var(--srf); position:relative; }
+  .qmark.rail::after { content:""; position:absolute; top:46px; left:50%; width:2px; height:calc(100% + 12px); background:var(--bd); transform:translateX(-50%); }
+  .qbody h3 { font-size:16px; font-weight:700; margin:6px 0 8px; }
+  .qbody .code { max-width:520px; }
+  .qbody p { font-size:13px; color:var(--t2); margin:8px 0 0; }
+  .qbody .screenshot { margin-top:10px; border:1px solid var(--bd); border-radius:8px; background:repeating-linear-gradient(45deg,transparent 0 6px,var(--gridln) 6px 7px),var(--srf); min-height:70px; max-width:520px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--t3); }
+  .nexts { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:26px; }
+  @media (max-width:860px){ .nexts{ grid-template-columns:1fr; } }
+  .nextc { border:1px solid var(--bd); border-radius:11px; background:var(--srf); padding:16px 18px; }
+  .nextc .t { font-size:14px; font-weight:700; }
+  .nextc p { font-size:12.5px; color:var(--t2); margin:5px 0 0; }
+  .agentbox { border:1px solid var(--bd); border-radius:12px; background:var(--srf2); padding:16px 20px; margin-top:22px; }
+  .agentbox h3 { font-size:14px; font-weight:700; margin:0 0 5px; }
+  .agentbox p { font-size:12.5px; color:var(--t2); margin:0; }
+  .agentbox code { font-family:ui-monospace,Menlo,monospace; color:var(--act); font-size:12px; }
+</style>
+
+<!-- ============================================================ COMMANDS -->
+<div class="divider"><div class="wrap"><span class="n">page 2 / 5</span><span class="r">/commands</span><span>· searchable catalog of all 51 commands</span></div></div>
+<nav><div class="wrap navrow">
+  <span class="logo"><span class="dia">◆</span>Marvin</span>
+  <a class="navlink on">Commands</a><a class="navlink">Pipeline</a><a class="navlink">Toolbox</a><a class="navlink">Quickstart</a>
+  <span class="nav-sp"></span><a class="nav-gh">GitHub</a><span class="nav-th">◐</span>
+</div></nav>
+<div class="wrap">
+  <div class="phead">
+    <p class="eyebrow">reference</p>
+    <h1 class="h">Commands</h1>
+    <p class="lead">Everything the plugin does, in one searchable place. <b>Search runs entirely in your browser</b> — no backend, no tracking.</p>
+    <span class="chip">51 commands · 7 groups</span>
+  </div>
+  <div class="searchisland">
+    <div class="searchrow">
+      <div class="search"><span>Search by name, description, or trigger phrase…</span><span style="flex:1"></span><span class="kbd">/</span></div>
+      <span class="shown">12 shown</span>
+    </div>
+    <div class="filters">
+      <span class="fchip">all</span><span class="fchip">core</span><span class="fchip">adr</span><span class="fchip">pr</span>
+      <span class="fchip on">task</span><span class="fchip">sec</span><span class="fchip">refactor</span><span class="fchip">track</span>
+    </div>
+  </div>
+  <div class="cmdgrid">
+    <div class="cmd"><span class="name"><b>/marvin:</b>task-start</span><div class="g"><span class="badge b-acc">task</span></div><p class="desc">Start work through a structured dialogue that produces an immutable, testable spec.</p><div class="trig"><i>start a task</i><i>spec this out</i><i>begin work on</i></div></div>
+    <div class="cmd"><span class="name"><b>/marvin:</b>task-implement</span><div class="g"><span class="badge b-acc">task</span></div><p class="desc">Execute a ready spec in the current session, then chain into verify and deliver.</p><div class="trig"><i>run the task</i><i>implement this spec</i></div></div>
+    <div class="cmd"><span class="name"><b>/marvin:</b>task-verify</span><div class="g"><span class="badge b-acc">task</span></div><p class="desc">Run tests, lint, type-check, and build concurrently; write verification.md.</p><div class="trig"><i>verify</i><i>run the gates</i><i>is this green?</i></div></div>
+    <div class="cmd"><span class="name"><b>/marvin:</b>task-deliver</span><div class="g"><span class="badge b-acc">task</span></div><p class="desc">Commit and open a pull request. Refuses if verification did not pass.</p><div class="trig"><i>deliver</i><i>ship it</i><i>commit and PR</i></div></div>
+    <div class="cmd"><span class="name"><b>/marvin:</b>task-summary</span><div class="g"><span class="badge b-acc">task</span></div><p class="desc">Aggregate criteria, gates, commits, and lessons into a delivery digest.</p><div class="trig"><i>summarise the task</i></div></div>
+    <div class="cmd" style="display:flex;align-items:center;justify-content:center;color:var(--t3);border-style:dashed;font-family:ui-monospace,Menlo,monospace;font-size:12px;">+ 7 more in <span style="color:var(--act);margin-left:5px;">task</span></div>
+  </div>
+  <div class="empty">Type to filter. No match? "No commands match — clear the search or filters."</div>
+  <footer><div class="frow"><span class="logo" style="font-size:14px;"><span class="dia">◆</span>Marvin</span><a>GitHub</a><a>Docs</a><span>MIT</span><span class="sp"></span><span class="meta">Vercel Analytics · no cookies</span></div></footer>
+</div>
+
+<!-- ============================================================ PIPELINE -->
+<div class="divider"><div class="wrap"><span class="n">page 3 / 5</span><span class="r">/pipeline</span><span>· the spec-driven tour — the blueprint page</span></div></div>
+<nav><div class="wrap navrow">
+  <span class="logo"><span class="dia">◆</span>Marvin</span>
+  <a class="navlink">Commands</a><a class="navlink on">Pipeline</a><a class="navlink">Toolbox</a><a class="navlink">Quickstart</a>
+  <span class="nav-sp"></span><a class="nav-gh">GitHub</a><span class="nav-th">◐</span>
+</div></nav>
+<div class="blueprint">
+<div class="wrap">
+  <div class="phead">
+    <p class="eyebrow">the workflow</p>
+    <h1 class="h">The task pipeline.</h1>
+    <p class="lead">Spec-driven development — <b>without the ceremony</b>. From a requirement to a merged PR, then back around: the toolbox learns as it ships.</p>
+    <div class="rail">
+      <span class="rstep"><small>1</small>spec</span><span class="rseg"></span>
+      <span class="rdot on"></span><span class="rseg"></span>
+      <span class="rstep"><small>2</small>implement</span><span class="rseg"></span>
+      <span class="rdot"></span><span class="rseg"></span>
+      <span class="rstep"><small>3</small>verify</span><span class="rseg"></span>
+      <span class="rdot"></span><span class="rseg"></span>
+      <span class="rstep"><small>4</small>deliver</span><span class="rseg loop"></span>
+      <span class="rdot on"></span><span class="rseg loop"></span>
+      <span class="rstep loop">learn ↺</span>
+    </div>
+  </div>
+
+  <section class="s">
+    <div class="stage">
+      <div class="stagecard">
+        <span class="snum">STAGE 1 · task-start</span>
+        <h3>Formalize the requirement</h3>
+        <p>A structured dialogue turns a vague ask into an immutable, testable spec — with relevant lessons recalled at intake.</p>
+        <div class="achips"><span class="achip">.marvin/task/001-slug.md</span><span class="achip">spec-contract ✓</span><span class="achip">lessons recalled ↺</span></div>
+        <p class="snote">A durable artifact — leave it, return, run it later.</p>
+      </div>
+      <div class="poster"><span class="cmd0">➜ /marvin:task-start</span><br>dialogue → spec…<div class="play"><span class="circ"><span class="tri"></span></span></div><span class="dur">0:42</span></div>
+    </div>
+    <div class="stage">
+      <div class="poster"><span class="cmd0">➜ /marvin:task-implement</span><br>writing code + tests…<div class="play"><span class="circ"><span class="tri"></span></span></div><span class="dur">1:18</span></div>
+      <div class="stagecard">
+        <span class="snum">STAGE 2 · task-implement</span>
+        <h3>Build it against the spec</h3>
+        <p>The chosen approach is implemented and self-tested, staying inside the spec's file allowlist.</p>
+        <div class="achips"><span class="achip">code + tests</span></div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stagecard">
+        <span class="snum">STAGE 3 · task-verify</span>
+        <h3>Prove it green</h3>
+        <p>Tests, lint, type-check, and build run concurrently through one merge point. A red gate blocks delivery — fail-closed.</p>
+        <div class="achips"><span class="achip">tests</span><span class="achip">lint</span><span class="achip">types</span><span class="achip">build</span><span class="achip">verification.md</span></div>
+      </div>
+      <div class="poster"><span class="cmd0">➜ /marvin:verify</span><br>gates: 4 running…<div class="play"><span class="circ"><span class="tri"></span></span></div><span class="dur">0:55</span></div>
+    </div>
+    <div class="stage">
+      <div class="poster"><span class="cmd0">➜ /marvin:task-deliver</span><br>commit → pull request…<div class="play"><span class="circ"><span class="tri"></span></span></div><span class="dur">0:38</span></div>
+      <div class="stagecard">
+        <span class="snum">STAGE 4 · task-deliver</span>
+        <h3>Ship it, documented</h3>
+        <p>A Conventional Commit and a structured PR, linked to the task — your history reads well from the first merge.</p>
+        <div class="achips"><span class="achip">conventional commit</span><span class="achip">pull request</span><span class="achip">lesson captured</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="s">
+    <div class="stagecard" style="margin-top:16px;">
+      <span class="snum">LOOP · lessons</span>
+      <h3>The toolbox learns</h3>
+      <div class="looprow">
+        <span class="c">captured at deliver / debug</span><span class="a">→</span>
+        <span class="c">.marvin/memory/</span><span class="a">→</span>
+        <span class="c">recalled at the next task-start</span><span class="a">↺</span>
+      </div>
+      <p style="font-size:13px;color:var(--t2);margin:0;">Lessons are files in the repo, so they travel through git — one developer's fix becomes the whole team's default.</p>
+    </div>
+  </section>
+
+  <section class="s">
+    <p class="eyebrow" style="margin-top:24px;">under the hood</p>
+    <div class="uth">
+      <div class="uthc"><p class="t"><code>spec</code> — Definition of Ready</p><p>Parses and validates the spec contract fail-closed: schema, file paths, the AC⇄files⇄tests triple. An incomplete spec does not pass.</p></div>
+      <div class="uthc"><p class="t"><code>verify</code> — quality gates</p><p>Concurrent gates, a single merge point, config-first resolution. Writes the verification.md that gates delivery.</p></div>
+      <div class="uthc"><p class="t"><code>lessons</code> — team memory</p><p>Typed lessons in .marvin/memory/: add at delivery and debugging, search at intake. Near-duplicate guarded.</p></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:24px;padding:16px 20px;border:1px solid var(--bd);border-radius:12px;background:var(--srf);">
+      <span style="font-weight:700;font-size:14.5px;">Try it in five minutes.</span><span style="flex:1"></span><a class="btn pri">Quickstart →</a>
+    </div>
+  </section>
+  <footer><div class="frow"><span class="logo" style="font-size:14px;"><span class="dia">◆</span>Marvin</span><a>GitHub</a><a>Docs</a><span>MIT</span><span class="sp"></span><span class="meta">Vercel Analytics · no cookies</span></div></footer>
+</div>
+</div>
+
+<!-- ============================================================ TOOLBOX -->
+<div class="divider"><div class="wrap"><span class="n">page 4 / 5</span><span class="r">/toolbox</span><span>· the visual layer, nine widgets, live demos</span></div></div>
+<nav><div class="wrap navrow">
+  <span class="logo"><span class="dia">◆</span>Marvin</span>
+  <a class="navlink">Commands</a><a class="navlink">Pipeline</a><a class="navlink on">Toolbox</a><a class="navlink">Quickstart</a>
+  <span class="nav-sp"></span><a class="nav-gh">GitHub</a><span class="nav-th">◐</span>
+</div></nav>
+<div class="wrap">
+  <div class="phead">
+    <p class="eyebrow">visual toolbox</p>
+    <h1 class="h">The toolbox.</h1>
+    <p class="lead">Fully set up on install. In MCP Apps hosts every tool renders live, interactive UI — <b>and the same commands answer in plain text in any terminal</b>.</p>
+    <span class="chip">9 widgets</span>
+  </div>
+
+  <div class="journey">
+    <div class="jhead"><span class="step">arrive</span><span class="lbl">First contact</span><span class="sub">— one command orients you</span></div>
+    <div class="wgrid c2">
+      <div class="wmini"><div class="h"><span>/marvin:help</span><span>welcome</span></div><div class="b">
+        <p class="wordmark">◆ marvin</p>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;"><span class="badge b-acc">/marvin:commit</span><span class="badge b-acc">task-start</span><span class="badge b-acc">sec-scan</span></div>
+        <p style="font-size:11.5px;color:var(--t3);margin:9px 0 0;">51 commands · 7 groups · servers lit by status</p>
+      </div></div>
+      <div class="parity-mini">$ /marvin:help &nbsp;— the same welcome as plain terminal text. Nothing is locked behind the GUI.</div>
+    </div>
+  </div>
+
+  <div class="journey">
+    <div class="jhead"><span class="step">steer</span><span class="lbl">Run the project</span><span class="sub">— state at a glance</span></div>
+    <div class="wgrid c3">
+      <div class="wmini"><div class="h"><span>/marvin:dashboard</span><span>analytics</span></div><div class="b">
+        <div class="kpis"><div class="kpi"><div class="kn">4</div><div class="kl">board</div></div><div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div><div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div></div>
+        <div class="spark"><i style="width:14%;background:var(--barR)"></i><i style="width:22%;background:var(--barO)"></i><i style="width:34%;background:var(--barA)"></i><i style="width:30%;background:var(--barB)"></i></div>
+      </div></div>
+      <div class="wmini"><div class="h"><span>/marvin:task-list</span><span>board</span></div><div class="b">
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--blu)"></span>#12 spec gate</span><span class="badge b-blu">doing</span></div>
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--amb)"></span>#13 widget</span><span class="badge b-amb">review</span></div>
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--grn)"></span>#11 tracker</span><span class="badge b-grn">done</span></div>
+      </div></div>
+      <div class="wmini"><div class="h"><span>/marvin:track-list</span><span>tracker</span></div><div class="b">
+        <div class="rrow"><span class="rn">backlog</span><span class="badge b-acc">6</span></div>
+        <div class="rrow"><span class="rn">in progress</span><span class="badge b-blu">2</span></div>
+        <div class="rrow"><span class="rn">done</span><span class="badge b-grn">14</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="journey">
+    <div class="jhead"><span class="step">review &amp; share</span><span class="lbl">Results out</span><span class="sub">— formatted, exportable</span></div>
+    <div class="wgrid c3">
+      <div class="wmini"><div class="h"><span>/marvin:reports</span><span>formatted</span></div><div class="b">
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--grn)"></span>sec-scan</span><span class="badge b-grn">fresh</span></div>
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--amb)"></span>refactor-audit</span><span class="badge b-amb">3d</span></div>
+        <div class="rrow"><span class="rn"><span class="dot" style="background:var(--ac)"></span>task 001 summary</span><span class="badge b-acc">sealed</span></div>
+        <div style="display:flex;gap:6px;margin-top:11px;"><span class="badge b-acc">Export PDF</span><span class="badge b-acc">Export MD</span></div>
+      </div></div>
+      <div class="wmini"><div class="h"><span>/marvin:sec-report</span><span>findings</span></div><div class="b">
+        <div class="rrow"><span class="rn">critical</span><span class="badge b-red">0</span></div>
+        <div class="rrow"><span class="rn">high</span><span class="badge b-amb">2</span></div>
+        <div class="rrow"><span class="rn">audit</span><span class="badge b-acc">task-summary</span></div>
+      </div></div>
+      <div class="wmini"><div class="h"><span>/marvin:handoff-list</span><span>continuity</span></div><div class="b">
+        <div class="rrow"><span class="rn">001 widget-stage</span><span class="badge b-acc">newest</span></div>
+        <div class="rrow"><span class="rn">handoffs</span><span class="badge b-blu">3</span></div>
+        <p style="font-size:11px;color:var(--t3);margin:9px 0 0;">Resume any session in a fresh context.</p>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="canvas">
+    <div class="toggle"><span class="on">Live demo</span><span>Screenshot</span></div>
+    <div class="stage-area">sandboxed iframe · the committed widget HTML · fed mock data<br>theme follows the site toggle · inline on the page, never a modal</div>
+  </div>
+  <p style="font-size:13px;color:var(--t3);margin:16px 0 0;">Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of glass.</p>
+  <footer><div class="frow"><span class="logo" style="font-size:14px;"><span class="dia">◆</span>Marvin</span><a>GitHub</a><a>Docs</a><span>MIT</span><span class="sp"></span><span class="meta">Vercel Analytics · no cookies</span></div></footer>
+</div>
+
+<!-- ============================================================ QUICKSTART -->
+<div class="divider"><div class="wrap"><span class="n">page 5 / 5</span><span class="r">/quickstart</span><span>· zero to first command, about a minute</span></div></div>
+<nav><div class="wrap navrow">
+  <span class="logo"><span class="dia">◆</span>Marvin</span>
+  <a class="navlink">Commands</a><a class="navlink">Pipeline</a><a class="navlink">Toolbox</a><a class="navlink on">Quickstart</a>
+  <span class="nav-sp"></span><a class="nav-gh">GitHub</a><span class="nav-th">◐</span>
+</div></nav>
+<div class="wrap">
+  <div class="phead">
+    <p class="eyebrow">get started</p>
+    <h1 class="h">Quickstart.</h1>
+    <p class="lead">Two commands, about a minute. No clone, no build step — the server ships bundled with the plugin.</p>
+  </div>
+  <div class="prereq"><b>Before you start:</b> Claude Code is installed and you are signed in.</div>
+
+  <div class="qstep"><div class="qmark rail">1</div><div class="qbody">
+    <h3>Add the marketplace</h3>
+    <div class="code"><div>/plugin marketplace add real-case/marvin-toolkit</div><span class="cp">copy</span></div>
+  </div></div>
+  <div class="qstep"><div class="qmark rail">2</div><div class="qbody">
+    <h3>Install the plugin</h3>
+    <div class="code"><div>/plugin install marvin@marvin-toolkit</div><span class="cp">copy</span></div>
+  </div></div>
+  <div class="qstep"><div class="qmark rail">3</div><div class="qbody">
+    <h3>Confirm it works</h3>
+    <div class="code"><div>/marvin:help</div><span class="cp">copy</span></div>
+    <p>In Claude Desktop this renders as the help widget; in a terminal, the same content as text.</p>
+    <div class="screenshot">screenshot: /marvin:help widget</div>
+  </div></div>
+  <div class="qstep"><div class="qmark">4</div><div class="qbody">
+    <h3>Spec your first task</h3>
+    <div class="code"><div>/marvin:task-start</div><span class="cp">copy</span></div>
+    <p>Formalize a requirement into a rerunnable spec in your repo — the pipeline takes it from there.</p>
+  </div></div>
+
+  <div class="nexts">
+    <div class="nextc"><p class="t">Usage guide ↗</p><p>Worked walkthroughs on GitHub — commit, PR, security, refactor.</p></div>
+    <div class="nextc"><p class="t">Browse commands →</p><p>All 51, searchable by name and trigger phrase.</p></div>
+    <div class="nextc"><p class="t">Open the toolbox →</p><p>See the nine widgets with live demos.</p></div>
+  </div>
+
+  <div class="agentbox">
+    <h3>Working with an agent?</h3>
+    <p>The site serves <code>llms.txt</code> — an agent-readable summary, the install commands, and the docs map — so a coding agent can set marvin up for you. Marvin is an MCP server; talking to agents is the point.</p>
+  </div>
+  <p style="font-size:12.5px;color:var(--t3);margin:20px 0 0;">Marvin keeps its working files in <span class="mono" style="color:var(--t2)">.marvin/</span> — the configuration reference lives in the GitHub docs.</p>
+  <footer><div class="frow"><span class="logo" style="font-size:14px;"><span class="dia">◆</span>Marvin</span><a>GitHub</a><a>Docs</a><span>MIT</span><span class="sp"></span><span class="meta">Vercel Analytics · no cookies</span></div></footer>
+</div>
+
+</body></html>
