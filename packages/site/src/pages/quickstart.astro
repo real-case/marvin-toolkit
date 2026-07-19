@@ -1,20 +1,305 @@
 ---
-// quickstart.astro (spec 004, F17) — /quickstart stub so the nav link resolves. The
-// prerequisite callout, the two-command install, and the first-workflow walkthrough are
-// built in Phase 3.
+// quickstart.astro (spec 008, F1) — the /quickstart walkthrough. The zero-to-first-command
+// section ported from docs/design/mockups/inner-pages.html onto the Phase-1 shell (Base owns
+// nav/footer/head). Copy verbatim from the approved mockup. The four command rows reuse the
+// shared CodeCommand primitive (its third caller — Home hero + install band + here); the two
+// next-card counts read from the generated catalog (FR-20) — no hand-typed numbers. Quickstart-
+// specific styles live in the scoped <style>; tokens, .container, and the CodeCommand row come
+// from the scaffold — the .eyebrow is overridden to accent locally (as Home + Pipeline do), and
+// the page-local 40px blueprint matches Home + Pipeline (not the scaffold 32px .blueprint). The
+// /marvin:help screenshot is a STATIC placeholder: no <img>, no premature media (the real
+// capture is a later phase).
 import Base from "../layouts/Base.astro";
+import CodeCommand from "../components/CodeCommand.astro";
+import { catalog } from "../data/catalog";
+
+const REPO = "https://github.com/real-case/marvin-toolkit";
+const { counts, commands } = catalog;
+const commandCount = commands.length; // 51 — generated, never a literal (FR-20)
+const widgetCount = counts.widgets; // 9 — generated, never a literal (FR-20)
 ---
 
 <Base
   title="Quickstart — Marvin"
-  description="From zero to your first marvin command in about a minute."
+  description="From zero to your first marvin command in about a minute: two commands to install, then spec your first task."
 >
-  <section class="container section">
-    <p class="eyebrow">Get started</p>
-    <h1>Quickstart</h1>
-    <p class="page-lead">
-      From zero to your first command in about a minute — the numbered install steps and the
-      first-workflow walkthrough land in Phase 3.
-    </p>
-  </section>
+  <div class="bp">
+    <div class="container">
+      <!-- header -->
+      <header class="phead">
+        <p class="eyebrow">get started</p>
+        <h1>Quickstart.</h1>
+        <p class="lead">
+          Two commands, about a minute. No clone, no build step — the server ships bundled with the
+          plugin.
+        </p>
+      </header>
+
+      <div class="prereq">
+        <b>Before you start:</b> Claude Code is installed and you are signed in.
+      </div>
+
+      <!-- the four numbered install steps — rail connector on 1–3, none on 4 -->
+      <div class="qstep">
+        <div class="qmark rail">1</div>
+        <div class="qbody">
+          <h3>Add the marketplace</h3>
+          <CodeCommand command="/plugin marketplace add real-case/marvin-toolkit" />
+        </div>
+      </div>
+      <div class="qstep">
+        <div class="qmark rail">2</div>
+        <div class="qbody">
+          <h3>Install the plugin</h3>
+          <CodeCommand command="/plugin install marvin@marvin-toolkit" />
+        </div>
+      </div>
+      <div class="qstep">
+        <div class="qmark rail">3</div>
+        <div class="qbody">
+          <h3>Confirm it works</h3>
+          <CodeCommand command="/marvin:help" />
+          <p>
+            In Claude Desktop this renders as the help widget; in a terminal, the same content as
+            text.
+          </p>
+          <div class="screenshot">screenshot: /marvin:help widget</div>
+        </div>
+      </div>
+      <div class="qstep">
+        <div class="qmark">4</div>
+        <div class="qbody">
+          <h3>Spec your first task</h3>
+          <CodeCommand command="/marvin:task-start" />
+          <p>
+            Formalize a requirement into a rerunnable spec in your repo — the pipeline takes it from
+            there.
+          </p>
+        </div>
+      </div>
+
+      <!-- onward -->
+      <div class="nexts">
+        <a class="nextc" href={REPO} rel="noopener">
+          <p class="t">Usage guide ↗</p>
+          <p>Worked walkthroughs on GitHub — commit, PR, security, refactor.</p>
+        </a>
+        <a class="nextc" href="/commands">
+          <p class="t">Browse commands →</p>
+          <p>All {commandCount}, searchable by name and trigger phrase.</p>
+        </a>
+        <a class="nextc" href="/toolbox">
+          <p class="t">Open the toolbox →</p>
+          <p>See the {widgetCount} widgets with live demos.</p>
+        </a>
+      </div>
+
+      <!-- agent-native surface (FR-24) -->
+      <div class="agentbox">
+        <h3>Working with an agent?</h3>
+        <p>
+          The site serves <code>llms.txt</code> — an agent-readable summary, the install commands, and
+          the docs map — so a coding agent can set marvin up for you. Marvin is an MCP server; talking
+          to agents is the point.
+        </p>
+      </div>
+
+      <p class="marvinnote">
+        Marvin keeps its working files in <span class="mono">.marvin/</span> — the configuration reference
+        lives in the GitHub docs.
+      </p>
+    </div>
+  </div>
 </Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching Home + Pipeline + the mockup (the scaffold
+     .blueprint is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding-bottom: 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Quickstart eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0;
+    max-width: 64ch;
+  }
+
+  /* ---------- prereq callout ---------- */
+  .prereq {
+    border: 1px solid var(--bd2);
+    border-left: 3px solid var(--acfill);
+    border-radius: 8px;
+    background: var(--srf);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    color: var(--t2);
+    margin-top: 16px;
+  }
+  .prereq b {
+    color: var(--t1);
+  }
+
+  /* ---------- numbered steps ---------- */
+  .qstep {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 16px;
+    margin-top: 18px;
+    align-items: start;
+  }
+  /* Let the body track shrink below its content's intrinsic width (the min-width:auto trap),
+     so a long mono command ellipsis-truncates instead of forcing a 360px overflow. */
+  .qstep > * {
+    min-width: 0;
+  }
+  .qmark {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--bd2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 750;
+    font-size: 18px;
+    color: var(--act);
+    background: var(--srf);
+    position: relative;
+  }
+  /* the rail connector below steps 1–3 (step 4 omits .rail) */
+  .qmark.rail::after {
+    content: "";
+    position: absolute;
+    top: 46px;
+    left: 50%;
+    width: 2px;
+    height: calc(100% + 12px);
+    background: var(--bd);
+    transform: translateX(-50%);
+  }
+  .qbody h3 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 6px 0 8px;
+  }
+  .qbody p {
+    font-size: 13px;
+    color: var(--t2);
+    margin: 8px 0 0;
+  }
+  .screenshot {
+    margin-top: 10px;
+    max-width: 520px;
+    min-height: 70px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    background:
+      repeating-linear-gradient(45deg, transparent 0 6px, var(--grid-line) 6px 7px), var(--srf);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--t3);
+  }
+
+  /* ---------- onward cards ---------- */
+  .nexts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 26px;
+  }
+  .nexts > * {
+    min-width: 0;
+  }
+  .nextc {
+    display: block;
+    border: 1px solid var(--bd);
+    border-radius: 11px;
+    background: var(--srf);
+    padding: 16px 18px;
+    color: inherit;
+  }
+  .nextc:hover {
+    border-color: var(--bd2);
+    text-decoration: none;
+  }
+  .nextc .t {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+  }
+  .nextc p {
+    font-size: 12.5px;
+    color: var(--t2);
+    margin: 5px 0 0;
+  }
+
+  /* ---------- agent-native box ---------- */
+  .agentbox {
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--srf2);
+    padding: 16px 20px;
+    margin-top: 22px;
+  }
+  .agentbox h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 5px;
+  }
+  .agentbox p {
+    font-size: 12.5px;
+    color: var(--t2);
+    margin: 0;
+  }
+  .agentbox code {
+    font-family: var(--font-mono);
+    color: var(--act);
+    font-size: 12px;
+  }
+
+  .marvinnote {
+    font-size: 12.5px;
+    color: var(--t3);
+    margin: 20px 0 0;
+  }
+  .marvinnote .mono {
+    font-family: var(--font-mono);
+    color: var(--t2);
+  }
+
+  /* ---------- responsive (mockup breakpoint) ---------- */
+  @media (max-width: 860px) {
+    .nexts {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
