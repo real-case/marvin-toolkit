@@ -1,0 +1,62 @@
+---
+// CodeCommand.astro (spec 006, F1) — the copy-able command row used by the hero and the
+// install band (and later Quickstart). The command text is a <code class="code"> so it
+// inherits the global primitives mono style — keeping `.code`.first() on `/` mono for the
+// shipped font e2e (theme-toggle.spec.ts). The `.command`/`.copy` block-row layout lives
+// HERE, in this component's own scoped <style> — Astro scopes a component's styles to its
+// own template, so an index.astro-scoped rule would not reach this element.
+//
+// The "copy" affordance is STATIC in this slice — no clipboard JS. FR-2 (copy-to-clipboard)
+// is Phase 4; it is decorative (aria-hidden) here so Phase 4 wires copy in exactly one place.
+interface Props {
+  command: string;
+}
+const { command } = Astro.props;
+---
+
+<div class="command">
+  <code class="code">{command}</code>
+  <span class="copy" aria-hidden="true">copy</span>
+</div>
+
+<style>
+  .command {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    /* fill the container (capped at 560) rather than sizing to the nowrap command, so the
+       inner .code ellipsis-truncates on narrow viewports instead of overflowing. */
+    width: 100%;
+    max-width: 560px;
+    padding: 11px 14px;
+    background: var(--srf2);
+    border: 1px solid var(--bd);
+    border-radius: 9px;
+  }
+
+  /* Strip the primitives `.code` inline chrome — inside the row it is just mono text.
+     font-family stays var(--font-mono) from primitives.css, so `.code` reads mono. */
+  .command .code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    font-size: 12.5px;
+    background: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  .copy {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--act);
+    background: var(--acbg);
+    border-radius: 5px;
+    padding: 2px 9px;
+  }
+</style>

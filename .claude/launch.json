@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "storybook", "-w", "@marvin-toolkit/widgets"],
       "port": 6006
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@marvin-toolkit/site"],
+      "port": 4321
     }
   ]
 }
