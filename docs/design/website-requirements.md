@@ -186,10 +186,12 @@ The home page tells the positioning story in order; block order is the narrative
 
 ### Content pipeline
 
-- **FR-20 (M)** — A build-time script reads `prompts/index.ts`, the `SKILL.md`
-  frontmatter, and `plugin.json`, and emits typed JSON that the site consumes. The
-  catalog, the counts, and the version all derive from it; the site carries no
-  hand-maintained numbers.
+- **FR-20 (M)** — A build-time script reads `prompts/index.ts` (the command registry —
+  identity and order), the curated command reference `help-content.ts` in
+  `@marvin-toolkit/mcp-shared` (blurbs, descriptions, and trigger phrases — the source the
+  `help` tool and widget already share, so the site catalog and the embedded widget read as
+  one system), and `plugin.json`, and emits typed JSON that the site consumes. The catalog,
+  the counts, and the version all derive from it; the site carries no hand-maintained numbers.
 - **FR-21 (S)** — CI builds the site when plugin sources change, so a catalog regression
   surfaces before deploy rather than after.
 
@@ -279,7 +281,7 @@ scope for the first release.
 ## Decisions log
 
 Every question raised during the interview and the v1–v2 reviews is resolved
-(all decided 2026-07-17):
+(decided 2026-07-17 unless a later date is noted on the entry):
 
 1. **Tagline** — "Claude Code toolset for AI-assisted development without panic".
 2. **Domain** — `marvin-toolkit.dev`.
@@ -304,3 +306,9 @@ Every question raised during the interview and the v1–v2 reviews is resolved
     Familjen Grotesk (more character).
 12. **Canonical theme** — light; dark at full parity via the OS preference and the
     toggle.
+13. **Content-pipeline source (2026-07-19, amended)** — FR-20's catalog data comes from the
+    curated `help-content.ts` in `@marvin-toolkit/mcp-shared` (the source the `help` tool and
+    widget already share), not from parsing `SKILL.md` frontmatter as first worded: only 37 of
+    the 51 commands have a `SKILL.md`, whereas `help-content` covers all 51 with
+    coverage-guarded trigger phrases, so the site catalog and the embedded help widget stay
+    identical. Shipped in Phase 2 (PR #126).
