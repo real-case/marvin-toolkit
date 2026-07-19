@@ -1,0 +1,688 @@
+{
+  "version": "0.8.1",
+  "counts": {
+    "prompts": 51,
+    "tools": 13,
+    "agents": 10,
+    "widgets": 9,
+    "version": "0.8.1",
+    "license": "MIT"
+  },
+  "groups": [
+    {
+      "key": "core",
+      "blurb": "Everyday dev — commits, debugging, docs, ADRs, handoffs",
+      "count": 14
+    },
+    {
+      "key": "adr",
+      "blurb": "Architecture Decision Record lifecycle",
+      "count": 6
+    },
+    {
+      "key": "pr",
+      "blurb": "Pull-request lifecycle — create, review, resolve, merge",
+      "count": 4
+    },
+    {
+      "key": "task",
+      "blurb": "Spec-driven pipeline — start, implement, verify, deliver",
+      "count": 5
+    },
+    {
+      "key": "sec",
+      "blurb": "Security scanners — secrets, deps, threat models & more",
+      "count": 11
+    },
+    {
+      "key": "refactor",
+      "blurb": "Code-health — audit, smells, plan, apply",
+      "count": 4
+    },
+    {
+      "key": "track",
+      "blurb": "Lightweight board tracker — create, move, list, configure",
+      "count": 7
+    }
+  ],
+  "commands": [
+    {
+      "name": "commit",
+      "group": "core",
+      "blurb": "Conventional commit, board-linked",
+      "description": "Safe commit — inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
+      "phrases": [
+        "marvin, commit this",
+        "marvin, stage and commit my changes",
+        "marvin, make a conventional commit linked to the board"
+      ],
+      "example": "/marvin:commit fix: guard null session",
+      "human": false
+    },
+    {
+      "name": "pr-create",
+      "group": "pr",
+      "blurb": "Open a pull request",
+      "description": "Open a pull request with a structured description and verification checklist; picks up board-task context when present.",
+      "phrases": [
+        "marvin, open a pull request",
+        "marvin, create a PR for this branch",
+        "marvin, push and open a PR"
+      ],
+      "human": false
+    },
+    {
+      "name": "pr-review",
+      "group": "pr",
+      "blurb": "Review a PR on GitHub",
+      "description": "Review a pull request on GitHub and post the review there — inline comments by severity plus a summary.",
+      "phrases": [
+        "marvin, review this PR",
+        "marvin, review PR 42 on GitHub",
+        "marvin, start a pull-request review"
+      ],
+      "example": "/marvin:pr-review 42",
+      "human": false
+    },
+    {
+      "name": "pr-resolve",
+      "group": "pr",
+      "blurb": "Address PR review threads",
+      "description": "Resolve open PR review threads — fetch the unresolved ones, plan and apply fixes, push, then reply and mark each resolved.",
+      "phrases": [
+        "marvin, address the PR feedback",
+        "marvin, resolve the review comments",
+        "marvin, apply the reviewer's suggestions on PR 42"
+      ],
+      "example": "/marvin:pr-resolve 42",
+      "human": false
+    },
+    {
+      "name": "pr-merge",
+      "group": "pr",
+      "blurb": "Merge a PR, then sync the base",
+      "description": "Merge a pull request, then switch back to the base branch and pull.",
+      "phrases": [
+        "marvin, merge this PR",
+        "marvin, merge PR 42 and sync the base",
+        "marvin, land the pull request"
+      ],
+      "example": "/marvin:pr-merge 42",
+      "human": false
+    },
+    {
+      "name": "debug",
+      "group": "core",
+      "blurb": "Systematic root-cause debugging",
+      "description": "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
+      "phrases": [
+        "marvin, why is this test failing?",
+        "marvin, help me debug this crash",
+        "marvin, find the root cause of this error"
+      ],
+      "example": "/marvin:debug TypeError in auth middleware",
+      "human": false
+    },
+    {
+      "name": "adr",
+      "group": "core",
+      "blurb": "Create an Architecture Decision Record",
+      "description": "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
+      "phrases": [
+        "marvin, record this decision as an ADR",
+        "marvin, write an architecture decision record",
+        "marvin, capture the rationale for this choice"
+      ],
+      "example": "/marvin:adr Adopt one MCP server",
+      "human": false
+    },
+    {
+      "name": "changelog",
+      "group": "core",
+      "blurb": "Changelog from git history",
+      "description": "Generate a changelog from git history between tags, dates, or arbitrary refs.",
+      "phrases": [
+        "marvin, generate a changelog",
+        "marvin, what changed since the last release?",
+        "marvin, draft release notes since v0.1.0"
+      ],
+      "example": "/marvin:changelog since v0.1.0",
+      "human": false
+    },
+    {
+      "name": "readme",
+      "group": "core",
+      "blurb": "Generate or update README",
+      "description": "Generate or refresh README.md from actual codebase analysis.",
+      "phrases": [
+        "marvin, update the README",
+        "marvin, generate the project documentation",
+        "marvin, refresh the readme from the code"
+      ],
+      "human": false
+    },
+    {
+      "name": "migration-plan",
+      "group": "core",
+      "blurb": "Plan a migration or major refactor",
+      "description": "Plan a migration or major refactor: dependency analysis, sequenced steps, risks, and a rollback strategy.",
+      "phrases": [
+        "marvin, plan this migration",
+        "marvin, how do we refactor this safely?",
+        "marvin, draft a migration plan with a rollback"
+      ],
+      "example": "/marvin:migration-plan bundler to Vite",
+      "human": false
+    },
+    {
+      "name": "explain",
+      "group": "core",
+      "blurb": "Explain code, logic, and design",
+      "description": "Explain how code works — logic, architecture, and design rationale — without changing it.",
+      "phrases": [
+        "marvin, explain how this works",
+        "marvin, walk me through this module",
+        "marvin, what does this function do?"
+      ],
+      "example": "/marvin:explain src/server.ts",
+      "human": false
+    },
+    {
+      "name": "docs-search",
+      "group": "core",
+      "blurb": "Search project documentation",
+      "description": "Search and synthesize project documentation — ADRs, README, runbooks, conventions.",
+      "phrases": [
+        "marvin, where is this documented?",
+        "marvin, find the docs on the verify gate",
+        "marvin, search the project docs for this"
+      ],
+      "example": "/marvin:docs-search how does the verify gate work?",
+      "human": false
+    },
+    {
+      "name": "handoff",
+      "group": "core",
+      "blurb": "Capture a session handoff",
+      "description": "Capture the session's full context into a durable handoff document plus a paste-ready prompt to continue in a fresh session.",
+      "phrases": [
+        "marvin, hand off this session",
+        "marvin, save the context so I can continue later",
+        "marvin, prep a handoff for a fresh session"
+      ],
+      "example": "/marvin:handoff widget work WIP",
+      "human": false
+    },
+    {
+      "name": "handoff-list",
+      "group": "core",
+      "blurb": "List handoff documents",
+      "description": "List the saved session-continuation handoff documents under .marvin/handoff/, newest first.",
+      "phrases": [
+        "marvin, list the handoffs",
+        "marvin, show me the saved handoff docs",
+        "marvin, what handoffs do we have?"
+      ],
+      "human": false
+    },
+    {
+      "name": "lessons",
+      "group": "core",
+      "blurb": "Team lessons-learned store",
+      "description": "Team lessons-learned store — capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
+      "phrases": [
+        "marvin, save this as a lesson",
+        "marvin, what lessons do we have on this?",
+        "marvin, recall past gotchas for this bug"
+      ],
+      "example": "/marvin:lessons search dist staleness",
+      "human": false
+    },
+    {
+      "name": "help",
+      "group": "core",
+      "blurb": "This dashboard + command index",
+      "description": "This welcome dashboard and the full command index; pass a group to focus the reference.",
+      "phrases": [
+        "marvin, show the help dashboard",
+        "marvin, what commands are available?",
+        "marvin, help"
+      ],
+      "example": "/marvin:help sec",
+      "human": false
+    },
+    {
+      "name": "dashboard",
+      "group": "core",
+      "blurb": "Whole-toolbox state report",
+      "description": "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+      "phrases": [
+        "marvin, show me the dashboard",
+        "marvin, what's the state of the toolbox?",
+        "marvin, give me the whole-project report"
+      ],
+      "human": false
+    },
+    {
+      "name": "reports",
+      "group": "core",
+      "blurb": "Unified viewer over all reports",
+      "description": "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
+      "phrases": [
+        "marvin, show me the reports",
+        "marvin, what reports do we have?",
+        "marvin, open the latest security report"
+      ],
+      "human": false
+    },
+    {
+      "name": "adr-review",
+      "group": "adr",
+      "blurb": "Review a proposed ADR",
+      "description": "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
+      "phrases": [
+        "marvin, review this ADR",
+        "marvin, is ADR 31 ready to accept?",
+        "marvin, check this decision record"
+      ],
+      "example": "/marvin:adr-review 31",
+      "human": false
+    },
+    {
+      "name": "adr-accept",
+      "group": "adr",
+      "blurb": "Ratify an ADR (human-run)",
+      "description": "Ratify a proposed ADR — proposed → accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
+      "phrases": [
+        "marvin, accept this ADR",
+        "marvin, ratify ADR 31",
+        "marvin, mark the decision record accepted"
+      ],
+      "example": "/marvin:adr-accept 31",
+      "human": true
+    },
+    {
+      "name": "adr-audit",
+      "group": "adr",
+      "blurb": "Lint the whole ADR corpus",
+      "description": "Read-only lint of the whole ADR corpus — dangling references, numbering holes, broken supersede pairs, stale index.",
+      "phrases": [
+        "marvin, audit the ADRs",
+        "marvin, lint the decision records",
+        "marvin, are the ADRs consistent?"
+      ],
+      "human": false
+    },
+    {
+      "name": "adr-coverage",
+      "group": "adr",
+      "blurb": "Find undocumented decisions",
+      "description": "Gap analysis — recorded ADRs vs the decisions visible in the actual stack, ranked by blast radius.",
+      "phrases": [
+        "marvin, what decisions are undocumented?",
+        "marvin, check our ADR coverage",
+        "marvin, which ADRs are we missing?"
+      ],
+      "human": false
+    },
+    {
+      "name": "adr-supersede",
+      "group": "adr",
+      "blurb": "Roll back an accepted ADR (human-run)",
+      "description": "Roll back an accepted ADR properly — a successor record supersedes it and the links pair both ways. Human-run.",
+      "phrases": [
+        "marvin, supersede this ADR",
+        "marvin, roll back ADR 12",
+        "marvin, replace an accepted decision record"
+      ],
+      "example": "/marvin:adr-supersede 12",
+      "human": true
+    },
+    {
+      "name": "adr-sync",
+      "group": "adr",
+      "blurb": "Refresh the ADR digest in CLAUDE.md (human-run)",
+      "description": "Regenerate the Architecture-decisions digest in CLAUDE.md from accepted ADRs only. Human-run.",
+      "phrases": [
+        "marvin, sync the ADR digest",
+        "marvin, refresh the decisions in CLAUDE.md",
+        "marvin, regenerate the ADR summary"
+      ],
+      "human": true
+    },
+    {
+      "name": "task-start",
+      "group": "task",
+      "blurb": "Spec out a task (Phase 1)",
+      "description": "Phase 1 of the task pipeline — a structured dialogue that produces an immutable, testable spec under .marvin/task/.",
+      "phrases": [
+        "marvin, start a new task",
+        "marvin, spec this out",
+        "marvin, define the task for pagination"
+      ],
+      "example": "/marvin:task-start add pagination",
+      "human": false
+    },
+    {
+      "name": "task-implement",
+      "group": "task",
+      "blurb": "Implement a ready spec",
+      "description": "Execute a ready spec interactively in the current session, then auto-chain into verify and deliver.",
+      "phrases": [
+        "marvin, implement the spec",
+        "marvin, run the task",
+        "marvin, build out the ready spec"
+      ],
+      "human": false
+    },
+    {
+      "name": "task-verify",
+      "group": "task",
+      "blurb": "Run the project quality gates",
+      "description": "Run the project quality gates — tests, lint, type-check, build — with automatic stack detection, and write verification.md.",
+      "phrases": [
+        "marvin, run the quality gates",
+        "marvin, verify the project",
+        "marvin, are the tests and lint green?"
+      ],
+      "human": false
+    },
+    {
+      "name": "task-deliver",
+      "group": "task",
+      "blurb": "Commit and open a PR",
+      "description": "Commit changes and open a pull request; refuses if verification failed.",
+      "phrases": [
+        "marvin, deliver the task",
+        "marvin, commit and open a PR for this",
+        "marvin, ship this task"
+      ],
+      "human": false
+    },
+    {
+      "name": "task-summary",
+      "group": "task",
+      "blurb": "Delivery digest for a task",
+      "description": "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons, and links.",
+      "phrases": [
+        "marvin, summarize what this task delivered",
+        "marvin, give me the delivery digest",
+        "marvin, recap the task's acceptance criteria"
+      ],
+      "example": "/marvin:task-summary add-pagination",
+      "human": false
+    },
+    {
+      "name": "sec-scan",
+      "group": "sec",
+      "blurb": "Full OWASP Top-10 audit",
+      "description": "Comprehensive security audit aligned with OWASP Top 10:2025 — orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
+      "phrases": [
+        "marvin, run a security scan",
+        "marvin, do a full OWASP audit",
+        "marvin, harden this before release"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-secrets",
+      "group": "sec",
+      "blurb": "Scan for leaked secrets",
+      "description": "Deep scan for leaked secrets, credentials, and API keys across code, config, and git history.",
+      "phrases": [
+        "marvin, scan for leaked secrets",
+        "marvin, check for exposed API keys",
+        "marvin, look for credentials in the git history"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-deps",
+      "group": "sec",
+      "blurb": "Dependency CVE / license audit",
+      "description": "Audit dependencies for known vulnerabilities, license risk, and maintenance health.",
+      "phrases": [
+        "marvin, audit the dependencies",
+        "marvin, any vulnerable packages?",
+        "marvin, check dependency CVEs and licenses"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-gate",
+      "group": "sec",
+      "blurb": "Fast pre-commit security gate",
+      "description": "Fast security check on staged or recent changes — a lightweight pre-commit gate.",
+      "phrases": [
+        "marvin, quick security check on my changes",
+        "marvin, run the pre-commit security gate",
+        "marvin, is this staged diff safe?"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-threat-model",
+      "group": "sec",
+      "blurb": "STRIDE threat model",
+      "description": "Generate a STRIDE-based threat model for a feature, system, or the whole application.",
+      "phrases": [
+        "marvin, threat-model this feature",
+        "marvin, run a STRIDE analysis on the upload flow",
+        "marvin, what are the attack surfaces here?"
+      ],
+      "example": "/marvin:sec-threat-model upload flow",
+      "human": false
+    },
+    {
+      "name": "sec-iac",
+      "group": "sec",
+      "blurb": "Infrastructure-as-Code review",
+      "description": "Security review of Infrastructure-as-Code — Terraform, CloudFormation, Kubernetes, Docker, Helm.",
+      "phrases": [
+        "marvin, review the Terraform for security",
+        "marvin, scan the Kubernetes manifests",
+        "marvin, check the infrastructure-as-code"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-ci",
+      "group": "sec",
+      "blurb": "CI/CD pipeline audit",
+      "description": "Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions.",
+      "phrases": [
+        "marvin, audit the CI pipeline",
+        "marvin, check the GitHub Actions for supply-chain risk",
+        "marvin, review the workflow permissions"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-fix",
+      "group": "sec",
+      "blurb": "Patch a vulnerability with tests",
+      "description": "Generate and verify a minimal, tested patch for a security finding, with a regression test.",
+      "phrases": [
+        "marvin, fix this vulnerability",
+        "marvin, patch CVE-2024-1234 with a test",
+        "marvin, remediate this security finding"
+      ],
+      "example": "/marvin:sec-fix CVE-2024-1234",
+      "human": false
+    },
+    {
+      "name": "sec-compliance",
+      "group": "sec",
+      "blurb": "OWASP ASVS gap analysis",
+      "description": "Check code against OWASP ASVS compliance requirements — a structured compliance matrix.",
+      "phrases": [
+        "marvin, check OWASP ASVS compliance",
+        "marvin, run a compliance gap analysis",
+        "marvin, build the compliance matrix"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-pentest",
+      "group": "sec",
+      "blurb": "Tailored pentest checklist",
+      "description": "Generate a penetration-testing checklist tailored to the specific application.",
+      "phrases": [
+        "marvin, give me a pentest checklist",
+        "marvin, plan a penetration test for this app",
+        "marvin, what should I test for exploits?"
+      ],
+      "human": false
+    },
+    {
+      "name": "sec-report",
+      "group": "sec",
+      "blurb": "List saved security reports",
+      "description": "List the structured security-audit reports under .marvin/security/ — typed findings by severity, newest first.",
+      "phrases": [
+        "marvin, list the security reports",
+        "marvin, show me past audit findings",
+        "marvin, what security scans have we run?"
+      ],
+      "human": false
+    },
+    {
+      "name": "refactor-audit",
+      "group": "refactor",
+      "blurb": "Structural audit + hotspots",
+      "description": "Whole-project structural refactoring audit — architecture map, churn×size hotspots, dependency tangles, dead-code candidates. Read-only.",
+      "phrases": [
+        "marvin, audit the code health",
+        "marvin, where is the tech debt?",
+        "marvin, map the refactoring hotspots"
+      ],
+      "human": false
+    },
+    {
+      "name": "refactor-smells",
+      "group": "refactor",
+      "blurb": "Scoped code-smell scan",
+      "description": "Scoped code-smell scan of a path, module, or diff — smells, anti-patterns, and naming inconsistencies. Read-only.",
+      "phrases": [
+        "marvin, scan this module for code smells",
+        "marvin, check src/tools for anti-patterns",
+        "marvin, find the smells in this diff"
+      ],
+      "example": "/marvin:refactor-smells src/tools",
+      "human": false
+    },
+    {
+      "name": "refactor-plan",
+      "group": "refactor",
+      "blurb": "Sequence findings into steps",
+      "description": "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
+      "phrases": [
+        "marvin, plan the refactoring",
+        "marvin, sequence findings F3 and F4 into steps",
+        "marvin, turn these findings into a plan"
+      ],
+      "example": "/marvin:refactor-plan F3,F4",
+      "human": false
+    },
+    {
+      "name": "refactor-apply",
+      "group": "refactor",
+      "blurb": "Apply one refactor step, gated",
+      "description": "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, rollback on red.",
+      "phrases": [
+        "marvin, apply the next refactor step",
+        "marvin, execute step 2 of the plan",
+        "marvin, do the refactoring under the gates"
+      ],
+      "human": false
+    },
+    {
+      "name": "track-menu",
+      "group": "track",
+      "blurb": "Board action menu",
+      "description": "Open the board action menu.",
+      "phrases": [
+        "marvin, open the board menu",
+        "marvin, show the board actions",
+        "marvin, what can I do on the board?"
+      ],
+      "human": false
+    },
+    {
+      "name": "track-new",
+      "group": "track",
+      "blurb": "New board task",
+      "description": "Create a board task — bug, feature, chore, or spike — through an interactive form.",
+      "phrases": [
+        "marvin, add a bug to the board",
+        "marvin, new feature: dark mode",
+        "marvin, track this chore"
+      ],
+      "example": "/marvin:track-new bug login 500s",
+      "human": false
+    },
+    {
+      "name": "track-list",
+      "group": "track",
+      "blurb": "List tasks — all, WIP, tracked",
+      "description": "List the board — the full status-grouped list, the current-branch + work-in-progress view, or the tracked tasks linking out to the external tracker.",
+      "phrases": [
+        "marvin, what's on the board?",
+        "marvin, what am I working on?",
+        "marvin, show the tracked tasks"
+      ],
+      "human": false
+    },
+    {
+      "name": "track-show",
+      "group": "track",
+      "blurb": "Show one task",
+      "description": "Show one board task in detail.",
+      "phrases": [
+        "marvin, show task 12",
+        "marvin, open this card",
+        "marvin, give me the details of task 12"
+      ],
+      "example": "/marvin:track-show 12",
+      "human": false
+    },
+    {
+      "name": "track-start",
+      "group": "track",
+      "blurb": "Pick up a task, branch off",
+      "description": "Pick a todo task, create its branch, and mark it work-in-progress.",
+      "phrases": [
+        "marvin, start task 12",
+        "marvin, pick up the next todo",
+        "marvin, begin work on this task"
+      ],
+      "example": "/marvin:track-start 12",
+      "human": false
+    },
+    {
+      "name": "track-move",
+      "group": "track",
+      "blurb": "Move a task between statuses",
+      "description": "Move a board task — to review, to done, or to any configured status.",
+      "phrases": [
+        "marvin, move task 12 to review",
+        "marvin, mark this task done",
+        "marvin, set task 12 to blocked"
+      ],
+      "example": "/marvin:track-move 12 blocked",
+      "human": false
+    },
+    {
+      "name": "track-config",
+      "group": "track",
+      "blurb": "Show or edit board config",
+      "description": "Show or edit the board configuration (.marvin/config.json).",
+      "phrases": [
+        "marvin, show the board config",
+        "marvin, edit the board statuses",
+        "marvin, configure the board"
+      ],
+      "human": false
+    }
+  ]
+}

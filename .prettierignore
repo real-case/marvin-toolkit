@@ -6,6 +6,11 @@
 plugins/marvin/widgets/
 node_modules/
 package-lock.json
+# The site's generated command catalog is emitted by packages/site/scripts/gen-catalog.mjs as
+# JSON.stringify(…,2)+"\n" and byte-guarded by test/catalog.test.mjs (spec 005). Prettier's JSON
+# collapsing would fight the generator and churn the file, so it is excluded like the other
+# committed build artefacts above.
+packages/site/src/data/catalog.json
 
 # Markdown is authored prose (READMEs, SKILL bodies, ADRs) with hand-aligned
 # tables and prompt formatting that Prettier would reflow. Left as-is.
