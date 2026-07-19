@@ -1,0 +1,81 @@
+---
+// Base.astro (spec 004, F6) — the shared page shell. Owns the <head> (meta, the
+// self-hosted Fontsource faces, the theme + global + primitives stylesheets, and the
+// pre-paint anti-FOUC theme script) and wraps every page in Nav + Footer around a
+// <slot/>. See docs/design/website-implementation-plan.md, Phase 1.
+import "@fontsource-variable/hanken-grotesk/wght.css";
+import "@fontsource-variable/jetbrains-mono/wght.css";
+import "../styles/theme.css";
+import "../styles/global.css";
+import "../styles/primitives.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Marvin — Claude Code toolset",
+  description = "Claude Code toolset for AI-assisted development. Without panic.",
+} = Astro.props;
+
+const favicon =
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
+  "<rect width='32' height='32' rx='7' fill='%237c3aed'/>" +
+  "<path d='M20 8 12 24' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href={favicon} type="image/svg+xml" />
+
+    <!-- Anti-FOUC: set the theme before first paint from localStorage, else the OS
+         preference. is:inline keeps Astro from bundling/deferring it, so it runs
+         synchronously in <head> and there is no flash of the wrong theme. -->
+    <script is:inline>
+      (() => {
+        try {
+          const stored = localStorage.getItem("theme");
+          const theme =
+            stored ||
+            (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.dataset.theme = theme;
+        } catch {
+          /* storage/matchMedia unavailable — fall back to the CSS @media default */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <Nav />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+
+    <style>
+      .skip-link {
+        position: absolute;
+        left: 0.5rem;
+        top: -3rem;
+        z-index: 100;
+        padding: 0.5rem 0.9rem;
+        background: var(--acfill);
+        color: var(--acfillt);
+        border-radius: 8px;
+        transition: top 0.15s ease;
+      }
+      .skip-link:focus {
+        top: 0.5rem;
+      }
+    </style>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+---
+// ThemeToggle.astro (spec 004, F9) — a no-framework theme toggle. The pre-paint
+// anti-FOUC script that sets the initial data-theme lives in Base.astro's <head>;
+// this component renders the control plus an is:inline handler that flips
+// :root[data-theme] and persists the choice to localStorage. No hydration.
+---
+
+<button
+  type="button"
+  id="theme-toggle"
+  class="btn theme-toggle"
+  aria-label="Toggle light or dark theme"
+  title="Toggle light / dark theme"
+>
+  <span class="theme-toggle__icon" aria-hidden="true">◐</span>
+</button>
+
+<script is:inline>
+  (() => {
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    const root = document.documentElement;
+    const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const current = () => root.dataset.theme || (prefersDark() ? "dark" : "light");
+    btn.addEventListener("click", () => {
+      const next = current() === "dark" ? "light" : "dark";
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem("theme", next);
+      } catch {
+        /* storage unavailable (private mode) — the flip still holds for this page */
+      }
+    });
+  })();
+</script>
+
+<style>
+  .theme-toggle {
+    padding: 0.4rem 0.55rem;
+    font-size: 1rem;
+    line-height: 1;
+  }
+</style>

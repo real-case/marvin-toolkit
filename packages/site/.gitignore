@@ -1,0 +1,10 @@
+# Astro build output + generated types — regenerated, never committed.
+dist/
+.astro/
+
+# dependencies
+node_modules/
+
+# Playwright artifacts
+test-results/
+playwright-report/

@@ -9,10 +9,16 @@ import prettier from "eslint-config-prettier";
 
 export default [
   {
-    // storybook-static is the marvin-widgets Storybook build output (gitignored,
-    // regenerated on demand) — without the ignore a stale local build floods
-    // `eslint .` with thousands of errors from the bundled runtime.
-    ignores: ["**/dist/**", "**/node_modules/**", ".claude/**", "**/storybook-static/**"],
+    // storybook-static is the marvin-widgets Storybook build output; **/.astro is the
+    // packages/site generated-types dir (both gitignored, regenerated on demand) — without
+    // the ignore a stale local build floods `eslint .` with errors from generated code.
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      ".claude/**",
+      "**/storybook-static/**",
+      "**/.astro/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -41,6 +47,21 @@ export default [
     // so add browser globals and JSX parsing for these files — otherwise `eslint .`
     // flags `document`/`window`/`setTimeout` as undefined and cannot parse `.tsx`.
     files: ["packages/marvin-widgets/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
+  },
+  {
+    // The site workspace (packages/site) is the second browser-facing workspace — Astro +
+    // Preact + Playwright TS/mjs. Node globals already apply from the base block; add browser
+    // globals + JSX parsing so `eslint .` resolves document/window/localStorage and parses JSX.
+    // (.astro files stay unlinted — no astro parser is wired — which is acceptable here.)
+    files: ["packages/site/**/*.{ts,tsx,mjs}"],
     languageOptions: {
       globals: {
         ...globals.browser,

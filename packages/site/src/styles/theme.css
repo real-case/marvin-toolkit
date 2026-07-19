@@ -1,0 +1,162 @@
+/*
+ * theme.css — design tokens ported verbatim from the widget theme
+ * (packages/marvin-widgets/src/theme/tokens.ts). The site applies the same values
+ * the widgets scope to `.mvroot`, here at page scope on `:root`, so the site and its
+ * embedded widgets read as one system (FR-3). Every hex/rgba value is byte-faithful
+ * to tokens.ts (modulo CSS formatting) and pinned by test/theme-tokens.test.mjs, which
+ * canonicalises both sides numerically before comparing.
+ *
+ * Structure mirrors `.mvroot`:
+ *   1. light values on `:root` (+ base typography);
+ *   2. dark values under `@media (prefers-color-scheme: dark)` — OS-driven;
+ *   3. `:root[data-theme="light"|"dark"]` — host-forced by the toggle. The attribute
+ *      selector's specificity (0,2,0) beats the media-query `:root` (0,1,0), so a
+ *      forced theme wins in BOTH directions regardless of the OS preference.
+ *
+ * Typography: Hanken Grotesk (display — headings, wordmark, count digits), the system
+ * stack (body), JetBrains Mono (commands, paths, eyebrows). Faces are self-hosted via
+ * @fontsource-variable (imported in Base.astro) with font-display: swap; only the latin
+ * subset downloads at runtime (unicode-range gating).
+ */
+
+:root {
+  /* neutrals + surfaces */
+  --bg: #fbfbfc;
+  --srf: #ffffff;
+  --srf2: #f4f4f5;
+  --bd: #e9e9ec;
+  --bd2: #d9d9de;
+  /* text */
+  --t1: #18181b;
+  --t2: #52525b;
+  --t3: #a1a1aa;
+  /* accent — the violet, used as one fill per viewport */
+  --ac: #8b5cf6;
+  --act: #6d28d9;
+  --acbg: rgba(139, 92, 246, 0.09);
+  --acfill: #7c3aed;
+  --acfillt: #ffffff;
+  /* status */
+  --red: #dc2626;
+  --redbg: #fef2f2;
+  --org: #c2410c;
+  --orgbg: #fff7ed;
+  --amb: #b45309;
+  --ambbg: #fffbeb;
+  --grn: #15803d;
+  --grnbg: #f0fdf4;
+  --blu: #1d4ed8;
+  --blubg: #eff6ff;
+  /* mid-ramp solid fills */
+  --barR: #ef4444;
+  --barO: #f97316;
+  --barA: #f59e0b;
+  --barB: #3b82f6;
+
+  /* font stacks (site-only; not widget tokens) */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display:
+    "Hanken Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* blueprint-grid hairline (site-only) */
+  --grid-line: rgba(24, 24, 27, 0.045);
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--t1);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0d;
+    --srf: #141417;
+    --srf2: #1d1d22;
+    --bd: #26262c;
+    --bd2: #3a3a42;
+    --t1: #f4f4f5;
+    --t2: #a1a1aa;
+    --t3: #70707a;
+    --ac: #a78bfa;
+    --act: #c4b5fd;
+    --acbg: rgba(167, 139, 250, 0.13);
+    --acfill: #7c3aed;
+    --red: #f87171;
+    --redbg: rgba(248, 113, 113, 0.11);
+    --org: #fb923c;
+    --orgbg: rgba(251, 146, 60, 0.11);
+    --amb: #fbbf24;
+    --ambbg: rgba(251, 191, 36, 0.1);
+    --grn: #4ade80;
+    --grnbg: rgba(74, 222, 128, 0.1);
+    --blu: #60a5fa;
+    --blubg: rgba(96, 165, 250, 0.11);
+    --grid-line: rgba(244, 244, 245, 0.05);
+    color-scheme: dark;
+  }
+}
+
+/* Host-forced light — repeats the light token set so a forced theme beats the OS media rule. */
+:root[data-theme="light"] {
+  --bg: #fbfbfc;
+  --srf: #ffffff;
+  --srf2: #f4f4f5;
+  --bd: #e9e9ec;
+  --bd2: #d9d9de;
+  --t1: #18181b;
+  --t2: #52525b;
+  --t3: #a1a1aa;
+  --ac: #8b5cf6;
+  --act: #6d28d9;
+  --acbg: rgba(139, 92, 246, 0.09);
+  --acfill: #7c3aed;
+  --acfillt: #ffffff;
+  --red: #dc2626;
+  --redbg: #fef2f2;
+  --org: #c2410c;
+  --orgbg: #fff7ed;
+  --amb: #b45309;
+  --ambbg: #fffbeb;
+  --grn: #15803d;
+  --grnbg: #f0fdf4;
+  --blu: #1d4ed8;
+  --blubg: #eff6ff;
+  --barR: #ef4444;
+  --barO: #f97316;
+  --barA: #f59e0b;
+  --barB: #3b82f6;
+  --grid-line: rgba(24, 24, 27, 0.045);
+  color-scheme: light;
+}
+
+/* Host-forced dark — mirrors the widget dark block (which omits --barR/O/A/B and
+   --acfillt: they are identical in both themes and inherit from the base :root). */
+:root[data-theme="dark"] {
+  --bg: #0b0b0d;
+  --srf: #141417;
+  --srf2: #1d1d22;
+  --bd: #26262c;
+  --bd2: #3a3a42;
+  --t1: #f4f4f5;
+  --t2: #a1a1aa;
+  --t3: #70707a;
+  --ac: #a78bfa;
+  --act: #c4b5fd;
+  --acbg: rgba(167, 139, 250, 0.13);
+  --acfill: #7c3aed;
+  --red: #f87171;
+  --redbg: rgba(248, 113, 113, 0.11);
+  --org: #fb923c;
+  --orgbg: rgba(251, 146, 60, 0.11);
+  --amb: #fbbf24;
+  --ambbg: rgba(251, 191, 36, 0.1);
+  --grn: #4ade80;
+  --grnbg: rgba(74, 222, 128, 0.1);
+  --blu: #60a5fa;
+  --blubg: rgba(96, 165, 250, 0.11);
+  --grid-line: rgba(244, 244, 245, 0.05);
+  color-scheme: dark;
+}

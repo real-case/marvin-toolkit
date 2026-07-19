@@ -74,6 +74,16 @@ jobs:
             "npx --yes http-server packages/marvin-widgets/storybook-static --port 6006 --silent" \
             "npx --yes wait-on tcp:127.0.0.1:6006 && npm run test-storybook -w @marvin-toolkit/widgets"
 
+      - name: Site e2e (Playwright)
+        if: matrix.node == '22'
+        # Astro 7 requires Node >=22.12, so the site build + e2e run only on the Node-22 leg
+        # (the Node-20 leg no-ops the site build via packages/site/scripts/build.mjs). The
+        # webServer runs `astro preview`, so the site is built first.
+        run: |
+          npm run build -w @marvin-toolkit/site
+          npx --yes playwright install --with-deps chromium
+          npm run test:e2e -w @marvin-toolkit/site
+
       - name: Smoke-test each pack MCP server
         run: |
           set -euo pipefail
