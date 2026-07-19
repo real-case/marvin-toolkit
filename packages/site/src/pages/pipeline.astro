@@ -1,19 +1,470 @@
 ---
-// pipeline.astro (spec 004, F15) — /pipeline stub so the nav link resolves. The guided
-// spec → implement → verify → deliver → learn tour with its recordings is built in Phase 3.
+// pipeline.astro (spec 007, F1) — the /pipeline guided tour. The spec-driven pipeline
+// section ported from docs/design/mockups/inner-pages.html onto the Phase-1 shell (Base
+// owns nav/footer/head). Copy verbatim from the approved mockup. Pipeline-specific styles
+// live in the scoped <style> below; tokens, .container, .btn/.badge primitives, and the
+// blueprint texture come from the scaffold — the .eyebrow is overridden to accent locally
+// (as Home does) and the terminal --term* palette stays page-local until the Toolbox slice.
+// The stage posters are Phase-5 placeholders: no <video>/<audio>/<iframe>, nothing autoplays.
 import Base from "../layouts/Base.astro";
 ---
 
 <Base
   title="Pipeline — Marvin"
-  description="The marvin task pipeline: spec, implement, verify, deliver, learn."
+  description="A guided tour of marvin's spec-driven pipeline: spec, implement, verify, deliver, then learn."
 >
-  <section class="container section">
-    <p class="eyebrow">Guided tour</p>
-    <h1>Pipeline</h1>
-    <p class="page-lead">
-      The tour of spec → implement → verify → deliver, closing with the lessons loop, is ported from
-      the hi-fi mockup in Phase 3.
-    </p>
-  </section>
+  <div class="bp">
+    <div class="container">
+      <!-- header — eyebrow, title, lead, and the tick-and-node rail -->
+      <header class="phead">
+        <p class="eyebrow">the workflow</p>
+        <h1>The task pipeline.</h1>
+        <p class="lead">
+          Spec-driven development — <b>without the ceremony</b>. From a requirement to a merged PR,
+          then back around: the toolbox learns as it ships.
+        </p>
+        <div class="rail">
+          <span class="rstep"><small>1</small>spec</span><span class="rseg"></span>
+          <span class="rdot on"></span><span class="rseg"></span>
+          <span class="rstep"><small>2</small>implement</span><span class="rseg"></span>
+          <span class="rdot"></span><span class="rseg"></span>
+          <span class="rstep"><small>3</small>verify</span><span class="rseg"></span>
+          <span class="rdot"></span><span class="rseg"></span>
+          <span class="rstep"><small>4</small>deliver</span><span class="rseg loop"></span>
+          <span class="rdot on"></span><span class="rseg loop"></span>
+          <span class="rstep loop">learn ↺</span>
+        </div>
+      </header>
+
+      <!-- the four stages — posters alternate side by source order (left on 2 and 4) -->
+      <section class="s">
+        <div class="stage">
+          <div class="stagecard">
+            <span class="snum">STAGE 1 · task-start</span>
+            <h3>Formalize the requirement</h3>
+            <p>
+              A structured dialogue turns a vague ask into an immutable, testable spec — with
+              relevant lessons recalled at intake.
+            </p>
+            <div class="achips">
+              <span class="achip">.marvin/task/001-slug.md</span>
+              <span class="achip">spec-contract ✓</span>
+              <span class="achip">lessons recalled ↺</span>
+            </div>
+            <p class="snote">A durable artifact — leave it, return, run it later.</p>
+          </div>
+          <div class="poster">
+            <span class="cmd0">➜ /marvin:task-start</span><br />dialogue → spec…
+            <div class="play"><span class="circ"><span class="tri"></span></span></div>
+            <span class="dur">0:42</span>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="poster">
+            <span class="cmd0">➜ /marvin:task-implement</span><br />writing code + tests…
+            <div class="play"><span class="circ"><span class="tri"></span></span></div>
+            <span class="dur">1:18</span>
+          </div>
+          <div class="stagecard">
+            <span class="snum">STAGE 2 · task-implement</span>
+            <h3>Build it against the spec</h3>
+            <p>
+              The chosen approach is implemented and self-tested, staying inside the spec's file
+              allowlist.
+            </p>
+            <div class="achips"><span class="achip">code + tests</span></div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="stagecard">
+            <span class="snum">STAGE 3 · task-verify</span>
+            <h3>Prove it green</h3>
+            <p>
+              Tests, lint, type-check, and build run concurrently through one merge point. A red
+              gate blocks delivery — fail-closed.
+            </p>
+            <div class="achips">
+              <span class="achip">tests</span>
+              <span class="achip">lint</span>
+              <span class="achip">types</span>
+              <span class="achip">build</span>
+              <span class="achip">verification.md</span>
+            </div>
+          </div>
+          <div class="poster">
+            <span class="cmd0">➜ /marvin:verify</span><br />gates: 4 running…
+            <div class="play"><span class="circ"><span class="tri"></span></span></div>
+            <span class="dur">0:55</span>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="poster">
+            <span class="cmd0">➜ /marvin:task-deliver</span><br />commit → pull request…
+            <div class="play"><span class="circ"><span class="tri"></span></span></div>
+            <span class="dur">0:38</span>
+          </div>
+          <div class="stagecard">
+            <span class="snum">STAGE 4 · task-deliver</span>
+            <h3>Ship it, documented</h3>
+            <p>
+              A Conventional Commit and a structured PR, linked to the task — your history reads
+              well from the first merge.
+            </p>
+            <div class="achips">
+              <span class="achip">conventional commit</span>
+              <span class="achip">pull request</span>
+              <span class="achip">lesson captured</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- the lessons loop — a bare stagecard, NOT inside a .stage -->
+      <section class="s">
+        <div class="stagecard loopcard">
+          <span class="snum">LOOP · lessons</span>
+          <h3>The toolbox learns</h3>
+          <div class="looprow">
+            <span class="c">captured at deliver / debug</span><span class="a">→</span>
+            <span class="c">.marvin/memory/</span><span class="a">→</span>
+            <span class="c">recalled at the next task-start</span><span class="a">↺</span>
+          </div>
+          <p class="loopnote">
+            Lessons are files in the repo, so they travel through git — one developer's fix becomes
+            the whole team's default.
+          </p>
+        </div>
+      </section>
+
+      <!-- under the hood — the three deterministic tools + the quickstart CTA -->
+      <section class="s">
+        <p class="eyebrow uth-eyebrow">under the hood</p>
+        <div class="uth">
+          <div class="uthc">
+            <p class="t"><code>spec</code> — Definition of Ready</p>
+            <p>
+              Parses and validates the spec contract fail-closed: schema, file paths, the
+              AC⇄files⇄tests triple. An incomplete spec does not pass.
+            </p>
+          </div>
+          <div class="uthc">
+            <p class="t"><code>verify</code> — quality gates</p>
+            <p>
+              Concurrent gates, a single merge point, config-first resolution. Writes the
+              verification.md that gates delivery.
+            </p>
+          </div>
+          <div class="uthc">
+            <p class="t"><code>lessons</code> — team memory</p>
+            <p>
+              Typed lessons in .marvin/memory/: add at delivery and debugging, search at intake.
+              Near-duplicate guarded.
+            </p>
+          </div>
+        </div>
+        <div class="tryit">
+          <span class="tryit-t">Try it in five minutes.</span>
+          <span class="grow"></span>
+          <a class="btn btn--accent" href="/quickstart">Quickstart →</a>
+        </div>
+      </section>
+    </div>
+  </div>
 </Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching Home + the mockup (the scaffold .blueprint
+     is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Pipeline eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0 0 6px;
+    max-width: 64ch;
+  }
+  .lead b {
+    color: var(--t1);
+  }
+
+  /* ---------- rail ---------- */
+  .rail {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 18px 0 6px;
+    flex-wrap: wrap;
+  }
+  .rdot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid var(--bd2);
+    background: var(--srf);
+    flex: none;
+  }
+  .rdot.on {
+    border-color: var(--acfill);
+    background: var(--acfill);
+  }
+  .rseg {
+    width: 34px;
+    height: 2px;
+    background: var(--bd2);
+    flex: none;
+  }
+  .rseg.loop {
+    background: linear-gradient(90deg, var(--bd2), var(--acfill));
+  }
+  .rstep {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 9px 0 7px;
+  }
+  .rstep small {
+    font-family: var(--font-mono);
+    color: var(--t3);
+    font-weight: 400;
+    font-size: 10.5px;
+    margin-right: 5px;
+  }
+  .rstep.loop {
+    color: var(--act);
+  }
+
+  /* ---------- sections + stages ---------- */
+  .s {
+    padding: 26px 0 0;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: center;
+    margin-top: 16px;
+  }
+  /* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap),
+     so nothing forces the track — and the page — wider than the viewport at 360px. */
+  .stage > *,
+  .uth > * {
+    min-width: 0;
+  }
+  .stagecard {
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--srf);
+    padding: 20px 22px;
+    position: relative;
+  }
+  .loopcard {
+    margin-top: 16px;
+  }
+  .snum {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--act);
+    letter-spacing: 0.08em;
+  }
+  .stagecard h3 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 4px 0 6px;
+  }
+  .stagecard p {
+    font-size: 13.5px;
+    color: var(--t2);
+    margin: 0 0 10px;
+  }
+  .achips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .achip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    border: 1px solid var(--bd);
+    border-radius: 5px;
+    padding: 2px 8px;
+    color: var(--t2);
+    background: var(--srf);
+  }
+  .snote {
+    font-size: 11.5px;
+    color: var(--t3);
+    margin-top: 9px;
+  }
+
+  /* ---------- poster (Phase-5 placeholder — always the dark terminal, page-local --term*) ---------- */
+  .poster {
+    --term: #101014;
+    --termd: #8a8a93;
+    --termg: #7ee2a8;
+    border-radius: 12px;
+    background: var(--term);
+    border: 1px solid #26262c;
+    padding: 18px 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--termd);
+    line-height: 1.7;
+    min-height: 130px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.1);
+  }
+  .poster .cmd0 {
+    color: var(--termg);
+  }
+  .poster .play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .poster .play .circ {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+  }
+  .poster .play .tri {
+    width: 0;
+    height: 0;
+    border-left: 15px solid #fff;
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+    margin-left: 4px;
+  }
+  .poster .dur {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    font-size: 10px;
+    color: var(--termd);
+    border: 1px solid #26262c;
+    border-radius: 5px;
+    padding: 1px 7px;
+  }
+
+  /* ---------- lessons loop ---------- */
+  .looprow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+  }
+  .looprow .c {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border: 1px solid var(--bd2);
+    border-radius: 7px;
+    padding: 5px 11px;
+    background: var(--srf2);
+  }
+  .looprow .a {
+    color: var(--t3);
+  }
+  .loopnote {
+    font-size: 13px;
+    color: var(--t2);
+    margin: 0;
+  }
+
+  /* ---------- under the hood ---------- */
+  .uth-eyebrow {
+    margin-top: 24px;
+  }
+  .uth {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .uthc {
+    border: 1px solid var(--bd);
+    border-radius: 11px;
+    background: var(--srf);
+    padding: 16px 18px;
+  }
+  .uthc .t {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .uthc .t code {
+    font-family: var(--font-mono);
+    color: var(--act);
+    font-size: 12.5px;
+  }
+  .uthc p {
+    font-size: 12.5px;
+    color: var(--t2);
+    margin: 0;
+  }
+
+  /* try-it close */
+  .tryit {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    padding: 16px 20px;
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--srf);
+  }
+  .tryit-t {
+    font-weight: 700;
+    font-size: 14.5px;
+  }
+  .grow {
+    flex: 1;
+  }
+
+  /* ---------- responsive (mockup breakpoint) ---------- */
+  @media (max-width: 860px) {
+    .stage,
+    .uth {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
