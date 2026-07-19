@@ -1,20 +1,508 @@
 ---
-// toolbox.astro (spec 004, F16) — /toolbox stub so the nav link resolves. The live
-// widget demos (embedded self-contained HTML fed mock data) and terminal parity are
-// built in Phase 5.
+// toolbox.astro (spec 009, F2) — the /toolbox static shell. The Toolbox ("visual toolbox")
+// section ported from docs/design/mockups/inner-pages.html onto the Phase-1 shell (Base owns
+// nav/footer/head). The nine widgets are presented as the arrive → steer → review journey with
+// STATIC placeholder minis standing in for the live demos, a static Live/Screenshot demo canvas,
+// and the terminal-parity line. The "N widgets" chip reads catalog.counts.widgets (FR-20). The
+// live sandboxed-iframe embeds are Phase 5 — this slice ships NO <iframe>/<img>/<video>/<audio>
+// and no client:* island. Toolbox-specific styles live in the scoped <style>; tokens, .container,
+// and primitives come from the scaffold — the .eyebrow is overridden to accent locally (as the
+// siblings do), and the page-local 40px blueprint matches Home / Pipeline / Quickstart.
 import Base from "../layouts/Base.astro";
+import { catalog } from "../data/catalog";
+
+const { counts, commands, groups } = catalog;
+const widgetCount = counts.widgets; // 9 — generated, never a literal (FR-20)
+const commandCount = commands.length; // 51 — generated
+const groupCount = groups.length; // 7 — generated
 ---
 
 <Base
   title="Toolbox — Marvin"
-  description="The visual layer: marvin's MCP Apps widgets with live demos."
+  description="The visual layer: marvin's nine MCP Apps widgets as a user journey — interactive in MCP Apps hosts, plain text in any terminal."
 >
-  <section class="container section">
-    <p class="eyebrow">Visual layer</p>
-    <h1>Toolbox</h1>
-    <p class="page-lead">
-      Live demos of every widget — interactive in MCP Apps hosts, plain text in any terminal —
-      arrive with the widget embeds in Phase 5.
-    </p>
-  </section>
+  <div class="bp">
+    <div class="container">
+      <!-- header -->
+      <header class="phead">
+        <p class="eyebrow">visual toolbox</p>
+        <h1>The toolbox.</h1>
+        <p class="lead">
+          Fully set up on install. In MCP Apps hosts every tool renders live, interactive UI —
+          <b>and the same commands answer in plain text in any terminal</b>.
+        </p>
+        <span class="chip">{widgetCount} widgets</span>
+      </header>
+
+      <!-- arrive -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">arrive</span>
+          <h2 class="lbl">First contact</h2>
+          <span class="sub">— one command orients you</span>
+        </div>
+        <div class="wgrid c2">
+          <div class="wmini">
+            <div class="h"><span>/marvin:help</span><span>welcome</span></div>
+            <div class="b">
+              <p class="wordmark">◆ marvin</p>
+              <div class="badges">
+                <span class="badge b-acc">/marvin:commit</span>
+                <span class="badge b-acc">task-start</span>
+                <span class="badge b-acc">sec-scan</span>
+              </div>
+              <p class="wnote">
+                {commandCount} commands · {groupCount} groups · servers lit by status
+              </p>
+            </div>
+          </div>
+          <div class="parity-mini">
+            $ /marvin:help — the same welcome as plain terminal text. Nothing is locked behind the
+            GUI.
+          </div>
+        </div>
+      </section>
+
+      <!-- steer -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">steer</span>
+          <h2 class="lbl">Run the project</h2>
+          <span class="sub">— state at a glance</span>
+        </div>
+        <div class="wgrid c3">
+          <div class="wmini">
+            <div class="h"><span>/marvin:dashboard</span><span>analytics</span></div>
+            <div class="b">
+              <div class="kpis">
+                <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
+                <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
+                <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
+              </div>
+              <div class="spark">
+                <i style="width:14%;background:var(--barR);"></i>
+                <i style="width:22%;background:var(--barO);"></i>
+                <i style="width:34%;background:var(--barA);"></i>
+                <i style="width:30%;background:var(--barB);"></i>
+              </div>
+            </div>
+          </div>
+          <div class="wmini">
+            <div class="h"><span>/marvin:task-list</span><span>board</span></div>
+            <div class="b">
+              <div class="rrow">
+                <span class="rn"><span class="dot dotb"></span>#12 spec gate</span>
+                <span class="badge b-blu">doing</span>
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dota"></span>#13 widget</span>
+                <span class="badge b-amb">review</span>
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dotg"></span>#11 tracker</span>
+                <span class="badge b-grn">done</span>
+              </div>
+            </div>
+          </div>
+          <div class="wmini">
+            <div class="h"><span>/marvin:track-list</span><span>tracker</span></div>
+            <div class="b">
+              <div class="rrow">
+                <span class="rn">backlog</span><span class="badge b-acc">6</span>
+              </div>
+              <div class="rrow">
+                <span class="rn">in progress</span><span class="badge b-blu">2</span>
+              </div>
+              <div class="rrow">
+                <span class="rn">done</span><span class="badge b-grn">14</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- review & share -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">review &amp; share</span>
+          <h2 class="lbl">Results out</h2>
+          <span class="sub">— formatted, exportable</span>
+        </div>
+        <div class="wgrid c3">
+          <div class="wmini">
+            <div class="h"><span>/marvin:reports</span><span>formatted</span></div>
+            <div class="b">
+              <div class="rrow">
+                <span class="rn"><span class="dot dotg"></span>sec-scan</span>
+                <span class="badge b-grn">fresh</span>
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dota"></span>refactor-audit</span>
+                <span class="badge b-amb">3d</span>
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dotv"></span>task 001 summary</span>
+                <span class="badge b-acc">sealed</span>
+              </div>
+              <div class="rexport">
+                <span class="badge b-acc">Export PDF</span>
+                <span class="badge b-acc">Export MD</span>
+              </div>
+            </div>
+          </div>
+          <div class="wmini">
+            <div class="h"><span>/marvin:sec-report</span><span>findings</span></div>
+            <div class="b">
+              <div class="rrow">
+                <span class="rn">critical</span><span class="badge b-red">0</span>
+              </div>
+              <div class="rrow"><span class="rn">high</span><span class="badge b-amb">2</span></div>
+              <div class="rrow">
+                <span class="rn">audit</span><span class="badge b-acc">task-summary</span>
+              </div>
+            </div>
+          </div>
+          <div class="wmini">
+            <div class="h"><span>/marvin:handoff-list</span><span>continuity</span></div>
+            <div class="b">
+              <div class="rrow">
+                <span class="rn">001 widget-stage</span><span class="badge b-acc">newest</span>
+              </div>
+              <div class="rrow">
+                <span class="rn">handoffs</span><span class="badge b-blu">3</span>
+              </div>
+              <p class="wnote">Resume any session in a fresh context.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- the demo canvas — STATIC shell (Live/Screenshot toggle inert; Phase 5 wires the embeds) -->
+      <div class="canvas">
+        <div class="toggle"><span class="on">Live demo</span><span>Screenshot</span></div>
+        <div class="stage-area">
+          sandboxed iframe · the committed widget HTML · fed mock data<br />
+          theme follows the site toggle · inline on the page, never a modal
+        </div>
+      </div>
+      <p class="parline">
+        Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
+        glass.
+      </p>
+    </div>
+  </div>
 </Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching the siblings + the mockup (the scaffold
+     .blueprint is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding-bottom: 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Toolbox eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0 0 12px;
+    max-width: 64ch;
+  }
+  .lead b {
+    color: var(--t1);
+  }
+  .chip {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: var(--srf);
+  }
+
+  /* ---------- journey blocks ---------- */
+  .journey {
+    border: 1px solid var(--bd);
+    border-radius: 14px;
+    background: var(--srf);
+    padding: 20px 22px;
+    margin-top: 16px;
+  }
+  .jhead {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .jhead .step {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--act);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* the section label is a real <h2> (a11y outline) styled to the mockup's dimensions */
+  .jhead .lbl {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0;
+  }
+  .jhead .sub {
+    font-size: 12.5px;
+    color: var(--t3);
+  }
+
+  /* ---------- widget minis (static placeholders) ---------- */
+  .wgrid {
+    display: grid;
+    gap: 14px;
+  }
+  .wgrid.c3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .wgrid.c2 {
+    grid-template-columns: 1.1fr 1fr;
+  }
+  /* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap). */
+  .wgrid > * {
+    min-width: 0;
+  }
+  .wmini {
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .wmini .h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--bd);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--t3);
+  }
+  .wmini .b {
+    padding: 13px;
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 750;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(100deg, var(--acfill), var(--ac));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin: 0 0 9px;
+  }
+  .badges {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .wnote {
+    font-size: 11.5px;
+    color: var(--t3);
+    margin: 9px 0 0;
+  }
+
+  /* status badges (on the shared tokens) */
+  .b-acc {
+    color: var(--act);
+    background: var(--acbg);
+    border-color: transparent;
+  }
+  .b-amb {
+    color: var(--amb);
+    background: var(--ambbg);
+    border-color: transparent;
+  }
+  .b-grn {
+    color: var(--grn);
+    background: var(--grnbg);
+    border-color: transparent;
+  }
+  .b-blu {
+    color: var(--blu);
+    background: var(--blubg);
+    border-color: transparent;
+  }
+  .b-red {
+    color: var(--red);
+    background: var(--redbg);
+    border-color: transparent;
+  }
+
+  /* dashboard KPIs + spark */
+  .kpis {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .kpi {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 7px 9px;
+  }
+  .kpi .kn {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 750;
+  }
+  .kpi .kl {
+    font-size: 9.5px;
+    color: var(--t3);
+  }
+  .spark {
+    display: flex;
+    height: 7px;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .spark i {
+    display: block;
+    height: 100%;
+  }
+
+  /* result rows */
+  .rrow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--bd);
+    font-size: 12px;
+  }
+  .rrow:last-child {
+    border-bottom: none;
+  }
+  .rrow .rn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 7px;
+  }
+  .dotb {
+    background: var(--blu);
+  }
+  .dota {
+    background: var(--amb);
+  }
+  .dotg {
+    background: var(--grn);
+  }
+  .dotv {
+    background: var(--ac);
+  }
+  .rexport {
+    display: flex;
+    gap: 6px;
+    margin-top: 11px;
+  }
+
+  .parity-mini {
+    border: 1px dashed var(--bd2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--t3);
+    background: transparent;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ---------- demo canvas (static shell) ---------- */
+  .canvas {
+    border: 1px solid var(--acfill);
+    border-radius: 14px;
+    background: var(--acbg);
+    padding: 18px 20px;
+    margin-top: 20px;
+  }
+  .toggle {
+    display: inline-flex;
+    border: 1px solid var(--bd2);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .toggle span {
+    font-size: 12px;
+    padding: 5px 14px;
+    color: var(--t2);
+  }
+  /* the single accent fill on this page */
+  .toggle span.on {
+    background: var(--acfill);
+    color: var(--acfillt);
+  }
+  .stage-area {
+    margin-top: 12px;
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    background: var(--srf);
+    min-height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--t3);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    padding: 16px;
+  }
+  .parline {
+    font-size: 13px;
+    color: var(--t3);
+    margin-top: 16px;
+  }
+
+  /* ---------- responsive (mockup breakpoint) ---------- */
+  @media (max-width: 860px) {
+    .wgrid.c3,
+    .wgrid.c2 {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

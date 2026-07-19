@@ -1,17 +1,346 @@
 ---
-// commands.astro (spec 004, F14) — /commands stub so the nav link resolves. The
-// searchable, filterable catalog (an interactive island fed by generated data) is
-// built in Phases 2–4.
+// commands.astro (spec 009, F1) — the /commands static catalog. The Commands ("reference")
+// section ported from docs/design/mockups/inner-pages.html onto the Phase-1 shell (Base owns
+// nav/footer/head). The whole catalog renders from the generated data (FR-12/FR-20): every
+// command grouped by the seven groups, each card with name / group badge / (human-run badge) /
+// blurb / description / an optional copyable example (CodeCommand) / trigger-phrase chips. The
+// search island + filter chips are a STATIC, non-functional shell (FR-13 static parts) — Phase 4
+// wires the search behaviour; this slice ships no client:* island. Commands-specific styles live
+// in the scoped <style>; tokens, .container, and the CodeCommand row come from the scaffold — the
+// .eyebrow is overridden to accent locally (as Home / Pipeline / Quickstart do), and the
+// page-local 40px blueprint matches the siblings (not the scaffold 32px .blueprint).
 import Base from "../layouts/Base.astro";
+import CodeCommand from "../components/CodeCommand.astro";
+import { catalog } from "../data/catalog";
+
+const { groups, commands } = catalog;
+const commandCount = commands.length; // 51 — generated, never a literal (FR-20)
+const groupCount = groups.length; // 7 — generated
+
+// Group the commands by group key, preserving catalog (registration) order within each group.
+const grouped = groups.map((g) => ({
+  ...g,
+  commands: commands.filter((c) => c.group === g.key),
+}));
+
+// Filter-chip labels: "all" + the seven group keys (the static FR-13 shell; "all" active).
+const filterChips = ["all", ...groups.map((g) => g.key)];
 ---
 
-<Base title="Commands — Marvin" description="The full command catalog for the marvin plugin.">
-  <section class="container section">
-    <p class="eyebrow">Catalog</p>
-    <h1>Commands</h1>
-    <p class="page-lead">
-      The searchable, filterable catalog of every command renders here once the content pipeline and
-      the search island land (Phases 2–4).
-    </p>
-  </section>
+<Base
+  title="Commands — Marvin"
+  description="The full command catalog for the marvin plugin — all 51 commands across seven groups, searchable in your browser."
+>
+  <div class="bp">
+    <div class="container">
+      <!-- header -->
+      <header class="phead">
+        <p class="eyebrow">reference</p>
+        <h1>Commands</h1>
+        <p class="lead">
+          Everything the plugin does, in one searchable place.
+          <b>Search runs entirely in your browser</b> — no backend, no tracking.
+        </p>
+        <span class="chip">{commandCount} commands · {groupCount} groups</span>
+      </header>
+
+      <!-- STATIC search-island shell (FR-13 static parts — Phase 4 wires the behaviour) -->
+      <div class="searchisland">
+        <div class="searchrow">
+          <div class="search">
+            <span class="searchph">Search by name, description, or trigger phrase…</span>
+            <span class="kbd">/</span>
+          </div>
+          <span class="shown">{commandCount} shown</span>
+        </div>
+        <div class="filters">
+          {filterChips.map((c) => <span class={c === "all" ? "fchip on" : "fchip"}>{c}</span>)}
+        </div>
+      </div>
+
+      <!-- the full catalog — every command, grouped by the seven groups (FR-12) -->
+      {
+        grouped.map((g) => (
+          <section class="cmdgroup">
+            <div class="grouphead">
+              <h2 class="gname">{g.key}</h2>
+              <span class="gcount">{g.count} commands</span>
+            </div>
+            <p class="gblurb">{g.blurb}</p>
+            <div class="cmdgrid">
+              {g.commands.map((cmd) => (
+                <article class="cmd">
+                  <div class="cmdhead">
+                    <span class="name">
+                      <b>/marvin:</b>
+                      <span class="cn">{cmd.name}</span>
+                    </span>
+                    <span class="badge b-acc">{cmd.group}</span>
+                    {cmd.human && <span class="badge b-amb human-badge">human-run</span>}
+                  </div>
+                  <p class="blurb">{cmd.blurb}</p>
+                  <p class="desc">{cmd.description}</p>
+                  {cmd.example && (
+                    <div class="cmdex">
+                      <CodeCommand command={cmd.example} />
+                    </div>
+                  )}
+                  <div class="trig">
+                    {cmd.phrases.map((p) => (
+                      <i>{p}</i>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ))
+      }
+    </div>
+  </div>
 </Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching the siblings + the mockup (the scaffold
+     .blueprint is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding-bottom: 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Commands eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0 0 12px;
+    max-width: 64ch;
+  }
+  .lead b {
+    color: var(--t1);
+  }
+  .chip {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: var(--srf);
+  }
+
+  /* ---------- static search-island shell (FR-13 static; no JS this slice) ---------- */
+  .searchisland {
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--srf);
+    padding: 16px 18px;
+    margin-top: 18px;
+  }
+  .searchrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .search {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1.5px solid var(--bd2);
+    border-radius: 9px;
+    background: var(--bg);
+    padding: 9px 13px;
+    color: var(--t3);
+    font-size: 13.5px;
+  }
+  .searchph {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kbd {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--t2);
+    border: 1px solid var(--bd2);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 1px 7px;
+    background: var(--srf);
+  }
+  .shown {
+    flex: none;
+    font-size: 12.5px;
+    color: var(--t3);
+    white-space: nowrap;
+  }
+  .filters {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .fchip {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: var(--srf);
+  }
+  /* the single accent fill on this page */
+  .fchip.on {
+    background: var(--acfill);
+    color: var(--acfillt);
+    border-color: var(--acfill);
+  }
+
+  /* ---------- group sections ---------- */
+  .cmdgroup {
+    margin-top: 40px;
+  }
+  .grouphead {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .gname {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--t1);
+    margin: 0;
+  }
+  .gcount {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--t3);
+  }
+  .gblurb {
+    font-size: 13.5px;
+    color: var(--t2);
+    margin: 6px 0 0;
+  }
+
+  /* ---------- command cards ---------- */
+  .cmdgrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 16px;
+  }
+  /* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap),
+     so a long example row ellipsis-truncates instead of forcing a 360px overflow. */
+  .cmdgrid > * {
+    min-width: 0;
+  }
+  .cmd {
+    border: 1px solid var(--bd);
+    border-radius: 11px;
+    background: var(--srf);
+    padding: 16px 16px 14px;
+  }
+  .cmdhead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* inline-flex so the source whitespace between the accent prefix and the command name
+     (which Prettier reflows onto its own line) is discarded by flex layout — the name renders
+     as "/marvin:<name>" with no stray gap, regardless of formatting. */
+  .name {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--t1);
+    min-width: 0;
+  }
+  .name .cn {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .name b {
+    color: var(--act);
+    font-weight: 600;
+  }
+  /* status badges (on the shared tokens) */
+  .b-acc {
+    color: var(--act);
+    background: var(--acbg);
+    border-color: transparent;
+  }
+  .b-amb {
+    color: var(--amb);
+    background: var(--ambbg);
+    border-color: transparent;
+  }
+  .blurb {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--t1);
+    margin: 10px 0 0;
+  }
+  .desc {
+    font-size: 13px;
+    color: var(--t2);
+    margin: 6px 0 0;
+  }
+  .cmdex {
+    margin-top: 11px;
+  }
+  .trig {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--t3);
+    margin-top: 11px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .trig i {
+    border: 1px solid var(--bd);
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-style: normal;
+  }
+
+  /* ---------- responsive (mockup breakpoint) ---------- */
+  @media (max-width: 860px) {
+    .cmdgrid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
