@@ -12,7 +12,7 @@ Use this page to look a command up. To learn the workflows themselves, read the
 ## The three ways to invoke a command
 
 Every workflow has three entry points that all resolve to the same behavior, which the
-["three doors" model](./architecture.md#three-doors-one-room) explains in full. Pick
+["call it your way" model](./architecture.md#call-it-your-way) explains in full. Pick
 whichever suits the moment.
 
 - **Chat.** Say what you want in plain language, and Claude Code matches your wording to a skill by its frontmatter `description`. The **Say it in chat** column below lists example phrases; any close paraphrase works.
