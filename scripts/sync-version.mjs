@@ -26,6 +26,7 @@ const PACKAGE_FILES = [
   "package.json",
   "packages/marvin-mcp-shared/package.json",
   "packages/marvin-widgets/package.json",
+  "packages/site/package.json",
   "plugins/marvin/mcp/server/package.json",
 ];
 

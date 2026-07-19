@@ -1,0 +1,62 @@
+---
+// index.astro (spec 004, F13) — the home route. Phase 1 ships a placeholder hero on
+// the shared shell; the full five-claim narrative (counts, workflow strip, .marvin/
+// tree, toolbox teaser, …) is ported from the hi-fi mockup in Phase 3.
+import Base from "../layouts/Base.astro";
+---
+
+<Base>
+  <section class="hero blueprint">
+    <div class="container hero__inner">
+      <p class="eyebrow">Claude Code toolset</p>
+      <h1 class="hero__wordmark">
+        <span class="hero__accent">/</span>marvin<span class="hero__accent">:</span>
+      </h1>
+      <p class="hero__tag">
+        AI-assisted development. <span class="hero__panic">Without panic.</span>
+      </p>
+      <p class="page-lead">
+        Install the toolbox into your project and get lightweight spec-driven development — a real
+        workflow, not unstructured prompting.
+      </p>
+      <p class="hero__install">
+        <code class="code">/plugin marketplace add real-case/marvin-toolkit</code>
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    padding-block: clamp(3.5rem, 10vw, 7rem);
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .hero__wordmark {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: clamp(2.75rem, 9vw, 5rem);
+    letter-spacing: -0.03em;
+    color: var(--t1);
+  }
+
+  .hero__accent {
+    color: var(--acfill);
+  }
+
+  .hero__tag {
+    margin-top: 1rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.5rem, 4vw, 2.25rem);
+    letter-spacing: -0.02em;
+  }
+
+  .hero__panic {
+    color: var(--act);
+  }
+
+  .hero__install {
+    margin-top: 2rem;
+  }
+</style>
