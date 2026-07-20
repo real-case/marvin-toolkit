@@ -177,18 +177,54 @@ const groupCount = groups.length; // 7 — generated
         </div>
       </section>
 
-      <!-- the demo canvas — STATIC shell (Live/Screenshot toggle inert; Phase 5 wires the embeds) -->
+      <!-- the demo canvas — the Live/Screenshot toggle switches STATE only (spec 010, F6).
+           Phase 5 attaches the real sandboxed-iframe embeds to this control; nothing here
+           ships an iframe/img/video/audio yet. -->
       <div class="canvas">
-        <div class="toggle"><span class="on">Live demo</span><span>Screenshot</span></div>
+        <div class="toggle">
+          <button type="button" class="on" aria-pressed="true" data-stage="live">Live demo</button>
+          <button type="button" aria-pressed="false" data-stage="shot">Screenshot</button>
+        </div>
         <div class="stage-area">
-          sandboxed iframe · the committed widget HTML · fed mock data<br />
-          theme follows the site toggle · inline on the page, never a modal
+          <p class="stage-copy" data-stage="live">
+            sandboxed iframe · the committed widget HTML · fed mock data<br />
+            theme follows the site toggle · inline on the page, never a modal
+          </p>
+          <p class="stage-copy" data-stage="shot" hidden>
+            static screenshot fallback · shown where embedding is blocked<br />
+            same data, same theme — a still of the live widget
+          </p>
         </div>
       </div>
       <p class="parline">
         Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
         glass.
       </p>
+
+      <!-- Demo-canvas toggle (spec 010, F6): moves the active segment and swaps the stage
+           copy. is:inline — no hydration, so this page still mounts no astro-island. -->
+      <script is:inline>
+        (() => {
+          const canvas = document.querySelector(".canvas");
+          if (!canvas) return;
+          const buttons = canvas.querySelectorAll(".toggle button");
+          const copies = canvas.querySelectorAll(".stage-copy");
+
+          buttons.forEach((button) => {
+            button.addEventListener("click", () => {
+              const stage = button.dataset.stage;
+              buttons.forEach((other) => {
+                const active = other === button;
+                other.classList.toggle("on", active);
+                other.setAttribute("aria-pressed", String(active));
+              });
+              copies.forEach((copy) => {
+                copy.hidden = copy.dataset.stage !== stage;
+              });
+            });
+          });
+        })();
+      </script>
     </div>
   </div>
 </Base>
@@ -466,13 +502,23 @@ const groupCount = groups.length; // 7 — generated
     border-radius: 8px;
     overflow: hidden;
   }
-  .toggle span {
+  /* real <button>s, reset back down to the flat segments the mockup shows */
+  .toggle button {
+    font-family: inherit;
     font-size: 12px;
     padding: 5px 14px;
     color: var(--t2);
+    background: none;
+    border: none;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .toggle button:hover {
+    color: var(--t1);
   }
   /* the single accent fill on this page */
-  .toggle span.on {
+  .toggle button.on,
+  .toggle button.on:hover {
     background: var(--acfill);
     color: var(--acfillt);
   }

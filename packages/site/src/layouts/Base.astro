@@ -61,6 +61,58 @@ const favicon =
     </main>
     <Footer />
 
+    <!-- Copy-to-clipboard (FR-2), wired ONCE for the whole site. Base wraps every page, so a
+         single delegated listener serves every `.copy` button — both the server-rendered
+         CodeCommand rows (home / quickstart / install) and the ones the CommandCatalog island
+         renders on /commands after it hydrates. Delegation is what makes the island case work:
+         the listener is attached before those buttons exist. is:inline keeps this out of the
+         bundle, so no astro-island appears and the static pages still ship zero framework JS. -->
+    <script is:inline>
+      (() => {
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          const button = target.closest(".copy");
+          if (!button) return;
+
+          const code = button.closest(".command")?.querySelector(".code");
+          if (!code || !navigator.clipboard) return;
+
+          navigator.clipboard.writeText(code.textContent ?? "").then(
+            () => {
+              // Remember the original label and accessible name ONCE, so a rapid second click
+              // cannot capture the feedback text as the thing to restore.
+              if (!button.dataset.copyLabel) {
+                button.dataset.copyLabel = button.textContent || "copy";
+              }
+              const name = button.getAttribute("aria-label");
+              if (name && !button.dataset.copyName) button.dataset.copyName = name;
+
+              button.textContent = "copied";
+              // aria-label IS the accessible name on these buttons, so it has to change too —
+              // otherwise the confirmation is sighted-only.
+              if (button.dataset.copyName) button.setAttribute("aria-label", "Copied");
+
+              // Restart the timer rather than stacking them, so a second click still gets a
+              // full window of feedback instead of the first timer cutting it short.
+              window.clearTimeout(Number(button.dataset.copyTimer));
+              button.dataset.copyTimer = String(
+                window.setTimeout(() => {
+                  button.textContent = button.dataset.copyLabel || "copy";
+                  if (button.dataset.copyName) {
+                    button.setAttribute("aria-label", button.dataset.copyName);
+                  }
+                }, 1200),
+              );
+            },
+            () => {
+              /* clipboard denied (permissions / insecure context) — leave the label alone */
+            },
+          );
+        });
+      })();
+    </script>
+
     <style>
       .skip-link {
         position: absolute;

@@ -6,8 +6,10 @@
 // HERE, in this component's own scoped <style> — Astro scopes a component's styles to its
 // own template, so an index.astro-scoped rule would not reach this element.
 //
-// The "copy" affordance is STATIC in this slice — no clipboard JS. FR-2 (copy-to-clipboard)
-// is Phase 4; it is decorative (aria-hidden) here so Phase 4 wires copy in exactly one place.
+// The copy affordance is a real, keyboard-operable button (spec 010, F5). Its behaviour is NOT
+// here: a single delegated `is:inline` listener in Base.astro serves every `.copy` on the site,
+// including the ones the CommandCatalog island renders (FR-2). That is the "exactly one place"
+// this component's Phase-3 comment promised.
 interface Props {
   command: string;
 }
@@ -16,7 +18,7 @@ const { command } = Astro.props;
 
 <div class="command">
   <code class="code">{command}</code>
-  <span class="copy" aria-hidden="true">copy</span>
+  <button type="button" class="copy" aria-label={`Copy ${command}`}>copy</button>
 </div>
 
 <style>
@@ -49,6 +51,8 @@ const { command } = Astro.props;
     border-radius: 0;
   }
 
+  /* A real <button>, styled back down to the flat chip the mockup shows — the UA border,
+     background and font are reset so it is visually identical to the former <span>. */
   .copy {
     flex: none;
     font-family: var(--font-mono);
@@ -56,7 +60,15 @@ const { command } = Astro.props;
     font-weight: 600;
     color: var(--act);
     background: var(--acbg);
+    border: none;
     border-radius: 5px;
     padding: 2px 9px;
+    line-height: inherit;
+    cursor: pointer;
+  }
+
+  .copy:hover {
+    color: var(--acfillt);
+    background: var(--acfill);
   }
 </style>

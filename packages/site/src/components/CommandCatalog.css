@@ -1,0 +1,317 @@
+/*
+ * CommandCatalog.css (spec 010, F2) — styles for the /commands search island.
+ *
+ * Ported from the scoped <style> that used to live in commands.astro, plus the search
+ * <input>, the chip/copy buttons, and the empty state. It lives in a plain CSS file because
+ * Astro scopes a component's <style> to its OWN template and that scoping never reaches
+ * Preact-rendered DOM; Astro hoists this import to a static <head> stylesheet, which also
+ * keeps the server-rendered cards styled when JS is off.
+ *
+ * Because that sheet is global, EVERY selector is prefixed with the island's `.catalog`
+ * wrapper — Home has its own `.search`/`.searchrow` (index.astro) and must not be touched.
+ */
+
+/* ---------- search island ---------- */
+.catalog .searchisland {
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  background: var(--srf);
+  padding: 16px 18px;
+  margin-top: 18px;
+}
+
+.catalog .searchrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.catalog .search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px solid var(--bd2);
+  border-radius: 9px;
+  background: var(--bg);
+  padding: 9px 13px;
+  color: var(--t3);
+  font-size: 13.5px;
+}
+
+.catalog .search:focus-within {
+  border-color: var(--ac);
+}
+
+/* the real field — strip the UA chrome so it reads as the mockup's plain row */
+.catalog .searchinput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--t1);
+  outline: none;
+  appearance: none;
+}
+
+.catalog .searchinput::placeholder {
+  color: var(--t3);
+}
+
+/* hide the WebKit search decorations — the row supplies its own affordances */
+.catalog .searchinput::-webkit-search-cancel-button,
+.catalog .searchinput::-webkit-search-decoration {
+  appearance: none;
+}
+
+.catalog .kbd {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--t2);
+  border: 1px solid var(--bd2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: var(--srf);
+}
+
+.catalog .shown {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+
+/* ---------- group filter chips ---------- */
+.catalog .filters {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.catalog .fchip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--t2);
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+  padding: 3px 12px;
+  background: var(--srf);
+  cursor: pointer;
+  line-height: inherit;
+}
+
+.catalog .fchip:hover {
+  border-color: var(--bd2);
+  color: var(--t1);
+}
+
+/* the single accent fill on this page */
+.catalog .fchip.on {
+  background: var(--acfill);
+  color: var(--acfillt);
+  border-color: var(--acfill);
+}
+
+/* ---------- group sections ---------- */
+.catalog .cmdgroup {
+  margin-top: 40px;
+}
+
+.catalog .grouphead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.catalog .gname {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--t1);
+  margin: 0;
+}
+
+.catalog .gcount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+
+.catalog .gblurb {
+  font-size: 13.5px;
+  color: var(--t2);
+  margin: 6px 0 0;
+}
+
+/* ---------- command cards ---------- */
+.catalog .cmdgrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+/* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap),
+   so a long example row ellipsis-truncates instead of forcing a 360px overflow. */
+.catalog .cmdgrid > * {
+  min-width: 0;
+}
+
+.catalog .cmd {
+  border: 1px solid var(--bd);
+  border-radius: 11px;
+  background: var(--srf);
+  padding: 16px 16px 14px;
+}
+
+.catalog .cmdhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* inline-flex so the whitespace between the accent prefix and the command name is discarded
+   by flex layout — the name renders as "/marvin:<name>" with no stray gap. */
+.catalog .name {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+  min-width: 0;
+}
+
+.catalog .name .cn {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog .name b {
+  color: var(--act);
+  font-weight: 600;
+}
+
+/* status badges (on the shared tokens) */
+.catalog .b-acc {
+  color: var(--act);
+  background: var(--acbg);
+  border-color: transparent;
+}
+
+.catalog .b-amb {
+  color: var(--amb);
+  background: var(--ambbg);
+  border-color: transparent;
+}
+
+.catalog .blurb {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--t1);
+  margin: 10px 0 0;
+}
+
+.catalog .desc {
+  font-size: 13px;
+  color: var(--t2);
+  margin: 6px 0 0;
+}
+
+.catalog .cmdex {
+  margin-top: 11px;
+}
+
+/* ---------- the example row (mirrors CodeCommand.astro, which cannot render in an island) ---------- */
+.catalog .command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--srf2);
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+}
+
+/* Strip the primitives `.code` inline chrome — inside the row it is just mono text. */
+.catalog .command .code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  font-size: 12.5px;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+.catalog .copy {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--act);
+  background: var(--acbg);
+  border: none;
+  border-radius: 5px;
+  padding: 2px 9px;
+  cursor: pointer;
+  line-height: inherit;
+}
+
+.catalog .copy:hover {
+  color: var(--acfillt);
+  background: var(--acfill);
+}
+
+/* ---------- trigger phrases ---------- */
+.catalog .trig {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--t3);
+  margin-top: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.catalog .trig i {
+  border: 1px solid var(--bd);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-style: normal;
+}
+
+/* ---------- empty state ---------- */
+.catalog .empty {
+  margin-top: 40px;
+  padding: 28px 22px;
+  border: 1px dashed var(--bd2);
+  border-radius: 12px;
+  background: var(--srf);
+  color: var(--t2);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ---------- responsive (mockup breakpoint) ---------- */
+@media (max-width: 860px) {
+  .catalog .cmdgrid {
+    grid-template-columns: 1fr;
+  }
+}
