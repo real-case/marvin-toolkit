@@ -2,7 +2,7 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **50** in total,
+`/marvin:<group>-<command>`, and singletons stay bare. There are **52** in total,
 divided into seven groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
