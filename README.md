@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **51 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **52 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -86,6 +86,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, stats, and prune. |
 | `/marvin:help` | Show the project dashboard and the full command index. |
 | `/marvin:dashboard` | Report the whole-toolbox state at a glance. |
+| `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands. The plugin also registers two external MCP servers: `context7` for library docs
@@ -267,6 +268,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
 | [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
 | [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
+| [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
 
 ## Contributing
 

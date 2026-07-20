@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      marvin report export — print-quality template (template-only architecture, ADR-0033).
+
+      HOW TO FILL (the full workflow lives in skills/report-export/SKILL.md):
+        1. Replace the <title data-mv="title"> text and the <h1> with the report title.
+        2. Replace the sample values in <header data-mv="meta"> — keep all five labels:
+           Source, Command, Generated, Exported, Marvin.
+        3. Inside <main data-mv="body">, keep exactly ONE cookbook section (the kind that
+           matches the report: findings / checks / document), delete the other two, and
+           replace its SAMPLE content with the real report content.
+        4. HTML-escape every value interpolated from report files (&, <, >, ", ').
+        5. Keep this file self-contained: no scripts, no stylesheet links, no CSS imports,
+           no external assets — every color comes from the .mvroot token sheet below.
+
+      PDF: open this file in any browser → Print → "Save as PDF" (A4; enable background
+      graphics so badges and tints print). The @page rules below set margins.
+    -->
+    <title data-mv="title">Security scan — marvin report export</title>
+    <style>
+      /* ── .mvroot token sheet (packages/marvin-widgets/src/theme/tokens.ts) ─────────
+         The values below are the widget-family palette; export-template.test.ts locks
+         this file to the exported MV_THEME_CSS sheet — light, dark, and print re-declare
+         only sheet values, and no other color literal may appear in this file. */
+      :root {
+        --bg: #fbfbfc;
+        --srf: #ffffff;
+        --srf2: #f4f4f5;
+        --bd: #e9e9ec;
+        --bd2: #d9d9de;
+        --t1: #18181b;
+        --t2: #52525b;
+        --t3: #a1a1aa;
+        --ac: #8b5cf6;
+        --act: #6d28d9;
+        --acbg: rgba(139, 92, 246, 0.09);
+        --red: #dc2626;
+        --redbg: #fef2f2;
+        --org: #c2410c;
+        --orgbg: #fff7ed;
+        --amb: #b45309;
+        --ambbg: #fffbeb;
+        --grn: #15803d;
+        --grnbg: #f0fdf4;
+        --blu: #1d4ed8;
+        --blubg: #eff6ff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0b0d;
+          --srf: #141417;
+          --srf2: #1d1d22;
+          --bd: #26262c;
+          --bd2: #3a3a42;
+          --t1: #f4f4f5;
+          --t2: #a1a1aa;
+          --t3: #70707a;
+          --ac: #a78bfa;
+          --act: #c4b5fd;
+          --acbg: rgba(167, 139, 250, 0.13);
+          --red: #f87171;
+          --redbg: rgba(248, 113, 113, 0.11);
+          --org: #fb923c;
+          --orgbg: rgba(251, 146, 60, 0.11);
+          --amb: #fbbf24;
+          --ambbg: rgba(251, 191, 36, 0.1);
+          --grn: #4ade80;
+          --grnbg: rgba(74, 222, 128, 0.1);
+          --blu: #60a5fa;
+          --blubg: rgba(96, 165, 250, 0.11);
+        }
+      }
+
+      /* ── base ──────────────────────────────────────────────────────────────────── */
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--bg);
+      }
+      body {
+        margin: 0 auto;
+        padding: 40px 32px 48px;
+        max-width: 52rem;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+        letter-spacing: -0.006em;
+        color: var(--t1);
+      }
+      .mv-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+      }
+      a {
+        color: var(--act);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      /* ── header (provenance envelope) ──────────────────────────────────────────── */
+      .mv-kicker {
+        margin: 0 0 6px;
+        font-size: 10.5px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--t3);
+      }
+      .mv-title {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 500;
+        letter-spacing: -0.015em;
+      }
+      .mv-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--bd);
+      }
+      .mv-chip {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        padding: 2px 7px;
+        background: var(--srf2);
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        color: var(--t2);
+      }
+
+      /* ── badges (severity / status) ────────────────────────────────────────────── */
+      .mv-badge {
+        display: inline-block;
+        font-size: 10.5px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 1px 7px;
+        border-radius: 4px;
+        vertical-align: 1px;
+      }
+      .mv-critical,
+      .mv-fail {
+        color: var(--red);
+        background: var(--redbg);
+      }
+      .mv-high {
+        color: var(--org);
+        background: var(--orgbg);
+      }
+      .mv-medium,
+      .mv-stale {
+        color: var(--amb);
+        background: var(--ambbg);
+      }
+      .mv-low {
+        color: var(--blu);
+        background: var(--blubg);
+      }
+      .mv-pass {
+        color: var(--grn);
+        background: var(--grnbg);
+      }
+      .mv-info,
+      .mv-pending {
+        color: var(--t2);
+        background: var(--srf2);
+      }
+
+      /* ── sections ──────────────────────────────────────────────────────────────── */
+      .mv-section {
+        margin-top: 24px;
+      }
+      .mv-h2 {
+        margin: 24px 0 10px;
+        font-size: 10.5px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--t3);
+      }
+
+      /* ── findings body ─────────────────────────────────────────────────────────── */
+      .mv-counts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 16px 0 4px;
+      }
+      .mv-finding {
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        background: var(--srf);
+        padding: 10px 12px;
+        margin-top: 8px;
+        break-inside: avoid;
+      }
+      .mv-finding-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .mv-fid {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        color: var(--t3);
+      }
+      .mv-ftitle {
+        font-weight: 500;
+      }
+      .mv-floc {
+        margin-left: auto;
+      }
+      .mv-flabel {
+        margin: 10px 0 4px;
+        font-size: 10.5px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--t3);
+      }
+      .mv-evidence {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.55;
+        background: var(--srf2);
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        padding: 8px 10px;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--t1);
+      }
+      .mv-remediation {
+        margin: 4px 0 0;
+        color: var(--t2);
+      }
+      .mv-flinks {
+        margin-top: 8px;
+        font-size: 11.5px;
+        color: var(--t3);
+      }
+
+      /* ── checks body ───────────────────────────────────────────────────────────── */
+      .mv-checks-summary {
+        margin: 16px 0 8px;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+      }
+      .mv-checks-summary.mv-ok {
+        color: var(--grn);
+      }
+      .mv-checks-summary.mv-bad {
+        color: var(--red);
+      }
+      .mv-checks {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        background: var(--srf);
+      }
+      .mv-checks th {
+        text-align: left;
+        font-size: 10.5px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--t3);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--bd);
+      }
+      .mv-checks td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--bd);
+        vertical-align: top;
+      }
+      .mv-checks tr:last-child td {
+        border-bottom: 0;
+      }
+      .mv-glyph {
+        font-weight: 500;
+      }
+      .mv-note {
+        color: var(--t3);
+        font-size: 11.5px;
+      }
+
+      /* ── document body ─────────────────────────────────────────────────────────── */
+      .mv-doc {
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: var(--t2);
+      }
+      .mv-doc h2 {
+        margin: 22px 0 8px;
+        font-size: 14.5px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--t1);
+      }
+      .mv-doc h3 {
+        margin: 18px 0 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--t1);
+      }
+      .mv-doc p {
+        margin: 8px 0;
+      }
+      .mv-doc ul,
+      .mv-doc ol {
+        margin: 8px 0;
+        padding-left: 22px;
+      }
+      .mv-doc li {
+        margin: 3px 0;
+      }
+      .mv-doc code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        background: var(--srf2);
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      .mv-doc pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.55;
+        background: var(--srf2);
+        border: 1px solid var(--bd);
+        border-radius: 4px;
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .mv-doc pre code {
+        background: none;
+        border: 0;
+        padding: 0;
+      }
+      .mv-doc blockquote {
+        margin: 8px 0;
+        padding: 2px 12px;
+        border-left: 2px solid var(--bd2);
+        color: var(--t3);
+      }
+      .mv-doc table {
+        border-collapse: collapse;
+        margin: 10px 0;
+      }
+      .mv-doc th,
+      .mv-doc td {
+        border: 1px solid var(--bd);
+        padding: 5px 10px;
+        text-align: left;
+      }
+      .mv-doc th {
+        background: var(--srf2);
+        color: var(--t1);
+        font-weight: 500;
+      }
+      .mv-doc hr {
+        border: 0;
+        border-top: 1px solid var(--bd);
+        margin: 16px 0;
+      }
+
+      /* ── footer ────────────────────────────────────────────────────────────────── */
+      .mv-foot {
+        margin-top: 32px;
+        padding-top: 12px;
+        border-top: 1px solid var(--bd);
+        font-size: 11.5px;
+        color: var(--t3);
+      }
+
+      /* ── print ─────────────────────────────────────────────────────────────────── */
+      @page {
+        size: A4;
+        margin: 14mm;
+      }
+      @media print {
+        :root {
+          --bg: #fbfbfc;
+          --srf: #ffffff;
+          --srf2: #f4f4f5;
+          --bd: #e9e9ec;
+          --bd2: #d9d9de;
+          --t1: #18181b;
+          --t2: #52525b;
+          --t3: #a1a1aa;
+          --ac: #8b5cf6;
+          --act: #6d28d9;
+          --acbg: rgba(139, 92, 246, 0.09);
+          --red: #dc2626;
+          --redbg: #fef2f2;
+          --org: #c2410c;
+          --orgbg: #fff7ed;
+          --amb: #b45309;
+          --ambbg: #fffbeb;
+          --grn: #15803d;
+          --grnbg: #f0fdf4;
+          --blu: #1d4ed8;
+          --blubg: #eff6ff;
+        }
+        html {
+          background: none;
+        }
+        body {
+          max-width: none;
+          padding: 0;
+        }
+        h1,
+        h2,
+        h3,
+        .mv-h2 {
+          break-after: avoid;
+        }
+        .mv-finding,
+        .mv-checks tr {
+          break-inside: avoid;
+        }
+        .mv-flinks a[href]::after {
+          content: " (" attr(href) ")";
+          font-size: 10px;
+          color: var(--t3);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header data-mv="meta">
+      <p class="mv-kicker">marvin · report export</p>
+      <h1 class="mv-title">Security scan</h1>
+      <div class="mv-meta">
+        <span class="mv-chip">Source: .marvin/security/scan-report.md</span>
+        <span class="mv-chip">Command: /marvin:sec-scan</span>
+        <span class="mv-chip">Generated: 2026-07-17T10:00:00Z</span>
+        <span class="mv-chip">Exported: 2026-07-17T12:00:00Z</span>
+        <span class="mv-chip">Marvin: 0.9.0</span>
+      </div>
+    </header>
+
+    <main data-mv="body">
+      <!-- mv:cookbook:findings -->
+      <!-- SAMPLE — findings body (sec-* reports, refactor registers). Group findings by
+           severity, critical → high → medium → low → info; keep every finding expanded. -->
+      <section class="mv-section">
+        <div class="mv-counts">
+          <span class="mv-badge mv-critical">critical 0</span>
+          <span class="mv-badge mv-high">high 1</span>
+          <span class="mv-badge mv-medium">medium 1</span>
+          <span class="mv-badge mv-low">low 0</span>
+        </div>
+
+        <h2 class="mv-h2">High (1)</h2>
+        <article class="mv-finding">
+          <div class="mv-finding-head">
+            <span class="mv-badge mv-high">high</span>
+            <span class="mv-fid">SAMPLE-1</span>
+            <span class="mv-ftitle">Hard-coded credential in the config loader</span>
+            <span class="mv-chip mv-floc">src/config/load.ts:42</span>
+          </div>
+          <p class="mv-flabel">Evidence</p>
+          <pre class="mv-evidence">const token = "PLACEHOLDER_NOT_A_REAL_SECRET";</pre>
+          <p class="mv-flabel">Remediation</p>
+          <p class="mv-remediation">
+            Move the value into the environment and rotate the exposed credential.
+          </p>
+          <p class="mv-flinks">OWASP A05:2025 · /marvin:sec-fix scan SAMPLE-1</p>
+        </article>
+
+        <h2 class="mv-h2">Medium (1)</h2>
+        <article class="mv-finding">
+          <div class="mv-finding-head">
+            <span class="mv-badge mv-medium">medium</span>
+            <span class="mv-fid">SAMPLE-2</span>
+            <span class="mv-ftitle">Verbose error response leaks stack traces</span>
+            <span class="mv-chip mv-floc">src/http/errors.ts:17</span>
+          </div>
+          <p class="mv-flabel">Remediation</p>
+          <p class="mv-remediation">Return a generic message; log the stack server-side.</p>
+        </article>
+      </section>
+
+      <!-- mv:cookbook:checks -->
+      <!-- SAMPLE — checks body (verification gates, refactor plan steps). Summary line is
+           green (mv-ok) only when failed == 0; use mv-bad when any check failed. -->
+      <section class="mv-section">
+        <p class="mv-checks-summary mv-ok">3/3 passed</p>
+        <table class="mv-checks">
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Status</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>test</td>
+              <td><span class="mv-glyph mv-badge mv-pass">✓ pass</span></td>
+              <td class="mv-note">212 tests</td>
+            </tr>
+            <tr>
+              <td>lint</td>
+              <td><span class="mv-glyph mv-badge mv-pass">✓ pass</span></td>
+              <td class="mv-note"></td>
+            </tr>
+            <tr>
+              <td>build</td>
+              <td><span class="mv-glyph mv-badge mv-pass">✓ pass</span></td>
+              <td class="mv-note">4.1s</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- mv:cookbook:document -->
+      <!-- SAMPLE — document body (task specs, handoffs): render the markdown into the
+           .mv-doc typography below (headings, lists, tables, code, quotes). -->
+      <section class="mv-section mv-doc">
+        <h2>Goal</h2>
+        <p>
+          A short sample paragraph showing the document typography — secondary text on a 34–52rem
+          measure with <code>inline code</code> chips.
+        </p>
+        <ul>
+          <li>List item one</li>
+          <li>List item two</li>
+        </ul>
+        <pre><code>npm test</code></pre>
+        <blockquote>A quoted note.</blockquote>
+      </section>
+    </main>
+
+    <footer class="mv-foot">
+      Exported by the marvin toolbox · this document is self-contained (no scripts, no external
+      assets) · palette: .mvroot widget theme
+    </footer>
+  </body>
+</html>

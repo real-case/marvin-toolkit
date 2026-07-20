@@ -28602,6 +28602,13 @@ var PROMPTS = [
     description: "Unified viewer over every generated .marvin/ report \u2014 security, refactor, task, handoff \u2014 newest first, with per-report freshness.",
     body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title \u2014 e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble \u2014 just call the tool and present its result.'
   },
+  {
+    // Skill-backed (three doors) — the template-only export feature (ADR-0033):
+    // Claude fills the shipped print template; the server ships no export code.
+    name: "report-export",
+    description: "Export a generated .marvin/ report to PDF (print-ready HTML), standalone HTML, or a Markdown digest \u2014 filled from the print-quality template styled on the widget theme tokens.",
+    skill: "report-export"
+  },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
     name: "adr-review",
@@ -31747,6 +31754,7 @@ var COMMAND_BLURBS = {
   help: "This dashboard + command index",
   dashboard: "Whole-toolbox state report",
   reports: "Unified viewer over all reports",
+  "report-export": "Export a report to PDF / MD",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -31807,6 +31815,7 @@ var COMMAND_DETAILS = {
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard: "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
   reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs \u2014 newest first, with per-report freshness.",
+  "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -31953,6 +31962,11 @@ var COMMAND_PROMPTS = {
     "marvin, show me the reports",
     "marvin, what reports do we have?",
     "marvin, open the latest security report"
+  ],
+  "report-export": [
+    "marvin, export the security report to PDF",
+    "marvin, save this report as markdown",
+    "marvin, make the scan report shareable"
   ],
   // adr
   "adr-review": [
@@ -34575,7 +34589,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.8.1";
+var VERSION = "0.9.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

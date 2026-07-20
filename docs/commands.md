@@ -81,6 +81,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:help` | Show the project dashboard and the full command index, filtered by group. | `marvin help`, `what commands are there?`, `marvin help sec` |
 | `/marvin:dashboard` | Report the whole-toolbox state — board counters, artifact inventories with freshness, the ADR corpus by status, lessons stats, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
 | `/marvin:reports` | List every report marvin generated under `.marvin/` — security, refactor, task, handoff — newest first, with freshness. | `marvin show the reports`, `what reports do we have?`, `open the latest security report` |
+| `/marvin:report-export` | Export a report to PDF (print-ready HTML), standalone HTML, or a Markdown digest, filled from the widget-theme print template. | `marvin export the security report to PDF`, `save this report as markdown`, `make the scan report shareable` |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands.

@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/site",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "private": true,
   "description": "Marketing + reference site for the marvin plugin — static Astro site (website Phase 1 scaffold).",
   "type": "module",
