@@ -258,19 +258,19 @@ The home page tells the positioning story in order; block order is the narrative
 
 ## Launch gates
 
-Two dependencies couple the public launch to work outside the site itself:
+Two dependencies couple the public launch to work outside the site itself. Both have moved
+since this document was written; the status below is current as of 2026-07-20.
 
-1. **Repository publication.** The repository is private today, and
-   `/plugin marketplace add real-case/marvin-toolkit` only works for visitors once it is
-   public. Vercel builds from a private repository without issue, so implementation and
-   preview deployments are not blocked; only the public launch is coupled to the
-   make-public milestone.
-2. **Report export.** The site advertises exporting reports to PDF and Markdown (FR-18).
-   The feature behind it follows the template-only architecture: Claude generates the
-   export in the user's session, and the toolbox ships the print-quality template (on
-   the widget theme tokens) plus the instructions — no export code in the server. It is
-   specced and built through the task pipeline as its own work item, and must land
-   before the site goes public.
+1. **Repository publication — met.** `real-case/marvin-toolkit` is public, so
+   `/plugin marketplace add real-case/marvin-toolkit` works for visitors. (Vercel builds
+   from a private repository without issue, so this never blocked implementation or preview
+   deployments — only the public launch was coupled to the make-public milestone.)
+2. **Report export — in review.** The site advertises exporting reports to PDF and Markdown
+   (FR-18). The feature follows the template-only architecture: Claude generates the export
+   in the user's session, and the toolbox ships the print-quality template (on the widget
+   theme tokens) plus the instructions — no export code in the server. It is implemented and
+   open as PR #133 into `dev`; the site must still not ship the FR-18 claim publicly until
+   that merges.
 
 ## Out of scope for v1
 

@@ -199,14 +199,15 @@ green from the private repository.
 
 **Goal.** Take the site public.
 
-This phase is gated on two dependencies outside the site itself:
+This phase is gated on two dependencies outside the site itself. Both have moved since this
+plan was written; the status below is current as of 2026-07-20.
 
-1. **Repository publication.** `/plugin marketplace add real-case/marvin-toolkit` only
-   works for visitors once the repository is public, so the primary call to action is
-   inert until then.
-2. **Report export.** The Toolbox advertises PDF and Markdown export (FR-18); the
-   template-only feature behind it must land first. Its spec is written and sealed
-   (`.marvin/task/002-report-export-template.md`) and awaits implementation.
+1. **Repository publication — met.** `real-case/marvin-toolkit` is public, so
+   `/plugin marketplace add real-case/marvin-toolkit` works for visitors and the primary
+   call to action is live rather than inert.
+2. **Report export — in review.** The Toolbox advertises PDF and Markdown export (FR-18),
+   and the template-only feature behind it must land before the site goes public. It is
+   implemented on `feat/report-export` and open as PR #133 into `dev`.
 
 **Tasks.** Flip the domain to production, verify analytics in production, and submit the
 site where the project is listed.
