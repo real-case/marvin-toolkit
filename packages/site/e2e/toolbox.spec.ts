@@ -50,12 +50,12 @@ test("toolbox renders the demo-canvas shell, the parity line, and the catalog-dr
   // The widget count is catalog-driven, not hand-typed (FR-20).
   await expect(page.locator(".chip")).toContainText(String(catalog.counts.widgets)); // 9
 
-  // The demo canvas is a static Live demo / Screenshot toggle (one segment active) over the
-  // sandboxed-iframe placeholder — the live embeds are Phase 5.
+  // The demo canvas opens on Live demo (exactly one segment active) over the sandboxed-iframe
+  // placeholder — the live embeds are Phase 5.
   const toggle = page.locator(".canvas .toggle");
   await expect(toggle).toContainText("Live demo");
   await expect(toggle).toContainText("Screenshot");
-  const active = page.locator(".canvas .toggle span.on");
+  const active = page.locator('.canvas .toggle button[aria-pressed="true"]');
   await expect(active).toHaveCount(1);
   await expect(active).toHaveText("Live demo");
   await expect(page.locator(".stage-area")).toContainText("sandboxed iframe");
@@ -91,10 +91,40 @@ test("toolbox holds both themes and responds from 360 to 1440 without horizontal
   }
 });
 
-test("toolbox is a static shell — no island and no live widget embeds", async ({ page }) => {
+test("toolbox demo toggle switches the active segment without shipping media", async ({ page }) => {
   await page.goto("/toolbox");
-  // No Preact island hydrates — the page is static HTML/CSS with only Base's inline theme
-  // script (the automatable proxy for "ships no JS", Lighthouse ≥ 95).
+
+  const active = page.locator('.canvas .toggle button[aria-pressed="true"]');
+  const live = page.locator('.canvas .toggle button[data-stage="live"]');
+  const shot = page.locator('.canvas .toggle button[data-stage="shot"]');
+
+  // Opens on Live demo.
+  await expect(active).toHaveText("Live demo");
+  await expect(page.locator('.stage-copy[data-stage="live"]')).toBeVisible();
+  await expect(page.locator('.stage-copy[data-stage="shot"]')).toBeHidden();
+
+  // Activating Screenshot moves the marker (class + aria-pressed) and swaps the stage copy.
+  await shot.click();
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveText("Screenshot");
+  await expect(page.locator(".canvas .toggle button.on")).toHaveText("Screenshot");
+  await expect(page.locator('.stage-copy[data-stage="shot"]')).toBeVisible();
+  await expect(page.locator('.stage-copy[data-stage="live"]')).toBeHidden();
+  await expect(page.locator(".stage-area")).toContainText("static screenshot fallback");
+
+  // ...and back again.
+  await live.click();
+  await expect(active).toHaveText("Live demo");
+  await expect(page.locator('.stage-copy[data-stage="live"]')).toBeVisible();
+
+  // Toggling state must not have pulled in a Phase-5 embed.
+  await expect(page.locator("iframe, img, video, audio")).toHaveCount(0);
+});
+
+test("toolbox ships no island and no live widget embeds", async ({ page }) => {
+  await page.goto("/toolbox");
+  // No Preact island hydrates — the page is HTML/CSS with only inline scripts (Base's theme
+  // script and the demo-canvas toggle), the automatable proxy for "ships no framework JS".
   await expect(page.locator("astro-island")).toHaveCount(0);
   // The live widget demos are Phase-5 placeholders: no sandboxed iframe (or any media) ships
   // yet — a clean guard against a live embed leaking in early.
