@@ -152,6 +152,14 @@ export const PROMPTS: PromptDef[] = [
       "Unified viewer over every generated .marvin/ report — security, refactor, task, handoff — newest first, with per-report freshness.",
     body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title — e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble — just call the tool and present its result.',
   },
+  {
+    // Skill-backed (three doors) — the template-only export feature (ADR-0033):
+    // Claude fills the shipped print template; the server ships no export code.
+    name: "report-export",
+    description:
+      "Export a generated .marvin/ report to PDF (print-ready HTML), standalone HTML, or a Markdown digest — filled from the print-quality template styled on the widget theme tokens.",
+    skill: "report-export",
+  },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {

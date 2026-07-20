@@ -37,6 +37,7 @@ const REQUIRED_PROMPTS = [
   "help",
   "dashboard",
   "reports",
+  "report-export",
   // pr-*
   "pr-create",
   "pr-review",

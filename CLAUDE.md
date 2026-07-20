@@ -37,7 +37,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
-    │   │   └── index.ts              # 51 prompt entries (skill-backed + inline track)
+    │   │   └── index.ts              # 52 prompt entries (skill-backed + inline track)
     │   ├── tools/                    # 13 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # board persistence + helpers
@@ -58,6 +58,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
 | `.marvin/usage/` | usage-log middleware (`runPackServer`) | **local, never-committed** telemetry: `events.jsonl` — one JSONL event `{ts, kind, name}` per prompt-get / tool-call — plus a self-written `.gitignore` = `*` so nothing here reaches git; size-capped with rotation to `events.jsonl.1`; read only by `/marvin:dashboard`. Kill-switch `usage.enabled: false`; fail-open (ADR-0030) |
+| `.marvin/export/` | `report-export` skill (Claude fills the shipped template in-session — no server export code, ADR-0033) | shareable report exports `<group>-<source-basename>.<md\|html>` (print-ready HTML = the PDF path) + a self-written `.gitignore` = `*` — derived artifacts, never versioned |
 | `.marvin/config.json` | `track-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:track-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
 
 Spec location stays **host-adaptive** (ADR-0005): `.marvin/task/` is the default, but an existing
@@ -72,7 +73,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 
 | Group | Source | Examples |
 |-------|--------|----------|
-| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports` |
+| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export` |
 | `adr-*` | ADR lifecycle around the bare `/marvin:adr` create (ADR-0027; accept/supersede/sync are human-run via `disable-model-invocation`) | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit`, `/marvin:adr-coverage`, `/marvin:adr-supersede`, `/marvin:adr-sync` |
 | `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
 | `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
@@ -274,7 +275,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 51 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 52 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool
@@ -295,6 +296,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0030-toolbox-dashboard-and-usage-log.md` — the `dashboard` tool (whole-toolbox report, extended `DashboardState`) + the local self-ignoring `.marvin/usage/` events log (implemented by WP7)
 - `docs/adr/0031-track-command-group-rename.md` — the `kanban-*` group renamed to `track-*`; the artifact is the "board" (`.marvin/track/`, `board_counts`), accepted ADRs keep the old name as history
 - `docs/adr/0032-track-surface-reduction.md` — the track surface reduced 14 → 7 prompts (`track-new`, routing `track-list`/`track-move`); tools, actions, and widget bindings unchanged
+- `docs/adr/0033-report-export.md` — report export is template-only: Claude fills the shipped print template (`skills/report-export/references/`, `.mvroot`-locked by `export-template.test.ts`); no export code in the server
 - `packages/marvin-widgets/` — the React browser workspace for MCP Apps `ui://` widgets (ADR-0024); builds committed self-contained HTML to `plugins/marvin/widgets/`
 - `plugins/marvin/mcp/server/src/resources/widgets.ts` — server-side `ui://` widget `ResourceDef`s (no ext-apps import)
 - `scripts/lint-manifests.mjs` — manifest + structure linter

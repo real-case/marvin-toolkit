@@ -5,7 +5,7 @@
 The complete Marvin toolkit as **one plugin, one MCP server, and one slash prefix** —
 `/marvin:`. It covers the whole development lifecycle: core developer tools, the ADR
 decision-record lifecycle, a spec-driven task pipeline, security scanners, a code-health
-refactoring family, and a lightweight task tracker. Under the hood it ships **51 prompts,
+refactoring family, and a lightweight task tracker. Under the hood it ships **52 prompts,
 13 MCP tools, 10 agents, and 9 interactive widgets**.
 
 ## Install
@@ -24,7 +24,7 @@ This registers the `marvin` MCP server, and its commands appear as
 
 | Group | Purpose | Count | Examples |
 |-------|---------|-------|----------|
-| _(bare)_ | Core developer tools | 13 | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:dashboard` |
+| _(bare)_ | Core developer tools | 14 | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:report-export` |
 | `adr-*` | ADR lifecycle | 6 | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit` |
 | `pr-*` | Pull-request operations | 4 | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
 | `task-*` | Spec-driven task pipeline | 5 | `/marvin:task-start`, `/marvin:task-verify` |

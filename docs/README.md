@@ -54,6 +54,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0030](./adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
 | [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
 | [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
+| [0033](./adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
 
 ## Work in progress
 

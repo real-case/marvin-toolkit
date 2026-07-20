@@ -51,6 +51,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
   help: "This dashboard + command index",
   dashboard: "Whole-toolbox state report",
   reports: "Unified viewer over all reports",
+  "report-export": "Export a report to PDF / MD",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -132,6 +133,8 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
   reports:
     "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
+  "report-export":
+    "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest — Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   // adr
   "adr-review":
     "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
@@ -322,6 +325,11 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, show me the reports",
     "marvin, what reports do we have?",
     "marvin, open the latest security report",
+  ],
+  "report-export": [
+    "marvin, export the security report to PDF",
+    "marvin, save this report as markdown",
+    "marvin, make the scan report shareable",
   ],
   // adr
   "adr-review": [

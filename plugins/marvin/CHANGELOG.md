@@ -4,6 +4,21 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.9.0] — 2026-07-17
+
+### Added
+
+- **Report export, template-only** (ADR-0033): the new `/marvin:report-export`
+  skill exports any generated `.marvin/` report — security scans, refactor
+  registers and plans, task specs, verification, handoffs — as a **Markdown
+  digest** or **print-ready HTML** (the PDF path: open in a browser → print →
+  save as PDF). Claude fills the shipped print-quality template in-session;
+  **no export code ships in the MCP server** — the plugin carries only the
+  template (styled on the `.mvroot` widget theme tokens, locked to the token
+  sheet by a new guard test) and the instructions. Exports land in
+  `.marvin/export/`, which self-ignores from git. Registry: 52 prompts, tools
+  unchanged (13).
+
 ## [0.8.1] — 2026-07-16
 
 ### Added
