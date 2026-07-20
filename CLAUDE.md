@@ -84,7 +84,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 `task-*` (heavyweight spec pipeline) and `track-*` (quick tracker) are intentionally
 distinct domains — keep them separate.
 
-### Three doors, one room
+### Call it your way
 
 The same `SKILL.md` is reached through **three independent entry points**:
 
@@ -92,7 +92,7 @@ The same `SKILL.md` is reached through **three independent entry points**:
 2. **Markdown slash commands.** Each `plugins/marvin/commands/<command>.md` is a thin Claude Code slash command that instructs the model to read its matching `SKILL.md` and pass `$ARGUMENTS`. Surfaces as `/<command>` (e.g. `/commit`, `/sec-scan`, `/task-start`).
 3. **MCP slash commands.** Each prompt entry in `plugins/marvin/mcp/server/src/prompts/index.ts` declares `skill: "<command>"`. At request time the server reads the corresponding `SKILL.md`, strips its frontmatter, and returns the prose as a prompt body. Surfaces as `/marvin:<command>` (e.g. `/marvin:commit`).
 
-All three doors lead to the same prose. Editing `SKILL.md` updates all three paths without a server rebuild (doors 2 and 3 read it at runtime; door 1 on next auto-discovery).
+All three entry points lead to the same prose. Editing `SKILL.md` updates all three paths without a server rebuild (the slash and MCP entries read it at runtime; chat auto-discovery picks it up on the next match).
 
 ### Instrument types
 
@@ -215,7 +215,7 @@ node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"ti
 
 ## Adding a new prompt
 
-The canonical path is **skill-backed** — same content, three doors:
+The canonical path is **skill-backed** — same content, three entry points:
 
 1. Create `plugins/marvin/skills/<command>/SKILL.md` with YAML frontmatter (`name` matching the directory, `description`). The `description` is the auto-discovery trigger Claude Code matches in chat. Follow the `<group>-<command>` naming scheme.
 2. Optionally create `plugins/marvin/commands/<command>.md` with frontmatter `description` and a body that instructs Claude to read `skills/<command>/SKILL.md` and pass `$ARGUMENTS`. Use existing `commit.md` / `sec-scan.md` as templates.

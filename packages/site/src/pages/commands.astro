@@ -1,0 +1,93 @@
+---
+// commands.astro (spec 010, F3) — the /commands catalog page.
+//
+// The page owns only the chrome: the blueprint wrapper and the header (eyebrow / title / lead /
+// counts chip). Everything below it — the search field, the group chips, the live count, every
+// command card and the empty state — belongs to the CommandCatalog island (FR-13/FR-14), which
+// Astro server-renders (so the full catalog is in the HTML with no JS) and then hydrates with
+// client:load. The card and search styles moved with it into CommandCatalog.css, because Astro
+// scopes a page's <style> to its own template and that scoping never reaches island DOM.
+//
+// Phase 3 (spec 009) shipped these as a static shell; this slice is Phase 4's behaviour.
+import Base from "../layouts/Base.astro";
+import CommandCatalog from "../components/CommandCatalog";
+import { catalog } from "../data/catalog";
+
+const { groups, commands } = catalog;
+const commandCount = commands.length; // 51 — generated, never a literal (FR-20)
+const groupCount = groups.length; // 7 — generated
+---
+
+<Base
+  title="Commands — Marvin"
+  description="The full command catalog for the marvin plugin — all 51 commands across seven groups, searchable in your browser."
+>
+  <div class="bp">
+    <div class="container">
+      <!-- header -->
+      <header class="phead">
+        <p class="eyebrow">reference</p>
+        <h1>Commands</h1>
+        <p class="lead">
+          Everything the plugin does, in one searchable place.
+          <b>Search runs entirely in your browser</b> — no backend, no tracking.
+        </p>
+        <span class="chip">{commandCount} commands · {groupCount} groups</span>
+      </header>
+
+      <!-- the searchable catalog (FR-12/FR-13/FR-14) — server-rendered, then hydrated -->
+      <CommandCatalog client:load />
+    </div>
+  </div>
+</Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching the siblings + the mockup (the scaffold
+     .blueprint is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding-bottom: 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Commands eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0 0 12px;
+    max-width: 64ch;
+  }
+  .lead b {
+    color: var(--t1);
+  }
+  .chip {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: var(--srf);
+  }
+</style>

@@ -70,7 +70,7 @@ Add recursive descent for `[[section]]` tables and cover them with tests.
 Because the message follows the Conventional Commits format, it feeds straight into the
 `/marvin:changelog` workflow later.
 
-## Step 4 — Understand the three doors
+## Step 4 — Call it your way
 
 Every Marvin workflow has three entry points that lead to the same behavior. Use whichever
 fits the moment:
@@ -79,7 +79,7 @@ fits the moment:
 2. **Markdown slash command.** Type the terse form, such as `/commit` or `/sec-scan`.
 3. **MCP prompt.** Type the namespaced form, such as `/marvin:commit`, which the bundled server serves.
 
-The [architecture tour](./architecture.md) explains how the three doors resolve to one
+The [architecture tour](./architecture.md) explains how the three entry points resolve to one
 skill body, with diagrams.
 
 ## Step 5 — Track a task on the board

@@ -1,0 +1,74 @@
+---
+// CodeCommand.astro (spec 006, F1) — the copy-able command row used by the hero and the
+// install band (and later Quickstart). The command text is a <code class="code"> so it
+// inherits the global primitives mono style — keeping `.code`.first() on `/` mono for the
+// shipped font e2e (theme-toggle.spec.ts). The `.command`/`.copy` block-row layout lives
+// HERE, in this component's own scoped <style> — Astro scopes a component's styles to its
+// own template, so an index.astro-scoped rule would not reach this element.
+//
+// The copy affordance is a real, keyboard-operable button (spec 010, F5). Its behaviour is NOT
+// here: a single delegated `is:inline` listener in Base.astro serves every `.copy` on the site,
+// including the ones the CommandCatalog island renders (FR-2). That is the "exactly one place"
+// this component's Phase-3 comment promised.
+interface Props {
+  command: string;
+}
+const { command } = Astro.props;
+---
+
+<div class="command">
+  <code class="code">{command}</code>
+  <button type="button" class="copy" aria-label={`Copy ${command}`}>copy</button>
+</div>
+
+<style>
+  .command {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    /* fill the container (capped at 560) rather than sizing to the nowrap command, so the
+       inner .code ellipsis-truncates on narrow viewports instead of overflowing. */
+    width: 100%;
+    max-width: 560px;
+    padding: 11px 14px;
+    background: var(--srf2);
+    border: 1px solid var(--bd);
+    border-radius: 9px;
+  }
+
+  /* Strip the primitives `.code` inline chrome — inside the row it is just mono text.
+     font-family stays var(--font-mono) from primitives.css, so `.code` reads mono. */
+  .command .code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    font-size: 12.5px;
+    background: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  /* A real <button>, styled back down to the flat chip the mockup shows — the UA border,
+     background and font are reset so it is visually identical to the former <span>. */
+  .copy {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--act);
+    background: var(--acbg);
+    border: none;
+    border-radius: 5px;
+    padding: 2px 9px;
+    line-height: inherit;
+    cursor: pointer;
+  }
+
+  .copy:hover {
+    color: var(--acfillt);
+    background: var(--acfill);
+  }
+</style>

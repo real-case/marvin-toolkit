@@ -79,11 +79,11 @@ The `task-*` pipeline and the `track-*` tracker are deliberately separate domain
 for `task-*` when a change is large enough to deserve a written spec, and for `track-*`
 when you want fast day-to-day tracking.
 
-## Three doors, one room
+## Call it your way
 
 The defining design choice, recorded in [ADR-0001](./adr/0001-single-plugin-consolidation.md),
 is that each workflow is authored **once** in a `SKILL.md`, and three independent entry
-points reach it. Editing the skill updates all three doors at once, with no server
+points reach it. Editing the skill updates all three entry points at once, with no server
 rebuild, because two of them read the file at request time and the third rediscovers it
 on the next match.
 

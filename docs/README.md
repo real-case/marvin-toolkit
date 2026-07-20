@@ -7,7 +7,7 @@ the key decisions were made, and where the work is heading.
 
 - **[Getting started](./getting-started.md)** teaches you to install the plugin, confirm it works, and run your first commands.
 - **[Usage guide](./usage.md)** walks through the common workflows: committing and opening a PR, the task pipeline, the task board, security, and refactoring.
-- **[Architecture](./architecture.md)** is the visual tour of how the plugin is built, covering the "three doors" model, the task pipeline, the widget layer, and the working directory, with diagrams.
+- **[Architecture](./architecture.md)** is the visual tour of how the plugin is built, covering the "call it your way" model, the task pipeline, the widget layer, and the working directory, with diagrams.
 - **[Command reference](./commands.md)** lists every `/marvin:` command with a synopsis and the phrases that invoke it from chat.
 - **[Configuration](./configuration.md)** documents the `.marvin/` working directory, the `.marvin/config.json` schema, and the `MARVIN_*` environment variables.
 - **[Contributing](../CONTRIBUTING.md)** covers local setup, the quality gates every change must pass, and how to submit a PR.

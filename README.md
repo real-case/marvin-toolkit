@@ -14,7 +14,7 @@ Under the hood it ships **52 prompts, 13 MCP tools, 10 agents, and 9 interactive
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
-## Three doors, one room
+## Call it your way
 
 Each workflow is authored once at `plugins/marvin/skills/<command>/SKILL.md`, and three
 independent entry points reach the same body:
@@ -24,7 +24,7 @@ independent entry points reach the same body:
 3. **MCP prompt.** Type the namespaced form, such as `/marvin:commit`, served by the bundled server.
 
 Pick whichever feels right; they all run the same skill. The
-[architecture tour](./docs/architecture.md) explains how the three doors resolve, with
+[architecture tour](./docs/architecture.md) explains how the three entry points resolve, with
 diagrams.
 
 ## Install

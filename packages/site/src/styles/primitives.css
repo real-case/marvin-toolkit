@@ -1,0 +1,91 @@
+/*
+ * primitives.css — shared primitive classes on the theme tokens (spec 004, F12):
+ * button, badge, code block, card. The "small CSS module" the plan offered as the
+ * alternative to per-component files. Phase 3+ composes these into real page content.
+ *
+ * Accent discipline (research-informed): `.btn--accent` is the single violet fill;
+ * every other control is a zinc surface (`.btn`) or a hairline ghost (`.btn--ghost`).
+ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5rem 0.9rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--t1);
+  background: var(--srf);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--bd2);
+  background: var(--srf2);
+  text-decoration: none;
+}
+
+/* the one accent fill per viewport */
+.btn--accent {
+  color: var(--acfillt);
+  background: var(--acfill);
+  border-color: var(--acfill);
+}
+
+.btn--accent:hover {
+  color: var(--acfillt);
+  background: var(--act);
+  border-color: var(--act);
+}
+
+/* hairline ghost — everyday accent lives in the tint, not a fill */
+.btn--ghost {
+  color: var(--act);
+  background: var(--acbg);
+  border-color: transparent;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--t2);
+  background: var(--srf2);
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.1em 0.4em;
+  color: var(--t1);
+  background: var(--srf2);
+  border: 1px solid var(--bd);
+  border-radius: 5px;
+}
+
+pre.code {
+  display: block;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+.card {
+  padding: 1.25rem 1.5rem;
+  background: var(--srf);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+}
+
+.card:hover {
+  border-color: var(--bd2);
+}

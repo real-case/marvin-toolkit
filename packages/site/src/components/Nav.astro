@@ -1,0 +1,92 @@
+---
+// Nav.astro (spec 004, F7) — the sticky global navigation (FR-1): the "Marvin"
+// wordmark, links to the four inner pages, a GitHub link, and the theme toggle.
+import ThemeToggle from "./ThemeToggle.astro";
+
+const REPO = "https://github.com/real-case/marvin-toolkit";
+const links = [
+  { href: "/commands", label: "Commands" },
+  { href: "/pipeline", label: "Pipeline" },
+  { href: "/toolbox", label: "Toolbox" },
+  { href: "/quickstart", label: "Quickstart" },
+];
+---
+
+<header class="nav">
+  <div class="container nav__inner">
+    <a href="/" class="nav__brand">Marvin</a>
+
+    <nav class="nav__links" aria-label="Primary">
+      {links.map((l) => <a href={l.href}>{l.label}</a>)}
+    </nav>
+
+    <div class="nav__actions">
+      <a class="nav__github" href={REPO} rel="noopener">GitHub</a>
+      <ThemeToggle />
+    </div>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .nav__inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    min-height: 60px;
+  }
+
+  .nav__brand {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    color: var(--t1);
+  }
+
+  .nav__links {
+    display: flex;
+    gap: 1.25rem;
+    margin-inline-start: auto;
+  }
+
+  .nav__links a {
+    color: var(--t2);
+    font-size: 0.9375rem;
+  }
+
+  .nav__links a:hover {
+    color: var(--t1);
+    text-decoration: none;
+  }
+
+  .nav__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .nav__github {
+    font-size: 0.9375rem;
+    color: var(--t2);
+  }
+
+  .nav__github:hover {
+    color: var(--t1);
+    text-decoration: none;
+  }
+
+  @media (max-width: 640px) {
+    .nav__links {
+      display: none;
+    }
+  }
+</style>
