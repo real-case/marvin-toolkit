@@ -14,13 +14,13 @@ import CommandCatalog from "../components/CommandCatalog";
 import { catalog } from "../data/catalog";
 
 const { groups, commands } = catalog;
-const commandCount = commands.length; // 51 — generated, never a literal (FR-20)
-const groupCount = groups.length; // 7 — generated
+const commandCount = commands.length; // generated, never a literal (FR-20)
+const groupCount = groups.length; // generated
 ---
 
 <Base
   title="Commands — Marvin"
-  description="The full command catalog for the marvin plugin — all 51 commands across seven groups, searchable in your browser."
+  description={`The full command catalog for the marvin plugin — all ${commandCount} commands across ${groupCount} groups, searchable in your browser.`}
 >
   <div class="bp">
     <div class="container">

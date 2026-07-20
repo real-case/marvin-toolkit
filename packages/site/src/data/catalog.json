@@ -1,18 +1,18 @@
 {
-  "version": "0.8.1",
+  "version": "0.9.0",
   "counts": {
-    "prompts": 51,
+    "prompts": 52,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.8.1",
+    "version": "0.9.0",
     "license": "MIT"
   },
   "groups": [
     {
       "key": "core",
       "blurb": "Everyday dev — commits, debugging, docs, ADRs, handoffs",
-      "count": 14
+      "count": 15
     },
     {
       "key": "adr",
@@ -272,6 +272,18 @@
         "marvin, show me the reports",
         "marvin, what reports do we have?",
         "marvin, open the latest security report"
+      ],
+      "human": false
+    },
+    {
+      "name": "report-export",
+      "group": "core",
+      "blurb": "Export a report to PDF / MD",
+      "description": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest — Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
+      "phrases": [
+        "marvin, export the security report to PDF",
+        "marvin, save this report as markdown",
+        "marvin, make the scan report shareable"
       ],
       "human": false
     },
