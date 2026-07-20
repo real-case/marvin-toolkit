@@ -2,6 +2,11 @@
 dist/
 .astro/
 
+# Live widget-demo assets — copies of the committed plugins/marvin/widgets/*.html plus each
+# widget's fixture as JSON, emitted by scripts/gen-widget-demos.mjs on every dev/build (spec 011).
+# Derived from committed plugin sources, so versioning them here would duplicate ~2.7 MB.
+public/widget-demos/
+
 # dependencies
 node_modules/
 

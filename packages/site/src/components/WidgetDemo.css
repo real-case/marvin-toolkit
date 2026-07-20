@@ -1,0 +1,211 @@
+/*
+ * WidgetDemo.css (spec 011-website-widget-embeds, F5) — styles for the live widget-demo islands.
+ *
+ * A plain CSS file for the same reason CommandCatalog.css is one: Astro scopes a component's
+ * <style> to its OWN template and that scoping never reaches Preact-rendered DOM. Astro hoists
+ * this import to a static <head> stylesheet.
+ *
+ * Because that sheet is global, every selector is prefixed with an island-owned class (`.wd`,
+ * `.wd-canvas`) — the pages have their own `.canvas` / `.stage-area` rules and must keep them.
+ *
+ * The `.wd-stage` / `.wd-frame` pair is what AC7 measures. It is deliberately NOT `.stage-area`:
+ * that element already exists in toolbox.astro and already renders non-zero, so asserting on it
+ * would prove the Astro page rather than this file.
+ */
+
+/* ---------- shared stage ---------- */
+
+/* Grid children default to min-width:auto and will not shrink below their content's intrinsic
+ * width. A frame is replaced content with a chunky default size, so without this the stage forces
+ * its track wide and the page scrolls sideways at 360px — the trap the Phase-3 slices already had
+ * to fix once. */
+.wd,
+.wd-canvas {
+  min-width: 0;
+}
+
+.wd-stage {
+  min-width: 0;
+  width: 100%;
+}
+
+/*
+ * A live stage must never collapse to nothing: the frame's height is driven by the widget's own
+ * size-changed notification, which only arrives after it renders.
+ *
+ * It must not run away either. Several widgets are genuinely long — the help widget renders the
+ * whole 51-command reference, which reports ~2300px and would let one demo swallow the page. The
+ * cap turns the stage into a fixed window that scrolls internally (an iframe does that natively),
+ * which is also the honest thing to show: this is a demo of a widget, not the widget's host.
+ */
+.wd-frame {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color-scheme: light dark;
+}
+
+/* The canvas is the page's main event, so it gets the taller window. */
+.wd-canvas .wd-frame {
+  max-height: 560px;
+}
+
+/* The Home teaser shows three at once and is only a teaser — keep each one glanceable. */
+.wd .wd-frame {
+  min-height: 180px;
+  max-height: 320px;
+}
+
+/* The fallback owns the same footprint as the frame so swapping between them does not jump. */
+.wd-fallback,
+.wd-clone-host {
+  min-width: 0;
+}
+
+.wd-fallback[hidden],
+.wd-clone-host[hidden],
+.wd-stage[hidden] {
+  display: none;
+}
+
+/* ---------- Home teaser demo ---------- */
+
+.wd {
+  display: block;
+}
+
+/* ---------- Toolbox canvas ---------- */
+
+/*
+ * These five blocks (.wd-canvas, .toggle, .toggle button + states, .wd-stage-area) MOVED here from
+ * toolbox.astro's scoped <style> when the canvas became an island: Astro scopes a component's
+ * styles to its own template via a data attribute, and Preact-rendered DOM never receives it, so
+ * left behind they would have silently stopped applying. Values are carried over verbatim from the
+ * approved design.
+ *
+ * The cloned `.wmini` is the exception that still works: cloneNode copies the scoping attribute
+ * along with everything else, so a clone keeps toolbox.astro's mini styling.
+ */
+.wd-canvas {
+  border: 1px solid var(--acfill);
+  border-radius: 14px;
+  background: var(--acbg);
+  padding: 18px 20px;
+  margin-top: 20px;
+}
+
+.wd-canvas .toggle {
+  display: inline-flex;
+  border: 1px solid var(--bd2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* real <button>s, reset back down to the flat segments the mockup shows */
+.wd-canvas .toggle button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 14px;
+  color: var(--t2);
+  background: none;
+  border: none;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.wd-canvas .toggle button:hover {
+  color: var(--t1);
+}
+
+/* the single accent fill on this page */
+.wd-canvas .toggle button.on,
+.wd-canvas .toggle button.on:hover {
+  background: var(--acfill);
+  color: var(--acfillt);
+}
+
+.wd-canvas .stage-area {
+  margin-top: 12px;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--srf);
+  min-height: 150px;
+  color: var(--t3);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.wd-canvas .wd-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wd-canvas .wd-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wd-canvas .wd-picker button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 3px 10px;
+  color: var(--t2);
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-canvas .wd-picker button:hover {
+  color: var(--t1);
+  border-color: var(--bd2);
+}
+
+.wd-canvas .wd-picker button.on,
+.wd-canvas .wd-picker button.on:hover {
+  color: var(--acfillt);
+  background: var(--acfill);
+  border-color: transparent;
+}
+
+/* The canvas stage replaces the page's centred placeholder copy with real content, so it stops
+ * being a centring flexbox and becomes a plain block that the frame fills. */
+.wd-canvas .wd-stage-area {
+  display: block;
+  text-align: left;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.wd-canvas .wd-note {
+  margin: 0;
+  padding: 8px 4px;
+  color: var(--t3);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* A cloned mini is decorative — it keeps the original's look but must not pick up the journey
+ * grid's sizing, since it now sits alone in the stage. */
+.wd-canvas .wd-clone {
+  max-width: 420px;
+}
+
+@media (max-width: 860px) {
+  .wd-canvas .wd-clone {
+    max-width: 100%;
+  }
+}

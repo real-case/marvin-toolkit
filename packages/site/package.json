@@ -9,9 +9,11 @@
   },
   "scripts": {
     "gen:catalog": "node scripts/gen-catalog.mjs",
-    "predev": "npm run gen:catalog",
+    "gen:demos": "node scripts/gen-widget-demos.mjs",
+    "gen": "npm run gen:catalog && npm run gen:demos",
+    "predev": "npm run gen",
     "dev": "astro dev",
-    "prebuild": "npm run gen:catalog",
+    "prebuild": "npm run gen",
     "build": "node scripts/build.mjs",
     "preview": "astro preview",
     "check:catalog": "tsc --noEmit --strict --skipLibCheck --resolveJsonModule --module esnext --moduleResolution bundler src/data/catalog.ts",

@@ -82,10 +82,37 @@ test("home holds both themes and responds from 360 to 1440 without horizontal ov
   }
 });
 
-test("home ships no hydrated island", async ({ page }) => {
+test("home toolbox teaser mounts its three demos only once scrolled into view", async ({
+  page,
+}) => {
   await page.goto("/");
-  // No Preact island hydrates on Home — the page is static HTML/CSS with only Base's inline
-  // anti-FOUC/toggle script. The automatable proxy for the "no JavaScript shipped yet" exit
-  // criterion (Lighthouse ≥ 95).
-  await expect(page.locator("astro-island")).toHaveCount(0);
+
+  // At first paint the teaser's islands are server-rendered but unhydrated, and — the part that
+  // protects the Lighthouse ≥ 95 exit criterion — no widget document has been fetched. Three
+  // eager frames would pull ~900 KB into the initial page.
+  await expect(page.locator("iframe.wd-frame")).toHaveCount(0);
+
+  // The static panels are the server-rendered fallback, so the section is complete with no JS.
+  await expect(page.locator(".wt3 .wpanel")).toHaveCount(3);
+
+  // Scrolling the teaser into view hydrates the islands, which mount their frames.
+  await page.locator(".wt3").scrollIntoViewIfNeeded();
+  await expect(page.locator("iframe.wd-frame")).toHaveCount(3, { timeout: 15_000 });
+
+  // Each frames its own committed widget document, in FR-9's order.
+  for (const widget of ["help", "dashboard", "reports"]) {
+    await expect(page.locator(`.wd[data-widget="${widget}"] iframe.wd-frame`)).toHaveAttribute(
+      "src",
+      new RegExp(`/widget-demos/${widget}\\.html$`),
+    );
+  }
+
+  // And they actually come up live, rather than silently sitting on the fallback.
+  for (const widget of ["help", "dashboard", "reports"]) {
+    await expect(page.locator(`.wd[data-widget="${widget}"]`)).toHaveAttribute(
+      "data-status",
+      "live",
+      { timeout: 15_000 },
+    );
+  }
 });
