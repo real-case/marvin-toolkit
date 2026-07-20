@@ -6,6 +6,7 @@
 // containers, .blueprint, .eyebrow and the button/badge/card primitives come from the scaffold.
 import Base from "../layouts/Base.astro";
 import CodeCommand from "../components/CodeCommand.astro";
+import { WidgetDemo } from "../components/WidgetDemo";
 import { catalog } from "../data/catalog";
 
 const REPO = "https://github.com/real-case/marvin-toolkit";
@@ -194,62 +195,74 @@ const groupCount = groups.length; // 7
         Fully set up on install. In MCP Apps hosts like Claude Desktop every tool renders live,
         interactive UI — <b>and the same commands answer in plain text in any terminal</b>.
       </p>
+      <!-- The three teasers are live widget demos (spec 011, F7 — FR-9). Each island mounts its
+           frame only once scrolled into view, so a visitor who never reaches this section
+           downloads none of the ~300 KB widget documents. The .wpanel markup below stays the
+           authored static artwork and is passed through as the island's fallback slot — which is
+           why these are client:visible and never client:only (client:only skips the server
+           render, so slotted markup would never be serialized and the fallback would vanish). -->
       <div class="wt3">
-        <div class="wpanel">
-          <div class="whead"><span>/marvin:help</span><span>arrive</span></div>
-          <div class="wbody">
-            <p class="wordmark">◆ marvin</p>
-            <div class="badges">
-              <span class="badge b-acc">/marvin:commit</span>
-              <span class="badge b-acc">task-start</span>
-              <span class="badge b-acc">sec-scan</span>
-            </div>
-            <p class="foot-note">
-              {commandCount} commands · {groupCount} groups · servers lit by status
-            </p>
-          </div>
-        </div>
-        <div class="wpanel">
-          <div class="whead"><span>/marvin:dashboard</span><span>steer</span></div>
-          <div class="wbody">
-            <div class="kpis">
-              <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
-              <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
-              <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
-            </div>
-            <div class="spark">
-              <i style="width:14%;background:var(--barR);"></i>
-              <i style="width:22%;background:var(--barO);"></i>
-              <i style="width:34%;background:var(--barA);"></i>
-              <i style="width:30%;background:var(--barB);"></i>
-            </div>
-            <p class="foot-note">board · artifacts · ADR corpus · local usage</p>
-          </div>
-        </div>
-        <div class="wpanel">
-          <div class="whead"><span>/marvin:reports</span><span>review &amp; share</span></div>
-          <div class="wbody">
-            <div class="rrow">
-              <span class="rn"><span class="dot dotg"></span>sec-scan</span><span
-                class="badge b-grn">fresh</span
-              >
-            </div>
-            <div class="rrow">
-              <span class="rn"><span class="dot dota"></span>refactor-audit</span><span
-                class="badge b-amb">3d</span
-              >
-            </div>
-            <div class="rrow">
-              <span class="rn"><span class="dot dotv"></span>task 001 summary</span><span
-                class="badge b-acc">sealed</span
-              >
-            </div>
-            <div class="badges rexport">
-              <span class="badge b-acc">Export PDF</span>
-              <span class="badge b-acc">Export MD</span>
+        <WidgetDemo client:visible widget="help" title="marvin help widget demo">
+          <div class="wpanel">
+            <div class="whead"><span>/marvin:help</span><span>arrive</span></div>
+            <div class="wbody">
+              <p class="wordmark">◆ marvin</p>
+              <div class="badges">
+                <span class="badge b-acc">/marvin:commit</span>
+                <span class="badge b-acc">task-start</span>
+                <span class="badge b-acc">sec-scan</span>
+              </div>
+              <p class="foot-note">
+                {commandCount} commands · {groupCount} groups · servers lit by status
+              </p>
             </div>
           </div>
-        </div>
+        </WidgetDemo>
+        <WidgetDemo client:visible widget="dashboard" title="marvin dashboard widget demo">
+          <div class="wpanel">
+            <div class="whead"><span>/marvin:dashboard</span><span>steer</span></div>
+            <div class="wbody">
+              <div class="kpis">
+                <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
+                <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
+                <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
+              </div>
+              <div class="spark">
+                <i style="width:14%;background:var(--barR);"></i>
+                <i style="width:22%;background:var(--barO);"></i>
+                <i style="width:34%;background:var(--barA);"></i>
+                <i style="width:30%;background:var(--barB);"></i>
+              </div>
+              <p class="foot-note">board · artifacts · ADR corpus · local usage</p>
+            </div>
+          </div>
+        </WidgetDemo>
+        <WidgetDemo client:visible widget="reports" title="marvin reports widget demo">
+          <div class="wpanel">
+            <div class="whead"><span>/marvin:reports</span><span>review &amp; share</span></div>
+            <div class="wbody">
+              <div class="rrow">
+                <span class="rn"><span class="dot dotg"></span>sec-scan</span><span
+                  class="badge b-grn">fresh</span
+                >
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dota"></span>refactor-audit</span><span
+                  class="badge b-amb">3d</span
+                >
+              </div>
+              <div class="rrow">
+                <span class="rn"><span class="dot dotv"></span>task 001 summary</span><span
+                  class="badge b-acc">sealed</span
+                >
+              </div>
+              <div class="badges rexport">
+                <span class="badge b-acc">Export PDF</span>
+                <span class="badge b-acc">Export MD</span>
+              </div>
+            </div>
+          </div>
+        </WidgetDemo>
       </div>
       <p class="parline">
         Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of

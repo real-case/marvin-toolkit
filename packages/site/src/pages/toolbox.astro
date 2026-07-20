@@ -1,20 +1,160 @@
 ---
-// toolbox.astro (spec 009, F2) — the /toolbox static shell. The Toolbox ("visual toolbox")
-// section ported from docs/design/mockups/inner-pages.html onto the Phase-1 shell (Base owns
-// nav/footer/head). The nine widgets are presented as the arrive → steer → review journey with
-// STATIC placeholder minis standing in for the live demos, a static Live/Screenshot demo canvas,
-// and the terminal-parity line. The "N widgets" chip reads catalog.counts.widgets (FR-20). The
-// live sandboxed-iframe embeds are Phase 5 — this slice ships NO <iframe>/<img>/<video>/<audio>
-// and no client:* island. Toolbox-specific styles live in the scoped <style>; tokens, .container,
-// and primitives come from the scaffold — the .eyebrow is overridden to accent locally (as the
-// siblings do), and the page-local 40px blueprint matches Home / Pipeline / Quickstart.
+// toolbox.astro (spec 011, F6) — the /toolbox page with LIVE widget demos.
+//
+// Phase 3 (spec 009) shipped this as a static shell; Phase 4 (spec 010) gave its demo canvas a
+// state-only Live/Screenshot toggle. This slice attaches the real embeds: the canvas becomes the
+// WidgetCanvas island, which frames the committed widget document for whichever widget the picker
+// selects, and clones that widget's static mini for the Screenshot side and for the failure path.
+//
+// The nine minis are authored ONCE, here, as the MINIS array below and rendered by a single loop.
+// They deliberately stay plain Astro rather than being wrapped in islands: `.wgrid > *
+// { min-width: 0 }` targets direct grid children, and an <astro-island> wrapper would steal that
+// rule and drop each mini a level, reintroducing the 360px overflow the Phase-3 slices had to fix.
+// The canvas island clones what it needs instead, so the artwork keeps one source and the grid
+// keeps its shrink behaviour.
+//
+// Style ownership split: `.wmini` and the journey layout stay in this file's scoped <style>
+// (Astro-rendered DOM). The canvas, its toggle and its stage moved to WidgetDemo.css, because
+// Astro's scoping never reaches Preact-rendered DOM.
 import Base from "../layouts/Base.astro";
 import { catalog } from "../data/catalog";
+import { WidgetCanvas } from "../components/WidgetDemo";
 
 const { counts, commands, groups } = catalog;
 const widgetCount = counts.widgets; // 9 — generated, never a literal (FR-20)
 const commandCount = commands.length; // 51 — generated
 const groupCount = groups.length; // 7 — generated
+
+// The nine committed widgets as the arrive → steer → review journey (FR-16).
+//
+// `widget` is the widget FILE name — what /widget-demos/<widget>.{html,json} is keyed by, and what
+// the canvas island matches on. It is NOT always the command name: three of these diverge
+// (track-list→tracker-list, sec-report→audit, handoff-list→handoffs), which is exactly why the
+// mapping is explicit data rather than a string transform.
+//
+// `kind` selects one of three body shapes below. task-detail and task-summary are new artwork —
+// the approved mockup never drew them, but FR-16 covers all nine widgets.
+const MINIS = [
+  {
+    widget: "help",
+    label: "/marvin:help",
+    tag: "welcome",
+    kind: "help" as const,
+    step: "arrive",
+  },
+  {
+    widget: "dashboard",
+    label: "/marvin:dashboard",
+    tag: "analytics",
+    kind: "kpi" as const,
+    step: "steer",
+    kpis: [
+      { n: "4", l: "board" },
+      { n: "2", l: "specs" },
+      { n: "12", l: "lessons" },
+    ],
+    spark: [
+      { w: "14%", c: "var(--barR)" },
+      { w: "22%", c: "var(--barO)" },
+      { w: "34%", c: "var(--barA)" },
+      { w: "30%", c: "var(--barB)" },
+    ],
+  },
+  {
+    widget: "task-list",
+    label: "/marvin:task-list",
+    tag: "board",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "#12 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
+      { name: "#13 widget", dot: "dota", badge: "review", badgeClass: "b-amb" },
+      { name: "#11 tracker", dot: "dotg", badge: "done", badgeClass: "b-grn" },
+    ],
+  },
+  {
+    widget: "tracker-list",
+    label: "/marvin:track-list",
+    tag: "tracker",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "backlog", badge: "6", badgeClass: "b-acc" },
+      { name: "in progress", badge: "2", badgeClass: "b-blu" },
+      { name: "done", badge: "14", badgeClass: "b-grn" },
+    ],
+  },
+  {
+    widget: "task-detail",
+    label: "/marvin:task-detail",
+    tag: "one task",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "#12 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
+      { name: "acceptance", badge: "4/4", badgeClass: "b-grn" },
+      { name: "branch", badge: "feat/spec", badgeClass: "b-acc" },
+    ],
+    note: "The whole task, body and links, in one pane.",
+  },
+  {
+    widget: "reports",
+    label: "/marvin:reports",
+    tag: "formatted",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "sec-scan", dot: "dotg", badge: "fresh", badgeClass: "b-grn" },
+      { name: "refactor-audit", dot: "dota", badge: "3d", badgeClass: "b-amb" },
+      { name: "task 001 summary", dot: "dotv", badge: "sealed", badgeClass: "b-acc" },
+    ],
+    exports: ["Export PDF", "Export MD"],
+  },
+  {
+    widget: "audit",
+    label: "/marvin:sec-report",
+    tag: "findings",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "critical", badge: "0", badgeClass: "b-red" },
+      { name: "high", badge: "2", badgeClass: "b-amb" },
+      { name: "audit", badge: "task-summary", badgeClass: "b-acc" },
+    ],
+  },
+  {
+    widget: "task-summary",
+    label: "/marvin:task-summary",
+    tag: "delivery",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "criteria", dot: "dotg", badge: "6/6", badgeClass: "b-grn" },
+      { name: "gates", dot: "dotg", badge: "pass", badgeClass: "b-grn" },
+      { name: "commits", badge: "3", badgeClass: "b-acc" },
+    ],
+    note: "What the task actually delivered.",
+  },
+  {
+    widget: "handoffs",
+    label: "/marvin:handoff-list",
+    tag: "continuity",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "001 widget-stage", badge: "newest", badgeClass: "b-acc" },
+      { name: "handoffs", badge: "3", badgeClass: "b-blu" },
+    ],
+    note: "Resume any session in a fresh context.",
+  },
+];
+
+const steer = MINIS.filter((m) => m.step === "steer");
+const review = MINIS.filter((m) => m.step === "review");
+const help = MINIS.find((m) => m.widget === "help")!;
+
+// What the canvas picker offers — the same nine, same order, labelled by command.
+const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: m.label }));
 ---
 
 <Base
@@ -42,8 +182,8 @@ const groupCount = groups.length; // 7 — generated
           <span class="sub">— one command orients you</span>
         </div>
         <div class="wgrid c2">
-          <div class="wmini">
-            <div class="h"><span>/marvin:help</span><span>welcome</span></div>
+          <div class="wmini" data-widget={help.widget}>
+            <div class="h"><span>{help.label}</span><span>{help.tag}</span></div>
             <div class="b">
               <p class="wordmark">◆ marvin</p>
               <div class="badges">
@@ -70,54 +210,47 @@ const groupCount = groups.length; // 7 — generated
           <h2 class="lbl">Run the project</h2>
           <span class="sub">— state at a glance</span>
         </div>
-        <div class="wgrid c3">
-          <div class="wmini">
-            <div class="h"><span>/marvin:dashboard</span><span>analytics</span></div>
-            <div class="b">
-              <div class="kpis">
-                <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
-                <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
-                <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
+        <div class="wgrid cauto">
+          {
+            steer.map((mini) => (
+              <div class="wmini" data-widget={mini.widget}>
+                <div class="h">
+                  <span>{mini.label}</span>
+                  <span>{mini.tag}</span>
+                </div>
+                <div class="b">
+                  {mini.kind === "kpi" && (
+                    <>
+                      <div class="kpis">
+                        {mini.kpis?.map((k) => (
+                          <div class="kpi">
+                            <div class="kn">{k.n}</div>
+                            <div class="kl">{k.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div class="spark">
+                        {mini.spark?.map((s) => (
+                          <i style={`width:${s.w};background:${s.c};`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {mini.kind === "rows" &&
+                    mini.rows?.map((row) => (
+                      <div class="rrow">
+                        <span class="rn">
+                          {row.dot && <span class={`dot ${row.dot}`} />}
+                          {row.name}
+                        </span>
+                        <span class={`badge ${row.badgeClass}`}>{row.badge}</span>
+                      </div>
+                    ))}
+                  {mini.note && <p class="wnote">{mini.note}</p>}
+                </div>
               </div>
-              <div class="spark">
-                <i style="width:14%;background:var(--barR);"></i>
-                <i style="width:22%;background:var(--barO);"></i>
-                <i style="width:34%;background:var(--barA);"></i>
-                <i style="width:30%;background:var(--barB);"></i>
-              </div>
-            </div>
-          </div>
-          <div class="wmini">
-            <div class="h"><span>/marvin:task-list</span><span>board</span></div>
-            <div class="b">
-              <div class="rrow">
-                <span class="rn"><span class="dot dotb"></span>#12 spec gate</span>
-                <span class="badge b-blu">doing</span>
-              </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dota"></span>#13 widget</span>
-                <span class="badge b-amb">review</span>
-              </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dotg"></span>#11 tracker</span>
-                <span class="badge b-grn">done</span>
-              </div>
-            </div>
-          </div>
-          <div class="wmini">
-            <div class="h"><span>/marvin:track-list</span><span>tracker</span></div>
-            <div class="b">
-              <div class="rrow">
-                <span class="rn">backlog</span><span class="badge b-acc">6</span>
-              </div>
-              <div class="rrow">
-                <span class="rn">in progress</span><span class="badge b-blu">2</span>
-              </div>
-              <div class="rrow">
-                <span class="rn">done</span><span class="badge b-grn">14</span>
-              </div>
-            </div>
-          </div>
+            ))
+          }
         </div>
       </section>
 
@@ -128,103 +261,49 @@ const groupCount = groups.length; // 7 — generated
           <h2 class="lbl">Results out</h2>
           <span class="sub">— formatted, exportable</span>
         </div>
-        <div class="wgrid c3">
-          <div class="wmini">
-            <div class="h"><span>/marvin:reports</span><span>formatted</span></div>
-            <div class="b">
-              <div class="rrow">
-                <span class="rn"><span class="dot dotg"></span>sec-scan</span>
-                <span class="badge b-grn">fresh</span>
+        <div class="wgrid cauto">
+          {
+            review.map((mini) => (
+              <div class="wmini" data-widget={mini.widget}>
+                <div class="h">
+                  <span>{mini.label}</span>
+                  <span>{mini.tag}</span>
+                </div>
+                <div class="b">
+                  {mini.rows?.map((row) => (
+                    <div class="rrow">
+                      <span class="rn">
+                        {row.dot && <span class={`dot ${row.dot}`} />}
+                        {row.name}
+                      </span>
+                      <span class={`badge ${row.badgeClass}`}>{row.badge}</span>
+                    </div>
+                  ))}
+                  {mini.exports && (
+                    <div class="rexport">
+                      {mini.exports.map((e) => (
+                        <span class="badge b-acc">{e}</span>
+                      ))}
+                    </div>
+                  )}
+                  {mini.note && <p class="wnote">{mini.note}</p>}
+                </div>
               </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dota"></span>refactor-audit</span>
-                <span class="badge b-amb">3d</span>
-              </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dotv"></span>task 001 summary</span>
-                <span class="badge b-acc">sealed</span>
-              </div>
-              <div class="rexport">
-                <span class="badge b-acc">Export PDF</span>
-                <span class="badge b-acc">Export MD</span>
-              </div>
-            </div>
-          </div>
-          <div class="wmini">
-            <div class="h"><span>/marvin:sec-report</span><span>findings</span></div>
-            <div class="b">
-              <div class="rrow">
-                <span class="rn">critical</span><span class="badge b-red">0</span>
-              </div>
-              <div class="rrow"><span class="rn">high</span><span class="badge b-amb">2</span></div>
-              <div class="rrow">
-                <span class="rn">audit</span><span class="badge b-acc">task-summary</span>
-              </div>
-            </div>
-          </div>
-          <div class="wmini">
-            <div class="h"><span>/marvin:handoff-list</span><span>continuity</span></div>
-            <div class="b">
-              <div class="rrow">
-                <span class="rn">001 widget-stage</span><span class="badge b-acc">newest</span>
-              </div>
-              <div class="rrow">
-                <span class="rn">handoffs</span><span class="badge b-blu">3</span>
-              </div>
-              <p class="wnote">Resume any session in a fresh context.</p>
-            </div>
-          </div>
+            ))
+          }
         </div>
       </section>
 
-      <!-- the demo canvas — the Live/Screenshot toggle switches STATE only (spec 010, F6).
-           Phase 5 attaches the real sandboxed-iframe embeds to this control; nothing here
-           ships an iframe/img/video/audio yet. -->
-      <div class="canvas">
-        <div class="toggle">
-          <button type="button" class="on" aria-pressed="true" data-stage="live">Live demo</button>
-          <button type="button" aria-pressed="false" data-stage="shot">Screenshot</button>
-        </div>
-        <div class="stage-area">
-          <p class="stage-copy" data-stage="live">
-            sandboxed iframe · the committed widget HTML · fed mock data<br />
-            theme follows the site toggle · inline on the page, never a modal
-          </p>
-          <p class="stage-copy" data-stage="shot" hidden>
-            static screenshot fallback · shown where embedding is blocked<br />
-            same data, same theme — a still of the live widget
-          </p>
-        </div>
-      </div>
+      <!-- The demo canvas — now a real island (spec 011, F4). It frames the committed widget
+           document for the selected widget on the Live side, and clones that widget's mini above
+           for the Screenshot side and whenever a frame fails to come up. client:visible, never
+           client:only. -->
+      <WidgetCanvas client:visible widgets={canvasWidgets} initial="help" />
+
       <p class="parline">
         Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
         glass.
       </p>
-
-      <!-- Demo-canvas toggle (spec 010, F6): moves the active segment and swaps the stage
-           copy. is:inline — no hydration, so this page still mounts no astro-island. -->
-      <script is:inline>
-        (() => {
-          const canvas = document.querySelector(".canvas");
-          if (!canvas) return;
-          const buttons = canvas.querySelectorAll(".toggle button");
-          const copies = canvas.querySelectorAll(".stage-copy");
-
-          buttons.forEach((button) => {
-            button.addEventListener("click", () => {
-              const stage = button.dataset.stage;
-              buttons.forEach((other) => {
-                const active = other === button;
-                other.classList.toggle("on", active);
-                other.setAttribute("aria-pressed", String(active));
-              });
-              copies.forEach((copy) => {
-                copy.hidden = copy.dataset.stage !== stage;
-              });
-            });
-          });
-        })();
-      </script>
     </div>
   </div>
 </Base>
@@ -314,13 +393,16 @@ const groupCount = groups.length; // 7 — generated
     color: var(--t3);
   }
 
-  /* ---------- widget minis (static placeholders) ---------- */
+  /* ---------- widget minis ---------- */
   .wgrid {
     display: grid;
     gap: 14px;
   }
-  .wgrid.c3 {
-    grid-template-columns: repeat(3, 1fr);
+  /* The steer / review rows carry four minis each since task-detail and task-summary joined them.
+     auto-fit keeps them 4-up on a wide viewport and collapses to 2 then 1 without a breakpoint
+     ladder. */
+  .wgrid.cauto {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
   .wgrid.c2 {
     grid-template-columns: 1.1fr 1fr;
@@ -488,56 +570,6 @@ const groupCount = groups.length; // 7 — generated
     align-items: center;
   }
 
-  /* ---------- demo canvas (static shell) ---------- */
-  .canvas {
-    border: 1px solid var(--acfill);
-    border-radius: 14px;
-    background: var(--acbg);
-    padding: 18px 20px;
-    margin-top: 20px;
-  }
-  .toggle {
-    display: inline-flex;
-    border: 1px solid var(--bd2);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  /* real <button>s, reset back down to the flat segments the mockup shows */
-  .toggle button {
-    font-family: inherit;
-    font-size: 12px;
-    padding: 5px 14px;
-    color: var(--t2);
-    background: none;
-    border: none;
-    line-height: inherit;
-    cursor: pointer;
-  }
-  .toggle button:hover {
-    color: var(--t1);
-  }
-  /* the single accent fill on this page */
-  .toggle button.on,
-  .toggle button.on:hover {
-    background: var(--acfill);
-    color: var(--acfillt);
-  }
-  .stage-area {
-    margin-top: 12px;
-    border: 1px solid var(--bd);
-    border-radius: 10px;
-    background: var(--srf);
-    min-height: 150px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    color: var(--t3);
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    line-height: 1.7;
-    padding: 16px;
-  }
   .parline {
     font-size: 13px;
     color: var(--t3);
@@ -546,7 +578,6 @@ const groupCount = groups.length; // 7 — generated
 
   /* ---------- responsive (mockup breakpoint) ---------- */
   @media (max-width: 860px) {
-    .wgrid.c3,
     .wgrid.c2 {
       grid-template-columns: 1fr;
     }

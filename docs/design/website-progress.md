@@ -12,8 +12,14 @@ to the implementation plan: the plan says what to do, this says what is done.
 
 The site is built and behaving. Phases 0 through 4 are complete and merged to `dev`: the
 workspace, the generated content pipeline, all five pages, and the client-side interactions.
-What remains is media (Phase 5), the machine-facing surface and measurement (Phase 6), and
-the deploy pipeline (Phase 7).
+Phase 5 was split in two — the widget embeds (5a) are implemented, and the terminal recordings
+(5b) remain. What else remains is the machine-facing surface and measurement (Phase 6) and the
+deploy pipeline (Phase 7).
+
+Phase 5 was split because its two halves are different kinds of work. Embedding the widgets is
+browser engineering that can be specified and verified end to end; recording the terminal
+sessions is media production that needs someone to actually drive the tool and capture it. Holding
+the embeds behind the recordings would have blocked a mergeable slice on an unscheduled one.
 
 Both launch gates have moved since this document was last written. The repository is now
 public, which satisfies the first gate outright, and the report-export feature is implemented
@@ -26,7 +32,8 @@ and waiting in a pull request rather than unstarted.
 | 2 · Content pipeline | Complete | Catalog, counts and version generated from plugin sources — PR #126, `2ddc50a` |
 | 3 · Static pages | Complete | Built as four slices — PRs #128–#131, through `0089f46` |
 | 4 · Interactive islands | Complete | Search, copy, Toolbox toggle — PR #132, `f9dff41` |
-| 5 · Widget embeds and media | Not started | Next up; recordings not yet produced |
+| 5a · Widget embeds | Complete | Live demos on `/toolbox` and Home, theme-synced — spec `011-website-widget-embeds` |
+| 5b · Terminal recordings | Not started | Split out of Phase 5; asciinema casts not yet produced |
 | 6 · Agent surface and SEO | Not started | Can run in parallel with Phase 5 |
 | 7 · Deploy pipeline | Not started | Can run in parallel with Phase 5 |
 | 8 · Launch | Gated | One gate met, one in review — see Launch gates |
@@ -47,7 +54,10 @@ code that now exists on `dev`.
 | Five pages | `packages/site/src/pages/` | `/`, `/commands`, `/pipeline`, `/toolbox`, `/quickstart` |
 | Command search island | `packages/site/src/components/CommandCatalog.tsx` | Client-side fuzzy search, group chips, URL-reflected filter state |
 | Copy-to-clipboard | `packages/site/src/layouts/Base.astro` | One delegated handler serving every command snippet site-wide |
-| End-to-end suite | `packages/site/e2e/` | 32 Playwright tests across seven specs |
+| Demo-asset pipeline | `packages/site/scripts/gen-widget-demos.mjs` | Copies the nine committed widget documents and emits each widget's own fixture as JSON — build outputs, never versioned |
+| MCP Apps host | `packages/site/src/lib/widget-host.ts` | ~150 lines speaking the `ui/*` wire protocol over `postMessage`; no SDK in the site bundle |
+| Widget demo islands | `packages/site/src/components/WidgetDemo.tsx` | `<WidgetDemo>` (lazy, Home) and `<WidgetCanvas>` (picker + Live/Screenshot, Toolbox), theme-synced into the frame |
+| End-to-end suite | `packages/site/e2e/` | 38 Playwright tests across eight specs |
 
 ## Decisions locked
 
@@ -74,27 +84,56 @@ The full list with rationale is the Decisions log in the requirements document. 
 
 Neither gate blocks Phases 5 through 7, which can proceed regardless.
 
+## How the widget embeds work
+
+Worth recording, because the mechanism was not obvious before it was built.
+
+The committed widget documents are real MCP Apps views: each mounts with no test seam, so it runs
+the production path, which points an ext-apps `PostMessageTransport` at `window.parent`. Framed on
+the site, that parent is the page — so the page only has to answer. It does that directly, in about
+150 lines, rather than importing the ext-apps SDK: that bundle is overwhelmingly zod and is exactly
+what makes each widget document roughly 300 KB, so importing it would have undone the near-zero-JS
+budget the static phases hold. The surface actually required is one request, two notifications, and
+two request answers.
+
+Two details are load-bearing and easy to get wrong. The tool-result notification requires a
+`content` member alongside `structuredContent`; omit it and the view's schema check fails, the SDK
+swallows the error, and the frame sits on "Connecting…" with nothing in the console. And the widgets
+ignore the protocol's own theme channel entirely, so FR-17 is satisfied by the parent reaching into
+the frame to set `data-theme` on its `.mvroot` — which is what `allow-same-origin` on the sandbox
+buys, and the reason the sandbox is not stricter.
+
+Because the site speaks the protocol by hand, the end-to-end tests assert on the widget's own
+rendered DOM through `frameLocator` — specifically on fixture data that exists nowhere in the
+widget's shell. That makes the suite a protocol-drift detector: if the handshake shape ever
+changes, the demos fall back to their static minis and CI fails, rather than the site quietly
+degrading.
+
 ## What is not yet done
 
-- The widget demos are static placeholders. The sandboxed iframe embeds and their mock data
-  fixtures do not exist yet, and the Toolbox demo canvas toggles state only.
 - No terminal recordings. The hero and the four pipeline stages still show poster placeholders
-  rather than asciinema `.cast` files.
+  rather than asciinema `.cast` files. This is Phase 5b.
 - No `llms.txt`, no per-page OpenGraph images, no sitemap or robots directives, and no
   analytics events.
 - No Vercel project, no domain configuration, and no preview deployments.
 
 ## Next action
 
-Begin Phase 5: embed the committed widget HTML in sandboxed iframes fed by mock fixtures,
-theme-synced to the site, and produce the terminal recordings. Phase 4 shipped the
-Live/Screenshot toggle that the embeds attach to, so the control already exists.
+Author and implement Phase 5b: the asciinema recordings for the hero and the four pipeline
+stages, poster-first and never autoplaying. That is the last of the plan's media work.
 
-Phases 6 and 7 depend only on Phase 3 and can run alongside Phase 5 — worth starting the
-Vercel project early so preview deployments cover the remaining work.
+Phases 6 and 7 depend only on Phase 3 and can run alongside it — worth starting the Vercel
+project early so preview deployments cover the remaining work.
 
 ## Change log
 
+- **2026-07-20** — Phase 5 split into 5a (widget embeds) and 5b (terminal recordings), and 5a
+  implemented: a build-time generator for the demo assets, a hand-rolled MCP Apps host over
+  `postMessage`, and the two demo islands. `/toolbox` now frames all nine committed widget
+  documents behind a picker, with the Screenshot side and the failure path cloning the page's own
+  static minis; Home's teaser mounts three demos lazily on scroll. The Toolbox page gained minis
+  for `task-detail` and `task-summary`, which the Phase-3 shell was missing — it had seven of the
+  nine. The end-to-end suite grew from 32 tests to 38 across eight specs.
 - **2026-07-20** — Phase 4 merged (PR #132): the `/commands` search island with URL-reflected
   filter state, site-wide copy-to-clipboard through a single delegated handler, and the
   Toolbox Live/Screenshot toggle. FR-3 was struck from the phase because the theme toggle had

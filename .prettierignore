@@ -11,6 +11,12 @@ package-lock.json
 # collapsing would fight the generator and churn the file, so it is excluded like the other
 # committed build artefacts above.
 packages/site/src/data/catalog.json
+# The site's live widget-demo assets (spec 011) — copies of the committed widget HTML above plus
+# each widget's fixture as JSON, emitted by packages/site/scripts/gen-widget-demos.mjs into
+# public/ on every dev/build. They are git-ignored, but Prettier does not read nested .gitignore
+# files, so without this entry `format:check` would check (and reject) the copied widget HTML for
+# exactly the reason the plugins/marvin/widgets/ entry above exists.
+packages/site/public/widget-demos/
 
 # Markdown is authored prose (READMEs, SKILL bodies, ADRs) with hand-aligned
 # tables and prompt formatting that Prettier would reflow. Left as-is.
