@@ -26,3 +26,17 @@ docs/design/mockups/
 
 # Trigger-eval run artifacts (also git-ignored)
 evals/trigger/results/
+
+# Generated output under packages/site that is git-ignored but NOT prettier-ignored.
+#
+# Prettier does not read nested .gitignore files — only the root .gitignore and this file. So
+# `packages/site/.gitignore` listing `.astro/`, `test-results/` and `playwright-report/` keeps them
+# out of git but does nothing for `format:check`, which happily checks and rejects them.
+#
+# They only exist after `astro build` / `astro dev` or a Playwright run, and CI runs `format:check`
+# BEFORE `npm run build` — so CI has been passing by accident of step ordering while any local run
+# after a build was red. Listing them here fixes the local signal and removes that dependence on
+# ordering.
+packages/site/.astro/
+packages/site/test-results/
+packages/site/playwright-report/

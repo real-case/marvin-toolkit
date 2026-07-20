@@ -59,3 +59,10 @@ plugins/marvin/.in_use/
 
 # Playwright MCP scratch screenshots (local verification, never shared)
 .playwright-mcp/
+
+# Playwright output from a run started in the WRONG directory. `npx playwright test` from the repo
+# root finds no config, so baseURL is unset and every navigation fails — but it still writes its
+# artifacts here rather than under packages/site/ (which ignores its own). Root-anchored on
+# purpose: each workspace should ignore its own output, and a bare pattern would silently swallow
+# artifacts in workspaces that have not opted in.
+/test-results/
