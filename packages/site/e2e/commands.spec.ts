@@ -66,8 +66,8 @@ test("commands renders every catalog command with human-run marking and the sear
 
   // The header chip's counts are catalog-driven (no hand-typed numbers, FR-20).
   const chip = page.locator(".chip");
-  await expect(chip).toContainText(String(catalog.commands.length)); // 51
-  await expect(chip).toContainText(String(catalog.groups.length)); // 7
+  await expect(chip).toContainText(String(catalog.commands.length));
+  await expect(chip).toContainText(String(catalog.groups.length));
 
   // Exactly the three human:true commands (adr-accept / adr-supersede / adr-sync) carry the
   // "human-run" badge — nothing else does.
