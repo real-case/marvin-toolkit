@@ -28,6 +28,49 @@ export const TIMEOUT_MS = Number(process.env.MARVIN_TEST_TIMEOUT_MS) || 60000;
 const PROTOCOL_VERSION = "2025-03-26";
 
 /**
+ * Environment names the child server must NEVER inherit from the ambient process.
+ *
+ * WHY THIS EXISTS. `src/lib/env.ts` resolves every storage path as
+ * `env.MARVIN_<X> ?? join(projectDir, ".marvin", "<x>")`, and `projectDir` itself is
+ * `env.CLAUDE_PROJECT_DIR ?? process.cwd()`. So an ambient value does not merely influence the
+ * server — it OUTRANKS the fixture a test set up, silently, and the test then asserts against the
+ * real repository's `.marvin/` instead of its own temp directory.
+ *
+ * That is not hypothetical. `plugins/marvin/.mcp.json` sets `MARVIN_TASKS_DIR` and
+ * `MARVIN_TASKS_CONFIG` for the marvin MCP server, so anything the server spawns inherits them —
+ * including `npm run test` when it is launched by the `verify` tool. The suite passed from a
+ * developer's shell (where nothing is set) and failed under `verify` with 42 failures across the
+ * adr and config tests, which made the failure look like a flake or like whatever branch happened
+ * to be checked out. It blocked the pipeline's delivery gate and forced at least one PR to be
+ * opened over an explicit BLOCK.
+ *
+ * A PREFIX RULE, NOT A LIST OF THE TWO THAT BIT US. `loadEnv` reads six `MARVIN_*` names today;
+ * stripping the whole prefix means the seventh is hermetic the day it is added, with no matching
+ * edit here that someone has to remember. `MARVIN_TEST_TIMEOUT_MS` is swept up too and that costs
+ * nothing: it is read by THIS file, in the parent process, and the server never looks at it.
+ *
+ * A test that genuinely wants one of these passes it explicitly via `opts.env`, which is applied
+ * after the sweep and therefore always wins. Being explicit is the point — the value then comes
+ * from the test, not from whoever happened to launch it.
+ */
+export const HERMETIC_PREFIX = "MARVIN_";
+export const HERMETIC_NAMES = ["CLAUDE_PROJECT_DIR"];
+
+/**
+ * The ambient environment with every storage-locating variable removed, then `overrides` applied.
+ *
+ * Pure and exported so the guard can assert on it directly without spawning anything.
+ */
+export function hermeticEnv(base = process.env, overrides = {}) {
+  const clean = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (key.startsWith(HERMETIC_PREFIX) || HERMETIC_NAMES.includes(key)) continue;
+    clean[key] = value;
+  }
+  return { ...clean, ...overrides };
+}
+
+/**
  * Spawn the server and open a JSON-RPC session over stdio. Low-level: handles
  * framing, correlates responses to client→server requests by id, and dispatches
  * server→client requests (e.g. `elicitation/create`) to `onServerRequest`.
@@ -43,7 +86,10 @@ const PROTOCOL_VERSION = "2025-03-26";
 export function connect({ env = {}, onServerRequest, timeoutMs = TIMEOUT_MS } = {}) {
   const child = spawn("node", [SERVER_PATH], {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, ...env },
+    // Hermetic: the ambient MARVIN_*/CLAUDE_PROJECT_DIR values are dropped before `env` is applied,
+    // so a test's fixture paths cannot be outranked by whatever launched the suite. See
+    // hermeticEnv above for why this is not just `{ ...process.env, ...env }`.
+    env: hermeticEnv(process.env, env),
   });
 
   let nextId = 1;
