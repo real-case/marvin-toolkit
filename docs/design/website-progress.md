@@ -14,9 +14,9 @@ The site is built and behaving. Phases 0 through 4 are complete and merged to `d
 workspace, the generated content pipeline, all five pages, and the client-side interactions.
 Phase 5 was split in two. The widget embeds (5a) are implemented, and the terminal recordings (5b)
 now play on the four pipeline stages — but **Phase 5 is not closed**: the plan also names a Home
-hero recording, which is deliberately deferred (see below). Phase 6 was split the same way and for
-the same reason: 6a, the machine-facing surface, is implemented; 6b, the OpenGraph imagery, is not.
-What remains is 6b and the deploy pipeline (Phase 7).
+hero recording, which is deliberately deferred (see below). Phase 6 was split the same way, and both
+halves are now done: 6a shipped the machine-facing surface, 6b the OpenGraph cards. What remains is
+the deploy pipeline (Phase 7).
 
 Note the plan describes Phase 6 as "agent surface, SEO **and analytics**". The analytics half
 (FR-22) has moved to Phase 7. It was never separable from the deploy work: Vercel Analytics only
@@ -53,7 +53,7 @@ and waiting in a pull request rather than unstarted.
 | 5a · Widget embeds | Complete | Live demos on `/toolbox` and Home, theme-synced — spec `011-website-widget-embeds` |
 | 5b · Terminal recordings | Complete for the pipeline tour | Four generated asciicasts play on `/pipeline`, poster-first — spec `012-website-terminal-recordings`. Phase 5 stays open on the deferred Home hero recording |
 | 6a · Agent surface and SEO metadata | Complete | `llms.txt`, `sitemap.xml`, `robots.txt` and per-page canonical/OpenGraph from one page registry — spec `013-website-agent-surface-seo` |
-| 6b · OpenGraph imagery | Not started | Five cards; blocked on a font-pipeline decision — see below |
+| 6b · OpenGraph imagery | Complete | Five committed 1200×630 cards from the registry; `twitter:card` flipped to `summary_large_image` — spec `014-website-og-images` |
 | 7 · Deploy pipeline | Not started | Now also owns analytics (FR-22); can run in parallel |
 | 8 · Launch | Ungated | **Both launch gates are met** — see Launch gates |
 
@@ -159,33 +159,57 @@ was approved. Do not port these three strings forward. The site's own pages are 
   important surface — one that already had to fight overflow at that boundary — and it would
   duplicate stage 3, since the hero shows the same command. It needs a design decision before it
   becomes a spec.
-- **No OpenGraph images** (Phase 6b). The metadata names no `og:image`, and `twitter:card` is
-  `summary` rather than `summary_large_image`, which is the correct pairing while no image exists.
-  The blocker is a font pipeline, not the cards: `@fontsource-variable` ships **woff2 only**, and
-  the two standard SVG→PNG routes need TTF or OTF — satori documents woff2 as unsupported, and
-  resvg's handling is version-dependent. Rendering the cards in Hanken Grotesk therefore needs a
-  decision first: commit an OFL-licensed TTF for build-time use, convert the woff2, or render the
-  text as paths. Raster is genuinely required — every major crawler rejects SVG for `og:image`.
 - No Vercel project, no domain configuration, no preview deployments, and no analytics events
   (FR-22, now Phase 7).
 
 ## Next action
 
-Two independent pieces remain, plus one decision.
+One phase remains, plus one decision.
 
-**Phase 6b — the OpenGraph cards.** Pick the font route above, then a generator emits five
-1200×630 PNGs, committed like the widget visual baselines rather than rebuilt in CI. The metadata
-already has the shape waiting for them.
-
-**Phase 7 — the deploy pipeline**, which now also carries analytics. Worth starting early so
-preview deployments cover the remaining work; it is the only phase needing access outside the
-repository.
+**Phase 7 — the deploy pipeline**, which now also carries analytics. It is the only phase needing
+access outside the repository, and with 6b closed it is the only thing between here and a public
+`marvin-toolkit.dev`.
 
 **The Home hero recording** still needs a design call before it can be specced — whether the
 hero's grid break and single motion moment can carry a player, or whether the parity pair stays
 static. It is the last of the plan's media work and the only thing keeping Phase 5 open.
 
 ## Change log
+
+- **2026-07-21** — Phase 6b implemented. Five 1200×630 cards are generated from the page registry
+  and committed, every page emits an absolute `og:image` with declared dimensions and alt text, and
+  `twitter:card` moved to `summary_large_image`. Phase 6 is closed.
+
+  **The font blocker recorded above was real but narrower than it read.** It applied only to the
+  SVG-rasterizer family: satori states verbatim that woff2 is unsupported (it parses via
+  `opentype.js`, which never added it), and `@resvg/resvg-js` gates woff2 behind
+  `#[cfg(target_arch = "wasm32")]`, so its native Node binding has no woff2 path at all — not
+  "version-dependent" but absent. Chromium, however, reads woff2 natively, and `@playwright/test`
+  was already a devDependency and already renders 101 committed visual baselines in this repo. So
+  the cards are screenshots of a generated HTML document, and no new dependency was needed. The TTF
+  decision the entry above was waiting on never had to be made.
+
+  **The mechanism worth carrying forward is how staleness is detected.** These are committed
+  binaries and Chromium output is platform-dependent, so CI can neither regenerate nor pixel-compare
+  them. Instead the manifest records what went *into* each render — the exact title and card line,
+  the palette, and each font's load status — and the guards compare those strings against the
+  registry and against `theme.css` parsed independently. Retitle a page or change a token without
+  regenerating and the build fails with the reason; all three failure paths were verified by
+  perturbing the sources and watching the guards fire.
+
+  **`document.fonts.check()` is not a usable font signal**, which cost two review rounds to
+  establish. It returns `true` against a page with **zero** registered faces, so it cannot detect a
+  typo'd `font-family` or a dropped `@font-face` rule — the exact fallback the guard exists to
+  prevent. It *does* catch a malformed font URI, which is what makes it treacherous: the failure you
+  test by hand passes, and the one you ship does not. The generator uses `FontFace.status` instead,
+  builds its status map from the *expected* family list (iterating `document.fonts` yields `{}` in
+  precisely the never-registered case, so a guard over it would throw nothing), and single-sources
+  each family name across the `@font-face` rule, the CSS that asks for it, and the lookup. Recorded
+  in `.marvin/memory/`.
+
+  A card rendered in a fallback face still looks like a finished card, and the artifact is binary,
+  so review cannot catch it. That is the whole reason this phase carries as much guard machinery as
+  it does.
 
 - **2026-07-21** — Phase 6 split into 6a (agent surface and SEO metadata) and 6b (OpenGraph
   imagery), and 6a implemented. The site now serves `/llms.txt`, `/sitemap.xml` and `/robots.txt`,

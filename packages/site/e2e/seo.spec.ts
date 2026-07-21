@@ -198,14 +198,67 @@ test("every page emits canonical and OpenGraph metadata matching its sitemap ent
       "content",
       "Marvin",
     );
-    // The one tag X will not infer from OpenGraph. `summary` is correct until Phase 6b adds images.
-    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary");
+    // The one tag X will not infer from OpenGraph. `summary_large_image` since Phase 6b shipped the
+    // cards — it must move in lockstep with og:image, because declaring the large type with no
+    // image renders an empty box rather than degrading to the small card.
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+      "content",
+      "summary_large_image",
+    );
 
     expect(seenTitles.has(entry.title), `duplicate title: ${entry.title}`).toBe(false);
     seenTitles.add(entry.title);
   }
 
   expect(seenTitles.size).toBe(registry.length);
+});
+
+test("every page emits an absolute og:image that resolves to a 1200x630 PNG", async ({
+  page,
+  request,
+}) => {
+  // The card manifest, read independently of the site's own module — same discipline as `resolve`
+  // above: importing what Base.astro imports would let a wrong manifest agree with itself.
+  const cards = JSON.parse(readFileSync(join(here, "../src/data/og.json"), "utf8"));
+  expect(cards.length, "expected a card manifest with one row per page").toBeGreaterThanOrEqual(5);
+
+  for (const entry of registry) {
+    await page.goto(entry.path);
+
+    const card = cards.find((row: { path: string }) => row.path === entry.path);
+    expect(card, `no og.json row for ${entry.path}`).toBeTruthy();
+
+    const ogImage = await page.locator('meta[property="og:image"]').getAttribute("content");
+
+    // Absolute, not relative. A crawler fetches og:image with no page context to resolve against,
+    // so a relative value is silently dropped — the failure is invisible from inside the page.
+    expect(ogImage, `og:image on ${entry.path}`).toBe(`${ORIGIN}${card.file}`);
+
+    await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute(
+      "content",
+      "1200",
+    );
+    await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute(
+      "content",
+      "630",
+    );
+    // Alt text is not required by any platform; emitted because a card carrying the page's only
+    // headline should not be invisible to a screen reader in a feed.
+    const alt = await page.locator('meta[property="og:image:alt"]').getAttribute("content");
+    expect(alt, `og:image:alt on ${entry.path}`).toContain(card.card);
+
+    // The URL has to actually serve the bytes. This is what catches a card that was declared but
+    // never committed, or a path Astro does not publish from public/.
+    const response = await request.get(card.file);
+    expect(response.status(), `${card.file} must be served`).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/png");
+
+    // And the served file must really be the declared size — IHDR width/height as big-endian
+    // uint32 at byte 16 and 20. A wrong-sized card is cropped by every platform.
+    const bytes = Buffer.from(await response.body());
+    expect(bytes.readUInt32BE(16), `${card.file} width`).toBe(1200);
+    expect(bytes.readUInt32BE(20), `${card.file} height`).toBe(630);
+  }
 });
 
 test("quickstart agentbox links to a resolving llms.txt and names the install path", async ({

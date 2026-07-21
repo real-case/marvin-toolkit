@@ -11,8 +11,9 @@ import "../styles/primitives.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import { catalog } from "../data/catalog";
+import { ogImages } from "../data/og";
 import { pages } from "../data/pages";
-import { absoluteUrl, findPage, requireOrigin, resolvePlaceholders } from "../lib/seo";
+import { absoluteUrl, findPage, ogImageFor, requireOrigin, resolvePlaceholders } from "../lib/seo";
 
 interface Props {
   title?: string;
@@ -42,7 +43,19 @@ const description =
 // sitemap derives <loc> from the registry would let one page advertise two canonical forms — and
 // both AC3 and AC5 would still pass. Building both from one source removes the failure instead of
 // testing for it. A route with no registry entry (404) falls back to its own path.
-const canonical = absoluteUrl(page?.path ?? Astro.url.pathname, requireOrigin(Astro.site));
+const origin = requireOrigin(Astro.site);
+const canonical = absoluteUrl(page?.path ?? Astro.url.pathname, origin);
+
+// The OpenGraph card (spec 014, F12 — FR-23). Absolute like canonical and for the same reason:
+// every crawler fetches og:image without page context to resolve a relative URL against, so a
+// relative value is silently dropped rather than reported.
+//
+// Resolved through the registry path, not Astro.url — the one rule this file and lib/seo.ts share.
+// A route with no card row (the three text endpoints, a future 404) emits NO image tags at all,
+// which is why every tag below is inside the conditional: a broken og:image is worse than none,
+// because it renders as an empty box rather than falling back to the text card.
+const ogImage = page ? ogImageFor(ogImages, page.path) : undefined;
+const ogImageUrl = ogImage ? absoluteUrl(ogImage.file, origin) : undefined;
 
 const favicon =
   "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
@@ -60,17 +73,28 @@ const favicon =
     <link rel="canonical" href={canonical} />
     <link rel="icon" href={favicon} type="image/svg+xml" />
 
-    <!-- OpenGraph + Twitter (FR-23). No og:image yet — the cards are Phase 6b, and `summary` is
-         the correct card type until one exists; 6b flips it to `summary_large_image`. twitter:card
-         is the one tag X will not infer from OpenGraph: omit it and a shared link renders as the
-         small square card regardless of what the OG tags say. Title and description are read from
-         OG by every major crawler, so they are not repeated under the twitter: namespace. -->
+    <!-- OpenGraph + Twitter (FR-23). twitter:card is the one tag X will not infer from OpenGraph:
+         omit it and a shared link renders as the small square card regardless of what the OG tags
+         say. It reads `summary_large_image` because Phase 6b shipped the cards — the two must move
+         together, since declaring the large type with no image renders an empty box. Title and
+         description are read from OG by every major crawler, so they are not repeated under the
+         twitter: namespace. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Marvin" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta name="twitter:card" content="summary" />
+    {
+      ogImage && ogImageUrl && (
+        <>
+          <meta property="og:image" content={ogImageUrl} />
+          <meta property="og:image:width" content={String(ogImage.width)} />
+          <meta property="og:image:height" content={String(ogImage.height)} />
+          <meta property="og:image:alt" content={`${title} — ${ogImage.card}`} />
+        </>
+      )
+    }
+    <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
 
     <!-- Anti-FOUC: set the theme before first paint from localStorage, else the OS
          preference. is:inline keeps Astro from bundling/deferring it, so it runs

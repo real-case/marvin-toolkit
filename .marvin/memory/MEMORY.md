@@ -16,3 +16,4 @@ in the linked file. Recalled at task intake.
 - [Asciicast v2 and asciinema-player fail silently in four separate ways](asciicast-v2-and-asciinema-player-fail.md) — gotcha · 2026-07-21 · asciicast, asciinema, website, generator, terminal, silent-failure, testing
 - [Keeping a heavy vendor lib out of an Astro island needs a new-script-request assertion](keeping-a-heavy-vendor-lib-out-of-an.md) — convention · 2026-07-21 · astro, preact, island, lazy-loading, vite, payload, website, e2e, playwright
 - [A tsc invocation that names files on the command line silently discards tsconfig.json](a-tsc-invocation-that-names-files-on.md) — gotcha · 2026-07-21 · typescript, tsc, tsconfig, astro, site, ci, silent-failure, type-checking
+- [document.fonts.check() returns true for fonts that were never registered](document-fonts-check-returns-true-for.md) — gotcha · 2026-07-21 · fonts, chromium, playwright, silent-failure, og-images, website, verification

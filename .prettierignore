@@ -27,6 +27,11 @@ packages/site/public/casts/
 # test/casts.test.mjs — excluded for the same reason catalog.json is: Prettier's JSON formatting
 # would fight the generator and churn the file on every format run.
 packages/site/src/data/casts.json
+# The OpenGraph card manifest (spec 014), emitted by packages/site/scripts/gen-og.mjs as
+# JSON.stringify(…,2)+"\n" — excluded for the same reason as the two manifests above. The cards
+# themselves need no entry: Prettier infers no parser for .png and leaves them alone, which is also
+# why the 101 committed widget visual baselines do not break format:check.
+packages/site/src/data/og.json
 
 # Markdown is authored prose (READMEs, SKILL bodies, ADRs) with hand-aligned
 # tables and prompt formatting that Prettier would reflow. Left as-is.
