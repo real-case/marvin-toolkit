@@ -50,9 +50,21 @@ packages/marvin-widgets/__image_snapshots__/__diff_output__/
 .claude/worktrees/
 .claude/agent-memory/
 
-# Marvin working directory (ADR-0007) — in this repo it holds only local
-# dogfood/test state (board fixtures, usage log), never shared content
-.marvin/
+# Marvin working directory (ADR-0007). Almost all of it is local dogfood/test state —
+# board fixtures, specs, handoffs, research output, the usage log — and stays out of git.
+#
+# The lessons store is the deliberate exception. ADR-0021 specifies `.marvin/memory/` as
+# "git-committed, team-shared … so lessons are shared with the team on clone", CLAUDE.md
+# documents it that way, and the `lessons` tool tells you so every time it writes one. A
+# blanket `.marvin/` contradicted all three: no lesson was ever shared, and one had to be
+# hand-rescued from a worktree before it was lost with it.
+#
+# The pattern matters. It is `.marvin/*`, NOT `.marvin/` — git does not descend into an
+# excluded DIRECTORY, so with a blanket `.marvin/` the negation below is unreachable and
+# silently does nothing. `.marvin/*` excludes each entry instead, which leaves the
+# re-include below able to work.
+.marvin/*
+!.marvin/memory/
 
 # Runtime markers written next to the installed plugin while a session uses it
 plugins/marvin/.in_use/
