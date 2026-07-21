@@ -15,3 +15,4 @@ in the linked file. Recalled at task intake.
 - [A running astro dev server hijacks the site e2e and its dev toolbar breaks strict-mode locators](a-running-astro-dev-server-hijacks-the.md) — gotcha · 2026-07-20 · playwright, astro, e2e, site, dev-server, testing, false-failure
 - [Asciicast v2 and asciinema-player fail silently in four separate ways](asciicast-v2-and-asciinema-player-fail.md) — gotcha · 2026-07-21 · asciicast, asciinema, website, generator, terminal, silent-failure, testing
 - [Keeping a heavy vendor lib out of an Astro island needs a new-script-request assertion](keeping-a-heavy-vendor-lib-out-of-an.md) — convention · 2026-07-21 · astro, preact, island, lazy-loading, vite, payload, website, e2e, playwright
+- [A tsc invocation that names files on the command line silently discards tsconfig.json](a-tsc-invocation-that-names-files-on.md) — gotcha · 2026-07-21 · typescript, tsc, tsconfig, astro, site, ci, silent-failure, type-checking
