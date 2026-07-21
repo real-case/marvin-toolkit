@@ -12,14 +12,25 @@ to the implementation plan: the plan says what to do, this says what is done.
 
 The site is built and behaving. Phases 0 through 4 are complete and merged to `dev`: the
 workspace, the generated content pipeline, all five pages, and the client-side interactions.
-Phase 5 was split in two — the widget embeds (5a) are implemented, and the terminal recordings
-(5b) remain. What else remains is the machine-facing surface and measurement (Phase 6) and the
-deploy pipeline (Phase 7).
+Phase 5 was split in two. The widget embeds (5a) are implemented, and the terminal recordings (5b)
+now play on the four pipeline stages — but **Phase 5 is not closed**: the plan also names a Home
+hero recording, which is deliberately deferred (see below). What else remains is the machine-facing
+surface and measurement (Phase 6) and the deploy pipeline (Phase 7).
 
 Phase 5 was split because its two halves are different kinds of work. Embedding the widgets is
 browser engineering that can be specified and verified end to end; recording the terminal
 sessions is media production that needs someone to actually drive the tool and capture it. Holding
 the embeds behind the recordings would have blocked a mergeable slice on an unscheduled one.
+
+**The recordings are generated, not captured.** The asciinema CLI is not installed and a capture
+could not be produced from the authoring session at all — and a real capture would carry local
+paths and repo state needing scrubbing before a public site, would re-break whenever command output
+changed, and could not hit a duration the page states. Instead a build-time generator emits
+asciicast v2 files from authored scripts, each recording where its output was reconstructed from
+(a `SKILL.md` section, a tool's own report renderer, or a real artifact from this repo). This is the
+same trade the widget demos already make by showing a fixture rather than a live project. Swapping
+in captured casts later is a content-only change, because the page reads each duration from the
+cast rather than declaring it.
 
 Both launch gates have moved since this document was last written. The repository is now
 public, which satisfies the first gate outright, and the report-export feature is implemented
@@ -33,7 +44,7 @@ and waiting in a pull request rather than unstarted.
 | 3 · Static pages | Complete | Built as four slices — PRs #128–#131, through `0089f46` |
 | 4 · Interactive islands | Complete | Search, copy, Toolbox toggle — PR #132, `f9dff41` |
 | 5a · Widget embeds | Complete | Live demos on `/toolbox` and Home, theme-synced — spec `011-website-widget-embeds` |
-| 5b · Terminal recordings | Not started | Split out of Phase 5; asciinema casts not yet produced |
+| 5b · Terminal recordings | Complete for the pipeline tour | Four generated asciicasts play on `/pipeline`, poster-first — spec `012-website-terminal-recordings`. Phase 5 stays open on the deferred Home hero recording |
 | 6 · Agent surface and SEO | Not started | Can run in parallel with Phase 5 |
 | 7 · Deploy pipeline | Not started | Can run in parallel with Phase 5 |
 | 8 · Launch | Gated | One gate met, one in review — see Launch gates |
@@ -57,7 +68,9 @@ code that now exists on `dev`.
 | Demo-asset pipeline | `packages/site/scripts/gen-widget-demos.mjs` | Copies the nine committed widget documents and emits each widget's own fixture as JSON — build outputs, never versioned |
 | MCP Apps host | `packages/site/src/lib/widget-host.ts` | ~150 lines speaking the `ui/*` wire protocol over `postMessage`; no SDK in the site bundle |
 | Widget demo islands | `packages/site/src/components/WidgetDemo.tsx` | `<WidgetDemo>` (lazy, Home) and `<WidgetCanvas>` (picker + Live/Screenshot, Toolbox), theme-synced into the frame |
-| End-to-end suite | `packages/site/e2e/` | 38 Playwright tests across eight specs |
+| Recording pipeline | `packages/site/scripts/gen-casts.mjs` | Authored stage scripts → one asciicast v2 per stage plus the committed manifest `src/data/casts.json`; fails the build on a command absent from the catalog |
+| Cast player island | `packages/site/src/components/CastPlayer.tsx` | Poster server-rendered; the player module and its vendor stylesheet both load only on press |
+| End-to-end suite | `packages/site/e2e/` | 41 Playwright tests across nine specs |
 
 ## Decisions locked
 
@@ -126,22 +139,41 @@ was approved. Do not port these three strings forward. The site's own pages are 
 
 ## What is not yet done
 
-- No terminal recordings. The hero and the four pipeline stages still show poster placeholders
-  rather than asciinema `.cast` files. This is Phase 5b.
+- **No Home hero recording.** The four pipeline stages now play, but the hero still shows its
+  static terminal. This is the remaining piece of Phase 5, and it is deferred deliberately rather
+  than forgotten: the hero's `.term` is one half of the `.parity` pair whose whole point is "⇄ the
+  same command in Claude Desktop", making it the page's single deliberate grid break and its one
+  orchestrated motion moment. Turning it into a player is a design change on the site's most
+  important surface — one that already had to fight overflow at that boundary — and it would
+  duplicate stage 3, since the hero shows the same command. It needs a design decision before it
+  becomes a spec.
 - No `llms.txt`, no per-page OpenGraph images, no sitemap or robots directives, and no
   analytics events.
 - No Vercel project, no domain configuration, and no preview deployments.
 
 ## Next action
 
-Author and implement Phase 5b: the asciinema recordings for the hero and the four pipeline
-stages, poster-first and never autoplaying. That is the last of the plan's media work.
+Decide the Home hero recording — whether the hero's grid break and motion moment can carry a
+player, or whether the parity pair should stay static — and spec it. That is the last of the
+plan's media work and the only thing keeping Phase 5 open.
 
 Phases 6 and 7 depend only on Phase 3 and can run alongside it — worth starting the Vercel
 project early so preview deployments cover the remaining work.
 
 ## Change log
 
+- **2026-07-21** — Phase 5b implemented for the pipeline tour. The four stage posters became lazy
+  player islands over generated asciicast v2 recordings, with every command, caption and duration
+  now read from the generated manifest instead of typed into the page — the four hardcoded
+  durations (`0:42` / `1:18` / `0:55` / `0:38`) are gone, and no stated runtime can disagree with
+  the recording it labels. Two things worth carrying forward. The player's weight (~330 KB, most of
+  it an inlined WebAssembly terminal emulator that minification cannot shrink, plus 19 KB of vendor
+  CSS) stays entirely off the initial page: both the module and the stylesheet load inside the
+  activation handler, and the e2e proves it by asserting that activation causes a *new script*
+  request — without that clause a top-level import would fold the payload into the island's own
+  chunk while the cast and stylesheet stayed lazy and the test stayed green. And when a CSP arrives
+  in Phase 7 it must include `'wasm-unsafe-eval'` in `script-src`, or the player will fail at
+  runtime on the deployed site only.
 - **2026-07-20** — Fixed four references to commands that do not exist, and added a guard so the
   class cannot recur. The site printed `/marvin:verify` on the Home hero and the Pipeline stage-3
   poster (`verify` is a tool, not a command — the page was even self-inconsistent, its own heading

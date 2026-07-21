@@ -1,0 +1,34 @@
+[
+  {
+    "key": "task-start",
+    "command": "/marvin:task-start",
+    "caption": "dialogue → spec…",
+    "file": "/casts/task-start.cast",
+    "duration": 8.86,
+    "poster": "npt:0:02"
+  },
+  {
+    "key": "task-implement",
+    "command": "/marvin:task-implement",
+    "caption": "writing code + tests…",
+    "file": "/casts/task-implement.cast",
+    "duration": 8.64,
+    "poster": "npt:0:02"
+  },
+  {
+    "key": "task-verify",
+    "command": "/marvin:task-verify",
+    "caption": "gates: 4 running…",
+    "file": "/casts/task-verify.cast",
+    "duration": 7.455,
+    "poster": "npt:0:02"
+  },
+  {
+    "key": "task-deliver",
+    "command": "/marvin:task-deliver",
+    "caption": "commit → pull request…",
+    "file": "/casts/task-deliver.cast",
+    "duration": 7.95,
+    "poster": "npt:0:02"
+  }
+]
