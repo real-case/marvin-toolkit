@@ -40,7 +40,12 @@ function sourceFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);
-    return /\.(astro|tsx)$/.test(entry.name) ? [path] : [];
+    // .ts and .mjs joined .astro/.tsx in spec 013: src/lib/seo.ts composes the llms.txt body, which
+    // is hand-authored prose naming commands — exactly the unguarded surface this file exists to
+    // prevent, and the gap pipeline.astro:11-13 already documents. Widening added only two matches
+    // at the time (catalog.ts and casts.ts, both `/marvin:task-start`); no .mjs lives under src/
+    // today, so that half is future-proofing.
+    return /\.(astro|tsx|ts|mjs)$/.test(entry.name) ? [path] : [];
   });
 }
 

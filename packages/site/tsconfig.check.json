@@ -1,0 +1,32 @@
+{
+  // Type-check project for `npm run check:catalog` (spec 013, F13).
+  //
+  // WHY A PROJECT FILE AND NOT A LONGER FLAG STRING: tsc IGNORES tsconfig.json entirely when files
+  // are named on the command line, which is how this gate used to run. Two silent consequences.
+  // The default target falls back to ES5, so ordinary Map/Set iteration fails TS2802 — and because
+  // the default *lib* is still ES2020+DOM, everything else resolves and the toolchain reads as
+  // modern until iteration is involved. Worse, the discarded config is where verbatimModuleSyntax,
+  // isolatedModules and target:ESNext come from (astro/tsconfigs/strict), so the gate could pass
+  // code the real `astro build` rejects — measured: a value-form import of a type is accepted by
+  // the flag string and caught here as TS1484.
+  //
+  // `include: []` is load-bearing, not tidiness. It keeps `.astro/types.d.ts` out of the program,
+  // and that file never exists on the Node-20 CI leg because scripts/build.mjs no-ops the build
+  // below Node 22.12 — a config that depended on it would pass on one leg and fail on the other.
+  // Verify with: tsc -p tsconfig.check.json --listFiles | grep -c '.astro/types'  ->  0
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": [],
+  "files": [
+    "src/data/catalog.ts",
+    "src/data/casts.ts",
+    "src/data/pages.ts",
+    "src/lib/seo.ts",
+    "src/pages/llms.txt.ts",
+    "src/pages/sitemap.xml.ts",
+    "src/pages/robots.txt.ts"
+  ]
+}
