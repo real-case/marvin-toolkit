@@ -62,10 +62,14 @@ test("quickstart renders the onward next-cards with catalog-driven counts and th
   await expect(cards.nth(1)).toContainText(String(catalog.commands.length));
   await expect(cards.nth(2)).toContainText(String(catalog.counts.widgets));
 
-  // The agent-native box (FR-24) documents the llms.txt install path.
+  // The agent-native box (FR-24) documents the llms.txt install path. Asserted through the anchor
+  // rather than `agent.locator("code")`: that was a strict-mode locator pinned to the box holding
+  // exactly one <code>, so any second one broke a test on a page the change never touched. The
+  // href is the contract — spec 013 made the reference a real link once /llms.txt existed.
+  // The route's own content is proven in seo.spec.ts (AC6).
   const agent = page.locator(".agentbox");
   await expect(agent).toContainText("Working with an agent?");
-  await expect(agent.locator("code")).toHaveText("llms.txt");
+  await expect(agent.locator('a[href="/llms.txt"]')).toHaveCount(1);
 });
 
 test("quickstart holds both themes and responds from 360 to 1440 without horizontal overflow", async ({

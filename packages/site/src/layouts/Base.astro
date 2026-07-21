@@ -10,16 +10,39 @@ import "../styles/global.css";
 import "../styles/primitives.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
+import { catalog } from "../data/catalog";
+import { pages } from "../data/pages";
+import { absoluteUrl, findPage, requireOrigin, resolvePlaceholders } from "../lib/seo";
 
 interface Props {
   title?: string;
   description?: string;
 }
 
-const {
-  title = "Marvin — Claude Code toolset",
-  description = "Claude Code toolset for AI-assisted development. Without panic.",
-} = Astro.props;
+// Per-page metadata (spec 013, F5 — FR-23). Titles and descriptions used to live inline in each
+// page's <Base> call, and index.astro passed none at all, so the home page silently advertised the
+// generic default to every crawler. They now come from the registry, which is also what the sitemap
+// and llms.txt read — one source, so the three cannot disagree.
+//
+// The explicit props still win when passed. Nothing uses them today; keeping the override means a
+// future page with a genuinely dynamic title does not have to fight the registry.
+const page = findPage(pages, Astro.url.pathname);
+
+const title =
+  Astro.props.title ??
+  (page ? resolvePlaceholders(page.title, catalog) : "Marvin — Claude Code toolset");
+const description =
+  Astro.props.description ??
+  (page
+    ? resolvePlaceholders(page.description, catalog)
+    : "Claude Code toolset for AI-assisted development.");
+
+// canonical / og:url come from the REGISTRY path, never from Astro.url. With directory build output
+// a page resolves as "/commands" or "/commands/", so deriving these from the request while the
+// sitemap derives <loc> from the registry would let one page advertise two canonical forms — and
+// both AC3 and AC5 would still pass. Building both from one source removes the failure instead of
+// testing for it. A route with no registry entry (404) falls back to its own path.
+const canonical = absoluteUrl(page?.path ?? Astro.url.pathname, requireOrigin(Astro.site));
 
 const favicon =
   "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
@@ -34,7 +57,20 @@ const favicon =
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
     <link rel="icon" href={favicon} type="image/svg+xml" />
+
+    <!-- OpenGraph + Twitter (FR-23). No og:image yet — the cards are Phase 6b, and `summary` is
+         the correct card type until one exists; 6b flips it to `summary_large_image`. twitter:card
+         is the one tag X will not infer from OpenGraph: omit it and a shared link renders as the
+         small square card regardless of what the OG tags say. Title and description are read from
+         OG by every major crawler, so they are not repeated under the twitter: namespace. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Marvin" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
 
     <!-- Anti-FOUC: set the theme before first paint from localStorage, else the OS
          preference. is:inline keeps Astro from bundling/deferring it, so it runs

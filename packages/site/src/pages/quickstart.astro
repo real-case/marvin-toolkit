@@ -19,10 +19,7 @@ const commandCount = commands.length; // generated, never a literal (FR-20)
 const widgetCount = counts.widgets; // generated, never a literal (FR-20)
 ---
 
-<Base
-  title="Quickstart — Marvin"
-  description="From zero to your first marvin command in about a minute: two commands to install, then spec your first task."
->
+<Base>
   <div class="bp">
     <div class="container">
       <!-- header -->
@@ -94,12 +91,14 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
         </a>
       </div>
 
-      <!-- agent-native surface (FR-24) -->
+      <!-- agent-native surface (FR-24). The llms.txt reference is a real link as of spec 013:
+           the page claimed this file existed from Phase 3 onward while nothing served it. -->
       <div class="agentbox">
         <h3>Working with an agent?</h3>
         <p>
-          The site serves <code>llms.txt</code> — an agent-readable summary, the install commands, and
-          the docs map — so a coding agent can set marvin up for you. Marvin is an MCP server; talking
+          Point it at <a href="/llms.txt"><code>llms.txt</code></a> — an agent-readable summary, the two
+          install commands above, and the docs map, all in one fetch. An agent can read that and install
+          marvin for you rather than being walked through the steps. Marvin is an MCP server; talking
           to agents is the point.
         </p>
       </div>

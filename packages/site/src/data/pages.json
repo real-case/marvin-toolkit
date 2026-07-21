@@ -1,0 +1,37 @@
+[
+  {
+    "path": "/",
+    "title": "Marvin — Claude Code toolset",
+    "description": "Claude Code toolset for AI-assisted development. Without panic.",
+    "summary": "The landing page: what marvin is, the five claims, and the install commands.",
+    "priority": 1
+  },
+  {
+    "path": "/quickstart",
+    "title": "Quickstart — Marvin",
+    "description": "From zero to your first marvin command in about a minute: two commands to install, then spec your first task.",
+    "summary": "Install marvin and run your first command, in four numbered steps.",
+    "priority": 0.9
+  },
+  {
+    "path": "/commands",
+    "title": "Commands — Marvin",
+    "description": "The full command catalog for the marvin plugin — all {commands} commands across {groups} groups, searchable in your browser.",
+    "summary": "Searchable reference for every command, filterable by group.",
+    "priority": 0.8
+  },
+  {
+    "path": "/pipeline",
+    "title": "Pipeline — Marvin",
+    "description": "A guided tour of marvin's spec-driven pipeline: spec, implement, verify, deliver, then learn.",
+    "summary": "How the spec-driven task pipeline works, stage by stage.",
+    "priority": 0.7
+  },
+  {
+    "path": "/toolbox",
+    "title": "Toolbox — Marvin",
+    "description": "The visual layer: marvin's nine MCP Apps widgets as a user journey — interactive in MCP Apps hosts, plain text in any terminal.",
+    "summary": "The MCP Apps widgets, with live demos.",
+    "priority": 0.6
+  }
+]

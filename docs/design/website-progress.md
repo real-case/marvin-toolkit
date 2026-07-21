@@ -14,8 +14,15 @@ The site is built and behaving. Phases 0 through 4 are complete and merged to `d
 workspace, the generated content pipeline, all five pages, and the client-side interactions.
 Phase 5 was split in two. The widget embeds (5a) are implemented, and the terminal recordings (5b)
 now play on the four pipeline stages — but **Phase 5 is not closed**: the plan also names a Home
-hero recording, which is deliberately deferred (see below). What else remains is the machine-facing
-surface and measurement (Phase 6) and the deploy pipeline (Phase 7).
+hero recording, which is deliberately deferred (see below). Phase 6 was split the same way and for
+the same reason: 6a, the machine-facing surface, is implemented; 6b, the OpenGraph imagery, is not.
+What remains is 6b and the deploy pipeline (Phase 7).
+
+Note the plan describes Phase 6 as "agent surface, SEO **and analytics**". The analytics half
+(FR-22) has moved to Phase 7. It was never separable from the deploy work: Vercel Analytics only
+reports from a Vercel deployment, so until that project exists the only provable assertion is that
+a stubbed call fired — which demonstrates wiring, not measurement. It lands with the project that
+receives it.
 
 Phase 5 was split because its two halves are different kinds of work. Embedding the widgets is
 browser engineering that can be specified and verified end to end; recording the terminal
@@ -45,9 +52,10 @@ and waiting in a pull request rather than unstarted.
 | 4 · Interactive islands | Complete | Search, copy, Toolbox toggle — PR #132, `f9dff41` |
 | 5a · Widget embeds | Complete | Live demos on `/toolbox` and Home, theme-synced — spec `011-website-widget-embeds` |
 | 5b · Terminal recordings | Complete for the pipeline tour | Four generated asciicasts play on `/pipeline`, poster-first — spec `012-website-terminal-recordings`. Phase 5 stays open on the deferred Home hero recording |
-| 6 · Agent surface and SEO | Not started | Can run in parallel with Phase 5 |
-| 7 · Deploy pipeline | Not started | Can run in parallel with Phase 5 |
-| 8 · Launch | Gated | One gate met, one in review — see Launch gates |
+| 6a · Agent surface and SEO metadata | Complete | `llms.txt`, `sitemap.xml`, `robots.txt` and per-page canonical/OpenGraph from one page registry — spec `013-website-agent-surface-seo` |
+| 6b · OpenGraph imagery | Not started | Five cards; blocked on a font-pipeline decision — see below |
+| 7 · Deploy pipeline | Not started | Now also owns analytics (FR-22); can run in parallel |
+| 8 · Launch | Ungated | **Both launch gates are met** — see Launch gates |
 
 ## What is shipped
 
@@ -61,7 +69,9 @@ code that now exists on `dev`.
 | Low-fi wireframes, all five pages | Private preview artifact (v2.3) | Done |
 | Style proposal, font specimen, hi-fi mockups | Private preview artifacts; ported copies at `docs/design/mockups/` | Done |
 | Workspace `@marvin-toolkit/site` | `packages/site/` | Astro static build, Preact integration, ported theme tokens, self-hosted fonts |
-| Content pipeline | `packages/site/scripts/gen-catalog.mjs` | Emits `src/data/catalog.json` — 51 commands, seven groups, counts and version, all derived from plugin sources |
+| Content pipeline | `packages/site/scripts/gen-catalog.mjs` | Emits `src/data/catalog.json` — every command, seven groups, counts and version, all derived from plugin sources |
+| Page registry | `packages/site/src/data/pages.json` + `pages.ts` | One record per route — the single source for page metadata, the sitemap URL set, and the llms.txt page list |
+| Agent + SEO surface | `packages/site/src/lib/seo.ts` + three endpoints | `/llms.txt`, `/sitemap.xml`, `/robots.txt`; canonical and OpenGraph emitted from the registry by `Base.astro` |
 | Five pages | `packages/site/src/pages/` | `/`, `/commands`, `/pipeline`, `/toolbox`, `/quickstart` |
 | Command search island | `packages/site/src/components/CommandCatalog.tsx` | Client-side fuzzy search, group chips, URL-reflected filter state |
 | Copy-to-clipboard | `packages/site/src/layouts/Base.astro` | One delegated handler serving every command snippet site-wide |
@@ -70,7 +80,7 @@ code that now exists on `dev`.
 | Widget demo islands | `packages/site/src/components/WidgetDemo.tsx` | `<WidgetDemo>` (lazy, Home) and `<WidgetCanvas>` (picker + Live/Screenshot, Toolbox), theme-synced into the frame |
 | Recording pipeline | `packages/site/scripts/gen-casts.mjs` | Authored stage scripts → one asciicast v2 per stage plus the committed manifest `src/data/casts.json`; fails the build on a command absent from the catalog |
 | Cast player island | `packages/site/src/components/CastPlayer.tsx` | Poster server-rendered; the player module and its vendor stylesheet both load only on press |
-| End-to-end suite | `packages/site/e2e/` | 41 Playwright tests across nine specs |
+| End-to-end suite | `packages/site/e2e/` | 47 Playwright tests across ten specs |
 
 ## Decisions locked
 
@@ -93,9 +103,11 @@ The full list with rationale is the Decisions log in the requirements document. 
 | Gate | State | Detail |
 |------|-------|--------|
 | Repository public | **Met** | `real-case/marvin-toolkit` is public, so `/plugin marketplace add real-case/marvin-toolkit` now works for visitors and the primary call to action is live rather than inert |
-| Report export (PDF + Markdown) | **In review** | The template-only feature is implemented on `feat/report-export` (spec `report-export-template`, superseding the original server-side spec) and open as PR #133 into `dev`; it lands with plugin version 0.9.0 |
+| Report export (PDF + Markdown) | **Met** | The template-only feature merged as PR #133 (`bedc02c`) with plugin version 0.9.0, so the Toolbox's FR-18 claim is now true |
 
-Neither gate blocks Phases 5 through 7, which can proceed regardless.
+**Both gates are met.** Launch is no longer gated on anything outside the site — what stands
+between here and a public `marvin-toolkit.dev` is 6b, Phase 7, and the decision on the Home hero
+recording.
 
 ## How the widget embeds work
 
@@ -135,7 +147,7 @@ verbatim from the private design artifact — that is why `.prettierignore` excl
 editing them would defeat the "verbatim" contract that makes them trustworthy as a record of what
 was approved. Do not port these three strings forward. The site's own pages are correct, and
 `packages/site/test/command-refs.test.mjs` fails the build if a non-existent command reaches an
-`.astro` or `.tsx` source, so a future port cannot reintroduce them silently.
+`.astro`, `.tsx`, `.ts` or `.mjs` source, so a future port cannot reintroduce them silently.
 
 ## What is not yet done
 
@@ -147,20 +159,59 @@ was approved. Do not port these three strings forward. The site's own pages are 
   important surface — one that already had to fight overflow at that boundary — and it would
   duplicate stage 3, since the hero shows the same command. It needs a design decision before it
   becomes a spec.
-- No `llms.txt`, no per-page OpenGraph images, no sitemap or robots directives, and no
-  analytics events.
-- No Vercel project, no domain configuration, and no preview deployments.
+- **No OpenGraph images** (Phase 6b). The metadata names no `og:image`, and `twitter:card` is
+  `summary` rather than `summary_large_image`, which is the correct pairing while no image exists.
+  The blocker is a font pipeline, not the cards: `@fontsource-variable` ships **woff2 only**, and
+  the two standard SVG→PNG routes need TTF or OTF — satori documents woff2 as unsupported, and
+  resvg's handling is version-dependent. Rendering the cards in Hanken Grotesk therefore needs a
+  decision first: commit an OFL-licensed TTF for build-time use, convert the woff2, or render the
+  text as paths. Raster is genuinely required — every major crawler rejects SVG for `og:image`.
+- No Vercel project, no domain configuration, no preview deployments, and no analytics events
+  (FR-22, now Phase 7).
 
 ## Next action
 
-Decide the Home hero recording — whether the hero's grid break and motion moment can carry a
-player, or whether the parity pair should stay static — and spec it. That is the last of the
-plan's media work and the only thing keeping Phase 5 open.
+Two independent pieces remain, plus one decision.
 
-Phases 6 and 7 depend only on Phase 3 and can run alongside it — worth starting the Vercel
-project early so preview deployments cover the remaining work.
+**Phase 6b — the OpenGraph cards.** Pick the font route above, then a generator emits five
+1200×630 PNGs, committed like the widget visual baselines rather than rebuilt in CI. The metadata
+already has the shape waiting for them.
+
+**Phase 7 — the deploy pipeline**, which now also carries analytics. Worth starting early so
+preview deployments cover the remaining work; it is the only phase needing access outside the
+repository.
+
+**The Home hero recording** still needs a design call before it can be specced — whether the
+hero's grid break and single motion moment can carry a player, or whether the parity pair stays
+static. It is the last of the plan's media work and the only thing keeping Phase 5 open.
 
 ## Change log
+
+- **2026-07-21** — Phase 6 split into 6a (agent surface and SEO metadata) and 6b (OpenGraph
+  imagery), and 6a implemented. The site now serves `/llms.txt`, `/sitemap.xml` and `/robots.txt`,
+  and every page carries a canonical link plus OpenGraph and Twitter metadata. Analytics (FR-22)
+  moved to Phase 7, where the Vercel project that receives the events actually exists.
+
+  The design decision worth carrying forward is that **one registry feeds all three consumers**.
+  `src/data/pages.json` is read by `Base.astro` for metadata, by the sitemap for its URL set, and
+  by llms.txt for its page list — so those three cannot disagree about which pages exist or what
+  they are called. Critically, canonical, `og:url` and each sitemap `<loc>` are all built from the
+  registry `path` and never from `Astro.url`: with directory build output a page resolves as both
+  `/commands` and `/commands/`, so deriving one from the request and the other from the registry
+  would let a single page advertise two canonical URLs while every test still passed.
+
+  Two things were fixed that the phase did not set out to fix. The Quickstart had claimed since
+  Phase 3 that the site serves `llms.txt` while nothing served it — the same class as the
+  `/marvin:verify` defect PR #144 fixed, one level up, and now closed by a test that asserts the
+  link resolves. And the type gate was checking far less than it appeared to: `check:catalog` named
+  its files on the tsc command line, which makes tsc discard `tsconfig.json` entirely, so it ran at
+  target ES5 without any of Astro's strict options. It now runs `tsc -p tsconfig.check.json` and
+  covers every TypeScript module the site ships. Both are recorded in `.marvin/memory/`.
+
+  The llms.txt command index deep-links each command to `/commands?q=<name>`, which works only
+  because Phase 4 shipped URL-reflected filter state — that is what keeps the section a conformant
+  markdown link list rather than bare bullets, and it means the two phases are now coupled:
+  breaking the `?q=` contract would silently degrade every link in llms.txt.
 
 - **2026-07-21** — Phase 5b implemented for the pipeline tour. The four stage posters became lazy
   player islands over generated asciicast v2 recordings, with every command, caption and duration

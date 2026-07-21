@@ -1,0 +1,46 @@
+// Shared types for the page registry (spec 013-website-agent-surface-seo, F3).
+//
+// pages.json is the single source for everything that has to know which pages exist and how each
+// one describes itself: Base.astro's per-page metadata (canonical / OpenGraph / Twitter), the
+// sitemap's URL set, and the llms.txt page section. Before this registry those titles lived inline
+// in each page's <Base> call — index.astro passed none at all and silently inherited a generic
+// default, which is the failure AC5 exists to prevent.
+//
+// This module only declares the shape and re-exports the JSON typed, exactly as catalog.ts and
+// casts.ts do. It is deliberately a STRAIGHT re-export with an explicit type annotation — no `as`
+// cast, no filtering, no transformation. Two reasons, both load-bearing:
+//
+//   1. test/seo.test.mjs reads pages.json directly (node:test cannot import TypeScript, and the
+//      Node-20 CI leg has no transpile step). Any transformation here would divorce that guard
+//      from what the consumers actually see.
+//   2. The annotation is what makes --resolveJsonModule structurally check the JSON's real
+//      contents against PageMeta for free. An `as` cast would silence exactly that check.
+//
+// The `check:catalog` tsc pass covers this file, keeping the type and the JSON in lockstep.
+import data from "./pages.json";
+
+/**
+ * One user-facing page. Every `.astro` file under src/pages/ has exactly one record here.
+ *
+ * ALL THREE prose fields — `title`, `description`, `summary` — may carry `{commands}` or
+ * `{groups}` placeholders, which `resolvePlaceholders()` in lib/seo.ts fills from the generated
+ * catalog wherever the field is rendered. That is how a page quotes live registry counts without a
+ * number ever being hand-typed here (FR-20). Keeping all three symmetric is deliberate: an
+ * exception would be invisible at the call site and would ship a literal brace.
+ */
+export interface PageMeta {
+  /** Site-root path, canonical form — NO trailing slash (home is "/"). */
+  path: string;
+  /** <title> and og:title. Unique across the registry (AC5). Placeholders resolve (see below). */
+  title: string;
+  /** meta description and og:description. Placeholders resolve (see below). */
+  description: string;
+  /** One-line gloss for the llms.txt page list, where a full description reads too long. */
+  summary: string;
+  /** Sitemap <priority>. Ordering signal only; carries no SEO guarantee. */
+  priority: number;
+}
+
+export const pages: PageMeta[] = data;
+
+export default pages;
