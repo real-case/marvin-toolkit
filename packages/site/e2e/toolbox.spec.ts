@@ -62,7 +62,7 @@ test("toolbox renders the visual-toolbox header and the arrive, steer, review jo
   for (const label of WIDGET_LABELS) {
     expect(labels, `missing widget mini "${label}"`).toContain(label);
   }
-  await expect(page.locator(".wmini")).toHaveCount(catalog.counts.widgets); // 9
+  await expect(page.locator(".wmini")).toHaveCount(catalog.counts.widgets);
 });
 
 test("toolbox renders the demo-canvas shell, the parity line, and the catalog-driven widget count", async ({
@@ -71,7 +71,7 @@ test("toolbox renders the demo-canvas shell, the parity line, and the catalog-dr
   await page.goto("/toolbox");
 
   // The widget count is catalog-driven, not hand-typed (FR-20).
-  await expect(page.locator(".chip")).toContainText(String(catalog.counts.widgets)); // 9
+  await expect(page.locator(".chip")).toContainText(String(catalog.counts.widgets));
 
   const canvas = await openCanvas(page);
 
