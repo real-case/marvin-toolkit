@@ -4,9 +4,33 @@
 // owns nav/footer/head). Copy verbatim from the approved mockup. Pipeline-specific styles
 // live in the scoped <style> below; tokens, .container, .btn/.badge primitives, and the
 // blueprint texture come from the scaffold — the .eyebrow is overridden to accent locally
-// (as Home does) and the terminal --term* palette stays page-local until the Toolbox slice.
-// The stage posters are Phase-5 placeholders: no <video>/<audio>/<iframe>, nothing autoplays.
+// (as Home does).
+//
+// Phase 5b (spec 012) replaced the four inert posters with real terminal recordings. Each stage is
+// now a <CastPlayer> island fed from the GENERATED manifest, so its command, caption and duration
+// come from the recording rather than from literals typed here. gen-casts.mjs additionally fails
+// the build for any scripted command absent from the catalog — command-refs.test.mjs cannot cover
+// that, since it scans only .astro/.tsx under src/ and the cast scripts are .mjs under scripts/.
+// The poster styling moved to CastPlayer.css because
+// Astro's scoped <style> cannot reach Preact-rendered DOM. Still poster-first and never autoplaying:
+// nothing but the poster ships until a visitor presses play.
 import Base from "../layouts/Base.astro";
+import CastPlayer from "../components/CastPlayer";
+import { casts } from "../data/casts";
+
+const byKey = new Map(casts.map((cast) => [cast.key, cast]));
+
+/** Fail the build loudly rather than rendering a stage with no recording behind it. */
+function stageCast(key: string) {
+  const cast = byKey.get(key);
+  if (!cast) {
+    throw new Error(
+      `[pipeline] no recording for stage "${key}" — src/data/casts.json is stale or missing it. ` +
+        "Run `npm run gen:casts -w @marvin-toolkit/site`.",
+    );
+  }
+  return cast;
+}
 ---
 
 <Base
@@ -53,19 +77,11 @@ import Base from "../layouts/Base.astro";
             </div>
             <p class="snote">A durable artifact — leave it, return, run it later.</p>
           </div>
-          <div class="poster">
-            <span class="cmd0">➜ /marvin:task-start</span><br />dialogue → spec…
-            <div class="play"><span class="circ"><span class="tri"></span></span></div>
-            <span class="dur">0:42</span>
-          </div>
+          <CastPlayer client:visible cast={stageCast("task-start")} />
         </div>
 
         <div class="stage">
-          <div class="poster">
-            <span class="cmd0">➜ /marvin:task-implement</span><br />writing code + tests…
-            <div class="play"><span class="circ"><span class="tri"></span></span></div>
-            <span class="dur">1:18</span>
-          </div>
+          <CastPlayer client:visible cast={stageCast("task-implement")} />
           <div class="stagecard">
             <span class="snum">STAGE 2 · task-implement</span>
             <h3>Build it against the spec</h3>
@@ -93,19 +109,11 @@ import Base from "../layouts/Base.astro";
               <span class="achip">verification.md</span>
             </div>
           </div>
-          <div class="poster">
-            <span class="cmd0">➜ /marvin:task-verify</span><br />gates: 4 running…
-            <div class="play"><span class="circ"><span class="tri"></span></span></div>
-            <span class="dur">0:55</span>
-          </div>
+          <CastPlayer client:visible cast={stageCast("task-verify")} />
         </div>
 
         <div class="stage">
-          <div class="poster">
-            <span class="cmd0">➜ /marvin:task-deliver</span><br />commit → pull request…
-            <div class="play"><span class="circ"><span class="tri"></span></span></div>
-            <span class="dur">0:38</span>
-          </div>
+          <CastPlayer client:visible cast={stageCast("task-deliver")} />
           <div class="stagecard">
             <span class="snum">STAGE 4 · task-deliver</span>
             <h3>Ship it, documented</h3>
@@ -323,65 +331,10 @@ import Base from "../layouts/Base.astro";
     margin-top: 9px;
   }
 
-  /* ---------- poster (Phase-5 placeholder — always the dark terminal, page-local --term*) ---------- */
-  .poster {
-    --term: #101014;
-    --termd: #8a8a93;
-    --termg: #7ee2a8;
-    border-radius: 12px;
-    background: var(--term);
-    border: 1px solid #26262c;
-    padding: 18px 20px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--termd);
-    line-height: 1.7;
-    min-height: 130px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.1);
-  }
-  .poster .cmd0 {
-    color: var(--termg);
-  }
-  .poster .play {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .poster .play .circ {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(2px);
-  }
-  .poster .play .tri {
-    width: 0;
-    height: 0;
-    border-left: 15px solid #fff;
-    border-top: 9px solid transparent;
-    border-bottom: 9px solid transparent;
-    margin-left: 4px;
-  }
-  .poster .dur {
-    position: absolute;
-    right: 12px;
-    bottom: 10px;
-    font-size: 10px;
-    color: var(--termd);
-    border: 1px solid #26262c;
-    border-radius: 5px;
-    padding: 1px 7px;
-  }
+  /* The poster rules that lived here (.poster, .cmd0, .play/.circ/.tri, .dur) moved VERBATIM to
+     src/components/CastPlayer.css when the posters became islands (spec 012, F5). Astro scopes this
+     <style> to this template only, and that scoping never reaches Preact-rendered DOM — left here
+     they would have silently stopped applying. The page-local --term* palette went with them. */
 
   /* ---------- lessons loop ---------- */
   .looprow {

@@ -1,9 +1,14 @@
 import { test, expect } from "@playwright/test";
 
-// End-to-end proofs for the Pipeline page (spec 007, F2). Drives the real built page via
-// `astro preview`, same harness as home.spec.ts / theme-toggle.spec.ts. Test titles match
-// the spec's oracle refs exactly (AC1–AC4). Pipeline imports no generated catalog data
-// (it renders no counts), so — unlike home.spec.ts — there is no catalog.json read here.
+// End-to-end proofs for the Pipeline page. Originally spec 007 (static tour); updated by spec 012
+// (F10), which replaced the Phase-5 absence guards — "no astro-island", "no iframe/video/audio" —
+// with the shipped behaviour now that each stage poster is a lazy player island. Drives the real
+// built page via `astro preview`, same harness as home.spec.ts / theme-toggle.spec.ts. Test titles
+// match the specs' oracle refs exactly.
+//
+// The recordings themselves (poster data, no-autoplay, played content) are proved in
+// cast-player.spec.ts; this file covers the page around them — the payload budget (AC5) and the
+// responsive/theme behaviour with a player mounted (AC6).
 
 test("pipeline renders the header, rail, and four stage cards in order", async ({ page }) => {
   await page.goto("/pipeline");
@@ -68,7 +73,7 @@ test("pipeline renders the lessons loop, under-the-hood trio, and quickstart cta
   await expect(cta).toHaveAttribute("href", "/quickstart");
 });
 
-test("pipeline holds both themes and responds from 360 to 1440 without horizontal overflow", async ({
+test("pipeline holds both themes and responds from 360 to 1440 with a player mounted", async ({
   page,
 }) => {
   // Themes: with no stored preference the default follows prefers-color-scheme (emulated
@@ -84,25 +89,114 @@ test("pipeline holds both themes and responds from 360 to 1440 without horizonta
   await expect(html).toHaveAttribute("data-theme", "dark"); // persisted across reload
 
   // Responsive: no horizontal overflow at the supported widths — the .stage (1fr/1fr) and
-  // .uth (3-col) grids collapse, the rail wraps, and the posters contain.
+  // .uth (3-col) grids collapse, the rail wraps, and the terminal contains.
   for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/pipeline");
+
+    // Activate INSIDE the loop. This loop re-navigates on every iteration, so a player mounted
+    // before it would be destroyed by the first `goto` — and the test would quietly go back to
+    // measuring the static page it was rewritten to stop measuring.
+    const stage = page.locator('.cast[data-stage="task-start"]');
+    await stage.scrollIntoViewIfNeeded();
+    await stage.locator(".cast-play").click();
+
+    const term = stage.locator(".ap-term");
+    await expect(term, `terminal must mount at ${width}px`).toHaveCount(1);
+    // Wait for visibility before reading geometry: `toHaveCount` is satisfiable while `.cast-stage`
+    // is still hidden, because the component un-hides it on a re-render after create() returns.
+    // boundingBox() does not retry, so without this the measurement below rides on Preact's
+    // microtask scheduling rather than on anything this test controls.
+    await expect(term, `terminal must be visible at ${width}px`).toBeVisible();
+
+    // Measure the box, not just the overflow. A missing vendor stylesheet is a SILENT failure: the
+    // player mounts without error and every terminal row and span collapses to a single point —
+    // against which an overflow-only assertion passes very happily.
+    const box = await term.boundingBox();
+    expect(box?.width ?? 0, `terminal width at ${width}px`).toBeGreaterThan(0);
+    expect(box?.height ?? 0, `terminal height at ${width}px`).toBeGreaterThan(0);
+
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
+
+    // Both themes must hold WITH THE PLAYER UP, not just on the static page above. The terminal
+    // bridges the player's own custom properties onto the site palette through a specificity
+    // trick (CastPlayer.css: the vendor sheet is <link>ed later, so an equal-specificity rule
+    // would lose) — asserting themes only before any player exists never exercises it.
+    //
+    // Each iteration flips ONE theme, and the theme persists across iterations, so the loop
+    // alternates (dark→light, light→dark, dark→light) and covers both directions across the three
+    // widths. That coverage rides on the alternation: adding a fourth width, or clearing storage
+    // between iterations, would collapse it to a single direction. Assert on the flipped value
+    // rather than a fixed one so the test stays correct either way.
+    const before = await html.getAttribute("data-theme");
+    await page.locator("#theme-toggle").click();
+    await expect(html).toHaveAttribute("data-theme", before === "dark" ? "light" : "dark");
+
+    await expect(term, `terminal must survive a theme flip at ${width}px`).toBeVisible();
+    const flipped = await term.boundingBox();
+    expect(flipped?.width ?? 0, `terminal width after theme flip at ${width}px`).toBeGreaterThan(0);
+    expect(flipped?.height ?? 0, `terminal height after theme flip at ${width}px`).toBeGreaterThan(
+      0,
+    );
+
+    const flippedOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(flippedOverflow, `overflow after theme flip at ${width}px`).toBeLessThanOrEqual(1);
   }
 });
 
-test("pipeline is static and poster-first — no island and no autoplaying media", async ({
+test("pipeline is poster-first and requests no player asset until a stage is activated", async ({
   page,
 }) => {
+  const requests: string[] = [];
+  const scripts: string[] = [];
+  page.on("request", (request) => {
+    requests.push(request.url());
+    if (request.resourceType() === "script") scripts.push(request.url());
+  });
+
   await page.goto("/pipeline");
-  // No Preact island hydrates — the page is static HTML/CSS with only Base's inline theme
-  // script (the automatable proxy for "ships no JS", Lighthouse ≥ 95 / FR-15).
-  await expect(page.locator("astro-island")).toHaveCount(0);
-  // Poster-first: the stage recordings are Phase-5 placeholders, so no media element ships
-  // yet — a clean guard against an autoplaying <video>/<audio> or an <iframe> embed.
-  await expect(page.locator("video, audio, iframe")).toHaveCount(0);
+  await expect(page.locator(".cast-poster")).toHaveCount(4);
+
+  // Scroll the first stage in and let the network settle, so the island has genuinely hydrated
+  // (client:visible) before we claim nothing was fetched. Hydration must cost the island's own
+  // small chunk and nothing more.
+  await page.locator('.cast[data-stage="task-start"]').scrollIntoViewIfNeeded();
+  await page.waitForLoadState("networkidle");
+
+  const isCast = (url: string) => url.includes(".cast");
+  const isVendorCss = (url: string) => url.includes("asciinema-player.css");
+
+  expect(requests.filter(isCast), "no recording may be fetched at page load").toEqual([]);
+  expect(requests.filter(isVendorCss), "no player stylesheet may be fetched at page load").toEqual(
+    [],
+  );
+
+  const scriptsBefore = scripts.length;
+
+  await page.locator('.cast[data-stage="task-start"] .cast-play').click();
+  await expect(page.locator(".ap-term-text")).toHaveCount(1);
+  await page.waitForLoadState("networkidle");
+
+  expect(requests.filter(isCast).length, "activation must fetch the recording").toBeGreaterThan(0);
+  expect(
+    requests.filter(isVendorCss).length,
+    "activation must fetch the player stylesheet — it is structural, not decoration",
+  ).toBeGreaterThan(0);
+
+  // The clause that actually protects the budget, and the one that is easy to leave out. The
+  // player's chunk cannot be named — Vite derives chunk names from the entry module's filename, so
+  // it emits as an unstable hash — so assert that activation caused a NEW script fetch. Without
+  // this, moving the player to a top-level import would fold its ~330 KB (mostly an inlined WASM
+  // terminal emulator that minification cannot shrink) into the island's own chunk — which, for
+  // the above-the-fold stage 1, loads essentially at page load — while the cast and the stylesheet
+  // stayed lazy and this test stayed green.
+  expect(
+    scripts.length,
+    "activating a stage must fetch at least one new script — the player chunk",
+  ).toBeGreaterThan(scriptsBefore);
 });

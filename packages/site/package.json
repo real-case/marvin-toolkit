@@ -10,13 +10,14 @@
   "scripts": {
     "gen:catalog": "node scripts/gen-catalog.mjs",
     "gen:demos": "node scripts/gen-widget-demos.mjs",
-    "gen": "npm run gen:catalog && npm run gen:demos",
+    "gen:casts": "node scripts/gen-casts.mjs",
+    "gen": "npm run gen:catalog && npm run gen:demos && npm run gen:casts",
     "predev": "npm run gen",
     "dev": "astro dev",
     "prebuild": "npm run gen",
     "build": "node scripts/build.mjs",
     "preview": "astro preview",
-    "check:catalog": "tsc --noEmit --strict --skipLibCheck --resolveJsonModule --module esnext --moduleResolution bundler src/data/catalog.ts",
+    "check:catalog": "tsc --noEmit --strict --skipLibCheck --resolveJsonModule --module esnext --moduleResolution bundler src/data/catalog.ts src/data/casts.ts",
     "pretest": "npm run check:catalog",
     "test": "node --test test/*.test.mjs",
     "test:e2e": "playwright test"
@@ -25,6 +26,7 @@
     "@astrojs/preact": "^6.0.1",
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "asciinema-player": "^3.17.0",
     "astro": "^7.1.1",
     "preact": "^10.29.7"
   },

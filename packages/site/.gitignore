@@ -7,6 +7,12 @@ dist/
 # Derived from committed plugin sources, so versioning them here would duplicate ~2.7 MB.
 public/widget-demos/
 
+# Pipeline-tour terminal recordings — one asciicast per stage plus a copy of the player's vendor
+# stylesheet, emitted by scripts/gen-casts.mjs on every dev/build (spec 012). Derived entirely from
+# the authored scripts in that generator, which IS the versioned source. The manifest they produce
+# (src/data/casts.json) is committed; these playback assets are not.
+public/casts/
+
 # dependencies
 node_modules/
 

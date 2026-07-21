@@ -1,0 +1,210 @@
+/*
+ * CastPlayer.css (spec 012-website-terminal-recordings, F5) — the pipeline tour's player chrome.
+ *
+ * A plain CSS file for the same reason WidgetDemo.css and CommandCatalog.css are: Astro scopes a
+ * component's <style> to its OWN template and that scoping never reaches Preact-rendered DOM. The
+ * poster rules below MOVED here verbatim from pipeline.astro's scoped <style> when the poster became
+ * an island — left behind they would have silently stopped applying. Astro hoists this import to a
+ * static <head> stylesheet, which is correct for OUR chrome.
+ *
+ * This file styles our chrome ONLY. The vendor stylesheet that positions the terminal itself
+ * (asciinema-player.css — it absolutely positions every row and span, so without it the terminal
+ * collapses to a point) is NOT imported here: it is 19 KB that would then land on every /pipeline
+ * visit. CastPlayer.tsx <link>s it from /casts/ at activation instead, on the same lazy path as the
+ * player module. That is what AC5 measures.
+ *
+ * Because this sheet is global, every selector is prefixed with the island-owned `.cast` class.
+ */
+
+/* ---------- island root ---------- */
+
+/*
+ * A grid child defaults to min-width:auto and will not shrink below its content's intrinsic width.
+ * The terminal is a wide character grid, so without this it forces its track — and the page —
+ * sideways at 360px. pipeline.astro's `.stage > *` rule covers the island root today; this repeats
+ * it locally so the component cannot be moved into a laxer container and quietly regress (AC6).
+ */
+.cast {
+  min-width: 0;
+}
+
+/* ---------- poster (carried over from pipeline.astro, always the dark terminal) ---------- */
+
+/*
+ * The terminal surface is deliberately dark in BOTH site themes, exactly as the placeholder poster
+ * and the approved mockup were: a terminal reads as a terminal. These --term* values are the page's
+ * originals, kept here so the poster and the mounted player share one source and cannot drift apart
+ * mid-transition.
+ */
+.cast-poster,
+.cast-stage {
+  --term: #101014;
+  --termd: #8a8a93;
+  --termg: #7ee2a8;
+  --termbd: #26262c;
+}
+
+.cast-poster {
+  border-radius: 12px;
+  background: var(--term);
+  border: 1px solid var(--termbd);
+  padding: 18px 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--termd);
+  line-height: 1.7;
+  min-height: 130px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: 0 8px 26px rgb(0 0 0 / 10%);
+}
+
+.cast-cmd {
+  color: var(--termg);
+}
+
+/* The command must stay on one line and truncate rather than widen the track at 360px. */
+.cast-cmd,
+.cast-caption {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A real <button>, reset down to the mockup's translucent circle. It was a decorative <div> before
+ * this spec; it is the control that starts the recording now, so it must be focusable, operable by
+ * keyboard, and named for its stage (the accessible name is set in the component).
+ */
+.cast-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.cast-circ {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 28%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.cast-play:hover .cast-circ {
+  background: rgb(255 255 255 / 18%);
+  transform: scale(1.06);
+}
+
+.cast-play:focus-visible {
+  outline: none;
+}
+
+.cast-play:focus-visible .cast-circ {
+  outline: 2px solid var(--act);
+  outline-offset: 3px;
+}
+
+/* Honour a reduced-motion preference for the hover affordance. */
+@media (prefers-reduced-motion: reduce) {
+  .cast-circ {
+    transition: none;
+  }
+
+  .cast-play:hover .cast-circ {
+    transform: none;
+  }
+}
+
+.cast-tri {
+  width: 0;
+  height: 0;
+  border-left: 15px solid #fff;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  margin-left: 4px;
+}
+
+.cast-dur {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  font-size: 10px;
+  color: var(--termd);
+  border: 1px solid var(--termbd);
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+
+/* While the player module and its stylesheet are in flight. */
+.cast-loading {
+  position: absolute;
+  right: 12px;
+  left: 12px;
+  bottom: 10px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--termd);
+}
+
+/* ---------- mounted player ---------- */
+
+.cast-stage {
+  min-width: 0;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--termbd);
+  background: var(--term);
+  overflow: hidden;
+}
+
+.cast-poster[hidden],
+.cast-stage[hidden] {
+  display: none;
+}
+
+/*
+ * Bridge the player's own custom properties onto the poster's palette so the mounted terminal is the
+ * same surface the poster was — no colour jump at the moment of activation.
+ *
+ * Specificity, not order, is what makes this win: the vendor sheet declares these on the bare
+ * `.asciinema-player-theme-asciinema` class (0,1,0) and is <link>ed AFTER this file, so an
+ * equal-specificity rule here would lose. The descendant selector is (0,2,0) and wins regardless.
+ */
+.cast-stage .asciinema-player-theme-asciinema {
+  --term-color-background: var(--term);
+  --term-color-foreground: var(--termd);
+  --term-color-2: var(--termg);
+  --term-color-10: var(--termg);
+}
+
+/* The site's mono face, so the terminal matches every other command on the page. */
+.cast-stage .ap-player {
+  --term-font-family: var(--font-mono);
+}
+
+/* The terminal is a wide grid; `fit: "width"` scales it to the container, and this stops any
+   residual sub-pixel width from reaching the document scroller (AC6). */
+.cast-stage .ap-wrapper {
+  max-width: 100%;
+  overflow: hidden;
+}

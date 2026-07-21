@@ -17,6 +17,16 @@ packages/site/src/data/catalog.json
 # files, so without this entry `format:check` would check (and reject) the copied widget HTML for
 # exactly the reason the plugins/marvin/widgets/ entry above exists.
 packages/site/public/widget-demos/
+# The site's pipeline-tour recordings (spec 012) — asciicast files plus a copy of the asciinema
+# vendor stylesheet, emitted by packages/site/scripts/gen-casts.mjs into public/ on every dev/build.
+# Git-ignored, but Prettier does not read nested .gitignore files, so without this entry
+# `format:check` would reject both the JSONL casts and the vendor CSS. Same reason as the entry
+# above; the CSS half is exactly why `plugins/marvin/widgets/` is listed too.
+packages/site/public/casts/
+# Its committed manifest, emitted as JSON.stringify(…,2)+"\n" and byte-guarded by
+# test/casts.test.mjs — excluded for the same reason catalog.json is: Prettier's JSON formatting
+# would fight the generator and churn the file on every format run.
+packages/site/src/data/casts.json
 
 # Markdown is authored prose (READMEs, SKILL bodies, ADRs) with hand-aligned
 # tables and prompt formatting that Prettier would reflow. Left as-is.
