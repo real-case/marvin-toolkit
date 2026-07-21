@@ -109,6 +109,21 @@ widget's shell. That makes the suite a protocol-drift detector: if the handshake
 changes, the demos fall back to their static minis and CI fails, rather than the site quietly
 degrading.
 
+## Known-wrong content in the committed mockups
+
+`docs/design/mockups/home.html` and `inner-pages.html` print `/marvin:verify`, which is **not a
+command**. `verify` is an MCP tool; the command is `/marvin:task-verify`. The mockups also print
+`/marvin:task-list` and `/marvin:task-detail`, which are widget names — widgets are bound to tools
+(`task`, `task-detail`, `tracker`), and tools have no slash form. The commands that actually reach
+those widgets are `/marvin:track-list` and `/marvin:track-show`.
+
+The mockups are deliberately **not corrected**. They are read-only porting references preserved
+verbatim from the private design artifact — that is why `.prettierignore` excludes them — and
+editing them would defeat the "verbatim" contract that makes them trustworthy as a record of what
+was approved. Do not port these three strings forward. The site's own pages are correct, and
+`packages/site/test/command-refs.test.mjs` fails the build if a non-existent command reaches an
+`.astro` or `.tsx` source, so a future port cannot reintroduce them silently.
+
 ## What is not yet done
 
 - No terminal recordings. The hero and the four pipeline stages still show poster placeholders
@@ -127,6 +142,13 @@ project early so preview deployments cover the remaining work.
 
 ## Change log
 
+- **2026-07-20** — Fixed four references to commands that do not exist, and added a guard so the
+  class cannot recur. The site printed `/marvin:verify` on the Home hero and the Pipeline stage-3
+  poster (`verify` is a tool, not a command — the page was even self-inconsistent, its own heading
+  reading `STAGE 3 · task-verify`), and `/marvin:task-list` / `/marvin:task-detail` on the Toolbox
+  (both widget names; widgets bind to tools, which have no slash form). The new
+  `test/command-refs.test.mjs` scans every `.astro`/`.tsx` source for `/marvin:<name>` and checks
+  each against the generated catalog — it found the two Toolbox cases, which nobody had noticed.
 - **2026-07-20** — Phase 5 split into 5a (widget embeds) and 5b (terminal recordings), and 5a
   implemented: a build-time generator for the demo assets, a hand-rolled MCP Apps host over
   `postMessage`, and the two demo islands. `/toolbox` now frames all nine committed widget

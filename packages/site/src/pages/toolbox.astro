@@ -28,9 +28,17 @@ const groupCount = groups.length; // 7 — generated
 // The nine committed widgets as the arrive → steer → review journey (FR-16).
 //
 // `widget` is the widget FILE name — what /widget-demos/<widget>.{html,json} is keyed by, and what
-// the canvas island matches on. It is NOT always the command name: three of these diverge
-// (track-list→tracker-list, sec-report→audit, handoff-list→handoffs), which is exactly why the
-// mapping is explicit data rather than a string transform.
+// the canvas island matches on. `label` is the command a user actually types to reach it. The two
+// are NOT the same namespace and must never be derived from each other:
+//   - five diverge outright — task-list→/marvin:track-list, task-detail→/marvin:track-show,
+//     tracker-list→/marvin:track-list, audit→/marvin:sec-report, handoffs→/marvin:handoff-list
+//   - /marvin:track-list legitimately answers TWO widgets: the board by default (task-list) and
+//     the tracked view when asked for it (tracker-list)
+// Widgets are bound to MCP *tools* (task, task-detail, tracker), and tools have no slash form —
+// which is how the widget names "task-list" and "task-detail" were once printed here as if they
+// were commands. Neither exists. test/command-refs.test.mjs now checks every command this page
+// prints against the generated catalog; keep prose here free of literal slash-command spellings
+// for names that are not commands, since that guard reads comments too.
 //
 // `kind` selects one of three body shapes below. task-detail and task-summary are new artwork —
 // the approved mockup never drew them, but FR-16 covers all nine widgets.
@@ -62,7 +70,7 @@ const MINIS = [
   },
   {
     widget: "task-list",
-    label: "/marvin:task-list",
+    label: "/marvin:track-list",
     tag: "board",
     kind: "rows" as const,
     step: "steer",
@@ -86,7 +94,7 @@ const MINIS = [
   },
   {
     widget: "task-detail",
-    label: "/marvin:task-detail",
+    label: "/marvin:track-show",
     tag: "one task",
     kind: "rows" as const,
     step: "steer",
@@ -153,8 +161,11 @@ const steer = MINIS.filter((m) => m.step === "steer");
 const review = MINIS.filter((m) => m.step === "review");
 const help = MINIS.find((m) => m.widget === "help")!;
 
-// What the canvas picker offers — the same nine, same order, labelled by command.
-const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: m.label }));
+// What the canvas picker offers — the same nine, same order. The label carries the tag as well as
+// the command because two widgets legitimately answer the SAME command: /marvin:track-list shows
+// the board by default (task-list widget) and the tracked view when asked for it (tracker-list
+// widget), so command alone would render two identical chips.
+const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · ${m.tag}` }));
 ---
 
 <Base
