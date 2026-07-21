@@ -4,6 +4,7 @@
     "title": "Marvin — Claude Code toolset",
     "description": "Claude Code toolset for AI-assisted development. Without panic.",
     "summary": "The landing page: what marvin is, the five claims, and the install commands.",
+    "card": "AI-assisted development without panic.",
     "priority": 1
   },
   {
@@ -11,6 +12,7 @@
     "title": "Quickstart — Marvin",
     "description": "From zero to your first marvin command in about a minute: two commands to install, then spec your first task.",
     "summary": "Install marvin and run your first command, in four numbered steps.",
+    "card": "From zero to your first command in about a minute.",
     "priority": 0.9
   },
   {
@@ -18,6 +20,7 @@
     "title": "Commands — Marvin",
     "description": "The full command catalog for the marvin plugin — all {commands} commands across {groups} groups, searchable in your browser.",
     "summary": "Searchable reference for every command, filterable by group.",
+    "card": "Every command, searchable and filterable by group.",
     "priority": 0.8
   },
   {
@@ -25,6 +28,7 @@
     "title": "Pipeline — Marvin",
     "description": "A guided tour of marvin's spec-driven pipeline: spec, implement, verify, deliver, then learn.",
     "summary": "How the spec-driven task pipeline works, stage by stage.",
+    "card": "Spec, implement, verify, deliver — then learn.",
     "priority": 0.7
   },
   {
@@ -32,6 +36,7 @@
     "title": "Toolbox — Marvin",
     "description": "The visual layer: marvin's nine MCP Apps widgets as a user journey — interactive in MCP Apps hosts, plain text in any terminal.",
     "summary": "The MCP Apps widgets, with live demos.",
+    "card": "Interactive widgets. Plain text in any terminal.",
     "priority": 0.6
   }
 ]

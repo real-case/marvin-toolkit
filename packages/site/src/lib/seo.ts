@@ -16,6 +16,7 @@
 // sets verbatimModuleSyntax, and a value-form import of a type fails as TS1484 (see the lesson
 // "A tsc invocation that names files on the command line silently discards tsconfig.json").
 import type { Catalog } from "../data/catalog";
+import type { OgImage } from "../data/og";
 import type { PageMeta } from "../data/pages";
 
 /** The public repository — the docs map's base and the install instructions' source. */
@@ -61,6 +62,24 @@ export function normalizePath(pathname: string): string {
 export function findPage(pages: PageMeta[], pathname: string): PageMeta | undefined {
   const target = normalizePath(pathname);
   return pages.find((page) => normalizePath(page.path) === target);
+}
+
+/**
+ * The OpenGraph card for a pathname, or undefined when the route has no card (spec 014, F6).
+ *
+ * Resolves through the SAME `normalizePath` as `findPage` — deliberately, and this is the whole
+ * reason the lookup lives here rather than next to the data in src/data/og.ts. Base.astro builds
+ * canonical from `findPage` and og:image from this; if the two normalized differently, a registry
+ * entry written "/commands/" would resolve for one and miss for the other, and the page would
+ * advertise a canonical URL with no image while every test still passed.
+ *
+ * Returning undefined rather than a fallback is intentional: a route with no card (the three
+ * text endpoints, any future 404) emits no og:image at all, which is correct, instead of pointing
+ * every crawler at a generic image that describes a different page.
+ */
+export function ogImageFor(images: OgImage[], pathname: string): OgImage | undefined {
+  const target = normalizePath(pathname);
+  return images.find((image) => normalizePath(image.path) === target);
 }
 
 /**

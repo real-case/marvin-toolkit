@@ -23,6 +23,7 @@
   "files": [
     "src/data/catalog.ts",
     "src/data/casts.ts",
+    "src/data/og.ts",
     "src/data/pages.ts",
     "src/lib/seo.ts",
     "src/pages/llms.txt.ts",

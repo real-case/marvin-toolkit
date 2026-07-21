@@ -11,6 +11,7 @@
     "gen:catalog": "node scripts/gen-catalog.mjs",
     "gen:demos": "node scripts/gen-widget-demos.mjs",
     "gen:casts": "node scripts/gen-casts.mjs",
+    "gen:og": "node scripts/gen-og.mjs",
     "gen": "npm run gen:catalog && npm run gen:demos && npm run gen:casts",
     "predev": "npm run gen",
     "dev": "astro dev",
