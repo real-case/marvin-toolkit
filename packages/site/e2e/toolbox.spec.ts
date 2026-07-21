@@ -19,12 +19,17 @@ const catalog = JSON.parse(readFileSync(join(here, "../src/data/catalog.json"), 
 
 // All nine committed widgets are now present: spec 011 added task-detail (to `steer`) and
 // task-summary (to `review & share`), which the Phase-3 shell was missing.
+//
+// These are COMMANDS, not widget names — the two namespaces differ, and printing a widget name as
+// a command is how `/marvin:task-list` and `/marvin:task-detail` (neither of which exists) once
+// reached this page. `/marvin:track-list` appears twice on purpose: it answers the board view
+// (task-list widget) and the tracked view (tracker-list widget). test/command-refs.test.mjs is the
+// guard that keeps this list honest against the generated catalog.
 const WIDGET_LABELS = [
   "/marvin:help",
   "/marvin:dashboard",
-  "/marvin:task-list",
   "/marvin:track-list",
-  "/marvin:task-detail",
+  "/marvin:track-show",
   "/marvin:reports",
   "/marvin:sec-report",
   "/marvin:task-summary",
