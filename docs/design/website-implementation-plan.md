@@ -186,6 +186,13 @@ recordings are poster-first and never autoplay; nothing opens in a modal.
 
 **Goal.** Continuous preview deploys, a production build, and the measurement that needs them.
 
+> **Amended during execution.** Split into an in-repo slice and an external runbook. Spec
+> `015-website-deploy-analytics` ships the committable, testable half — a root `vercel.json`, the
+> build-skip script, and Vercel Web Analytics with the two custom events — while creating the Vercel
+> project, Root Directory, domain/DNS, and confirming events in the dashboard stay a documented
+> runbook (they need access outside the repo). A Content-Security-Policy header is deferred to a
+> hardening pass verified against the live origin. See [website-progress.md](website-progress.md).
+
 **Tasks.**
 
 - Create the Vercel project pointed at the `packages/site` workspace, with the build and

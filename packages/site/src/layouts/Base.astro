@@ -10,6 +10,7 @@ import "../styles/global.css";
 import "../styles/primitives.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
+import Analytics from "@vercel/analytics/astro";
 import { catalog } from "../data/catalog";
 import { ogImages } from "../data/og";
 import { pages } from "../data/pages";
@@ -112,6 +113,12 @@ const favicon =
         }
       })();
     </script>
+
+    <!-- Vercel Web Analytics (spec 015, F7 — FR-22). The <Analytics/> component injects the
+         window.va queue + the /_vercel/insights collector script; measurement only happens on a
+         Vercel deployment, so on any other origin the collector 404s and events simply queue. No
+         @astrojs/vercel adapter is required — the component is a client-side custom element. -->
+    <Analytics />
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to content</a>
@@ -171,6 +178,33 @@ const favicon =
           );
         });
       })();
+    </script>
+
+    <!-- Vercel Analytics custom events (spec 015, F7 — FR-22). A processed module <script> (NOT
+         is:inline — track() is a module import); Astro bundles just this plus the tiny track()
+         helper. Two delegated listeners: a .copy on a [data-va-event] .command row fires that
+         event name (install rows = install_copy), and any github.com link fires github_click.
+         Kept separate from the is:inline clipboard handler above on purpose — clipboard must keep
+         working even if this module fails to load. -->
+    <script>
+      import { track } from "@vercel/analytics";
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        // A copy button on a marked command row → the row's declared event (install → install_copy).
+        const copy = target.closest(".copy");
+        if (copy) {
+          const name = copy.closest(".command")?.getAttribute("data-va-event");
+          if (name) track(name);
+          return;
+        }
+
+        // Any GitHub link is a "GitHub visit" (FR-22) — nav, footer, and the in-page CTAs.
+        const gh = target.closest('a[href*="github.com"]');
+        if (gh) track("github_click");
+      });
     </script>
 
     <style>

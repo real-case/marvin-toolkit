@@ -12,11 +12,16 @@
 // this component's Phase-3 comment promised.
 interface Props {
   command: string;
+  // When set, the copy button on this row emits a Vercel Analytics custom event of this name
+  // (spec 015, F8). Install rows pass "install_copy"; ordinary command rows omit it, so the
+  // one delegated analytics listener in Base.astro fires only for the rows that carry it.
+  // Astro omits the attribute entirely when the value is undefined, so unmarked rows stay clean.
+  vaEvent?: string;
 }
-const { command } = Astro.props;
+const { command, vaEvent } = Astro.props;
 ---
 
-<div class="command">
+<div class="command" data-va-event={vaEvent}>
   <code class="code">{command}</code>
   <button type="button" class="copy" aria-label={`Copy ${command}`}>copy</button>
 </div>
