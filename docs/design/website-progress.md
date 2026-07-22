@@ -105,9 +105,11 @@ The full list with rationale is the Decisions log in the requirements document. 
 | Repository public | **Met** | `real-case/marvin-toolkit` is public, so `/plugin marketplace add real-case/marvin-toolkit` now works for visitors and the primary call to action is live rather than inert |
 | Report export (PDF + Markdown) | **Met** | The template-only feature merged as PR #133 (`bedc02c`) with plugin version 0.9.0, so the Toolbox's FR-18 claim is now true |
 
-**Both gates are met.** Launch is no longer gated on anything outside the site — what stands
-between here and a public `marvin-toolkit.dev` is 6b, Phase 7, and the decision on the Home hero
-recording.
+**Both gates are met** — no external dependency still blocks launch. With 6b and the Phase 7 in-repo
+slice now merged (`vercel.json`, the build-skip decision, and Vercel Web Analytics — PR #152,
+`6683131`), the remaining work before a public `marvin-toolkit.dev` is operational, not code: the
+Phase 7 **external** steps (create the Vercel project, enable Web Analytics, add the domain and its
+DNS — the deploy runbook below) and the design decision on the Home hero recording.
 
 ## How the widget embeds work
 
