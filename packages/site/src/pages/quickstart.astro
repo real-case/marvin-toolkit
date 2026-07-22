@@ -41,14 +41,17 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
         <div class="qmark rail">1</div>
         <div class="qbody">
           <h3>Add the marketplace</h3>
-          <CodeCommand command="/plugin marketplace add real-case/marvin-toolkit" />
+          <CodeCommand
+            command="/plugin marketplace add real-case/marvin-toolkit"
+            vaEvent="install_copy"
+          />
         </div>
       </div>
       <div class="qstep">
         <div class="qmark rail">2</div>
         <div class="qbody">
           <h3>Install the plugin</h3>
-          <CodeCommand command="/plugin install marvin@marvin-toolkit" />
+          <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
         </div>
       </div>
       <div class="qstep">

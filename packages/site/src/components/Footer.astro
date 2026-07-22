@@ -1,8 +1,8 @@
 ---
 // Footer.astro (spec 004, F8) — the global footer (FR-1): repository, releases,
 // GitHub docs, MIT license, and the author link, plus the analytics-disclosure slot.
-// The disclosure copy is a truthful placeholder for Phase 1 — the full Vercel-Analytics
-// wording is finalized in Phase 6 when analytics actually lands (FR-22).
+// The disclosure states the site's cookieless Vercel Web Analytics (spec 015, F11 — FR-22):
+// no cookies and no consent banner. Analytics reports only from the Vercel deployment.
 const REPO = "https://github.com/real-case/marvin-toolkit";
 const AUTHOR = "https://github.com/real-case";
 const year = new Date().getFullYear();
@@ -29,7 +29,9 @@ const links = [
     </nav>
     <p class="footer__meta">
       <span>© {year} Marvin toolkit · MIT</span>
-      <span class="footer__analytics" data-slot="analytics-disclosure">No cookies.</span>
+      <span class="footer__analytics" data-slot="analytics-disclosure">
+        Privacy-friendly analytics · no cookies.
+      </span>
     </p>
   </div>
 </footer>

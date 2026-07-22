@@ -39,8 +39,11 @@ const groupCount = groups.length; // generated, not a literal
           fail-closed quality gates, security scans, and decision records — deterministic where it
           matters, in your repo always.
         </p>
-        <CodeCommand command="/plugin marketplace add real-case/marvin-toolkit" />
-        <CodeCommand command="/plugin install marvin@marvin-toolkit" />
+        <CodeCommand
+          command="/plugin marketplace add real-case/marvin-toolkit"
+          vaEvent="install_copy"
+        />
+        <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
         <div class="btns">
           <a class="btn btn--accent" href="/quickstart">Get started</a>
           <a class="btn" href={REPO}>View on GitHub</a>
@@ -313,8 +316,11 @@ const groupCount = groups.length; // generated, not a literal
         No clone, no build step — the server ships bundled with the plugin.
       </p>
       <div class="installcmds">
-        <CodeCommand command="/plugin marketplace add real-case/marvin-toolkit" />
-        <CodeCommand command="/plugin install marvin@marvin-toolkit" />
+        <CodeCommand
+          command="/plugin marketplace add real-case/marvin-toolkit"
+          vaEvent="install_copy"
+        />
+        <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
       </div>
       <p class="quip">// "Don't panic. It's two commands." — Marvin</p>
     </div>

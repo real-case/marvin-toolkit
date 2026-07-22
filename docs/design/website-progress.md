@@ -54,7 +54,7 @@ and waiting in a pull request rather than unstarted.
 | 5b · Terminal recordings | Complete for the pipeline tour | Four generated asciicasts play on `/pipeline`, poster-first — spec `012-website-terminal-recordings`. Phase 5 stays open on the deferred Home hero recording |
 | 6a · Agent surface and SEO metadata | Complete | `llms.txt`, `sitemap.xml`, `robots.txt` and per-page canonical/OpenGraph from one page registry — spec `013-website-agent-surface-seo` |
 | 6b · OpenGraph imagery | Complete | Five committed 1200×630 cards from the registry; `twitter:card` flipped to `summary_large_image` — spec `014-website-og-images` |
-| 7 · Deploy pipeline | Not started | Now also owns analytics (FR-22); can run in parallel |
+| 7 · Deploy pipeline | In-repo slice done | `vercel.json` + build-skip + Vercel Web Analytics wired (spec `015-website-deploy-analytics`); the external Vercel project/DNS and event verification remain — see the deploy runbook below |
 | 8 · Launch | Ungated | **Both launch gates are met** — see Launch gates |
 
 ## What is shipped
@@ -166,15 +166,59 @@ was approved. Do not port these three strings forward. The site's own pages are 
 
 One phase remains, plus one decision.
 
-**Phase 7 — the deploy pipeline**, which now also carries analytics. It is the only phase needing
-access outside the repository, and with 6b closed it is the only thing between here and a public
-`marvin-toolkit.dev`.
+**Phase 7 — the deploy pipeline.** The in-repo, code-shaped slice is now implemented (spec
+`015-website-deploy-analytics`): a root `vercel.json`, the build-skip decision, and Vercel Web
+Analytics with the `install_copy` / `github_click` events. What remains needs access outside the
+repository — creating the Vercel project, pointing it at the repo root, enabling Web Analytics,
+configuring `marvin-toolkit.dev` and its DNS, and confirming the events land in the dashboard. That
+runbook is below; completing it is the last thing between here and a public `marvin-toolkit.dev`.
 
 **The Home hero recording** still needs a design call before it can be specced — whether the
 hero's grid break and single motion moment can carry a player, or whether the parity pair stays
 static. It is the last of the plan's media work and the only thing keeping Phase 5 open.
 
+## Phase 7 deploy runbook (external — not in the repo)
+
+The in-repo slice (spec `015-website-deploy-analytics`) ships the committed configuration; the steps
+below need the Vercel dashboard and DNS and are done once, by hand:
+
+1. **Create the Vercel project** from the GitHub repo. Set **Root Directory = repository root** (not
+   `packages/site`) — the committed `vercel.json` lives at the root and declares an explicit
+   `buildCommand` / `outputDirectory`, so Vercel builds the site workspace with no per-directory
+   preset. Vercel reads `vercel.json` from the Root Directory, so the two must agree.
+2. **Node version** — ensure the project runtime is Node 22.x (≥ 22.12), the Astro 7 floor. Leave the
+   default install command: the build's `gen` step transpiles TypeScript with the `typescript`
+   devDependency, so an `--omit=dev` install would break it.
+3. **Enable Web Analytics** for the project (Analytics tab). This is what mounts `/_vercel/insights/*`;
+   until it is on, the collector script 404s and no events are recorded — exactly the local behaviour
+   the e2e tolerates.
+4. **Ignored Build Step** — `vercel.json`'s `ignoreCommand` already runs
+   `packages/site/scripts/vercel-ignore.mjs`, so no dashboard action is needed. It skips a build
+   unless a change touches `packages/site/`, `packages/marvin-mcp-shared/`, `packages/marvin-widgets/`,
+   or `plugins/marvin/`, and fails open (builds) on any git error.
+5. **Domain** — add `marvin-toolkit.dev` and configure DNS. Production stays unpublished until the
+   Phase 8 launch.
+6. **Verify measurement** — after the first deploy, copy an install command and click a GitHub link on
+   the live site, then confirm `install_copy` and `github_click` appear in the Analytics dashboard.
+   This is the only place measurement (as opposed to wiring) can be proven.
+
+**CSP is deferred.** No Content-Security-Policy header ships in this slice. When one is added (a
+Phase 7 hardening pass, verified against the live origin — a CSP passes locally and breaks only on the
+deployed site), its `script-src` must include `'wasm-unsafe-eval'` (the asciinema cast player's
+inlined WebAssembly) and allow the Vercel insights script; `img-src` / `font-src` must allow `data:`
+(favicon and fonts); and `frame-src` must allow the widget-embed iframes.
+
 ## Change log
+
+- **2026-07-22** — Phase 7 in-repo slice implemented (spec `015-website-deploy-analytics`). A root
+  `vercel.json` declares the static build of the site workspace and wires a committed, unit-tested
+  build-skip decision (`packages/site/scripts/vercel-ignore.mjs`, diffing `$VERCEL_GIT_PREVIOUS_SHA`).
+  Vercel Web Analytics is wired through the `@vercel/analytics` package — the `<Analytics/>` component
+  plus one delegated `track()` listener firing `install_copy` on install-command copies and
+  `github_click` on GitHub links. Analytics (FR-22) lands here rather than in Phase 6 because
+  measurement only reports from a Vercel deployment; the e2e proves the wiring fires by reading the
+  queued event, and the dashboard/domain steps are the runbook above. CSP stays deferred with its
+  requirements recorded.
 
 - **2026-07-21** — Phase 6b implemented. Five 1200×630 cards are generated from the page registry
   and committed, every page emits an absolute `og:image` with declared dimensions and alt text, and
