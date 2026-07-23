@@ -1,6 +1,6 @@
 # Marvin website — progress
 
-**Updated:** 2026-07-20
+**Updated:** 2026-07-23
 **Plan:** [website-implementation-plan.md](website-implementation-plan.md) ·
 **Requirements:** [website-requirements.md](website-requirements.md) ·
 **Research:** [premium-page-research.md](premium-page-research.md)
@@ -39,9 +39,8 @@ same trade the widget demos already make by showing a fixture rather than a live
 in captured casts later is a content-only change, because the page reads each duration from the
 cast rather than declaring it.
 
-Both launch gates have moved since this document was last written. The repository is now
-public, which satisfies the first gate outright, and the report-export feature is implemented
-and waiting in a pull request rather than unstarted.
+Both launch gates are now met: the repository is public, which satisfies the first gate
+outright, and the report-export feature has merged (PR #133), satisfying the second.
 
 | Phase | State | Note |
 |-------|-------|------|
@@ -78,9 +77,9 @@ code that now exists on `dev`.
 | Demo-asset pipeline | `packages/site/scripts/gen-widget-demos.mjs` | Copies the nine committed widget documents and emits each widget's own fixture as JSON — build outputs, never versioned |
 | MCP Apps host | `packages/site/src/lib/widget-host.ts` | ~150 lines speaking the `ui/*` wire protocol over `postMessage`; no SDK in the site bundle |
 | Widget demo islands | `packages/site/src/components/WidgetDemo.tsx` | `<WidgetDemo>` (lazy, Home) and `<WidgetCanvas>` (picker + Live/Screenshot, Toolbox), theme-synced into the frame |
-| Recording pipeline | `packages/site/scripts/gen-casts.mjs` | Authored stage scripts → one asciicast v2 per stage plus the committed manifest `src/data/casts.json`; fails the build on a command absent from the catalog |
-| Cast player island | `packages/site/src/components/CastPlayer.tsx` | Poster server-rendered; the player module and its vendor stylesheet both load only on press |
-| End-to-end suite | `packages/site/e2e/` | 47 Playwright tests across ten specs |
+| Recording pipeline | `packages/site/scripts/gen-casts.mjs` | Authored scripts (four pipeline stages + the Home hero) → one asciicast v2 each plus the committed manifest `src/data/casts.json`; fails the build on a command absent from the catalog |
+| Cast player island | `packages/site/src/components/CastPlayer.tsx` | Poster server-rendered; the player module and its vendor stylesheet both load only on press. Drives the four `/pipeline` stages and the Home hero |
+| End-to-end suite | `packages/site/e2e/` | 58 Playwright tests across twelve specs |
 
 ## Decisions locked
 
@@ -105,11 +104,11 @@ The full list with rationale is the Decisions log in the requirements document. 
 | Repository public | **Met** | `real-case/marvin-toolkit` is public, so `/plugin marketplace add real-case/marvin-toolkit` now works for visitors and the primary call to action is live rather than inert |
 | Report export (PDF + Markdown) | **Met** | The template-only feature merged as PR #133 (`bedc02c`) with plugin version 0.9.0, so the Toolbox's FR-18 claim is now true |
 
-**Both gates are met** — no external dependency still blocks launch. With 6b and the Phase 7 in-repo
-slice now merged (`vercel.json`, the build-skip decision, and Vercel Web Analytics — PR #152,
-`6683131`), the remaining work before a public `marvin-toolkit.dev` is operational, not code: the
-Phase 7 **external** steps (create the Vercel project, enable Web Analytics, add the domain and its
-DNS — the deploy runbook below) and the design decision on the Home hero recording.
+**Both gates are met** — no external dependency still blocks launch. With 6b, the Phase 7 in-repo
+slice (`vercel.json`, the build-skip decision, and Vercel Web Analytics — PR #152, `6683131`) and the
+Home hero recording (PR #154) now merged, the remaining work before a public `marvin-toolkit.dev` is
+operational, not code: the Phase 7 **external** steps (create the Vercel project, enable Web
+Analytics, add the domain and its DNS — the deploy runbook below).
 
 ## How the widget embeds work
 
