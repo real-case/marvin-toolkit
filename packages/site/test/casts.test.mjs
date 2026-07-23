@@ -29,6 +29,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   STAGES,
+  HERO,
+  RECORDINGS,
   WIDTH,
   castHeight,
   buildCast,
@@ -51,100 +53,110 @@ const MANIFEST_JSON = join(here, "..", "src", "data", "casts.json");
 const ANSI_SGR = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, "g");
 const stripAnsi = (text) => text.replace(ANSI_SGR, "");
 
-test("emits a parseable asciicast v2 per stage", () => {
-  assert.ok(STAGES.length > 0, "there must be at least one stage to record");
+/**
+ * Every invariant a recording must satisfy — shared by the four pipeline stages and the Home hero, so
+ * "the hero asserts the SAME invariants the stages do" is literal rather than a copy-paste. Each
+ * assertion below mirrors one of asciinema-player@3.17.0's silent-failure modes (see the file header).
+ */
+function assertParseableCast(recording) {
+  const { text, duration } = buildCast(recording);
+  const label = `recording "${recording.key}"`;
 
-  for (const stage of STAGES) {
-    const { text, duration } = buildCast(stage);
-    const label = `stage "${stage.key}"`;
+  const lines = text.split("\n");
 
-    const lines = text.split("\n");
+  // ---- header ----------------------------------------------------------------
+  const header = JSON.parse(lines[0]);
+  assert.equal(header.version, 2, `${label}: header must declare asciicast version 2`);
 
-    // ---- header ----------------------------------------------------------------
-    const header = JSON.parse(lines[0]);
-    assert.equal(header.version, 2, `${label}: header must declare asciicast version 2`);
-
-    for (const key of ["width", "height"]) {
-      assert.ok(
-        Number.isInteger(header[key]) && header[key] > 0,
-        `${label}: header.${key} must be an integer greater than zero (got ${header[key]}) — ` +
-          `0 and NaN both pass a "numeric" test and both silently fall back to the player default`,
-      );
-    }
-    assert.equal(header.width, WIDTH, `${label}: header.width must be the authored geometry`);
-    assert.equal(
-      header.height,
-      castHeight(stage),
-      `${label}: header.height must be this stage's own row count`,
-    );
-
-    // The whole point of the two assertions above: v2 keys geometry as width/height, and a
-    // cols/rows header is accepted, ignored, and rendered at 80x24 with no error anywhere.
+  for (const key of ["width", "height"]) {
     assert.ok(
-      !("cols" in header) && !("rows" in header),
-      `${label}: header must NOT carry cols/rows — the v2 parser reads width/height only, so a ` +
-        `cols/rows header ships a working-but-wrong-geometry recording`,
-    );
-
-    // ---- event lines: the player's own predicate, verbatim ----------------------
-    const body = lines.slice(1).filter((line) => line !== "");
-    assert.ok(body.length > 0, `${label}: a recording with no events renders a blank terminal`);
-
-    for (const [index, line] of body.entries()) {
-      assert.equal(
-        line[0],
-        "[",
-        `${label}: event line ${index} must begin with "[" at index 0 — the parser filters on ` +
-          `exactly this and DISCARDS anything else, so a stray indent yields an empty recording`,
-      );
-    }
-
-    // ---- events: shape and absolute, non-decreasing times -----------------------
-    const events = body.map((line) => JSON.parse(line));
-    let previous = -1;
-
-    for (const [index, event] of events.entries()) {
-      assert.ok(
-        Array.isArray(event) && event.length === 3,
-        `${label}: event ${index} must be a triple`,
-      );
-      const [time, code, data] = event;
-      assert.equal(typeof time, "number", `${label}: event ${index} time must be a number`);
-      assert.ok(Number.isFinite(time), `${label}: event ${index} time must be finite`);
-      assert.equal(code, "o", `${label}: event ${index} must be an output event`);
-      assert.equal(typeof data, "string", `${label}: event ${index} data must be a string`);
-      assert.ok(
-        time >= previous,
-        `${label}: event ${index} time ${time} is before its predecessor ${previous} — v2 times ` +
-          `are ABSOLUTE, so a delta-encoded cast plays at the wrong pace instead of failing`,
-      );
-      previous = time;
-    }
-
-    // ---- duration ---------------------------------------------------------------
-    assert.ok(duration > 0, `${label}: duration must be greater than zero (got ${duration})`);
-
-    // EXACT, not ">=". The player takes a recording's duration from its last event
-    // (`const duration = events[events.length - 1][0]`), so any padding after the final event is
-    // invisible to playback and makes the poster badge disagree with the player's own
-    // `ap-time-remaining`. A ">=" assertion here passed happily against a 1.4s trailing hold that
-    // overstated every stage by up to 19%.
-    assert.equal(
-      duration,
-      previous,
-      `${label}: duration must equal the last event time (${previous}) — the player derives ` +
-        `duration from the final event, so trailing padding only desynchronises the badge`,
-    );
-
-    // ---- the recording actually contains its command -----------------------------
-    // The drift detector. Without this the file above could emit a structurally perfect cast of
-    // nothing at all and every assertion so far would still pass.
-    const rendered = stripAnsi(events.map(([, , data]) => data).join(""));
-    assert.ok(
-      rendered.includes(stage.command),
-      `${label}: the recorded output must contain the command it claims to run (${stage.command})`,
+      Number.isInteger(header[key]) && header[key] > 0,
+      `${label}: header.${key} must be an integer greater than zero (got ${header[key]}) — ` +
+        `0 and NaN both pass a "numeric" test and both silently fall back to the player default`,
     );
   }
+  assert.equal(header.width, WIDTH, `${label}: header.width must be the authored geometry`);
+  assert.equal(
+    header.height,
+    castHeight(recording),
+    `${label}: header.height must be this recording's own row count`,
+  );
+
+  // The whole point of the two assertions above: v2 keys geometry as width/height, and a
+  // cols/rows header is accepted, ignored, and rendered at 80x24 with no error anywhere.
+  assert.ok(
+    !("cols" in header) && !("rows" in header),
+    `${label}: header must NOT carry cols/rows — the v2 parser reads width/height only, so a ` +
+      `cols/rows header ships a working-but-wrong-geometry recording`,
+  );
+
+  // ---- event lines: the player's own predicate, verbatim ----------------------
+  const body = lines.slice(1).filter((line) => line !== "");
+  assert.ok(body.length > 0, `${label}: a recording with no events renders a blank terminal`);
+
+  for (const [index, line] of body.entries()) {
+    assert.equal(
+      line[0],
+      "[",
+      `${label}: event line ${index} must begin with "[" at index 0 — the parser filters on ` +
+        `exactly this and DISCARDS anything else, so a stray indent yields an empty recording`,
+    );
+  }
+
+  // ---- events: shape and absolute, non-decreasing times -----------------------
+  const events = body.map((line) => JSON.parse(line));
+  let previous = -1;
+
+  for (const [index, event] of events.entries()) {
+    assert.ok(
+      Array.isArray(event) && event.length === 3,
+      `${label}: event ${index} must be a triple`,
+    );
+    const [time, code, data] = event;
+    assert.equal(typeof time, "number", `${label}: event ${index} time must be a number`);
+    assert.ok(Number.isFinite(time), `${label}: event ${index} time must be finite`);
+    assert.equal(code, "o", `${label}: event ${index} must be an output event`);
+    assert.equal(typeof data, "string", `${label}: event ${index} data must be a string`);
+    assert.ok(
+      time >= previous,
+      `${label}: event ${index} time ${time} is before its predecessor ${previous} — v2 times ` +
+        `are ABSOLUTE, so a delta-encoded cast plays at the wrong pace instead of failing`,
+    );
+    previous = time;
+  }
+
+  // ---- duration ---------------------------------------------------------------
+  assert.ok(duration > 0, `${label}: duration must be greater than zero (got ${duration})`);
+
+  // EXACT, not ">=". The player takes a recording's duration from its last event
+  // (`const duration = events[events.length - 1][0]`), so any padding after the final event is
+  // invisible to playback and makes the poster badge disagree with the player's own
+  // `ap-time-remaining`. A ">=" assertion here passed happily against a 1.4s trailing hold that
+  // overstated every stage by up to 19%.
+  assert.equal(
+    duration,
+    previous,
+    `${label}: duration must equal the last event time (${previous}) — the player derives ` +
+      `duration from the final event, so trailing padding only desynchronises the badge`,
+  );
+
+  // ---- the recording actually contains its command -----------------------------
+  // The drift detector. Without this the builder could emit a structurally perfect cast of nothing
+  // at all and every assertion so far would still pass.
+  const rendered = stripAnsi(events.map(([, , data]) => data).join(""));
+  assert.ok(
+    rendered.includes(recording.command),
+    `${label}: the recorded output must contain the command it claims to run (${recording.command})`,
+  );
+}
+
+test("emits a parseable asciicast v2 per stage", () => {
+  assert.ok(STAGES.length > 0, "there must be at least one stage to record");
+  for (const stage of STAGES) assertParseableCast(stage);
+});
+
+test("emits a parseable asciicast v2 for the hero recording", () => {
+  assertParseableCast(HERO);
 });
 
 test("every scripted command exists in the generated catalog", () => {
@@ -156,11 +168,11 @@ test("every scripted command exists in the generated catalog", () => {
     "the authored stages must all name real commands",
   );
 
-  for (const stage of STAGES) {
-    const name = stage.command.replace(/^\/marvin:/, "");
+  for (const recording of RECORDINGS) {
+    const name = recording.command.replace(/^\/marvin:/, "");
     assert.ok(
       known.has(name),
-      `stage "${stage.key}" scripts "${stage.command}", which is not in the generated catalog`,
+      `recording "${recording.key}" scripts "${recording.command}", not in the generated catalog`,
     );
   }
 
@@ -185,12 +197,12 @@ test("the committed manifest matches the emitted recordings", () => {
 
   assert.deepEqual(
     manifest.map((row) => row.key),
-    STAGES.map((stage) => stage.key),
-    "the manifest must carry exactly the authored stages, in tour order",
+    RECORDINGS.map((recording) => recording.key),
+    "the manifest must carry exactly the authored recordings (four stages + the hero), in order",
   );
 
   for (const row of manifest) {
-    const stage = STAGES.find((candidate) => candidate.key === row.key);
+    const stage = RECORDINGS.find((candidate) => candidate.key === row.key);
     const { duration } = buildCast(stage);
     assert.equal(row.command, stage.command, `${row.key}: manifest command must match the stage`);
     assert.equal(row.caption, stage.caption, `${row.key}: manifest caption must match the stage`);
@@ -239,7 +251,7 @@ test("authored lines fit the terminal geometry", () => {
   // `fit: "width"` scales the font so the whole grid fits its container, so the column count is a
   // legibility budget on a 360px phone, not just a layout detail. A line wider than the grid wraps
   // and silently breaks the composition the stage was authored for.
-  for (const stage of STAGES) {
+  for (const stage of RECORDINGS) {
     for (const [index, line] of stage.lines.entries()) {
       const visible = stripAnsi(line.text);
       assert.ok(
@@ -272,4 +284,51 @@ test("authored lines fit the terminal geometry", () => {
         `scroll the command line off the top mid-playback`,
     );
   }
+});
+
+test("the hero recording is distinct from every pipeline stage", () => {
+  // The reason this variant records /marvin:task-start rather than the hero's old /marvin:task-verify
+  // (which duplicated pipeline stage 3): the hero must be its own cut, not a replay of stage 1, which
+  // demos the same command. Three floors, weakest to strongest — the last is the one that matters.
+
+  // 1. Byte-distinct casts — the trivial floor a single changed character satisfies.
+  const heroText = buildCast(HERO).text;
+  for (const stage of STAGES) {
+    assert.notEqual(
+      heroText,
+      buildCast(stage).text,
+      `the hero cast must not be byte-identical to stage "${stage.key}"`,
+    );
+  }
+
+  // 2. The hero's distinctive ask appears only in the hero — nowhere in the four stages.
+  const renderedOf = (recording) =>
+    stripAnsi(
+      buildCast(recording)
+        .text.split("\n")
+        .slice(1)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line)[2])
+        .join(""),
+    );
+  const ASK = "add rate limiting";
+  assert.ok(renderedOf(HERO).includes(ASK), `the hero recording must contain its ask ("${ASK}")`);
+  for (const stage of STAGES) {
+    assert.ok(
+      !renderedOf(stage).includes(ASK),
+      `stage "${stage.key}" must not contain the hero's ask — it is what makes the hero its own cut`,
+    );
+  }
+
+  // 3. A MAJORITY of the hero's non-empty output lines appear in no stage, so the hero cannot be
+  // mostly a copy of stage 1 with a single line changed — the failure the byte check alone admits.
+  const norm = (line) => stripAnsi(line.text).trim();
+  const stageLines = new Set(STAGES.flatMap((stage) => stage.lines.map(norm)).filter(Boolean));
+  const heroLines = HERO.lines.map(norm).filter(Boolean);
+  const unique = heroLines.filter((line) => !stageLines.has(line));
+  assert.ok(
+    unique.length * 2 > heroLines.length,
+    `the hero must be mostly its own content — only ${unique.length}/${heroLines.length} output ` +
+      `lines are unique to it (a majority must be)`,
+  );
 });

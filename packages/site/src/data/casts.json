@@ -30,5 +30,13 @@
     "file": "/casts/task-deliver.cast",
     "duration": 7.95,
     "poster": "npt:0:02"
+  },
+  {
+    "key": "hero",
+    "command": "/marvin:task-start",
+    "caption": "a vague ask → a sealed spec…",
+    "file": "/casts/hero.cast",
+    "duration": 7.21,
+    "poster": "npt:0:02"
   }
 ]

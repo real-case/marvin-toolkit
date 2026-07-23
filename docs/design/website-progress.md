@@ -10,13 +10,13 @@ to the implementation plan: the plan says what to do, this says what is done.
 
 ## Status at a glance
 
-The site is built and behaving. Phases 0 through 4 are complete and merged to `dev`: the
-workspace, the generated content pipeline, all five pages, and the client-side interactions.
-Phase 5 was split in two. The widget embeds (5a) are implemented, and the terminal recordings (5b)
-now play on the four pipeline stages — but **Phase 5 is not closed**: the plan also names a Home
-hero recording, which is deliberately deferred (see below). Phase 6 was split the same way, and both
-halves are now done: 6a shipped the machine-facing surface, 6b the OpenGraph cards. What remains is
-the deploy pipeline (Phase 7).
+The site is built and behaving. Phases 0 through 6 are complete and merged to `dev`: the
+workspace, the generated content pipeline, all five pages, the client-side interactions, the widget
+embeds and terminal recordings, and the agent + SEO surface. **Phase 5 is now closed** — the Home
+hero's static terminal became a playable `/marvin:task-start` recording (spec
+`016-website-home-hero-recording`), the last media piece the plan named. What remains is only the
+Phase 7 **external** deploy runbook (Vercel project, domain, DNS, event verification); its in-repo
+slice is already merged.
 
 Note the plan describes Phase 6 as "agent surface, SEO **and analytics**". The analytics half
 (FR-22) has moved to Phase 7. It was never separable from the deploy work: Vercel Analytics only
@@ -51,7 +51,7 @@ and waiting in a pull request rather than unstarted.
 | 3 · Static pages | Complete | Built as four slices — PRs #128–#131, through `0089f46` |
 | 4 · Interactive islands | Complete | Search, copy, Toolbox toggle — PR #132, `f9dff41` |
 | 5a · Widget embeds | Complete | Live demos on `/toolbox` and Home, theme-synced — spec `011-website-widget-embeds` |
-| 5b · Terminal recordings | Complete for the pipeline tour | Four generated asciicasts play on `/pipeline`, poster-first — spec `012-website-terminal-recordings`. Phase 5 stays open on the deferred Home hero recording |
+| 5b · Terminal recordings | Complete | Four generated asciicasts play on `/pipeline`, poster-first (spec `012-website-terminal-recordings`); the Home hero terminal is a playable `/marvin:task-start` recording (spec `016-website-home-hero-recording`), closing Phase 5 |
 | 6a · Agent surface and SEO metadata | Complete | `llms.txt`, `sitemap.xml`, `robots.txt` and per-page canonical/OpenGraph from one page registry — spec `013-website-agent-surface-seo` |
 | 6b · OpenGraph imagery | Complete | Five committed 1200×630 cards from the registry; `twitter:card` flipped to `summary_large_image` — spec `014-website-og-images` |
 | 7 · Deploy pipeline | In-repo slice done | `vercel.json` + build-skip + Vercel Web Analytics wired (spec `015-website-deploy-analytics`); the external Vercel project/DNS and event verification remain — see the deploy runbook below |
@@ -153,31 +153,21 @@ was approved. Do not port these three strings forward. The site's own pages are 
 
 ## What is not yet done
 
-- **No Home hero recording.** The four pipeline stages now play, but the hero still shows its
-  static terminal. This is the remaining piece of Phase 5, and it is deferred deliberately rather
-  than forgotten: the hero's `.term` is one half of the `.parity` pair whose whole point is "⇄ the
-  same command in Claude Desktop", making it the page's single deliberate grid break and its one
-  orchestrated motion moment. Turning it into a player is a design change on the site's most
-  important surface — one that already had to fight overflow at that boundary — and it would
-  duplicate stage 3, since the hero shows the same command. It needs a design decision before it
-  becomes a spec.
 - No Vercel project, no domain configuration, no preview deployments, and no analytics events
-  (FR-22, now Phase 7).
+  confirmed in the dashboard (Phase 7 **external** runbook). The in-repo Phase 7 slice —
+  `vercel.json`, the build-skip decision, and the wired Web Analytics events — is merged; what
+  remains needs access outside the repository.
 
 ## Next action
 
-One phase remains, plus one decision.
-
-**Phase 7 — the deploy pipeline.** The in-repo, code-shaped slice is now implemented (spec
-`015-website-deploy-analytics`): a root `vercel.json`, the build-skip decision, and Vercel Web
-Analytics with the `install_copy` / `github_click` events. What remains needs access outside the
-repository — creating the Vercel project, pointing it at the repo root, enabling Web Analytics,
-configuring `marvin-toolkit.dev` and its DNS, and confirming the events land in the dashboard. That
-runbook is below; completing it is the last thing between here and a public `marvin-toolkit.dev`.
-
-**The Home hero recording** still needs a design call before it can be specced — whether the
-hero's grid break and single motion moment can carry a player, or whether the parity pair stays
-static. It is the last of the plan's media work and the only thing keeping Phase 5 open.
+**Phase 7 — the external deploy runbook.** Every in-repo, code-shaped piece of the website is now
+merged, including the Phase 7 slice (spec `015-website-deploy-analytics`: a root `vercel.json`, the
+build-skip decision, and Vercel Web Analytics with the `install_copy` / `github_click` events) and
+the Home hero recording (spec `016-website-home-hero-recording`), which closed Phase 5. What remains
+needs access outside the repository — creating the Vercel project, pointing it at the repo root,
+enabling Web Analytics, configuring `marvin-toolkit.dev` and its DNS, and confirming the events land
+in the dashboard. That runbook is below; completing it is the last thing between here and a public
+`marvin-toolkit.dev`.
 
 ## Phase 7 deploy runbook (external — not in the repo)
 
@@ -211,6 +201,28 @@ inlined WebAssembly) and allow the Vercel insights script; `img-src` / `font-src
 (favicon and fonts); and `frame-src` must allow the widget-embed iframes.
 
 ## Change log
+
+- **2026-07-23** — Phase 5 closed. The Home hero's static terminal became a playable
+  `/marvin:task-start` recording (spec `016-website-home-hero-recording`), poster-first like the four
+  pipeline stages, with the paired widget card redrawn from the verify gates to a spec-readiness
+  Definition-of-Ready view — so both halves of the terminal ⇄ widget parity now read the same command.
+
+  **The chosen command changed the design calculus.** The static hero showed `/marvin:task-verify`,
+  which is pipeline stage 3, so a verify recording would have replayed stage 3 across two pages.
+  Recording `/marvin:task-start` instead makes the hero its own moment — but that command is itself
+  pipeline stage 1, so the recording is authored as a deliberately DISTINCT cut: it headlines the
+  *vague ask → sealed spec* transformation rather than stage 1's readiness-gate mechanics, and a guard
+  (`casts.test.mjs` "the hero recording is distinct from every pipeline stage") fails the build unless
+  a majority of the hero's output lines are unique to it.
+
+  **The one genuinely new risk is the fold.** The four stage players are below it; the hero is above
+  it, so `client:visible` hydrates the island at first paint. The player itself is reused unchanged
+  from spec 012 — the ~330 KB (mostly an incompressible inlined WASM blob) stays behind the play
+  button via a dynamic import in the activation handler — and a dedicated e2e (`hero-cast.spec.ts`)
+  proves activation causes a *new* script request, so a future top-level import that folded the
+  payload into the island's own chunk (which, above the fold, is effectively first paint) would fail
+  rather than silently blow the budget. With this, every in-repo website phase is complete; only the
+  Phase 7 external runbook remains.
 
 - **2026-07-22** — Phase 7 in-repo slice implemented (spec `015-website-deploy-analytics`). A root
   `vercel.json` declares the static build of the site workspace and wires a committed, unit-tested

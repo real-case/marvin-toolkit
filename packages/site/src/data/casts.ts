@@ -25,6 +25,18 @@ export interface Cast {
 
 export const casts: Cast[] = data;
 
+// The Home hero recording (spec 016-website-home-hero-recording) — the manifest row keyed "hero",
+// played by the hero <CastPlayer> in index.astro. Resolved by name so the page consumes a checked
+// Cast rather than indexing the array by a literal; throws at build time if the generator did not
+// emit it (the four pipeline stages stay reachable via `casts`, which pipeline.astro looks up by key).
+const hero = casts.find((cast) => cast.key === "hero");
+if (!hero) {
+  throw new Error(
+    "src/data/casts.json is missing the hero recording — run `npm run gen:casts -w @marvin-toolkit/site`.",
+  );
+}
+export const heroCast: Cast = hero;
+
 /**
  * `M:SS`, the form the posters print. Kept here rather than in the island so the Astro page and the
  * Preact component format the same number identically.

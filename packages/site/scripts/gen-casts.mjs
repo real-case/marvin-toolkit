@@ -238,6 +238,50 @@ export const STAGES = [
   },
 ];
 
+/**
+ * The Home hero recording (spec 016-website-home-hero-recording). Deliberately a DISTINCT cut from
+ * STAGES[0] above: it headlines the TRANSFORMATION (a vague ask → a sealed, testable spec) rather
+ * than stage 1's full readiness-gate mechanics, so the hero does not merely replay pipeline stage 1.
+ * casts.test.mjs "the hero recording is distinct from every pipeline stage" pins that — a majority of
+ * these output lines appear in no stage cast, and the quoted ask below appears only here.
+ *
+ * PROVENANCE — reconstructed from:
+ *   skills/task-start/SKILL.md steps 1.3-1.4 (intake, codebase grounding, callers, dimension sweep),
+ *   step 7F (the tool-backed Definition-of-Ready gate) and step 8F (the red-team critic);
+ *   the `spec` tool's real report renderer, plugins/marvin/mcp/server/src/tools/spec.ts (its
+ *   "Definition of Ready" verdict and the "spec contract" / "Traceability" / "File paths" checks with
+ *   the ✓ icon, labels taken from its pass() call sites);
+ *   and a real /marvin:task-start run in this repo, whose gate PASSed and sealed a spec under
+ *   .marvin/task/. The quoted ask and the 017 path are illustrative, exactly as stage 4's commit and
+ *   PR numbers are.
+ */
+export const HERO = {
+  key: "hero",
+  command: "/marvin:task-start",
+  caption: "a vague ask → a sealed spec…",
+  lines: [
+    { text: dim('"add rate limiting to the API"'), delay: 0.7 },
+    { text: "", delay: 0.4 },
+    { text: dim("Grounding in the codebase · callers mapped"), delay: 0.8 },
+    { text: `${bold("5 acceptance criteria")} ${dim("· each with an oracle")}`, delay: 0.7 },
+    { text: dim("Red-team critic · contract sealed"), delay: 0.7 },
+    { text: "", delay: 0.5 },
+    { text: `${bold("Definition of Ready")}   ${okGreen("PASS")}`, delay: 0.6 },
+    { text: `  ${OK} spec contract   ${dim("6 files · 5 criteria")}`, delay: 0.3 },
+    { text: `  ${OK} traceability    ${dim("every AC → files → proof")}`, delay: 0.25 },
+    { text: "", delay: 0.4 },
+    { text: cyan("→ .marvin/task/017-api-rate-limit.md  (sealed)"), delay: 0.4 },
+  ],
+};
+
+/**
+ * Every recording the site emits: the four pipeline stages plus the Home hero. The emit block, the
+ * manifest builder and the command-existence guard all iterate this, so a maintainer adds a recording
+ * in one place. STAGES stays "the four pipeline stages" — pipeline.astro looks those up by name, so
+ * the hero row in the manifest never renders a fifth stage on /pipeline.
+ */
+export const RECORDINGS = [...STAGES, HERO];
+
 /** Times are written with millisecond precision — enough for playback, short enough to stay exact. */
 const round = (t) => Math.round(t * 1000) / 1000;
 
@@ -316,7 +360,7 @@ export function catalogCommandNames() {
  * non-existent command is worse than no recording, because it looks authoritative. See the header
  * for why the source-scanning guard added by PR #144 does not cover these scripts.
  */
-export function assertCommandsExist(stages = STAGES) {
+export function assertCommandsExist(stages = RECORDINGS) {
   const known = catalogCommandNames();
   for (const stage of stages) {
     const name = stage.command.replace(/^\/marvin:/, "");
@@ -336,7 +380,7 @@ export function assertCommandsExist(stages = STAGES) {
  * emitted cast rather than declared, so the number the page prints is always the number the
  * recording actually runs.
  */
-export function buildManifest(stages = STAGES) {
+export function buildManifest(stages = RECORDINGS) {
   return stages.map((stage) => {
     const { duration, poster } = buildCast(stage);
     return {
@@ -364,7 +408,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   rmSync(OUT_DIR, { recursive: true, force: true });
   mkdirSync(OUT_DIR, { recursive: true });
 
-  for (const stage of STAGES) {
+  for (const stage of RECORDINGS) {
     writeFileSync(join(OUT_DIR, `${stage.key}.cast`), buildCast(stage).text);
   }
 
@@ -380,7 +424,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   writeFileSync(MANIFEST_JSON, serializeManifest(manifest));
 
   console.log(
-    `[gen-casts] wrote ${relative(ROOT, OUT_DIR)} — ${STAGES.length} recordings ` +
+    `[gen-casts] wrote ${relative(ROOT, OUT_DIR)} — ${RECORDINGS.length} recordings ` +
       `(${manifest.map((m) => `${m.key} ${m.duration}s`).join(", ")}) + ${VENDOR_CSS_FILE}, ` +
       `and ${relative(ROOT, MANIFEST_JSON)}`,
   );
