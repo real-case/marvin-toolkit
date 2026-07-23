@@ -7,7 +7,9 @@
 import Base from "../layouts/Base.astro";
 import CodeCommand from "../components/CodeCommand.astro";
 import { WidgetDemo } from "../components/WidgetDemo";
+import CastPlayer from "../components/CastPlayer";
 import { catalog } from "../data/catalog";
+import { heroCast } from "../data/casts";
 
 const REPO = "https://github.com/real-case/marvin-toolkit";
 const { counts, groups, commands } = catalog;
@@ -50,22 +52,18 @@ const groupCount = groups.length; // generated, not a literal
         </div>
       </div>
       <div class="parity">
-        <div class="term">
-          <span class="p">➜</span> /marvin:task-verify<br />
-          <span class="d">gates: tests · lint · types · build</span><br />
-          <span class="p">✓</span> 140 passed · 0 failed<br />
-          <span class="v">verification.md</span>
-          <span class="d">written</span>
-        </div>
+        <CastPlayer client:visible cast={heroCast} />
         <div class="parity-lbl">⇄ the same command in Claude Desktop</div>
         <div class="wcard">
-          <div class="wt"><span>verify — quality gates</span><span class="mono">.mvroot</span></div>
+          <div class="wt">
+            <span>spec — Definition of Ready</span><span class="mono">.mvroot</span>
+          </div>
           <div class="badges">
-            <span class="badge b-grn">tests ✓</span>
-            <span class="badge b-grn">lint ✓</span>
-            <span class="badge b-grn">types ✓</span>
-            <span class="badge b-grn">build ✓</span>
-            <span class="badge b-acc">verification.md</span>
+            <span class="badge b-grn">frontmatter ✓</span>
+            <span class="badge b-grn">spec contract ✓</span>
+            <span class="badge b-grn">traceability ✓</span>
+            <span class="badge b-grn">file paths ✓</span>
+            <span class="badge b-acc">017-api-rate-limit.md</span>
           </div>
         </div>
       </div>
@@ -395,11 +393,6 @@ const groupCount = groups.length; // generated, not a literal
     display: flex;
     flex-direction: column;
     gap: 8px;
-    --term: #101014;
-    --termt: #d6d6dc;
-    --termd: #8a8a93;
-    --termg: #7ee2a8;
-    --termv: #c4b5fd;
   }
   /* Only break out once the shell has room for the -80px reach (≥~84px free margin each side),
      so the panel never gets clipped in normal use; the hero's overflow-x:clip is the safety net. */
@@ -407,26 +400,6 @@ const groupCount = groups.length; // generated, not a literal
     .parity {
       margin-right: -80px;
     }
-  }
-  .term {
-    background: var(--term);
-    border: 1px solid #26262c;
-    border-radius: 12px;
-    padding: 16px 18px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--termt);
-    line-height: 1.75;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
-  }
-  .term .p {
-    color: var(--termg);
-  }
-  .term .d {
-    color: var(--termd);
-  }
-  .term .v {
-    color: var(--termv);
   }
   .parity-lbl {
     text-align: center;

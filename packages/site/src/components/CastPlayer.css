@@ -208,3 +208,25 @@
   max-width: 100%;
   overflow: hidden;
 }
+
+/* ---------- Home hero context (spec 016-website-home-hero-recording) ---------- */
+
+/*
+ * The hero mounts a CastPlayer in the Home page's narrow `.parity` column (index.astro), which breaks
+ * out of the shell by -80px at >=1320px. Astro's scoped <style> cannot reach this Preact-rendered
+ * poster — the reason this whole sheet is a plain global file — so the hero's sizing lives here, keyed
+ * off the home hero's `.parity` ancestor. The pipeline `.stage` rules above are untouched.
+ *
+ * The poster stacks directly above the "⇄" label and the spec-readiness card (a shorter run than the
+ * pipeline's side-by-side stage cell), so it takes a slightly tighter min-height; and `min-width:0` is
+ * repeated on both the poster and the mounted stage so the wide terminal grid can never force the
+ * parity track — and the document — wider than the viewport at the grid-break widths (AC6).
+ */
+.parity .cast-poster,
+.parity .cast-stage {
+  min-width: 0;
+}
+
+.parity .cast-poster {
+  min-height: 116px;
+}

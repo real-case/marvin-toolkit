@@ -22,6 +22,11 @@ interface Cast {
 
 const casts: Cast[] = JSON.parse(readFileSync(join(here, "../src/data/casts.json"), "utf8"));
 
+// The manifest also carries the Home hero recording (spec 016), which /pipeline never renders — it
+// looks its four stages up by name. This suite is the PIPELINE tour's proof, so every manifest-derived
+// assertion below iterates only the four stage rows; the hero has its own suite, hero-cast.spec.ts.
+const stages = casts.filter((cast) => cast.key !== "hero");
+
 /** Mirrors formatDuration in src/data/casts.ts — the posters print M:SS, floored like the player. */
 function formatDuration(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds));
@@ -49,9 +54,9 @@ test("stage posters render the command and duration from the generated manifest"
 }) => {
   await page.goto("/pipeline");
 
-  expect(casts.length, "the manifest must carry the four tour stages").toBe(4);
+  expect(stages.length, "the manifest must carry the four tour stages").toBe(4);
 
-  for (const cast of casts) {
+  for (const cast of stages) {
     const stage = page.locator(`.cast[data-stage="${cast.key}"]`);
     await expect(stage, `stage "${cast.key}" must be on the page`).toHaveCount(1);
     await expect(stage.locator(".cast-cmd")).toHaveText(`➜ ${cast.command}`);
@@ -62,7 +67,7 @@ test("stage posters render the command and duration from the generated manifest"
   // The four durations the page prints ARE the manifest's, in tour order — no hand-typed value
   // survives anywhere on the page.
   expect(await page.locator(".cast-dur").allTextContents()).toEqual(
-    casts.map((cast) => formatDuration(cast.duration)),
+    stages.map((cast) => formatDuration(cast.duration)),
   );
 
   // Regression proof for the drift this spec closed: the four hand-typed durations are gone, so no
@@ -122,7 +127,7 @@ test("stages are poster-first and never autoplay", async ({ page }) => {
 test("activating a stage plays its recorded terminal content", async ({ page }) => {
   await page.goto("/pipeline");
 
-  for (const cast of casts) {
+  for (const cast of stages) {
     const stage = page.locator(`.cast[data-stage="${cast.key}"]`);
     await stage.scrollIntoViewIfNeeded();
     await stage.locator(".cast-play").click();
