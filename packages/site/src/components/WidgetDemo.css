@@ -53,10 +53,20 @@
   max-height: 560px;
 }
 
-/* The Home teaser shows three at once and is only a teaser — keep each one glanceable. */
+/*
+ * The Home teasers are stacked full-width (see .wt3 in index.astro), so each widget reports the
+ * height it actually wants at the shell width instead of reflowing into a tall narrow column:
+ * dashboard 640px, reports 709px measured at the 1152px shell — both render whole, with no
+ * internal scrolling, which is the point of showing a live widget at all.
+ *
+ * The cap is what keeps the rule from the block above intact: `help` renders the entire command
+ * reference and reports ~2187px even at full width, and one teaser must not swallow the page. So
+ * the window is bounded at roughly a screen — tall enough that every widget short enough to fit
+ * fits, and only the genuinely long one is left scrolling internally.
+ */
 .wd .wd-frame {
   min-height: 180px;
-  max-height: 320px;
+  max-height: 760px;
 }
 
 /* The fallback owns the same footprint as the frame so swapping between them does not jump. */

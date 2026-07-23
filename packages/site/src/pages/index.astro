@@ -41,11 +41,13 @@ const groupCount = groups.length; // generated, not a literal
           fail-closed quality gates, security scans, and decision records — deterministic where it
           matters, in your repo always.
         </p>
-        <CodeCommand
-          command="/plugin marketplace add real-case/marvin-toolkit"
-          vaEvent="install_copy"
-        />
-        <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
+        <div class="herocmds">
+          <CodeCommand
+            command="/plugin marketplace add real-case/marvin-toolkit"
+            vaEvent="install_copy"
+          />
+          <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
+        </div>
         <div class="btns">
           <a class="btn btn--accent" href="/quickstart">Get started</a>
           <a class="btn" href={REPO}>View on GitHub</a>
@@ -352,12 +354,15 @@ const groupCount = groups.length; // generated, not a literal
   .wt3 > * {
     min-width: 0;
   }
+  /* The wordmark rides the display face every other heading uses — it inherits
+     `--font-display` from the global h1/h2/h3 rule, so there is deliberately no font-family
+     override here. (FR-4 originally set it in mono; the mono voice still carries the hero
+     through the two install rows and the terminal beside them.) Weight matches h2.h. */
   .h1name {
-    font-family: var(--font-mono);
     font-size: clamp(40px, 5.4vw, 62px);
     line-height: 1;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-weight: 750;
+    letter-spacing: -0.022em;
     margin: 0 0 18px;
   }
   .h1name .sy {
@@ -381,6 +386,15 @@ const groupCount = groups.length; // generated, not a literal
     font-size: 15.5px;
     margin: 0 0 26px;
     max-width: 54ch;
+  }
+  /* The two install rows own their separation here, in the caller — the same container-owned
+     `gap: 9px` the install band uses (.installcmds). It cannot live on CodeCommand's own
+     `.command`: a margin there would stack on top of that band's gap, and this page-scoped
+     style cannot reach into the component's template (see the note in CodeCommand.astro). */
+  .herocmds {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
   }
   .btns {
     display: flex;
@@ -642,10 +656,16 @@ const groupCount = groups.length; // generated, not a literal
     margin-top: 12px;
   }
 
-  /* widget teasers */
+  /* widget teasers — one per row, full shell width.
+     The mockup's 3-up grid was drawn for the static `.wpanel` artwork below, which is a
+     hand-sized sketch. Spec 011 swapped that artwork for the REAL committed widget documents,
+     and a third of the shell (~373px) is narrower than any of them is designed for: each one
+     reflowed into a tall column and the frame became a 320px porthole the visitor had to
+     scroll — the reports widget even overflowed sideways. At full width they render whole
+     (dashboard 640px, reports 709px measured at the 1152px shell), so the row is stacked. */
   .wt3 {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
     gap: 16px;
     margin: 30px 0 22px;
   }
@@ -845,9 +865,9 @@ const groupCount = groups.length; // generated, not a literal
       grid-template-columns: 1fr;
       gap: 36px;
     }
+    /* .wt3 is single-column at every width now, so it is no longer listed here. */
     .cards3,
     .twocol,
-    .wt3,
     .ways {
       grid-template-columns: 1fr;
     }
