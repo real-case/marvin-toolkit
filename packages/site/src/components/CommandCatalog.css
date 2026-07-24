@@ -168,7 +168,12 @@
   min-width: 0;
 }
 
+/* A flex column so the command + trigger phrases can be pinned to the bottom edge: the grid
+   already stretches every card in a row to equal height, and margin-top:auto on .cmdex pushes
+   the whole bottom group down so those rows line up across cards of different description length. */
 .catalog .cmd {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--bd);
   border-radius: 11px;
   background: var(--srf);
@@ -180,6 +185,11 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Push the group / human-run badges to the right edge, keeping the command name at the left. */
+.catalog .cmdhead .name {
+  margin-right: auto;
 }
 
 /* inline-flex so the whitespace between the accent prefix and the command name is discarded
@@ -227,11 +237,13 @@
 .catalog .desc {
   font-size: 13px;
   color: var(--t2);
-  margin: 6px 0 0;
+  /* Bottom margin is the minimum gap before the pinned command; the flexible space that lines
+     the commands up across a row grows on top of it (see .cmd / .cmdex). */
+  margin: 6px 0 11px;
 }
 
 .catalog .cmdex {
-  margin-top: 11px;
+  margin-top: auto;
 }
 
 /* ---------- the example row (mirrors CodeCommand.astro, which cannot render in an island) ---------- */

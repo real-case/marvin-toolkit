@@ -204,36 +204,39 @@ export default function CommandCatalog() {
             </div>
             <p class="gblurb">{g.blurb}</p>
             <div class="cmdgrid">
-              {g.commands.map((cmd) => (
-                <article class="cmd" key={cmd.name}>
-                  <div class="cmdhead">
-                    <span class="name">
-                      <b>/marvin:</b>
-                      <span class="cn">{cmd.name}</span>
-                    </span>
-                    <span class="badge b-acc">{cmd.group}</span>
-                    {cmd.human && <span class="badge b-amb human-badge">human-run</span>}
-                  </div>
-                  <p class="blurb">{cmd.blurb}</p>
-                  <p class="desc">{cmd.description}</p>
-                  {cmd.example && (
+              {g.commands.map((cmd) => {
+                // Every card carries a copyable command. Commands with a richer usage example show
+                // it; the rest fall back to their bare invocation, so no card is left without one.
+                const example = cmd.example || `/marvin:${cmd.name}`;
+                return (
+                  <article class="cmd" key={cmd.name}>
+                    <div class="cmdhead">
+                      <span class="name">
+                        <b>/marvin:</b>
+                        <span class="cn">{cmd.name}</span>
+                      </span>
+                      <span class="badge b-acc">{cmd.group}</span>
+                      {cmd.human && <span class="badge b-amb human-badge">human-run</span>}
+                    </div>
+                    <p class="blurb">{cmd.blurb}</p>
+                    <p class="desc">{cmd.description}</p>
                     <div class="cmdex">
                       <div class="command">
                         {/* single text child — the delegated copy handler reads .textContent */}
-                        <code class="code">{cmd.example}</code>
-                        <button type="button" class="copy" aria-label={`Copy ${cmd.example}`}>
+                        <code class="code">{example}</code>
+                        <button type="button" class="copy" aria-label={`Copy ${example}`}>
                           copy
                         </button>
                       </div>
                     </div>
-                  )}
-                  <div class="trig">
-                    {cmd.phrases.map((phrase) => (
-                      <i key={phrase}>{phrase}</i>
-                    ))}
-                  </div>
-                </article>
-              ))}
+                    <div class="trig">
+                      {cmd.phrases.map((phrase) => (
+                        <i key={phrase}>{phrase}</i>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         ))
