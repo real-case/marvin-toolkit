@@ -17,6 +17,14 @@ test("pipeline renders the header, rail, and four stage cards in order", async (
   await expect(page.locator(".eyebrow").first()).toHaveText("the workflow");
   await expect(page.locator("h1")).toHaveText("The task pipeline.");
 
+  // The current page's nav link carries the active state, and it is the only one that does
+  // (feedback: the menu items had no active state).
+  await expect(page.locator('.nav__links a[href="/pipeline"]')).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.locator('.nav__links a[aria-current="page"]')).toHaveCount(1);
+
   // The tick-and-node rail walks the four stages and closes on the learn loop. Substring
   // checks over the joined .rstep text are robust to the numbered <small> prefix and to
   // Prettier whitespace reflow inside the rail.
