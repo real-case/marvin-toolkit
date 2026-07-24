@@ -78,10 +78,10 @@ const current = Astro.url.pathname.replace(/\/+$/, "") || "/";
     text-decoration: none;
   }
 
-  /* Active state for the current page — the accent, distinct from the hover's plain t1. */
+  /* Active state for the current page — the accent color alone. No heavier weight: a bolder
+     label is wider than its inactive self, which nudged the whole row on navigation. */
   .nav__links a[aria-current="page"] {
     color: var(--act);
-    font-weight: 600;
   }
 
   .nav__actions {
