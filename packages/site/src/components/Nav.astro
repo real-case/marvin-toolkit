@@ -10,6 +10,10 @@ const links = [
   { href: "/toolbox", label: "Toolbox" },
   { href: "/quickstart", label: "Quickstart" },
 ];
+
+// The current-page link gets an active state. Normalise trailing slashes so the match holds
+// whether the router serves "/pipeline" or "/pipeline/" (directory build output).
+const current = Astro.url.pathname.replace(/\/+$/, "") || "/";
 ---
 
 <header class="nav">
@@ -17,7 +21,13 @@ const links = [
     <a href="/" class="nav__brand">Marvin</a>
 
     <nav class="nav__links" aria-label="Primary">
-      {links.map((l) => <a href={l.href}>{l.label}</a>)}
+      {
+        links.map((l) => (
+          <a href={l.href} aria-current={current === l.href ? "page" : undefined}>
+            {l.label}
+          </a>
+        ))
+      }
     </nav>
 
     <div class="nav__actions">
@@ -66,6 +76,12 @@ const links = [
   .nav__links a:hover {
     color: var(--t1);
     text-decoration: none;
+  }
+
+  /* Active state for the current page — the accent, distinct from the hover's plain t1. */
+  .nav__links a[aria-current="page"] {
+    color: var(--act);
+    font-weight: 600;
   }
 
   .nav__actions {

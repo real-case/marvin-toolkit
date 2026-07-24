@@ -53,6 +53,11 @@ test("commands renders the reference header and all seven groups in order", asyn
   // Every command in the catalog renders exactly one card (the full grouped catalog, FR-12).
   await expect(page.locator(".cmd")).toHaveCount(catalog.commands.length);
 
+  // Every card carries exactly one copyable command row — commands without a richer usage
+  // example fall back to their bare invocation, so none is left without one.
+  await expect(page.locator(".cmd .command")).toHaveCount(catalog.commands.length);
+  await expect(page.locator(".cmd .command .copy")).toHaveCount(catalog.commands.length);
+
   // Each card shows its `/marvin:<name>` — spot-check the first card carries the prefix.
   expect(strip((await page.locator(".cmd .name").first().textContent()) ?? "")).toContain(
     "/marvin:",
