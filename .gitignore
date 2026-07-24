@@ -78,3 +78,5 @@ plugins/marvin/.in_use/
 # purpose: each workspace should ignore its own output, and a bare pattern would silently swallow
 # artifacts in workspaces that have not opted in.
 /test-results/
+.vercel
+.env*

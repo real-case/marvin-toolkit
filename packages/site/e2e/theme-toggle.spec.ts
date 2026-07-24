@@ -59,8 +59,9 @@ test("fonts are self-hosted and loaded with swap", async ({ page }) => {
     .evaluate((el) => getComputedStyle(el).fontFamily);
   expect(codeFamily).toMatch(/JetBrains/i);
 
-  // ...and the display face (Hanken) on a section heading. The home hero h1 is the mono
-  // /marvin: wordmark by design (FR-4), so an inner-page h1 is where Hanken renders.
+  // ...and the display face (Hanken) on a heading. The home hero wordmark used to be the one
+  // h1 deliberately set in mono (FR-4 as written), which is why this assertion looks at an
+  // inner page; it now renders Hanken like every other heading, so either page would prove it.
   await page.goto("/commands");
   const h1Family = await page
     .locator("h1")
