@@ -31900,7 +31900,7 @@ var COMMAND_PROMPTS = {
   commit: [
     "marvin, commit this",
     "marvin, stage and commit my changes",
-    "marvin, make a conventional commit linked to the board"
+    "marvin, make a commit linked to the board"
   ],
   debug: [
     "marvin, why is this test failing?",

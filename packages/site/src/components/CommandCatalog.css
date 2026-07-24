@@ -292,13 +292,16 @@
 }
 
 /* ---------- trigger phrases ---------- */
+/* One phrase per row: each example gets its own line rather than wrapping inline. align-items
+   keeps every pill hugging its own text width instead of stretching across the card. */
 .catalog .trig {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--t3);
   margin-top: 11px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 5px;
 }
 
