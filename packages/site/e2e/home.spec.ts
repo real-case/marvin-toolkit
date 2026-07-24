@@ -27,8 +27,7 @@ test("home renders the five-claim narrative in document order", async ({ page })
   // The workflow stepper closes on the learn loop.
   await expect(page.locator(".step.loop")).toContainText("learn ↺");
 
-  // The engineering strip and the install-band close.
-  await expect(page.getByText("Built in the open.")).toBeVisible();
+  // The install-band closes.
   await expect(page.getByText("Two commands. About a minute.")).toBeVisible();
 
   // Both install commands are present (hero + install band render each).
@@ -82,25 +81,23 @@ test("home holds both themes and responds from 360 to 1440 without horizontal ov
   }
 });
 
-test("home toolbox teaser mounts its three demos only once scrolled into view", async ({
-  page,
-}) => {
+test("home toolbox teaser mounts its two demos only once scrolled into view", async ({ page }) => {
   await page.goto("/");
 
   // At first paint the teaser's islands are server-rendered but unhydrated, and — the part that
-  // protects the Lighthouse ≥ 95 exit criterion — no widget document has been fetched. Three
-  // eager frames would pull ~900 KB into the initial page.
+  // protects the Lighthouse ≥ 95 exit criterion — no widget document has been fetched. Two
+  // eager frames would pull ~600 KB into the initial page.
   await expect(page.locator("iframe.wd-frame")).toHaveCount(0);
 
   // The static panels are the server-rendered fallback, so the section is complete with no JS.
-  await expect(page.locator(".wt3 .wpanel")).toHaveCount(3);
+  await expect(page.locator(".wt3 .wpanel")).toHaveCount(2);
 
   // Scrolling the teaser into view hydrates the islands, which mount their frames.
   await page.locator(".wt3").scrollIntoViewIfNeeded();
-  await expect(page.locator("iframe.wd-frame")).toHaveCount(3, { timeout: 15_000 });
+  await expect(page.locator("iframe.wd-frame")).toHaveCount(2, { timeout: 15_000 });
 
   // Each frames its own committed widget document, in FR-9's order.
-  for (const widget of ["help", "dashboard", "reports"]) {
+  for (const widget of ["dashboard", "reports"]) {
     await expect(page.locator(`.wd[data-widget="${widget}"] iframe.wd-frame`)).toHaveAttribute(
       "src",
       new RegExp(`/widget-demos/${widget}\\.html$`),
@@ -108,7 +105,7 @@ test("home toolbox teaser mounts its three demos only once scrolled into view", 
   }
 
   // And they actually come up live, rather than silently sitting on the fallback.
-  for (const widget of ["help", "dashboard", "reports"]) {
+  for (const widget of ["dashboard", "reports"]) {
     await expect(page.locator(`.wd[data-widget="${widget}"]`)).toHaveAttribute(
       "data-status",
       "live",

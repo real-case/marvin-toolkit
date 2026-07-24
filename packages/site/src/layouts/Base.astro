@@ -97,19 +97,17 @@ const favicon =
     }
     <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
 
-    <!-- Anti-FOUC: set the theme before first paint from localStorage, else the OS
-         preference. is:inline keeps Astro from bundling/deferring it, so it runs
-         synchronously in <head> and there is no flash of the wrong theme. -->
+    <!-- Anti-FOUC: set the theme before first paint. Light is the site default — a first-time
+         visitor gets light regardless of their OS preference; only an explicit toggle (persisted
+         to localStorage) switches to dark. is:inline keeps Astro from bundling/deferring it, so it
+         runs synchronously in <head> and there is no flash of the wrong theme. -->
     <script is:inline>
       (() => {
         try {
-          const stored = localStorage.getItem("theme");
-          const theme =
-            stored ||
-            (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          const theme = localStorage.getItem("theme") || "light";
           document.documentElement.dataset.theme = theme;
         } catch {
-          /* storage/matchMedia unavailable — fall back to the CSS @media default */
+          /* storage unavailable — the CSS :root light default already applies */
         }
       })();
     </script>

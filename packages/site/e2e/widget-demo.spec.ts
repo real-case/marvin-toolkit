@@ -111,13 +111,13 @@ test("a failed Home teaser demo reveals its slotted panel and leaves no empty fr
   await page.goto("/");
   await page.locator(".wt3").scrollIntoViewIfNeeded();
 
-  const demo = page.locator('.wd[data-widget="help"]');
+  const demo = page.locator('.wd[data-widget="dashboard"]');
   await expect(demo).toHaveAttribute("data-status", "failed", { timeout: 15_000 });
 
   // The authored panel is visible...
   const fallback = demo.locator(".wd-fallback");
   await expect(fallback).toBeVisible();
-  await expect(fallback).toContainText("/marvin:help");
+  await expect(fallback).toContainText("/marvin:dashboard");
 
   // ...and nothing else is. No orphaned frame, no blank stage holding min-height open.
   await expect(demo.locator("iframe")).toHaveCount(0);

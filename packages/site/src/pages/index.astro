@@ -12,7 +12,7 @@ import { catalog } from "../data/catalog";
 import { heroCast } from "../data/casts";
 
 const REPO = "https://github.com/real-case/marvin-toolkit";
-const { counts, groups, commands } = catalog;
+const { counts, commands } = catalog;
 
 // Counts band — read straight from catalog.counts (FR-5/FR-20), never literals.
 const countCells = [
@@ -23,7 +23,6 @@ const countCells = [
   { n: counts.license, l: "license" },
 ];
 const commandCount = commands.length; // the same generated total, not a literal
-const groupCount = groups.length; // generated, not a literal
 ---
 
 <Base>
@@ -198,74 +197,65 @@ const groupCount = groups.length; // generated, not a literal
         Fully set up on install. In MCP Apps hosts like Claude Desktop every tool renders live,
         interactive UI — <b>and the same commands answer in plain text in any terminal</b>.
       </p>
-      <!-- The three teasers are live widget demos (spec 011, F7 — FR-9). Each island mounts its
+      <!-- The two teasers are live widget demos (spec 011, F7 — FR-9). Each island mounts its
            frame only once scrolled into view, so a visitor who never reaches this section
            downloads none of the ~300 KB widget documents. The .wpanel markup below stays the
            authored static artwork and is passed through as the island's fallback slot — which is
            why these are client:visible and never client:only (client:only skips the server
-           render, so slotted markup would never be serialized and the fallback would vanish). -->
+           render, so slotted markup would never be serialized and the fallback would vanish).
+           Each demo carries a plain-text .wsub subheader naming the widget it renders. -->
       <div class="wt3">
-        <WidgetDemo client:visible widget="help" title="marvin help widget demo">
-          <div class="wpanel">
-            <div class="whead"><span>/marvin:help</span><span>arrive</span></div>
-            <div class="wbody">
-              <p class="wordmark">◆ marvin</p>
-              <div class="badges">
-                <span class="badge b-acc">/marvin:commit</span>
-                <span class="badge b-acc">task-start</span>
-                <span class="badge b-acc">sec-scan</span>
-              </div>
-              <p class="foot-note">
-                {commandCount} commands · {groupCount} groups · servers lit by status
-              </p>
-            </div>
-          </div>
-        </WidgetDemo>
-        <WidgetDemo client:visible widget="dashboard" title="marvin dashboard widget demo">
-          <div class="wpanel">
-            <div class="whead"><span>/marvin:dashboard</span><span>steer</span></div>
-            <div class="wbody">
-              <div class="kpis">
-                <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
-                <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
-                <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
-              </div>
-              <div class="spark">
-                <i style="width:14%;background:var(--barR);"></i>
-                <i style="width:22%;background:var(--barO);"></i>
-                <i style="width:34%;background:var(--barA);"></i>
-                <i style="width:30%;background:var(--barB);"></i>
-              </div>
-              <p class="foot-note">board · artifacts · ADR corpus · local usage</p>
-            </div>
-          </div>
-        </WidgetDemo>
-        <WidgetDemo client:visible widget="reports" title="marvin reports widget demo">
-          <div class="wpanel">
-            <div class="whead"><span>/marvin:reports</span><span>review &amp; share</span></div>
-            <div class="wbody">
-              <div class="rrow">
-                <span class="rn"><span class="dot dotg"></span>sec-scan</span><span
-                  class="badge b-grn">fresh</span
-                >
-              </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dota"></span>refactor-audit</span><span
-                  class="badge b-amb">3d</span
-                >
-              </div>
-              <div class="rrow">
-                <span class="rn"><span class="dot dotv"></span>task 001 summary</span><span
-                  class="badge b-acc">sealed</span
-                >
-              </div>
-              <div class="badges rexport">
-                <span class="badge b-acc">Export PDF</span>
-                <span class="badge b-acc">Export MD</span>
+        <div class="wblock">
+          <h3 class="wsub">Dashboard</h3>
+          <WidgetDemo client:visible widget="dashboard" title="marvin dashboard widget demo">
+            <div class="wpanel">
+              <div class="whead"><span>/marvin:dashboard</span><span>steer</span></div>
+              <div class="wbody">
+                <div class="kpis">
+                  <div class="kpi"><div class="kn">4</div><div class="kl">board</div></div>
+                  <div class="kpi"><div class="kn">2</div><div class="kl">specs</div></div>
+                  <div class="kpi"><div class="kn">12</div><div class="kl">lessons</div></div>
+                </div>
+                <div class="spark">
+                  <i style="width:14%;background:var(--barR);"></i>
+                  <i style="width:22%;background:var(--barO);"></i>
+                  <i style="width:34%;background:var(--barA);"></i>
+                  <i style="width:30%;background:var(--barB);"></i>
+                </div>
+                <p class="foot-note">board · artifacts · ADR corpus · local usage</p>
               </div>
             </div>
-          </div>
-        </WidgetDemo>
+          </WidgetDemo>
+        </div>
+        <div class="wblock">
+          <h3 class="wsub">Reports</h3>
+          <WidgetDemo client:visible widget="reports" title="marvin reports widget demo">
+            <div class="wpanel">
+              <div class="whead"><span>/marvin:reports</span><span>review &amp; share</span></div>
+              <div class="wbody">
+                <div class="rrow">
+                  <span class="rn"><span class="dot dotg"></span>sec-scan</span><span
+                    class="badge b-grn">fresh</span
+                  >
+                </div>
+                <div class="rrow">
+                  <span class="rn"><span class="dot dota"></span>refactor-audit</span><span
+                    class="badge b-amb">3d</span
+                  >
+                </div>
+                <div class="rrow">
+                  <span class="rn"><span class="dot dotv"></span>task 001 summary</span><span
+                    class="badge b-acc">sealed</span
+                  >
+                </div>
+                <div class="badges rexport">
+                  <span class="badge b-acc">Export PDF</span>
+                  <span class="badge b-acc">Export MD</span>
+                </div>
+              </div>
+            </div>
+          </WidgetDemo>
+        </div>
       </div>
       <p class="parline">
         Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
@@ -296,19 +286,7 @@ const groupCount = groups.length; // generated, not a literal
     </div>
   </section>
 
-  <!-- (7) ENGINEERING STRIP — built in the open (static badges, FR-11) -->
-  <div class="eng">
-    <div class="container engrow">
-      <span class="t">Built in the open.</span>
-      <span class="badge b-acc">32 ADRs</span>
-      <span class="badge b-grn">CI passing</span>
-      <span class="badge b-grn">tests green</span>
-      <span class="grow"></span>
-      <a class="cta" href={`${REPO}/tree/main/docs/adr`}>Read the ADRs ↗</a>
-    </div>
-  </div>
-
-  <!-- (8) INSTALL BAND — the repeat close -->
+  <!-- (7) INSTALL BAND — the repeat close -->
   <section class="install">
     <div class="container">
       <h2 class="h">Two commands. About a minute.</h2>
@@ -322,7 +300,7 @@ const groupCount = groups.length; // generated, not a literal
         />
         <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
       </div>
-      <p class="quip">// "Don't panic. It's two commands." — Marvin</p>
+      <p class="quip">// "Don't panic. It's two commands."</p>
     </div>
   </section>
 </Base>
@@ -669,6 +647,17 @@ const groupCount = groups.length; // generated, not a literal
     gap: 16px;
     margin: 30px 0 22px;
   }
+  /* Each teaser is a subheader stacked over its live demo. */
+  .wblock {
+    display: flex;
+    flex-direction: column;
+  }
+  .wsub {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
   .wpanel {
     border: 1px solid var(--bd);
     border-radius: 12px;
@@ -767,6 +756,11 @@ const groupCount = groups.length; // generated, not a literal
     font-size: 13px;
     color: var(--t3);
   }
+  /* Give the trailing CTA clear air after the sentence it follows, rather than the single
+     collapsed space the source newline renders as. */
+  .parline .cta {
+    margin-left: 10px;
+  }
 
   /* call it your way */
   .ways {
@@ -808,25 +802,6 @@ const groupCount = groups.length; // generated, not a literal
     color: var(--t3);
     font-size: 13.5px;
     padding: 10px 15px;
-  }
-
-  /* engineering strip */
-  .eng {
-    margin-top: 84px;
-    border-top: 1px solid var(--bd);
-    border-bottom: 1px solid var(--bd);
-    background: var(--srf);
-  }
-  .engrow {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 20px 24px;
-  }
-  .engrow .t {
-    font-weight: 700;
-    font-size: 14.5px;
   }
 
   /* install repeat */
