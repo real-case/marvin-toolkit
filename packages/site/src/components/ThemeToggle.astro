@@ -20,8 +20,8 @@
     const btn = document.getElementById("theme-toggle");
     if (!btn) return;
     const root = document.documentElement;
-    const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const current = () => root.dataset.theme || (prefersDark() ? "dark" : "light");
+    // Mirror Base.astro's anti-FOUC default: absent an explicit stored choice, the theme is light.
+    const current = () => root.dataset.theme || "light";
     btn.addEventListener("click", () => {
       const next = current() === "dark" ? "light" : "dark";
       root.dataset.theme = next;

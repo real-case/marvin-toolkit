@@ -7,11 +7,12 @@ import { test, expect } from "@playwright/test";
 const ROUTES = ["/", "/commands", "/pipeline", "/toolbox", "/quickstart"];
 const REPO = "https://github.com/real-case/marvin-toolkit";
 
-test("respects the OS color-scheme by default", async ({ page }) => {
+test("defaults to light regardless of the OS color-scheme", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
-  // No stored preference → the anti-FOUC script follows prefers-color-scheme.
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  // No stored preference → the anti-FOUC script defaults to light even when the OS prefers dark;
+  // only an explicit toggle switches away.
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
 test("toggle flips and persists the theme", async ({ page }) => {
