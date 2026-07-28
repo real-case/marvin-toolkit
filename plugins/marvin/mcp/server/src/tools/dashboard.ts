@@ -4,9 +4,13 @@ import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type {
   AdrCorpusSummary,
+  DashboardAudits,
+  DashboardHandoff,
+  DashboardSpec,
   DashboardState,
   RefactorInventory,
   SecurityInventory,
+  TaskCard,
   UsageSummary,
   UsageTopEntry,
   VerificationFreshness,
@@ -16,7 +20,17 @@ import { loadConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
 import { orderedStatuses, type Config } from "../storage/schema.js";
-import { artifactCounts, commandGroups, gitState, boardCounts } from "../lib/state.js";
+import {
+  artifactCounts,
+  auditDigest,
+  boardCounts,
+  boardDigest,
+  commandGroups,
+  gitState,
+  handoffDigest,
+  specDigest,
+} from "../lib/state.js";
+import { projectMcpServers } from "../lib/help-data.js";
 import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -33,6 +47,9 @@ import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 const SECTION_ORDER = [
   "project",
   "board",
+  "work",
+  "handoffs",
+  "audits",
   "artifacts",
   "adr",
   "lessons",
@@ -51,13 +68,16 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
   return defineTool({
     name: "dashboard",
     description:
-      "Whole-toolbox state report (ADR-0030): project paths/config/git, task-board counters, " +
-      "artifact inventories with freshness (task specs + verification.md age, security reports + " +
-      "newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus " +
-      'by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what ' +
-      'state is the toolbox in?" — the command index stays on the `help` tool. Pass `section` ' +
-      `(${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full ` +
-      "DashboardState. Works on a fresh project — missing directories render as zeros.",
+      "Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board " +
+      "counters, the current-work digest (active board cards + pipeline specs in flight), recent " +
+      "handoffs with their age, audit findings by severity for the newest security and refactor " +
+      "report, artifact inventories with freshness (task specs + verification.md age, security " +
+      "reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the " +
+      "ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. " +
+      'Answers "what state is the toolbox in?" — the command index stays on the `help` tool. Pass ' +
+      `\`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always ` +
+      "carries the full DashboardState. Works on a fresh project — missing directories render as " +
+      "zeros.",
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -96,6 +116,17 @@ function renderDashboard(
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env.projectDir);
   const groups = commandGroups();
+  // v2 sections (ADR-0024) — always emitted, empty rather than absent, so a
+  // consumer can tell "the dashboard ran and found nothing" from the `help`
+  // tool's narrower payload. `auditDigest` honours MARVIN_SECURITY_DIR, matching
+  // the `report` tool; the v1 `security` block above hard-codes its path.
+  const servers = projectMcpServers(env.projectDir);
+  const currentTasks = { board: boardDigest(env, config), specs: specDigest(env.projectDir) };
+  const handoffs = handoffDigest(env.handoffDir);
+  const audits = auditDigest({
+    security: env.securityDir,
+    refactor: join(env.projectDir, ".marvin", "refactor"),
+  });
 
   // ── text report, section by section ───────────────────────────────────────
   const sections: Record<(typeof SECTION_ORDER)[number], string[]> = {
@@ -105,6 +136,11 @@ function renderDashboard(
       `- Config: \`${env.configPath}\`${existsSync(env.configPath) ? "" : " _(not created yet)_"}`,
       `- Base branch: \`${config.base_branch}\``,
       `- git: ${git.has_git ? "✓" : "✗"} · gh: ${git.has_gh ? "✓" : "✗"} · branch: \`${git.branch ?? "(not in a git repo)"}\``,
+      `- MCP servers: ${
+        servers.length > 0
+          ? servers.map((s) => `\`${s.name}\` ${s.enabled ? "✓" : "✗"}`).join(" · ")
+          : "_none configured_"
+      }`,
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
     ],
     board: [
@@ -114,6 +150,13 @@ function renderDashboard(
         return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
       ...(board.malformed > 0 ? [`- ⚠ malformed files: ${board.malformed}`] : []),
+    ],
+    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs)],
+    handoffs: ["## Handoffs", ...renderHandoffs(handoffs)],
+    audits: [
+      "## Audits",
+      renderAuditArea("Security", audits.security, "/marvin:sec-scan"),
+      renderAuditArea("Refactor", audits.refactor, "/marvin:refactor-audit"),
     ],
     artifacts: [
       "## Artifacts",
@@ -189,6 +232,10 @@ function renderDashboard(
     refactor,
     lessons,
     ...(usage ? { usage } : {}),
+    servers,
+    current_tasks: currentTasks,
+    handoffs,
+    audits,
   };
 
   return {
@@ -316,6 +363,63 @@ function readUsageSummary(projectDir: string): UsageSummary | null {
 }
 
 // ── rendering helpers ───────────────────────────────────────────────────────
+
+/**
+ * Current work — the two in-flight lists side by side: active board cards
+ * (wip/review) and pipeline specs that have not shipped. Each is an italic
+ * zero-state line when empty, so the section keeps its shape on a fresh project.
+ */
+function renderWork(board: TaskCard[], specs: DashboardSpec[]): string[] {
+  const lines: string[] = [];
+  if (board.length === 0) {
+    lines.push("- _No active board cards — nothing in wip or review._");
+  } else {
+    lines.push("- Active cards (wip/review):");
+    for (const c of board) {
+      lines.push(
+        `  - \`${c.id}\` ${c.title} · ${c.status.key} · updated ${c.updated.slice(0, 10)}`,
+      );
+    }
+  }
+  if (specs.length === 0) {
+    lines.push("- _No pipeline specs in flight under `.marvin/task/`._");
+  } else {
+    lines.push("- Pipeline specs in flight:");
+    for (const s of specs) lines.push(`  - ${s.id ? `\`${s.id}\` ` : ""}${s.title}`);
+  }
+  return lines;
+}
+
+/** Recent handoffs, newest id first, each with the age of its `created` date. */
+function renderHandoffs(handoffs: DashboardHandoff[]): string[] {
+  if (handoffs.length === 0) {
+    return ["- _No handoffs yet — `/marvin:handoff` captures the first one._"];
+  }
+  return handoffs.map(
+    (h) =>
+      `- \`${h.slug}\` ${h.objective}${h.age_days === null ? "" : ` · ${days(h.age_days)} old`}`,
+  );
+}
+
+/**
+ * One audit area: findings of its newest report bucketed by severity. A `null`
+ * area is "never scanned", which is deliberately distinct from a report that
+ * found nothing (`0 finding(s)`).
+ */
+function renderAuditArea(
+  label: string,
+  area: DashboardAudits["security"],
+  command: string,
+): string {
+  if (area === null) return `- ${label}: _no report yet — \`${command}\` writes one._`;
+  const severities = nonZero(area.by_severity);
+  return [
+    `- ${label}: ${area.total} finding(s)`,
+    ...(severities.length > 0 ? [severities.join(" · ")] : []),
+    ...(area.newest_report ? [`\`${area.newest_report}\``] : []),
+    ...(area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]),
+  ].join(" · ");
+}
 
 function renderUsage(usage: UsageSummary): string[] {
   if (usage.events === 0) return ["- Usage log present but empty — 0 event(s)."];
