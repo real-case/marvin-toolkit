@@ -120,3 +120,72 @@ test("UsageSummary: kind is closed to prompt|tool, window may be null", () => {
     false,
   );
 });
+
+/**
+ * DashboardState v2 (ADR-0024 data-first staging): the added sections —
+ * `servers`, `current_tasks` {board, specs}, `handoffs`, `audits` — are all
+ * optional, so a full v2 payload parses, a v1-narrow payload still parses
+ * (ADR-0030 back-compat), and malformed v2 data is rejected fail-closed.
+ */
+
+const V2_CARD = {
+  id: "001",
+  type: "feature",
+  status: { key: "wip", role: "wip" },
+  title: "Rework dashboard",
+  branch: "task/dashboard-state-v2",
+  tracker_url: null,
+  pr: null,
+  created: "2026-07-01T10:00:00.000Z",
+  updated: "2026-07-02T10:00:00.000Z",
+};
+
+test("parses a full v2 payload", () => {
+  const parsed = DashboardState.safeParse({
+    ...BASE,
+    servers: [
+      { name: "marvin", enabled: true },
+      { name: "context7", enabled: false },
+    ],
+    current_tasks: {
+      board: [V2_CARD],
+      specs: [{ slug: "dashboard-state-v2", title: "DashboardState v2", id: "017" }],
+    },
+    handoffs: [{ slug: "resume-widget", objective: "Continue the widget slice", age_days: 1 }],
+    audits: {
+      security: {
+        scanned_age_days: 4,
+        total: 3,
+        by_severity: { high: 1, low: 2 },
+        newest_report: "003-sec-scan.md",
+      },
+      refactor: { scanned_age_days: null, total: 0, by_severity: {} },
+    },
+  });
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+});
+
+test("keeps a narrow no-v2-section payload valid", () => {
+  // BASE omits every v2 field — an existing narrow producer must still conform.
+  const parsed = DashboardState.safeParse(BASE);
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+});
+
+test("rejects malformed v2 sections", () => {
+  // by_severity carries a key outside the closed Severity vocabulary.
+  const badSeverity = DashboardState.safeParse({
+    ...BASE,
+    audits: {
+      security: { scanned_age_days: 1, total: 1, by_severity: { blocker: 1 } },
+      refactor: null,
+    },
+  });
+  assert.equal(badSeverity.success, false);
+
+  // current_tasks.board holds a TaskCard with a malformed id (not 3 digits).
+  const badCard = DashboardState.safeParse({
+    ...BASE,
+    current_tasks: { board: [{ ...V2_CARD, id: "1" }], specs: [] },
+  });
+  assert.equal(badCard.success, false);
+});
