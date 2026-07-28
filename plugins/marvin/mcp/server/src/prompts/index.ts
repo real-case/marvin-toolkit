@@ -141,8 +141,8 @@ export const PROMPTS: PromptDef[] = [
     // stays on `help`; this aggregates the artifact/corpus/usage state.
     name: "dashboard",
     description:
-      "Marvin toolbox dashboard — task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
-    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
+      "Marvin toolbox dashboard — task board, current work, recent handoffs, audit findings, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, work, handoffs, audits, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the unified read side of every report

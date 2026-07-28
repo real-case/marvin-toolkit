@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 import { callTool } from "./_driver.mjs";
@@ -25,6 +25,54 @@ function callDashboard(dir, args = {}) {
 }
 
 const textOf = (result) => result.content.map((c) => c.text).join("\n");
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** ISO timestamp `days` before the wall clock (v2 ages are computed live). */
+const daysAgo = (days) => new Date(Date.now() - days * DAY_MS).toISOString();
+
+/** Pin a file's mtime — "newest report in the area" and its age are mtime-driven. */
+function pinAge(path, days) {
+  const when = new Date(Date.now() - days * DAY_MS);
+  utimesSync(path, when, when);
+}
+
+/**
+ * The `audit-report` Tier-2 block (ADR-0024 #7) for the newest security report:
+ * four findings across three severities, so `audits.security` proves bucketing.
+ * The findings are deliberately NOT listed in severity order — a `medium` comes
+ * first — so the rendered line pins the severity-ranked bucketing rather than
+ * passing on document order.
+ */
+const AUDIT_BLOCK = JSON.stringify({
+  kind: "threat-model",
+  scanned_at: "2026-07-01T10:00:00Z",
+  summary: { critical: 1, high: 1, medium: 2 },
+  findings: [
+    { id: "TM-3", severity: "medium", title: "No rate limit on login", category: "STRIDE-D" },
+    {
+      id: "TM-1",
+      severity: "critical",
+      title: "Unauthenticated admin route",
+      category: "STRIDE-E",
+    },
+    { id: "TM-2", severity: "high", title: "Token in query string", category: "STRIDE-I" },
+    { id: "TM-4", severity: "medium", title: "Verbose error bodies", category: "STRIDE-I" },
+  ],
+});
+
+/** An ADR-0029 findings register for the newest refactor report. */
+const REGISTER = [
+  "# Refactoring smells — api",
+  "",
+  "## Findings register",
+  "",
+  "| ID | Title | Severity | Effort | Evidence | Direction |",
+  "|----|-------|----------|--------|----------|-----------|",
+  "| F1 | God module in the api layer | high | medium | `src/api.ts:1` | Split the module |",
+  "| F2 | Duplicated request mapping | medium | small | `src/map.ts:20` | Extract a helper |",
+  "| F3 | Dead feature flag | low | trivial | `src/flags.ts:8` | Delete the branch |",
+  "",
+].join("\n");
 
 /** A fully populated `.marvin/` tree + ADR corpus + usage log. */
 function populate(dir) {
@@ -55,13 +103,47 @@ function populate(dir) {
     ].join("\n"),
   );
 
-  // security: two reports; refactor: one of each kind; handoff: one doc
+  // MCP servers: the only file this fixture ADDS, and deliberately not a `.md`
+  // — every artifact assertion below counts markdown files, so the counts hold.
+  writeFileSync(
+    join(dir, ".mcp.json"),
+    JSON.stringify({ marvin: { command: "node" }, context7: { command: "npx" } }),
+  );
+
+  // security: two reports; refactor: one of each kind; handoff: one doc.
+  // The v2 digests read the newest report per area, so EVERY mtime here is
+  // pinned rather than left to write order. `001-scan.md` stays prose-only AND
+  // newest, so picking `002-threat-model.md` proves "skip the unparseable, take
+  // the newest that parses"; pinning it at 0 days is also what keeps the v1
+  // `newest_age_days: 0` assertion true, so the invariant is explicit.
   writeFileSync(join(dir, ".marvin", "security", "001-scan.md"), "# scan");
-  writeFileSync(join(dir, ".marvin", "security", "002-threat-model.md"), "# tm");
+  pinAge(join(dir, ".marvin", "security", "001-scan.md"), 0);
+  writeFileSync(
+    join(dir, ".marvin", "security", "002-threat-model.md"),
+    `# tm\n\nProse.\n\n\`\`\`json audit-report\n${AUDIT_BLOCK}\n\`\`\`\n`,
+  );
+  pinAge(join(dir, ".marvin", "security", "002-threat-model.md"), 2);
   writeFileSync(join(dir, ".marvin", "refactor", "001-audit-core.md"), "# audit");
-  writeFileSync(join(dir, ".marvin", "refactor", "002-smells-api.md"), "# smells");
+  pinAge(join(dir, ".marvin", "refactor", "001-audit-core.md"), 5);
+  // the findings table goes in the NEWEST register, so the digest proves
+  // severity bucketing rather than passing on a zero-finding register
+  writeFileSync(join(dir, ".marvin", "refactor", "002-smells-api.md"), REGISTER);
+  pinAge(join(dir, ".marvin", "refactor", "002-smells-api.md"), 1);
   writeFileSync(join(dir, ".marvin", "refactor", "003-plan-core.md"), "# plan");
-  writeFileSync(join(dir, ".marvin", "handoff", "001-h.md"), "# handoff");
+  writeFileSync(
+    join(dir, ".marvin", "handoff", "001-h.md"),
+    [
+      "---",
+      "id: '001'",
+      "slug: demo-handoff",
+      "objective: Finish the dashboard rework",
+      "branch: feat/dashboard",
+      `created: ${daysAgo(3)}`,
+      "---",
+      "# handoff",
+      "",
+    ].join("\n"),
+  );
 
   // lessons: index (excluded) + two typed lessons
   writeFileSync(join(dir, ".marvin", "memory", "MEMORY.md"), "# index");
@@ -182,6 +264,135 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
         { kind: "tool", name: "task", count: 1 },
       ],
     });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard emits the four v2 sections in structuredContent", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-"));
+  try {
+    populate(dir);
+    const sc = (await callDashboard(dir)).structuredContent;
+    assert.ok(
+      DashboardState.safeParse(sc).success,
+      `contract accepts the v2 payload: ${JSON.stringify(DashboardState.safeParse(sc).error?.issues)}`,
+    );
+
+    // 1. servers — the union of `.mcp.json` + settings, sorted, all enabled
+    assert.deepEqual(sc.servers, [
+      { name: "context7", enabled: true },
+      { name: "marvin", enabled: true },
+    ]);
+
+    // 2. current work — the active board card as a full TaskCard, plus the
+    //    unshipped pipeline spec (`001-thing.md` carries no status = in flight)
+    assert.deepEqual(sc.current_tasks.board, [
+      {
+        id: "001",
+        type: "feature",
+        status: { key: "wip", role: "wip" },
+        title: "Demo task",
+        branch: "feat/001--demo",
+        tracker_url: null,
+        pr: null,
+        created: "2026-07-01T00:00:00.000Z",
+        updated: "2026-07-01T00:00:00.000Z",
+      },
+    ]);
+    assert.deepEqual(sc.current_tasks.specs, [{ slug: "thing", title: "spec", id: "001" }]);
+
+    // 3. handoffs — age comes from the frontmatter `created`, not the mtime
+    assert.deepEqual(sc.handoffs, [
+      { slug: "demo-handoff", objective: "Finish the dashboard rework", age_days: 3 },
+    ]);
+
+    // 4. audits — the newest PARSEABLE security report (`001-scan.md` is prose
+    //    only and newer, and is skipped) and the newest refactor register
+    assert.deepEqual(sc.audits.security, {
+      scanned_age_days: 2,
+      total: 4,
+      by_severity: { critical: 1, high: 1, medium: 2 },
+      newest_report: "002-threat-model.md",
+    });
+    assert.deepEqual(sc.audits.refactor, {
+      scanned_age_days: 1,
+      total: 3,
+      by_severity: { high: 1, medium: 1, low: 1 },
+      newest_report: "002-smells-api.md",
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard renders the current work, handoffs and audits text sections", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-"));
+  try {
+    populate(dir);
+    const text = textOf(await callDashboard(dir));
+
+    for (const heading of ["## Current work", "## Handoffs", "## Audits"]) {
+      assert.ok(text.includes(heading), `section ${heading} rendered`);
+    }
+    assert.match(text, /- MCP servers: `context7` ✓ · `marvin` ✓/);
+    assert.match(
+      text,
+      /- Active cards \(wip\/review\):\n {2}- `001` Demo task · wip · updated 2026-07-01/,
+    );
+    assert.match(text, /- Pipeline specs in flight:\n {2}- `001` spec/);
+    assert.match(text, /- `demo-handoff` Finish the dashboard rework · 3 day\(s\) old/);
+    assert.match(
+      text,
+      /- Security: 4 finding\(s\) · critical: 1 · high: 1 · medium: 2 · `002-threat-model\.md` · 2 day\(s\) old/,
+    );
+    assert.match(
+      text,
+      /- Refactor: 3 finding\(s\) · high: 1 · medium: 1 · low: 1 · `002-smells-api\.md` · 1 day\(s\) old/,
+    );
+
+    // the section filter narrows the text to Audits alone…
+    const narrowed = await callDashboard(dir, { section: "audits" });
+    const narrowedText = textOf(narrowed);
+    assert.ok(narrowedText.includes("## Audits"), "requested section rendered");
+    for (const heading of ["## Current work", "## Handoffs", "## Board", "## Artifacts"]) {
+      assert.ok(!narrowedText.includes(heading), `section ${heading} omitted`);
+    }
+    // …while structuredContent stays complete
+    const sc = narrowed.structuredContent;
+    assert.ok(DashboardState.safeParse(sc).success);
+    assert.equal(sc.current_tasks.board.length, 1, "payload ignores the section filter");
+    assert.equal(sc.handoffs.length, 1);
+    assert.ok(sc.servers.length > 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard zero-state emits the v2 sections in their empty form", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-"));
+  try {
+    const result = await callDashboard(dir);
+    const sc = result.structuredContent;
+    assert.ok(DashboardState.safeParse(sc).success, "zero-state v2 payload conforms");
+
+    // present-but-empty, never absent: a consumer can tell "the dashboard ran
+    // and found nothing" from the `help` tool's narrower payload
+    for (const key of ["servers", "current_tasks", "handoffs", "audits"]) {
+      assert.ok(key in sc, `${key} present on a fresh project`);
+    }
+    assert.deepEqual(sc.servers, []);
+    assert.deepEqual(sc.current_tasks, { board: [], specs: [] });
+    assert.deepEqual(sc.handoffs, []);
+    assert.deepEqual(sc.audits, { security: null, refactor: null });
+
+    const text = textOf(result);
+    assert.match(text, /- MCP servers: _none configured_/);
+    assert.match(text, /_No active board cards — nothing in wip or review\._/);
+    assert.match(text, /_No pipeline specs in flight under `\.marvin\/task\/`\._/);
+    assert.match(text, /_No handoffs yet — `\/marvin:handoff` captures the first one\._/);
+    assert.match(text, /- Security: _no report yet — `\/marvin:sec-scan` writes one\._/);
+    assert.match(text, /- Refactor: _no report yet — `\/marvin:refactor-audit` writes one\._/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

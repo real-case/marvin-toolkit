@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync, lstatSync } from 'fs';
+import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, lstatSync, unlinkSync } from 'fs';
 import { join, dirname, basename, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
@@ -28592,8 +28592,8 @@ var PROMPTS = [
     // by the deterministic `dashboard` tool (ADR-0030). The command index
     // stays on `help`; this aggregates the artifact/corpus/usage state.
     name: "dashboard",
-    description: "Marvin toolbox dashboard \u2014 task board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
-    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
+    description: "Marvin toolbox dashboard \u2014 task board, current work, recent handoffs, audit findings, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, work, handoffs, audits, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
   },
   {
     // Thin tool wrapper (inline body) — the unified read side of every report
@@ -31674,6 +31674,35 @@ function renderTrackerText(cards) {
   }
   return lines.join("\n");
 }
+function readAllHandoffs(handoffDir) {
+  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
+  const handoffs = [];
+  const malformed = [];
+  for (const filename of readdirSync(handoffDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(handoffDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = HandoffFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    handoffs.push({ frontmatter: parsed.data, body, filename });
+  }
+  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { handoffs, malformed };
+}
+
+// src/lib/state.ts
 function boardCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const counts = {};
@@ -31726,6 +31755,120 @@ function countMarkdown(dir, exclude = []) {
   } catch {
     return 0;
   }
+}
+var DIGEST_LIMIT = 3;
+var DAY_MS2 = 24 * 60 * 60 * 1e3;
+function ageDays(ms, now) {
+  return Number.isNaN(ms) ? null : Math.max(0, Math.floor((now - ms) / DAY_MS2));
+}
+function firstHeading2(text) {
+  const m = text.match(/^#\s+(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+function boardDigest(env2, config2) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
+  return tasks.filter((t) => {
+    const role = roleOfStatus(config2, t.frontmatter.status);
+    return role === "wip" || role === "review";
+  }).sort(
+    (a, b) => (
+      // `updated` is an ISO datetime — it compares correctly as a string.
+      b.frontmatter.updated.localeCompare(a.frontmatter.updated) || Number(b.frontmatter.id) - Number(a.frontmatter.id)
+    )
+  ).slice(0, DIGEST_LIMIT).map((t) => buildTaskCard(t, config2));
+}
+function specDigest(projectDir) {
+  const dir = join(projectDir, ".marvin", "task");
+  if (!existsSync(dir)) return [];
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  const rows = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md") || filename === "verification.md") continue;
+    try {
+      const path = join(dir, filename);
+      if (lstatSync(path).isSymbolicLink()) continue;
+      const { frontmatter, body } = parseFrontmatter(readFileSync(path, "utf8"));
+      if (frontmatter.status === "shipped") continue;
+      const base = filename.replace(/\.md$/, "");
+      const m = /^(\d+)-(.+)$/.exec(base);
+      const id = m?.[1];
+      const slug = frontmatter.slug || (m?.[2] ?? base) || filename;
+      rows.push({
+        spec: { slug, title: firstHeading2(body) ?? slug, ...id ? { id } : {} },
+        order: id ? Number(id) : -1
+      });
+    } catch {
+      continue;
+    }
+  }
+  return rows.sort((a, b) => b.order - a.order || a.spec.slug.localeCompare(b.spec.slug)).slice(0, DIGEST_LIMIT).map((r) => r.spec);
+}
+function handoffDigest(handoffDir, now = Date.now()) {
+  const { handoffs } = readAllHandoffs(handoffDir);
+  return handoffs.slice(0, DIGEST_LIMIT).map((h) => ({
+    slug: h.frontmatter.slug,
+    objective: h.frontmatter.objective,
+    age_days: ageDays(Date.parse(h.frontmatter.created), now)
+  }));
+}
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function auditDigest(dirs, now = Date.now()) {
+  return {
+    security: newestArea(dirs.security, () => true, findingsFromAuditBlock, now),
+    refactor: newestArea(dirs.refactor, isRegister, parseRegisterFindings, now)
+  };
+}
+var isRegister = (filename) => /^\d+-(audit|smells)-.*\.md$/.test(filename);
+function findingsFromAuditBlock(raw) {
+  const parsed = parseAuditBlock(raw);
+  return parsed.kind === "ok" ? parsed.report.findings : null;
+}
+function newestArea(dir, accepts, extract, now) {
+  if (!existsSync(dir)) return null;
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md") || !accepts(filename)) continue;
+    try {
+      const path = join(dir, filename);
+      if (lstatSync(path).isSymbolicLink()) continue;
+      candidates.push({ filename, mtimeMs: statSync(path).mtimeMs });
+    } catch {
+      continue;
+    }
+  }
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || b.filename.localeCompare(a.filename));
+  for (const candidate of candidates) {
+    let findings;
+    try {
+      findings = extract(readFileSync(join(dir, candidate.filename), "utf8"));
+    } catch {
+      continue;
+    }
+    if (findings === null) continue;
+    const by_severity = {};
+    for (const severity of SEVERITY_ORDER) {
+      const n = findings.filter((f) => f.severity === severity).length;
+      if (n > 0) by_severity[severity] = n;
+    }
+    return {
+      scanned_age_days: ageDays(candidate.mtimeMs, now),
+      total: findings.length,
+      by_severity,
+      newest_report: candidate.filename
+    };
+  }
+  return null;
 }
 
 // ../../../../packages/marvin-mcp-shared/dist/help-content.js
@@ -32513,6 +32656,9 @@ function removeIndexLine(memoryDir, slug) {
 var SECTION_ORDER = [
   "project",
   "board",
+  "work",
+  "handoffs",
+  "audits",
   "artifacts",
   "adr",
   "lessons",
@@ -32525,7 +32671,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git, task-board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -32552,6 +32698,13 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env2.projectDir);
   const groups = commandGroups();
+  const servers = projectMcpServers(env2.projectDir);
+  const currentTasks = { board: boardDigest(env2, config2), specs: specDigest(env2.projectDir) };
+  const handoffs = handoffDigest(env2.handoffDir);
+  const audits = auditDigest({
+    security: env2.securityDir,
+    refactor: join(env2.projectDir, ".marvin", "refactor")
+  });
   const sections = {
     project: [
       "## Project",
@@ -32559,6 +32712,7 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       `- Config: \`${env2.configPath}\`${existsSync(env2.configPath) ? "" : " _(not created yet)_"}`,
       `- Base branch: \`${config2.base_branch}\``,
       `- git: ${git2.has_git ? "\u2713" : "\u2717"} \xB7 gh: ${git2.has_gh ? "\u2713" : "\u2717"} \xB7 branch: \`${git2.branch ?? "(not in a git repo)"}\``,
+      `- MCP servers: ${servers.length > 0 ? servers.map((s) => `\`${s.name}\` ${s.enabled ? "\u2713" : "\u2717"}`).join(" \xB7 ") : "_none configured_"}`,
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : []
     ],
     board: [
@@ -32568,6 +32722,13 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
         return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
       ...board.malformed > 0 ? [`- \u26A0 malformed files: ${board.malformed}`] : []
+    ],
+    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs)],
+    handoffs: ["## Handoffs", ...renderHandoffs(handoffs)],
+    audits: [
+      "## Audits",
+      renderAuditArea("Security", audits.security, "/marvin:sec-scan"),
+      renderAuditArea("Refactor", audits.refactor, "/marvin:refactor-audit")
     ],
     artifacts: [
       "## Artifacts",
@@ -32630,14 +32791,18 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
     security,
     refactor,
     lessons,
-    ...usage ? { usage } : {}
+    ...usage ? { usage } : {},
+    servers,
+    current_tasks: currentTasks,
+    handoffs,
+    audits
   };
   return {
     content: [{ type: "text", text: lines.join("\n").trimEnd() }],
     structuredContent: state
   };
 }
-var DAY_MS2 = 24 * 60 * 60 * 1e3;
+var DAY_MS3 = 24 * 60 * 60 * 1e3;
 function verificationFreshness(projectDir) {
   const path = join(projectDir, ".marvin", "task", "verification.md");
   const age = fileAgeDays(path);
@@ -32645,7 +32810,7 @@ function verificationFreshness(projectDir) {
 }
 function fileAgeDays(path) {
   try {
-    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS2));
+    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS3));
   } catch {
     return null;
   }
@@ -32662,7 +32827,7 @@ function newestAgeDays(dir) {
   } catch {
     return null;
   }
-  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS2));
+  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS3));
 }
 function refactorInventory(projectDir) {
   const dir = join(projectDir, ".marvin", "refactor");
@@ -32725,6 +32890,44 @@ function readUsageSummary(projectDir) {
   }
   const top = [...tally.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, TOP_COMMANDS);
   return { events, window: from !== null && to !== null ? { from, to } : null, top };
+}
+function renderWork(board, specs) {
+  const lines = [];
+  if (board.length === 0) {
+    lines.push("- _No active board cards \u2014 nothing in wip or review._");
+  } else {
+    lines.push("- Active cards (wip/review):");
+    for (const c of board) {
+      lines.push(
+        `  - \`${c.id}\` ${c.title} \xB7 ${c.status.key} \xB7 updated ${c.updated.slice(0, 10)}`
+      );
+    }
+  }
+  if (specs.length === 0) {
+    lines.push("- _No pipeline specs in flight under `.marvin/task/`._");
+  } else {
+    lines.push("- Pipeline specs in flight:");
+    for (const s of specs) lines.push(`  - ${s.id ? `\`${s.id}\` ` : ""}${s.title}`);
+  }
+  return lines;
+}
+function renderHandoffs(handoffs) {
+  if (handoffs.length === 0) {
+    return ["- _No handoffs yet \u2014 `/marvin:handoff` captures the first one._"];
+  }
+  return handoffs.map(
+    (h) => `- \`${h.slug}\` ${h.objective}${h.age_days === null ? "" : ` \xB7 ${days(h.age_days)} old`}`
+  );
+}
+function renderAuditArea(label, area, command) {
+  if (area === null) return `- ${label}: _no report yet \u2014 \`${command}\` writes one._`;
+  const severities = nonZero(area.by_severity);
+  return [
+    `- ${label}: ${area.total} finding(s)`,
+    ...severities.length > 0 ? [severities.join(" \xB7 ")] : [],
+    ...area.newest_report ? [`\`${area.newest_report}\``] : [],
+    ...area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]
+  ].join(" \xB7 ");
 }
 function renderUsage(usage) {
   if (usage.events === 0) return ["- Usage log present but empty \u2014 0 event(s)."];
@@ -34204,33 +34407,6 @@ function ok4(text) {
 function err2(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-function readAllHandoffs(handoffDir) {
-  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
-  const handoffs = [];
-  const malformed = [];
-  for (const filename of readdirSync(handoffDir).sort()) {
-    if (!filename.endsWith(".md")) continue;
-    const seq = parseSeq(filename);
-    if (!seq) continue;
-    const raw = readFileSync(join(handoffDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    const parsed = HandoffFrontmatter.safeParse(frontmatter);
-    if (!parsed.success) {
-      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
-      continue;
-    }
-    if (parsed.data.id !== seq) {
-      malformed.push({
-        filename,
-        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
-      });
-      continue;
-    }
-    handoffs.push({ frontmatter: parsed.data, body, filename });
-  }
-  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
-  return { handoffs, malformed };
-}
 
 // src/tools/handoff.ts
 var HandoffInput = external_exports.object({
@@ -34559,7 +34735,7 @@ function buildAuditTool(env2) {
     handler: () => Promise.resolve(runList5(env2))
   });
 }
-var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+var SEVERITY_ORDER2 = ["critical", "high", "medium", "low", "info"];
 function runList5(env2) {
   const { reports, malformed } = readAllAuditReports(env2.securityDir);
   const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine2).join("\n");
@@ -34578,7 +34754,7 @@ ${body}${warning}` }
 }
 function formatReportLine2(r) {
   const total = r.findings.length;
-  const breakdown = SEVERITY_ORDER.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
+  const breakdown = SEVERITY_ORDER2.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
   const when = r.scanned_at.slice(0, 10);
   const target = r.target ? ` \`${r.target}\`` : "";
   const counts = breakdown ? ` \u2014 ${breakdown}` : "";
