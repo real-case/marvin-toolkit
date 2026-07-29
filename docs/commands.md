@@ -79,7 +79,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:handoff-list` | List the session-continuation handoff documents, newest first. | `marvin list handoffs`, `show session handoffs` |
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, count by type or tag, or prune stale and duplicate lessons. | `marvin what did we learn about auth?`, `lessons stats`, `prune the lessons` |
 | `/marvin:help` | Show the project dashboard and the full command index, filtered by group. | `marvin help`, `what commands are there?`, `marvin help sec` |
-| `/marvin:dashboard` | Report the whole-toolbox state — board counters, artifact inventories with freshness, the ADR corpus by status, lessons stats, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
+| `/marvin:dashboard` | Report the whole-toolbox state — paths, config, git and MCP servers, board counters, current work, recent handoffs, audit findings by severity, artifacts, the ADR corpus, lessons, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
 | `/marvin:reports` | List every report marvin generated under `.marvin/` — security, refactor, task, handoff — newest first, with freshness. | `marvin show the reports`, `what reports do we have?`, `open the latest security report` |
 | `/marvin:report-export` | Export a report to PDF (print-ready HTML), standalone HTML, or a Markdown digest, filled from the widget-theme print template. | `marvin export the security report to PDF`, `save this report as markdown`, `make the scan report shareable` |
 

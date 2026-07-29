@@ -1,13 +1,24 @@
 import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
 
 /**
- * A representative full DashboardState (ADR-0024 #8) shared by the tests and the story.
- * It deliberately populates every section — including all the OPTIONAL extended sections
- * (adr / security / refactor / lessons / usage) with non-null ages, a non-empty usage
- * window and top list, and a malformed ADR count — so the AC1 render assertions are real,
- * not tautologies. This fixture is the "everything on" end of the range; the exported
- * variants below cover the other ends — help-narrow (absent sections), fresh-project
- * (present-but-zeroed), git-less, and the long-paths stress shape.
+ * A representative full DashboardState (ADR-0024 #8) shared by the tests and the
+ * stories. It deliberately populates every section — the optional extended ones
+ * (adr / lessons / usage) with non-null ages, a non-empty usage window and top
+ * list, a malformed ADR count, and all four v2 sections (servers / current_tasks
+ * / handoffs / audits) — so the render assertions are real, not tautologies.
+ * This fixture is the "everything on" end of the range; the exported variants
+ * below cover the other ends — help-narrow (absent sections), fresh-project
+ * (present-but-zeroed), git-less, long-paths, and scanned-clean audits.
+ *
+ * Two ordering choices are load-bearing rather than cosmetic:
+ *
+ *  - `audits.security.by_severity` lists `medium` FIRST. A record preserves
+ *    insertion order, so a widget that iterated it directly would render the
+ *    bar out of rank order. A rank-ordered fixture would pass under both
+ *    readings and prove nothing.
+ *  - `board_counts` puts the largest count on a status that is NOT declared
+ *    first, so a bar sorted by count renders in a different order than a bar
+ *    following the configured status order.
  *
  * All values are fixed literals (no Date.now()) so snapshots stay deterministic.
  */
@@ -37,11 +48,11 @@ export const dashboardFixture: DashboardState = {
   },
   board_counts: { backlog: 4, "in-progress": 2, "in-review": 1, done: 7, blocked: 1 },
   board_role_counts: { todo: 4, wip: 2, review: 1, done: 7, blocked: 1 },
-  git: { has_git: true, has_gh: true, branch: "feat/widget-dashboard" },
+  git: { has_git: true, has_gh: true, branch: "feat/dashboard-rework" },
   artifacts: {
     specs: 3,
-    handoffs: 2,
-    audits: 1,
+    handoffs: 3,
+    audits: 2,
     lessons: 5,
     verification: { exists: true, age_days: 2 },
   },
@@ -58,8 +69,6 @@ export const dashboardFixture: DashboardState = {
     counts: { proposed: 2, accepted: 24, deprecated: 1, superseded: 3, rejected: 0 },
     malformed: 1,
   },
-  security: { reports: 1, newest_age_days: 6 },
-  refactor: { audits: 2, smells: 1, plans: 1 },
   lessons: {
     total: 5,
     by_type: { "bug-pattern": 2, gotcha: 2, convention: 1 },
@@ -74,14 +83,86 @@ export const dashboardFixture: DashboardState = {
       { kind: "prompt", name: "task-start", count: 9 },
     ],
   },
+  servers: [
+    { name: "marvin", enabled: true },
+    { name: "context7", enabled: true },
+    { name: "gitmcp", enabled: true },
+    { name: "github", enabled: true },
+    { name: "postgres", enabled: true },
+    { name: "playwright", enabled: false },
+    { name: "sentry", enabled: false },
+    { name: "obsidian", enabled: false },
+  ],
+  current_tasks: {
+    board: [
+      {
+        id: "042",
+        type: "feature",
+        status: { key: "in-progress", role: "wip" },
+        title: "Dashboard rework — activity zone",
+        branch: "feat/042--dashboard-activity",
+        tracker_url: null,
+        pr: null,
+        created: "2026-07-20T09:00:00.000Z",
+        updated: "2026-07-27T16:20:00.000Z",
+      },
+      {
+        id: "041",
+        type: "bug",
+        status: { key: "in-progress", role: "wip" },
+        title: "Tracker-list URL escaping fix",
+        branch: "fix/041--tracker-url",
+        tracker_url: null,
+        pr: null,
+        created: "2026-07-19T11:00:00.000Z",
+        updated: "2026-07-26T10:05:00.000Z",
+      },
+      {
+        id: "038",
+        type: "chore",
+        status: { key: "in-review", role: "review" },
+        title: "Extract shared link-dispatch helper",
+        branch: "chore/038--link-dispatch",
+        tracker_url: null,
+        pr: null,
+        created: "2026-07-14T08:30:00.000Z",
+        updated: "2026-07-25T14:45:00.000Z",
+      },
+    ],
+    specs: [
+      { slug: "dashboard-widget-rework", title: "Dashboard widget rework", id: "019" },
+      { slug: "website-widget-embeds", title: "Website widget embeds", id: "011" },
+      { slug: "website-interactive-islands", title: "Website interactive islands", id: "010" },
+    ],
+  },
+  handoffs: [
+    { slug: "reports-widget-premium", objective: "Reports widget premium design", age_days: 2 },
+    { slug: "website-scaffold", objective: "Website scaffold continuation", age_days: 9 },
+    { slug: "e2e-stdio-flake", objective: "E2E stdio flake root-cause", age_days: 15 },
+  ],
+  audits: {
+    security: {
+      scanned_age_days: 5,
+      total: 14,
+      // deliberately NOT in rank order — see the fixture docstring
+      by_severity: { medium: 6, critical: 1, low: 4, high: 3 },
+      newest_report: "002-threat-model.md",
+    },
+    refactor: {
+      scanned_age_days: 12,
+      total: 9,
+      by_severity: { medium: 4, high: 2, low: 3 },
+      newest_report: "003-smells-api.md",
+    },
+  },
 };
 
 /**
- * The narrower `help`-shaped payload (ADR-0030): every optional extended section —
- * adr / security / refactor / lessons / usage, and `artifacts.verification` — is
- * ABSENT, not zeroed, so only the five always-present cards (paths · config ·
- * board · artifacts · commands) render. Built standalone rather than spread from
- * the full fixture because a spread can only add fields, never remove them.
+ * The narrower `help`-shaped payload (ADR-0030): every optional section — adr /
+ * lessons / usage, `artifacts.verification`, and all four v2 sections — is
+ * ABSENT, not zeroed, so only the always-present cards render. Built standalone
+ * rather than spread from the full fixture because a spread can only add fields,
+ * never remove them.
  */
 export const coreOnlyDashboardFixture: DashboardState = {
   version: "0.1.0",
@@ -118,9 +199,9 @@ export const coreOnlyDashboardFixture: DashboardState = {
 
 /**
  * The `dashboard` tool's REAL fresh-project payload: every extended section is
- * PRESENT but zeroed — 0 counts, null ages, a null usage window and empty top —
- * exercising the present-but-zero side of the contract (a card still renders,
- * with its neutral zero-state) as opposed to the absent side above.
+ * PRESENT but empty — 0 counts, null ages, a null usage window, empty digests,
+ * and BOTH audit areas null (never scanned). This is the present-but-zero side
+ * of the contract, as opposed to the absent side above.
  */
 export const freshDashboardFixture: DashboardState = {
   version: "0.1.0",
@@ -165,16 +246,41 @@ export const freshDashboardFixture: DashboardState = {
     counts: { proposed: 0, accepted: 0, deprecated: 0, superseded: 0, rejected: 0 },
     malformed: 0,
   },
-  security: { reports: 0, newest_age_days: null },
-  refactor: { audits: 0, smells: 0, plans: 0 },
   lessons: { total: 0, by_type: {}, by_tag: {} },
   usage: { events: 0, window: null, top: [] },
+  servers: [],
+  current_tasks: { board: [], specs: [] },
+  handoffs: [],
+  audits: { security: null, refactor: null },
 };
 
 /**
- * Not inside a git repository — `has_git`/`has_gh` false and `branch` null, so the
- * header shows the ✗ badges and the "(not in a git repo)" note. Smallest delta
- * over the fresh fixture: only `git` changes.
+ * The discriminating audit fixture: security was SCANNED AND FOUND NOTHING
+ * (`total: 0`, empty `by_severity`, a real report name and age), while refactor
+ * was NEVER SCANNED (`null`).
+ *
+ * The two states share every renderable number, so a widget that collapsed them
+ * would render this fixture's two areas identically — which is exactly what the
+ * story's baseline and the unit test are built to catch. Getting it wrong makes
+ * a never-scanned project read as a clean bill of health.
+ */
+export const scannedCleanDashboardFixture: DashboardState = {
+  ...dashboardFixture,
+  audits: {
+    security: {
+      scanned_age_days: 0,
+      total: 0,
+      by_severity: {},
+      newest_report: "004-scan.md",
+    },
+    refactor: null,
+  },
+};
+
+/**
+ * Not inside a git repository — `has_git`/`has_gh` false and `branch` null, so
+ * the identity strip shows the dim badges and the "(not in a git repo)" note.
+ * Smallest delta over the fresh fixture: only `git` changes.
  */
 export const noGitDashboardFixture: DashboardState = {
   ...freshDashboardFixture,
@@ -184,8 +290,8 @@ export const noGitDashboardFixture: DashboardState = {
 /**
  * The break-all stress shape: monorepo-deep project/tasks/config paths, a long
  * release base branch, and a long topic branch — everything the paths/config
- * cards and the header render as `<code>` must wrap inside its card instead of
- * blowing the grid column open. Smallest delta over the full fixture.
+ * cards and the identity strip render as `<code>` must wrap inside its card
+ * instead of blowing the grid column open. Smallest delta over the full fixture.
  */
 export const longPathsDashboardFixture: DashboardState = {
   ...dashboardFixture,

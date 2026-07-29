@@ -56,13 +56,19 @@
 /*
  * The Home teasers are stacked full-width (see .wt3 in index.astro), so each widget reports the
  * height it actually wants at the shell width instead of reflowing into a tall narrow column:
- * dashboard 640px, reports 709px measured at the 1152px shell — both render whole, with no
- * internal scrolling, which is the point of showing a live widget at all.
+ * reports 709px measured at the 1152px shell, rendering whole with no internal scrolling, which
+ * is the point of showing a live widget at all.
  *
  * The cap is what keeps the rule from the block above intact: `help` renders the entire command
  * reference and reports ~2187px even at full width, and one teaser must not swallow the page. So
  * the window is bounded at roughly a screen — tall enough that every widget short enough to fit
- * fits, and only the genuinely long one is left scrolling internally.
+ * fits, and only the genuinely long ones are left scrolling internally.
+ *
+ * `dashboard` used to measure 640px and render whole. The three-zone rework (0.10.0) takes it to
+ * **1477px** at the same 1152px shell, so it now joins `help` on the scrolling side of that line.
+ * The cap was deliberately NOT raised to fit it: a ~1500px teaser is close to two screens and is
+ * exactly the "swallow the page" outcome the bound exists to prevent, and raising it for the
+ * dashboard would leave the rule protecting nothing but `help`.
  */
 .wd .wd-frame {
   min-height: 180px;

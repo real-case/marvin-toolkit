@@ -114,8 +114,7 @@ function populate(dir) {
   // The v2 digests read the newest report per area, so EVERY mtime here is
   // pinned rather than left to write order. `001-scan.md` stays prose-only AND
   // newest, so picking `002-threat-model.md` proves "skip the unparseable, take
-  // the newest that parses"; pinning it at 0 days is also what keeps the v1
-  // `newest_age_days: 0` assertion true, so the invariant is explicit.
+  // the newest that parses".
   writeFileSync(join(dir, ".marvin", "security", "001-scan.md"), "# scan");
   pinAge(join(dir, ".marvin", "security", "001-scan.md"), 0);
   writeFileSync(
@@ -221,8 +220,6 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
     assert.match(text, /- wip: 1/);
     assert.match(text, /- Specs: 1/);
     assert.match(text, /- Verification: `verification\.md` 0 day\(s\) old/);
-    assert.match(text, /- Security reports: 2 .*newest 0 day\(s\) old/);
-    assert.match(text, /- Refactor: 1 audit · 1 smells · 1 plan/);
     assert.match(text, /- Handoffs: 1/);
     assert.match(text, /- Corpus: `docs\/adr` \(detected\) · 2 record\(s\)/);
     assert.match(text, /proposed: 1 · accepted: 1/);
@@ -252,8 +249,6 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
       counts: { proposed: 1, accepted: 1, deprecated: 0, superseded: 0, rejected: 0 },
       malformed: 1,
     });
-    assert.deepEqual(sc.security, { reports: 2, newest_age_days: 0 });
-    assert.deepEqual(sc.refactor, { audits: 1, smells: 1, plans: 1 });
     assert.equal(sc.lessons.total, 2);
     assert.deepEqual(sc.lessons.by_tag, { infra: 1, ci: 1 });
     assert.deepEqual(sc.usage, {
@@ -264,6 +259,40 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
         { kind: "tool", name: "task", count: 1 },
       ],
     });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard no longer emits the v1 security / refactor inventories (AC1)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-"));
+  try {
+    // `populate` writes 2 security reports and 3 refactor documents, so the v1
+    // blocks WOULD have had non-zero values to report. That is what makes this
+    // a removal proof: on a fixture with nothing on disk, an absent key and a
+    // dropped feature look identical.
+    populate(dir);
+    const result = await callDashboard(dir);
+    const sc = result.structuredContent;
+
+    assert.equal("security" in sc, false, "top-level v1 security inventory gone");
+    assert.equal("refactor" in sc, false, "top-level v1 refactor inventory gone");
+
+    // the text says neither a security report count nor refactor register counts
+    const text = textOf(result);
+    assert.ok(!/Security reports:/.test(text), "no security document count under Artifacts");
+    assert.ok(!/audit · .* smells · .* plan register/.test(text), "no refactor register counts");
+
+    // what REPLACES them still reports both areas, so the section did not simply
+    // vanish along with the numbers
+    assert.equal(sc.audits.security.total, 4);
+    assert.equal(sc.audits.refactor.total, 3);
+    assert.match(text, /- Security: 4 finding\(s\)/);
+    assert.match(text, /- Refactor: 3 finding\(s\)/);
+
+    // and the required security DOCUMENT count is untouched — removing it would
+    // break the widget's Artifacts card and is explicitly out of scope
+    assert.equal(sc.artifacts.audits, 2);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -425,8 +454,6 @@ test("dashboard zero-state: a fresh project renders every section and validates"
     });
     assert.equal(sc.adr.total, 0);
     assert.equal(sc.adr.counts.accepted, 0);
-    assert.deepEqual(sc.security, { reports: 0, newest_age_days: null });
-    assert.deepEqual(sc.refactor, { audits: 0, smells: 0, plans: 0 });
     assert.equal(sc.lessons.total, 0);
     assert.ok(!("usage" in sc), "usage section absent without a log");
 
@@ -450,12 +477,15 @@ test("dashboard partial project: present dirs count, missing dirs stay zero", as
     const result = await callDashboard(dir);
     const sc = result.structuredContent;
     assert.ok(DashboardState.safeParse(sc).success, "partial payload conforms");
-    assert.deepEqual(sc.security, { reports: 1, newest_age_days: 0 });
+    // the security DOCUMENT count survives the v1 removal — it lives on the
+    // required `artifacts` block, not on the deleted `security` inventory
+    assert.equal(sc.artifacts.audits, 1);
     assert.equal(sc.artifacts.specs, 0);
     assert.equal(sc.artifacts.handoffs, 0);
-    assert.deepEqual(sc.refactor, { audits: 0, smells: 0, plans: 0 });
     assert.ok(!("usage" in sc));
-    assert.match(textOf(result), /- Security reports: 1/);
+    // `001-scan.md` is prose-only, so it yields no parseable audit block and the
+    // area stays null — never-scanned, distinct from scanned-clean
+    assert.deepEqual(sc.audits, { security: null, refactor: null });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -472,7 +502,7 @@ test("dashboard `section` narrows the text; structuredContent stays complete", a
     // the payload ignores the filter
     const sc = result.structuredContent;
     assert.ok(DashboardState.safeParse(sc).success);
-    assert.ok(sc.adr && sc.security && sc.refactor && sc.lessons, "full payload emitted");
+    assert.ok(sc.adr && sc.lessons && sc.audits && sc.current_tasks, "full payload emitted");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
