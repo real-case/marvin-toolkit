@@ -135,7 +135,7 @@ test(
 // ── AC2: specDigest ─────────────────────────────────────────────────────────
 
 test(
-  "specDigest lists unshipped specs newest-first and skips verification.md and symlinks",
+  "specDigest lists undelivered specs newest-first, skipping shipped, superseded, verification.md and symlinks",
   withDir(async (root) => {
     const specs = join(root, ".marvin", "task");
     mkdirSync(specs, { recursive: true });
@@ -165,6 +165,17 @@ test(
     // a planted symlink whose id would otherwise sort it first
     writeFileSync(join(outside, "secret.md"), spec("secret", "ready", "Out of tree"));
     symlinkSync(join(outside, "secret.md"), join(specs, "005-linked.md"));
+    // `superseded` is terminal too — the spec was replaced, so it is delivered,
+    // not in flight. Under the old `!== "shipped"` predicate the digest returns
+    // three rows (006, 004, 003) rather than two, so the deepEqual below fails
+    // on the extra head row. The highest id is deliberate for legibility — the
+    // wrong row lands first in the diff — but the assertion is what discriminates,
+    // not the cap: three candidates is exactly DIGEST_LIMIT, so nothing is
+    // displaced.
+    writeFileSync(
+      join(specs, "006-superseded.md"),
+      spec("superseded-spec", "superseded", "A superseded spec"),
+    );
 
     assert.deepEqual(lib.specDigest(root), [
       { slug: "no-status", title: "A status-less spec", id: "004" },

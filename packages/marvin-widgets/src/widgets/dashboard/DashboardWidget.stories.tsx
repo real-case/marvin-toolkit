@@ -7,30 +7,30 @@ import {
   freshDashboardFixture,
   noGitDashboardFixture,
   longPathsDashboardFixture,
+  scannedCleanDashboardFixture,
 } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
 import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the dashboard widget (ADR-0024 #8). Static stories over the fixture
- * family cover the render range — full payload (default light + pinned dark), the
- * help-narrow core-only shape, the present-but-zeroed fresh project, the git-less
- * header, the long-paths stress shape, and the connecting / no-data / error trio —
- * as the visual-regression screenshot surface. The mock-host story's `play` drives
- * the real ext-apps handshake over an in-memory transport and asserts the panel
- * renders — the `@storybook/test-runner` (test-storybook) oracle.
+ * Stories for the reworked dashboard widget (ADR-0024 #8). Static stories over
+ * the fixture family cover the render range — full payload (default light +
+ * pinned dark), the help-narrow core-only shape, the present-but-zeroed fresh
+ * project, the git-less identity strip, the long-paths stress shape, the
+ * scanned-clean-versus-never-scanned audit pair, and the connecting / no-data /
+ * error trio — as the visual-regression screenshot surface. The mock-host
+ * story's `play` drives the real ext-apps handshake over an in-memory transport
+ * and asserts the panel renders — the `@storybook/test-runner` oracle.
  *
- * The view renders its own `<MvRoot>` (family theme), so `withMvTheme` pins the theme through the view's `theme` prop.
- * The default stories leave `theme` unset — the OS/host scheme applies, light in the
- * headless runner — and the dark variant pins the view's MvRoot via the story-only
- * `theme` prop (plus `hostTheme` so the Storybook canvas behind the widget matches).
- */
-/**
- * Maps the story's `hostTheme` parameter (or the toolbar global) onto the
- * view's `theme` prop — the view renders its own `MvRoot`, so a wrapping
- * decorator cannot pin the theme (a nested unpinned `.mvroot` would re-declare
- * the light tokens). `FixtureDark` stays a pinned screenshot while the toolbar
- * keeps flipping every static story.
+ * The view renders its own `<MvRoot>` (family theme), so `withMvTheme` pins the
+ * theme through the view's `theme` prop. The default stories leave `theme` unset
+ * — the OS/host scheme applies, light in the headless runner — and the dark
+ * variant pins the view's MvRoot via the story-only `theme` prop (plus
+ * `hostTheme` so the Storybook canvas behind the widget matches).
+ *
+ * The runner pins the viewport at 1000×800, so NO story here exercises a
+ * responsive breakpoint. The four breakpoint rules are asserted on the injected
+ * stylesheet's text in the unit test instead.
  */
 const withMvTheme: Decorator = (Story, context) => {
   const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
@@ -46,7 +46,7 @@ const meta: Meta<typeof DashboardView> = {
 };
 export default meta;
 
-/** Static story — the pure view rendering the full fixture directly. */
+/** Static story — the pure view rendering the full v2 fixture directly. */
 export const Fixture: StoryObj<typeof DashboardView> = {
   args: { data: dashboardFixture },
 };
@@ -57,17 +57,27 @@ export const FixtureDark: StoryObj<typeof DashboardView> = {
   parameters: { hostTheme: "dark" },
 };
 
-/** The help-narrow payload — every extended section absent, only the 5 core cards render. */
+/** The help-narrow payload — every optional section absent, so the v2 zones are omitted. */
 export const CoreOnly: StoryObj<typeof DashboardView> = {
   args: { data: coreOnlyDashboardFixture },
 };
 
-/** A fresh project — extended sections present but zeroed, so each card shows its zero-state. */
+/** A fresh project — sections present but empty, so each renders its zero-state. */
 export const FreshProject: StoryObj<typeof DashboardView> = {
   args: { data: freshDashboardFixture },
 };
 
-/** Outside a git repository — the header shows ✗ badges and "(not in a git repo)". */
+/**
+ * The discriminating audit pair: security scanned clean (a report exists and
+ * found nothing) beside refactor never scanned (no report at all). The two must
+ * NOT render identically — a never-scanned area reading as clean is the single
+ * most misleading thing this widget could say.
+ */
+export const AuditsScannedClean: StoryObj<typeof DashboardView> = {
+  args: { data: scannedCleanDashboardFixture },
+};
+
+/** Outside a git repository — the identity strip dims its badges. */
 export const NoGitRepo: StoryObj<typeof DashboardView> = {
   args: { data: noGitDashboardFixture },
 };
@@ -119,11 +129,13 @@ export const MockHost: StoryObj = {
       () => canvasElement.querySelector('[data-testid="dashboard-header"]') !== null,
       "the dashboard panel to render after the mock-host handshake",
     );
-    if (!canvasElement.querySelector('[data-testid="card-board"]')) {
-      throw new Error("mock-host story: expected the board card to render");
+    for (const testid of ["dashboard-sidebar", "zone-project", "zone-work", "zone-toolbox"]) {
+      if (!canvasElement.querySelector(`[data-testid="${testid}"]`)) {
+        throw new Error(`mock-host story: expected ${testid} to render`);
+      }
     }
-    if (!canvasElement.querySelector('[data-testid="card-usage"]')) {
-      throw new Error("mock-host story: expected the usage card to render from the payload");
+    if (!canvasElement.querySelector('[data-testid="card-audits"]')) {
+      throw new Error("mock-host story: expected the audits card to render from the payload");
     }
   },
 };

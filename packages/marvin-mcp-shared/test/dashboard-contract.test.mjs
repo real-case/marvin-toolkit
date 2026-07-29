@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import {
   AdrCorpusSummary,
   DashboardState,
-  RefactorInventory,
-  SecurityInventory,
   UsageSummary,
   VerificationFreshness,
 } from "../dist/contracts/index.js";
+import * as contracts from "../dist/contracts/index.js";
 
 /**
  * The ADR-0030 DashboardState extension: whole-toolbox sections are optional
@@ -49,8 +48,6 @@ test("DashboardState accepts the full ADR-0030 extension", () => {
       counts: { proposed: 1, accepted: 27, deprecated: 0, superseded: 2, rejected: 0 },
       malformed: 0,
     },
-    security: { reports: 2, newest_age_days: 4 },
-    refactor: { audits: 1, smells: 2, plans: 1 },
     lessons: { total: 3, by_type: { gotcha: 2, pitfall: 1 }, by_tag: { ci: 1 } },
     usage: {
       events: 12,
@@ -89,11 +86,40 @@ test("AdrCorpusSummary: status counts stay on the closed vocabulary", () => {
   );
 });
 
-test("SecurityInventory and RefactorInventory reject negative counts", () => {
-  assert.equal(SecurityInventory.safeParse({ reports: 0, newest_age_days: null }).success, true);
-  assert.equal(SecurityInventory.safeParse({ reports: -1, newest_age_days: null }).success, false);
-  assert.equal(RefactorInventory.safeParse({ audits: 0, smells: 0, plans: 0 }).success, true);
-  assert.equal(RefactorInventory.safeParse({ audits: 0, smells: -2, plans: 0 }).success, false);
+test("the v1 SecurityInventory / RefactorInventory schemas are gone from the surface", () => {
+  assert.equal(contracts.SecurityInventory, undefined);
+  assert.equal(contracts.RefactorInventory, undefined);
+});
+
+test("DashboardState no longer carries the v1 security / refactor fields", () => {
+  // zod STRIPS unknown keys rather than rejecting them, so "it still parses" is
+  // not the proof — the parsed OUTPUT is. A payload carrying the old blocks
+  // parses, and they are absent from the result precisely because the schema no
+  // longer declares them. Were either field still declared, it would survive
+  // into `data` and this assertion would fail: that is what makes it a removal
+  // proof rather than a restatement.
+  const parsed = DashboardState.safeParse({
+    ...BASE,
+    security: { reports: 2, newest_age_days: 4 },
+    refactor: { audits: 1, smells: 2, plans: 1 },
+  });
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  assert.equal("security" in parsed.data, false);
+  assert.equal("refactor" in parsed.data, false);
+  // the sibling that supersedes them is still declared and still round-trips,
+  // so this cannot pass by the schema having lost both blocks wholesale
+  const withAudits = DashboardState.safeParse({
+    ...BASE,
+    audits: {
+      security: { scanned_age_days: 1, total: 1, by_severity: { high: 1 } },
+      refactor: null,
+    },
+  });
+  assert.equal(withAudits.success, true, JSON.stringify(withAudits.error?.issues));
+  assert.deepEqual(withAudits.data.audits.refactor, null);
+  assert.equal(withAudits.data.audits.security.total, 1);
+  // and `artifacts.audits` — the security DOCUMENT count — is untouched
+  assert.equal(parsed.data.artifacts.audits, 2);
 });
 
 test("UsageSummary: kind is closed to prompt|tool, window may be null", () => {

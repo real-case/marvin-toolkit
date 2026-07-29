@@ -4,6 +4,52 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.10.0] — 2026-07-29
+
+The dashboard rework, delivered in three slices (contract → tool → widget). This
+entry covers all three, since the earlier two deliberately deferred the version
+bump so a single one could carry the whole change.
+
+### Added
+
+- **`DashboardState` v2 sections** — `servers` (the configured MCP servers),
+  `current_tasks` (active board cards plus pipeline specs in flight), `handoffs`
+  (recent session-continuation docs with their age), and `audits` (findings by
+  severity for the newest security and refactor report). Every field is optional,
+  so the narrower `help` payload keeps conforming.
+- **The `dashboard` tool emits all four**, backed by four digest readers in
+  `lib/state.ts` (`boardDigest` / `specDigest` / `handoffDigest` / `auditDigest`),
+  plus three new terminal sections: **Current work**, **Handoffs** and **Audits**.
+- **A reworked dashboard widget** on that payload: a nav sidebar, an identity
+  strip, and three zones — Project (repo, board distribution bar, artifacts, MCP
+  servers), Work in progress (current tasks, handoffs, audit findings with
+  per-severity spark-bars), and Toolbox state (paths, config, ADR corpus, lessons,
+  usage, commands). Controls send their marvin command to the conversation, and
+  degrade to the clipboard, then to a revealed command, when the host declines.
+- **`src/lib/actions.ts`** — the shared chat-action ladder behind those controls.
+  A host refusal arrives as a RESOLVED `{ isError: true }` rather than a
+  rejection, which the two pre-existing `sendMessage` call sites do not check.
+
+### Changed
+
+- **An audit area with no report now renders differently from one scanned clean.**
+  A never-scanned project previously read as a clean bill of health.
+- `specDigest` treats `superseded` specs as delivered, matching the predicate the
+  task pipeline already applies. A superseded spec no longer reports as in flight.
+- The `dashboard` blurb in the command reference now describes the v2 sections.
+
+### Removed
+
+- **`SecurityInventory` and `RefactorInventory`** from the contract, the tool
+  payload, and the widget cards that rendered them. `DashboardAudits` supersedes
+  both with findings and freshness per area, and `artifacts.audits` still carries
+  the security document count. The refactor register counts by kind have no v2
+  equivalent and were dropped deliberately, not relocated. The Artifacts text
+  section no longer reports a security document count beside the Audits finding
+  count: the two measured different things and read as a contradiction.
+
+Registry unchanged: 52 prompts, 13 tools, 9 widgets.
+
 ## [0.9.0] — 2026-07-17
 
 ### Added

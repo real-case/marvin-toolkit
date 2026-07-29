@@ -152,9 +152,12 @@ export function boardDigest(env: ServerEnv, config: Config): TaskCard[] {
 
 /**
  * Pipeline specs under `<projectDir>/.marvin/task` still in flight, each keyed by
- * its frontmatter `slug` (the filename slug when the spec carries none): frontmatter
- * `status` other than `shipped` (a missing status counts as in flight, since
- * a spec is only marked shipped on delivery). `verification.md` is the gate
+ * its frontmatter `slug` (the filename slug when the spec carries none): any
+ * frontmatter `status` that is not terminal, where terminal means `shipped` OR
+ * `superseded` — the predicate `/marvin:task-implement` already applies at its
+ * step 2, both of which mean the work is done and neither of which is current
+ * work. A missing status counts as in flight, since a spec is only stamped on
+ * delivery. `verification.md` is the gate
  * artifact, not a spec, and symlinked entries are skipped outright — a planted
  * link must not pull out-of-tree content into `structuredContent` (the
  * `readMdFiles` rule). Ordered by the numeric filename prefix descending, which
@@ -177,7 +180,7 @@ export function specDigest(projectDir: string): DashboardSpec[] {
       const path = join(dir, filename);
       if (lstatSync(path).isSymbolicLink()) continue;
       const { frontmatter, body } = parseFrontmatter(readFileSync(path, "utf8"));
-      if (frontmatter.status === "shipped") continue;
+      if (frontmatter.status === "shipped" || frontmatter.status === "superseded") continue;
       const base = filename.replace(/\.md$/, "");
       const m = /^(\d+)-(.+)$/.exec(base);
       const id = m?.[1];

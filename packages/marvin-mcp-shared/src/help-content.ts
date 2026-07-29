@@ -130,7 +130,7 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Team lessons-learned store — capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard:
-    "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+    "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
   reports:
     "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
   "report-export":

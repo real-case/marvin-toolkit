@@ -31793,7 +31793,7 @@ function specDigest(projectDir) {
       const path = join(dir, filename);
       if (lstatSync(path).isSymbolicLink()) continue;
       const { frontmatter, body } = parseFrontmatter(readFileSync(path, "utf8"));
-      if (frontmatter.status === "shipped") continue;
+      if (frontmatter.status === "shipped" || frontmatter.status === "superseded") continue;
       const base = filename.replace(/\.md$/, "");
       const m = /^(\d+)-(.+)$/.exec(base);
       const id = m?.[1];
@@ -31956,7 +31956,7 @@ var COMMAND_DETAILS = {
   "handoff-list": "List the saved session-continuation handoff documents under .marvin/handoff/, newest first.",
   lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
-  dashboard: "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+  dashboard: "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
   reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs \u2014 newest first, with per-report freshness.",
   "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   // adr
@@ -32671,7 +32671,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -32688,11 +32688,6 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
   const git2 = gitState(env2.projectDir);
   const verification = verificationFreshness(env2.projectDir);
   const artifacts = { ...artifactCounts(env2), verification };
-  const security = {
-    reports: artifacts.audits,
-    newest_age_days: newestAgeDays(join(env2.projectDir, ".marvin", "security"))
-  };
-  const refactor = refactorInventory(env2.projectDir);
   const lessons = lessonsStats(env2.memoryDir);
   const adrDir = resolveAdrDir(env2.projectDir, config2.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
@@ -32730,12 +32725,15 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       renderAuditArea("Security", audits.security, "/marvin:sec-scan"),
       renderAuditArea("Refactor", audits.refactor, "/marvin:refactor-audit")
     ],
+    // Security and refactor are NOT counted here. The Audits section above
+    // reports their findings, and a document count beside a finding count
+    // measured two different things (every report versus the newest parseable
+    // one), which read as a contradiction. `artifacts.audits` still carries the
+    // security document count in the payload for the widget's Artifacts card.
     artifacts: [
       "## Artifacts",
       `- Specs: ${artifacts.specs} \xB7 \`.marvin/task/\``,
       `- Verification: ${verification.exists ? `\`verification.md\` ${days(verification.age_days ?? 0)} old` : "none yet"}`,
-      `- Security reports: ${security.reports} \xB7 \`.marvin/security/\`${security.newest_age_days !== null ? ` (newest ${days(security.newest_age_days)} old)` : ""}`,
-      `- Refactor: ${refactor.audits} audit \xB7 ${refactor.smells} smells \xB7 ${refactor.plans} plan register(s) \xB7 \`.marvin/refactor/\``,
       `- Handoffs: ${artifacts.handoffs} \xB7 \`.marvin/handoff/\``
     ],
     adr: [
@@ -32788,8 +32786,6 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
     artifacts,
     command_groups: groups,
     adr,
-    security,
-    refactor,
     lessons,
     ...usage ? { usage } : {},
     servers,
@@ -32814,34 +32810,6 @@ function fileAgeDays(path) {
   } catch {
     return null;
   }
-}
-function newestAgeDays(dir) {
-  if (!existsSync(dir)) return null;
-  let newest = null;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".md")) continue;
-      const mtime = statSync(join(dir, f)).mtimeMs;
-      if (newest === null || mtime > newest) newest = mtime;
-    }
-  } catch {
-    return null;
-  }
-  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS3));
-}
-function refactorInventory(projectDir) {
-  const dir = join(projectDir, ".marvin", "refactor");
-  const inv = { audits: 0, smells: 0, plans: 0 };
-  if (!existsSync(dir)) return inv;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (/^\d+-audit-.*\.md$/.test(f)) inv.audits += 1;
-      else if (/^\d+-smells-.*\.md$/.test(f)) inv.smells += 1;
-      else if (/^\d+-plan-.*\.md$/.test(f)) inv.plans += 1;
-    }
-  } catch {
-  }
-  return inv;
 }
 function adrSummary(rel, corpus) {
   const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
@@ -34765,7 +34733,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.9.0";
+var VERSION = "0.10.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

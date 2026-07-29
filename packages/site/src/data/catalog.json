@@ -1,11 +1,11 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "counts": {
     "prompts": 52,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.9.0",
+    "version": "0.10.0",
     "license": "MIT"
   },
   "groups": [
@@ -255,7 +255,7 @@
       "name": "dashboard",
       "group": "core",
       "blurb": "Whole-toolbox state report",
-      "description": "Whole-toolbox state report: board, config, git, artifact inventories, ADR corpus, and local usage.",
+      "description": "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
       "phrases": [
         "marvin, show me the dashboard",
         "marvin, what's the state of the toolbox?",

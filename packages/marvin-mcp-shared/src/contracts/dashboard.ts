@@ -10,10 +10,16 @@ import { Severity } from "./audit.js";
  * dashboard widget (#8). The base shape is what the `help` tool computes
  * (project paths, config, board counts, git availability, flat artifact
  * counts); the `dashboard` tool extends it with the whole-toolbox sections —
- * ADR corpus by status, security/refactor report inventories with ages,
- * lessons statistics, and the usage-log summary. Every extension is an
- * OPTIONAL field, so the `help` tool's narrower payload keeps conforming
- * (ADR-0030: the extension is not a schema break).
+ * ADR corpus by status, lessons statistics, the usage-log summary, and the v2
+ * block below (servers, current work, handoffs, audit findings by severity).
+ * Every extension is an OPTIONAL field, so the `help` tool's narrower payload
+ * keeps conforming (ADR-0030: the extension is not a schema break).
+ *
+ * The v1 `SecurityInventory` / `RefactorInventory` blocks were REMOVED with the
+ * dashboard widget rework: `DashboardAudits` supersedes them with findings and
+ * freshness per area, and `artifacts.audits` still carries the security
+ * document count. The refactor register counts by kind have no v2 equivalent
+ * and were dropped deliberately, not relocated.
  *
  * Board counts follow ADR-0026: an open per-status-key record plus a closed
  * per-role roll-up, with the configured status set exposed under `config` so a
@@ -57,25 +63,6 @@ export const AdrCorpusSummary = z.object({
   malformed: z.number().int().nonnegative(),
 });
 export type AdrCorpusSummary = z.infer<typeof AdrCorpusSummary>;
-
-/** Security-report inventory under `.marvin/security/` (ADR-0030). */
-export const SecurityInventory = z.object({
-  reports: z.number().int().nonnegative(),
-  /** Whole days since the newest report; null when no report exists. */
-  newest_age_days: z.number().int().nonnegative().nullable(),
-});
-export type SecurityInventory = z.infer<typeof SecurityInventory>;
-
-/**
- * Refactor inventory under `.marvin/refactor/`, counted by kind from the
- * ADR-0029 naming convention (`NNN-audit-*` / `NNN-smells-*` / `NNN-plan-*`).
- */
-export const RefactorInventory = z.object({
-  audits: z.number().int().nonnegative(),
-  smells: z.number().int().nonnegative(),
-  plans: z.number().int().nonnegative(),
-});
-export type RefactorInventory = z.infer<typeof RefactorInventory>;
 
 /** One aggregated usage-log entry: a prompt or tool and its invocation count. */
 export const UsageTopEntry = z.object({
@@ -189,8 +176,6 @@ export const DashboardState = z.object({
   // ── whole-toolbox sections (ADR-0030) — optional so the `help` tool's
   // narrower payload keeps conforming; the `dashboard` tool emits them all.
   adr: AdrCorpusSummary.optional(),
-  security: SecurityInventory.optional(),
-  refactor: RefactorInventory.optional(),
   /** Lessons-store statistics (the shared `LessonsStats`, ADR-0028). */
   lessons: LessonsStats.optional(),
   usage: UsageSummary.optional(),
