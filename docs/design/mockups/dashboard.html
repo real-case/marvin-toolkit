@@ -1,0 +1,410 @@
+<title>Marvin dashboard — proposed rework mockup</title>
+<style>
+  /* ── marvin widget theme, ported 1:1 from packages/marvin-widgets/src/theme/tokens.ts ── */
+  .mvroot{
+    --bg:#fbfbfc;--srf:#ffffff;--srf2:#f4f4f5;--bd:#e9e9ec;--bd2:#d9d9de;
+    --t1:#18181b;--t2:#52525b;--t3:#a1a1aa;
+    --ac:#8b5cf6;--act:#6d28d9;--acbg:rgba(139,92,246,.09);--acfill:#7c3aed;--acfillt:#ffffff;
+    --red:#dc2626;--redbg:#fef2f2;--org:#c2410c;--orgbg:#fff7ed;
+    --amb:#b45309;--ambbg:#fffbeb;--grn:#15803d;--grnbg:#f0fdf4;
+    --blu:#1d4ed8;--blubg:#eff6ff;
+    --barR:#ef4444;--barO:#f97316;--barA:#f59e0b;--barB:#3b82f6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:13px;line-height:1.5;letter-spacing:-0.006em;color:var(--t1);
+  }
+  @media (prefers-color-scheme:dark){
+    .mvroot{
+      --bg:#0b0b0d;--srf:#141417;--srf2:#1d1d22;--bd:#26262c;--bd2:#3a3a42;
+      --t1:#f4f4f5;--t2:#a1a1aa;--t3:#70707a;
+      --ac:#a78bfa;--act:#c4b5fd;--acbg:rgba(167,139,250,.13);--acfill:#7c3aed;--acfillt:#ffffff;
+      --red:#f87171;--redbg:rgba(248,113,113,.11);--org:#fb923c;--orgbg:rgba(251,146,60,.11);
+      --amb:#fbbf24;--ambbg:rgba(251,191,36,.10);--grn:#4ade80;--grnbg:rgba(74,222,128,.10);
+      --blu:#60a5fa;--blubg:rgba(96,165,250,.11);
+      --barR:#ef4444;--barO:#f97316;--barA:#f59e0b;--barB:#3b82f6;
+    }
+  }
+  :root[data-theme="dark"] .mvroot{
+    --bg:#0b0b0d;--srf:#141417;--srf2:#1d1d22;--bd:#26262c;--bd2:#3a3a42;
+    --t1:#f4f4f5;--t2:#a1a1aa;--t3:#70707a;
+    --ac:#a78bfa;--act:#c4b5fd;--acbg:rgba(167,139,250,.13);--acfill:#7c3aed;--acfillt:#ffffff;
+    --red:#f87171;--redbg:rgba(248,113,113,.11);--org:#fb923c;--orgbg:rgba(251,146,60,.11);
+    --amb:#fbbf24;--ambbg:rgba(251,191,36,.10);--grn:#4ade80;--grnbg:rgba(74,222,128,.10);
+    --blu:#60a5fa;--blubg:rgba(96,165,250,.11);
+    --barR:#ef4444;--barO:#f97316;--barA:#f59e0b;--barB:#3b82f6;
+  }
+  :root[data-theme="light"] .mvroot{
+    --bg:#fbfbfc;--srf:#ffffff;--srf2:#f4f4f5;--bd:#e9e9ec;--bd2:#d9d9de;
+    --t1:#18181b;--t2:#52525b;--t3:#a1a1aa;
+    --ac:#8b5cf6;--act:#6d28d9;--acbg:rgba(139,92,246,.09);--acfill:#7c3aed;--acfillt:#ffffff;
+    --red:#dc2626;--redbg:#fef2f2;--org:#c2410c;--orgbg:#fff7ed;
+    --amb:#b45309;--ambbg:#fffbeb;--grn:#15803d;--grnbg:#f0fdf4;
+    --blu:#1d4ed8;--blubg:#eff6ff;
+  }
+  .mvroot,.mvroot *{box-sizing:border-box}
+  .mvroot *{transition:background-color .15s ease,border-color .15s ease,color .15s ease}
+  @media (prefers-reduced-motion:reduce){.mvroot,.mvroot *{transition:none!important}}
+  .mvroot :focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+
+  /* page shell */
+  .page{max-width:1040px;margin:0 auto;padding:18px 16px 48px}
+  .topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .cap{font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--t3)}
+  .toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;
+    padding:4px 11px;border-radius:4px;border:.5px solid var(--bd2);background:var(--srf);color:var(--t2);cursor:pointer}
+  .toggle:hover{background:var(--srf2);color:var(--t1)}
+
+  .frame{background:var(--bg);border:.5px solid var(--bd);border-radius:4px;padding:0;overflow:hidden}
+
+  /* widget shell — nav sidebar + main content */
+  .shell{display:flex;min-height:540px}
+  .sidebar{width:196px;flex:none;background:var(--srf);border-right:.5px solid var(--bd);padding:16px 13px;display:flex;flex-direction:column}
+  .smark{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:16px;font-weight:700;letter-spacing:-.02em;margin:2px 4px 16px;width:max-content;
+    background-image:linear-gradient(100deg,#a78bfa,#7c3aed);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+  .nav-list{display:flex;flex-direction:column;gap:3px}
+  .nav{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font-family:inherit;font-size:12.5px;font-weight:500;letter-spacing:inherit;color:var(--t2);background:transparent;border:0;border-radius:4px;padding:8px 11px;cursor:pointer}
+  .nav>svg{flex:none;color:var(--t3)}
+  .nav:hover{background:var(--srf2);color:var(--t1)}
+  .nav:hover>svg{color:var(--t2)}
+  .nav.active{background:var(--acbg);color:var(--act);box-shadow:inset 2px 0 0 var(--ac)}
+  .nav.active>svg{color:var(--ac)}
+  .side-foot{margin-top:auto;padding-top:12px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+  .main{flex:1;min-width:0;padding:18px 22px 22px}
+  @media (max-width:720px){
+    .shell{flex-direction:column;min-height:0}
+    .sidebar{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:.5px solid var(--bd);padding:10px 14px}
+    .smark{margin:0 12px 0 4px}
+    .nav-list{flex-direction:row;flex-wrap:wrap;flex:1;gap:4px}
+    .nav{width:auto}
+    .side-foot{display:none}
+    .main{padding:16px}
+  }
+
+  /* header */
+  .idstrip{display:flex;flex-wrap:wrap;align-items:center;gap:7px 8px}
+  .idname{font-size:16px;font-weight:500;letter-spacing:-.015em;margin-right:2px}
+
+  .divider{border-top:.5px solid var(--bd);margin:20px 0}
+
+  /* section labels + reveal */
+  .lab{font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin:0 0 12px}
+  .sub{font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin:12px 0 4px}
+  @media (prefers-reduced-motion:no-preference){
+    .reveal{opacity:0;animation:mvUp .55s var(--d,0s) forwards cubic-bezier(.2,.7,.2,1)}
+    .segbar,.sparkbar{animation:barWipe .8s .2s both cubic-bezier(.2,.7,.2,1)}
+  }
+  @keyframes mvUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes barWipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+
+  /* cards + grids */
+  .card{background:var(--srf);border:.5px solid var(--bd);border-radius:4px;padding:14px 16px;min-width:0}
+  .card.lift:hover{border-color:var(--bd2)}
+  .card>h3{margin:0 0 10px;font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--t3)}
+  .chd{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+  .chd>h3{margin:0}
+  .spacer{flex:1}
+  .grid-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .tasks-inner{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px 22px}
+  .grid-2{display:grid;grid-template-columns:1fr 1.6fr;gap:12px}
+  .grid-tb{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  @media (max-width:860px){.grid-tb{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:680px){.grid-sum{grid-template-columns:1fr}}
+  @media (max-width:600px){
+    .grid-2{grid-template-columns:1fr}
+    .grid-tb{grid-template-columns:1fr}
+  }
+
+  /* KPI typography — the premium hierarchy */
+  .kpi{font-size:27px;font-weight:500;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .kpi-sm{font-size:19px;font-weight:500;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .kpi-l{font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-top:3px}
+  .kpigrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+  .num{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+  /* distribution + severity bars */
+  .segbar,.sparkbar{display:flex;gap:2px;height:9px;border-radius:4px;overflow:hidden;background:var(--srf2)}
+  .segbar>i,.sparkbar>i{display:block;min-width:2px}
+  .legend{display:flex;flex-wrap:wrap;gap:5px 13px;margin-top:9px;font-size:11.5px;color:var(--t2)}
+  .legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .legend i{width:7px;height:7px;border-radius:2px;flex:none}
+
+  /* pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:4px;font-size:11.5px;
+    font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums;background:var(--srf2);color:var(--t2)}
+  .pill .dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
+  .pill.on{background:var(--grnbg);color:var(--grn)}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+
+  /* mono chip */
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;background:var(--srf2);
+    border:.5px solid var(--bd);border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .mono.wrap{display:inline-block;white-space:normal;word-break:break-all}
+
+  /* def rows */
+  .def{display:flex;gap:8px;padding:3px 0;align-items:baseline}
+  .def .k{font-size:12px;color:var(--t3);flex:0 0 auto}
+  .def .v{flex:1;min-width:0}
+
+  /* list rows */
+  .row{display:flex;align-items:center;gap:9px;padding:6px 0}
+  .row+.row{border-top:.5px solid var(--bd)}
+  .hoverable{margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:4px;transition:background-color .15s ease}
+  .hoverable:hover{background:var(--srf2)}
+  .ti{font-size:12.5px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .age{font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums;flex:none}
+  .open{font-size:11px;color:var(--ac);cursor:pointer;white-space:nowrap;flex:none}
+  .open:hover{text-decoration:underline}
+  .more{font-size:11px;color:var(--ac);cursor:pointer;padding-top:7px;display:inline-block}
+  .more:hover{text-decoration:underline}
+
+  /* action button (↗ = sendMessage) */
+  .act{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;padding:4px 11px;
+    border-radius:4px;border:.5px solid transparent;background:var(--acbg);color:var(--act);cursor:pointer}
+  .act:hover{border-color:var(--ac)}
+  .arrow{font-size:11px}
+
+  /* audits */
+  .audit{padding:10px 0}
+  .audit:first-of-type{padding-top:2px}
+  .audit+.audit{border-top:.5px solid var(--bd)}
+  .audit-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px 9px;margin-bottom:9px}
+  .audit-head .area{font-size:13px;font-weight:500;color:var(--t1)}
+  .audit-meta{margin-left:auto;display:inline-flex;align-items:baseline;gap:9px;white-space:nowrap}
+
+  .foot{border-top:.5px solid var(--bd);margin-top:18px;padding-top:12px;font-size:11px;color:var(--t3)}
+  .foot code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+</style>
+
+<div class="mvroot">
+  <div class="page">
+
+    <div class="topbar">
+      <span class="cap">Marvin · dashboard (proposed rework) · mockup</span>
+      <button class="toggle" id="themeToggle" aria-label="Toggle light or dark theme">
+        <span id="themeIcon">◐</span><span id="themeLabel">Theme</span>
+      </button>
+    </div>
+
+    <div class="frame">
+      <div class="shell">
+
+        <!-- ── nav sidebar ──────────────────────────────────────────── -->
+        <aside class="sidebar">
+          <div class="smark">&gt;_marvin</div>
+          <nav class="nav-list">
+            <button class="nav active" aria-current="page"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="4.6" height="4.6" rx="1"/><rect x="9.4" y="2" width="4.6" height="4.6" rx="1"/><rect x="2" y="9.4" width="4.6" height="4.6" rx="1"/><rect x="9.4" y="9.4" width="4.6" height="4.6" rx="1"/></svg>Dashboard</button>
+            <button class="nav"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.3 4.3l1 1 1.7-2.1"/><path d="M2.3 8l1 1 1.7-2.1"/><path d="M2.3 11.7l1 1 1.7-2.1"/><path d="M8 4.3h6"/><path d="M8 8h6"/><path d="M8 11.7h6"/></svg>Tasks</button>
+            <button class="nav"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 1.9h4.8l3.2 3.2v9H4z"/><path d="M8.6 1.9v3.4h3.4"/><path d="M6 9h4"/><path d="M6 11.4h4"/></svg>Reports</button>
+            <button class="nav"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h6.2"/><path d="M11 5h3"/><circle cx="9.6" cy="5" r="1.5"/><path d="M2 11h3"/><path d="M7.8 11h6.2"/><circle cx="6.4" cy="11" r="1.5"/></svg>Settings</button>
+          </nav>
+          <div class="side-foot">acme-api · v0.9.0</div>
+        </aside>
+
+        <!-- ── main content ─────────────────────────────────────────── -->
+        <div class="main">
+
+          <header class="idstrip reveal">
+            <span class="idname">acme-api</span>
+            <span class="pill">v0.9.0</span>
+            <span class="pill on"><span class="dot"></span>git</span>
+            <span class="pill on"><span class="dot"></span>gh</span>
+            <span class="mono" style="min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis">feat/dashboard-rework</span>
+            <span class="cap">base main</span>
+          </header>
+
+          <div class="divider"></div>
+
+          <!-- ── project overview ──────────────────────────────────── -->
+          <section class="reveal" style="--d:.05s">
+            <p class="lab">Project</p>
+            <div class="grid-sum">
+              <div class="card lift">
+                <div class="kpi-l" style="margin-top:0">Repo</div>
+                <div style="font-size:15px;font-weight:500;margin:6px 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">acme-api</div>
+                <div class="def"><span class="k">branch</span><span class="v"><span class="mono" style="display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom">feat/dashboard-rework</span></span></div>
+                <div class="def"><span class="k">base</span><span class="v"><span class="mono">main</span></span></div>
+                <div class="def" style="margin-top:4px"><span class="k">git</span><span class="v"><span class="tags"><span class="pill on"><span class="dot"></span>git</span><span class="pill on"><span class="dot"></span>gh</span></span></span></div>
+              </div>
+              <div class="card lift">
+                <div style="display:flex;align-items:baseline;gap:7px"><span class="kpi">15</span><span class="kpi-l" style="margin-top:0">board</span></div>
+                <div class="segbar" style="margin-top:10px" aria-hidden="true">
+                  <i style="flex:4;background:var(--bd2)"></i><i style="flex:2;background:var(--blu)"></i><i style="flex:1;background:var(--amb)"></i><i style="flex:7;background:var(--grn)"></i><i style="flex:1;background:var(--red)"></i>
+                </div>
+                <div class="legend">
+                  <span><i style="background:var(--bd2)"></i>todo 4</span>
+                  <span><i style="background:var(--blu)"></i>wip 2</span>
+                  <span><i style="background:var(--amb)"></i>review 1</span>
+                  <span><i style="background:var(--grn)"></i>done 7</span>
+                  <span><i style="background:var(--red)"></i>blocked 1</span>
+                </div>
+              </div>
+              <div class="card lift">
+                <div class="kpi-l" style="margin-top:0;margin-bottom:8px">Artifacts</div>
+                <div class="kpigrid">
+                  <div><div class="kpi-sm">3</div><div class="kpi-l">specs</div></div>
+                  <div><div class="kpi-sm">3</div><div class="kpi-l">handoffs</div></div>
+                  <div><div class="kpi-sm">2</div><div class="kpi-l">audits</div></div>
+                  <div><div class="kpi-sm">5</div><div class="kpi-l">lessons</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card lift" style="margin-top:12px">
+              <div class="chd">
+                <h3>MCP servers</h3><span class="spacer"></span>
+                <span class="cap" style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--t3)">● enabled&nbsp;&nbsp;○ disabled</span>
+              </div>
+              <div class="tags">
+                <span class="pill on"><span class="dot"></span>marvin</span>
+                <span class="pill on"><span class="dot"></span>context7</span>
+                <span class="pill on"><span class="dot"></span>gitmcp</span>
+                <span class="pill on"><span class="dot"></span>github</span>
+                <span class="pill on"><span class="dot"></span>postgres</span>
+                <span class="pill">playwright</span>
+                <span class="pill">sentry</span>
+                <span class="pill">obsidian</span>
+              </div>
+            </div>
+          </section>
+
+          <div class="divider"></div>
+
+          <!-- ── work in progress · needs attention ────────────────── -->
+          <section class="reveal" style="--d:.1s">
+            <p class="lab">Work in progress · needs attention</p>
+
+            <div class="card lift">
+              <div class="chd">
+                <h3>Current tasks</h3><span class="spacer"></span>
+                <button class="act">+ New task <span class="arrow">↗</span></button>
+              </div>
+              <div class="tasks-inner">
+                <div>
+                  <p class="sub" style="margin-top:0">Board · track</p>
+                  <div class="row hoverable"><span class="pill" style="background:var(--blubg);color:var(--blu)"><span class="dot"></span>wip</span><span class="ti">Dashboard rework — activity zone</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="row hoverable"><span class="pill" style="background:var(--blubg);color:var(--blu)"><span class="dot"></span>wip</span><span class="ti">Tracker-list URL escaping fix</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="row hoverable"><span class="pill" style="background:var(--ambbg);color:var(--amb)"><span class="dot"></span>review</span><span class="ti">Extract shared link-dispatch helper</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="more">open board →</div>
+                </div>
+                <div>
+                  <p class="sub" style="margin-top:0">Specs · task</p>
+                  <div class="row hoverable"><span class="pill">spec</span><span class="ti">006 · dashboard-widget-rework</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="row hoverable"><span class="pill">spec</span><span class="ti">011 · website-widget-embeds</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="row hoverable"><span class="pill">spec</span><span class="ti">010 · website-interactive-islands</span><span class="spacer"></span><span class="open">open →</span></div>
+                  <div class="more">open specs →</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-2" style="margin-top:12px">
+              <div class="card lift">
+                <div class="chd">
+                  <h3>Handoffs</h3><span class="spacer"></span>
+                  <button class="act">+ New <span class="arrow">↗</span></button>
+                </div>
+                <div class="row hoverable"><span class="ti">Reports widget premium design</span><span class="spacer"></span><span class="age">2d</span><span class="open">open →</span></div>
+                <div class="row hoverable"><span class="ti">Website scaffold continuation</span><span class="spacer"></span><span class="age">9d</span><span class="open">open →</span></div>
+                <div class="row hoverable"><span class="ti">E2E stdio flake root-cause</span><span class="spacer"></span><span class="age">15d</span><span class="open">open →</span></div>
+                <div class="more">open all →</div>
+              </div>
+
+              <div class="card lift">
+                <div class="chd">
+                  <h3>Audits</h3><span class="spacer"></span>
+                  <button class="act">▶ Run audit <span class="arrow">↗</span></button>
+                </div>
+                <div class="audit">
+                  <div class="audit-head">
+                    <span class="area">Security</span><span class="kpi-sm">14</span><span class="cap" style="letter-spacing:.04em">findings</span>
+                    <span class="audit-meta"><span class="age">5d ago</span><span class="open">open report →</span></span>
+                  </div>
+                  <div class="sparkbar" aria-hidden="true"><i style="flex:1;background:var(--barR)"></i><i style="flex:3;background:var(--barO)"></i><i style="flex:6;background:var(--barA)"></i><i style="flex:4;background:var(--barB)"></i></div>
+                  <div class="legend">
+                    <span><i style="background:var(--barR)"></i>critical 1</span>
+                    <span><i style="background:var(--barO)"></i>high 3</span>
+                    <span><i style="background:var(--barA)"></i>medium 6</span>
+                    <span><i style="background:var(--barB)"></i>low 4</span>
+                  </div>
+                </div>
+                <div class="audit">
+                  <div class="audit-head">
+                    <span class="area">Refactor</span><span class="kpi-sm">9</span><span class="cap" style="letter-spacing:.04em">findings</span>
+                    <span class="audit-meta"><span class="age">12d ago</span><span class="open">open report →</span></span>
+                  </div>
+                  <div class="sparkbar" aria-hidden="true"><i style="flex:2;background:var(--barO)"></i><i style="flex:4;background:var(--barA)"></i><i style="flex:3;background:var(--barB)"></i></div>
+                  <div class="legend">
+                    <span><i style="background:var(--barO)"></i>high 2</span>
+                    <span><i style="background:var(--barA)"></i>medium 4</span>
+                    <span><i style="background:var(--barB)"></i>low 3</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="divider"></div>
+
+          <!-- ── toolbox state ─────────────────────────────────────── -->
+          <section class="reveal" style="--d:.15s">
+            <p class="lab">Toolbox state</p>
+            <div class="grid-tb">
+              <div class="card lift">
+                <h3>Paths</h3>
+                <div class="def"><span class="k">project</span><span class="v"><span class="mono wrap">/Users/dev/acme-api</span></span></div>
+                <div class="def"><span class="k">tasks</span><span class="v"><span class="mono wrap">.marvin/track</span></span></div>
+                <div class="def"><span class="k">config</span><span class="v"><span class="mono wrap">.marvin/config.json</span></span></div>
+              </div>
+              <div class="card lift">
+                <h3>Config</h3>
+                <div class="def"><span class="k">base</span><span class="v"><span class="mono">main</span></span></div>
+                <div class="def"><span class="k">tracker</span><span class="v"><span class="mono wrap">linear.app/acme/issue/{id}</span></span></div>
+                <div class="def"><span class="k">gates</span><span class="v"><span class="tags"><span class="pill">test</span><span class="pill">lint</span><span class="pill">typecheck</span><span class="pill">build</span></span></span></div>
+              </div>
+              <div class="card lift">
+                <h3>Decisions · ADR (30)</h3>
+                <div class="def"><span class="k">corpus</span><span class="v"><span class="mono">docs/adr</span></span></div>
+                <div class="tags" style="margin-top:6px">
+                  <span class="pill">accepted 24</span><span class="pill">proposed 2</span><span class="pill">superseded 3</span><span class="pill">deprecated 1</span>
+                </div>
+                <div style="margin-top:9px"><span class="pill" style="background:var(--ambbg);color:var(--amb)"><span class="dot"></span>1 malformed</span></div>
+              </div>
+              <div class="card lift">
+                <h3>Lessons (5)</h3>
+                <div class="tags">
+                  <span class="pill">bug-pattern 2</span><span class="pill">gotcha 2</span><span class="pill">convention 1</span>
+                </div>
+              </div>
+              <div class="card lift">
+                <h3>Usage</h3>
+                <div style="display:flex;align-items:baseline;gap:7px"><span class="kpi">128</span><span class="kpi-l" style="margin-top:0">events</span></div>
+                <div class="cap" style="text-transform:none;letter-spacing:0;color:var(--t3);margin-top:6px;margin-bottom:6px">2026-06-01 → 2026-07-07</div>
+                <div class="row" style="padding:3px 0;border:0"><span class="mono">commit</span><span class="cap" style="text-transform:none;letter-spacing:0;font-weight:400">prompt</span><span class="spacer"></span><span class="num" style="font-weight:500">×22</span></div>
+                <div class="row" style="padding:3px 0;border:0"><span class="mono">task</span><span class="cap" style="text-transform:none;letter-spacing:0;font-weight:400">tool</span><span class="spacer"></span><span class="num" style="font-weight:500">×18</span></div>
+                <div class="row" style="padding:3px 0;border:0"><span class="mono">task-start</span><span class="cap" style="text-transform:none;letter-spacing:0;font-weight:400">prompt</span><span class="spacer"></span><span class="num" style="font-weight:500">×9</span></div>
+              </div>
+              <div class="card lift">
+                <h3>Commands (35)</h3>
+                <div class="tags">
+                  <span class="pill">core 9</span><span class="pill">pr 4</span><span class="pill">task 5</span><span class="pill">sec 10</span><span class="pill">track 7</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <p class="foot"><span class="arrow" style="color:var(--ac)">↗</span> actions send the command to chat via <code>sendMessage</code>; they fall back to copy when the host lacks the <code>message</code> capability. <span style="color:var(--ac)">→</span> opens the matching detail widget.</p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle'),
+        icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel');
+    function current(){var t=root.getAttribute('data-theme');if(t) return t;return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+    function paint(){var d=current()==='dark';icon.textContent=d?'☾':'☀';label.textContent=d?'Dark':'Light';}
+    btn.addEventListener('click',function(){var next=current()==='dark'?'light':'dark';root.setAttribute('data-theme',next);paint();});
+    paint();
+  })();
+</script>
