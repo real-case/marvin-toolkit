@@ -160,6 +160,16 @@ export const PROMPTS: PromptDef[] = [
       "Export a generated .marvin/ report to PDF (print-ready HTML), standalone HTML, or a Markdown digest — filled from the print-quality template styled on the widget theme tokens.",
     skill: "report-export",
   },
+  {
+    // Skill-backed (three doors) — the local widget door (ADR-0034). A host that
+    // does not resolve `_meta.ui.resourceUri` (the Claude Code CLI does not) never
+    // renders a widget; this renders one into a file instead, via the shipped
+    // `mcp/server/bin/widget-preview.mjs`.
+    name: "widget-preview",
+    description:
+      "Open a marvin widget as a rendered panel with this project's own data — renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
+    skill: "widget-preview",
+  },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {

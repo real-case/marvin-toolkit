@@ -37,7 +37,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
-    │   │   └── index.ts              # 52 prompt entries (skill-backed + inline track)
+    │   │   └── index.ts              # 53 prompt entries (skill-backed + inline track)
     │   ├── tools/                    # 13 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # board persistence + helpers
@@ -58,6 +58,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
 | `.marvin/usage/` | usage-log middleware (`runPackServer`) | **local, never-committed** telemetry: `events.jsonl` — one JSONL event `{ts, kind, name}` per prompt-get / tool-call — plus a self-written `.gitignore` = `*` so nothing here reaches git; size-capped with rotation to `events.jsonl.1`; read only by `/marvin:dashboard`. Kill-switch `usage.enabled: false`; fail-open (ADR-0030) |
+| `.marvin/preview/` | `widget-preview` command (`mcp/server/bin/widget-preview.mjs`) | rendered widget panels `<widget>.html` — the committed `ui://` document plus the tool's live `structuredContent` and an inlined ~90-line postMessage host, in one self-contained file — plus a self-written `.gitignore` = `*`. The way to see a widget on a host that does not resolve `_meta.ui.resourceUri`, which the Claude Code CLI does not (ADR-0034) |
 | `.marvin/export/` | `report-export` skill (Claude fills the shipped template in-session — no server export code, ADR-0033) | shareable report exports `<group>-<source-basename>.<md\|html>` (print-ready HTML = the PDF path) + a self-written `.gitignore` = `*` — derived artifacts, never versioned |
 | `.marvin/config.json` | `track-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:track-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
 
@@ -73,7 +74,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 
 | Group | Source | Examples |
 |-------|--------|----------|
-| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export` |
+| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export`, `/marvin:widget-preview` |
 | `adr-*` | ADR lifecycle around the bare `/marvin:adr` create (ADR-0027; accept/supersede/sync are human-run via `disable-model-invocation`) | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit`, `/marvin:adr-coverage`, `/marvin:adr-supersede`, `/marvin:adr-sync` |
 | `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
 | `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
@@ -135,6 +136,15 @@ into the server bundle:
   `meta.ui.resourceUri` object literal — so `tsup` never bundles ext-apps/React into `dist/server.js`.
 - **The terminal fallback is unchanged.** `_meta` is additive; a text-only host ignores it and renders
   the tool's `content` exactly as before.
+- **No host in the Claude Code loop renders these.** Measured 2026-07-31: the CLI that spawns the
+  plugin server contains no MCP Apps implementation (`resourceUri` / `profile=mcp-app` / `ui://` all
+  absent), so every widget-bound tool shows its markdown fallback there. The desktop app does
+  implement the extension, but only for the servers *it* connects (`claude_desktop_config.json`),
+  not for plugin servers the CLI spawns. `mcp/server/bin/widget-preview.mjs` is the escape hatch
+  (ADR-0034): it drives the committed `dist/server.js` over stdio, resolves the widget generically
+  from `tools/list` `_meta.ui.resourceUri`, and writes the document + payload + a ~90-line
+  postMessage host into one self-contained file under `.marvin/preview/`. Surfaced as
+  `/marvin:widget-preview`.
 - **`scripts/verify-widgets.mjs`** guards the committed HTML like `verify-dist` guards `dist/`: it
   rebuilds `@marvin-toolkit/mcp-shared` then `@marvin-toolkit/widgets`, hash-compares each committed
   `plugins/marvin/widgets/*.html` against the fresh build, and asserts each file is self-contained.
@@ -285,7 +295,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 52 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 53 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool

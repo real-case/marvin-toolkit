@@ -21,6 +21,7 @@ makes them easy to include in or exclude from version control as a unit.
 | `.marvin/memory/` | The `lessons` tool | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | The `handoff` tool | Session-continuation documents. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
+| `.marvin/preview/` | The `widget-preview` command | Rendered widget panels, never committed. |
 | `.marvin/config.json` | `track-config` and `verify` | The settings documented below. |
 
 Spec storage is host-adaptive. `.marvin/task/` is the default, but Marvin prefers an

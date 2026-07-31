@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **52 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **53 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -55,7 +55,7 @@ prompts divide into seven groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 13 |
+| _(bare)_ | Core developer tools | 16 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
 | `task-*` | Spec-driven task pipeline | 5 |
@@ -87,6 +87,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:help` | Show the project dashboard and the full command index. |
 | `/marvin:dashboard` | Report the whole-toolbox state at a glance. |
 | `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
+| `/marvin:widget-preview` | Open a widget as a rendered panel with this project's data, on any host ([ADR-0034](./docs/adr/0034-widget-preview-door.md)). |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands. The plugin also registers two external MCP servers: `context7` for library docs
@@ -269,6 +270,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
 | [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
 | [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
+| [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
 
 ## Contributing
 

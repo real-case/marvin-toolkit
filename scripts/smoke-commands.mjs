@@ -38,6 +38,7 @@ const REQUIRED_PROMPTS = [
   "dashboard",
   "reports",
   "report-export",
+  "widget-preview",
   // pr-*
   "pr-create",
   "pr-review",
