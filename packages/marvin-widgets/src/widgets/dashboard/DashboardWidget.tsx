@@ -9,6 +9,7 @@ import {
   type ChatActionResult,
   type ChatActionHost,
 } from "../../lib/actions";
+import { useHostTheme } from "../../lib/host-theme";
 import {
   ROLE_TONE,
   auditAreaState,
@@ -1159,7 +1160,11 @@ export interface DashboardViewProps {
    * void handler (a story, a pure-render test) is also accepted.
    */
   onAction?: (command: string) => Promise<ChatActionResult> | void;
-  /** Pin the theme of the view's own `<MvRoot>`. Stories only. */
+  /**
+   * Pin the theme of the view's own `<MvRoot>`. In production this carries the
+   * host's advertised theme, resolved by `useHostTheme`; stories pass it
+   * directly. Undefined leaves `data-theme` unset, so the OS scheme governs.
+   */
   theme?: MvTheme;
 }
 
@@ -1326,7 +1331,7 @@ function chatActionHandler(getApp: () => App | null) {
 function DashboardLiveWidget() {
   const [data, setData] = useState<DashboardState | null>(null);
   const appRef = useRef<App | null>(null);
-  const { isConnected, error } = useApp({
+  const { app, isConnected, error } = useApp({
     appInfo: { name: "marvin-dashboard", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
@@ -1339,12 +1344,14 @@ function DashboardLiveWidget() {
       };
     },
   });
+  const theme = useHostTheme(app, isConnected);
   return (
     <DashboardView
       data={data}
       connecting={!isConnected}
       error={error ? error.message : null}
       onAction={chatActionHandler(() => appRef.current)}
+      theme={theme}
     />
   );
 }
@@ -1376,12 +1383,15 @@ function DashboardSeamWidget({ seam }: { seam: DashboardSeam }) {
     };
   }, [seam]);
 
+  const theme = useHostTheme(seam.app, connected);
+
   return (
     <DashboardView
       data={data}
       connecting={!connected}
       error={error}
       onAction={chatActionHandler(() => seam.app)}
+      theme={theme}
     />
   );
 }

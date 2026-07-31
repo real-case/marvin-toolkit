@@ -22,6 +22,7 @@ import type {
 import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { useHostTheme } from "../../lib/host-theme";
 import {
   BAR_TOKENS,
   MV_FONT_MONO,
@@ -970,7 +971,11 @@ export interface ReportsViewProps {
   onSync?: () => void;
   /** Clock for age labels — injectable so tests and visual stories stay deterministic. */
   now?: number;
-  /** Pin a theme (Storybook only); production omits it so the host/OS scheme applies. */
+  /**
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
+   */
   theme?: MvTheme;
 }
 
@@ -1476,6 +1481,7 @@ function ReportsLiveWidget() {
         .catch(() => {});
     }
   };
+  const theme = useHostTheme(app, isConnected);
   return (
     <ReportsView
       data={data}
@@ -1483,6 +1489,7 @@ function ReportsLiveWidget() {
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
       onSync={onSync}
+      theme={theme}
     />
   );
 }
@@ -1523,6 +1530,8 @@ function ReportsSeamWidget({ seam }: { seam: ReportsSeam }) {
       .catch(() => {});
   };
 
+  const theme = useHostTheme(seam.app, connected);
+
   return (
     <ReportsView
       data={data}
@@ -1530,6 +1539,7 @@ function ReportsSeamWidget({ seam }: { seam: ReportsSeam }) {
       error={error}
       onOpenLink={onOpenLink}
       onSync={onSync}
+      theme={theme}
     />
   );
 }

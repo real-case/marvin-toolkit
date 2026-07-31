@@ -5,6 +5,7 @@ import type { LinkRef, TaskCard, TaskListPayload } from "@marvin-toolkit/mcp-sha
 import { ListDetail } from "../../primitives/ListDetail";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import { useHostTheme } from "../../lib/host-theme";
 import {
   MvRoot,
   MV_FONT_MONO,
@@ -372,8 +373,9 @@ export interface TaskListViewProps {
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
   /**
-   * Pin the widget theme (forwarded to `MvRoot`). Stories only — production
-   * omits it so the host/OS `prefers-color-scheme` applies.
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
    */
   theme?: MvTheme;
 }
@@ -565,12 +567,14 @@ function TaskListLiveWidget() {
   const onOpenLink = (link: LinkRef) => {
     if (app) void dispatchLink(app, link).catch(() => {});
   };
+  const theme = useHostTheme(app, isConnected);
   return (
     <TaskListView
       data={data}
       connecting={!isConnected}
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
+      theme={theme}
     />
   );
 }
@@ -606,5 +610,15 @@ function TaskListSeamWidget({ seam }: { seam: TaskListSeam }) {
     void dispatchLink(seam.app, link).catch(() => {});
   };
 
-  return <TaskListView data={data} connecting={!connected} error={error} onOpenLink={onOpenLink} />;
+  const theme = useHostTheme(seam.app, connected);
+
+  return (
+    <TaskListView
+      data={data}
+      connecting={!connected}
+      error={error}
+      onOpenLink={onOpenLink}
+      theme={theme}
+    />
+  );
 }

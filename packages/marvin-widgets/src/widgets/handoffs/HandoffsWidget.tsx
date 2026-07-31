@@ -10,6 +10,7 @@ import { ListDetail } from "../../primitives/ListDetail";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import { useHostTheme } from "../../lib/host-theme";
 import { MvRoot, TOKENS, MV_FONT_MONO, type MvTheme } from "../../theme";
 
 /**
@@ -433,8 +434,9 @@ export interface HandoffsViewProps {
   /** Send a handoff's continue prompt to chat. Omitted in pure-render contexts. */
   onContinue?: (prompt: string) => void;
   /**
-   * Pin the mvroot theme (Storybook-only). Production omits it, so the widget
-   * follows the host/OS `prefers-color-scheme`.
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
    */
   theme?: MvTheme;
 }
@@ -569,6 +571,7 @@ function HandoffsLiveWidget() {
   const onContinue = (prompt: string) => {
     if (app) sendContinue(app, prompt);
   };
+  const theme = useHostTheme(app, isConnected);
   return (
     <HandoffsView
       data={data}
@@ -576,6 +579,7 @@ function HandoffsLiveWidget() {
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
       onContinue={onContinue}
+      theme={theme}
     />
   );
 }
@@ -614,6 +618,8 @@ function HandoffsSeamWidget({ seam }: { seam: HandoffsSeam }) {
     sendContinue(seam.app, prompt);
   };
 
+  const theme = useHostTheme(seam.app, connected);
+
   return (
     <HandoffsView
       data={data}
@@ -621,6 +627,7 @@ function HandoffsSeamWidget({ seam }: { seam: HandoffsSeam }) {
       error={error}
       onOpenLink={onOpenLink}
       onContinue={onContinue}
+      theme={theme}
     />
   );
 }

@@ -11,6 +11,7 @@ import type {
 import { ListDetail } from "../../primitives/ListDetail";
 import { classifyLink, dispatchLink } from "../../lib/links";
 import { formatDate } from "../../lib/format";
+import { useHostTheme } from "../../lib/host-theme";
 import { MvRoot, TOKENS, MV_FONT_MONO, type MvTheme } from "../../theme";
 
 /**
@@ -344,8 +345,9 @@ export interface TrackerListViewProps {
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
   /**
-   * Pin the theme (forwarded to the view's own `MvRoot`). Story-only: pinned
-   * dark/light variants set it; production omits it so the host/OS scheme applies.
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
    */
   theme?: MvTheme;
 }
@@ -508,12 +510,14 @@ function TrackerListLiveWidget() {
   const onOpenLink = (link: LinkRef) => {
     if (app) void dispatchLink(app, link).catch(() => {});
   };
+  const theme = useHostTheme(app, isConnected);
   return (
     <TrackerListView
       data={data}
       connecting={!isConnected}
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
+      theme={theme}
     />
   );
 }
@@ -549,7 +553,15 @@ function TrackerListSeamWidget({ seam }: { seam: TrackerListSeam }) {
     void dispatchLink(seam.app, link).catch(() => {});
   };
 
+  const theme = useHostTheme(seam.app, connected);
+
   return (
-    <TrackerListView data={data} connecting={!connected} error={error} onOpenLink={onOpenLink} />
+    <TrackerListView
+      data={data}
+      connecting={!connected}
+      error={error}
+      onOpenLink={onOpenLink}
+      theme={theme}
+    />
   );
 }

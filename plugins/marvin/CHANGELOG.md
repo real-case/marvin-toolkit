@@ -4,6 +4,29 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.11.0] — 2026-07-31
+
+### Added
+
+- **The widgets follow the host's theme.** All nine `ui://` documents now read the
+  light/dark theme the MCP host advertises over the protocol and render on it,
+  instead of always following the operating system's `prefers-color-scheme`. A
+  dark host no longer shows a light widget on a light desktop, and a theme the
+  host changes mid-session is picked up without re-running the tool.
+- **`src/lib/host-theme.ts`** — the shared resolver behind it. One effect seeds
+  from `app.getHostContext()` and subscribes to `hostcontextchanged`; both the
+  production and the seam wiring of every widget call it, which is what lets the
+  seam-driven tests prove the code that actually ships.
+
+### Notes
+
+- When a host advertises no theme, the widgets deliberately stay on the OS
+  scheme: `data-theme` is left unset rather than defaulted. Embedders that set
+  the attribute on the framed `.mvroot` themselves — the marvin website does —
+  keep working unchanged.
+- The host's style variables, fonts and locale are still ignored. Marvin's own
+  tokens and typography continue to define the widgets' appearance.
+
 ## [0.10.0] — 2026-07-29
 
 The dashboard rework, delivered in three slices (contract → tool → widget). This

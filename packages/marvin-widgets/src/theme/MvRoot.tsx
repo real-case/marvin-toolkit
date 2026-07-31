@@ -15,9 +15,12 @@ export interface MvRootProps {
   className?: string;
   /**
    * Force a theme via the `data-theme` attribute override (wins over the OS
-   * `prefers-color-scheme` in both directions). Omit to follow the OS/host
-   * scheme — the default for production widgets; pinned dark/light Storybook
-   * stories and theme-forcing hosts set it explicitly.
+   * `prefers-color-scheme` in both directions). In production this carries the
+   * theme the MCP host advertises, resolved by `lib/host-theme.ts` and forwarded
+   * by each widget's wiring; pinned dark/light Storybook stories set it directly.
+   * Omit it to follow the OS scheme — which is what happens when the host
+   * advertises no theme at all, and what the website's embed host relies on when
+   * it sets the attribute on the framed `.mvroot` itself.
    */
   theme?: MvTheme;
 }
