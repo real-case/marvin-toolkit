@@ -25,6 +25,21 @@ Stories are the dev harness. Two story-level conventions:
   Used by the mock-host handshake stories, whose render is redundant or
   nondeterministic for screenshots.
 
+Storybook renders `src/` directly, so it always shows the current source. A locally
+installed plugin does not: it serves the committed
+`plugins/marvin/widgets/<name>.html`, which only matches after a build. To keep one
+widget's document current while editing it, watch that widget:
+
+```shell
+npm run build:watch -w @marvin-toolkit/widgets -- dashboard
+```
+
+The watch takes exactly one widget name (`vite-plugin-singlefile` forces
+`inlineDynamicImports`, which rollup rejects for multiple inputs, so each widget needs
+its own build). Rebuilt HTML is picked up on the host's next `resources/read` — no
+server rebuild, no session restart. To refresh everything the plugin serves at once,
+including `dist/server.js`, run `npm run dev:plugin` from the repo root.
+
 ## Tests
 
 ```shell

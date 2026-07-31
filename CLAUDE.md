@@ -201,6 +201,16 @@ claude plugin validate .
 
 CI (`.github/workflows/validate-plugins.yml`) runs the same checks plus ESLint, Prettier, and a stdio smoke-test that sends `initialize` to the server and verifies a valid response (`serverInfo.name == "marvin"`).
 
+### Testing unreleased changes in a locally installed plugin
+
+A local install (a symlink at `~/.claude/skills/<name>` → `plugins/marvin`) serves build
+artefacts, not sources: `mcp/server/dist/server.js` and `widgets/*.html`. Only `SKILL.md`
+bodies are live. `npm run dev:plugin` rebuilds all three workspaces the plugin serves, in
+dependency order (`mcp-shared` → `widgets` → `server`); a new `dist/server.js` needs a
+session restart, while a rebuilt widget document is picked up on the host's next
+`resources/read`. While iterating on one widget,
+`npm run build:watch -w @marvin-toolkit/widgets -- <name>` keeps its committed HTML current.
+
 ### Manually driving a tool
 
 To exercise a tool over stdio without a rich MCP host (the same JSON-RPC

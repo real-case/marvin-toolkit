@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "dev:plugin": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/widgets && npm run build -w @marvin-toolkit/server && echo '\\nPlugin artefacts rebuilt. Restart the Claude Code session to load the new dist/server.js.'",
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint .",
     "lint:manifests": "node scripts/lint-manifests.mjs",
