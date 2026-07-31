@@ -1,11 +1,11 @@
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "counts": {
     "prompts": 52,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.10.0",
+    "version": "0.11.0",
     "license": "MIT"
   },
   "groups": [

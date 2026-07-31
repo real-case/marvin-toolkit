@@ -3,6 +3,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type { HelpState } from "@marvin-toolkit/mcp-shared/contracts";
 import { MV_FONT_MONO, MvRoot, SEVERITY_TOKENS, TOKENS, type MvTheme } from "../../theme";
+import { useHostTheme } from "../../lib/host-theme";
 
 /**
  * The help widget (ADR-0024) — marvin's welcome **panel** over the `HelpState`
@@ -269,8 +270,9 @@ export interface HelpViewProps {
   /** A connection/handshake error message, if any. */
   error?: string | null;
   /**
-   * Force the MvRoot theme. Story-only: pinned light/dark variants set it;
-   * production omits it so the host/OS scheme applies.
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
    */
   theme?: MvTheme;
 }
@@ -723,7 +725,7 @@ export function HelpWidget({ seam }: HelpWidgetProps) {
 /** Production wiring — `useApp()` creates the App + PostMessageTransport and connects. */
 function HelpLiveWidget() {
   const [data, setData] = useState<HelpState | null>(null);
-  const { isConnected, error } = useApp({
+  const { app, isConnected, error } = useApp({
     appInfo: { name: "marvin-help", version: "0.8.1" },
     capabilities: {},
     onAppCreated: (created) => {
@@ -734,7 +736,15 @@ function HelpLiveWidget() {
       };
     },
   });
-  return <HelpView data={data} connecting={!isConnected} error={error ? error.message : null} />;
+  const theme = useHostTheme(app, isConnected);
+  return (
+    <HelpView
+      data={data}
+      connecting={!isConnected}
+      error={error ? error.message : null}
+      theme={theme}
+    />
+  );
 }
 
 /** Test wiring — drive an injected App over the mock-host's in-memory transport. */
@@ -764,5 +774,7 @@ function HelpSeamWidget({ seam }: { seam: HelpSeam }) {
     };
   }, [seam]);
 
-  return <HelpView data={data} connecting={!connected} error={error} />;
+  const theme = useHostTheme(seam.app, connected);
+
+  return <HelpView data={data} connecting={!connected} error={error} theme={theme} />;
 }

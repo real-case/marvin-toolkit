@@ -11,6 +11,7 @@ import type {
 } from "@marvin-toolkit/mcp-shared/contracts";
 import { Markdown } from "../../primitives/Markdown";
 import { classifyLink, dispatchLink } from "../../lib/links";
+import { useHostTheme } from "../../lib/host-theme";
 import { MvRoot, MV_FONT_MONO, SEVERITY_TOKENS, TOKENS, type MvTheme } from "../../theme";
 
 /**
@@ -398,8 +399,11 @@ export interface TaskSummaryViewProps {
   error?: string | null;
   /** Open a link through the host. Omitted in pure-render contexts (tests/story). */
   onOpenLink?: (link: LinkRef) => void;
-  /** Pin the mvroot theme. Stories only — production omits it so the host/OS
-   * `prefers-color-scheme` applies. */
+  /**
+   * Pin the view's `MvRoot` theme. In production this carries the host's
+   * advertised theme, resolved by `useHostTheme`; stories pass it directly.
+   * Undefined leaves `data-theme` unset, so the host/OS scheme applies.
+   */
   theme?: MvTheme;
 }
 
@@ -625,12 +629,14 @@ function TaskSummaryLiveWidget() {
   const onOpenLink = (link: LinkRef) => {
     if (app) void dispatchLink(app, link).catch(() => {});
   };
+  const theme = useHostTheme(app, isConnected);
   return (
     <TaskSummaryView
       data={data}
       connecting={!isConnected}
       error={error ? error.message : null}
       onOpenLink={onOpenLink}
+      theme={theme}
     />
   );
 }
@@ -666,7 +672,15 @@ function TaskSummarySeamWidget({ seam }: { seam: TaskSummarySeam }) {
     void dispatchLink(seam.app, link).catch(() => {});
   };
 
+  const theme = useHostTheme(seam.app, connected);
+
   return (
-    <TaskSummaryView data={data} connecting={!connected} error={error} onOpenLink={onOpenLink} />
+    <TaskSummaryView
+      data={data}
+      connecting={!connected}
+      error={error}
+      onOpenLink={onOpenLink}
+      theme={theme}
+    />
   );
 }

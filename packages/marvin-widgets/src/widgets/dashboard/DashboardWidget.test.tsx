@@ -540,4 +540,30 @@ describe("DashboardWidget — mock-host handshake", () => {
       host.close();
     }
   });
+
+  it("follows a later host theme change", async () => {
+    // The change-over-time proof on a whole widget rather than on the resolver
+    // in isolation: the theme must survive the trip through the wiring, the
+    // view's props and MvRoot's attribute — not merely reach a hook's state.
+    const host = createMockHost(dashboardFixture, "marvin-dashboard-mock", { theme: "dark" });
+    await host.start();
+    try {
+      render(<DashboardWidget seam={host.seam} />);
+
+      await waitFor(
+        () => expect(screen.getByTestId("mv-root").getAttribute("data-theme")).toBe("dark"),
+        { timeout: 5000 },
+      );
+
+      host.setHostContext({ theme: "light" });
+
+      // No remount: the same node carries the new theme, which is what makes
+      // this a subscription test rather than a second mount in disguise.
+      await waitFor(() =>
+        expect(screen.getByTestId("mv-root").getAttribute("data-theme")).toBe("light"),
+      );
+    } finally {
+      host.close();
+    }
+  });
 });
