@@ -4,6 +4,34 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.0] — 2026-07-31
+
+### Added
+
+- **`/marvin:widget-preview`** — open a marvin widget as a real rendered panel, with
+  this project's own data, on a host that cannot render widgets. It writes one
+  self-contained file to `.marvin/preview/<widget>.html` and opens it. This is what
+  makes the widget family reachable from the terminal at all: the Claude Code CLI
+  implements no part of MCP Apps, so every widget-bound tool has only ever shown its
+  markdown fallback there ([ADR-0034](../../docs/adr/0034-widget-preview-door.md)).
+- **`mcp/server/bin/widget-preview.mjs`** — the command behind it. A dependency-free
+  script with no build target of its own: it drives the committed `dist/server.js`
+  over stdio, resolves the widget from the `_meta.ui.resourceUri` binding the server
+  already publishes (so no widget is named in it anywhere), fetches the document over
+  `resources/read`, and composes it with the tool's payload and a small host that
+  answers the five protocol messages a framed view needs.
+
+### Notes
+
+- Covers all nine bound widgets, but not all of them render on defaults: `help`,
+  `dashboard` and `reports` do, while the task and board widgets need their tool's
+  arguments, e.g. `widget-preview task-list '{"action":"list"}'`. A tool that returns
+  no payload prints its own message and exits without writing a file.
+- `.marvin/preview/` writes its own `.gitignore` of `*`, the `.marvin/usage/`
+  convention — a preview is a derived artifact and never reaches a commit.
+- The panel follows the operating system's light/dark scheme: the preview host
+  advertises no theme, so the widgets' own fallback governs.
+
 ## [0.11.0] — 2026-07-31
 
 ### Added

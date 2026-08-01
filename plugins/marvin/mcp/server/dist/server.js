@@ -28609,6 +28609,15 @@ var PROMPTS = [
     description: "Export a generated .marvin/ report to PDF (print-ready HTML), standalone HTML, or a Markdown digest \u2014 filled from the print-quality template styled on the widget theme tokens.",
     skill: "report-export"
   },
+  {
+    // Skill-backed (three doors) — the local widget door (ADR-0034). A host that
+    // does not resolve `_meta.ui.resourceUri` (the Claude Code CLI does not) never
+    // renders a widget; this renders one into a file instead, via the shipped
+    // `mcp/server/bin/widget-preview.mjs`.
+    name: "widget-preview",
+    description: "Open a marvin widget as a rendered panel with this project's own data \u2014 renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
+    skill: "widget-preview"
+  },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
     name: "adr-review",
@@ -31898,6 +31907,7 @@ var COMMAND_BLURBS = {
   dashboard: "Whole-toolbox state report",
   reports: "Unified viewer over all reports",
   "report-export": "Export a report to PDF / MD",
+  "widget-preview": "Open a widget as a rendered panel",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -31959,6 +31969,7 @@ var COMMAND_DETAILS = {
   dashboard: "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
   reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs \u2014 newest first, with per-report freshness.",
   "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
+  "widget-preview": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it \u2014 the way to see a widget on a host that cannot render them, including the terminal.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -32015,6 +32026,7 @@ var COMMAND_EXAMPLES = {
   handoff: "/marvin:handoff widget work WIP",
   lessons: "/marvin:lessons search dist staleness",
   help: "/marvin:help sec",
+  "widget-preview": "/marvin:widget-preview dashboard",
   // adr
   "adr-review": "/marvin:adr-review 31",
   "adr-accept": "/marvin:adr-accept 31",
@@ -32110,6 +32122,11 @@ var COMMAND_PROMPTS = {
     "marvin, export the security report to PDF",
     "marvin, save this report as markdown",
     "marvin, make the scan report shareable"
+  ],
+  "widget-preview": [
+    "marvin, show me the help widget",
+    "marvin, open the dashboard as a panel",
+    "marvin, why do I never see the widgets?"
   ],
   // adr
   "adr-review": [
@@ -34733,7 +34750,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.11.0";
+var VERSION = "0.12.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

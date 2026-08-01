@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-task tracker, and it ships **52 prompts, 13 MCP tools, 10 agents, and 9 interactive
+task tracker, and it ships **53 prompts, 13 MCP tools, 10 agents, and 9 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -62,12 +62,12 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-52 prompts divide into seven groups. The [command reference](./commands.md) lists every
+53 prompts divide into seven groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 14 |
+| _(bare)_ | Core developer tools | 16 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
 | `task-*` | Spec-driven task pipeline | 5 |
@@ -261,6 +261,7 @@ together and easy to include in or exclude from version control.
 | `.marvin/memory/` | `lessons` | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | `handoff` | Session-continuation documents. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
+| `.marvin/preview/` | `widget-preview` | Rendered widget panels, never committed ([ADR-0034](./adr/0034-widget-preview-door.md)). |
 | `.marvin/config.json` | `track-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
 
 Project deliverables are deliberately left out of this sweep. Architecture Decision

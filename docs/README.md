@@ -55,6 +55,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
 | [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
 | [0033](./adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
+| [0034](./adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
 
 ## Work in progress
 

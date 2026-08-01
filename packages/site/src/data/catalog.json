@@ -1,18 +1,18 @@
 {
-  "version": "0.11.0",
+  "version": "0.12.0",
   "counts": {
-    "prompts": 52,
+    "prompts": 53,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.11.0",
+    "version": "0.12.0",
     "license": "MIT"
   },
   "groups": [
     {
       "key": "core",
       "blurb": "Everyday dev — commits, debugging, docs, ADRs, handoffs",
-      "count": 15
+      "count": 16
     },
     {
       "key": "adr",
@@ -285,6 +285,19 @@
         "marvin, save this report as markdown",
         "marvin, make the scan report shareable"
       ],
+      "human": false
+    },
+    {
+      "name": "widget-preview",
+      "group": "core",
+      "blurb": "Open a widget as a rendered panel",
+      "description": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it — the way to see a widget on a host that cannot render them, including the terminal.",
+      "phrases": [
+        "marvin, show me the help widget",
+        "marvin, open the dashboard as a panel",
+        "marvin, why do I never see the widgets?"
+      ],
+      "example": "/marvin:widget-preview dashboard",
       "human": false
     },
     {

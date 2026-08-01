@@ -2,7 +2,7 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **52** in total,
+`/marvin:<group>-<command>`, and singletons stay bare. There are **53** in total,
 divided into seven groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
@@ -82,6 +82,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:dashboard` | Report the whole-toolbox state — paths, config, git and MCP servers, board counters, current work, recent handoffs, audit findings by severity, artifacts, the ADR corpus, lessons, and the local usage summary. | `marvin dashboard`, `toolbox status`, `what state is the project in?` |
 | `/marvin:reports` | List every report marvin generated under `.marvin/` — security, refactor, task, handoff — newest first, with freshness. | `marvin show the reports`, `what reports do we have?`, `open the latest security report` |
 | `/marvin:report-export` | Export a report to PDF (print-ready HTML), standalone HTML, or a Markdown digest, filled from the widget-theme print template. | `marvin export the security report to PDF`, `save this report as markdown`, `make the scan report shareable` |
+| `/marvin:widget-preview` | Render a bound `ui://` widget with this project's live data into one self-contained file under `.marvin/preview/` and open it — the way to see a widget on a host that cannot render them, including the terminal. | `marvin show me the help widget`, `open the dashboard as a panel`, `why do I never see the widgets?` |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands.
