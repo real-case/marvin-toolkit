@@ -23,6 +23,7 @@
     "sync-version": "node scripts/sync-version.mjs",
     "smoke": "node scripts/smoke-commands.mjs",
     "help:preview": "node scripts/help-preview.mjs",
+    "dev:widget-host": "node scripts/dev-widget-host.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
     "prepare": "husky"

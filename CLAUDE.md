@@ -221,6 +221,33 @@ session restart, while a rebuilt widget document is picked up on the host's next
 `resources/read`. While iterating on one widget,
 `npm run build:watch -w @marvin-toolkit/widgets -- <name>` keeps its committed HTML current.
 
+### Seeing the widgets render in chat
+
+The plugin server is spawned by the Claude Code CLI, which implements no part of the MCP Apps
+extension, so a widget-bound tool always falls back to markdown there (ADR-0034). The desktop
+application's own MCP client does implement it — it advertises
+`extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } }` —
+but only for the servers listed in `claude_desktop_config.json`. The local plugin symlink is no
+help either: it resolves to the main checkout, so a feature branch's widgets are invisible twice
+over.
+
+`npm run dev:widget-host` closes both gaps. It rebuilds the three artefact workspaces of the
+checkout it is run from, then writes `mcpServers.marvin-dev` in `claude_desktop_config.json`
+pointing at that checkout, with `CLAUDE_PROJECT_DIR` set to it so the tools read that tree's
+`.marvin/`. Run it again from another worktree to follow another branch. Every other key in the
+config survives the read-modify-write, and the previous file is kept as `.marvin-backup`.
+
+Restart the desktop application afterwards — the server process is spawned once per connection.
+A rebuilt **widget document** needs no restart: the `ui://` resource is read from disk per request
+(ADR-0008), so `build:watch` is live. Only a new `dist/server.js` requires one.
+
+Both copies of the tools are then in scope — `marvin-dev` (renders widgets) and the plugin's own
+(markdown fallback). Call the `marvin-dev` one when the widget is the point.
+
+`/marvin:widget-preview` remains the answer for terminal users and for anyone who does not want a
+second server: it renders one widget plus its live payload into a self-contained file under
+`.marvin/preview/`.
+
 ### Manually driving a tool
 
 To exercise a tool over stdio without a rich MCP host (the same JSON-RPC
