@@ -14,10 +14,10 @@ import type {
   VerificationFreshness,
 } from "@marvin-toolkit/mcp-shared/contracts";
 import type { ServerEnv } from "../lib/env.js";
-import { loadConfig } from "../storage/config.js";
+import { loadConfig, type LoadedConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
-import { orderedStatuses, type Config } from "../storage/schema.js";
+import { orderedStatuses } from "../storage/schema.js";
 import {
   artifactCounts,
   auditDigest,
@@ -85,7 +85,7 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
       // Fresh config per call — `task config` edits and hand edits must apply
       // immediately (the help-tool precedent).
       const loaded = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderDashboard(env, loaded.config, loaded.warning, version, input));
+      return Promise.resolve(renderDashboard(env, loaded, version, input));
     },
   });
 }
@@ -94,11 +94,11 @@ type DashboardInput = z.infer<typeof DashboardInput>;
 
 function renderDashboard(
   env: ServerEnv,
-  config: Config,
-  configWarning: string | null,
+  loaded: LoadedConfig,
   version: string,
   input: DashboardInput,
 ): ToolResult {
+  const { config, warning: configWarning, settingWarnings } = loaded;
   // ── aggregate (every source degrades to zeros on a fresh project) ────────
   const board = boardCounts(env, config);
   const git = gitState(env.projectDir);
@@ -135,6 +135,9 @@ function renderDashboard(
           : "_none configured_"
       }`,
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
+      // Per-setting fallbacks, not a whole-file one: the rest of the config
+      // stands, so these carry no "using defaults" clause.
+      ...settingWarnings.map((w) => `- ⚠ config: ${w}`),
     ],
     board: [
       "## Board",

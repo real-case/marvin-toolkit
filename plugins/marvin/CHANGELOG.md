@@ -4,6 +4,29 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.1] — 2026-08-02
+
+### Fixed
+
+- **A broken `tracker_url_template` no longer produces links to nowhere.** `{tracker_id}`
+  is the only placeholder substitution fills, but nothing checked that a template
+  actually contained it. A config edited by hand to
+  `"https://example.com/issues/{id}"` — a path `/marvin:track-config` documents — flowed
+  through untouched, and every tracked card carried a live URL ending in a literal
+  `{id}`: a markdown link in the `tracker` tool, an anchor in the tracker-list widget,
+  with no warning anywhere. `trackerUrl` is now the guarantee rather than a passthrough:
+  a template that cannot substitute derives `null`, which every surface already renders
+  as the tracker id in plain text. Repeated `{tracker_id}` occurrences are all replaced;
+  before, only the first was.
+- **A setting that cannot work is dropped alone, with its reason.** The loader neutralises
+  an unusable `tracker_url_template` and reports why through `/marvin:track-config` and
+  `/marvin:dashboard`. It does not fall back to whole-file defaults, so one mistyped URL
+  no longer risks the board's `statuses`, `gates` and `base_branch` alongside it.
+- **The config surface refuses such a template instead of noting it.** Writing one was
+  previously allowed with an advisory note; it is now a fail-closed error that writes
+  nothing. The interactive `edit=true` form is held to the same rule — it used to bypass
+  the check entirely and reach disk.
+
 ## [0.12.0] — 2026-07-31
 
 ### Added

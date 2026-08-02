@@ -37,7 +37,7 @@ export function buildTrackerTool(env: ServerEnv): AnyToolDef {
       // Config is (re)loaded per call so a mid-session `task config` edit (setting
       // the tracker_url_template) applies without a restart — same contract as the
       // `task` / `task-detail` tools.
-      const { config } = loadConfig(env.configPath, env.projectDir);
+      const { config, settingWarnings } = loadConfig(env.configPath, env.projectDir);
       const { tasks } = readAllTasks(env.tasksDir, config);
 
       // The filter is on `tracker_id` presence (ADR-0024 §6). A task with a
@@ -50,7 +50,7 @@ export function buildTrackerTool(env: ServerEnv): AnyToolDef {
 
       const payload: TrackerListPayload = { tasks: cards };
       const result: ToolResult = {
-        content: [{ type: "text", text: renderTrackerText(cards) }],
+        content: [{ type: "text", text: renderTrackerText(cards, settingWarnings) }],
         structuredContent: payload,
       };
       return result;
@@ -58,14 +58,24 @@ export function buildTrackerTool(env: ServerEnv): AnyToolDef {
   });
 }
 
-/** The terminal fallback — the tracked tasks as a markdown list (empty state included). */
-function renderTrackerText(cards: TaskCard[]): string {
+/**
+ * The terminal fallback — the tracked tasks as a markdown list (empty state
+ * included). `settingWarnings` carries the reason a configured
+ * `tracker_url_template` was dropped at load; this view is where its absence
+ * shows, so it is where the reason belongs. The widget needs no equivalent: a
+ * dropped template lands every card on `tracker_url: null`, which it already
+ * renders as the id plus a "set `tracker_url_template`" hint — the same lever,
+ * and `/marvin:track-config` states the precise fault.
+ */
+function renderTrackerText(cards: TaskCard[], settingWarnings: string[]): string {
+  const notes = settingWarnings.map((w) => `_⚠ ${w}_`);
   if (cards.length === 0) {
     return [
       "# Tracked tasks (0)",
       "",
       "No tasks carry a tracker id. Add one when you create a task (e.g. `tracker_id: OSI-123`),",
       "and set `tracker_url_template` via `/marvin:track-config` to link out.",
+      ...(notes.length > 0 ? ["", ...notes] : []),
     ].join("\n");
   }
 
@@ -85,8 +95,14 @@ function renderTrackerText(cards: TaskCard[]): string {
   }
   if (anyUnlinked) {
     lines.push("");
+    // A dropped template is the sharper explanation of the same symptom, so it
+    // replaces the generic hint rather than stacking on top of it.
     lines.push(
-      "_Some tasks have no tracker URL — set `tracker_url_template` via `/marvin:track-config` to link out._",
+      ...(notes.length > 0
+        ? notes
+        : [
+            "_Some tasks have no tracker URL — set `tracker_url_template` via `/marvin:track-config` to link out._",
+          ]),
     );
   }
   return lines.join("\n");

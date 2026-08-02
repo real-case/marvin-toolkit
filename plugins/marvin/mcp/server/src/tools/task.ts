@@ -23,6 +23,7 @@ import {
 import {
   loadConfig,
   parseStatusesJson,
+  trackerTemplateIssue,
   updateConfigFile,
   type ConfigPatch,
 } from "../storage/config.js";
@@ -732,11 +733,6 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
   if (input.tracker_url_template !== undefined) {
     const value = input.tracker_url_template.trim();
     patch.tracker_url_template = value === "" ? null : value;
-    if (value !== "" && !value.includes("{tracker_id}")) {
-      notes.push(
-        "the tracker_url_template has no `{tracker_id}` placeholder — every task will link to the same URL.",
-      );
-    }
   }
   if (input.branch_template !== undefined) {
     const value = input.branch_template.trim();
@@ -778,6 +774,19 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
     if (data.tracker_url_template?.trim())
       patch.tracker_url_template = data.tracker_url_template.trim();
     if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
+  }
+
+  // Fail closed on a template that cannot substitute, after BOTH input paths —
+  // the argument above and the elicitation form just before, which used to
+  // bypass the argument branch's check entirely. Writing such a template would
+  // persist a setting `loadConfig` discards on the very next read.
+  if (typeof patch.tracker_url_template === "string") {
+    const issue = trackerTemplateIssue(patch.tracker_url_template);
+    if (issue) {
+      return errOk(
+        `Invalid \`tracker_url_template\` — ${issue}.\nMark where a task's id goes with \`{tracker_id}\`, e.g. \`https://acme.atlassian.net/browse/{tracker_id}\`. Nothing was written.`,
+      );
+    }
   }
 
   if (Object.keys(patch).length === 0) {
@@ -831,7 +840,7 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
 
 /** The effective configuration as markdown — the `config` action's read side. */
 function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>): string {
-  const { config, warning, base_branch_source } = loaded;
+  const { config, warning, settingWarnings, base_branch_source } = loaded;
   const fileExists = existsSync(env.configPath);
   const sourceLabel =
     base_branch_source === "config"
@@ -844,6 +853,9 @@ function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>)
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`⚠ ${warning} — showing defaults.`, "");
+  // Per-setting fallbacks: the file holds a value, the effective setting below
+  // reads "not set", and this is the only place that explains the gap.
+  for (const w of settingWarnings) lines.push(`⚠ ${w}`, "");
   lines.push(`- **Project:** \`${env.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
   lines.push(
