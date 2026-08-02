@@ -169,6 +169,14 @@ export type UsageConfig = z.infer<typeof UsageConfig>;
 
 export const Config = z.object({
   base_branch: z.string().default("dev"),
+  /**
+   * URL template for a task's external tracker item, with `{tracker_id}`
+   * marking where the id goes. Whether it can actually substitute is checked
+   * on the way out of `loadConfig`, not here: a `.refine()` would fail the
+   * whole parse, so one mistyped template would reset `statuses`, `gates` and
+   * `base_branch` to their defaults as well. The loader drops this field alone
+   * and reports why (`trackerTemplateIssue`).
+   */
   tracker_url_template: z.string().nullable().default(null),
   gates: GateCommands.optional(),
   /** ADR corpus location + index target (ADR-0027); absent means detect/default. */

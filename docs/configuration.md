@@ -74,6 +74,15 @@ summaries. It is a string or `null` and defaults to `null`, which produces no li
 the `{tracker_id}` placeholder to mark where the id goes, as in
 `https://acme.atlassian.net/browse/{tracker_id}`.
 
+`{tracker_id}` is the only placeholder Marvin substitutes, and every occurrence of it is
+replaced. A template that omits it, or that carries a second placeholder such as
+`{project}`, cannot produce a working URL: the id would have nowhere to go, or the link
+would point at an address still containing braces. Marvin never renders such a link.
+`/marvin:track-config` refuses to write a template like that, and one edited into the file
+by hand is ignored on load — tasks show their tracker id as plain text, and the reason
+appears in `/marvin:track-config` and `/marvin:dashboard`. The rest of the file keeps
+working: only this setting is dropped.
+
 ### `branch_template`
 
 This is a template for the branch name of a new task. It is an optional string, and when
