@@ -512,8 +512,15 @@ function runGate(gate: GateSpec, cwd: string): Promise<GateResult> {
     const child = spawn(gate.command, { cwd, shell: true });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (d) => (stdout += d.toString()));
-    child.stderr?.on("data", (d) => (stderr += d.toString()));
+    // Decode through each stream's own StringDecoder rather than per chunk. A gate's
+    // output is arbitrarily long and full of multibyte characters — test reporters
+    // emit ✔/✖/→ by the line — so a character straddling a pipe read would decode to
+    // U+FFFD on both sides of the boundary and land as mojibake in `details`, which
+    // is what the user reads back out of verification.md.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (d) => (stdout += d));
+    child.stderr?.on("data", (d) => (stderr += d));
     child.on("error", (err) => {
       resolve(crashResult(gate, err, Math.round(performance.now() - start)));
     });

@@ -125,8 +125,15 @@ child.on("exit", (code) => {
   if (pending.size > 0) die(`the server exited early (code ${code ?? "null"})`);
 });
 
+// Decode through the stream's own StringDecoder. A per-chunk `chunk.toString()`
+// decodes each pipe read in isolation, so a character whose UTF-8 bytes straddle a
+// chunk boundary becomes U+FFFD on both sides of it — one character silently turning
+// into three. The widget documents are ~300 KB with ~4% of their byte offsets sitting
+// on a continuation byte, so whether it corrupts depends on how the kernel slices the
+// read: reliably on a loaded machine, never on an idle one.
+child.stdout.setEncoding("utf8");
 child.stdout.on("data", (chunk) => {
-  buffer += chunk.toString();
+  buffer += chunk;
   let newline;
   while ((newline = buffer.indexOf("\n")) !== -1) {
     const line = buffer.slice(0, newline);
