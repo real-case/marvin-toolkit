@@ -33302,8 +33302,10 @@ function runGate(gate, cwd) {
     const child = spawn(gate.command, { cwd, shell: true });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (d) => stdout += d.toString());
-    child.stderr?.on("data", (d) => stderr += d.toString());
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (d) => stdout += d);
+    child.stderr?.on("data", (d) => stderr += d);
     child.on("error", (err3) => {
       resolve(crashResult(gate, err3, Math.round(performance.now() - start)));
     });
@@ -34801,7 +34803,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.12.1";
+var VERSION = "0.12.2";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

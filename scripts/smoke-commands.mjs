@@ -124,8 +124,13 @@ const getResults = [];
 const pending = new Map(); // request id -> prompt name
 
 let buf = "";
+// Decode through the stream's own StringDecoder, never per chunk: prompt bodies are
+// arbitrary-length SKILL.md prose, and a character split across two pipe reads would
+// decode to U+FFFD on both sides of the boundary. Same defect as
+// bin/widget-preview.mjs and test/_driver.mjs.
+child.stdout.setEncoding("utf8");
 child.stdout.on("data", (d) => {
-  buf += d.toString();
+  buf += d;
   let nl;
   while ((nl = buf.indexOf("\n")) !== -1) {
     const line = buf.slice(0, nl);
