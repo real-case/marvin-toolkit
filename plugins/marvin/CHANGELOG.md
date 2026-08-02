@@ -4,6 +4,28 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.1] — 2026-08-02
+
+### Fixed
+
+- **A character split across two pipe reads no longer corrupts what a subprocess
+  sends back.** Every stdio client in the repo accumulated output as
+  `buf += chunk.toString()`, which decodes each read in isolation: a character whose
+  UTF-8 bytes straddle a chunk boundary becomes U+FFFD on both sides of it, turning
+  one character into three. Whether it happened depended on where the kernel chose to
+  slice the stream, so it struck under load and vanished on retry. All of them now
+  decode through the stream's own `StringDecoder`.
+  - `bin/widget-preview.mjs` — the widget documents are ~300 KB with ~4% of their byte
+    offsets on a continuation byte, so a preview could silently embed a document that
+    was not the committed one. This is what kept CI red: the suite's byte-identity
+    assertion caught it on roughly a third of runs, reported against whichever widget
+    happened to be affected.
+  - `verify` — a gate's captured output feeds the `details` block of
+    `verification.md`, and test reporters emit ✔/✖/→ by the line, so a long enough
+    gate could write mojibake into the artifact the user reads back.
+  - `scripts/mcp-call.mjs`, `scripts/smoke-commands.mjs` and the trigger-eval harness,
+    which had the same defect in developer tooling.
+
 ## [0.12.0] — 2026-07-31
 
 ### Added

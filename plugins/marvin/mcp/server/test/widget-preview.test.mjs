@@ -1,12 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createContext, runInContext } from "node:vm";
 import { callTool, hermeticEnv } from "./_driver.mjs";
+import { DOCUMENT, PAYLOAD, WIDGET } from "./_split-write-server.mjs";
 
 /**
  * The `widget-preview` command (spec 021-widget-preview-door, ADR-0034): renders a
@@ -86,6 +95,47 @@ test("writes a preview embedding the committed widget document byte-identically"
       readFileSync(join(WIDGETS_DIR, "help.html"), "utf8"),
       "the embedded document is the committed widget, byte for byte",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reassembles a document whose character is split across two stdout reads", async () => {
+  const dir = project("split");
+  try {
+    // The real CLI, unmodified, driven against a server that splits its
+    // `resources/read` response inside a multibyte character. The CLI resolves its
+    // server as `../dist/server.js` relative to itself, so staging a copy of each is
+    // what puts the stub in that slot — no test hook in the shipped script.
+    //
+    // This is the deterministic form of the byte-identity assertion above. That one
+    // catches a per-chunk decoder only when the kernel happens to slice a ~300 KB
+    // document on a continuation byte: ~29% of runs, which read as an intermittent
+    // CI failure on an unrelated test rather than as this defect. Here the boundary
+    // is placed, so the failure is every run.
+    const bin = join(dir, "bin");
+    const dist = join(dir, "dist");
+    const projectDir = join(dir, "project");
+    for (const d of [bin, dist, projectDir]) mkdirSync(d, { recursive: true });
+    copyFileSync(CLI, join(bin, "widget-preview.mjs"));
+    copyFileSync(join(HERE, "_split-write-server.mjs"), join(dist, "server.js"));
+
+    const run = spawnSync(process.execPath, [join(bin, "widget-preview.mjs"), WIDGET], {
+      encoding: "utf8",
+      env: hermeticEnv(process.env, { CLAUDE_PROJECT_DIR: projectDir }),
+    });
+    assert.equal(run.status, 0, `expected success, got: ${run.stderr}`);
+
+    const preview = readFileSync(previewPath(projectDir, WIDGET), "utf8");
+    const embedded = embeddedDocument(preview);
+    // Named explicitly: a per-chunk decode turns the split character into U+FFFD, and
+    // reporting that beats a diff of two near-identical documents.
+    assert.ok(
+      !embedded.includes("�"),
+      "the document carries no replacement characters — a chunk boundary was decoded in isolation",
+    );
+    assert.equal(embedded, DOCUMENT, "the split character is reassembled");
+    assert.deepEqual(embeddedPayload(preview), PAYLOAD, "the payload survives the same read path");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
