@@ -1,10 +1,24 @@
 import { defineConfig } from "tsup";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // Single source of truth: the server's reported version is injected from its own
 // package.json at build time, so it can never drift from the manifest. sync-version.mjs
 // keeps every package version equal and lint-manifests.mjs guards the invariant.
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+
+// A git worktree has no node_modules of its own, so resolution walks up past the
+// checkout and esbuild bakes that longer relative depth into every module-path
+// comment in the bundle. The output is functionally identical and byte-different,
+// which is precisely what the committed artifact must never be — warn where the
+// difference originates rather than leaving verify-dist to explain it later.
+const checkoutRoot = new URL("../../../../", import.meta.url);
+if (!existsSync(new URL("node_modules", checkoutRoot))) {
+  console.warn(
+    `! no node_modules in ${checkoutRoot.pathname} — dependencies resolve outside this\n` +
+      "  checkout, so dist/server.js will differ byte-for-byte from a build made in the\n" +
+      "  main checkout. Fine for local runs; rebuild in the main checkout before committing.",
+  );
+}
 
 export default defineConfig({
   entry: ["src/server.ts"],
