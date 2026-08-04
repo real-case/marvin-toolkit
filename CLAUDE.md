@@ -211,6 +211,19 @@ claude plugin validate .
 
 CI (`.github/workflows/validate-plugins.yml`) runs the same checks plus ESLint, Prettier, and a stdio smoke-test that sends `initialize` to the server and verifies a valid response (`serverInfo.name == "marvin"`).
 
+Both drift guards take their baseline from `git show HEAD:<path>`, never from the working tree
+(`scripts/lib/committed-artifact.mjs`). They rebuild the artifact in place, and so does the build
+step that precedes them in CI, so a working-tree baseline would leave them comparing a fresh build
+against itself — which it did, until a bundle built inside a git worktree reached `dev` past two
+green guard steps. The consequence for local use: they judge **what is committed**, so a rebuilt
+artifact you have not staged yet is reported as out of sync (`git add` it). `npm run test` covers
+them through the root `test/` suite, which runs after the workspace suites.
+
+A build made in a git worktree is not committable. A worktree has no `node_modules`, so resolution
+walks up past the checkout and esbuild bakes that longer relative depth into every module-path
+comment in `dist/server.js`: functionally identical, byte-different. `tsup.config.ts` warns when it
+sees no `node_modules` in the checkout — rebuild in the main checkout before committing.
+
 ### Testing unreleased changes in a locally installed plugin
 
 A local install (a symlink at `~/.claude/skills/<name>` → `plugins/marvin`) serves build
