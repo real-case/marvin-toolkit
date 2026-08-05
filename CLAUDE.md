@@ -234,6 +234,20 @@ session restart, while a rebuilt widget document is picked up on the host's next
 `resources/read`. While iterating on one widget,
 `npm run build:watch -w @marvin-toolkit/widgets -- <name>` keeps its committed HTML current.
 
+`npm run dev:watch` is the standing loop that removes the manual step. It watches the three
+source trees plus every file a build actually reads without living under `src` — each
+workspace's compiler or bundler config, the `tsconfig.base.json` they extend, and each
+workspace's `package.json` — then maps each change to the smallest set of workspaces that can
+be affected and reruns their existing build scripts. A change under one widget's directory
+rebuilds that widget alone (≈1 s); shared widget code rebuilds all nine (≈5 s); a shared-package
+change rebuilds every consumer. Test and story files build nothing. Changes are coalesced. A
+failed build aborts the rest of that pass — like `dev:plugin`'s `&&` chain, so nothing is built
+against an artefact the failed step did not update — but never stops the watch itself, and the
+session-restart notice is printed only for a `dist/server.js` that was actually produced. Run it
+in the **main checkout**: a bundle built inside a worktree is byte-different and not committable,
+as above. `npm run dev:watch -- --dry-run` prints the plan and the current watch counts without
+building anything, which is the list to consult rather than one written out here.
+
 ### Seeing the widgets render in chat
 
 The plugin server is spawned by the Claude Code CLI, which implements no part of the MCP Apps
