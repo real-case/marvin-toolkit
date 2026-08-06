@@ -124,5 +124,8 @@ console.log(`\n✓ mcpServers.${name} -> ${root}`);
 console.log(`  node:   ${entry.command}`);
 console.log(`  config: ${configPath} (previous copy kept as .marvin-backup)`);
 console.log("\nRestart the Claude desktop application to reconnect the server.");
-console.log("Widget-only edits need no restart — keep them live with:");
-console.log("  npm run build:watch -w @marvin-toolkit/widgets -- <widget>");
+console.log("Keep the artefacts current with:");
+console.log("  npm run dev:watch  # whole tree; a server rebuild still needs a restart");
+console.log(
+  "  npm run build:watch -w @marvin-toolkit/widgets -- <widget>  # one widget, no restart",
+);

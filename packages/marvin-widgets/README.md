@@ -40,6 +40,13 @@ its own build). Rebuilt HTML is picked up on the host's next `resources/read` â€
 server rebuild, no session restart. To refresh everything the plugin serves at once,
 including `dist/server.js`, run `npm run dev:plugin` from the repo root.
 
+For a standing loop across the whole tree rather than one widget, run `npm run dev:watch`
+from the repo root. It watches every source tree the plugin is built from and rebuilds only
+what a change can affect â€” one widget for a change inside that widget's directory, all nine
+for shared widget code under `src/lib`, `src/theme` or `src/primitives`. Keep `build:watch`
+for the case it is better at: iterating on a single widget, where vite's incremental rebuild
+beats a discrete one.
+
 ## Tests
 
 ```shell
