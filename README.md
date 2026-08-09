@@ -69,7 +69,8 @@ one from chat.
 
 ### Core developer tools
 
-These are language-agnostic and used by every engineer.
+These are language-agnostic and used by every engineer. 👤 = human-run: the model never
+auto-triggers these, you invoke them yourself.
 
 | Command | Description |
 |---------|-------------|
@@ -78,7 +79,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:adr` | Draft an Architecture Decision Record; drafts land `proposed`. |
 | `/marvin:changelog` | Generate a changelog from git history. |
 | `/marvin:readme` | Generate or update `README.md` from codebase analysis. |
-| `/marvin:migration-plan` | Plan a migration with risks and a rollback strategy. |
+| `/marvin:migration-plan` 👤 | Plan a migration with risks and a rollback strategy. |
 | `/marvin:explain` | Explain code, architecture, and execution flow. |
 | `/marvin:docs-search` | Search and synthesize the project documentation. |
 | `/marvin:handoff` | Capture the session context into `.marvin/handoff/` to continue later. |

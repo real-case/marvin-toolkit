@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { join, basename } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join, basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { callTool } from "./_driver.mjs";
 
@@ -218,6 +219,62 @@ test("help unknown `section` falls back to the full index with a hint", async ()
     const text = (await callHelp(dir, { section: "zzz" })).content.map((c) => c.text).join("\n");
     assert.match(text, /Unknown group `zzz`/);
     assert.match(text, /### track/, "still shows the full reference");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The shipped surface must agree with skill frontmatter, on both doors.
+ *
+ * The expected set is read from `plugins/marvin/skills/` here, in the test, and
+ * never imported from the implementation — a guard that reuses the reader it is
+ * checking compares a value with itself. Same reason `catalog.test.mjs` parses
+ * `GROUP_PREFIXES` out of `state.ts` as text.
+ */
+test("both help doors mark exactly the frontmatter human-run set", async () => {
+  // `dirname(fileURLToPath(...))` rather than `import.meta.dirname`, matching the
+  // seven sibling files here: the latter needs Node >= 20.11 while the repo floor
+  // is >=20, so a contributor on 20.0-20.10 would get join(undefined, ...).
+  const skillsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "skills");
+  const expected = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .filter((e) => {
+      // Line-oriented, unlike the shipped codec's offset slicing — the point of a
+      // guard is to fail when the implementation's own extraction is wrong. A
+      // directory with no readable SKILL.md carries no flag rather than throwing.
+      let lines;
+      try {
+        lines = readFileSync(join(skillsDir, e.name, "SKILL.md"), "utf8").split(/\r?\n/);
+      } catch {
+        return false;
+      }
+      if (lines[0]?.trim() !== "---") return false;
+      const close = lines.indexOf("---", 1);
+      if (close === -1) return false;
+      return lines
+        .slice(1, close)
+        .some((l) => /^disable-model-invocation:\s*["']?true["']?\s*$/.test(l));
+    })
+    .map((e) => e.name)
+    .sort();
+
+  // A guard that could pass on an empty repo proves nothing.
+  assert.ok(expected.length > 0, "the repo has at least one human-run skill");
+
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-"));
+  try {
+    const res = await callHelp(dir);
+
+    const structured = res.structuredContent.commands
+      .filter((c) => c.human)
+      .map((c) => c.name)
+      .sort();
+    assert.deepEqual(structured, expected, "structuredContent door");
+
+    const text = res.content.map((c) => c.text).join("\n");
+    const markdown = [...text.matchAll(/`\/?(?:marvin:)?([a-z-]+)`\s*👤/g)].map((m) => m[1]).sort();
+    assert.deepEqual([...new Set(markdown)], expected, "markdown door");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

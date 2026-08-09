@@ -58,7 +58,7 @@ await runPackServer({
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
         buildTrackerTool(env),
-        buildHelpTool(env, VERSION),
+        buildHelpTool(env, VERSION, packRoot),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),

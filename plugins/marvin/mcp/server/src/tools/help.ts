@@ -12,7 +12,7 @@ import {
   COMMAND_EXAMPLES,
   COMMAND_PROMPTS,
   GROUP_BLURBS,
-  HUMAN_RUN,
+  humanRunSkills,
   SLOGAN,
   projectMcpServers,
   shortDesc,
@@ -53,7 +53,7 @@ const HelpInput = z.object({
     ),
 });
 
-export function buildHelpTool(env: ServerEnv, version: string): AnyToolDef {
+export function buildHelpTool(env: ServerEnv, version: string, packRoot: string): AnyToolDef {
   return defineTool({
     name: "help",
     description:
@@ -67,12 +67,22 @@ export function buildHelpTool(env: ServerEnv, version: string): AnyToolDef {
       // Fresh config per call — the task tool's `config` action edits the
       // file mid-session and the dashboard must reflect it immediately.
       const { config } = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderHelp(env, config, version, input.section));
+      // Read the human-run flags per call, for the same reason the config is
+      // re-read: a SKILL.md edit must land without a server rebuild (ADR-0008).
+      return Promise.resolve(
+        renderHelp(env, config, version, humanRunSkills(packRoot), input.section),
+      );
     },
   });
 }
 
-function renderHelp(env: ServerEnv, config: Config, version: string, section?: string): ToolResult {
+function renderHelp(
+  env: ServerEnv,
+  config: Config,
+  version: string,
+  humanRun: Set<string>,
+  section?: string,
+): ToolResult {
   // Per-status counts over the configured set (ADR-0026), computed by the shared
   // state module (ADR-0030).
   const { counts, malformed } = boardCounts(env, config);
@@ -93,7 +103,7 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
     "",
     ...renderMcpServers(servers),
     "",
-    ...renderCommands(want, known),
+    ...renderCommands(humanRun, want, known),
   ];
 
   // Widget payload for MCP Apps hosts (ADR-0024). The terminal renders the text
@@ -145,7 +155,7 @@ function renderHelp(env: ServerEnv, config: Config, version: string, section?: s
           description: COMMAND_DETAILS[p.name] ?? "",
           ...(example ? { example } : {}),
           phrases: [...(COMMAND_PROMPTS[p.name] ?? [])],
-          human: HUMAN_RUN.has(p.name),
+          human: humanRun.has(p.name),
         };
       }),
     ),
@@ -234,14 +244,14 @@ function renderMcpServers(servers: McpServerState[]): string[] {
  * A known `section` narrows to that one group's detail; an unknown one falls
  * back to the full reference with a hint.
  */
-function renderCommands(want?: string, known?: boolean): string[] {
+function renderCommands(humanRun: Set<string>, want?: string, known?: boolean): string[] {
   // Focused view: one group's detail, each command as a full `/marvin:<name>`
   // invocation with its synopsis.
   if (known && want) {
     const inGroup = PROMPTS.filter((p) => groupOf(p.name) === want);
     const lines = [`## Commands · ${want}`, "", `_${GROUP_BLURBS[want] ?? ""}_`, ""];
     for (const p of inGroup) {
-      const flag = HUMAN_RUN.has(p.name) ? " 👤" : "";
+      const flag = humanRun.has(p.name) ? " 👤" : "";
       lines.push(`- \`/marvin:${p.name}\`${flag} — ${blurbOf(p.name, p.description)}`);
     }
     return lines;
@@ -272,7 +282,7 @@ function renderCommands(want?: string, known?: boolean): string[] {
     if (inGroup.length === 0) continue;
     lines.push("", `### ${group}`);
     for (const p of inGroup) {
-      const flag = HUMAN_RUN.has(p.name) ? " 👤" : "";
+      const flag = humanRun.has(p.name) ? " 👤" : "";
       lines.push(`- \`${p.name}\`${flag} — ${blurbOf(p.name, p.description)}`);
     }
   }

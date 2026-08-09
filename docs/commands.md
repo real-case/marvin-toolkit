@@ -63,7 +63,8 @@ ordinary prose, so `marvin is slow` or `marvin's server` pass straight through. 
 
 ## Core developer tools
 
-These are language-agnostic and used by every engineer.
+These are language-agnostic and used by every engineer. 👤 = human-run: the command opts out of
+model invocation, so you run it yourself rather than asking for it in chat.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
@@ -72,7 +73,7 @@ These are language-agnostic and used by every engineer.
 | `/marvin:adr` | Draft an Architecture Decision Record, with the numbering, path, and index coming from the `adr` tool; drafts always land `proposed`. | `marvin write an ADR`, `record this decision`, `document this design choice` |
 | `/marvin:changelog` | Generate a changelog or release notes from git history between tags, dates, or refs, in Keep a Changelog form. | `marvin changelog since v0.1.0`, `what changed since the last tag?`, `generate release notes` |
 | `/marvin:readme` | Generate or update `README.md` from an analysis of the actual codebase. | `marvin update the README`, `generate project docs`, `write a readme for this repo` |
-| `/marvin:migration-plan` | Plan a migration or major refactor with dependency analysis, ordered steps, risks, and a rollback strategy. | `marvin plan a migration`, `how do we move REST to gRPC?`, `plan this refactor` |
+| `/marvin:migration-plan` 👤 | Plan a migration or major refactor with dependency analysis, ordered steps, risks, and a rollback strategy. | `marvin plan a migration`, `how do we move REST to gRPC?`, `plan this refactor` |
 | `/marvin:explain` | Explain how code works, covering its logic, architecture, and design rationale. | `marvin explain this code`, `how does verify.ts work?`, `walk me through this file` |
 | `/marvin:docs-search` | Search and synthesize the project's documentation to answer a question. | `marvin where is X documented?`, `find the deploy runbook`, `how do the verify gates resolve?` |
 | `/marvin:handoff` | Capture the full session context into `.marvin/handoff/` plus a prompt to continue in a fresh session. | `marvin hand off this session`, `save context to continue later`, `create a handoff` |

@@ -32370,7 +32370,31 @@ var COMMAND_PROMPTS = {
 
 // src/lib/help-data.ts
 var SLOGAN = "Claude Code toolset for AI development without panic";
-var HUMAN_RUN = /* @__PURE__ */ new Set(["adr-accept", "adr-supersede", "adr-sync"]);
+function humanRunSkills(packRoot2) {
+  const skillsDir = join(packRoot2, "skills");
+  const flagged = /* @__PURE__ */ new Set();
+  let entries;
+  try {
+    entries = readdirSync(skillsDir, { withFileTypes: true });
+  } catch (err3) {
+    if (err3?.code !== "ENOENT") {
+      console.error(`marvin: cannot read ${skillsDir} \u2014 no human-run markers will render`, err3);
+    }
+    return flagged;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const { frontmatter } = parseFrontmatter(
+        readFileSync(join(skillsDir, entry.name, "SKILL.md"), "utf8")
+      );
+      if (frontmatter["disable-model-invocation"] === "true") flagged.add(entry.name);
+    } catch {
+      continue;
+    }
+  }
+  return flagged;
+}
 function shortDesc(desc, max = 72) {
   const oneLine = desc.replace(/\s+/g, " ").trim();
   const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
@@ -32409,7 +32433,7 @@ var HelpInput = external_exports.object({
     "Filter the command reference to one group: core, adr, pr, task, sec, refactor, track."
   )
 });
-function buildHelpTool(env2, version2) {
+function buildHelpTool(env2, version2, packRoot2) {
   return defineTool({
     name: "help",
     description: 'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/track).',
@@ -32420,11 +32444,13 @@ function buildHelpTool(env2, version2) {
     meta: { ui: { resourceUri: HELP_WIDGET_URI } },
     handler: (input) => {
       const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
-      return Promise.resolve(renderHelp(env2, config2, version2, input.section));
+      return Promise.resolve(
+        renderHelp(env2, config2, version2, humanRunSkills(packRoot2), input.section)
+      );
     }
   });
 }
-function renderHelp(env2, config2, version2, section) {
+function renderHelp(env2, config2, version2, humanRun, section) {
   const { counts, malformed } = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const art = artifactCounts(env2);
@@ -32441,7 +32467,7 @@ function renderHelp(env2, config2, version2, section) {
     "",
     ...renderMcpServers(servers),
     "",
-    ...renderCommands(want, known)
+    ...renderCommands(humanRun, want, known)
   ];
   const help = {
     version: version2,
@@ -32490,7 +32516,7 @@ function renderHelp(env2, config2, version2, section) {
           description: COMMAND_DETAILS[p.name] ?? "",
           ...example ? { example } : {},
           phrases: [...COMMAND_PROMPTS[p.name] ?? []],
-          human: HUMAN_RUN.has(p.name)
+          human: humanRun.has(p.name)
         };
       })
     )
@@ -32532,12 +32558,12 @@ function renderMcpServers(servers) {
     servers.length ? servers.map((s) => `${s.enabled ? "\u25CF" : "\u25CB"} \`${s.name}\``).join(" \xB7 ") : "_none configured for this project_"
   ];
 }
-function renderCommands(want, known) {
+function renderCommands(humanRun, want, known) {
   if (known && want) {
     const inGroup = PROMPTS.filter((p) => groupOf(p.name) === want);
     const lines2 = [`## Commands \xB7 ${want}`, "", `_${GROUP_BLURBS[want] ?? ""}_`, ""];
     for (const p of inGroup) {
-      const flag = HUMAN_RUN.has(p.name) ? " \u{1F464}" : "";
+      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
       lines2.push(`- \`/marvin:${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
     }
     return lines2;
@@ -32562,7 +32588,7 @@ function renderCommands(want, known) {
     if (inGroup.length === 0) continue;
     lines.push("", `### ${group}`);
     for (const p of inGroup) {
-      const flag = HUMAN_RUN.has(p.name) ? " \u{1F464}" : "";
+      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
       lines.push(`- \`${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
     }
   }
@@ -34803,7 +34829,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.12.2";
+var VERSION = "0.12.3";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -34822,7 +34848,7 @@ await runPackServer({
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
         buildTrackerTool(env),
-        buildHelpTool(env, VERSION),
+        buildHelpTool(env, VERSION, packRoot),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
