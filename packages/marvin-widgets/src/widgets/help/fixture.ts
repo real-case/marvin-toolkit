@@ -28,7 +28,7 @@ const COMMANDS: Array<[string, string, boolean]> = [
   ["core", "adr", false],
   ["core", "changelog", false],
   ["core", "readme", false],
-  ["core", "migration-plan", false],
+  ["core", "migration-plan", true],
   ["core", "explain", false],
   ["core", "docs-search", false],
   ["core", "handoff", false],

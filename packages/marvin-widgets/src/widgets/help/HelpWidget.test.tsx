@@ -82,11 +82,32 @@ describe("HelpView — panel over the full fixture", () => {
     expect(commands).toHaveLength(51);
     const commit = commands.find((c) => c.getAttribute("data-command") === "commit");
     expect(commit).toBeTruthy();
-    // the human-run lifecycle commands carry the 👤 mark; ordinary ones do not
+    // the human-run commands carry the 👤 mark; ordinary ones do not. `core` holds
+    // exactly one (migration-plan), so "no marks outside adr" is not the rule.
     const adrRef = screen.getByTestId("help-ref-adr");
     expect(within(adrRef).getAllByTestId("human-mark")).toHaveLength(3);
     const coreRef = screen.getByTestId("help-ref-core");
-    expect(within(coreRef).queryByTestId("human-mark")).toBeNull();
+    expect(within(coreRef).getAllByTestId("human-mark")).toHaveLength(1);
+  });
+
+  it("the reference marks exactly the fixture's human-run commands", () => {
+    render(<HelpView data={helpFixture} />);
+
+    // Derive the expectation from the fixture rather than restating a name list:
+    // the roster is the mock's own contract, and the view must not diverge from it.
+    const expected = helpFixture.commands
+      .filter((c) => c.human)
+      .map((c) => c.name)
+      .sort();
+    expect(expected.length).toBeGreaterThan(0);
+
+    const marked = screen
+      .getAllByTestId("help-command")
+      .filter((el) => within(el).queryByTestId("human-mark"))
+      .map((el) => el.getAttribute("data-command"))
+      .sort();
+
+    expect(marked).toEqual(expected);
   });
 });
 

@@ -40,7 +40,7 @@ export interface CatalogCommand {
   phrases: string[];
   /** Optional copy-pasteable example invocation (COMMAND_EXAMPLES); absent when the command is run bare. */
   example?: string;
-  /** True for human-run-only commands (adr-accept / adr-supersede / adr-sync). */
+  /** True when the command's skill carries `disable-model-invocation` — human-run only. */
   human: boolean;
 }
 

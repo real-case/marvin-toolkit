@@ -4,6 +4,24 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.3] — 2026-08-08
+
+### Fixed
+
+- **`migration-plan` is no longer advertised as model-invocable.** Its skill has carried
+  `disable-model-invocation: true` all along, but the 👤 marker came from hand-typed lists
+  that were never updated, so `/marvin:help`, the public command catalog, the Storybook
+  preview and both shipped command tables all told the model it was free to auto-trigger a
+  human-run command.
+
+### Changed
+
+- **Skill frontmatter is now the only source of the human-run flag.** `humanRunSkills()`
+  reads `disable-model-invocation` from each `skills/*/SKILL.md` at call time through the
+  ADR-0005 frontmatter codec, and the website generator reads the same frontmatter, so
+  neither carries a name list to keep in sync. A flag change in a `SKILL.md` now needs no
+  second edit and no rebuild, consistent with ADR-0008.
+
 ## [0.12.2] — 2026-08-02
 
 ### Fixed

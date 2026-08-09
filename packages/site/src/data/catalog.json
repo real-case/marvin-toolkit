@@ -1,11 +1,11 @@
 {
-  "version": "0.12.2",
+  "version": "0.12.3",
   "counts": {
     "prompts": 53,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.12.2",
+    "version": "0.12.3",
     "license": "MIT"
   },
   "groups": [
@@ -172,7 +172,7 @@
         "marvin, draft a migration plan with a rollback"
       ],
       "example": "/marvin:migration-plan bundler to Vite",
-      "human": false
+      "human": true
     },
     {
       "name": "explain",

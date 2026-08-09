@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   buildCatalog,
@@ -119,5 +119,76 @@ test("committed catalog.json is in sync with the generator", async () => {
     committed,
     fresh,
     "src/data/catalog.json is stale — run `npm run gen:catalog -w @marvin-toolkit/site` and commit the result",
+  );
+});
+
+/**
+ * Is this SKILL.md flagged human-run? A line-oriented reader, deliberately unlike the
+ * generator's `indexOf` + regex at gen-catalog.mjs:79-83 — a guard that repeats the
+ * implementation's own extraction cannot detect a bug in it. Self-contained on purpose:
+ * importing a YAML parser here would make `yaml` a phantom dependency of this workspace,
+ * resolved only through root hoisting, which is the cross-workspace coupling the spec
+ * rejected Variant 2 to avoid.
+ */
+function isHumanRun(file) {
+  let lines;
+  try {
+    lines = readFileSync(file, "utf8").split(/\r?\n/);
+  } catch {
+    return false; // a skill directory with no readable SKILL.md carries no flag
+  }
+  if (lines[0]?.trim() !== "---") return false;
+  const close = lines.indexOf("---", 1);
+  if (close === -1) return false;
+  for (const line of lines.slice(1, close)) {
+    const [key, ...rest] = line.split(":");
+    if (key?.trim() !== "disable-model-invocation") continue;
+    return (
+      rest
+        .join(":")
+        .trim()
+        .replace(/^["']|["']$/g, "") === "true"
+    );
+  }
+  return false;
+}
+
+/**
+ * The 👤 flag on the public catalog must come from skill frontmatter.
+ *
+ * The expected set is read here, from `plugins/marvin/skills/`, and deliberately NOT via the
+ * generator's own reader — a guard that calls the implementation it checks compares a value with
+ * itself. Same reason `GROUP_PREFIXES` above is parsed out of `state.ts` as text.
+ */
+test("catalog human flags match skill frontmatter", async () => {
+  const skillsDir = join(ROOT, "plugins", "marvin", "skills");
+  const expected = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .filter((e) => isHumanRun(join(skillsDir, e.name, "SKILL.md")))
+    .map((e) => e.name)
+    .sort();
+
+  assert.ok(expected.length > 0, "the repo has at least one human-run skill");
+
+  const catalog = await buildCatalog();
+  const flagged = catalog.commands
+    .filter((c) => c.human)
+    .map((c) => c.name)
+    .sort();
+  assert.deepEqual(flagged, expected, "generated catalog agrees with frontmatter");
+
+  // A command with no skill of its own is never human-run — `track-*` are registry-only.
+  const trackFlagged = catalog.commands.filter((c) => c.group === "track" && c.human);
+  assert.deepEqual(trackFlagged, [], "skill-less commands are not flagged");
+
+  // And the committed file the site actually ships agrees too.
+  const committed = JSON.parse(readFileSync(CATALOG_JSON, "utf8"));
+  assert.deepEqual(
+    committed.commands
+      .filter((c) => c.human)
+      .map((c) => c.name)
+      .sort(),
+    expected,
+    "committed catalog.json agrees with frontmatter",
   );
 });

@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, type Dirent } from "node:fs";
 import { join } from "node:path";
+import { parseFrontmatter } from "../storage/frontmatter.js";
 
 /**
  * Server-side helpers for the `help` tool (`tools/help.ts`): the slogan, the
@@ -26,12 +27,51 @@ export const SLOGAN = "Claude Code toolset for AI development without panic";
 
 /**
  * Commands whose skills carry `disable-model-invocation: true` — human-run only
- * (the model must not auto-trigger them), flagged 👤 in the reference. The skill
- * frontmatter is the source of truth (the `adr-*` lifecycle, ADR-0027); this
- * short list mirrors it because the prompt registry does not surface the flag.
- * Keep in sync when a skill's flag changes.
+ * (the model must not auto-trigger them), flagged 👤 in the reference.
+ *
+ * The skill frontmatter is the *only* source: this reads it at call time rather
+ * than mirroring it in a constant, so a flag change in a `SKILL.md` needs no
+ * rebuild and no second edit (ADR-0008 reads skills at request time). Parsing
+ * goes through the server's frontmatter codec (ADR-0005), whose YAML failsafe
+ * schema keeps every scalar a string — so a bare and a quoted value arrive
+ * identically and neither needs a special case.
+ *
+ * The directory comes from `packRoot` alone, never from module-relative state,
+ * which is what lets a test point it at a synthetic tree.
+ *
+ * Fails open. A missing or unreadable skills directory yields an empty set, so
+ * the reference degrades to rendering no markers instead of failing the call.
  */
-export const HUMAN_RUN = new Set(["adr-accept", "adr-supersede", "adr-sync"]);
+export function humanRunSkills(packRoot: string): Set<string> {
+  const skillsDir = join(packRoot, "skills");
+  const flagged = new Set<string>();
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(skillsDir, { withFileTypes: true });
+  } catch (err) {
+    // Degrading to "nothing is human-run" is the unsafe direction for a flag
+    // that exists to hold the model back, so say so on stderr — an unreadable
+    // directory must not look like a project with no human-run skills. stderr
+    // is free: the MCP transport owns stdout.
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      console.error(`marvin: cannot read ${skillsDir} — no human-run markers will render`, err);
+    }
+    return flagged;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const { frontmatter } = parseFrontmatter(
+        readFileSync(join(skillsDir, entry.name, "SKILL.md"), "utf8"),
+      );
+      if (frontmatter["disable-model-invocation"] === "true") flagged.add(entry.name);
+    } catch {
+      // A skill directory without a readable SKILL.md simply carries no flag.
+      continue;
+    }
+  }
+  return flagged;
+}
 
 /** First clause of a prompt description, trimmed to one scannable line. */
 export function shortDesc(desc: string, max = 72): string {

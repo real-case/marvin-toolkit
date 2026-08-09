@@ -32,6 +32,7 @@ const PROMPTS_TS = join(SERVER_SRC, "prompts", "index.ts");
 const HELP_CONTENT_TS = join(ROOT, "packages", "marvin-mcp-shared", "src", "help-content.ts");
 const TOOLS_DIR = join(SERVER_SRC, "tools");
 const AGENTS_DIR = join(ROOT, "plugins", "marvin", "agents");
+const SKILLS_DIR = join(ROOT, "plugins", "marvin", "skills");
 const WIDGETS_DIR = join(ROOT, "plugins", "marvin", "widgets");
 const PLUGIN_JSON = join(ROOT, "plugins", "marvin", ".claude-plugin", "plugin.json");
 const OUT = join(here, "..", "src", "data", "catalog.json");
@@ -53,10 +54,36 @@ export function groupOf(name) {
   return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
 }
 
-// Human-run-only commands (their skills carry `disable-model-invocation: true`), flagged in the
-// reference. Mirrors plugins/marvin/mcp/server/src/lib/help-data.ts:34 — the prompt registry does
-// not surface the flag. Keep in sync if a skill's flag changes.
-const HUMAN_RUN = new Set(["adr-accept", "adr-supersede", "adr-sync"]);
+/**
+ * Human-run-only commands, flagged in the reference. The skill frontmatter is the only source:
+ * the prompt registry does not carry the flag, so this reads `disable-model-invocation` from each
+ * `skills/<name>/SKILL.md` rather than mirroring a list that has to be kept in sync by hand.
+ * A command with no skill of its own is never human-run.
+ */
+function humanRunCommands() {
+  const flagged = new Set();
+  let entries;
+  try {
+    entries = readdirSync(SKILLS_DIR, { withFileTypes: true });
+  } catch {
+    return flagged;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    let text;
+    try {
+      text = readFileSync(join(SKILLS_DIR, entry.name, "SKILL.md"), "utf8");
+    } catch {
+      continue;
+    }
+    const end = text.indexOf("\n---", 3);
+    if (end === -1) continue;
+    if (/^disable-model-invocation:\s*"?true"?\s*$/m.test(text.slice(3, end))) {
+      flagged.add(entry.name);
+    }
+  }
+  return flagged;
+}
 
 /**
  * Transpile a pure-data `.ts` source in memory and import it as a module. Both sources this reads
@@ -106,6 +133,8 @@ export async function buildCatalog() {
   // Commands in registry (PROMPTS) order, each tagged with its group — NOT help.ts's GROUP_ORDER
   // flatten (which reorders); the group order lives in groups[] below. The Phase-3 catalog page
   // groups via the per-command `group` tag.
+  const humanRun = humanRunCommands();
+
   const commands = PROMPTS.map((p) => {
     const example = hc.COMMAND_EXAMPLES[p.name];
     const base = {
@@ -117,8 +146,8 @@ export async function buildCatalog() {
     };
     // `example` is genuinely optional — emit the key only when present (matches help.ts).
     return example
-      ? { ...base, example, human: HUMAN_RUN.has(p.name) }
-      : { ...base, human: HUMAN_RUN.has(p.name) };
+      ? { ...base, example, human: humanRun.has(p.name) }
+      : { ...base, human: humanRun.has(p.name) };
   });
 
   const groups = GROUP_ORDER.filter((g) => commands.some((c) => c.group === g)).map((g) => ({
