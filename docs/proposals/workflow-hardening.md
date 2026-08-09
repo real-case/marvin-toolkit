@@ -77,7 +77,8 @@ because `lint` and `format:check` are blocking CI steps.
 Fix what is broken today. Nothing in this phase changes intended behavior. Ships as a patch
 (≈ 0.12.3).
 
-**WP0.1 — evals/trigger (S).** Make the self-test derive the skill count from the catalog
+**WP0.1 — evals/trigger (S).** *Landed, spec `repair-and-enforce-trigger-evals`.* Make the
+self-test derive the skill count from the catalog
 instead of a hard-coded literal, and compare the set of dataset names against the contents of
 `plugins/marvin/skills/`. Add `eval:self-test` and `eval:trigger` scripts to the root
 `package.json`, and add a CI step after "Lint manifests" on both matrix legs; the self-test
@@ -85,6 +86,31 @@ needs no network. Extend `scripts/lint-manifests.mjs` with one rule: a skill wit
 `disable-model-invocation: true` must have `evals/trigger/datasets/<name>.json`. Write the
 two missing datasets — `report-export.json` (near-miss competitors: `reports`,
 `sec-report`) and `widget-preview.json` (competitors: `dashboard`, `help`).
+
+> Four things stated here turned out to be wrong or too narrow, and are corrected for the
+> record. The coverage rule applies to **every** skill, not only those without
+> `disable-model-invocation`: all four human-run skills already carry datasets, legitimately
+> all-negative, so the weaker wording would have exempted files that already exist. The
+> `disable_model_invocation` parity check listed under WP3.1 landed **here** instead, together
+> with a canonical-form rule, because the case-sensitivity gap was live and WP3.1 is three
+> phases away behind an open decision; both live in `scripts/lib/skill-datasets.mjs`, so
+> WP3.1 extends that module rather than writing the checks a second time. The four named
+> competitors are **prompts without a `SKILL.md`**, so they are absent from the catalog a
+> decider is shown and cannot be competition winners at all; they are named in negative notes,
+> and a new rule rejects any winner that is unreachable — which covers human-run skills too,
+> since `catalogText` filters those out as well. And three further invariants, each measured
+> universal across the shipped corpus, are enforced alongside: a `note` on every negative and
+> competition query (399 of 399 and 137 of 137 carry one), an explicit `mock_rate` on every query
+> (882 of 882), and no orphan datasets.
+>
+> One finding is worth carrying into WP3.1 directly. The three readers of the human-run flag
+> do not accept the same values: `catalog.mjs` strips both quote styles and the ADR-0005 codec
+> accepts either, but `gen-catalog.mjs` matches `"?true"?` with neither an `i` flag nor a
+> single-quote alternative. So `disable-model-invocation: 'true'` would be human-run in Claude
+> Code and in `/marvin:help` while the public site advertised the command as model-invocable —
+> the drift WP0.2 removed, one quote character away. Canonical form is therefore defined as the
+> **intersection** of the three readers and the linter rejects `'true'`; widening the site
+> regex to `["']?` is the alternative and belongs with WP3.1's frontmatter allowlist.
 
 **WP0.2 — HUMAN_RUN single-sourcing (S).** *Landed in 0.12.3, spec
 `single-source-human-run-flag`.* The skill frontmatter becomes the only source. On the

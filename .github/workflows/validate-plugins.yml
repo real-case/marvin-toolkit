@@ -36,6 +36,16 @@ jobs:
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
 
+      # Deliberately unconditional and intolerant of failure: `evals/` is not an npm
+      # workspace, so nothing under it runs during `npm test`, and this step is the
+      # only thing that makes the trigger harness observable at all. Needs no network
+      # (the mock decider is deterministic) and takes well under a second.
+      # test/ci-workflow.test.mjs asserts this step's shape.
+      - name: Trigger-eval harness (self-test + mock sweep)
+        run: |
+          npm run eval:self-test
+          npm run eval:trigger
+
       - name: Check docs for drift (ADR coverage + working-dir paths)
         run: npm run lint:docs
 

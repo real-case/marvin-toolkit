@@ -39,7 +39,9 @@ exists only so `self-test.mjs` can guard the harness with no network.
 ## Run it
 
 ```shell
-node evals/trigger/self-test.mjs                                  # guard the harness (no network)
+npm run eval:self-test                                            # guard the harness (no network)
+npm run eval:trigger                                              # mock sweep over every dataset
+node evals/trigger/self-test.mjs                                  # the same guard, directly
 node evals/trigger/run.mjs --skill commit --decider mock          # pipeline demo
 ANTHROPIC_API_KEY=… node evals/trigger/run.mjs --skill all --runs 5 --decider api --model claude-sonnet-5
 node evals/trigger/run.mjs --skill pr-create --decider claude-cli --workspace /path/with/plugin
@@ -84,6 +86,39 @@ a `disable-model-invocation` skill, which never auto-triggers by design).
 - `mock_rate` is optional and only consumed by `--decider mock`.
 
 Validate any dataset with `validateDataset` (run the runner; it checks and warns).
+
+## Enforced invariants
+
+Both CI steps run on every leg and neither is allowed to fail, so these are rules
+rather than guidance. They live in `scripts/lib/skill-datasets.mjs`; three are
+reported by `scripts/lint-manifests.mjs` because they are obligations of the
+shipped skill surface, and the rest by `self-test.mjs` because they belong to the
+harness.
+
+| Rule | Reported by |
+|------|-------------|
+| every skill has `datasets/<name>.json` | `lint-manifests` |
+| a dataset's `disable_model_invocation` matches the skill's frontmatter | `lint-manifests` |
+| the frontmatter value is canonical | `lint-manifests` |
+| every dataset has a matching skill | `self-test` |
+| a competition `winner` is reachable in the catalog | `self-test` |
+| every negative and competition query carries a `note` | `self-test` |
+| every query carries an explicit `mock_rate` | `self-test` |
+
+**Canonical** means one of `true`, `false`, `"true"`, `"false"`, or an absent key.
+That is the *intersection* of what the three readers of the flag accept, not their
+union: `catalog.mjs` strips both quote styles and the server's ADR-0005 codec
+accepts either, but the site's generator matches `"?true"?` with no `i` flag and no
+single-quote alternative. So `'true'` would be human-run here and in `/marvin:help`
+while the public catalog advertised the command as model-invocable, and `True`
+would be human-run in Claude Code and unmarked everywhere else. Both are rejected.
+
+**Reachable** is stricter than "is a skill directory": `catalogText` renders skills
+only *and* filters human-run ones out, so a prompt without a `SKILL.md`
+(`/marvin:reports`, `/marvin:dashboard`, `/marvin:help`, `/marvin:sec-report`) and a
+human-run skill are equally unpickable by a decider. Name those in a negative's
+`note` instead — a competition row against one passes for the wrong reason, because
+`winner` is checked for presence by the schema and then read by nothing.
 
 ## Fidelity caveat
 

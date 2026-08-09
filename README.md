@@ -282,6 +282,8 @@ npm run lint              # ESLint over the TypeScript source
 npm run format:check      # Prettier
 npm run lint:manifests    # marketplace and plugin manifest structure
 npm run lint:docs         # ADR coverage and working-directory paths
+npm run eval:self-test    # trigger-eval harness guard (no network)
+npm run eval:trigger      # mock sweep over every trigger dataset
 npm run build             # build every workspace
 npm run test              # Node.js native test suites
 npm run verify-dist       # committed dist/ matches a fresh build

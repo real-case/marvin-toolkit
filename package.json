@@ -26,6 +26,8 @@
     "help:preview": "node scripts/help-preview.mjs",
     "dev:widget-host": "node scripts/dev-widget-host.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
+    "eval:self-test": "node evals/trigger/self-test.mjs",
+    "eval:trigger": "node evals/trigger/run.mjs --skill all --decider mock",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
     "prepare": "husky"
   },
@@ -53,7 +55,8 @@
     "prettier-plugin-astro": "^0.14.1",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "typescript-eslint": "^8.64.0"
+    "typescript-eslint": "^8.64.0",
+    "yaml": "^2.9.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-darwin-arm64": "4.62.2",
