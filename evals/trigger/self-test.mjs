@@ -4,12 +4,35 @@
 // where the 0.5 boundary says they should. This guards the harness, not any skill.
 //
 //   node evals/trigger/self-test.mjs
+//   node evals/trigger/self-test.mjs --skills <dir> --datasets <dir>
+//
+// The two directories default to this repository's and are overridable so a test
+// can point the whole check at a fixture tree. They must move together: the
+// coverage check compares one against the other.
 
 import assert from "node:assert/strict";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadCatalog } from "./lib/catalog.mjs";
 import { validateDataset } from "./lib/schema.mjs";
 import { score } from "./lib/score.mjs";
 import { makeDecider } from "./lib/deciders/index.mjs";
+import { auditSkillDatasets, AUDIT_CATEGORIES } from "../../scripts/lib/skill-datasets.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+function argOr(flag, envVar, fallback) {
+  const i = process.argv.indexOf(flag);
+  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  return process.env[envVar] ?? fallback;
+}
+
+const SKILLS_DIR = argOr(
+  "--skills",
+  "MARVIN_EVAL_SKILLS_DIR",
+  join(HERE, "..", "..", "plugins", "marvin", "skills"),
+);
+const DATASETS_DIR = argOr("--datasets", "MARVIN_EVAL_DATASETS_DIR", join(HERE, "datasets"));
 
 const RUNS = 3;
 const mock = makeDecider("mock");
@@ -45,9 +68,35 @@ function check(name, fn) {
   }
 }
 
-// --- catalog ---
-const catalog = loadCatalog();
-check("catalog loads all 37 skills", () => assert.equal(catalog.length, 37));
+// --- catalog + coverage ---
+// Derived from the tree, never pinned to a number. A literal count was what broke
+// this file silently on every skill added, and it could not see the failure that
+// actually matters: a skill and a dataset going out of correspondence while the
+// counts happen to agree.
+const catalog = loadCatalog(SKILLS_DIR);
+const audit = auditSkillDatasets({ skillsDir: SKILLS_DIR, datasetsDir: DATASETS_DIR });
+
+check("catalog covers every skill directory", () =>
+  assert.deepEqual(
+    catalog.map((s) => s.name),
+    audit.skills,
+  ),
+);
+// Both halves are asserted together, and every category is collected before the
+// first throw: an assert-per-item loop stops at the earliest failure and hides the
+// rest, which makes the report name only half of a two-sided mismatch.
+check("every skill has a dataset and every dataset has a skill", () =>
+  assert.deepEqual(
+    { skillsWithNoDataset: audit.missingDatasets, datasetsWithNoSkill: audit.orphanDatasets },
+    { skillsWithNoDataset: [], datasetsWithNoSkill: [] },
+  ),
+);
+check("datasets satisfy every enforced invariant", () => {
+  const violations = Object.fromEntries(
+    AUDIT_CATEGORIES.filter((key) => audit[key].length > 0).map((key) => [key, audit[key]]),
+  );
+  assert.deepEqual(violations, {}, JSON.stringify(violations));
+});
 check("catalog marks disable-model-invocation", () => {
   const acc = catalog.find((s) => s.name === "adr-accept");
   assert.ok(acc && acc.disableModelInvocation === true);

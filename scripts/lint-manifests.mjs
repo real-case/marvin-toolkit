@@ -8,12 +8,24 @@
 //   5. All agent .md files start with YAML frontmatter containing description
 //   6. Every workspace package.json version matches the plugin version — one source
 //      of truth, propagated by scripts/sync-version.mjs
+//   7. Every skill has a trigger-eval dataset, its disable_model_invocation field
+//      agrees with the skill frontmatter, and the frontmatter value is canonical
+//      (scripts/lib/skill-datasets.mjs; the harness's own invariants are checked by
+//      evals/trigger/self-test.mjs instead)
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+import { skillDatasetFailures } from "./lib/skill-datasets.mjs";
+
+// MARVIN_LINT_ROOT lets a test run this linter against a synthetic root. It is a
+// test affordance in the same family as MARVIN_TASKS_DIR, unset in CI and in normal
+// use, and test/ci-workflow.test.mjs asserts no workflow step, job or workflow env
+// block sets it — otherwise it would be a way to make a blocking gate pass.
+// `||` rather than `??`: an empty value is a mistake, not a request to lint `/`.
+const repoRoot =
+  process.env.MARVIN_LINT_ROOT || join(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
 
 // 1. Marketplace manifest
@@ -129,6 +141,39 @@ for (const rel of lockedVersionFiles) {
       `${rel}: version "${version}" does not match the plugin version "${marvinVersion}" — run \`npm run sync-version\``,
     );
   }
+}
+
+// 7. Skill surface vs trigger-eval datasets. Called ONCE here rather than inside the
+//    marketplace loop above: the datasets tree is repo-global and describes the marvin
+//    plugin alone, so a per-plugin call would report every skill of a second plugin as
+//    missing a dataset. This sits beside the version check, which makes the same
+//    single-plugin assumption two lines up.
+//
+//    Only the three categories that are shipping obligations of the skill surface are
+//    reported here. orphanDatasets, unknownWinners, missingNotes and missingMockRate are
+//    invariants of the eval harness and are asserted by evals/trigger/self-test.mjs.
+//
+//    An absent directory is a FAILURE, not a reason to skip: a guard of the form
+//    `if (existsSync(a) && existsSync(b))` would turn this blocking gate green over
+//    a skill surface with zero datasets, which is the same "guard that cannot fail"
+//    defect a32a288 repaired in the drift guards.
+const skillsDir = join(repoRoot, "plugins", "marvin", "skills");
+const datasetsDir = join(repoRoot, "evals", "trigger", "datasets");
+for (const [label, dir] of [
+  ["plugins/marvin/skills", skillsDir],
+  ["evals/trigger/datasets", datasetsDir],
+]) {
+  if (!existsSync(dir))
+    failures.push(`${label}: directory is missing — the dataset rules cannot run`);
+}
+if (existsSync(skillsDir) && existsSync(datasetsDir)) {
+  failures.push(
+    ...skillDatasetFailures({
+      skillsDir,
+      datasetsDir,
+      keys: ["missingDatasets", "parityViolations", "nonCanonicalFlags"],
+    }),
+  );
 }
 
 if (failures.length > 0) {

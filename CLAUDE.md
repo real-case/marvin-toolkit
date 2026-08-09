@@ -188,6 +188,10 @@ The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//
 # Lint manifests + structure
 node scripts/lint-manifests.mjs
 
+# Trigger-eval harness — guard it, then sweep every dataset with the mock decider
+npm run eval:self-test
+npm run eval:trigger
+
 # Build the server
 npm run build
 
