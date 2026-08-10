@@ -9,7 +9,7 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 
 ## Core principle
 
-**The spec is the instruction set.** This skill is the interactive sibling of `marvin-tm-executor` (which runs headless via `dispatch.sh`). Same contract, same pipelines — but the human is in the loop and the result stays on the current branch until `/marvin:task-deliver` opens the PR.
+**The spec is the instruction set.** This skill is the interactive sibling of `marvin-tm-executor` (which runs the same spec headless, dispatched via Task-tool). Same contract, same pipelines — but the human is in the loop and the result stays on the current branch until `/marvin:task-deliver` opens the PR.
 
 ## Input
 
@@ -178,12 +178,12 @@ notes, and self-review findings.
 
 ## Guidelines
 
-- **Watch, don't race.** Show the user each major step before executing. Interactive is the whole point of this skill versus `dispatch.sh`.
+- **Watch, don't race.** Show the user each major step before executing. Interactive is the whole point of this skill versus a headless `marvin-tm-executor` run.
 - **Never skip the regression test step for bugs.** Red→green is the proof the fix works.
 - **Respect retries.** 2 is the budget. After that, stop — don't silently flail.
 - **No AI attribution** in any commit or PR text (inherited from `/marvin:commit` and `/marvin:pr-create`).
 - **SPEC GAPs are first-class.** Record them inline as you work; `/marvin:task-deliver` will surface them in the PR body.
-- **Current branch, current session.** This skill does not create worktrees. For multi-task or hands-off execution, use `scripts/dispatch.sh`.
+- **Current branch, current session.** This skill does not create worktrees. For multi-task or hands-off execution, dispatch the spec to the `marvin-tm-executor` agent via Task-tool — it runs the same pipelines headless and opens the PR itself.
 
 ## SPEC GAP protocol
 

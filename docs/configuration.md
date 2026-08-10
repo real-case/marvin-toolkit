@@ -20,6 +20,7 @@ makes them easy to include in or exclude from version control as a unit.
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |
 | `.marvin/memory/` | The `lessons` tool | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | The `handoff` tool | Session-continuation documents. |
+| `.marvin/research-results/` | The `marvin-researcher` agent | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
 | `.marvin/preview/` | The `widget-preview` command | Rendered widget panels, never committed. |
 | `.marvin/config.json` | `track-config` and `verify` | The settings documented below. |

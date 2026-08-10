@@ -4,6 +4,19 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.4] — 2026-08-10
+
+### Fixed
+
+- **`task-implement` no longer sends hands-off work to a script that does not exist.**
+  Three places in the skill named `scripts/dispatch.sh` as the headless counterpart to
+  interactive execution, and one of them was an instruction rather than a description:
+  "For multi-task or hands-off execution, use `scripts/dispatch.sh`." The script was
+  deleted long ago, so a model following that guideline reached for a missing file. All
+  three now describe what actually performs headless execution — the `marvin-tm-executor`
+  agent, dispatched via Task-tool — keeping the interactive-versus-headless contrast the
+  prose was drawing.
+
 ## [0.12.3] — 2026-08-08
 
 ### Fixed

@@ -172,7 +172,7 @@
       "split": "validation",
       "kind": "negative",
       "mock_rate": 0,
-      "note": "hands-off worktree dispatch is dispatch.sh / marvin-tm-executor, not the interactive skill"
+      "note": "hands-off worktree dispatch is the marvin-tm-executor agent, not the interactive skill"
     },
 
     {
