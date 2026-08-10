@@ -260,6 +260,7 @@ together and easy to include in or exclude from version control.
 | `.marvin/track/` | `track-*` | The task board as markdown files. |
 | `.marvin/memory/` | `lessons` | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | `handoff` | Session-continuation documents. |
+| `.marvin/research-results/` | `marvin-researcher` | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
 | `.marvin/preview/` | `widget-preview` | Rendered widget panels, never committed ([ADR-0034](./adr/0034-widget-preview-door.md)). |
 | `.marvin/config.json` | `track-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |

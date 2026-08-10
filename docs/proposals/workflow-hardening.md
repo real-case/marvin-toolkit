@@ -129,7 +129,7 @@ root so a hard-coded set cannot pass. Requires a dist rebuild.
 > `README.md`, `docs/commands.md` and a doc comment in `packages/site/src/data/catalog.ts`
 > carried it as well.
 
-**WP0.3 — dead references (S).** Rewrite the three `dispatch.sh` references in
+**WP0.3 — dead references (S).** *Landed in 0.12.4, no spec.* Rewrite the three `dispatch.sh` references in
 `skills/task-implement/SKILL.md` (and the note in
 `evals/trigger/datasets/task-implement.json`) to describe headless dispatch through the
 `marvin-tm-executor` agent, pending decision D1. Register `.marvin/research-results/` in the
