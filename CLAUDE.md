@@ -224,10 +224,23 @@ green guard steps. The consequence for local use: they judge **what is committed
 artifact you have not staged yet is reported as out of sync (`git add` it). `npm run test` covers
 them through the root `test/` suite, which runs after the workspace suites.
 
-A build made in a git worktree is not committable. A worktree has no `node_modules`, so resolution
-walks up past the checkout and esbuild bakes that longer relative depth into every module-path
+Whether a build is committable turns on the checkout having its own installed `node_modules`, not
+on it being a worktree. `git worktree add` gives you one with none, so `@marvin-toolkit/*` resolves
+by walking up past the checkout and esbuild bakes that longer relative depth into every module-path
 comment in `dist/server.js`: functionally identical, byte-different. `tsup.config.ts` warns when it
-sees no `node_modules` in the checkout — rebuild in the main checkout before committing.
+sees no `node_modules` in the checkout; that warning means run `npm install` here, or rebuild in the
+main checkout, before committing. A worktree that has been installed into builds a committable
+bundle. Settle it either way without touching the committed artifact, which `verify-dist` cannot do
+because it rebuilds in place:
+
+```shell
+TMP=$(mktemp -d)
+npm run build -w @marvin-toolkit/server -- --out-dir "$TMP"
+diff <(git show HEAD:plugins/marvin/mcp/server/dist/server.js) "$TMP/server.js"
+```
+
+Only intended lines differ, so build here and commit. Hundreds of `../../../../node_modules` comment
+lines differ, so use the main checkout.
 
 ### Testing unreleased changes in a locally installed plugin
 
@@ -249,8 +262,8 @@ change rebuilds every consumer. Test and story files build nothing. Changes are 
 failed build aborts the rest of that pass — like `dev:plugin`'s `&&` chain, so nothing is built
 against an artefact the failed step did not update — but never stops the watch itself, and the
 session-restart notice is printed only for a `dist/server.js` that was actually produced. Run it
-in the **main checkout**: a bundle built inside a worktree is byte-different and not committable,
-as above. `npm run dev:watch -- --dry-run` prints the plan and the current watch counts without
+in a checkout that has its own `node_modules`: without one the bundle is byte-different and not
+committable, as above. `npm run dev:watch -- --dry-run` prints the plan and the current watch counts without
 building anything, which is the list to consult rather than one written out here.
 
 ### Seeing the widgets render in chat
