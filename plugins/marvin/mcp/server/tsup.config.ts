@@ -6,11 +6,14 @@ import { existsSync, readFileSync } from "node:fs";
 // keeps every package version equal and lint-manifests.mjs guards the invariant.
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
-// A git worktree has no node_modules of its own, so resolution walks up past the
-// checkout and esbuild bakes that longer relative depth into every module-path
+// A checkout with no node_modules of its own, which is what `git worktree add`
+// leaves until someone installs into it, resolves dependencies by walking up past
+// the checkout, and esbuild bakes that longer relative depth into every module-path
 // comment in the bundle. The output is functionally identical and byte-different,
 // which is precisely what the committed artifact must never be — warn where the
-// difference originates rather than leaving verify-dist to explain it later.
+// difference originates rather than leaving verify-dist to explain it later. The
+// condition is installed-or-not, not worktree-or-not: an installed worktree builds
+// a committable bundle and stays silent here.
 const checkoutRoot = new URL("../../../../", import.meta.url);
 if (!existsSync(new URL("node_modules", checkoutRoot))) {
   console.warn(
