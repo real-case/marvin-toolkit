@@ -41,8 +41,9 @@ Every phase follows the repository's standing conventions:
 
 - Branch off `dev` and open every PR into `dev` (ADR-0019). No release is cut until the
   owner orders one.
-- Rebuild `dist/server.js` in the main checkout only; a bundle built inside a worktree is
-  byte-different and not committable.
+- Rebuild `dist/server.js` in a checkout that has its own installed `node_modules`. That, not
+  whether the checkout is a worktree, is what decides committability: `tsup.config.ts` warns
+  when it sees none, and the fix is `npm install` there or a rebuild in the main checkout.
 - Bump the version with `npm run sync-version` and add an entry to
   `plugins/marvin/CHANGELOG.md` for every bump.
 - Work packages sized M or L go through `/marvin:task-start` and get a sealed spec before
