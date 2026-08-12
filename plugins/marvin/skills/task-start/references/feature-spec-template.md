@@ -142,9 +142,11 @@ Assumption: set `spike_required: true` and resolve it (e.g. a spike via `/marvin
 rollout/rollback, performance, a11y/i18n where relevant. "N/A — {one-line reason}" if none apply.}
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK). Record any author
-override as "Critic flagged X — override: Y". "none" if the critic step was skipped — and a
-skipped critic is surfaced in the PR, never silent.}
+{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE). NEEDS_CONTEXT is never
+recorded here — it resolves on the re-dispatch or becomes UNABLE. Record any author override as
+"Critic flagged X — override: Y". "none" if the critic step was skipped. A skipped critic and an
+UNABLE verdict are both surfaced in the PR, never silent; record an UNABLE verbatim as
+"UNABLE — {reason}".}
 
 ## Design Notes
 {Nuances, warnings, "write it so it's easy to replace with X later".}

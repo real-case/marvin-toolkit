@@ -39,6 +39,14 @@ When composing the PR:
 - Include the spec summary in the PR body
 - Include the verification results summary
 - Reference the original issue/ticket if one was identified during intake
+- **Carry both critic verdicts.** Two semantic gates run in the pipeline and each gets its **own line**, first in `## Self-Review Notes` — or at the top of the `pr-create` template's `## Notes` when the spec is not v2.0. Render them independently, never merge them, never omit one, and never render an inability as a pass:
+  - **Spec critic** (`marvin-tm-spec-critic`) — from the spec's `## Critic Verdict & Overrides` section (the spec is already resolved in step 2), with any recorded author override.
+  - **Diff critic** (`marvin-tm-diff-critic`) — from the chained `/marvin:task-implement` result (its Step 6F / Step 9B), or from a `marvin-tm-diff-critic` run in this session. With no chained context — a standalone `/marvin:task-deliver` — render `not run — delivered standalone`.
+
+  The rendering rule is total, and each slot resolves against its own source. Render the recorded verdict when the source holds one of the four terminal critic verdicts (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE`), an `UNABLE` as `⚠️ critic UNABLE — <reason>` with the critic's reason verbatim. Render `⚠️ critic skipped` in **every** other case — for the **Spec critic**: "none", "none — critic skipped", an empty section, an absent section, or no spec file at all; for the **Diff critic**: chained context reporting that the critic was not dispatched, or reporting nothing about it at all. The one exception is the standalone case above, where the **Diff critic** line reads `not run — delivered standalone`. A semantic gate that did not run is never silent in the PR
+- **Carry the open items.** Every item a fix cycle left unresolved arrives from `/marvin:task-implement` already classified as **deferred, with a rationale** or **blocked, with a cause**. Reproduce each line in `## Self-Review Notes` below — or in the `pr-create` template's `## Notes` when the spec is not v2.0. Dropping one silently is banned; when there are none, omit the lines rather than summarising them away. In a standalone invocation there is no chained context — omit the lines rather than reconstructing them
+- **Carry the refuted findings.** A critic finding `/marvin:task-implement` re-grounded and refuted against the code arrives as one line per finding. Reproduce each in the same section; omit the lines when there are none
+- **Open a draft when a semantic gate is still red.** When the diff critic's verdict arrives as `BLOCK` with at least one **surviving** blocker (one that was neither fixed nor refuted), ask `/marvin:pr-create` for a **draft** PR and tell the user why — the blockers are recorded in `## Self-Review Notes`, and the draft state is what keeps them from being merged past. Every other verdict opens a normal PR
 - If spec is v2.0 format (from `.marvin/task/` or a host spec dir), use the v2.0 PR body structure:
 
 ```markdown
@@ -52,7 +60,17 @@ When composing the PR:
 {key changes grouped by area}
 
 ## Self-Review Notes
+**Spec critic:** {PASS | PASS WITH WARNINGS | BLOCK | ⚠️ critic UNABLE — {reason} | ⚠️ critic skipped}
+**Diff critic:** {PASS | PASS WITH WARNINGS | BLOCK | ⚠️ critic UNABLE — {reason} | ⚠️ critic skipped | not run — delivered standalone}
+
 {any concerns or trade-offs noted}
+
+{refuted critic findings, one line each — omit this line when there are none:}
+Refuted: {finding} — {file}:{line} shows {what}
+
+{open fix-cycle items, one line each — omit these lines when there are none:}
+Deferred: {item} — Rationale: {why the change is safe to ship without it}
+Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 
 ## Tests
 - [ ] New tests written for acceptance criteria

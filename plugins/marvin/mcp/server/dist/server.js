@@ -34829,7 +34829,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.12.4";
+var VERSION = "0.12.5";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

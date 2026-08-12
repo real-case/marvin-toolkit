@@ -42,12 +42,20 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   instead of guessing an ecosystem default. A project with no recognised stack and no declared
   commands returns an explicit "no gates detected" message, never a silent pass; in that case pass
   the spec's `test_command` as an explicit gate.
-- **Project override (config-first, ADR-0011).** If the project declares gate commands in
+- **Project override (config-first, ADR-0009).** If the project declares gate commands in
   `.marvin/config.json` — e.g. `"gates": { "test": "vitest run", "lint": "biome check ." }` — the
   tool runs those per gate, over the detected defaults; gates left unset still fall back to
   detection. This is the durable, stack-agnostic way to pin exactly how a project is built,
   preferred over re-passing `gates` on every call. The report's `Stacks:` line shows
   `.marvin/config.json` when an override applies.
+- **A gate command is any shell command**, so a security scanner can be a blocking gate:
+  `npm audit --audit-level=high`, `gitleaks detect`, `semgrep --config auto`. The four gate
+  names are the complete set (a fifth key is stripped silently), so a scanner is chained onto
+  a gate the project already runs — `"lint": "npm run lint && gitleaks detect"` — and the
+  chain reports one status for both commands. State the cost before recommending this: a
+  missing binary exits non-zero like any other failure, so a scanner in a committed config
+  produces a FAIL verdict and blocks `/marvin:task-deliver` for every contributor who has not
+  installed the tool. Marvin does not yet distinguish a missing tool from a failing one.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
   every result at a single merge point, then computes one verdict. A failing gate never discards
   the others — every gate's result is recorded.

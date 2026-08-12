@@ -34,8 +34,10 @@ Crystallization → spec tool (mechanical DoR) → marvin-tm-spec-critic (semant
 - Critic verdict `BLOCK` → spec author must revise before DoR is attempted.
 - `PASS WITH WARNINGS` → DoR proceeds; warnings attached to the spec's "Future Considerations" or addressed at author's discretion.
 - `PASS` → DoR proceeds normally.
+- `NEEDS_CONTEXT` → the author supplies the input you named and re-dispatches you **once**, stating that it is the re-dispatch. A second `NEEDS_CONTEXT` on the same critique is treated as `UNABLE`. `NEEDS_CONTEXT` is never the verdict recorded in the spec — it resolves on that re-dispatch or becomes `UNABLE`.
+- `UNABLE` → not a pass, and not a revision request either. The author records it verbatim in the spec's **Critic Verdict & Overrides** and carries it to the PR's **Spec critic** line exactly as a skipped critic is carried.
 
-The critic's verdict is advisory — the author or user can override it, but an override must be recorded in the spec (e.g., "Spec critic flagged X — author override: Y").
+The critic's verdict is advisory — the author or user can override it, but an override must be recorded in the spec (e.g., "Spec critic flagged X — author override: Y"). `UNABLE` records an inability rather than a judgement: there is nothing to override, so it is never softened into a pass, and it travels to the PR either way.
 
 ## Input
 
@@ -107,7 +109,7 @@ Return this exact structure to stdout:
 ```markdown
 # Spec Critique: <slug>
 
-**Verdict:** PASS | PASS WITH WARNINGS | BLOCK
+**Verdict:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
 
 ## Blockers
 <each blocker prevents DoR — list or "none">
@@ -127,12 +129,27 @@ Return this exact structure to stdout:
 
 ## Questions for the author
 <open questions the author should answer before DoR — list or "none">
+
+## Inability
+<only for NEEDS_CONTEXT or UNABLE — omit this section entirely otherwise>
+
+**Blocker:** <what prevented the critique>
+**Attempted:** <what you tried before concluding you could not judge>
+**Recommendation:** <the exact input or action that unblocks it>
 ```
 
 **Verdict rules:**
 - Any blocker → `BLOCK`
 - No blockers but ≥1 warning → `PASS WITH WARNINGS`
 - Clean → `PASS`
+- Cannot judge yet, but you can name the exact missing input → `NEEDS_CONTEXT`
+- Cannot judge and cannot name the missing input, **or** the caller states this is the re-dispatch for a `NEEDS_CONTEXT` you raised and the named input is still missing → `UNABLE`
+
+**`NEEDS_CONTEXT`** — you cannot judge yet *and* you can name the one input that would let you: the spec was not passed, a file the spec cites exists but cannot be read, the listing you were given is empty. (A cited file that does **not** exist is a blocker, not a missing input — see Workflow step 2.) Name that input precisely enough for the caller to supply it in a single turn ("the spec content itself, inline" — not "more context"). The caller re-dispatches you once with the answer and says that it is the re-dispatch.
+
+**`UNABLE`** — you cannot judge and cannot name what would fix that, or the caller told you this dispatch answers a `NEEDS_CONTEXT` you raised and the input it named is still missing. You do not track re-dispatches yourself: you enter with a fresh context and cannot observe a prior turn, so recurrence is a fact the caller states, never one you infer. `UNABLE` is never a pass and never a blocker list; it is a statement that the semantic gate did not run.
+
+**Escalation licence.** Never emit `PASS` or `PASS WITH WARNINGS` in place of an inability — an empty critique that reads as approval is worse than no critique, because the caller ships on it. When you emit `NEEDS_CONTEXT` or `UNABLE`, fill the **Inability** section with Blocker / Attempted / Recommendation. Do not silently fail, and do not manufacture findings to look productive.
 
 ## Guidelines
 

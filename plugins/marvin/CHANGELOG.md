@@ -4,6 +4,80 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.12.5] — 2026-08-12
+
+Phase 1 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the
+advisory protocols gain the vocabulary and the carriers they were missing. Prompt and
+agent bodies only — no server source changed.
+
+### Added
+
+- **The critics can now say "I could not judge".** Both `marvin-tm-spec-critic` and
+  `marvin-tm-diff-critic` extend from three verdicts to five, adding `NEEDS_CONTEXT` (the
+  critic can name the exact input that would let it judge) and `UNABLE` (it cannot, or a
+  `NEEDS_CONTEXT` it already raised recurred). A `NEEDS_CONTEXT` earns exactly one
+  re-dispatch, which the caller marks as such — a subagent enters with a fresh context and
+  cannot observe that a prior turn happened — and a second occurrence becomes `UNABLE`.
+  `UNABLE` is never treated as success.
+- **A skipped or unable critic now reaches the pull request.** `task-start` has always
+  promised that it would, and nothing carried it: `task-deliver` contained no mention of a
+  critic at all. Its PR body now renders a `**Spec critic:**` and a `**Diff critic:**` line
+  from separate sources, under a total rendering rule — one of the four terminal verdicts,
+  or `⚠️ critic skipped` in every other case, including a spec with no such section and a
+  delivery with no spec at all. `marvin-tm-executor`, which opens its own PR, carries both
+  lines too, so the headless path cannot drop a verdict the interactive path records. This
+  makes ADR-0017's Consequences clause true in the tree rather than aspirational.
+- **One named fix-cycle protocol** in `task-implement`, replacing seven scattered mentions
+  of a two-retry budget. Rounds 1–2 retry the same path with the feedback verbatim; round 3
+  changes the conditions. The three loops it governs — verify-gate, critic, red-green —
+  keep separate budgets, because collapsing them into one silently shortens the verify loop.
+  Round 3 escalates to `marvin-debugger` only for the two loops with a reproducible symptom:
+  that agent's contract requires a trigger to reproduce and a regression test to write, and
+  a critic blocker such as "AC2 has no implementing change" has neither. At the limit every
+  open item is recorded as deferred with rationale or blocked with cause; dropping one
+  silently is banned.
+- **A re-grounding step before review feedback is classified**, in `pr-resolve` and
+  `marvin-tm-review-fixer`: open the cited location and read enough around it to judge the
+  finding first. With it comes a fifth class, `unfounded` — leave the code unchanged, reply
+  with a file-and-line refutation, leave the thread open — and an all-or-nothing rule, since
+  review comments are frequently interdependent: when one comment cannot be grounded, none
+  are applied.
+- **`sec-scan` phase 3 fans out to three `marvin-auditor` lenses** dispatched in one
+  response (A01/A05/A08, A02/A04/A07/A09, A03/A06/A10), with the inline walk kept as the
+  fallback when the Task tool is unavailable, and a new consolidation phase that merges on
+  matching location and substance, takes the higher severity on disagreement, and renders a
+  lens-coverage matrix that exposes a lens which found nothing. `marvin-auditor` gains the
+  executor-mode constraints `marvin-refactor-auditor` already had — a write ban, an
+  enumerated read-only command list, the untrusted-input caveat — and an output contract,
+  without which three concurrent dispatches can each return a different shape.
+
+### Fixed
+
+- **A surviving critic `BLOCK` now actually gates delivery.** `task-implement` stated that
+  it does, "because the PR opens as draft", but on the interactive path the PR is opened by
+  `pr-create`, which composed a bare `gh pr create`. The draft path now runs end to end.
+- **The outdated-thread rule can execute the case it names.** Both review-handling bodies
+  keyed re-grounding on `isOutdated: true`, but GitHub returns `line: null` for such a
+  thread and neither GraphQL query requested `originalLine` or `diffHunk`. For the
+  autonomous agent this was the worse half of the defect: one outdated comment would hold
+  the entire pass, producing no fixes at all.
+- **The fourth review class had two names** — `spec-conflict` in `pr-resolve`,
+  `spec-gap-discussion` in `marvin-tm-review-fixer` — while the latter's own steps routed a
+  `Spec-conflict` its table never defined. Reconciled on one name.
+- **`task-verify` cited ADR-0011 for config-first gate resolution.** Every other reference
+  in the tree says ADR-0009.
+
+### Documented
+
+- **Real scanners are legitimate verify gates.** `docs/configuration.md` names
+  `npm audit --audit-level=high`, `gitleaks detect` and `semgrep --config auto` as gate
+  content, documents the chaining form the closed four-key set forces, and records that a
+  key outside that set is silently stripped and that a declared command replaces the
+  detected one. It also states plainly what happens today when a gate's binary is missing:
+  the gate fails and delivery is blocked. A `not-run` state is planned; documenting it as
+  though it existed would have told users to add `gitleaks detect` and thereby block
+  delivery for every teammate without the binary.
+
 ## [0.12.4] — 2026-08-10
 
 ### Fixed

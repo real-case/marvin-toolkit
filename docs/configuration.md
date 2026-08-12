@@ -96,9 +96,20 @@ scheme at create time and warns rather than failing.
 
 These are overrides for the commands the `verify` tool runs. It is an optional object with
 four optional string fields — `test`, `lint`, `typecheck`, and `build` — each a shell
-command. When a field is set, `verify` runs that exact command for the gate; when it is
-absent, `verify` auto-detects the command from the project's stack. The
-[verify gates](#verify-gates) section explains resolution in full.
+command. When a field is set, `verify` runs that exact command for the gate, replacing every
+command detection would have produced under that name; when it is absent, `verify`
+auto-detects the command from the project's stack. The [verify gates](#verify-gates) section
+explains resolution in full.
+
+Those four keys are the complete set. There is no fifth gate and no way to declare one: a key
+Marvin does not recognise, whether a typo such as `tests` or an invented `audit`, is stripped
+when the config loads, and the gate it was meant to configure falls back to detection with no
+error reported anywhere. [ADR-0009](./adr/0009-config-first-gate-resolution.md) records that
+as an accepted trade-off. The effective set stays inspectable: the report's `Stacks:` line
+names `.marvin/config.json` whenever an override applied, and the dry-run plan (`verify` with
+`dryRun: true`) lists the exact command resolved for each gate. The dry run is the one that
+catches a stripped key in a config where other keys did apply, because the `Stacks:` marker
+appears as soon as any single key survives.
 
 ### `statuses`
 
@@ -156,6 +167,38 @@ for anything else.
 Set `gates` when your project's commands differ from what auto-detection would choose, for
 example a custom test runner or a monorepo build script. Leave it unset to let Marvin
 detect the commands for you.
+
+### Scanners as gates
+
+A gate command is an ordinary shell command, so a gate is not limited to the kind of tool its
+name suggests. `npm audit --audit-level=high`, `gitleaks detect`, and `semgrep --config auto`
+are all legitimate gate content, and running one under `verify` is what makes it blocking:
+the result lands in `verification.md`, and through it in the delivery gate.
+
+Because the four gate names are the complete set, adding a scanner means chaining it onto a
+gate you already run:
+
+```json
+{
+  "gates": {
+    "lint": "npm run lint && gitleaks detect"
+  }
+}
+```
+
+Chaining has a cost. The two commands share one gate result, `&&` stops at the first failure
+so a lint error means the scan never ran at all, and both the status line and the truncated
+output kept in the report describe the chain rather than either command. Attributing a red
+chained gate takes one manual re-run.
+
+**A missing binary fails the gate.** `verify` runs every command through a shell and treats
+any non-zero exit as a failed gate. A shell that cannot find `gitleaks` exits 127, which is a
+failed gate, which is a `FAIL` verdict, which makes `/marvin:task-deliver` refuse to proceed.
+State that plainly before committing such a config: a scanner gate blocks delivery for every
+contributor who has not installed the binary, not only for the person who added the line.
+Marvin does not yet distinguish a missing tool from a failing one. A `not-run` gate state
+that records the reason instead of failing is planned; until it ships, either keep scanner
+gates out of a shared config or make the binary a documented prerequisite of the project.
 
 ## Telemetry
 

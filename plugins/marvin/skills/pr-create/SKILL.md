@@ -83,7 +83,7 @@ If the branch name or commit messages contain an issue reference (e.g., `PROJ-12
 
 1. Run verification commands available in the project (test, lint, type-check, build) and report results
 2. Push the branch: `git push -u origin <branch>`
-3. Compose the PR: `gh pr create --base <base>`
+3. Compose the PR: `gh pr create --base <base>` — add `--draft` when the caller asked for a draft (`/marvin:task-deliver` does when a semantic gate is still red), and say in the confirmation that the PR will open as a draft
 4. **Always confirm with the user before submitting** — show the title and body, ask for approval
 5. Never force-push to shared branches
 6. Never include AI/Claude/automated references in the PR title or body

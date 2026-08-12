@@ -110,7 +110,7 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 # Diff Critique: <branch or range>
 
 **Spec:** <path or "standalone">
-**Verdict:** PASS | PASS WITH WARNINGS | BLOCK
+**Verdict:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
 **Files changed:** <N> (<spec-aligned>/<spec-adjacent>/<out-of-scope>/<test>/<generated>)
 
 ## Coverage
@@ -132,12 +132,31 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 
 ## Confirmations
 <non-obvious good choices worth noting — list or "none">
+
+## Inability
+<only for NEEDS_CONTEXT or UNABLE — omit this section entirely otherwise>
+
+**Blocker:** <what prevented the critique>
+**Attempted:** <what you tried before concluding you could not judge>
+**Recommendation:** <the exact input or action that unblocks it>
 ```
 
 **Verdict rules:**
 - Any blocker → `BLOCK`
 - No blockers, ≥1 warning or ≥1 out-of-scope change → `PASS WITH WARNINGS`
 - Clean, everything spec-aligned or spec-adjacent → `PASS`
+- Cannot judge yet, but you can name the exact missing input → `NEEDS_CONTEXT`
+- Cannot judge and cannot name the missing input, **or** the caller states this is the re-dispatch for a `NEEDS_CONTEXT` you raised and the named input is still missing → `UNABLE`
+
+**`NEEDS_CONTEXT`** — you cannot judge yet *and* you can name the one input that would let you: the spec path was not passed (and coverage was expected of you), the diff range resolves to nothing, a file the diff touches is unreadable. Name that input precisely enough for the caller to supply it in a single turn ("the range `<base>..<head>`, the given one is empty" — not "more context"). The caller re-dispatches you once with the answer and says that it is the re-dispatch.
+
+**`UNABLE`** — you cannot judge and cannot name what would fix that, or the caller told you this dispatch answers a `NEEDS_CONTEXT` you raised and the input it named is still missing. You do not track re-dispatches yourself: you enter with a fresh context and cannot observe a prior turn, so recurrence is a fact the caller states, never one you infer. `UNABLE` is never a pass; it is a statement that the semantic half of the review did not run.
+
+**Escalation licence.** Never emit `PASS` or `PASS WITH WARNINGS` in place of an inability — an empty critique that reads as approval is worse than no critique, because the caller opens the PR on it. When you emit `NEEDS_CONTEXT` or `UNABLE`, fill the **Inability** section with Blocker / Attempted / Recommendation. Do not silently fail, and do not manufacture findings to look productive.
+
+**Routing.** `NEEDS_CONTEXT` earns exactly **one** re-dispatch, carrying the input you named and marked as the re-dispatch; a second occurrence is treated as `UNABLE`. `UNABLE` is never treated as success — the caller records it verbatim in the PR's Self-Review Notes, on their **Diff critic** line, exactly as it records a critic that could not be dispatched at all.
+
+Note that "standalone mode" (no spec supplied, per **Input**) is not `NEEDS_CONTEXT`: it is a supported mode in which you drop coverage checks and keep the quality checks.
 
 ## Guidelines
 

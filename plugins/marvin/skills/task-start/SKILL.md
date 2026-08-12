@@ -251,8 +251,10 @@ On a shape-valid spec, invoke the `marvin-tm-spec-critic` agent via Task-tool, p
 - **Verdict `BLOCK`** — present blockers, loop back to the relevant step (usually 2F, 3F, or 5F), then **re-run Step 7F** before returning here. Do not write the spec.
 - **Verdict `PASS WITH WARNINGS`** — show warnings; the user decides whether to revise or proceed. If proceeding, record the override in **Critic Verdict & Overrides**.
 - **Verdict `PASS`** — proceed to finalize.
+- **Verdict `NEEDS_CONTEXT`** — the critic could not judge yet and named the exact input it lacks (the spec content itself, a cited file that exists but it could not read, a listing that came back empty). Supply that input and re-dispatch the critic **once**, stating in the dispatch that this is the re-dispatch for the `NEEDS_CONTEXT` it raised — it enters with a fresh context and cannot see the earlier turn. A second `NEEDS_CONTEXT` is treated as `UNABLE`.
+- **Verdict `UNABLE`** — the critic could not judge and could not name what would fix that. It is **not** a pass. Record it verbatim as `UNABLE — <reason>` in **Critic Verdict & Overrides**, show the critic's Blocker / Attempted / Recommendation to the user, and let the user decide whether to proceed.
 
-Record the verdict in the spec's **Critic Verdict & Overrides** section. If Task-tool is unavailable, write "none — critic skipped" there **and** carry that fact forward so `/marvin:task-deliver` surfaces "⚠️ critic skipped" in the PR — a skipped semantic gate is never silent.
+Record the verdict in the spec's **Critic Verdict & Overrides** section — that section is the carrier for **this** critic, and `/marvin:task-deliver` renders it on the PR's **Spec critic** line (the diff critic gets its own line, from `/marvin:task-implement`). Record only a terminal verdict: `PASS`, `PASS WITH WARNINGS`, `BLOCK` or `UNABLE`. If Task-tool is unavailable, write "none — critic skipped" there **and** carry that fact forward so the PR reads "⚠️ critic skipped" — a skipped semantic gate is never silent. An `UNABLE` verdict is carried the same way and reads "⚠️ critic UNABLE — <reason>".
 
 ### Step 9F: Finalize & write
 
@@ -346,8 +348,10 @@ On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the dra
 - `BLOCK` → loop back (usually 3B root-cause or 5B fix-approach), then **re-run Step 7B** before returning.
 - `PASS WITH WARNINGS` → user decides; record override if proceeding.
 - `PASS` → proceed to finalize.
+- `NEEDS_CONTEXT` → supply the input the critic named and re-dispatch it **once**, stating that it is the re-dispatch; a second `NEEDS_CONTEXT` is treated as `UNABLE` (full definitions in Step 8F).
+- `UNABLE` → never a pass; record it verbatim as `UNABLE — <reason>` and let the user decide whether to proceed.
 
-If Task-tool is unavailable, write "none — critic skipped" and carry it forward so `/marvin:task-deliver` surfaces it in the PR.
+If Task-tool is unavailable, write "none — critic skipped" and carry it forward so `/marvin:task-deliver` renders it on the PR's **Spec critic** line. An `UNABLE` verdict is carried the same way.
 
 ### Step 9B: Finalize & write
 

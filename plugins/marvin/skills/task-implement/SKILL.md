@@ -99,7 +99,8 @@ detection; `marvin-tm-diff-critic` below is the *semantic* half.
 
 1. **Launch the critic in the background.** If Task-tool is available, dispatch
    `marvin-tm-diff-critic` (with `run_in_background`) passing the spec path and the current diff
-   (`git diff`). If Task-tool is unavailable, skip the critic — verify still runs.
+   (`git diff`). If Task-tool is unavailable, skip the critic — verify still runs, and the skip
+   travels to `/marvin:task-deliver` as `⚠️ critic skipped`.
 2. **Run verify concurrently.** While the critic runs, invoke `/marvin:task-verify feature`. In
    this chained call, pass `mode: feature` (and the `stack` if already known) forward so the tool
    skips re-detection (it calls the `verify` tool, `execution: parallel`).
@@ -109,15 +110,35 @@ detection; `marvin-tm-diff-critic` below is the *semantic* half.
 **Verify result:**
 - **PASS / PASS WITH WARNINGS** — proceed (collect warnings for the PR).
 - **FAIL** — read the failing output, fix it, then re-run **only the failed gate** to confirm the
-  fix (`/marvin:task-verify` with `only: ["<gate>"]`). Up to **2 retries**. Once the targeted gate
-  is green, run **one final full `verify` pass** as the pre-delivery confirmation. If still
-  failing after retries, stop and hand back to the user with a summary. Do not deliver.
+  fix (`/marvin:task-verify` with `only: ["<gate>"]`) under the **Fix-cycle protocol** below. This
+  is the verify-gate loop and it carries its own budget. Once the targeted gate is green, run
+  **one final full `verify` pass** as the pre-delivery confirmation. If the loop reaches its limit
+  unresolved, stop and hand back to the user with a summary. Do not deliver.
 
-**Critic result:**
-- `BLOCK` — attempt fixes (up to 2 retries). If still blocked, this still **gates delivery** (PR
-  opens as draft with blockers surfaced) — exactly as in the sequential design.
+**Critic result:** before acting on any finding, open the file it cites at the cited lines and read
+enough around them to judge the claim — a finding whose premise the current code contradicts is not
+fixed but recorded as refuted, one line for the PR's `## Self-Review Notes`:
+`Refuted: {finding} — {file}:{line} shows {what}`. Pass those lines to `/marvin:task-deliver` with
+the rest. A refuted blocker is resolved, not deferred: a `BLOCK` whose every blocker was refuted with
+file-and-line evidence no longer gates delivery — the PR opens normally and the `Refuted:` lines are
+the receipt. One surviving blocker keeps the `BLOCK` and the draft PR.
+
+- `BLOCK` — attempt fixes under the **Fix-cycle protocol** below; this is the critic loop and its
+  budget is counted separately from the verify-gate loop's. If still blocked at the limit, this
+  still **gates delivery** (PR opens as draft, every surviving blocker surfaced as a deferred or
+  blocked item) — exactly as in the sequential design.
 - `PASS WITH WARNINGS` — collect warnings for the PR.
 - `PASS` — clean.
+- `NEEDS_CONTEXT` — the critic could not judge yet and named the exact input it lacks (the spec
+  path, a diff range that resolved to nothing, an unreadable file). Supply it and re-dispatch the
+  critic **once**, stating in the dispatch prompt that this is the re-dispatch for the
+  `NEEDS_CONTEXT` it raised — it enters with a fresh context and cannot see the earlier turn. A
+  second `NEEDS_CONTEXT` is treated as `UNABLE`.
+- `UNABLE` — the critic could not judge and could not name what would fix that. **Not a pass.**
+  Keep its Blocker / Attempted / Recommendation verbatim and pass them to
+  `/marvin:task-deliver`, which renders "⚠️ critic UNABLE — <reason>" on the PR's **Diff critic**
+  line exactly as it renders a skipped critic. Tell the user the semantic half of the review did
+  not run.
 
 **Stale-review guard.** If a verify FAIL triggered a code fix, the critic's report is now stale —
 **re-run `marvin-tm-diff-critic` against the final diff** before delivery.
@@ -126,7 +147,9 @@ detection; `marvin-tm-diff-critic` below is the *semantic* half.
 
 Invoke `/marvin:task-deliver` (see `skills/task-deliver/SKILL.md`), passing the already-read spec
 context (so deliver does not re-parse it), any spec-gap notes, and self-review findings as
-additional context for the PR body.
+additional context for the PR body. The diff-critic's verdict is part of that hand-off — deliver
+renders it as its own **Diff critic** line and cannot recover it from the spec, which carries only
+the spec critic's. Pass it even when it is `⚠️ critic skipped`.
 
 The skill ends when the PR is open. Report the PR URL to the user.
 
@@ -159,15 +182,21 @@ Follow the spec's **Fix Approach** section. Rules:
 Run the regression test again. It **must** pass now.
 
 - **Passes** → continue.
-- **Fails** → re-read the fix approach, adjust, retry. Up to **2 retries**. If still failing, stop and hand back to the user.
+- **Fails** → re-read the fix approach, adjust, retry under the **Fix-cycle protocol** — this is the
+  red-green loop and its budget is its own. If it is still failing at the limit, stop and hand back
+  to the user.
 
 ### Step 9B: Self-review ‖ Verify (concurrent)
 
 Same as Step 6F, with `mode: bug`: launch `marvin-tm-diff-critic` in the background (if Task-tool
 is available) and run `/marvin:task-verify bug` concurrently; merge both before any delivery
-decision. On a verify FAIL, retry only the failed gate (`only: ["<gate>"]`, up to 2 retries) then
-a final full pass; re-run the critic against the final diff if a fix changed it. A critic `BLOCK`
-still gates delivery.
+decision. On a verify FAIL, retry only the failed gate (`only: ["<gate>"]`) under the **Fix-cycle
+protocol** then a final full pass; re-run the critic against the final diff if a fix changed it. A
+critic `BLOCK` still gates delivery and runs its own fix-cycle budget; a `NEEDS_CONTEXT` earns
+exactly one re-dispatch carrying the input the critic named and stating that it is the re-dispatch
+(not a fix-cycle round), and a second one is treated as `UNABLE`; an `UNABLE` is never a pass — it
+travels verbatim to `/marvin:task-deliver` and onto the PR's **Diff critic** line. Findings refuted
+by the code are recorded, not fixed, exactly as in Step 6F.
 
 ### Step 10B: Deliver
 
@@ -180,10 +209,66 @@ notes, and self-review findings.
 
 - **Watch, don't race.** Show the user each major step before executing. Interactive is the whole point of this skill versus a headless `marvin-tm-executor` run.
 - **Never skip the regression test step for bugs.** Red→green is the proof the fix works.
-- **Respect retries.** 2 is the budget. After that, stop — don't silently flail.
+- **Respect the fix-cycle budget.** Three rounds, counted per loop, and the third one changes the
+  approach instead of repeating it. At the limit, stop and record the item as deferred or blocked —
+  don't silently flail.
 - **No AI attribution** in any commit or PR text (inherited from `/marvin:commit` and `/marvin:pr-create`).
 - **SPEC GAPs are first-class.** Record them inline as you work; `/marvin:task-deliver` will surface them in the PR body.
 - **Current branch, current session.** This skill does not create worktrees. For multi-task or hands-off execution, dispatch the spec to the `marvin-tm-executor` agent via Task-tool — it runs the same pipelines headless and opens the PR itself.
+
+## Fix-cycle protocol
+
+One named shape for every "it failed, try again" loop in this skill. A **round** is one fix attempt
+following a failure. The budget is **three rounds per loop**, and each loop counts its own:
+
+- the **verify-gate loop** — a `verify` FAIL in Step 6F / Step 9B;
+- the **critic loop** — a `marvin-tm-diff-critic` `BLOCK` in Step 6F / Step 9B;
+- the **red-green loop** — a regression test that will not go green in Step 8B.
+
+Two spent verify-gate rounds do not shorten the critic's budget, and the reverse holds too. A
+`NEEDS_CONTEXT` re-dispatch is **not** a round: it is a re-dispatch for missing input, not a retry
+of a failed attempt, and it has its own one-shot allowance (Step 6F / Step 9B).
+
+**Rounds 1–2 — retry the same path.** Read the failure, fix it, re-run only the thing that failed:
+the failed gate with `only: ["<gate>"]`, the critic against the new diff, the regression test on its
+own. Carry the feedback **verbatim** into the fix — the gate's output, the critic's blocker text,
+the test's assertion message. A paraphrased error is a new guess.
+
+**Round 3 — change the conditions, not the attempt.** A fix that has stalled twice does not need a
+third attempt of the same kind. For the **verify-gate** and **red-green** loops — a failure with a
+reproducible symptom — dispatch **`marvin-debugger`** via Task-tool and give it exactly
+three inputs:
+
+1. the failure output, verbatim;
+2. the spec path;
+3. the diff range under investigation (`git diff` for the working tree, or `<base>...HEAD`).
+
+The dispatch gives that agent a fresh context; what you control is what you put in the prompt. **Do
+not pass the history of the failed attempts** — not the rounds you already tried, not the hypotheses
+you rejected, not your own reading of the cause. Its value is that it reasons from evidence with no
+prior commitment, and handed your dead ends it inherits them. It diagnoses and does not apply: take
+its fix approach, apply it yourself, and re-run the failed thing once. If Task-tool is unavailable,
+hand those same three inputs to the user rather than spending the round on another attempt of the
+same kind.
+
+**The critic loop does not go to `marvin-debugger`.** A blocker about missing coverage or an
+out-of-scope change has no symptom to reproduce and no regression test to write, which is that
+agent's whole contract. Spend the critic loop's round 3 re-reading the spec section the blocker
+cites, then either fix it, refute it with file and line, or classify it as deferred or blocked and
+hand back.
+
+**At the limit — record, never drop.** When round 3 leaves the item open, stop that loop and
+classify the item as exactly one of:
+
+```
+Deferred: {item} — Rationale: {why the change is safe to ship without it}
+Blocked: {item} — Cause: {what prevents it, and what would unblock it}
+```
+
+Pass every such line to `/marvin:task-deliver`, which reproduces them in the PR's
+`## Self-Review Notes`. Silently dropping an open item is banned. A verify-gate loop that reaches its
+limit does not deliver at all (Step 6F) — classify the open items the same way in the summary you
+hand back to the user.
 
 ## SPEC GAP protocol
 
