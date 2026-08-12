@@ -119,8 +119,10 @@ gates:
 Assumption: set `spike_required: true` and resolve it first.}
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict; any author override. "none" if skipped — a skipped critic is
-surfaced in the PR, never silent.}
+{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE); any author override.
+NEEDS_CONTEXT is never recorded here — it resolves on the re-dispatch or becomes UNABLE. "none" if
+skipped — a skipped critic is surfaced in the PR, never silent, and an UNABLE verdict
+("UNABLE — {reason}") is surfaced the same way.}
 
 ## Design Notes
 {Related bugs, workarounds to remove, potential side effects of the fix.}

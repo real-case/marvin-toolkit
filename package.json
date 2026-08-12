@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
