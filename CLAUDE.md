@@ -286,8 +286,28 @@ Restart the desktop application afterwards — the server process is spawned onc
 A rebuilt **widget document** needs no restart: the `ui://` resource is read from disk per request
 (ADR-0008), so `build:watch` is live. Only a new `dist/server.js` requires one.
 
-Both copies of the tools are then in scope — `marvin-dev` (renders widgets) and the plugin's own
-(markdown fallback). Call the `marvin-dev` one when the widget is the point.
+#### Routing rule: which copy to call
+
+Both copies of the tools are then in scope, `marvin-dev` (renders widgets) and the plugin's own
+(markdown fallback). They expose identical names, so the choice of server — not the tool, not the
+prompt — decides whether the user sees a widget. The intended contract is a widget in chat and the
+markdown fallback only in a terminal, so in this repository:
+
+- **In the desktop application, a widget-bound tool is always invoked on `marvin-dev`.** This
+  overrides the prompt bodies, which name the `marvin` server: those bodies ship to end users, who
+  have no second registration, and must stay as they are.
+- **In the terminal, only the plugin's copy is connected**, and it returns the markdown fallback by
+  design. Nothing needs to be selected there, and `marvin-dev` must not be assumed present.
+- **Nine tools bind a widget:** `audit`, `dashboard`, `handoff`, `help`, `report`, `summary`,
+  `task`, `task-detail`, `tracker`. Every other tool is text-only, so either copy will do.
+
+`marvin-dev` follows whichever checkout `dev:widget-host` was last run from, and a merged worktree
+leaves the entry pointing at a path that still exists. Before trusting a rendered widget, confirm
+the entry resolves to the tree you are working in:
+
+```shell
+node -p "require(require('os').homedir()+'/Library/Application Support/Claude/claude_desktop_config.json').mcpServers['marvin-dev'].args[0]"
+```
 
 `/marvin:widget-preview` remains the answer for terminal users and for anyone who does not want a
 second server: it renders one widget plus its live payload into a self-contained file under
