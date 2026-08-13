@@ -17,6 +17,12 @@ import type {
  * two tools share one parser), refactor registers/plans, task specs +
  * `verification.md`, and handoffs through thin best-effort parsers.
  *
+ * It is also the home of the two typed-block codecs the rest of the server
+ * shares: `audit-report` (written by the `sec-*` skills, read by `audit` and
+ * `report`) and `verify-result` (written by `verify`, read back by its own
+ * delivery gate, by `summary`, and by `report`). Both live here for the same
+ * reason — the readers must not each re-derive the format from a copied regex.
+ *
  * This module is deliberately self-contained (node builtins + zod + type-only
  * contract imports, no sibling imports) so its pure parsers can be unit-tested
  * directly against tmp-dir fixtures without a server build.
@@ -98,6 +104,147 @@ export function parseAuditBlock(raw: string): AuditBlockParse {
     return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
   }
   return { kind: "ok", report: parsed.data as AuditReportContract };
+}
+
+// ── the verify-result block: one writer, three readers ──────────────────────
+
+/**
+ * The machine-readable block `verify` appends to its output and persists in
+ * `.marvin/task/verification.md` (ADR-0002), read back by the delivery gate
+ * (ADR-0012), the `summary` aggregator (ADR-0024 #3) and the `report` scan.
+ *
+ * The tag is declared once and the fence pattern is derived from it, so the
+ * writer and the readers cannot disagree about what they are looking for.
+ */
+export const VERIFY_BLOCK_TAG = "verify-result";
+const VERIFY_BLOCK_RE = new RegExp("```json " + VERIFY_BLOCK_TAG + "\\n([\\s\\S]*?)\\n```");
+
+/**
+ * One gate entry. `status` is `pass | fail | error` as `verify` writes it, but
+ * stays a free-form string on read: the readers classify it themselves, and an
+ * unknown status must not invalidate a whole run's artifact.
+ */
+const VerifyGateSchema = z.object({
+  name: z.string(),
+  status: z.string().optional(),
+  code: z.number().nullable().optional().catch(null),
+  durationMs: z.number().optional().catch(undefined),
+});
+export type VerifyGate = z.infer<typeof VerifyGateSchema>;
+
+/**
+ * Runtime mirror of the `Provenance` contract (`contracts/provenance.ts`),
+ * declared locally for the same reason `AuditReportSchema` is: this module takes
+ * no runtime dependency on the contracts package. The two must stay in lockstep
+ * field-for-field — a double edit whenever the contract changes, and the price
+ * of keeping these parsers unit-testable without a server build.
+ */
+const ProvenanceSchema = z.object({
+  head_sha: z.string().nullable(),
+  branch: z.string().nullable(),
+  dirty: z.boolean().nullable(),
+  worktree_digest: z.string().nullable(),
+  generated_at: z.string(),
+});
+
+/**
+ * Exactly two things make a block unreadable: it is not JSON, or it is not a
+ * JSON object. Every *field* degrades on its own (`.catch`) instead of
+ * invalidating the block, because the three readers consume different subsets —
+ * the delivery gate reads only `verdict`, `report` reads only `gates` — and one
+ * reader's garbage must not deny another reader the field it came for. The gate
+ * decision on a half-corrupt artifact therefore stays what it has always been.
+ *
+ * `gates` is parsed as an unknown array and filtered entry-by-entry below: a
+ * single malformed entry drops that entry, it does not discard the run.
+ */
+const VerifyResultSchema = z.object({
+  verdict: z.string().optional().catch(undefined),
+  gates: z.array(z.unknown()).optional().catch(undefined),
+  detectedStacks: z.array(z.string()).optional().catch(undefined),
+  warnings: z.array(z.string()).optional().catch(undefined),
+  wallClockMs: z.number().optional().catch(undefined),
+  sumOfGatesMs: z.number().optional().catch(undefined),
+  artifactPath: z.string().nullable().optional().catch(null),
+  // Optional on read so every artifact written before ADR-0035 still parses, and
+  // `.catch(undefined)` like every other member so a corrupt provenance degrades
+  // alone — a freshness field must never cost a reader the verdict it came for.
+  provenance: ProvenanceSchema.optional().catch(undefined),
+});
+
+/** The block's payload. `verdict` is optional on read only — see {@link formatVerifyBlock}. */
+export interface VerifyResult extends Omit<z.infer<typeof VerifyResultSchema>, "gates"> {
+  gates: VerifyGate[];
+}
+
+/** What a writer must supply: a run always computes a verdict. */
+export type VerifyResultWrite = VerifyResult & { verdict: string };
+
+/**
+ * `none` — no block at all (prose-only artifact, or a run that wrote none);
+ * `invalid` — a block is present but unreadable, with a reason fit for a user;
+ * `ok` — a usable payload. `gatesDeclared` reports whether the block itself
+ * carried a `gates` array, which the always-an-array `result` would otherwise
+ * hide: the `report` scan requires one (a verdict-only block is not a check
+ * list), while `summary` tolerates its absence. Additive fields belong on
+ * `result`.
+ */
+export type VerifyBlockParse =
+  | { kind: "none" }
+  | { kind: "invalid"; reason: string }
+  | { kind: "ok"; result: VerifyResult; gatesDeclared: boolean };
+
+/** Classify the `verify-result` block of one artifact. */
+export function parseVerifyBlock(raw: string): VerifyBlockParse {
+  const m = raw.match(VERIFY_BLOCK_RE);
+  if (!m) return { kind: "none" };
+
+  let json: unknown;
+  try {
+    json = JSON.parse(m[1]!);
+  } catch {
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is not valid JSON` };
+  }
+
+  const parsed = VerifyResultSchema.safeParse(json);
+  if (!parsed.success) {
+    const reason = parsed.error.issues.map((i) => i.message).join("; ");
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is malformed: ${reason}` };
+  }
+
+  const { gates, ...rest } = parsed.data;
+  return {
+    kind: "ok",
+    result: { ...rest, gates: (gates ?? []).flatMap(coerceGate) },
+    gatesDeclared: Array.isArray((json as { gates?: unknown }).gates),
+  };
+}
+
+/** Keep a gate entry only if it is at least a named object; drop it otherwise. */
+function coerceGate(entry: unknown): VerifyGate[] {
+  const parsed = VerifyGateSchema.safeParse(entry);
+  return parsed.success ? [parsed.data] : [];
+}
+
+/**
+ * Render the block a `verify` run appends to its report. The field order is
+ * fixed here rather than taken from the caller's object literal, so the
+ * artifact's shape is a property of this module and not of its call site.
+ */
+export function formatVerifyBlock(result: VerifyResultWrite): string {
+  const payload = {
+    verdict: result.verdict,
+    gates: result.gates,
+    detectedStacks: result.detectedStacks,
+    warnings: result.warnings,
+    wallClockMs: result.wallClockMs,
+    sumOfGatesMs: result.sumOfGatesMs,
+    artifactPath: result.artifactPath,
+    // Appended last on purpose: every artifact written before ADR-0035 keeps a
+    // byte-identical prefix, which keeps a `verification.md` diff readable.
+    provenance: result.provenance,
+  };
+  return "```json " + VERIFY_BLOCK_TAG + "\n" + JSON.stringify(payload) + "\n```";
 }
 
 // ── shared plumbing ──────────────────────────────────────────────────────────
@@ -406,46 +553,37 @@ export function scanRefactorReports(dir: string, opts: ScanOptions = {}): GroupS
 
 // ── task: specs as documents, verification.md as checks ─────────────────────
 
-interface VerifyGate {
-  name: string;
-  status: string;
-  code: number | null;
-}
-
-/** The machine-readable `verify-result` block `verify` writes (ADR-0002). */
+/**
+ * The `verify-result` block as a check list. Null means "this file is not a
+ * usable verification report" — no block, an unreadable one, or one that never
+ * declared `gates`. That last case is the reason this reader consults
+ * `gatesDeclared`: the shared schema defaults `gates` to `[]` so `summary` can
+ * keep reading a verdict-only block, but a verdict alone is not a check list
+ * and must stay skipped here, exactly as before the parser was unified.
+ */
 export function parseVerificationChecks(
   raw: string,
 ): { name: string; status: "pass" | "fail" | "pending"; note?: string }[] | null {
-  const m = raw.match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(m[1]!);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const gates = (parsed as { gates?: unknown }).gates;
-  if (!Array.isArray(gates)) return null;
-  return gates
-    .filter(
-      (g): g is VerifyGate =>
-        typeof g === "object" && g !== null && typeof (g as VerifyGate).name === "string",
-    )
-    .map((g) => {
-      const status = g.status === "pass" ? "pass" : g.status === "skip" ? "pending" : "fail";
-      const note =
-        status === "fail"
-          ? g.status === "error"
-            ? "errored"
-            : `exit ${g.code ?? "?"}`
-          : undefined;
-      return {
-        name: g.name,
-        status: status as "pass" | "fail" | "pending",
-        ...(note ? { note } : {}),
-      };
-    });
+  const parse = parseVerifyBlock(raw);
+  if (parse.kind !== "ok" || !parse.gatesDeclared) return null;
+  return parse.result.gates.map((g) => {
+    // `not-run` is a gate whose binary was absent, so nothing ran (ADR-0035);
+    // `skip` is honoured but never written by verify. Neither is a failure, and
+    // both land on `pending` — the check vocabulary's "no result" member.
+    const status =
+      g.status === "pass"
+        ? "pass"
+        : g.status === "skip" || g.status === "not-run"
+          ? "pending"
+          : "fail";
+    const note =
+      status === "fail" ? (g.status === "error" ? "errored" : `exit ${g.code ?? "?"}`) : undefined;
+    return {
+      name: g.name,
+      status: status as "pass" | "fail" | "pending",
+      ...(note ? { note } : {}),
+    };
+  });
 }
 
 export function scanTaskReports(dir: string, opts: ScanOptions = {}): GroupScan {

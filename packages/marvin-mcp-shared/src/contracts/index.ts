@@ -17,3 +17,4 @@ export * from "./refactor.js";
 export * from "./report.js";
 export * from "./dashboard.js";
 export * from "./help.js";
+export * from "./provenance.js";

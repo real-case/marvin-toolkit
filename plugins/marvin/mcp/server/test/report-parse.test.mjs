@@ -312,6 +312,20 @@ test(
   }),
 );
 
+test(
+  "task: a verdict-only block is skipped too — a verdict is not a check list",
+  withDir((dir) => {
+    // The shared parser defaults `gates` to [] so `summary` can still read a
+    // verdict-only block; this scan must keep dropping the file, or every such
+    // artifact would start appearing as a report with no checks.
+    writeAt(dir, "verification.md", '# V\n\n```json verify-result\n{"verdict":"PASS"}\n```\n');
+    const { reports, notes } = lib.scanTaskReports(dir, { now: NOW });
+    assert.equal(reports.length, 0);
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].reason, /verify-result/);
+  }),
+);
+
 // ── handoff group ────────────────────────────────────────────────────────────
 
 test(

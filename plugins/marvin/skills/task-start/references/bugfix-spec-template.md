@@ -72,8 +72,18 @@ criteria:
     oracle:
       kind: test
       ref: test/path.test.ts::the test name
+      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
+                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
+                            # per-stack default, then records `not-run` rather than guessing.
     failure: passes before the fix → the test does not exercise the bug
 ```
+
+A `regression: true` criterion's red→green pair is **recorded, not narrated**:
+`/marvin:task-implement` calls the `verify` tool's `action: "oracles"` once with `expect: "fail"`
+before the fix and once with `expect: "pass"` after it, and the delivery gate reads the resulting
+journal — a red and a green at the same `contract_sha` over an unchanged test file — as
+`red_green: "proven"`. Anything else, including a pair that was run by hand, reads as `missing`.
+That is a warning on the gate's reason line today and does not block delivery.
 
 ## Host Bindings
 Discovered from **this repo**, not assumed. Optional and advisory — the gate uses `spec_location` to

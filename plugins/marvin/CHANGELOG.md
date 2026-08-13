@@ -4,6 +4,66 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.15.0] — 2026-08-13
+
+Phase 5 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): proofs get bound
+to the code state they prove, and the oracle graph the Definition-of-Ready gate validates is
+finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
+
+### Added
+
+- **Provenance on every verification run** (`head_sha`, `branch`, `dirty`, `worktree_digest`,
+  `generated_at`), carried in the `verify-result` block and read by the delivery gate. The
+  decisive field is `worktree_digest`: in marvin's own process both verification and delivery run
+  on a dirty tree *before* the commit, so `head_sha` and `dirty` are identical either side of an
+  edit and would almost never catch a stale proof. It hashes a structural path list — changed
+  paths plus untracked paths plus one `git hash-object` pass — rather than patch text, so the
+  cost is O(paths) and the computation cannot be defeated by a large diff. `decision` stays
+  two-valued; a sibling `staleness: fresh | stale | unknown` carries the freshness verdict, and a
+  missing provenance block is always `unknown` and always allows.
+- **Per-spec runs** under `.marvin/task/runs/<slug>.md`, with the global `verification.md` kept as
+  fallback. `task-summary` now joins the run belonging to its own spec — the fix for a summary
+  presenting a foreign run as its own. ADR-0035 names the directory contract once, because three
+  packages write there.
+- **A `not-run` gate state.** A gate whose binary is absent is recorded as `not-run` with the
+  reason, instead of exiting 127 and being read as a failure. Gates sharing a runner are probed
+  once between them.
+- **Oracle execution.** A new `verify action: "oracles"` runs the typed oracles the DoR gate has
+  always validated and never executed, resolving each command in ADR-0009 order — the call
+  argument, then `gates.test_one` from `.marvin/config.json`, then a narrow default table — and
+  recording `not-run` with a reason rather than guessing. Results are journalled under `runs/`,
+  keyed by slug, `contract_sha` and criterion id, with the test-file hash and `head_sha`.
+- **Red-green proof for bugfixes.** A criterion marked `regression: true` can now carry a recorded
+  red-then-green pair at the current `contract_sha`. The delivery gate reports a missing pair as a
+  warning for now; promotion to a veto waits on measuring the command-resolution rate in real use.
+
+### Fixed
+
+- **`task-summary` was over-claiming, not being conservative.** It reported `pass` for every
+  test-backed or command-backed criterion whenever the *run* verdict was green — asserting
+  per-criterion proofs it never had. A criterion whose oracle did not run now reports `unknown`,
+  even on a PASS verdict. `AcOutcome` keeps its three values.
+- **The delivery gate could be bypassed by an unrunnable test gate.** Making a missing binary
+  `not-run` would, on its own, have turned `"test": "nonexistent-runner"` from a hard block into a
+  delivery. The gate now refuses when every recorded `test` gate is `not-run`, or when every gate
+  is, with no input waiving it — while a missing *optional* scanner still delivers with a warning,
+  which is the whole reason `not-run` exists.
+- **`task-deliver` could skip the gate entirely.** Two clauses licensed reusing a verdict from
+  conversation context and hand-reading the artifact when the tool was unavailable. A verdict
+  reused from context carries no freshness check, so in the pipeline's most common path the new
+  staleness block would never have fired.
+- The `verify-result` block had one writer and three readers, each with its own regex and subtly
+  different tolerance. All four now share one codec with a discriminated result, so a corrupt
+  sibling field no longer changes a delivery decision, and a malformed block can no longer crash
+  the summary.
+
+### Changed
+
+- `verify` gate probing moved out of the measured wall-clock window. Adding the availability probe
+  inside `runGate` serialised gates that ADR-0002 made concurrent on purpose, and the repository's
+  own latency test caught it — parallel 1094ms against sequential 973ms. Probes now run once per
+  token before the clock starts; the margin is back to roughly 215ms against 640ms.
+
 ## [0.14.0] — 2026-08-13
 
 Phase 3 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the invariants
