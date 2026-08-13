@@ -22,6 +22,7 @@ const WORKFLOW = join(repoRoot, ".github", "workflows", "validate-plugins.yml");
 
 const EVAL_STEP = "Trigger-eval harness (self-test + mock sweep)";
 const LINT_STEP_PREFIX = "Lint manifests";
+const SKILLS_STEP_PREFIX = "Lint skills";
 const REQUIRED_SCRIPTS = ["eval:self-test", "eval:trigger"];
 /** A test affordance that can make lint-manifests pass regardless of the real tree. */
 const BYPASS_VAR = "MARVIN_LINT_ROOT";
@@ -79,6 +80,51 @@ function mutated(fn) {
 }
 
 const evalStepOf = (steps) => steps.find((s) => s?.name === EVAL_STEP);
+const skillsStepOf = (steps) =>
+  steps.find((s) => String(s?.name ?? "").startsWith(SKILLS_STEP_PREFIX));
+
+/**
+ * Problems with the authored-surface lint step. A SECOND function over the same
+ * parsed document rather than a widening of `checkEvalStep`, so neither claim can
+ * be relaxed to accommodate the other.
+ *
+ * `checkEvalStep` cannot see this step at all: it locates exactly two steps, the
+ * first whose name starts with `Lint manifests` and the eval step by full name. So
+ * a workflow that puts the lint-skills step last, gates it behind an `if`, tolerates
+ * it with `continue-on-error`, or omits it entirely passes that function unchanged —
+ * green over a gate that never runs.
+ *
+ * @param {any} doc
+ * @returns {string[]}
+ */
+function checkSkillsLintStep(doc) {
+  const problems = [];
+  const job = doc?.jobs?.validate;
+  if (!job) return ["no `validate` job"];
+
+  const steps = job.steps ?? [];
+  const lintIndex = steps.findIndex((s) => String(s?.name ?? "").startsWith(LINT_STEP_PREFIX));
+  const skillsIndex = steps.findIndex((s) => String(s?.name ?? "").startsWith(SKILLS_STEP_PREFIX));
+
+  if (lintIndex === -1) problems.push(`no step named ${LINT_STEP_PREFIX}…`);
+  if (skillsIndex === -1) return [...problems, `no step named ${SKILLS_STEP_PREFIX}…`];
+
+  const step = steps[skillsIndex];
+  // Immediately BEFORE the manifest lint. Between it and the eval harness is the
+  // obvious position and it breaks the adjacency `checkEvalStep` protects.
+  if (skillsIndex !== lintIndex - 1) {
+    problems.push(`the lint-skills step is at ${skillsIndex}, not immediately before ${lintIndex}`);
+  }
+  if ("if" in step) problems.push("the lint-skills step carries an `if` key");
+  if ("continue-on-error" in step) {
+    problems.push("the lint-skills step carries `continue-on-error`");
+  }
+  if (!String(step.run ?? "").includes("lint:skills")) {
+    problems.push("the lint-skills step does not run lint:skills");
+  }
+
+  return problems;
+}
 
 test("the eval step must be unconditional, intolerant of failure, immediately after Lint manifests, and run both scripts", () => {
   // Each mutation is the shipped workflow with exactly one thing wrong.
@@ -110,6 +156,48 @@ test("the eval step must be unconditional, intolerant of failure, immediately af
 
   // And the shipped file is accepted — without this, a checker that rejects
   // everything would pass all six cases above.
+  assert.deepEqual(checkEvalStep(shipped()), []);
+});
+
+test("the lint-skills step is unconditional, intolerant of failure, and immediately before Lint manifests", () => {
+  const rejected = {
+    "carries if": mutated((_doc, steps) => {
+      skillsStepOf(steps).if = "matrix.node == '20'";
+    }),
+    "carries continue-on-error": mutated((_doc, steps) => {
+      skillsStepOf(steps)["continue-on-error"] = true;
+    }),
+    "sits after Lint manifests instead of before it": mutated((_doc, steps) => {
+      const [step] = steps.splice(steps.indexOf(skillsStepOf(steps)), 1);
+      steps.splice(
+        steps.findIndex((s) => String(s?.name ?? "").startsWith(LINT_STEP_PREFIX)) + 1,
+        0,
+        step,
+      );
+    }),
+    "sits last": mutated((_doc, steps) => {
+      const [step] = steps.splice(steps.indexOf(skillsStepOf(steps)), 1);
+      steps.push(step);
+    }),
+    "omits the step entirely": mutated((_doc, steps) => {
+      steps.splice(steps.indexOf(skillsStepOf(steps)), 1);
+    }),
+    "does not run the linter": mutated((_doc, steps) => {
+      skillsStepOf(steps).run = "echo skipped\n";
+    }),
+  };
+
+  for (const [label, doc] of Object.entries(rejected)) {
+    assert.ok(checkSkillsLintStep(doc).length > 0, `a workflow that ${label} must be rejected`);
+  }
+
+  // And the shipped file is accepted — without this, a checker that rejects
+  // everything would pass all six cases above.
+  assert.deepEqual(checkSkillsLintStep(shipped()), []);
+
+  // The two claims are independent: inserting BEFORE the manifest lint shifts both
+  // indices together, so the eval adjacency this suite already protects still holds
+  // on the same parsed document.
   assert.deepEqual(checkEvalStep(shipped()), []);
 });
 

@@ -7,12 +7,21 @@
 //      trap) and is automatic for any newly added prompt,
 //   3. lists tools and confirms the deterministic tool set is present.
 // Exits non-zero on any failure. Run after `npm run build`.
+// The child runs with a scrubbed environment and a throwaway usage directory, so the run
+// leaves no trace in this project's own `.marvin/` state — see the note above `usageDir`.
 //
 //   node scripts/smoke-commands.mjs
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// The stdio tests' hermetic-environment rule, reused rather than restated: it strips every
+// `MARVIN_*` name plus `CLAUDE_PROJECT_DIR`, so a seventh storage variable is covered here the
+// day it is added. See the prefix-rule note in that file.
+import { hermeticEnv } from "../plugins/marvin/mcp/server/test/_driver.mjs";
 
 const SERVER = fileURLToPath(
   new URL("../plugins/marvin/mcp/server/dist/server.js", import.meta.url),
@@ -23,6 +32,7 @@ const SERVER = fileURLToPath(
 // these trips the smoke-test on purpose.
 const REQUIRED_PROMPTS = [
   // core (bare)
+  "onboard",
   "commit",
   "debug",
   "adr",
@@ -100,7 +110,31 @@ const REQUIRED_TOOLS = [
   "report",
 ];
 
+/**
+ * Throwaway usage directory for the child server (ADR-0030).
+ *
+ * WHY. `src/lib/env.ts` resolves the usage log as
+ * `MARVIN_USAGE_DIR ?? <CLAUDE_PROJECT_DIR ?? cwd>/.marvin/usage`, and the middleware logs one
+ * event per `prompts/get`. Spawned from the repo root with an inherited environment, this script
+ * therefore wrote one event per registry prompt — the whole registry, in registry order, inside
+ * one second — into THIS project's own usage log on every run. That is not telemetry, it is the measurement
+ * writing its own answer: it made the never-invoked prompt surface (`npm run usage:surface`)
+ * structurally empty. The events go to a temp directory instead, removed on exit.
+ */
+let usageDir = null;
+
+function cleanup() {
+  if (usageDir === null) return;
+  try {
+    rmSync(usageDir, { recursive: true, force: true });
+  } catch {
+    // a leftover temp directory is harmless; never let cleanup mask the result
+  }
+  usageDir = null;
+}
+
 function die(msg) {
+  cleanup();
   console.error(`smoke-commands: ${msg}`);
   process.exit(1);
 }
@@ -109,7 +143,11 @@ if (!existsSync(SERVER)) {
   die(`server bundle not found at ${SERVER} — run \`npm run build\` first.`);
 }
 
-const child = spawn("node", [SERVER], { stdio: ["pipe", "pipe", "inherit"] });
+usageDir = mkdtempSync(join(tmpdir(), "marvin-smoke-usage-"));
+const child = spawn("node", [SERVER], {
+  stdio: ["pipe", "pipe", "inherit"],
+  env: hermeticEnv(process.env, { MARVIN_USAGE_DIR: usageDir }),
+});
 const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
 
 const timer = setTimeout(() => {
@@ -190,6 +228,7 @@ function getNext() {
 function finish() {
   clearTimeout(timer);
   child.kill();
+  cleanup();
 
   const problems = [];
 

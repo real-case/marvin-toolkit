@@ -34,8 +34,11 @@ existing host convention when it finds one, searching `.marvin/task/` first and 
 This file holds the project settings. It is optional, and when it is absent every field
 falls back to the default described below. You do not edit it by hand; `/marvin:track-config`
 shows and changes each setting with fail-closed validation and preserves keys owned by
-other tools when it writes. Invalid JSON or a schema violation makes Marvin fall back to
-defaults and surface a warning through `/marvin:dashboard` rather than failing.
+other tools when it writes. The one exception is `usage.enabled`: no tool action writes
+that key, so it is set by editing the file directly, leaving every other key in place.
+That is the edit `/marvin:onboard` offers to make for you. Invalid JSON or a schema
+violation makes Marvin fall back to defaults and surface a warning through
+`/marvin:dashboard` rather than failing.
 
 Here is a complete example with every field set:
 
@@ -203,14 +206,41 @@ gates out of a shared config or make the binary a documented prerequisite of the
 ## Telemetry
 
 Marvin keeps a local usage log at `.marvin/usage/events.jsonl`, appending one line per
-prompt invocation and tool call as a small `{ts, kind, name}` record. This log powers the
-usage summary in `/marvin:dashboard` and nothing else. It never leaves your machine,
-because the directory writes its own `.gitignore` of `*` so the log is never committed, and
-the file is size-capped with rotation so it cannot grow without bound.
+prompt invocation and tool call as a small `{ts, kind, name}` record. Of the shipped
+commands, only `/marvin:dashboard` reads it. It never leaves your machine, because the
+directory writes its own `.gitignore` of `*` so the log is never committed, and the file is
+size-capped with rotation so it cannot grow without bound.
 
 Telemetry is opt-out. To disable it, set `usage.enabled` to `false` in `.marvin/config.json`;
 the switch is re-read on every event, so the change applies immediately. Recording is
 fail-open, meaning a logging error never interferes with the command you ran.
+
+### Reading the surface back
+
+This repository ships a contributor script that answers the log's other question: which
+declared commands has a project never invoked.
+
+```shell
+npm run usage:surface                                    # read <project>/.marvin/usage
+MARVIN_USAGE_DIR=/path/to/.marvin/usage npm run usage:surface
+```
+
+It is a report, not a gate, and exits 0 in every case, including when no log exists. It
+resolves the directory exactly as the server does, from `MARVIN_USAGE_DIR` or
+`CLAUDE_PROJECT_DIR`, and reads both `events.jsonl` and the rotated `events.jsonl.1`,
+because a project that has crossed the size cap keeps half its history in the second file.
+Prompts and tools are reported as separate axes: four names — `help`, `lessons`,
+`dashboard`, `reports` — exist in both namespaces, so a merged count would credit a prompt
+invocation to a tool that has never run.
+
+Read the result as observation rather than usage. A never-invoked name has no age, so the
+report leads with the observation window and gives distinct calendar days per name
+alongside the call count: fifty commands invoked once each within one second is a sweep,
+not adoption. Two logs exist in this checkout, and the report names the one it read —
+`<repo>/.marvin/usage/` by default, with a second at
+`plugins/marvin/mcp/server/.marvin/usage/` written by test runs whose working directory is
+the server package. Logs recorded before `scripts/smoke-commands.mjs` was given a scrubbed
+environment also carry that script's own registry-wide sweeps, one per run.
 
 ## Committing `.marvin/` or ignoring it
 

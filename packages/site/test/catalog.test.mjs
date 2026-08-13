@@ -37,7 +37,7 @@ test("catalog identity, grouping and completeness match the registry", async () 
 
   // Identity: every registry command, in registry order.
   assert.equal(catalog.commands.length, PROMPTS.length, "command count must equal the registry");
-  assert.equal(catalog.commands.length, 53, "the registry currently has 53 commands");
+  assert.equal(catalog.commands.length, 54, "the registry currently has 54 commands");
   assert.deepEqual(
     catalog.commands.map((c) => c.name),
     PROMPTS.map((p) => p.name),
@@ -109,7 +109,7 @@ test("counts equal an independent recount of the plugin sources", async () => {
     version: plugin.version,
     license: plugin.license,
   });
-  assert.equal(PROMPTS.length, 53, "the registry currently has 53 commands");
+  assert.equal(PROMPTS.length, 54, "the registry currently has 54 commands");
 });
 
 test("committed catalog.json is in sync with the generator", async () => {

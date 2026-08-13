@@ -37,6 +37,7 @@ export const GROUP_BLURBS: Record<string, string> = {
  */
 export const COMMAND_BLURBS: Record<string, string> = {
   // core
+  onboard: "Guided first session in this project",
   commit: "Conventional commit, board-linked",
   debug: "Systematic root-cause debugging",
   adr: "Create an Architecture Decision Record",
@@ -110,6 +111,8 @@ export const COMMAND_BLURBS: Record<string, string> = {
  */
 export const COMMAND_DETAILS: Record<string, string> = {
   // core
+  onboard:
+    "A first session with marvin in this project — reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks with file:line evidence, and gates the board card and the commit on an explicit yes.",
   commit:
     "Safe commit — inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
   debug:
@@ -264,6 +267,11 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
  */
 export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
   // core
+  onboard: [
+    "marvin, I just installed you — what now?",
+    "marvin, set yourself up in this project",
+    "marvin, walk me through my first session",
+  ],
   commit: [
     "marvin, commit this",
     "marvin, stage and commit my changes",

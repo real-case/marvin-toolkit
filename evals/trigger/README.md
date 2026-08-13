@@ -83,17 +83,19 @@ a `disable-model-invocation` skill, which never auto-triggers by design).
   trivial query is a broken test regardless of the description.
 - **Competition** queries name the sibling that should win (`winner`) and set
   `should_trigger` to whether *this* skill should win.
-- `mock_rate` is optional and only consumed by `--decider mock`.
+- `mock_rate` is **mandatory on every query** and consumed by `--decider mock`. A
+  blocking gate has required it since Phase 0; the invariants table below is the rule.
 
 Validate any dataset with `validateDataset` (run the runner; it checks and warns).
 
 ## Enforced invariants
 
-Both CI steps run on every leg and neither is allowed to fail, so these are rules
-rather than guidance. They live in `scripts/lib/skill-datasets.mjs`; three are
-reported by `scripts/lint-manifests.mjs` because they are obligations of the
-shipped skill surface, and the rest by `self-test.mjs` because they belong to the
-harness.
+All three CI steps run on every leg and none is allowed to fail, so these are rules
+rather than guidance. They live in `scripts/lib/skill-datasets.mjs` and have three
+reporters: `scripts/lint-manifests.mjs` takes the three that are obligations of the
+shipped skill surface, `self-test.mjs` the four that belong to the harness, and
+`scripts/lint-skills.mjs` the six structural pins over the authored surfaces —
+`skills/`, `agents/`, `commands/` — which no other gate checks.
 
 | Rule | Reported by |
 |------|-------------|
@@ -104,6 +106,23 @@ harness.
 | a competition `winner` is reachable in the catalog | `self-test` |
 | every negative and competition query carries a `note` | `self-test` |
 | every query carries an explicit `mock_rate` | `self-test` |
+| frontmatter keys stay inside the closed allowlist for their surface | `lint-skills` |
+| every description is non-empty and within the 1024-character budget | `lint-skills` |
+| a skill's `name` equals its directory, an agent's its filename stem | `lint-skills` |
+| every `skills/…` path written in a body resolves under the plugin root | `lint-skills` |
+| an agent omitting `tools:` is on the untooled whitelist | `lint-skills` |
+| the prompts with no `commands/<name>.md` are exactly the `track-*` ones | `lint-skills` |
+
+The **allowlists are closed** on purpose: skills admit `name`, `description` and
+`disable-model-invocation`; agents add `model`, `color` and `tools`; commands admit
+`description` alone. An unknown key is silently ignored by the host, so nothing else
+would report a typo in one — and the cost is that a legitimate new key from Claude
+Code has to be added to `FRONTMATTER_KEYS` in the same commit as the upgrade.
+
+**Untooled** is the security-shaped rule of the six: an agent that omits `tools:`
+inherits *every* tool, so the allowlist is what actually enforces a read-only
+contract. Exactly three code-writing agents omit it by design, and widening that
+whitelist is meant to be a reviewed line in a PR.
 
 **Canonical** means one of `true`, `false`, `"true"`, `"false"`, or an absent key.
 That is the *intersection* of what the three readers of the flag accept, not their

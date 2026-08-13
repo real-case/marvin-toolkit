@@ -209,7 +209,7 @@ export function renderLlmsTxt(pages: PageMeta[], catalog: Catalog, origin: URL):
     "",
     "## Documentation",
     "",
-    `- [Getting started](${DOCS}/getting-started.md): install, confirm it works, run your first commands.`,
+    `- [Getting started](${DOCS}/getting-started.md): install the plugin, then run the guided /marvin:onboard walkthrough.`,
     `- [Usage guide](${DOCS}/usage.md): worked walkthroughs for committing, the task pipeline, the board, security and refactoring.`,
     `- [Configuration](${DOCS}/configuration.md): the .marvin/ working directory, config.json, and the MARVIN_* environment variables.`,
     `- [Command reference](${DOCS}/commands.md): every command with its arguments and behaviour.`,

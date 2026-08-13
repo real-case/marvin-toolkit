@@ -7,7 +7,7 @@
 // byte-guarded by test/catalog.test.mjs and type-guarded by the `check:catalog` tsc pass.
 //
 // Sources, read fresh each run:
-//   - plugins/marvin/mcp/server/src/prompts/index.ts  → PROMPTS (the 51-command identity + order)
+//   - plugins/marvin/mcp/server/src/prompts/index.ts  → PROMPTS (the command identity + order)
 //   - packages/marvin-mcp-shared/src/help-content.ts   → curated blurbs / details / phrases /
 //                                                        examples / group blurbs (the same source
 //                                                        the `help` tool + widget use — one system)

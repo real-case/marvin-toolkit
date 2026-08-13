@@ -33,6 +33,14 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci
 
+      # Deliberately BEFORE the manifest lint, not after it: test/ci-workflow.test.mjs
+      # requires the trigger-eval step at exactly the index after `Lint manifests`, so
+      # inserting here shifts both indices together and leaves that adjacency intact.
+      # It also puts the legible surface report ahead of evals/trigger/lib/catalog.mjs,
+      # which throws tersely on three of the same defects.
+      - name: Lint skills (frontmatter + references + surface pins)
+        run: npm run lint:skills
+
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
 

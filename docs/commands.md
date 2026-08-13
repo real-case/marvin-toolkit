@@ -2,7 +2,7 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **53** in total,
+`/marvin:<group>-<command>`, and singletons stay bare. There are **54** in total,
 divided into seven groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
@@ -19,10 +19,10 @@ whichever suits the moment.
 - **`/<command>`.** Type the terse markdown slash command, such as `/commit` or `/sec-scan`.
 - **`/marvin:<command>`.** Type the namespaced MCP prompt, such as `/marvin:commit`, which the bundled server serves.
 
-The `track-*` group and six read-side commands — `help`, `dashboard`, `reports`,
-`handoff-list`, `lessons`, and `task-summary` — have no skill. For those, a chat phrase is served by
-Claude calling the underlying tool rather than by skill auto-discovery, but the effect is
-the same.
+The `track-*` group and seven read-side commands — `help`, `dashboard`, `reports`,
+`handoff-list`, `lessons`, `task-summary`, and `sec-report` — have no skill. For those, a chat
+phrase is served by Claude calling the underlying tool rather than by skill auto-discovery, but
+the effect is the same.
 
 ## Natural-language routing
 
@@ -68,6 +68,7 @@ model invocation, so you run it yourself rather than asking for it in chat.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
+| `/marvin:onboard` | Walk a first session in this project — read the repository, disclose the local usage log and its opt-out before anything is written, propose real starter tasks with `file:line` evidence, and gate the board card and the commit on an explicit yes. | `marvin, I just installed you — what now?`, `set marvin up in this project`, `walk me through my first session` |
 | `/marvin:commit` | Inspect the repo, stage intentionally, detect sensitive files such as `.env` and keys, draft a Conventional Commits message with a `Refs:` footer when the branch belongs to a board task, and confirm before committing. | `marvin commit this`, `commit my changes`, `stage and commit` |
 | `/marvin:debug` | Run hypothesis-driven root-cause analysis — gather evidence, form hypotheses, and build a minimal reproduction instead of guessing. | `marvin debug this`, `why is this failing?`, `the tests only flake on CI` |
 | `/marvin:adr` | Draft an Architecture Decision Record, with the numbering, path, and index coming from the `adr` tool; drafts always land `proposed`. | `marvin write an ADR`, `record this decision`, `document this design choice` |

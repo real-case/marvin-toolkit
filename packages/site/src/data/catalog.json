@@ -1,18 +1,18 @@
 {
-  "version": "0.13.0",
+  "version": "0.14.0",
   "counts": {
-    "prompts": 53,
+    "prompts": 54,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.13.0",
+    "version": "0.14.0",
     "license": "MIT"
   },
   "groups": [
     {
       "key": "core",
       "blurb": "Everyday dev — commits, debugging, docs, ADRs, handoffs",
-      "count": 16
+      "count": 17
     },
     {
       "key": "adr",
@@ -46,6 +46,18 @@
     }
   ],
   "commands": [
+    {
+      "name": "onboard",
+      "group": "core",
+      "blurb": "Guided first session in this project",
+      "description": "A first session with marvin in this project — reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks with file:line evidence, and gates the board card and the commit on an explicit yes.",
+      "phrases": [
+        "marvin, I just installed you — what now?",
+        "marvin, set yourself up in this project",
+        "marvin, walk me through my first session"
+      ],
+      "human": false
+    },
     {
       "name": "commit",
       "group": "core",

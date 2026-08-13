@@ -1,8 +1,8 @@
 # Getting started
 
-This guide takes you from an empty Claude Code session to running your first Marvin
-commands. By the end you will have installed the plugin, confirmed that it works, created
-a commit, and tracked a task on the board.
+This guide takes you from an empty Claude Code session to having used Marvin on your own
+repository. There are two steps: install the plugin, then run the guided walkthrough that
+does the rest.
 
 Marvin is a Claude Code plugin that packages the full development lifecycle as one MCP
 server under a single `/marvin:` slash prefix. You reach every workflow three ways — plain
@@ -32,91 +32,32 @@ Add the marketplace and install the plugin from inside Claude Code:
 Claude Code registers one MCP server named `marvin` and loads its commands, skills, and
 agents. The commands appear as `/marvin:<group>-<command>`.
 
-## Step 2 — Confirm it works
+## Step 2 — Run the walkthrough
 
-Run the built-in dashboard and command index:
-
-```text
-/marvin:help
-```
-
-You should see a short project dashboard followed by the full command list, grouped by
-family. Seeing the grouped list confirms that the server started and the prompts
-registered. To narrow the list to one family, pass its name, so `/marvin:help sec` shows
-only the security commands.
-
-If nothing appears, open `/plugin`, check that `marvin@marvin-toolkit` is listed and
-enabled, and restart the session.
-
-## Step 3 — Create your first commit
-
-Open a project with a few uncommitted changes and run:
+Everything else happens inside one command:
 
 ```text
-/marvin:commit
+/marvin:onboard
 ```
 
-The command inspects the repository, stages changes intentionally, scans for sensitive
-files such as `.env` or private keys, and drafts a Conventional Commits message. It shows
-you the message and waits for your confirmation before committing, so nothing reaches
-history until you approve. A typical draft looks like this:
+It is a short guided session in the project you are sitting in. It reads the repository —
+git status, recent history, the manifests that name your stack — and writes nothing while
+it does. It then discloses the local usage log before anything is written: Marvin appends
+one line per prompt and per tool call to `.marvin/usage/events.jsonl`, the directory
+ignores itself so nothing reaches git, the log is read only by `/marvin:dashboard`, and it
+never leaves your machine. The walkthrough offers to switch it off and shows you the exact
+lines it would write to `.marvin/config.json` before touching the file.
 
-```text
-feat(parser): support nested config blocks
+From there it shows you the command surface with `/marvin:help`, proposes three or four
+real starter tasks found in your own code with `file:line` evidence, and offers to card the
+one you pick on the board and to commit whatever is already in your working tree. Every one
+of those writes waits for an explicit yes, declining any of them simply moves on to the
+next step, and nothing creates a branch or pushes. The walkthrough ends on a single
+suggested next command.
 
-Add recursive descent for `[[section]]` tables and cover them with tests.
-```
-
-Because the message follows the Conventional Commits format, it feeds straight into the
-`/marvin:changelog` workflow later.
-
-## Step 4 — Call it your way
-
-Every Marvin workflow has three entry points that lead to the same behavior. Use whichever
-fits the moment:
-
-1. **Chat.** Describe what you want in plain language, for example `commit my changes` or `scan this repo for secrets`, and Claude Code matches your wording to a skill.
-2. **Markdown slash command.** Type the terse form, such as `/commit` or `/sec-scan`.
-3. **MCP prompt.** Type the namespaced form, such as `/marvin:commit`, which the bundled server serves.
-
-The [architecture tour](./architecture.md) explains how the three entry points resolve to one
-skill body, with diagrams.
-
-## Step 5 — Track a task on the board
-
-Marvin includes a lightweight per-project task board. Create your first task:
-
-```text
-/marvin:track-new feature
-```
-
-On a host that supports interactive forms, Marvin prompts for a title and details; on
-other hosts it tells you exactly which arguments to pass. The task is written as a markdown
-file under `.marvin/track/`. Running `/marvin:track-start` then picks it up, creates a
-topic branch, and marks it in progress. List the board at any time with `/marvin:track-list`:
-
-```text
-todo        1  ▸ 001--support-nested-config
-in-progress 0
-review      0
-done        0
-```
-
-When you commit on that branch, `/marvin:commit` recognizes the task and adds a `Refs:`
-footer automatically.
-
-## Step 6 — See the whole toolbox
-
-Once you have run a few commands, take stock of everything Marvin tracks in the project:
-
-```text
-/marvin:dashboard
-```
-
-This reports the board counters, the artifact inventories with their freshness, the ADR
-corpus by status, the lessons stats, and the local usage summary. On a host that supports
-the Apps widget layer, the same command also renders an interactive panel; on a plain
-terminal it prints the equivalent text report.
+If nothing appears when you type `/marvin:onboard`, the plugin did not load. Open
+`/plugin`, check that `marvin@marvin-toolkit` is listed and enabled, and then
+restart the session and run the command again.
 
 ## Where to go next
 

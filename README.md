@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **53 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **54 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -42,7 +42,7 @@ bundled.
 
 ## Documentation
 
-- **[Getting started](./docs/getting-started.md)** — install, confirm it works, and run your first commands.
+- **[Getting started](./docs/getting-started.md)** — install the plugin, then run the guided `/marvin:onboard` walkthrough.
 - **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, the task board, security, and refactoring.
 - **[Configuration](./docs/configuration.md)** — the `.marvin/` working directory, `.marvin/config.json`, and the `MARVIN_*` environment variables.
 - **[Command reference](./docs/commands.md)** — every `/marvin:` command with a synopsis and the phrases that invoke it.
@@ -50,12 +50,12 @@ bundled.
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 50
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 54
 prompts divide into seven groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 16 |
+| _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
 | `task-*` | Spec-driven task pipeline | 5 |
@@ -74,6 +74,7 @@ auto-triggers these, you invoke them yourself.
 
 | Command | Description |
 |---------|-------------|
+| `/marvin:onboard` | Guided first session in this project — every write behind an explicit yes. |
 | `/marvin:commit` | Draft a Conventional Commits message with sensitive-file detection. |
 | `/marvin:debug` | Systematic root-cause analysis with hypotheses. |
 | `/marvin:adr` | Draft an Architecture Decision Record; drafts land `proposed`. |
@@ -87,6 +88,7 @@ auto-triggers these, you invoke them yourself.
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, stats, and prune. |
 | `/marvin:help` | Show the project dashboard and the full command index. |
 | `/marvin:dashboard` | Report the whole-toolbox state at a glance. |
+| `/marvin:reports` | Browse every generated `.marvin/` report, newest first, with freshness. |
 | `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
 | `/marvin:widget-preview` | Open a widget as a rendered panel with this project's data, on any host ([ADR-0034](./docs/adr/0034-widget-preview-door.md)). |
 
