@@ -135,6 +135,8 @@ where it is provably quality-neutral.
 ## 10. Explicit non-requirements
 
 - **NR-1** — Clarifying questions in `task-start` remain one question at a time.
+  **Superseded 2026-08-12** by the workflow-hardening plan (`docs/proposals/workflow-hardening.md`,
+  WP2.2): step 1.4 now batches up to three independent questions per turn under a declared budget.
 - **NR-2** — Dependent steps and dependent tasks remain serial.
 - **NR-3** — No reduction in reasoning effort or check depth is implied or permitted.
 

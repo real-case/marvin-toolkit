@@ -1,21 +1,22 @@
 ---
-description: Start work on a task — gather context, analyze codebase, explore solution variants, and produce an immutable spec (Phase 1 of the task pipeline)
+description: Start work on a task — route the request to the command that fits it, or, where a spec is warranted, gather context, analyze codebase, explore solution variants, and produce an immutable spec (Phase 1 of the task pipeline)
 ---
 
 # Start
 
-Begin work on a task. This is Phase 1 of the task pipeline — a structured dialogue that ends with a spec ready for implementation.
+Begin work on a task. This is Phase 1 of the task pipeline: it routes the request first, and where a spec is warranted it runs a structured dialogue that ends with one ready for implementation.
 
-`/task-start` is the entry point for new work. It:
-1. Parses your input (free text, tracker reference, or file path)
-2. Gathers codebase context (reads `CLAUDE.md`, `README.md`, recent history)
-3. Asks domain-specific clarifying questions
-4. For features: maps affected files, generates 3–5 solution variants, helps you choose
-5. For bugs: helps establish reproduction, performs root-cause analysis, defines regression test
-6. Runs the tool-backed Definition-of-Ready gate, then a red-team critic pass
-7. Writes the final spec to `.marvin/task/<slug>.md`
+`/task-start` is the entry point for new work. Item 1 is where it decides; items 2–8 run only on the paths that continue to intake:
+1. Routes the request (Step 0) — hands it to the command that fits, or continues to intake
+2. Parses your input (free text, tracker reference, or file path)
+3. Gathers codebase context (reads `CLAUDE.md`, `README.md`, recent history)
+4. Asks domain-specific clarifying questions
+5. For features: maps affected files, generates 3–5 solution variants, helps you choose
+6. For bugs: helps establish reproduction, performs root-cause analysis, defines regression test
+7. Runs the tool-backed Definition-of-Ready gate, then a red-team critic pass
+8. Writes the final spec to `.marvin/task/<slug>.md`
 
-After this, run `/task-implement` to execute the spec interactively.
+Where a spec is written, run `/task-implement` next to execute it. Paths A and B end at the command they route to.
 
 ## Arguments
 

@@ -33806,6 +33806,8 @@ function validateSpec(raw, projectRoot) {
     const [required2, recommended] = type === "feature" ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required2, recommended));
     checks.push(checkOpenQuestions(sections.get("open questions")));
+    checks.push(checkAssumptions(sections.get("assumptions")));
+    checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
     checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation));
@@ -34180,18 +34182,78 @@ function testPath(ref) {
   if (!/\.[A-Za-z0-9]+$/.test(file)) return null;
   return file;
 }
+var NONE_VOCABULARY = ["none", "n/a", "nil", "\u2014", "-", "none."];
+function normalizeSection(section) {
+  return section.replace(/^[-*]\s*/gm, "").trim().toLowerCase();
+}
 function checkOpenQuestions(section) {
   if (section === void 0) {
     return fail("open-questions", "Open Questions", "section missing");
   }
-  const stripped = section.replace(/^[-*]\s*/gm, "").trim().toLowerCase();
-  if (stripped === "" || ["none", "n/a", "nil", "\u2014", "-", "none."].includes(stripped)) {
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
     return pass("open-questions", "Open Questions", "resolved");
   }
   return fail(
     "open-questions",
     "Open Questions",
     'unresolved open questions remain \u2014 resolve to "none" before DoR'
+  );
+}
+function checkAssumptions(section) {
+  const remedy = 'record each default the intake assumed instead of asking, as "assumed X because Y; correct now if wrong"';
+  if (section === void 0) {
+    return warn("assumptions", "Assumptions", `section missing \u2014 ${remedy}`);
+  }
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
+    return warn("assumptions", "Assumptions", `no assumptions recorded \u2014 accepted, but ${remedy}`);
+  }
+  return pass("assumptions", "Assumptions", "decisions under uncertainty are recorded");
+}
+var TERMINAL_VERDICTS = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
+var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS, "NONE"];
+function cleanVerdictLine(line) {
+  return line.replace(/[`*]/g, "").replace(/^\s*[-+]\s+/, "").trim();
+}
+function findVerdict(line) {
+  const leading = RECORDABLE_VERDICTS.find((v) => new RegExp(`^${v}\\b`, "i").test(line));
+  if (leading) return leading;
+  let best = null;
+  for (const verdict of TERMINAL_VERDICTS) {
+    const at = line.search(new RegExp(`\\b${verdict}\\b`));
+    if (at !== -1 && (best === null || at < best.at)) best = { at, verdict };
+  }
+  return best?.verdict ?? null;
+}
+function checkCriticVerdict(section) {
+  const remedy = 'record one of PASS | PASS WITH WARNINGS | BLOCK | UNABLE, or "none" if the critic step was skipped';
+  if (section === void 0) {
+    return warn("critic-verdict", "Critic verdict", `section missing \u2014 ${remedy}`);
+  }
+  const line = section.split("\n").map((l) => cleanVerdictLine(l)).find((l) => l !== "");
+  if (!line) {
+    return warn("critic-verdict", "Critic verdict", `section empty \u2014 ${remedy}`);
+  }
+  const verdict = findVerdict(line);
+  if (verdict) {
+    return pass(
+      "critic-verdict",
+      "Critic verdict",
+      verdict === "NONE" ? "no verdict recorded (critic skipped)" : `${verdict} recorded`
+    );
+  }
+  if (/\bNEEDS_CONTEXT\b/i.test(line)) {
+    return warn(
+      "critic-verdict",
+      "Critic verdict",
+      "NEEDS_CONTEXT is transient and is never recorded here \u2014 supply the input the critic named and re-dispatch it once; a second occurrence is UNABLE"
+    );
+  }
+  return warn(
+    "critic-verdict",
+    "Critic verdict",
+    `unrecognised verdict "${line.slice(0, 40)}" \u2014 ${remedy}`
   );
 }
 function checkPlaceholders(raw) {
@@ -34829,7 +34891,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.12.5";
+var VERSION = "0.13.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

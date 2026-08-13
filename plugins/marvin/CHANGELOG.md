@@ -4,6 +4,79 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.13.0] — 2026-08-13
+
+Phase 2 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the task
+pipeline gets a routed entrance and a bounded intake.
+
+### Added
+
+- **`/marvin:task-start` now routes before it asks.** A new Step 0 reads only cheap evidence —
+  the request text, `git status --short`, `git log --oneline -3`, and the spec-directory
+  listing step 1.3 already performs — and picks one of four paths: hand over to
+  `/marvin:task-implement` when a spec already exists, route out to `/marvin:commit`,
+  `/marvin:track-new`, `/marvin:debug` or a `refactor-*` command when no spec is warranted,
+  author one coherent spec, or slice multi-deliverable work. The router **may not refuse
+  work**: paths C and D need explicit confirmation with a one-line rationale, and thin
+  evidence defaults to authoring a spec rather than declining. Path B is worded one-way so it
+  cannot ping-pong with `/marvin:refactor-plan`, which routes spec-sized work back the other
+  way.
+- **`skills/task-start/references/routing.md`** — the operational one-PR test, the
+  anti-heuristics (never count verbs, conjunctions, noun phrases, or files), and three worked
+  examples from this repository's own merged history, deliberately chosen to reach three
+  different verdicts: split by deliverable (#128), split by layer (#162), and kept together
+  despite nineteen files (#176). The last is what makes "never count files" operative rather
+  than merely asserted.
+- **A place for deferred slices.** Step 4.5F was a silent note under "Future Considerations";
+  it is now a stop with a two-way choice, and slices become board cards through the `task`
+  tool with the mechanics written out exactly — `action: "create"` with explicit `type` and
+  `title` so the form is skipped, then **no** to the branch question, which would otherwise
+  check out the card's branch and flip it to wip in the middle of authoring. Both templates
+  gain a `## Deferred slices` section; the bugfix template previously had nowhere for slices
+  to land at all, and the bugfix flow (step 5B) had no size check.
+- **A question budget.** Intake is capped at six questions for a feature and four for a
+  bugfix, in priority order — scope and boundaries, security and data, interface and
+  contract, the rest — with up to three numbered independent questions per turn. Three sweep
+  rows are relabelled as answered by *reading* rather than asking: reverse dependencies by
+  grep, the test environment from CI configuration, merge obligations from CLAUDE.md. A
+  do-not-ask list names the default each item assumes, and every accepted default must be
+  recorded in `## Assumptions` as "assumed X because Y; correct now if wrong".
+- **Two advisory DoR content checks.** `assumptions` and `critic verdict overrides` were
+  already at the recommended tier, so the gate noticed their absence and nothing about their
+  content. `checkAssumptions` surfaces an absent, empty, or "none" section; `checkCriticVerdict`
+  accepts the four terminal verdicts plus `none`, and gives `NEEDS_CONTEXT` its own message,
+  because Phase 1 made it transient and never recordable. Both are **warn** tier, so no
+  already-sealed spec becomes undispatchable — promotion to the rejecting tier is decision
+  **D5**, at the next declared breaking release, since the semver table in CLAUDE.md
+  classifies a validation break as major.
+
+### Fixed
+
+- **A spec whose `## Assumptions` reads "none" is no longer undispatchable.** Steps 7F/7B
+  accept `PASS WITH WARNINGS`, but the write-and-seal steps in the same file demanded the
+  re-run "must still PASS". With an advisory warning now reachable on a legitimate value, a
+  literal-minded executor would have looped on a warning it could never clear.
+- **Six template sections carried no placeholder the gate could see.** The DoR gate's
+  placeholder check matches single-line stubs of at most 71 characters, while the templates'
+  guidance blocks run 73–396 characters and several are multi-line or nested — so the check
+  that exists to stop unfilled residue reaching a PASS was blind to most of the template it
+  guards. Each such section now carries one short sentinel stub the shipped scanner reports,
+  with the long guidance kept beside it. Eight stubs remain out of reach by construction; the
+  pattern itself is untouched, because it is a FAIL-tier check and widening it is a breaking
+  change (recorded against D5, together with the measurement that a filled, sealed spec in
+  this repository would flip PASS → FAIL, and the note that the fix is to lift the existing
+  `findPlaceholders` out of `storage/adr.ts` rather than write a second scanner).
+- **`commands/task-start.md` and `docs/commands.md` described a flow that no longer runs
+  first.** Both stated unconditionally that the command parses input and writes a spec; paths
+  A and B end the command without writing one.
+
+### Documented
+
+- `docs/proposals/task-workflow-latency-optimization.md` (R3) and
+  `docs/requirements/parallel-step-execution.md` (NR-1) both record that the one-question-at-a-time
+  cadence stays. Both now carry a supersession note pointing at this change, so a reader
+  grepping the phrase does not land on two contradicting records.
+
 ## [0.12.5] — 2026-08-12
 
 Phase 1 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the

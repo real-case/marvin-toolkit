@@ -33,7 +33,8 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 - Impact scope: {what else may be affected}
 
 ## Severity & Impact
-{Severity from frontmatter, plus blast radius: how many users / flows are affected.}
+{severity from frontmatter, plus blast radius}
+How many users, and which flows, are affected.
 
 ## Spec Contract
 The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
@@ -111,18 +112,32 @@ gates:
 ## Non-goals
 - {what we explicitly do NOT fix in this task}
 
+## Deferred slices
+Slices split off from this task at the scope gate, each already a board card. The rows are
+descriptive — the card is the work item, this list is the back-reference. Write `none` when nothing
+was deferred: an unfilled section is reported by the DoR gate, an absent one is silent.
+
+- {board id + one-line scope + why it is a separate PR, or none}
+
 ## Assumptions
 {Decisions made under uncertainty. "none" if there are none.}
+Every default the intake assumed instead of asking belongs here, written as "assumed X because Y;
+correct now if wrong". "none" is an accepted value; the DoR gate records it as an advisory warning,
+not a failure.
 
 ## Open Questions
-{MUST be "none" before the DoR gate passes. A genuine unknown that needs investigation is NOT an
-Assumption: set `spike_required: true` and resolve it first.}
+{any question still unresolved — MUST be "none" before DoR passes}
+A genuine unknown that needs investigation is NOT an Assumption: set `spike_required: true` and
+resolve it first.
 
 ## Critic Verdict & Overrides
 {marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE); any author override.
-NEEDS_CONTEXT is never recorded here — it resolves on the re-dispatch or becomes UNABLE. "none" if
-skipped — a skipped critic is surfaced in the PR, never silent, and an UNABLE verdict
-("UNABLE — {reason}") is surfaced the same way.}
+The DoR gate reads the verdict off the first non-empty line, so write the token in capitals there. It
+may lead the line ("BLOCK — resolved in this revision") or follow the critic's name
+("marvin-tm-spec-critic — **PASS WITH WARNINGS**"); a lower-case mention inside prose is not read as
+a verdict, and "none" is recognised only leading the line. NEEDS_CONTEXT is never recorded here — it
+resolves on the re-dispatch or becomes UNABLE. "none" if skipped — a skipped critic is surfaced in
+the PR, never silent, and an UNABLE verdict ("UNABLE — {reason}") is surfaced the same way.}
 
 ## Design Notes
 {Related bugs, workarounds to remove, potential side effects of the fix.}

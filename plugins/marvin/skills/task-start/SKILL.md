@@ -27,6 +27,68 @@ If no arguments, ask the user what they want to build or fix.
 
 ---
 
+## Step 0: Routing
+
+Before intake, decide whether this request belongs here at all. Gather evidence from exactly four
+cheap sources — no more:
+
+1. **The request text** — `$ARGUMENTS`, or the user's answer if it was empty.
+2. `git status --short` — is the change already written?
+3. `git log --oneline -3` — what just happened on this branch?
+4. **The spec directories listed in step 1.3** — read the frontmatter `slug` and `status` of
+   anything that looks like this request. That list is not restated here; it lives in 1.3.
+
+Then leave on exactly one of four paths.
+
+**Hard rule: the router may not refuse work.** Every request exits on a path — "unclear" is not an
+exit, and neither is a question back to the user about which command to use. When the evidence is
+thin, default to **Path C** and keep authoring; intake will surface what the router could not see.
+
+The one-PR test, its anti-heuristics, the worked examples and the board-card mechanics live in
+`skills/task-start/references/routing.md` — read it on Path D, not before. Read it from the plugin:
+the `skills/…` path resolves through all three entry points — chat and `/<command>` natively,
+`/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+
+### Path A: a spec already exists and can still be executed
+
+Hand over and stop: `/marvin:task-implement <slug>`. Pass the **slug**, never a path —
+`/marvin:task-implement` resolves a spec by slug or by branch itself.
+
+Condition the hand-over on the found spec's frontmatter `status`, which is exactly what the target
+accepts:
+
+| `status` | Router action |
+|----------|---------------|
+| `ready`, `in-progress` | Hand over. Stop. |
+| `draft` | Fall through to **Path C** — authoring is unfinished, and the hand-over target would only stop. |
+| `shipped`, `superseded` | Fall through to **Path C** or **Path D** — that spec is history; the request in hand is new work. |
+
+### Path B: no spec is warranted
+
+Route out and stop, naming the command:
+
+- `/marvin:commit` — the change is already written and needs committing.
+- `/marvin:track-new` — a card, not a contract: an idea, a spike, a chore.
+- `/marvin:debug` — a symptom with no confirmed cause and no agreed fix.
+- `/marvin:refactor-audit`, `/marvin:refactor-smells`, `/marvin:refactor-plan` — a code-health read,
+  or an ordered plan of behaviour-preserving steps.
+
+Path B is **one-way**: it routes out only work that needs **no spec**. Work that arrives *from*
+`/marvin:refactor-plan` came here because that command judged it **spec-sized** — it is spec-sized by
+definition, so it takes Path C or D and is never handed back.
+
+### Path C: one coherent spec
+
+State the scope in one sentence, get a one-line confirmation from the user, then continue to Step 1.
+This is also the default whenever the evidence is thin.
+
+### Path D: several deliverables
+
+Apply the one-PR test from `skills/task-start/references/routing.md`. Present the proposed slices as
+a numbered list and get explicit confirmation of the split before proceeding. Then spec the **first**
+slice here, create a board card for each remaining slice (mechanics in the same reference), and list
+them under `## Deferred slices` in the spec you are about to write.
+
 ## Step 1: Intake
 
 Determine what the user wants and gather context.
@@ -66,9 +128,25 @@ Good: "Will this be a new API route or an extension of the existing `/api/users`
 Good: "The current auth flow uses JWT in httpOnly cookies — should the new endpoint follow that pattern?"
 Bad: "Can you provide more details about the requirements?"
 
-**One question at a time.** Get an answer, then proceed.
+**The intake has a budget: six questions for a feature, four for a bugfix.** A question counts
+whether it is asked alone or inside a batch; a follow-up that only clarifies an answer already given
+does not. The budget bounds what you may ask the **user** — it bounds nothing about what the spec
+must contain, and it is never a licence to dispatch on less.
 
-**First, identify the task archetype(s)** and ask its 2–3 must-pin questions on top of the general sweep below. Archetypes are not exclusive — a task can be several (an API route that also runs a migration):
+**Spend it in priority order:** scope and boundaries first, then security and data, then interface
+and contract, then everything else. A budget exhausted early is then exhausted on the dimensions
+that most often invalidate a spec, not on whatever surfaced first.
+
+**Batch up to three questions per turn** — numbered, and only when they are genuinely
+**independent**, each answerable in short form (a number, a word, or "default"). A question whose
+wording depends on a previous answer stays sequential.
+
+**At the cap, nothing is dropped.** Remaining uncertainty that is a *decision* becomes a recorded
+assumption; remaining uncertainty that needs *investigation* sets `spike_required: true`. The budget
+is not a route past the Open Questions rule in the Guidelines — an unresolved question is still a
+reason to keep authoring.
+
+**First, identify the task archetype(s)** and ask its 2–3 must-pin questions **out of the budget, not on top of it**: they are the highest-priority scope questions, so they are asked first and what remains of the budget covers the general sweep below. Archetypes are not exclusive — a task can be several (an API route that also runs a migration) — and a second archetype buys no second allowance: pin only what it genuinely leaves open.
 
 | Archetype | Must pin down |
 |-----------|---------------|
@@ -80,24 +158,47 @@ Bad: "Can you provide more details about the requirements?"
 | Infra / IaC | blast radius, least-privilege, secret handling, rollout/rollback + drift |
 | AI / prompt | model + token budget/cost, eval/regression harness, failure/refusal handling, latency |
 
-Then, before leaving intake, **consciously sweep these dimensions** and ask about any that are relevant and not yet settled (don't interrogate on irrelevant ones — name the ones you're skipping and why):
+**Never spend a question on what the repository already answers.** Read the default instead. The
+table names the artefact **class**, because every host keeps it somewhere else; the assumption you
+record names the **concrete file you actually read** in that class:
 
-| Dimension | What to pin down |
-|-----------|------------------|
-| Interface / contract | new or changed signatures, routes, schemas, error cases |
-| Callers / reverse-deps | who invokes or consumes the surface you change — grep for callers **now**, so the contract's `files` are complete before the critic, not after |
-| Data & config | migrations, env vars, feature flags, config keys |
-| Error handling | expected behavior on bad input / failure paths |
-| Concurrency / idempotency | behavior under parallel calls, retries, partial failure; is the operation idempotent? |
-| External dependencies | failure / timeout / retry semantics of network or 3rd-party calls; circuit-breaking |
-| Security | auth, crypto, PII, input parsing, infra exposure — if touched, suggest a follow-up `/marvin:sec-threat-model` |
-| Backward-compat / public surface | does this change a consumed signature, route, schema, prompt name, or CLI? Sets the `breaking` flag; a breaking change may force a major version |
-| Non-functional | performance budget, observability, rollout/rollback, a11y/i18n |
-| Test environment | does running the new tests need seed/fixture data, a DB/staging, or credentials? (a headless executor has none) |
-| Cost / quota | compute, API quota, or token budget this consumes (especially AI features) |
-| New-dependency licence | for an EXTENSION: is the dependency's licence compatible with this repo's policy? |
-| Merge obligations | docs, CHANGELOG, version bump, committed build artefacts this repo requires (from CLAUDE.md) — each becomes a `files` entry |
-| Scope boundaries | what is explicitly out |
+| Do not ask about | Default |
+|------------------|---------|
+| the test runner and the command that runs it | assumes the pattern in the manifest / CI config read in 1.3 |
+| lint and format conventions | assumes the pattern in the lint / format config |
+| where tests live and their fixture style | assumes the pattern in the neighbouring tests you read |
+| commit, branch and pull-request conventions | assumes the pattern in `CLAUDE.md` / `CONTRIBUTING` |
+| decision-record style and location | assumes the pattern in the existing ADR / RFC directory |
+| version bumps and committed build artefacts | assumes the pattern in `CLAUDE.md` |
+
+**Every default you accept this way is recorded in `## Assumptions`** as "assumed X because Y;
+correct now if wrong", where Y is the file you actually read (`package.json`,
+`.github/workflows/validate-plugins.yml`, `docs/adr/`), never the class the table names. That is
+what makes a bounded intake safe: the question you did not ask becomes a visible, correctable
+statement in the artifact instead of a silent guess. The DoR gate reports an
+Assumptions section reduced to "none" as an advisory warning for exactly this reason.
+
+Then, before leaving intake, **consciously sweep these dimensions**. A `read` row is answered by
+reading the repository and never by asking — it draws nothing against the budget. An `ask` row is a
+question: ask the ones that are relevant and not yet settled, and name the ones you're skipping and
+why rather than interrogating on irrelevant ones.
+
+| Dimension | Source | What to pin down |
+|-----------|--------|------------------|
+| Interface / contract | ask | new or changed signatures, routes, schemas, error cases |
+| Callers / reverse-deps | read | who invokes or consumes the surface you change — grep for callers **now** (`rg`, `git grep`), so the contract's `files` are complete before the critic, not after |
+| Data & config | ask | migrations, env vars, feature flags, config keys |
+| Error handling | ask | expected behavior on bad input / failure paths |
+| Concurrency / idempotency | ask | behavior under parallel calls, retries, partial failure; is the operation idempotent? |
+| External dependencies | ask | failure / timeout / retry semantics of network or 3rd-party calls; circuit-breaking |
+| Security | ask | auth, crypto, PII, input parsing, infra exposure — if touched, suggest a follow-up `/marvin:sec-threat-model` |
+| Backward-compat / public surface | ask | does this change a consumed signature, route, schema, prompt name, or CLI? Sets the `breaking` flag; a breaking change may force a major version |
+| Non-functional | ask | performance budget, observability, rollout/rollback, a11y/i18n |
+| Test environment | read | does running the new tests need seed/fixture data, a DB/staging, or credentials? Read it from the CI configuration (a headless executor has none) |
+| Cost / quota | ask | compute, API quota, or token budget this consumes (especially AI features) |
+| New-dependency licence | ask | for an EXTENSION: is the dependency's licence compatible with this repo's policy? |
+| Merge obligations | read | docs, CHANGELOG, version bump, committed build artefacts this repo requires — read them from `CLAUDE.md` or its equivalent; each becomes a `files` entry |
+| Scope boundaries | ask | what is explicitly out |
 
 ### 1.5 Switch to the appropriate flow
 
@@ -201,14 +302,19 @@ Record the selected approach and the carried-forward `risk` rating for the spec 
 
 ### Step 4.5F: Scope & Size Gate
 
-Before crystallizing, sanity-check that this is **one pull request**.
+Before crystallizing, apply the one-PR test from `skills/task-start/references/routing.md` to the
+chosen approach.
 
-- If the chosen approach implies a sprawling File Change Plan (many unrelated modules, multiple independent surfaces, or "and then also…" work), **split it.** Spec the first coherent slice now; record the remaining slices as sibling specs to author next (note them under Future Considerations).
+- If it fails, **stop and present the slices** as a numbered list, then let the user pick one of
+  exactly two options. Proceed on neither without an answer:
+  1. **Slice now** — spec the first slice here, create a board card for each remaining slice
+     (mechanics in the same reference), and list them under `## Deferred slices` in this spec.
+  2. **Keep the scope** — record the user's one-line rationale in `## Design Notes` and continue.
 - A spec the executor cannot implement without making scope decisions is too big — the executor is forbidden from making those decisions.
 
 ### Step 5F: Crystallization
 
-Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — copy its structure to the chosen spec path, fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them**. That guidance is addressed to you, not to the finished spec: it carries no braces, so no gate can see it, and a spec that ships with it reads as half-filled. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section from the dialogue context — write "N/A" / "none" deliberately rather than leaving a section blank or a `{placeholder}` unfilled:
 - **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk`, `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
@@ -232,7 +338,7 @@ Present the draft to the user. Iterate until they approve.
 
 ### Step 6F: Future Considerations
 
-Suggest notes based on dialogue context (deliberately-excluded scope), VISION.md (relationship to planned evolution), and edge cases discovered during context mapping. The user decides what to include. Record any deferred split-off slices from Step 4.5F here.
+Suggest notes based on dialogue context (deliberately-excluded scope), VISION.md (relationship to planned evolution), and edge cases discovered during context mapping. The user decides what to include. Slices deferred at Step 4.5F do **not** belong here — they are board cards, listed under `## Deferred slices`.
 
 ### Step 7F: Definition of Ready — mechanical gate (tool first)
 
@@ -274,7 +380,7 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section — that
 
 4. **Allocate the ordering number.** Spec files are written with a numeric prefix so the directory sorts by creation order: `<NNN>-{slug}.md`. Compute `<NNN>` as the **highest leading-integer prefix already present** in `<chosen-dir>` (across `*.md`) **plus one**, zero-padded to **at least 3 digits** (start at `001` when none exist; match a wider width if the dir already uses one — e.g. host RFC dirs). The number lives **only in the filename** — `slug` stays the spec's identity (do not add it to frontmatter; it is not part of the contract hash).
 
-5. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/<NNN>-{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — it must still PASS), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
+5. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/<NNN>-{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — the verdict must be PASS or PASS WITH WARNINGS, the same pair Step 7F accepts), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
 
 **Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`mode: "seal"`) on read and refuses a spec whose contract was edited after sealing.
 
@@ -324,10 +430,14 @@ Determine the fix:
 2. **Regression test specification** — what input triggers the bug, what the correct output is, where the test lives.
 3. **Sibling patterns** — search for the same bug pattern elsewhere (`git grep`, `rg`).
 4. If the fix is obvious, record it directly. If multiple valid approaches exist, present variants as in the feature flow (Step 3F).
+5. **One pull request** — apply the one-PR test from `skills/task-start/references/routing.md` to
+   items 1–3 taken together. Sibling patterns (item 3) are the usual producer of slices: the
+   root-cause fix is this spec, each sibling that fails the test is a board card listed under
+   `## Deferred slices`.
 
 ### Step 6B: Crystallization
 
-Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — copy its structure to the chosen spec path and fill every `{…}` placeholder. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — copy its structure to the chosen spec path, fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them** (same rule as Step 5F: the guidance is for the author, and no gate can see it once it ships). The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section (write "N/A"/"none" deliberately), including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
 
@@ -365,7 +475,7 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
 2. **Location & slug collision** — same handling as 9F (default `.marvin/task/`; honor the host's convention if it has one; collision check is slug-based across `{slug}.md` / `<NNN>-{slug}.md`).
 3. **Allocate the ordering number** — same as 9F: `<NNN>` = highest leading-integer prefix in `<chosen-dir>` + 1, zero-padded to ≥3 digits.
-4. **Write & seal** — `status: ready`, write to `<chosen-dir>/<NNN>-{slug}.md`, re-run the `spec` tool on the written file (must PASS), stamp `contract_sha` from the result, confirm path.
+4. **Write & seal** — `status: ready`, write to `<chosen-dir>/<NNN>-{slug}.md`, re-run the `spec` tool on the written file (PASS or PASS WITH WARNINGS, the same pair Step 7B accepts), stamp `contract_sha` from the result, confirm path.
 
 **Immutability** — same carve-out as the feature flow.
 
@@ -373,7 +483,7 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
 
 ## Guidelines
 
-- **One question at a time.** Don't overwhelm with a wall of questions.
+- **Ask within the budget.** Six questions for a feature, four for a bugfix, at most three per turn and only when independent (step 1.4). What the repository answers is read, not asked, and every default read that way is recorded in **Assumptions**.
 - **Ground everything in the codebase.** Read actual code before suggesting patterns or constraints.
 - **Verify, don't guess.** Stack compliance and `test_command` come from the manifest and the test config you read — never assumed.
 - **The contract's `files` are the allowlist.** The executor may touch only listed files. If it's incomplete, the executor will either guess or stall — both are failures.

@@ -126,7 +126,7 @@ follows, with artifacts landing under `.marvin/task/`.
 
 | Command | What it does | Say it in chat |
 |---------|--------------|----------------|
-| `/marvin:task-start` | Co-create a spec interactively — codebase grounding, acceptance criteria bound to their proofs, a red-team critic, then a tool-backed Definition-of-Ready gate. | `marvin start a new task`, `new task`, `spec this out` |
+| `/marvin:task-start` | Route the request first — work that needs no spec, or already has one, leaves for the command that fits; the rest co-creates a spec interactively: codebase grounding, acceptance criteria bound to their proofs, a red-team critic, then a tool-backed Definition-of-Ready gate. | `marvin start a new task`, `new task`, `spec this out` |
 | `/marvin:task-implement` | Execute a ready spec in the current session, self-test, then chain into verify and deliver. | `marvin implement the spec`, `run the task`, `execute this spec` |
 | `/marvin:task-verify` | Run the quality gates concurrently with stack auto-detection and write `verification.md`. | `marvin verify`, `run the gates`, `is this green?` |
 | `/marvin:task-deliver` | Commit and open a PR, refusing if verification did not pass. | `marvin deliver`, `ship it`, `commit and PR the task` |
