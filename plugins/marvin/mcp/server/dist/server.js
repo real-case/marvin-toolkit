@@ -28453,10 +28453,10 @@ function withPluginResourceContext(text, ctx) {
 ${text}`;
 }
 function registerTool(server, def, onInvoke) {
-  const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
+  const inputSchema = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema : void 0;
   server.registerTool(def.name, {
     description: def.description,
-    inputSchema: shape,
+    inputSchema,
     // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
     // (ADR-0024); omitted by text-only tools.
     ...def.meta ? { _meta: def.meta } : {}
@@ -34298,11 +34298,15 @@ var SpecInput = external_exports.object({
     "mode: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
   )
 });
+var SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
+var SpecInputStrict = SpecInput.strict(
+  `unknown argument for the spec tool \u2014 it accepts only: ${SPEC_INPUT_FIELDS}. The changed-file set for mode: "scope" is always derived from git (use \`base\` to pick the ref, \`allow\` to permit extra paths); it cannot be supplied by the caller.`
+);
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
     description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha \u2014 the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
-    inputSchema: SpecInput,
+    inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
 }

@@ -63,6 +63,28 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
   inside `runGate` serialised gates that ADR-0002 made concurrent on purpose, and the repository's
   own latency test caught it — parallel 1094ms against sequential 973ms. Probes now run once per
   token before the clock starts; the margin is back to roughly 215ms against 640ms.
+## [0.14.1] — 2026-08-13
+
+### Fixed
+
+- **The `spec` tool no longer answers over arguments it ignored.** Its input schema was
+  non-strict, so zod dropped an unrecognised key instead of rejecting it. A `mode: "scope"` call
+  passing `changedFiles` — the argument callers reach for by analogy, though the changed set is
+  always derived from git — was accepted, the argument was silently discarded, and the caller got
+  a confident PASS/FAIL over a file set the tool never saw. Two runs with deliberately different
+  `changedFiles` lists returned byte-identical violations. The input is now `.strict()`, and the
+  error names both the rejected argument and the fields that are accepted. No shipped skill or
+  prompt ever passed the argument, so nothing that worked before stops working.
+- **`registerTool` now passes the input schema itself rather than its raw `.shape`** — without
+  which the fix above could not work at all. Handed a raw shape, the MCP SDK rebuilds it with a
+  plain, non-strict `z.object()` and strips unknown keys *before* the handler and before the
+  shared `safeParse` ever see them, so a `.strict()` schema could never reject anything. Strict
+  schemas now fail loudly; non-strict schemas keep stripping exactly as before. The advertised
+  JSON Schema is unchanged for 12 of the 13 tools — and 12 already published
+  `additionalProperties: false`, so this aligns enforcement with a contract that was already
+  public. The exception is the zero-argument `tracker` tool, whose empty shape fell through an SDK
+  heuristic: it now advertises `additionalProperties: false` like every other tool, with no change
+  in behaviour.
 
 ## [0.14.0] — 2026-08-13
 
