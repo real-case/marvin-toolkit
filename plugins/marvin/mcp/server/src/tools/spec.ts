@@ -359,6 +359,8 @@ function validateSpec(
         : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required, recommended));
     checks.push(checkOpenQuestions(sections.get("open questions")));
+    checks.push(checkAssumptions(sections.get("assumptions")));
+    checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
     checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation));
@@ -838,15 +840,30 @@ function testPath(ref: string): string | null {
   return file;
 }
 
+/** The "resolved to nothing" vocabulary, shared by the two section-emptiness
+ * checks below — `checkOpenQuestions` and `checkAssumptions` — so they can never
+ * disagree about what an empty section looks like. `checkCriticVerdict` does not
+ * use it: `## Critic Verdict & Overrides` records a token `task-deliver` renders
+ * on the PR, so it deliberately accepts only the literal `none` for the skipped
+ * state, and "n/a" or "nil" there is an unrecognised verdict rather than an
+ * empty section. */
+const NONE_VOCABULARY = ["none", "n/a", "nil", "—", "-", "none."];
+
+/** Normalise a prose section before matching it against NONE_VOCABULARY: drop
+ * leading list bullets, trim, lowercase. */
+function normalizeSection(section: string): string {
+  return section
+    .replace(/^[-*]\s*/gm, "")
+    .trim()
+    .toLowerCase();
+}
+
 function checkOpenQuestions(section: string | undefined): Check {
   if (section === undefined) {
     return fail("open-questions", "Open Questions", "section missing");
   }
-  const stripped = section
-    .replace(/^[-*]\s*/gm, "")
-    .trim()
-    .toLowerCase();
-  if (stripped === "" || ["none", "n/a", "nil", "—", "-", "none."].includes(stripped)) {
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
     return pass("open-questions", "Open Questions", "resolved");
   }
   return fail(
@@ -856,7 +873,130 @@ function checkOpenQuestions(section: string | undefined): Check {
   );
 }
 
-function checkPlaceholders(raw: string): Check {
+/**
+ * Advisory content check on `## Assumptions`. `task-start` runs a **bounded**
+ * intake — a declared question budget plus a do-not-ask list whose every row
+ * names the default it assumes — and that is only safe when the defaults it
+ * accepted are written down, where the implementer and the reviewer can correct
+ * them. An absent, empty, or "none" section is therefore surfaced.
+ *
+ * It surfaces as a `warn` and never a `fail`: `computeVerdict` turns a warn into
+ * PASS WITH WARNINGS, which steps 7F/7B and 9F/9B all accept, so no already
+ * sealed spec becomes undispatchable. "none" stays a legitimate answer, and both
+ * shipped templates say so. Promotion to the rejecting tier is decision D5, at
+ * the next declared breaking release.
+ */
+function checkAssumptions(section: string | undefined): Check {
+  const remedy =
+    'record each default the intake assumed instead of asking, as "assumed X because Y; correct now if wrong"';
+  if (section === undefined) {
+    return warn("assumptions", "Assumptions", `section missing — ${remedy}`);
+  }
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
+    return warn("assumptions", "Assumptions", `no assumptions recorded — accepted, but ${remedy}`);
+  }
+  return pass("assumptions", "Assumptions", "decisions under uncertainty are recorded");
+}
+
+/** The four terminal verdicts `## Critic Verdict & Overrides` may carry. Longest
+ * first, so a PASS WITH WARNINGS line is never reported as a bare PASS.
+ * NEEDS_CONTEXT is deliberately absent — it is transient and resolves on the one
+ * re-dispatch it earns, or becomes UNABLE. */
+const TERMINAL_VERDICTS = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
+
+/** Everything the section may record: the terminal verdicts plus the literal
+ * "none" (the critic step was skipped). */
+const RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS, "NONE"];
+
+/** Strip the markdown a verdict line is commonly dressed in — a list bullet,
+ * bold, code ticks — so the token underneath is comparable. Underscores are left
+ * alone: NEEDS_CONTEXT carries one. */
+function cleanVerdictLine(line: string): string {
+  return line
+    .replace(/[`*]/g, "")
+    .replace(/^\s*[-+]\s+/, "")
+    .trim();
+}
+
+/**
+ * The verdict a critic line records, or null if it carries none.
+ *
+ * ACCEPTED SHAPE. Two forms are in use, and both are house style: verdict-first
+ * ("BLOCK → resolved.") and attribution-first ("marvin-tm-spec-critic —
+ * **PASS WITH WARNINGS**"). Anchoring the match at column 0 recognised only the
+ * first, which warned on 17 of the 24 specs under `.marvin/task/` — a warning
+ * that fires on correctly authored specs is noise, so the token is looked for
+ * anywhere on the line. Two guards keep the scan from reading prose as a
+ * judgement: the token must stand as a whole word (never inside "bypass" or
+ * "passes"), and away from the start of the line it must be written in the
+ * canonical capitals the vocabulary declares — a sentence that merely mentions
+ * "we can pass on this" is not a verdict. A token that *leads* the line is
+ * matched case-insensitively, which is the older anchored rule kept intact, so
+ * nothing that passed before this widening stops passing. `none` is accepted
+ * only in that leading position: a skipped critic is the whole answer, never a
+ * word inside prose.
+ *
+ * Where two tokens match, the earliest wins, and at equal position the longest —
+ * so `PASS WITH WARNINGS` is never reported as a bare `PASS`. A line recording a
+ * round-by-round chain ("BLOCK (round 1) → PASS WITH WARNINGS (round 2)") is
+ * therefore reported by the verdict it opens with: the check confirms that a
+ * recognisable verdict is present, it does not adjudicate the chain.
+ */
+function findVerdict(line: string): string | null {
+  const leading = RECORDABLE_VERDICTS.find((v) => new RegExp(`^${v}\\b`, "i").test(line));
+  if (leading) return leading;
+  let best: { at: number; verdict: string } | null = null;
+  for (const verdict of TERMINAL_VERDICTS) {
+    const at = line.search(new RegExp(`\\b${verdict}\\b`));
+    if (at !== -1 && (best === null || at < best.at)) best = { at, verdict };
+  }
+  return best?.verdict ?? null;
+}
+
+/**
+ * Advisory content check on `## Critic Verdict & Overrides`. `/marvin:task-deliver`
+ * renders this section on the PR's **Spec critic** line and can render exactly
+ * the terminal verdicts plus a skipped state, so a token outside that set reaches
+ * the pull request as a judgement that was never made. Warn tier for the same
+ * reason as `checkAssumptions` (decision D5).
+ */
+function checkCriticVerdict(section: string | undefined): Check {
+  const remedy =
+    'record one of PASS | PASS WITH WARNINGS | BLOCK | UNABLE, or "none" if the critic step was skipped';
+  if (section === undefined) {
+    return warn("critic-verdict", "Critic verdict", `section missing — ${remedy}`);
+  }
+  const line = section
+    .split("\n")
+    .map((l) => cleanVerdictLine(l))
+    .find((l) => l !== "");
+  if (!line) {
+    return warn("critic-verdict", "Critic verdict", `section empty — ${remedy}`);
+  }
+  const verdict = findVerdict(line);
+  if (verdict) {
+    return pass(
+      "critic-verdict",
+      "Critic verdict",
+      verdict === "NONE" ? "no verdict recorded (critic skipped)" : `${verdict} recorded`,
+    );
+  }
+  if (/\bNEEDS_CONTEXT\b/i.test(line)) {
+    return warn(
+      "critic-verdict",
+      "Critic verdict",
+      "NEEDS_CONTEXT is transient and is never recorded here — supply the input the critic named and re-dispatch it once; a second occurrence is UNABLE",
+    );
+  }
+  return warn(
+    "critic-verdict",
+    "Critic verdict",
+    `unrecognised verdict "${line.slice(0, 40)}" — ${remedy}`,
+  );
+}
+
+export function checkPlaceholders(raw: string): Check {
   // Strip fenced and inline code so real code (and the spec-contract block's
   // YAML) is not flagged — placeholders inside the block surface as schema
   // type errors instead.

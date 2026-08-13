@@ -126,7 +126,7 @@ N/A — docs only.
 - Variant 2 (rejected): heavier, no benefit.
 
 ## Assumptions
-none
+- Assumed the sample doc has no consumers because grep found none; correct now if wrong.
 
 ## Critic Verdict & Overrides
 none
@@ -227,7 +227,7 @@ Add an early return for empty input.
 none
 
 ## Assumptions
-none
+- Assumed empty input is the only unguarded case because the callers pass validated data otherwise.
 
 ## Critic Verdict & Overrides
 none
@@ -383,6 +383,136 @@ test("a missing breaking declaration blocks", async () => {
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "fm-breaking").status, "fail");
+});
+
+// ── advisory content checks: assumptions + critic verdict ────────────────────
+
+/** Swap the fixture's substantive Assumptions body for `text`. */
+const withAssumptions = (text) =>
+  VALID_FEATURE.replace(
+    "- Assumed the sample doc has no consumers because grep found none; correct now if wrong.",
+    text,
+  );
+
+/** Swap the fixture's Critic Verdict & Overrides body for `text`. */
+const withCriticVerdict = (text) =>
+  VALID_FEATURE.replace(
+    "## Critic Verdict & Overrides\nnone",
+    `## Critic Verdict & Overrides\n${text}`,
+  );
+
+test("an Assumptions section reduced to none warns without blocking", async () => {
+  for (const empty of ["none", "n/a", "- none", ""]) {
+    const { parsed, isError } = await callSpec({
+      specContent: withAssumptions(empty),
+      projectRoot: repoRoot,
+    });
+    assert.equal(find(parsed, "assumptions").status, "warn", `"${empty}" must warn`);
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS", JSON.stringify(parsed.checks, null, 2));
+    assert.ok(!isError, "an advisory warning is never an error");
+  }
+
+  // Absent entirely: the same advisory warning, still never a block.
+  const absent = await callSpec({
+    specContent: VALID_FEATURE.replace("## Assumptions", "## Assumed Things"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(absent.parsed, "assumptions").status, "warn");
+  assert.match(find(absent.parsed, "assumptions").detail, /missing/);
+  assert.equal(absent.parsed.verdict, "PASS WITH WARNINGS");
+
+  // Substantive assumption text passes the same check.
+  const { parsed } = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
+  assert.equal(find(parsed, "assumptions").status, "pass");
+});
+
+test("the critic verdict check accepts terminal verdicts and none and warns otherwise", async () => {
+  const accepted = [
+    ["PASS", "PASS"],
+    ["PASS WITH WARNINGS — critic flagged X; override: ship anyway", "PASS WITH WARNINGS"],
+    ["BLOCK — AC2 has no implementing change", "BLOCK"],
+    ["UNABLE — could not read the cited files", "UNABLE"],
+    ["none — critic skipped", "NONE"],
+  ];
+  for (const [body, reported] of accepted) {
+    const { parsed } = await callSpec({
+      specContent: withCriticVerdict(body),
+      projectRoot: repoRoot,
+    });
+    const check = find(parsed, "critic-verdict");
+    assert.equal(check.status, "pass", `"${body}" must pass: ${check.detail}`);
+    if (reported !== "NONE") assert.match(check.detail, new RegExp(`^${reported} recorded$`));
+  }
+
+  // NEEDS_CONTEXT is strictly transient — never a recordable verdict.
+  const nc = await callSpec({
+    specContent: withCriticVerdict("NEEDS_CONTEXT — could not read the spec content"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(nc.parsed, "critic-verdict").status, "warn");
+  assert.equal(nc.parsed.verdict, "PASS WITH WARNINGS");
+  assert.ok(!nc.isError);
+  assert.match(find(nc.parsed, "critic-verdict").detail, /transient/);
+  assert.match(find(nc.parsed, "critic-verdict").detail, /never recorded/);
+
+  // An unrecognised token warns with its own detail, quoting what it found.
+  const other = await callSpec({
+    specContent: withCriticVerdict("Looks fine to me"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(other.parsed, "critic-verdict").status, "warn");
+  assert.equal(other.parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(other.parsed, "critic-verdict").detail, /unrecognised verdict/);
+  assert.match(find(other.parsed, "critic-verdict").detail, /Looks fine to me/);
+});
+
+/**
+ * This repository writes the critic line two ways round, and the attribution-first
+ * form — `marvin-tm-spec-critic — **PASS WITH WARNINGS**` — is the majority: 17 of
+ * the 24 specs under `.marvin/task/` lead with the agent name or with markdown
+ * emphasis rather than with the token. A matcher anchored at column 0 warned on all
+ * of them, so both forms are pinned here. The negatives are the other half of the
+ * property: widening the match must not let prose that merely mentions a verdict
+ * word be read as a judgement.
+ */
+test("the critic verdict check reads the attribution-first house style", async () => {
+  const accepted = [
+    ["**PASS**", "PASS"],
+    [
+      "`marvin-tm-spec-critic`: **PASS WITH WARNINGS** (round 1). Six findings, all addressed.",
+      "PASS WITH WARNINGS",
+    ],
+    ["marvin-tm-spec-critic — round 1: **BLOCK** (a phantom config path)", "BLOCK"],
+    ["**PASS WITH WARNINGS** on the third `marvin-tm-spec-critic` round.", "PASS WITH WARNINGS"],
+    ["- **UNABLE** — could not read the cited files", "UNABLE"],
+    // A round-by-round chain is reported by the verdict it opens with: the check
+    // confirms a recognisable verdict is present, it does not adjudicate the chain.
+    ["`marvin-tm-spec-critic`: **BLOCK (round 1) → PASS WITH WARNINGS (round 2)**.", "BLOCK"],
+  ];
+  for (const [body, reported] of accepted) {
+    const { parsed } = await callSpec({
+      specContent: withCriticVerdict(body),
+      projectRoot: repoRoot,
+    });
+    const check = find(parsed, "critic-verdict");
+    assert.equal(check.status, "pass", `"${body}" must pass: ${check.detail}`);
+    assert.match(check.detail, new RegExp(`^${reported} recorded$`));
+  }
+
+  // Prose that only mentions a verdict word is not a verdict.
+  for (const prose of [
+    "We can pass on this one for now",
+    "The reviewer will not block the merge",
+    "This bypasses the critic entirely",
+  ]) {
+    const { parsed } = await callSpec({
+      specContent: withCriticVerdict(prose),
+      projectRoot: repoRoot,
+    });
+    const check = find(parsed, "critic-verdict");
+    assert.equal(check.status, "warn", `"${prose}" must not read as a verdict: ${check.detail}`);
+    assert.match(check.detail, /unrecognised verdict/);
+  }
 });
 
 // ── host-bindings + sibling dependencies (Contract B) ────────────────────────
