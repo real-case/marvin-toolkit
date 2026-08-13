@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
@@ -29,9 +30,22 @@ const FileRow = z.object({
   anchor: z.string().optional(),
 });
 
+/**
+ * How a criterion is proved. `ref` names the proof (a `path::test name`, a
+ * command); `run` is the criterion's own exact command — the most specific rung
+ * of oracle resolution, below only a per-call override (ADR-0036).
+ *
+ * Adding `run` needs **no seal migration**, and the reason is not obvious:
+ * `contractHash` below digests the block's raw TEXT, never a parsed or
+ * re-serialised structure. Widening what the parser accepts therefore cannot
+ * move the digest of a block already on disk, so every `contract_sha` stamped
+ * into an existing spec stays valid. A reviewer who assumes the hash covers the
+ * parsed shape will look for a migration that must not exist.
+ */
 const Oracle = z.object({
   kind: z.enum(["test", "command", "prose-review"]),
   ref: z.string().optional(),
+  run: z.string().min(1).optional(),
 });
 
 const Criterion = z.object({
@@ -81,6 +95,26 @@ export type HostBindings = z.infer<typeof HostBindings>;
 export function extractContractBlock(body: string): string | null {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
   return m ? m[1]! : null;
+}
+
+/**
+ * A short, stable fingerprint of the spec-contract block — stamped into the
+ * spec's frontmatter at write, so later tampering of the immutable contract is
+ * detectable by re-hashing.
+ *
+ * **One algorithm, one home, two callers.** The `spec` tool stamps and verifies
+ * the seal with it (`mode: seal`, `mode: dor`); `verify`'s `action: "oracles"`
+ * recomputes it to refuse running a tampered or unsealed contract (ADR-0036).
+ * It lives here, in the layer both tools may import, because the alternative —
+ * a second `createHash("sha256")…slice(0, 16)` inside `verify.ts` — is two
+ * copies of the seal that drift the first time either is touched, leaving a
+ * spec that reads sealed to one caller and tampered to the other.
+ *
+ * The input is the block's raw text. That is what makes a schema addition
+ * (`Oracle.run` above) compatible without a migration.
+ */
+export function contractHash(blockText: string): string {
+  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
 }
 
 /** Extract the first fenced block whose info string mentions `host-bindings`. */

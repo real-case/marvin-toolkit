@@ -104,8 +104,14 @@ command detection would have produced under that name; when it is absent, `verif
 auto-detects the command from the project's stack. The [verify gates](#verify-gates) section
 explains resolution in full.
 
-Those four keys are the complete set. There is no fifth gate and no way to declare one: a key
-Marvin does not recognise, whether a typo such as `tests` or an invented `audit`, is stripped
+A fifth key, `test_one`, is recognised under the same object and is **not a gate**. It is the
+template that runs a single test, and it exists only so a `kind: test` acceptance oracle can
+resolve to a command. It is never scheduled, never appears in a verdict, and never reaches
+`verification.md`; the dry-run plan lists the four gates and nothing else. See
+[single-test resolution](#single-test-resolution-test_one) below.
+
+Those four *gate* keys are the complete set. There is no fifth gate and no way to declare one: a
+key Marvin does not recognise, whether a typo such as `tests` or an invented `audit`, is stripped
 when the config loads, and the gate it was meant to configure falls back to detection with no
 error reported anywhere. [ADR-0009](./adr/0009-config-first-gate-resolution.md) records that
 as an accepted trade-off. The effective set stays inspectable: the report's `Stacks:` line
@@ -171,6 +177,57 @@ Set `gates` when your project's commands differ from what auto-detection would c
 example a custom test runner or a monorepo build script. Leave it unset to let Marvin
 detect the commands for you.
 
+### Single-test resolution: `test_one`
+
+A gate command runs the whole suite. An **acceptance oracle** runs one test — the criterion
+named `AC2`, not everything — so that a bugfix's red phase and its green phase are recorded
+against that one criterion rather than against the project. `test_one` is how a project declares
+the command shape that does it:
+
+```json
+{
+  "gates": {
+    "test": "pytest",
+    "test_one": "pytest {file}::{name}"
+  }
+}
+```
+
+Three placeholders are substituted, all taken from the criterion's `oracle.ref` (written
+`path/to/file::the test name`):
+
+| Placeholder | Value |
+|-------------|-------|
+| `{file}` | the path half of the ref |
+| `{name}` | the test-name half |
+| `{ref}` | the whole ref, unsplit |
+
+**Substitution is literal, and the quoting is yours.** `"pytest -k '{name}'"` keeps a test name
+with spaces intact; `"pytest -k {name}"` does not. Marvin will not add quotes, because the
+placeholder usually sits inside a flag you already quoted and re-quoting it produces a command
+that fails for a reason nobody can read. What it does instead is refuse: a ref carrying a shell
+metacharacter (`;`, `|`, `&`, a backtick, `$(`, a redirection, a newline) is never substituted at
+all — the run records `not-run` with the reason `unsafe-ref` and no child process is started.
+
+`test_one` is **not a gate**. It is never scheduled, its exit code never enters a verdict, and it
+never appears in `verification.md`. Only `verify`'s `action: "oracles"` reads it.
+
+**Without it, nothing is guessed.** Resolution walks a fixed chain — the per-call command, then
+the criterion's own `oracle.run`, then a `kind: command` oracle's `ref` verbatim, then this
+template, then a narrow default table (pytest, `go test`, `cargo test` — admitted only where the
+runner's documented single-invocation form takes a file and a test name and the stack detector
+matches exactly one such runner). When no rung applies, the run is recorded `not-run` with a
+reason. There is deliberately **no JavaScript or TypeScript default row**: a synthesized
+`node --test`-shaped command would run the wrong workspace's suite in any repository whose
+`npm test` fans out, and a green from a suite that never contained the test is worse than no
+answer. Marvin's own repository is that case, and starts at `not-run` for every one of its
+`kind: test` oracles until it declares a `test_one` of its own.
+
+One template serves the whole project, which a polyglot repository outgrows — three workspaces
+with three runners cannot share one string. Such a project declares `run:` on the individual
+criteria instead, where the command is exact. A `test_one` keyed by path glob is recorded as
+future work in [ADR-0036](./adr/0036-oracle-execution-and-red-green.md).
+
 ### Scanners as gates
 
 A gate command is an ordinary shell command, so a gate is not limited to the kind of tool its
@@ -194,14 +251,28 @@ so a lint error means the scan never ran at all, and both the status line and th
 output kept in the report describe the chain rather than either command. Attributing a red
 chained gate takes one manual re-run.
 
-**A missing binary fails the gate.** `verify` runs every command through a shell and treats
-any non-zero exit as a failed gate. A shell that cannot find `gitleaks` exits 127, which is a
-failed gate, which is a `FAIL` verdict, which makes `/marvin:task-deliver` refuse to proceed.
-State that plainly before committing such a config: a scanner gate blocks delivery for every
-contributor who has not installed the binary, not only for the person who added the line.
-Marvin does not yet distinguish a missing tool from a failing one. A `not-run` gate state
-that records the reason instead of failing is planned; until it ships, either keep scanner
-gates out of a shared config or make the binary a documented prerequisite of the project.
+**A missing binary depends on the shape of the command.** Before it spawns anything, `verify`
+checks whether a gate's binary can be resolved — but only for a **single simple command**. Such
+a gate is recorded `not-run` rather than failed: the verdict becomes `PASS WITH WARNINGS`, a
+warning names the gate and the missing token, and delivery proceeds. `"lint": "gitleaks detect"`
+therefore no longer blocks a contributor who has not installed the tool.
+
+**The chained form above is not covered, and still fails.** A command containing a shell
+metacharacter — `&&`, a pipe, a quote, a redirection — is left alone and runs exactly as it
+always has, so `"lint": "npm run lint && gitleaks detect"` on a machine without `gitleaks`
+still exits non-zero, still yields `FAIL`, and still blocks `/marvin:task-deliver`. This is the
+same cost the previous paragraph describes, seen from another angle: a chain is one gate to
+everything downstream, and `command -v` cannot answer for it. Guessing at shell grammar risks
+the opposite error — reporting `not-run` for a chain whose real failure was somewhere else,
+which turns a genuine red into a warning. So for a shared config the advice is unchanged:
+either keep chained scanner gates out of it, or make the binary a documented prerequisite of
+the project.
+
+**A `not-run` gate never makes delivery easier.** The delivery gate refuses outright, with no
+input that waives it, when the run recorded a `test` gate and every `test` gate was `not-run`,
+or when every recorded gate was `not-run`. A missing scanner degrades to a warning because the
+pipeline's central claim survives it; "no tests ran" is not a degraded proof but the absence of
+one. See [ADR-0035](adr/0035-evidence-provenance.md).
 
 ## Telemetry
 

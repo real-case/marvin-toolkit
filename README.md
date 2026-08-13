@@ -274,6 +274,8 @@ rationale is folded into 0001, 0013, and 0018.
 | [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
 | [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
 | [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
+| [0035](./docs/adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Proposed |
+| [0036](./docs/adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Proposed |
 
 ## Contributing
 

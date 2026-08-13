@@ -19,8 +19,25 @@ export interface GitErr {
 
 export type GitResult<T = string> = GitOk<T> | GitErr;
 
-function run(cmd: string, args: string[], cwd?: string): GitResult {
-  const result = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+/**
+ * Strictly additive third parameter — every existing positional `git(args, cwd)`
+ * call site is unchanged. `input` feeds a command that reads stdin
+ * (`hash-object --stdin-paths`); `maxBuffer` raises Node's 1 MiB `spawnSync`
+ * default, which an unbounded git read can otherwise cross, turning a real
+ * answer into an ENOBUFS error (ADR-0035).
+ */
+export interface RunOptions {
+  input?: string;
+  maxBuffer?: number;
+}
+
+function run(cmd: string, args: string[], cwd?: string, opts?: RunOptions): GitResult {
+  const result = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    ...(opts?.input !== undefined ? { input: opts.input } : {}),
+    ...(opts?.maxBuffer !== undefined ? { maxBuffer: opts.maxBuffer } : {}),
+  });
   if (result.error) {
     return { ok: false, code: -1, stderr: result.error.message };
   }
@@ -34,12 +51,12 @@ function run(cmd: string, args: string[], cwd?: string): GitResult {
   return { ok: true, value: (result.stdout || "").trim() };
 }
 
-export function git(args: string[], cwd?: string): GitResult {
-  return run("git", args, cwd);
+export function git(args: string[], cwd?: string, opts?: RunOptions): GitResult {
+  return run("git", args, cwd, opts);
 }
 
-export function gh(args: string[], cwd?: string): GitResult {
-  return run("gh", args, cwd);
+export function gh(args: string[], cwd?: string, opts?: RunOptions): GitResult {
+  return run("gh", args, cwd, opts);
 }
 
 /**
@@ -85,6 +102,87 @@ export function defaultBranchFromOrigin(cwd?: string): string | null {
   if (!r.ok || !r.value) return null;
   const name = r.value.replace(/^refs\/remotes\/origin\//, "");
   return name && name !== r.value ? name : null;
+}
+
+// ── worktree reads behind the evidence digest (ADR-0035) ────────────────────
+
+/**
+ * Every read below passes an explicit, generous `maxBuffer` as a second line of
+ * defence. It is not the design: the digest's inputs are O(paths changed) by
+ * construction, precisely so no buffer size has to be guessed. 5,000 paths of
+ * `hash-object` output is ~205 KB, three orders of magnitude inside this.
+ */
+const WORKTREE_READ_MAX_BUFFER = 64 * 1024 * 1024;
+
+/**
+ * The working tree's root, which answers "is this a git worktree" and "which
+ * root" in one read. Null outside a repository — the prefix that keeps the whole
+ * provenance computation off the path for a non-git project.
+ */
+export function worktreeRoot(cwd?: string): string | null {
+  const r = git(["rev-parse", "--show-toplevel"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+
+export function headSha(cwd?: string): string | null {
+  const r = git(["rev-parse", "HEAD"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+
+export interface DiffOptions {
+  /** `name-only` for a plain path list, `name-status` for `status\0path` pairs. */
+  format?: "name-only" | "name-status";
+  /** Path prefixes to drop, rendered as `:(exclude)<p>` pathspecs. */
+  exclude?: string[];
+  /** NUL-delimit the output, which removes git's path quoting. */
+  nul?: boolean;
+}
+
+/**
+ * Tracked changes against HEAD (staged + unstaged), as raw stdout. Null on any
+ * failure — no repository, no HEAD, a git that could not run.
+ *
+ * `--no-renames` accompanies `name-status` only, so each path stays an
+ * independent `A`/`M`/`D` row and no rename grammar has to be parsed; adding it
+ * to `name-only` would change the file set the mode warnings have always seen.
+ */
+export function diffAgainstHead(cwd?: string, opts: DiffOptions = {}): string | null {
+  const format = opts.format ?? "name-only";
+  const args = ["diff", "HEAD", `--${format}`];
+  if (format === "name-status") args.push("--no-renames");
+  if (opts.nul) args.push("-z");
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  return r.ok ? r.value : null;
+}
+
+/**
+ * Untracked, non-ignored paths. Always read NUL-delimited and returned split, so
+ * a path with a space or a quote survives the round trip.
+ */
+export function untrackedFiles(cwd?: string, opts: { exclude?: string[] } = {}): string[] | null {
+  const args = ["ls-files", "--others", "--exclude-standard", "-z"];
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  if (!r.ok) return null;
+  return r.value.split("\0").filter(Boolean);
+}
+
+/**
+ * Git's content ids for the **working-tree** bytes of each path, in input order.
+ * One spawn, 41 bytes of output per path whatever the file weighs — which is
+ * what lets the digest carry content identity without any file's bytes entering
+ * this process. `hash-object` without `-w` is a pure read: it writes no object.
+ */
+export function hashObjects(paths: string[], cwd?: string): string[] | null {
+  if (paths.length === 0) return [];
+  const r = git(["hash-object", "--stdin-paths"], cwd, {
+    input: `${paths.join("\n")}\n`,
+    maxBuffer: WORKTREE_READ_MAX_BUFFER,
+  });
+  if (!r.ok) return null;
+  const ids = r.value.split("\n").map((s) => s.trim());
+  return ids.length === paths.length ? ids : null;
 }
 
 export function hasUncommittedChanges(cwd?: string): boolean {

@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
@@ -8,6 +7,7 @@ import { parseFrontmatter } from "../storage/frontmatter.js";
 import {
   SpecContract,
   HostBindings,
+  contractHash,
   extractContractBlock,
   extractHostBindings,
   resolveSpecBySlug,
@@ -1073,13 +1073,6 @@ function computeVerdict(checks: Check[]): Verdict {
   if (checks.some((c) => c.status === "fail")) return "FAIL";
   if (checks.some((c) => c.status === "warn")) return "PASS WITH WARNINGS";
   return "PASS";
-}
-
-/** A short, stable fingerprint of the spec-contract block — stamped into the
- * spec's frontmatter at write so later tampering of the immutable contract is
- * detectable by re-hashing. */
-function contractHash(blockText: string): string {
-  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
 }
 
 function result(

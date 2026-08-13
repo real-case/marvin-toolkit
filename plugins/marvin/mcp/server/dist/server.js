@@ -3,9 +3,9 @@ import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, sta
 import { join, dirname, basename, isAbsolute, relative, posix, sep } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { spawn, spawnSync, execFileSync } from 'child_process';
-import { performance } from 'perf_hooks';
+import { spawnSync, execFileSync, spawn } from 'child_process';
 import { createHash } from 'crypto';
+import { performance } from 'perf_hooks';
 
 const require$1 = createRequire(import.meta.url);
 var __create = Object.create;
@@ -28909,7 +28909,24 @@ var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
   typecheck: external_exports.string().min(1).optional(),
-  build: external_exports.string().min(1).optional()
+  build: external_exports.string().min(1).optional(),
+  /**
+   * **Not a gate.** The template that runs ONE test — how a `kind: test`
+   * acceptance oracle resolves to a command (ADR-0036). It is never scheduled,
+   * never appears in a verdict and never reaches `verification.md`, and that is
+   * mechanical rather than a convention: all three gate paths
+   * (`gatesFromStacks`, `mergeConfigGates`, `gateSpecsFromConfig`) iterate the
+   * `GATE_NAMES` tuple, so a key outside that tuple is structurally unreachable
+   * as a gate. Leave those loops as they are.
+   *
+   * It must nonetheless be DECLARED here, because zod strips unknown keys
+   * silently — ADR-0009 records that as an accepted trade-off ("a typo
+   * (`tests:`) is stripped by the schema"). An undeclared `test_one` would
+   * vanish inside `loadConfig` with no error anywhere to observe.
+   *
+   * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
+   */
+  test_one: external_exports.string().min(1).optional()
 });
 var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
@@ -28967,8 +28984,13 @@ function statusKeys(config2) {
 function keysOfRoles(config2, roles) {
   return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
 }
-function run(cmd, args, cwd) {
-  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+function run(cmd, args, cwd, opts) {
+  const result2 = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    ...opts?.input !== void 0 ? { input: opts.input } : {},
+    ...opts?.maxBuffer !== void 0 ? { maxBuffer: opts.maxBuffer } : {}
+  });
   if (result2.error) {
     return { ok: false, code: -1, stderr: result2.error.message };
   }
@@ -28981,8 +29003,8 @@ function run(cmd, args, cwd) {
   }
   return { ok: true, value: (result2.stdout || "").trim() };
 }
-function git(args, cwd) {
-  return run("git", args, cwd);
+function git(args, cwd, opts) {
+  return run("git", args, cwd, opts);
 }
 function inGitRepo(cwd) {
   return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
@@ -29012,6 +29034,42 @@ function defaultBranchFromOrigin(cwd) {
   if (!r.ok || !r.value) return null;
   const name = r.value.replace(/^refs\/remotes\/origin\//, "");
   return name && name !== r.value ? name : null;
+}
+var WORKTREE_READ_MAX_BUFFER = 64 * 1024 * 1024;
+function worktreeRoot(cwd) {
+  const r = git(["rev-parse", "--show-toplevel"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function headSha(cwd) {
+  const r = git(["rev-parse", "HEAD"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function diffAgainstHead(cwd, opts = {}) {
+  const format = opts.format ?? "name-only";
+  const args = ["diff", "HEAD", `--${format}`];
+  if (format === "name-status") args.push("--no-renames");
+  if (opts.nul) args.push("-z");
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  return r.ok ? r.value : null;
+}
+function untrackedFiles(cwd, opts = {}) {
+  const args = ["ls-files", "--others", "--exclude-standard", "-z"];
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  if (!r.ok) return null;
+  return r.value.split("\0").filter(Boolean);
+}
+function hashObjects(paths, cwd) {
+  if (paths.length === 0) return [];
+  const r = git(["hash-object", "--stdin-paths"], cwd, {
+    input: `${paths.join("\n")}
+`,
+    maxBuffer: WORKTREE_READ_MAX_BUFFER
+  });
+  if (!r.ok) return null;
+  const ids = r.value.split("\n").map((s) => s.trim());
+  return ids.length === paths.length ? ids : null;
 }
 function hasUncommittedChanges(cwd) {
   const r = git(["status", "--porcelain"], cwd);
@@ -30454,6 +30512,74 @@ function parseAuditBlock(raw) {
   }
   return { kind: "ok", report: parsed.data };
 }
+var VERIFY_BLOCK_TAG = "verify-result";
+var VERIFY_BLOCK_RE = new RegExp("```json " + VERIFY_BLOCK_TAG + "\\n([\\s\\S]*?)\\n```");
+var VerifyGateSchema = external_exports.object({
+  name: external_exports.string(),
+  status: external_exports.string().optional(),
+  code: external_exports.number().nullable().optional().catch(null),
+  durationMs: external_exports.number().optional().catch(void 0)
+});
+var ProvenanceSchema = external_exports.object({
+  head_sha: external_exports.string().nullable(),
+  branch: external_exports.string().nullable(),
+  dirty: external_exports.boolean().nullable(),
+  worktree_digest: external_exports.string().nullable(),
+  generated_at: external_exports.string()
+});
+var VerifyResultSchema = external_exports.object({
+  verdict: external_exports.string().optional().catch(void 0),
+  gates: external_exports.array(external_exports.unknown()).optional().catch(void 0),
+  detectedStacks: external_exports.array(external_exports.string()).optional().catch(void 0),
+  warnings: external_exports.array(external_exports.string()).optional().catch(void 0),
+  wallClockMs: external_exports.number().optional().catch(void 0),
+  sumOfGatesMs: external_exports.number().optional().catch(void 0),
+  artifactPath: external_exports.string().nullable().optional().catch(null),
+  // Optional on read so every artifact written before ADR-0035 still parses, and
+  // `.catch(undefined)` like every other member so a corrupt provenance degrades
+  // alone — a freshness field must never cost a reader the verdict it came for.
+  provenance: ProvenanceSchema.optional().catch(void 0)
+});
+function parseVerifyBlock(raw) {
+  const m = raw.match(VERIFY_BLOCK_RE);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is not valid JSON` };
+  }
+  const parsed = VerifyResultSchema.safeParse(json);
+  if (!parsed.success) {
+    const reason = parsed.error.issues.map((i) => i.message).join("; ");
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is malformed: ${reason}` };
+  }
+  const { gates, ...rest } = parsed.data;
+  return {
+    kind: "ok",
+    result: { ...rest, gates: (gates ?? []).flatMap(coerceGate) },
+    gatesDeclared: Array.isArray(json.gates)
+  };
+}
+function coerceGate(entry) {
+  const parsed = VerifyGateSchema.safeParse(entry);
+  return parsed.success ? [parsed.data] : [];
+}
+function formatVerifyBlock(result2) {
+  const payload = {
+    verdict: result2.verdict,
+    gates: result2.gates,
+    detectedStacks: result2.detectedStacks,
+    warnings: result2.warnings,
+    wallClockMs: result2.wallClockMs,
+    sumOfGatesMs: result2.sumOfGatesMs,
+    artifactPath: result2.artifactPath,
+    // Appended last on purpose: every artifact written before ADR-0035 keeps a
+    // byte-identical prefix, which keeps a `verification.md` diff readable.
+    provenance: result2.provenance
+  };
+  return "```json " + VERIFY_BLOCK_TAG + "\n" + JSON.stringify(payload) + "\n```";
+}
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var STALE_AFTER_DAYS = 7;
 function isStale(group, mtimeMs, nowMs) {
@@ -30663,21 +30789,10 @@ function scanRefactorReports(dir, opts = {}) {
   return { reports, notes };
 }
 function parseVerificationChecks(raw) {
-  const m = raw.match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) return null;
-  let parsed;
-  try {
-    parsed = JSON.parse(m[1]);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const gates = parsed.gates;
-  if (!Array.isArray(gates)) return null;
-  return gates.filter(
-    (g) => typeof g === "object" && g !== null && typeof g.name === "string"
-  ).map((g) => {
-    const status = g.status === "pass" ? "pass" : g.status === "skip" ? "pending" : "fail";
+  const parse4 = parseVerifyBlock(raw);
+  if (parse4.kind !== "ok" || !parse4.gatesDeclared) return null;
+  return parse4.result.gates.map((g) => {
+    const status = g.status === "pass" ? "pass" : g.status === "skip" || g.status === "not-run" ? "pending" : "fail";
     const note = status === "fail" ? g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` : void 0;
     return {
       name: g.name,
@@ -33022,6 +33137,254 @@ function nonZero(counts) {
 function days(n) {
   return `${n} day(s)`;
 }
+
+// src/tools/verify.ts
+var import_yaml2 = __toESM(require_dist2());
+var DIGEST_EXCLUDE = [".marvin"];
+var MAX_DIGEST_PATHS = 5e3;
+function readChangedPaths(root) {
+  const diff = diffAgainstHead(root, {
+    format: "name-status",
+    exclude: DIGEST_EXCLUDE,
+    nul: true
+  });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
+  if (untracked === null) return null;
+  const paths = /* @__PURE__ */ new Map();
+  const fields = diff.split("\0").filter((s) => s.length > 0);
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    paths.set(fields[i + 1], fields[i]);
+  }
+  for (const p of untracked) if (!paths.has(p)) paths.set(p, "?");
+  return paths;
+}
+function digestFrom(paths, root) {
+  if (paths.size > MAX_DIGEST_PATHS) return null;
+  const sorted = [...paths.keys()].sort();
+  if (sorted.some((p) => p.includes("\n"))) return null;
+  const present = sorted.filter((p) => existsSync(join(root, p)));
+  const ids = hashObjects(present, root);
+  if (ids === null) return null;
+  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
+  const lines = sorted.map((p) => `${p}\0${paths.get(p)}\0${idByPath.get(p) ?? "D"}`);
+  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
+}
+function collectProvenance(cwd) {
+  const root = worktreeRoot(cwd);
+  if (!root) return null;
+  const paths = readChangedPaths(root);
+  return {
+    head_sha: headSha(root),
+    branch: currentBranch(root),
+    dirty: paths === null ? null : paths.size > 0,
+    worktree_digest: paths === null ? null : digestFrom(paths, root),
+    generated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyStaleness(recorded, current) {
+  if (!recorded || !current) return "unknown";
+  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
+  if (!recorded.head_sha || !current.head_sha) return "unknown";
+  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
+}
+var SHELL_METACHARACTERS = /[;|&`\n<>]|\$\(/;
+function splitRef(ref) {
+  const i = ref.indexOf("::");
+  return i === -1 ? { file: ref, name: "" } : { file: ref.slice(0, i).trim(), name: ref.slice(i + 2).trim() };
+}
+function packageDir(file) {
+  const i = file.lastIndexOf("/");
+  return i === -1 ? "." : `./${file.slice(0, i)}`;
+}
+var STACK_DEFAULTS = {
+  python: ({ file, name }) => `pytest ${file}::${name}`,
+  go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
+  rust: ({ name }) => `cargo test ${name}`
+};
+function resolveOracleCommand(criterion, opts) {
+  const oracle = criterion.oracle;
+  if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
+  if (oracle.run?.trim()) return { command: oracle.run.trim(), source: "oracle.run" };
+  if (oracle.kind === "prose-review") {
+    return { command: null, source: null, reason: "prose-review-oracle" };
+  }
+  const ref = oracle.ref?.trim();
+  if (!ref) return { command: null, source: null, reason: "no-ref" };
+  if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
+  const parts = splitRef(ref);
+  if (SHELL_METACHARACTERS.test(ref) || SHELL_METACHARACTERS.test(parts.file) || SHELL_METACHARACTERS.test(parts.name)) {
+    return { command: null, source: null, reason: "unsafe-ref" };
+  }
+  if (opts.testOne?.trim()) {
+    const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
+    return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
+  }
+  const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;
+  if (!row) return { command: null, source: null, reason: "no-single-test-command" };
+  if (!parts.name) return { command: null, source: null, reason: "ref-has-no-test-name" };
+  return { command: row(parts), source: "stack-default" };
+}
+function oracleTestFile(criterion) {
+  if (criterion.oracle.kind !== "test") return null;
+  const ref = criterion.oracle.ref?.trim();
+  if (!ref) return null;
+  return splitRef(ref).file || null;
+}
+var ORACLE_RUN_TAG = "oracle-run";
+var ORACLE_RUN_RE = new RegExp("```json " + ORACLE_RUN_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var OracleRunSchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** The seal this run was recorded against. Proofs never cross it. */
+  contract_sha: external_exports.string().min(1),
+  criterion: external_exports.string().min(1),
+  /** Which phase this was: the red run expects `fail`, the green one `pass`. */
+  expect: external_exports.enum(["pass", "fail"]),
+  /** What happened. `not-run` covers an unresolved command, a signal kill and a
+   * launch failure alike — none of them is evidence about the code. */
+  status: external_exports.enum(["pass", "fail", "not-run"]),
+  command: external_exports.string().nullable(),
+  source: external_exports.string().nullable(),
+  reason: external_exports.string().nullable().optional(),
+  code: external_exports.number().nullable(),
+  signal: external_exports.string().nullable(),
+  /** The referenced test file and the hash of its bytes at run time — what makes
+   * a red and a green comparable rather than merely consecutive. */
+  test_file: external_exports.string().nullable(),
+  test_sha: external_exports.string().nullable(),
+  head_sha: external_exports.string().nullable(),
+  durationMs: external_exports.number().optional(),
+  ran_at: external_exports.string()
+});
+function oracleJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.oracles.md`);
+}
+function recordOracleRun(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = oracleJournalPath(runsDir, entry.slug);
+  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+
+Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
+
+`;
+  const block = `\`\`\`json ${ORACLE_RUN_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header}${block}`, "utf8");
+}
+function readOracleRuns(runsDir, slug) {
+  const path = oracleJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m of raw.matchAll(ORACLE_RUN_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = OracleRunSchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function isRed(r) {
+  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha;
+}
+function isGreen(r) {
+  return r.expect === "pass" && r.status === "pass" && r.code === 0 && !!r.test_sha;
+}
+function redGreenProof(runs, contractSha, criterionId) {
+  if (!contractSha) return "missing";
+  const relevant = runs.filter(
+    (r) => r.contract_sha === contractSha && r.criterion === criterionId
+  );
+  for (let i = 0; i < relevant.length; i++) {
+    const red = relevant[i];
+    if (!isRed(red)) continue;
+    for (let j = i + 1; j < relevant.length; j++) {
+      const green = relevant[j];
+      if (isGreen(green) && green.test_sha === red.test_sha) return "proven";
+    }
+  }
+  return "missing";
+}
+var ID_FILE = /^F\d+$/i;
+var ID_AC = /^AC\d+$/i;
+var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
+var FileRow = external_exports.object({
+  id: external_exports.string().regex(ID_FILE, "file id must look like F1, F2, \u2026"),
+  path: external_exports.string().min(1),
+  action: external_exports.enum(["new", "edit", "delete"]),
+  intent: external_exports.string().optional(),
+  satisfies: RefList.optional(),
+  anchor: external_exports.string().optional()
+});
+var Oracle = external_exports.object({
+  kind: external_exports.enum(["test", "command", "prose-review"]),
+  ref: external_exports.string().optional(),
+  run: external_exports.string().min(1).optional()
+});
+var Criterion = external_exports.object({
+  id: external_exports.string().regex(ID_AC, "criterion id must look like AC1, AC2, \u2026"),
+  statement: external_exports.string().min(1),
+  implemented_by: RefList,
+  oracle: Oracle,
+  failure: external_exports.string().optional(),
+  regression: external_exports.boolean().optional()
+});
+var ContractObj = external_exports.object({
+  kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
+  signature: external_exports.string().optional()
+});
+var SpecContract = external_exports.object({
+  files: external_exports.array(FileRow).min(1),
+  build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
+  contract: ContractObj.optional(),
+  criteria: external_exports.array(Criterion).min(1),
+  depends_on: external_exports.array(external_exports.string()).optional()
+});
+var HostBindings = external_exports.object({
+  spec_location: external_exports.string().optional(),
+  decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
+  merge_obligations: external_exports.array(external_exports.string()).optional(),
+  gates: external_exports.record(external_exports.string()).optional()
+}).passthrough();
+function extractContractBlock(body) {
+  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+function contractHash(blockText) {
+  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
+}
+function extractHostBindings(body) {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+
+// src/tools/verify.ts
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
   return names.some((n) => existsSync(join(root, n)));
@@ -33124,21 +33487,39 @@ var VerifyInput = external_exports.object({
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
   write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.marvin/task/."),
   dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything."),
-  action: external_exports.enum(["run", "gate"]).default("run").describe(
-    "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver."
+  action: external_exports.enum(["run", "gate", "oracles"]).default("run").describe(
+    "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver. oracles: run a sealed spec's acceptance oracles (not gates) and append each outcome to .marvin/task/runs/<slug>.oracles.md \u2014 the red-green recorder for /marvin:task-implement."
+  ),
+  criteria: external_exports.array(external_exports.string().min(1)).optional().describe(
+    'oracles only: run just these criterion ids (e.g. ["AC2"]). Omit to run every non-prose-review criterion. Distinct from `only`, which selects GATES.'
+  ),
+  expect: external_exports.enum(["pass", "fail"]).default("pass").describe(
+    'oracles only: which phase this is. "fail" is the red phase (the test must fail before the fix); "pass" is the green phase. Recorded on every journal entry \u2014 a red and a green at the same contract_sha with the same test hash are what the delivery gate reads as a proof.'
+  ),
+  command: external_exports.string().min(1).optional().describe(
+    "oracles only: run this exact command for every selected criterion, outranking the criterion's own `run`, its `ref` and the project's `gates.test_one`."
+  ),
+  specSlug: external_exports.string().optional().describe(
+    "Spec slug (kebab-case) this run verifies. On run: also writes the identical artifact to .marvin/task/runs/<slug>.md. On gate: reads that per-spec run instead of the global verification.md, so the gate judges THIS task's proof. A non-kebab-case slug is rejected with a warning, never sanitised."
+  ),
+  allowStale: external_exports.boolean().default(false).describe(
+    "gate only: deliver even though the recorded verification no longer describes this working tree. Waives the freshness check ONLY \u2014 it never turns a FAIL verdict into an ALLOW, and never waives the no-test-evidence refusal. Requires an explicit user decision."
   )
 });
 function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
-    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver.`,
+    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.`,
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env2)
   });
 }
 async function runVerify(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  if (input.action === "gate") return deliverGate(projectRoot);
+  if (input.action === "gate") {
+    return deliverGate(projectRoot, { specSlug: input.specSlug, allowStale: input.allowStale });
+  }
+  if (input.action === "oracles") return runOracles(projectRoot, input, env2);
   const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env2.configPath;
   const { config: config2, warning: configWarning } = loadConfig(configPath);
   const configGates = gateSpecsFromConfig(config2.gates);
@@ -33168,13 +33549,26 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
 ${plan}${warn2}`
     );
   }
+  const planned = planGates(gates, projectRoot);
   const wallStart = performance.now();
-  const results = await executeGates(gates, input.execution, projectRoot);
+  const results = await executeGates(planned, input.execution, projectRoot);
   const wallClockMs = Math.round(performance.now() - wallStart);
   const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
   const warnings = modeWarnings(input.mode, projectRoot);
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`);
+  }
+  for (const r of results) {
+    if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
+  }
+  const runSlug = resolveRunSlug(input.specSlug);
+  if (runSlug.rejected) {
+    warnings.push(
+      slugRejection(
+        runSlug.rejected,
+        "wrote only `.marvin/task/verification.md`, no per-spec run."
+      )
+    );
   }
   const verdict = computeVerdict(results, warnings);
   const markdown = renderMarkdown({
@@ -33188,7 +33582,9 @@ ${plan}${warn2}`
     sumOfGatesMs
   });
   const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
-  const machine = JSON.stringify({
+  const runPath = input.write && runSlug.slug ? join(projectRoot, ".marvin", "task", "runs", `${runSlug.slug}.md`) : null;
+  const provenance = collectProvenance(projectRoot) ?? void 0;
+  const machine = formatVerifyBlock({
     verdict,
     gates: results.map((r) => ({
       name: r.name,
@@ -33200,16 +33596,19 @@ ${plan}${warn2}`
     warnings,
     wallClockMs,
     sumOfGatesMs,
-    artifactPath
+    artifactPath,
+    provenance
   });
   const fullText = `${markdown}
 
-\`\`\`json verify-result
-${machine}
-\`\`\``;
+${machine}`;
   if (input.write && artifactPath) {
     mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(artifactPath, fullText, "utf8");
+    if (runPath) {
+      mkdirSync(dirname(runPath), { recursive: true });
+      writeFileSync(runPath, fullText, "utf8");
+    }
   }
   return {
     content: [{ type: "text", text: fullText }],
@@ -33316,55 +33715,124 @@ function detectMakefile(projectRoot) {
   }
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
-async function executeGates(gates, execution, cwd) {
+async function executeGates(planned, execution, cwd) {
   if (execution === "parallel") {
-    const settled = await Promise.allSettled(gates.map((g) => runGate(g, cwd)));
+    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
     return settled.map(
-      (s, i) => s.status === "fulfilled" ? s.value : crashResult(gates[i], s.reason)
+      (s, i) => s.status === "fulfilled" ? s.value : crashResult(planned[i].gate, s.reason)
     );
   }
   const results = [];
-  for (const g of gates) {
+  for (const p of planned) {
     let r;
     try {
-      r = await runGate(g, cwd);
+      r = await runGate(p, cwd);
     } catch (err3) {
-      r = crashResult(g, err3);
+      r = crashResult(p.gate, err3);
     }
     results.push(r);
-    if (execution === "fail-fast" && r.status !== "pass") break;
+    if (execution === "fail-fast" && r.status !== "pass" && r.status !== "not-run") break;
   }
   return results;
 }
-function runGate(gate, cwd) {
+var SHELL_METACHARACTERS2 = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
+var ABSTAIN = { kind: "abstain" };
+function planGates(gates, cwd) {
+  const byToken = /* @__PURE__ */ new Map();
+  return gates.map((gate) => {
+    if (SHELL_METACHARACTERS2.test(gate.command)) return { gate, probe: ABSTAIN };
+    const token = gate.command.trim().split(/\s+/)[0];
+    if (!token) return { gate, probe: ABSTAIN };
+    let probe = byToken.get(token);
+    if (!probe) {
+      probe = probeToken(token, cwd);
+      byToken.set(token, probe);
+    }
+    return { gate, probe };
+  });
+}
+function probeToken(token, cwd) {
+  const probe = spawnSync("sh", ["-c", `command -v -- ${token}`], { cwd, encoding: "utf8" });
+  if (probe.error || probe.status === null) return ABSTAIN;
+  return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
+}
+function notRunWarning(gate, token) {
+  return `gate not run: \`${gate}\` \u2014 \`${token ?? "the gate command"}\` is not on PATH (install it, or pin a different command in \`.marvin/config.json\`)`;
+}
+var NOT_RUN_WARNING_PREFIX = "gate not run:";
+function spawnCommand(command, cwd) {
+  const start = performance.now();
+  const since = () => Math.round(performance.now() - start);
+  const asError = (err3) => err3 instanceof Error ? err3 : new Error(String(err3));
   return new Promise((resolve) => {
-    const start = performance.now();
-    const child = spawn(gate.command, { cwd, shell: true });
+    let child;
+    try {
+      child = spawn(command, { cwd, shell: true });
+    } catch (err3) {
+      resolve({
+        code: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        durationMs: since(),
+        error: asError(err3)
+      });
+      return;
+    }
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const settle = (o) => {
+      if (settled) return;
+      settled = true;
+      resolve(o);
+    };
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (d) => stdout += d);
     child.stderr?.on("data", (d) => stderr += d);
-    child.on("error", (err3) => {
-      resolve(crashResult(gate, err3, Math.round(performance.now() - start)));
-    });
-    child.on("close", (code, signal) => {
-      const durationMs = Math.round(performance.now() - start);
-      const status = code === 0 ? "pass" : code === null ? "error" : "fail";
-      const tail = (stderr || stdout).trim().split("\n").slice(-12).join("\n");
-      const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${signal})` : `exit ${code}`;
-      resolve({
-        name: gate.name,
-        command: gate.command,
-        status,
-        code,
-        durationMs,
-        summary,
-        details: tail
-      });
-    });
+    child.on(
+      "error",
+      (err3) => settle({ code: null, signal: null, stdout, stderr, durationMs: since(), error: err3 })
+    );
+    child.on(
+      "close",
+      (code, signal) => settle({ code, signal, stdout, stderr, durationMs: since() })
+    );
   });
+}
+function classifyExit(code, signal) {
+  if (code === 0) return "pass";
+  if (code === null || signal !== null) return "error";
+  return "fail";
+}
+async function runGate({ gate, probe }, cwd) {
+  if (probe.kind === "missing") {
+    return {
+      name: gate.name,
+      command: gate.command,
+      status: "not-run",
+      code: null,
+      durationMs: 0,
+      summary: `not run \u2014 \`${probe.token}\` is not on PATH`,
+      details: "",
+      missingToken: probe.token
+    };
+  }
+  const out = await spawnCommand(gate.command, cwd);
+  if (out.error) return crashResult(gate, out.error, out.durationMs);
+  const status = classifyExit(out.code, out.signal);
+  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
+  return {
+    name: gate.name,
+    command: gate.command,
+    status,
+    code: out.code,
+    durationMs: out.durationMs,
+    summary,
+    details: tail
+  };
 }
 function crashResult(gate, reason, durationMs = 0) {
   return {
@@ -33390,24 +33858,221 @@ function modeWarnings(mode, cwd) {
   return [];
 }
 function changedFiles(cwd) {
+  const diff = diffAgainstHead(cwd, { format: "name-only" });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(cwd) ?? [];
+  return [...diff.split("\n"), ...untracked].map((s) => s.trim()).filter(Boolean);
+}
+function computeVerdict(results, warnings) {
+  if (results.some((r) => r.status !== "pass" && r.status !== "not-run")) return "FAIL";
+  if (warnings.length > 0) return "PASS WITH WARNINGS";
+  return "PASS";
+}
+var SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function resolveRunSlug(specSlug) {
+  if (specSlug === void 0) return { slug: null };
+  const slug = specSlug.trim();
+  if (SLUG_RE.test(slug)) return { slug };
+  return { slug: null, rejected: slug };
+}
+function slugRejection(rejected, consequence) {
+  return `\`specSlug\` \`${rejected}\` is not kebab-case \u2014 ${consequence}`;
+}
+function findSpec(slug, projectRoot) {
+  for (const dir of SPEC_DIRS) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function runsDirOf(projectRoot) {
+  return join(projectRoot, ".marvin", "task", "runs");
+}
+function readSealedSpec(slug, projectRoot) {
+  const path = findSpec(slug, projectRoot);
+  if (!path) {
+    return { error: `No spec found for slug \`${slug}\` under ${SPEC_DIRS.join(", ")}.` };
+  }
+  let raw;
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], { cwd, encoding: "utf8" });
-    if (diff.status !== 0) return null;
-    const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
-      cwd,
-      encoding: "utf8"
-    });
-    const lines = `${diff.stdout || ""}
-${untracked.status === 0 ? untracked.stdout || "" : ""}`;
-    return lines.split("\n").map((s) => s.trim()).filter(Boolean);
+    raw = readFileSync(path, "utf8");
+  } catch (err3) {
+    return { error: `could not read \`${path}\`: ${err3 instanceof Error ? err3.message : err3}` };
+  }
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const blockText = extractContractBlock(body);
+  if (!blockText) {
+    return { error: `\`${path}\` has no \`\`\`yaml spec-contract block \u2014 nothing to run.` };
+  }
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const actual = contractHash(blockText);
+  if (!stamped) {
+    return {
+      error: `spec \`${slug}\` is UNSEALED \u2014 its frontmatter carries no \`contract_sha\`, so a run has no key to be journalled against and every unsealed spec would share one proof namespace. Seal it first (/marvin:task-start's seal step, \`spec\` with \`mode: "seal"\`; the current block hash is ${actual}), then re-run.`
+    };
+  }
+  if (stamped !== actual) {
+    return {
+      error: `spec \`${slug}\` has been edited since it was sealed \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+  } catch (err3) {
+    return {
+      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
+    };
+  }
+  if (!parsed.success) {
+    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
+  }
+  return {
+    slug,
+    path,
+    type: (frontmatter.type ?? "").trim(),
+    contractSha: actual,
+    criteria: parsed.data.criteria
+  };
+}
+function testFileHash(projectRoot, file) {
+  if (!file) return null;
+  const abs = join(projectRoot, file);
+  if (!existsSync(abs)) return null;
+  try {
+    return createHash("sha256").update(readFileSync(abs)).digest("hex").slice(0, 16);
   } catch {
     return null;
   }
 }
-function computeVerdict(results, warnings) {
-  if (results.some((r) => r.status !== "pass")) return "FAIL";
-  if (warnings.length > 0) return "PASS WITH WARNINGS";
-  return "PASS";
+function unambiguousStack(input, projectRoot) {
+  if (input.stack) return input.stack;
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  return matched.length === 1 ? matched[0].id : void 0;
+}
+async function runOracles(projectRoot, input, env2) {
+  const { slug, rejected } = resolveRunSlug(input.specSlug);
+  if (!slug) {
+    return errText(
+      `\`action: "oracles"\` needs a kebab-case \`specSlug\` naming the sealed spec to run.` + (rejected ? ` ${slugRejection(rejected, "nothing was run and nothing was journalled.")}` : "")
+    );
+  }
+  const spec = readSealedSpec(slug, projectRoot);
+  if ("error" in spec) return errText(spec.error);
+  const wanted = input.criteria?.map((c) => c.trim().toLowerCase());
+  const selected = spec.criteria.filter((c) => !wanted || wanted.includes(c.id.toLowerCase()));
+  if (selected.length === 0) {
+    return errText(
+      `No criterion in \`${slug}\` matched \`criteria\` (${input.criteria?.join(", ")}). The spec declares ${spec.criteria.map((c) => c.id).join(", ")}.`
+    );
+  }
+  const runnable = selected.filter((c) => c.oracle.kind !== "prose-review");
+  const skipped = selected.filter((c) => c.oracle.kind === "prose-review").map((c) => c.id);
+  const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env2.configPath;
+  const { config: config2 } = loadConfig(configPath);
+  const testOne = config2.gates?.test_one;
+  const stack = unambiguousStack(input, projectRoot);
+  const head = headSha(projectRoot);
+  const runsDir = runsDirOf(projectRoot);
+  const entries = [];
+  for (const criterion of runnable) {
+    const resolved = resolveOracleCommand(criterion, {
+      call: input.command,
+      testOne,
+      stack});
+    const file = oracleTestFile(criterion);
+    const base = {
+      slug,
+      contract_sha: spec.contractSha,
+      criterion: criterion.id,
+      expect: input.expect,
+      test_file: file,
+      test_sha: testFileHash(projectRoot, file),
+      head_sha: head,
+      ran_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (resolved.command === null) {
+      entries.push({
+        ...base,
+        status: "not-run",
+        command: null,
+        source: null,
+        reason: resolved.reason,
+        code: null,
+        signal: null
+      });
+      continue;
+    }
+    const out = await spawnCommand(resolved.command, projectRoot);
+    const shared = {
+      ...base,
+      command: resolved.command,
+      source: resolved.source,
+      durationMs: out.durationMs
+    };
+    if (out.error) {
+      entries.push({
+        ...shared,
+        status: "not-run",
+        reason: `launch-failed: ${out.error.message}`,
+        code: null,
+        signal: null
+      });
+      continue;
+    }
+    const classified = classifyExit(out.code, out.signal);
+    entries.push({
+      ...shared,
+      status: classified === "error" ? "not-run" : classified,
+      ...classified === "error" ? { reason: `signal-killed: ${out.signal ?? "unknown"}` } : {},
+      code: out.code,
+      signal: out.signal
+    });
+  }
+  for (const entry of entries) recordOracleRun(runsDir, entry);
+  const journal = oracleJournalPath(runsDir, slug);
+  const icon = (s) => s === "pass" ? "\u2705" : s === "fail" ? "\u274C" : "\u26AA";
+  const md = [
+    `# Acceptance Oracles \u2014 ${slug}`,
+    ``,
+    `**Contract:** \`${spec.contractSha}\` \xB7 **Phase:** expect ${input.expect} \xB7 **Journal:** \`${journal}\``,
+    ``,
+    ...entries.map(
+      (e) => `- ${icon(e.status)} **${e.criterion}** \u2014 ${e.status}` + (e.command ? ` \xB7 \`${e.command}\` (${e.source})` : "") + (e.reason ? ` \xB7 ${e.reason}` : "")
+    ),
+    ...entries.length ? [] : ["_no runnable criterion selected_"],
+    ...skipped.length ? ["", `Skipped (prose-review): ${skipped.join(", ")}.`] : [],
+    ``
+  ].join("\n");
+  const machine = JSON.stringify({
+    slug,
+    contract_sha: spec.contractSha,
+    expect: input.expect,
+    journal,
+    runs: entries
+  });
+  return {
+    content: [{ type: "text", text: `${md}
+\`\`\`json oracle-result
+${machine}
+\`\`\`` }]
+  };
+}
+function redGreenStatus(projectRoot, specSlug) {
+  const none = { status: "unknown", unproven: [] };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot);
+  if ("error" in spec) return none;
+  if (spec.type !== "bugfix") return none;
+  const regression = spec.criteria.filter((c) => c.regression === true);
+  if (regression.length === 0) return none;
+  const runs = readOracleRuns(runsDirOf(projectRoot), slug);
+  const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
+  return { status: unproven.length ? "missing" : "proven", unproven };
+}
+function errText(text) {
+  return { content: [{ type: "text", text }], isError: true };
 }
 function renderMarkdown(o) {
   const section = (title, n) => {
@@ -33449,10 +34114,18 @@ ${body}`;
     ``
   ].join("\n");
 }
-function deliverGate(projectRoot) {
-  const artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
+function deliverGate(projectRoot, opts) {
+  const { allowStale } = opts;
+  const globalPath = join(projectRoot, ".marvin", "task", "verification.md");
+  const { slug, rejected } = resolveRunSlug(opts.specSlug);
+  const runPath = slug ? join(projectRoot, ".marvin", "task", "runs", `${slug}.md`) : null;
+  const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
+  const redGreen = redGreenStatus(projectRoot, opts.specSlug);
+  const extras = { artifactPath, allowStale, redGreen: redGreen.status };
+  const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
+  const decide = (decision, verdict2, reason, extra = extras) => gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
   if (!existsSync(artifactPath)) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       "no verification.md found \u2014 run /marvin:task-verify before delivering"
@@ -33462,58 +34135,96 @@ function deliverGate(projectRoot) {
   try {
     text = readFileSync(artifactPath, "utf8");
   } catch (err3) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       `could not read verification.md: ${err3 instanceof Error ? err3.message : String(err3)}`
     );
   }
-  const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) {
-    return gateResult(
+  const parse4 = parseVerifyBlock(text);
+  if (parse4.kind === "none") {
+    return decide(
       "BLOCK",
       null,
       "verification.md has no machine-readable verify-result block \u2014 re-run /marvin:task-verify"
     );
   }
-  let verdict;
-  try {
-    verdict = JSON.parse(m[1]).verdict;
-  } catch {
-    return gateResult(
-      "BLOCK",
-      null,
-      "verify-result block is not valid JSON \u2014 re-run /marvin:task-verify"
-    );
+  if (parse4.kind === "invalid") {
+    return decide("BLOCK", null, `${parse4.reason} \u2014 re-run /marvin:task-verify`);
   }
-  if (verdict === "PASS") return gateResult("ALLOW", "PASS", "verification passed");
-  if (verdict === "PASS WITH WARNINGS") {
-    return gateResult(
-      "ALLOW",
-      "PASS WITH WARNINGS",
-      "verification passed with warnings \u2014 review them before delivering"
-    );
-  }
+  const verdict = parse4.result.verdict;
   if (verdict === "FAIL") {
-    return gateResult(
+    return decide(
       "BLOCK",
       "FAIL",
       "verification FAILED \u2014 fix the failing gates and re-run /marvin:task-verify"
     );
   }
-  return gateResult(
-    "BLOCK",
-    typeof verdict === "string" ? verdict : null,
-    "unrecognised verdict \u2014 re-run /marvin:task-verify"
-  );
+  if (verdict !== "PASS" && verdict !== "PASS WITH WARNINGS") {
+    return decide(
+      "BLOCK",
+      typeof verdict === "string" ? verdict : null,
+      "unrecognised verdict \u2014 re-run /marvin:task-verify"
+    );
+  }
+  const noEvidence = noEvidenceRefusal(parse4.result.gates, parse4.result.warnings ?? []);
+  if (noEvidence) return decide("BLOCK", verdict, noEvidence);
+  const recorded = parse4.result.provenance;
+  const staleness = recorded ? classifyStaleness(recorded, collectProvenance(projectRoot)) : "unknown";
+  const base = verdict === "PASS" ? "verification passed" : "verification passed with warnings \u2014 review them before delivering";
+  const notRun = quoteNotRunWarnings(parse4.result.warnings ?? []);
+  if (staleness === "stale" && !allowStale) {
+    return decide(
+      "BLOCK",
+      verdict,
+      `the recorded verification no longer describes this working tree \u2014 verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`. Re-run /marvin:task-verify, or deliver with allowStale: true after an explicit decision.`,
+      { ...extras, staleness }
+    );
+  }
+  const freshness = staleness === "fresh" ? " \xB7 the evidence matches this working tree" : staleness === "stale" ? ` \xB7 STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`)` : " \xB7 freshness not checked (this run recorded no provenance)";
+  const redGreenNote = redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
+  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}`, {
+    ...extras,
+    staleness
+  });
 }
-function gateResult(decision, verdict, reason) {
-  const machine = JSON.stringify({ decision, verdict, reason });
+function noEvidenceRefusal(gates, warnings) {
+  if (gates.length === 0) return null;
+  const notRun = (g) => g.status === "not-run";
+  const testGates = gates.filter((g) => g.name === "test");
+  const quoted = quoteNotRunWarnings(warnings);
+  if (testGates.length > 0 && testGates.every(notRun)) {
+    return `no test evidence \u2014 every recorded \`test\` gate was not run${quoted}. Install the test runner (or pin one in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
+  }
+  if (gates.every(notRun)) {
+    return `no evidence \u2014 every recorded gate was not run${quoted}. Install the missing tooling (or pin gate commands in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
+  }
+  return null;
+}
+function quoteNotRunWarnings(warnings) {
+  const relevant = warnings.filter((w) => w.startsWith(NOT_RUN_WARNING_PREFIX));
+  return relevant.length ? ` \u2014 ${relevant.join("; ")}` : "";
+}
+function gateResult(decision, verdict, reason, extras) {
+  const staleness = extras.staleness ?? "unknown";
+  const redGreen = extras.redGreen ?? "unknown";
+  const machine = JSON.stringify({
+    decision,
+    verdict,
+    reason,
+    staleness,
+    red_green: redGreen,
+    artifactPath: extras.artifactPath,
+    allowStale: extras.allowStale
+  });
   const md = [
     `# Delivery Gate`,
     ``,
     `**Decision:** ${decision}`,
     `**Verdict:** ${verdict ?? "\u2014"}`,
+    `**Freshness:** ${staleness}`,
+    `**Red-green:** ${redGreen}`,
+    `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
     ``
   ].join("\n");
@@ -33530,70 +34241,7 @@ function ok3(text) {
 }
 
 // src/tools/spec.ts
-var import_yaml2 = __toESM(require_dist2());
-var ID_FILE = /^F\d+$/i;
-var ID_AC = /^AC\d+$/i;
-var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
-var FileRow = external_exports.object({
-  id: external_exports.string().regex(ID_FILE, "file id must look like F1, F2, \u2026"),
-  path: external_exports.string().min(1),
-  action: external_exports.enum(["new", "edit", "delete"]),
-  intent: external_exports.string().optional(),
-  satisfies: RefList.optional(),
-  anchor: external_exports.string().optional()
-});
-var Oracle = external_exports.object({
-  kind: external_exports.enum(["test", "command", "prose-review"]),
-  ref: external_exports.string().optional()
-});
-var Criterion = external_exports.object({
-  id: external_exports.string().regex(ID_AC, "criterion id must look like AC1, AC2, \u2026"),
-  statement: external_exports.string().min(1),
-  implemented_by: RefList,
-  oracle: Oracle,
-  failure: external_exports.string().optional(),
-  regression: external_exports.boolean().optional()
-});
-var ContractObj = external_exports.object({
-  kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
-  signature: external_exports.string().optional()
-});
-var SpecContract = external_exports.object({
-  files: external_exports.array(FileRow).min(1),
-  build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
-  contract: ContractObj.optional(),
-  criteria: external_exports.array(Criterion).min(1),
-  depends_on: external_exports.array(external_exports.string()).optional()
-});
-var HostBindings = external_exports.object({
-  spec_location: external_exports.string().optional(),
-  decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
-  merge_obligations: external_exports.array(external_exports.string()).optional(),
-  gates: external_exports.record(external_exports.string()).optional()
-}).passthrough();
-function extractContractBlock(body) {
-  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
-function extractHostBindings(body) {
-  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
-}
-var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
-function resolveSpecBySlug(dir, slug, projectRoot) {
-  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
-  if (!existsSync(abs)) return null;
-  const exact = `${slug}.md`;
-  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
-  let fallback = null;
-  for (const entry of readdirSync(abs).sort()) {
-    if (entry === exact) return join(abs, entry);
-    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
-  }
-  return fallback;
-}
-
-// src/tools/spec.ts
+var import_yaml3 = __toESM(require_dist2());
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
@@ -33748,7 +34396,7 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   }
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(blockText);
+    doc = (0, import_yaml3.parse)(blockText);
   } catch (err3) {
     return result("FAIL", type, [
       fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err3)}`)
@@ -33939,7 +34587,7 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   }
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(blockText);
+    doc = (0, import_yaml3.parse)(blockText);
   } catch (err3) {
     return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err3)}`)];
   }
@@ -33968,7 +34616,7 @@ function checkHostBindings(body) {
   if (text === null) return { checks: [], specLocation: void 0 };
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(text);
+    doc = (0, import_yaml3.parse)(text);
   } catch (err3) {
     return {
       checks: [
@@ -34320,9 +34968,6 @@ function computeVerdict2(checks) {
   if (checks.some((c) => c.status === "warn")) return "PASS WITH WARNINGS";
   return "PASS";
 }
-function contractHash(blockText) {
-  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
-}
 function result(verdict, type, checks, contractSha = null) {
   const icon = (s) => s === "pass" ? "\u2705" : s === "warn" ? "\u26A0\uFE0F" : "\u274C";
   const lines = [
@@ -34621,7 +35266,7 @@ function continuePromptFor(h) {
 }
 
 // src/tools/summary.ts
-var import_yaml3 = __toESM(require_dist2());
+var import_yaml4 = __toESM(require_dist2());
 var SummaryInput = external_exports.object({
   slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
@@ -34653,8 +35298,13 @@ function runSummary(env2, config2, input) {
   const slug = frontmatter.slug?.trim() || basenameSlug(specPath);
   const contract = parseSpecContract(body);
   const hostBindings = parseHostBindings(body);
-  const verify = readVerifyResult(projectRoot);
-  const acceptance = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
+  const verification = readVerifyResult(projectRoot, slug);
+  const verify = verification.parse.kind === "ok" ? verification.parse.result : null;
+  const seal = contractJoinKey(body, frontmatter);
+  const proofs = latestRunsByCriterion(projectRoot, slug, seal.key);
+  const acceptance = (contract?.criteria ?? []).map(
+    (cr) => toAcOutcome(cr, proofs.get(cr.id) ?? null)
+  );
   const gates = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config2.base_branch);
   const lessons = searchLessons(env2.memoryDir, { query: slug, limit: 10 }).map(
@@ -34675,7 +35325,7 @@ function runSummary(env2, config2, input) {
     links
   };
   return {
-    content: [{ type: "text", text: render(summary, verify) }],
+    content: [{ type: "text", text: render(summary, verification, seal.note) }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the task-summary view (#3).
     structuredContent: summary
   };
@@ -34704,7 +35354,7 @@ function parseSpecContract(body) {
   const block = extractContractBlock(body);
   if (!block) return null;
   try {
-    const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
+    const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -34714,41 +35364,71 @@ function parseHostBindings(body) {
   const text = extractHostBindings(body);
   if (!text) return null;
   try {
-    const parsed = HostBindings.safeParse((0, import_yaml3.parse)(text));
+    const parsed = HostBindings.safeParse((0, import_yaml4.parse)(text));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
 }
-function readVerifyResult(projectRoot) {
-  const path = join(projectRoot, ".marvin", "task", "verification.md");
-  if (!existsSync(path)) return null;
-  const m = readFileSync(path, "utf8").match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) return null;
-  try {
-    const parsed = JSON.parse(m[1]);
-    return { verdict: parsed.verdict, gates: parsed.gates ?? [] };
-  } catch {
-    return null;
+var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function readVerifyResult(projectRoot, slug) {
+  const taskDir = join(projectRoot, ".marvin", "task");
+  const candidates = [];
+  if (SLUG_RE2.test(slug)) {
+    candidates.push([join(taskDir, "runs", `${slug}.md`), `.marvin/task/runs/${slug}.md`]);
   }
+  candidates.push([join(taskDir, "verification.md"), ".marvin/task/verification.md"]);
+  for (const [abs, rel] of candidates) {
+    if (!existsSync(abs)) continue;
+    return { parse: parseVerifyBlock(readFileSync(abs, "utf8")), path: rel };
+  }
+  return { parse: { kind: "none" }, path: null };
 }
-function toAcOutcome(cr, verify) {
+function contractJoinKey(body, frontmatter) {
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const blockText = extractContractBlock(body);
+  if (!stamped || !blockText) return { key: null, note: null };
+  const actual = contractHash(blockText);
+  if (actual !== stamped) {
+    return {
+      key: null,
+      note: `\u26A0\uFE0F The spec-contract has been EDITED SINCE IT WAS SEALED \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Recorded runs prove the superseded contract, so no criterion below can claim one and every outcome reads \`unknown\`. Re-seal the spec deliberately (\`spec\` with \`mode: "seal"\`) and re-run the oracles.`
+    };
+  }
+  return { key: actual, note: null };
+}
+function latestRunsByCriterion(projectRoot, slug, contractSha) {
+  const sha = contractSha?.trim();
+  const runs = /* @__PURE__ */ new Map();
+  if (!sha || !SLUG_RE2.test(slug)) return runs;
+  for (const run2 of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
+    if (run2.contract_sha !== sha) continue;
+    runs.set(run2.criterion, run2);
+  }
+  return runs;
+}
+function toAcOutcome(cr, run2) {
   const base = {
     id: cr.id,
     statement: cr.statement,
     oracle_kind: cr.oracle.kind,
     ...cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}
   };
-  const passed = verify?.verdict === "PASS" || verify?.verdict === "PASS WITH WARNINGS";
-  const real = cr.oracle.kind === "test" || cr.oracle.kind === "command";
-  return { ...base, outcome: passed && real ? "pass" : "unknown" };
+  return { ...base, outcome: recordedOutcome(run2) };
+}
+function recordedOutcome(run2) {
+  if (!run2 || run2.expect !== "pass") return "unknown";
+  if (run2.status === "pass") return "pass";
+  if (run2.status === "fail") return "fail";
+  return "unknown";
 }
 function toGateOutcome(g) {
-  const status = g.status === "pass" ? "pass" : "fail";
+  const status = g.status === "pass" ? "pass" : g.status === "not-run" || g.status === "skip" ? "skip" : "fail";
   return {
     name: g.name,
     status,
-    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {}
+    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {},
+    ...g.status === "not-run" ? { detail: "not run \u2014 binary not on PATH" } : {}
   };
 }
 function readCommits(projectRoot, base) {
@@ -34789,13 +35469,23 @@ function extractTitle2(body) {
   const m = body.match(/^#\s+(.+?)\s*$/m);
   return m ? m[1] : null;
 }
-function render(s, verify) {
+function verdictLabel(v) {
+  if (v.kind === "none") return "not run";
+  if (v.kind === "invalid") return "unreadable";
+  return v.result.verdict ?? "recorded, no verdict";
+}
+function render(s, verification, sealNote) {
   const acIcon = (o) => o === "pass" ? "\u2705" : o === "fail" ? "\u274C" : "\u26AA";
   const gateIcon = (st) => st === "pass" ? "\u2705" : st === "skip" ? "\u26AA" : "\u274C";
   const lines = [
     `# Task summary \u2014 ${s.title}`,
     "",
-    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status}${verify ? ` \xB7 **Verification:** ${verify.verdict}` : " \xB7 **Verification:** not run"}`,
+    // Name the artifact the gates were joined from: with a per-spec run beside a
+    // global verification.md, "PASS" alone does not say which run passed.
+    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status} \xB7 **Verification:** ${verdictLabel(
+      verification.parse
+    )}${verification.path ? ` (\`${verification.path}\`)` : ""}`,
+    ...sealNote ? ["", sealNote] : [],
     "",
     `## Acceptance (${s.acceptance.length})`,
     ...s.acceptance.length ? s.acceptance.map(
@@ -34909,7 +35599,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.14.1";
+var VERSION = "0.15.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

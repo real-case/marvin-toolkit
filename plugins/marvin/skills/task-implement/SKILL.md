@@ -166,10 +166,20 @@ From the spec's **Regression Test Specification** section:
 
 ### Step 6B: Verify the test fails
 
-Run only the new regression test. Detect the test runner from project config (see `skills/task-verify/SKILL.md` for stack → command mapping).
+Record the red phase with the `verify` tool on the `marvin` server, `action: "oracles"`, passing
+the spec's `specSlug`, `criteria: ["<the regression criterion's id>"]` and `expect: "fail"`. The
+tool resolves the criterion's oracle to a command, runs it, and appends the outcome to
+`.marvin/task/runs/<slug>.oracles.md` — do not detect the runner yourself, and do not run the test
+by hand (an unrecorded red is not a red as far as the delivery gate is concerned). Where the
+project's own single-test command needs declaring, that is `gates.test_one` in `.marvin/config.json`
+(see `skills/task-verify/SKILL.md` for the stack → command mapping the gates use).
 
-- **Fails** → expected. Continue.
-- **Passes** → the bug may already be fixed or the test is wrong. Record as `⚠️ SPEC GAP: regression test passes on unfixed code` and proceed cautiously — confirm with the user before continuing.
+- **`status: "fail"`** → expected, this is the red. Continue.
+- **`status: "pass"`** → the bug may already be fixed or the test is wrong. Record as `⚠️ SPEC GAP: regression test passes on unfixed code` and proceed cautiously — confirm with the user before continuing.
+- **`status: "not-run"`** → **neither a red nor a green.** The command could not be resolved, could
+  not be launched, or died on a signal; the `reason` field says which. Report it as `not-run` —
+  never as "the test failed" — and fix the cause (usually a missing `gates.test_one` or an `oracle.run`
+  on the criterion) before applying the fix, or the green phase has nothing to pair with.
 
 ### Step 7B: Apply the fix
 
@@ -179,10 +189,14 @@ Follow the spec's **Fix Approach** section. Rules:
 
 ### Step 8B: Verify the test passes
 
-Run the regression test again. It **must** pass now.
+Record the green phase the same way — `verify`, `action: "oracles"`, the same `specSlug` and
+`criteria`, with `expect: "pass"`. It **must** pass now. The two entries at one `contract_sha` over
+one unchanged test file are the pair `/marvin:task-deliver`'s gate reads as `red_green: "proven"`.
 
-- **Passes** → continue.
-- **Fails** → re-read the fix approach, adjust, retry under the **Fix-cycle protocol** — this is the
+- **`status: "pass"`** → continue.
+- **`status: "not-run"`** → still neither a red nor a green: nothing was proved and the pair is
+  incomplete. Resolve the `reason` and re-run this step; do not read it as a pass.
+- **`status: "fail"`** → re-read the fix approach, adjust, retry under the **Fix-cycle protocol** — this is the
   red-green loop and its budget is its own. If it is still failing at the limit, stop and hand back
   to the user.
 

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -147,12 +148,15 @@ test("summary aggregates a spec into a TaskSummary structuredContent", async () 
     assert.equal(s.title, "Demo feature");
     assert.equal(s.status, "shipped");
 
-    // acceptance — conservative: test oracle on a PASS → pass; prose-review → unknown
+    // acceptance — a gate-level PASS is NOT a per-criterion proof (ADR-0036).
+    // Until 0.15.0 AC1 read `pass` here: a green suite promoted every
+    // test/command criterion, with no per-criterion evidence of any kind. There
+    // is no journal for this spec, so both criteria are `unknown`.
     assert.equal(s.acceptance.length, 2);
     const ac1 = s.acceptance.find((a) => a.id === "AC1");
     const ac2 = s.acceptance.find((a) => a.id === "AC2");
     assert.equal(ac1.oracle_kind, "test");
-    assert.equal(ac1.outcome, "pass");
+    assert.equal(ac1.outcome, "unknown", "a PASS verdict alone proves nothing about AC1");
     assert.equal(ac2.oracle_kind, "prose-review");
     assert.equal(ac2.outcome, "unknown", "prose-review is never auto-passed");
 
@@ -176,6 +180,314 @@ test("summary aggregates a spec into a TaskSummary structuredContent", async () 
     assert.equal(byKind.pr.url, PR_URL);
     assert.equal(byKind.tracker.url, "https://tracker.example/OSI-9");
     assert.equal(byKind.adr.ref, "docs/adr/0099-demo.md");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+// ── per-spec runs: the summary must join against ITS OWN run (ADR-0035) ─────
+
+/** A verify-result artifact with the given verdict and gates. */
+function verificationWith(verdict, gates) {
+  return [
+    "# Verification Report",
+    "",
+    `**Verdict:** ${verdict}`,
+    "",
+    "```json verify-result",
+    JSON.stringify({ verdict, gates }),
+    "```",
+    "",
+  ].join("\n");
+}
+
+test("summary joins against the per-spec run and falls back to the global artifact", async () => {
+  const repo = seedRepo();
+  const taskDir = join(repo, ".marvin", "task");
+  try {
+    // The global artifact belongs to a DIFFERENT spec's run — a red FAIL that
+    // has nothing to do with `demo`. This is the defect the per-spec run closes:
+    // before it, task-summary presented that foreign run as this task's own.
+    writeFileSync(
+      join(taskDir, "verification.md"),
+      verificationWith("FAIL", [{ name: "test", status: "fail", code: 1 }]),
+    );
+    mkdirSync(join(taskDir, "runs"), { recursive: true });
+    writeFileSync(
+      join(taskDir, "runs", "demo.md"),
+      verificationWith("PASS", [{ name: "test", status: "pass", code: 0 }]),
+    );
+
+    const own = await callSummary(repo, { slug: "demo" });
+    const ownText = own.content.map((c) => c.text).join("\n");
+    assert.deepEqual(
+      own.structuredContent.gates.map((g) => [g.name, g.status]),
+      [["test", "pass"]],
+      "the gate join comes from this spec's run, not the newest run in the project",
+    );
+    assert.equal(
+      own.structuredContent.acceptance.find((a) => a.id === "AC1").outcome,
+      "unknown",
+      "the acceptance join no longer reads the verdict at all — a PASS run is not an AC proof",
+    );
+    // The slug resolves by the spec's frontmatter `slug` — the same rule
+    // task-verify passes as specSlug, so writer and reader cannot disagree.
+    assert.match(ownText, /`\.marvin\/task\/runs\/demo\.md`/, "the text names the file it read");
+
+    // The slug is the FRONTMATTER slug, not the filename's — a spec whose file
+    // was renamed still resolves to the run its own frontmatter names, which is
+    // the rule /marvin:task-verify passes as specSlug.
+    writeFileSync(
+      join(taskDir, "002-a-different-filename.md"),
+      SPEC.replace("slug: demo", "slug: canonical-demo"),
+    );
+    writeFileSync(
+      join(taskDir, "runs", "canonical-demo.md"),
+      verificationWith("PASS WITH WARNINGS", [{ name: "lint", status: "pass", code: 0 }]),
+    );
+    const renamed = await callSummary(repo, {}); // no slug → the newest spec
+    assert.equal(renamed.structuredContent.slug, "canonical-demo");
+    assert.deepEqual(
+      renamed.structuredContent.gates.map((g) => g.name),
+      ["lint"],
+      "joined against runs/<frontmatter-slug>.md, not runs/<filename-slug>.md",
+    );
+    assert.match(
+      renamed.content.map((c) => c.text).join("\n"),
+      /`\.marvin\/task\/runs\/canonical-demo\.md`/,
+    );
+    rmSync(join(taskDir, "002-a-different-filename.md"), { force: true });
+
+    // With no per-spec run present, the global artifact is used exactly as before.
+    rmSync(join(taskDir, "runs"), { recursive: true, force: true });
+    const fallback = await callSummary(repo, { slug: "demo" });
+    assert.deepEqual(
+      fallback.structuredContent.gates.map((g) => [g.name, g.status]),
+      [["test", "fail"]],
+    );
+    assert.match(
+      fallback.content.map((c) => c.text).join("\n"),
+      /`\.marvin\/task\/verification\.md`/,
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("a not-run gate reaches the summary as skip under the unchanged GateOutcome schema", async () => {
+  const repo = seedRepo();
+  try {
+    writeFileSync(
+      join(repo, ".marvin", "task", "verification.md"),
+      verificationWith("PASS WITH WARNINGS", [
+        { name: "test", status: "pass", code: 0 },
+        { name: "lint", status: "not-run", code: null },
+      ]),
+    );
+    const result = await callSummary(repo, { slug: "demo" });
+    const gates = Object.fromEntries(result.structuredContent.gates.map((g) => [g.name, g.status]));
+    // `skip` is the member the contract, the widget and its committed fixtures
+    // already support — mapping to `fail` would show a red gate for a tool
+    // nobody installed, and extending the enum would cost nine baselines.
+    assert.deepEqual(gates, { test: "pass", lint: "skip" });
+
+    const { GateOutcome } = await import("@marvin-toolkit/mcp-shared/contracts");
+    for (const g of result.structuredContent.gates) {
+      assert.ok(GateOutcome.safeParse(g).success, `${g.name} validates unedited: ${g.status}`);
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("summary names the verification state rather than interpolating a missing verdict", async () => {
+  const repo = seedRepo();
+  const artifact = join(repo, ".marvin", "task", "verification.md");
+  const label = async () => {
+    const result = await callSummary(repo, { slug: "demo" });
+    const m = result.content
+      .map((c) => c.text)
+      .join("\n")
+      // The state, without the trailing "(`path`)" the header now also carries —
+      // naming the artifact read is orthogonal to naming the state (ADR-0035).
+      .match(/\*\*Verification:\*\* (.+?)(?: \(`|$)/m);
+    assert.ok(m, "the header line carries a verification state");
+    return m[1];
+  };
+  try {
+    writeFileSync(artifact, "# Verification\n\nProse only.\n");
+    assert.equal(await label(), "not run", "no block reads the same as no artifact");
+
+    writeFileSync(artifact, "# V\n\n```json verify-result\n{not json\n```\n");
+    assert.equal(await label(), "unreadable");
+
+    // A block with gates but no verdict: this is the case that used to print
+    // the literal word `undefined`, via an unchecked cast.
+    writeFileSync(artifact, '# V\n\n```json verify-result\n{"gates":[]}\n```\n');
+    assert.equal(await label(), "recorded, no verdict");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+// ── the acceptance join: recorded runs, not the gate verdict (ADR-0036) ─────
+
+/**
+ * The demo spec's REAL seal, computed here from the block by an independent
+ * reimplementation of `contractHash` — sha256 of the trimmed block text, first
+ * 16 hex — rather than imported from `storage/spec.ts`.
+ *
+ * It has to be the real hash: the summary recomputes the digest and joins on
+ * that, so an arbitrary stamp joins against nothing. Recomputing it here instead
+ * of importing the production function keeps the two sides independent — if
+ * either normalises its input differently, this fixture stops matching and every
+ * join test below fails, which is the point. Nothing else in this file compiles
+ * TypeScript, and adding an `importTs` call would put an esbuild bundle on the
+ * critical path of a suite that runs beside a wall-clock assertion.
+ */
+const SEALED_SHA = createHash("sha256")
+  .update(/```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(SPEC)[1].trim())
+  .digest("hex")
+  .slice(0, 16);
+
+/** `seedRepo`'s spec, re-stamped with its `contract_sha` so the journal has a
+ * key to join on. */
+function sealDemoSpec(repo, sha = SEALED_SHA) {
+  writeFileSync(
+    join(repo, ".marvin", "task", "001-demo.md"),
+    SPEC.replace("status: shipped", `status: shipped\ncontract_sha: ${sha}`),
+  );
+}
+
+/** Append `oracle-run` blocks to the demo spec's journal, in order. */
+function journal(repo, entries) {
+  const runsDir = join(repo, ".marvin", "task", "runs");
+  mkdirSync(runsDir, { recursive: true });
+  const blocks = entries
+    .map((e) =>
+      [
+        "```json oracle-run",
+        JSON.stringify({
+          slug: "demo",
+          contract_sha: SEALED_SHA,
+          criterion: "AC1",
+          expect: "pass",
+          status: "pass",
+          command: "sh t.sh",
+          source: "oracle.run",
+          code: 0,
+          signal: null,
+          test_file: "test/demo.test.ts",
+          test_sha: "1111111111111111",
+          head_sha: "abcdef1",
+          ran_at: "2026-08-13T10:00:00.000Z",
+          ...e,
+        }),
+        "```",
+        "",
+      ].join("\n"),
+    )
+    .join("\n");
+  writeFileSync(join(runsDir, "demo.oracles.md"), `# Oracle runs — demo\n\n${blocks}`);
+}
+
+const ac1Of = (result) => result.structuredContent.acceptance.find((a) => a.id === "AC1").outcome;
+
+test("a gate-level PASS no longer makes a criterion pass and a recorded run does", async () => {
+  const repo = seedRepo();
+  try {
+    sealDemoSpec(repo);
+
+    // 1. No journal, PASS verdict, `kind: test` oracle — the exact shape that
+    //    reported `pass` before this change, with nothing behind it.
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "unknown");
+
+    // 2. A recorded green: the one thing that earns a `pass`.
+    journal(repo, [{}]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "pass");
+
+    // 3. A red-only journal. The test failed before the fix, which says nothing
+    //    about whether the criterion now holds — an implementation abandoned
+    //    after step 6B looks exactly like this.
+    journal(repo, [{ expect: "fail", status: "fail", code: 1 }]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "unknown");
+
+    // 4. A green-phase run that exited non-zero: a recorded FAIL, and the first
+    //    per-criterion `fail` this tool has ever been able to state.
+    journal(repo, [{ status: "fail", code: 1 }]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "fail");
+
+    // 5. `not-run` — an unresolved command, a signal kill, a launch failure.
+    journal(repo, [{ status: "not-run", code: null, command: null, source: null }]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "unknown");
+
+    // 6. The newest entry decides: red, then green.
+    journal(repo, [{ expect: "fail", status: "fail", code: 1 }, {}]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "pass");
+
+    // 7. A journal recorded under a superseded contract changes nothing. The
+    //    seal is the join key: the AC1 that run proved is not the AC1 in force.
+    journal(repo, [{ contract_sha: "0000000000000000" }]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "unknown");
+
+    // 8. An UNSEALED spec has no key at all, so a journal cannot be read against
+    //    it — otherwise every unsealed spec would share one proof namespace.
+    journal(repo, [{}]);
+    writeFileSync(join(repo, ".marvin", "task", "001-demo.md"), SPEC); // no contract_sha
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "unknown");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("a spec amended after sealing joins nothing — the stamp alone is not the key", async () => {
+  const repo = seedRepo();
+  try {
+    sealDemoSpec(repo);
+    journal(repo, [{}]);
+    assert.equal(ac1Of(await callSummary(repo, { slug: "demo" })), "pass");
+
+    // Amend the sealed block and do NOT re-stamp. The frontmatter still carries
+    // the digest the journal was written against, so a join on the stamp as
+    // written still matches — and reports the old run's `pass` beside a
+    // statement that has since changed. Re-sealing is the case the stamp handles
+    // on its own; this is the other half, and it is the one a human reads.
+    writeFileSync(
+      join(repo, ".marvin", "task", "001-demo.md"),
+      SPEC.replace("status: shipped", `status: shipped\ncontract_sha: ${SEALED_SHA}`).replace(
+        "statement: It does the thing",
+        "statement: It does something else entirely",
+      ),
+    );
+    const amended = await callSummary(repo, { slug: "demo" });
+    assert.equal(ac1Of(amended), "unknown");
+    assert.match(
+      amended.content.map((c) => c.text).join("\n"),
+      /EDITED SINCE IT WAS SEALED/,
+      "every criterion going unknown at once must say why, or it reads as the feature being broken",
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("every emitted acceptance outcome is one of the three AcOutcome values", async () => {
+  const repo = seedRepo();
+  try {
+    sealDemoSpec(repo);
+    journal(repo, [{}]);
+    const result = await callSummary(repo, { slug: "demo" });
+    const { AcOutcome } = await import("@marvin-toolkit/mcp-shared/contracts");
+    for (const ac of result.structuredContent.acceptance) {
+      assert.ok(
+        ["pass", "fail", "unknown"].includes(ac.outcome),
+        `${ac.id} emitted ${ac.outcome} — a fourth value is a shared-contract change (C2) the widget cannot style`,
+      );
+      assert.ok(
+        AcOutcome.safeParse(ac).success,
+        `${ac.id} validates against the unedited contract`,
+      );
+    }
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

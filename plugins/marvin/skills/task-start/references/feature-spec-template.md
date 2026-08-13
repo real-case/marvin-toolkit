@@ -63,6 +63,9 @@ criteria:
     oracle:
       kind: test            # test | command | prose-review
       ref: test/path.test.ts::the test name
+      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
+                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
+                            # per-stack default, then records `not-run` rather than guessing.
     failure: what the wrong behaviour looks like
   - id: AC2
     statement: <observable behaviour>

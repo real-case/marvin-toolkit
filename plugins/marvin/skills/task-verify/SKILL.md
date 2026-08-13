@@ -52,10 +52,13 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   `npm audit --audit-level=high`, `gitleaks detect`, `semgrep --config auto`. The four gate
   names are the complete set (a fifth key is stripped silently), so a scanner is chained onto
   a gate the project already runs — `"lint": "npm run lint && gitleaks detect"` — and the
-  chain reports one status for both commands. State the cost before recommending this: a
-  missing binary exits non-zero like any other failure, so a scanner in a committed config
-  produces a FAIL verdict and blocks `/marvin:task-deliver` for every contributor who has not
-  installed the tool. Marvin does not yet distinguish a missing tool from a failing one.
+  chain reports one status for both commands. State the cost before recommending this, and
+  state it accurately (ADR-0035): a **single simple command** whose binary is absent is
+  recorded `not-run` and only warns, so `"lint": "gitleaks detect"` no longer blocks a
+  contributor who has not installed the tool — but the **chained** form above is not covered
+  and still FAILs, because the check cannot answer for a chain. A `not-run` gate never makes
+  delivery easier: the delivery gate refuses outright, unwaivably, when every recorded `test`
+  gate was `not-run`, or when every recorded gate was.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
   every result at a single merge point, then computes one verdict. A failing gate never discards
   the others — every gate's result is recorded.
@@ -70,6 +73,14 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   user asks or the machine is resource-constrained. The default is parallel because the common
   PASS path is the largest single latency win.
 - `only`: e.g. `["test"]` — used by `/marvin:task-implement` for targeted retries; not normally set here.
+- `specSlug`: **pass it whenever a spec was resolved in Input.** The run is then also written to
+  `.marvin/task/runs/<slug>.md`, which is what lets `/marvin:task-summary` and the delivery gate
+  join against *this* task's verification instead of whichever run happened to be the project's
+  most recent. Resolve the slug by exactly one rule — the spec's frontmatter `slug`, and only if it
+  has none, its filename slug (the `<NNN>-` prefix stripped) — because that is the rule the readers
+  apply, and a second rule would silently point writer and reader at different files. Omit it
+  entirely in standalone mode; a slug that is not kebab-case is rejected with a warning, never
+  sanitised.
 
 If `verify` is unavailable, fall back to running the gates yourself: detect the stack from the
 config files above (plus `package.json` scripts, `Makefile` targets, or CI config), run each gate,

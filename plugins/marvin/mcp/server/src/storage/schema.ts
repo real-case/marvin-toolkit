@@ -137,6 +137,23 @@ export const GateCommands = z.object({
   lint: z.string().min(1).optional(),
   typecheck: z.string().min(1).optional(),
   build: z.string().min(1).optional(),
+  /**
+   * **Not a gate.** The template that runs ONE test — how a `kind: test`
+   * acceptance oracle resolves to a command (ADR-0036). It is never scheduled,
+   * never appears in a verdict and never reaches `verification.md`, and that is
+   * mechanical rather than a convention: all three gate paths
+   * (`gatesFromStacks`, `mergeConfigGates`, `gateSpecsFromConfig`) iterate the
+   * `GATE_NAMES` tuple, so a key outside that tuple is structurally unreachable
+   * as a gate. Leave those loops as they are.
+   *
+   * It must nonetheless be DECLARED here, because zod strips unknown keys
+   * silently — ADR-0009 records that as an accepted trade-off ("a typo
+   * (`tests:`) is stripped by the schema"). An undeclared `test_one` would
+   * vanish inside `loadConfig` with no error anywhere to observe.
+   *
+   * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
+   */
+  test_one: z.string().min(1).optional(),
 });
 export type GateCommands = z.infer<typeof GateCommands>;
 

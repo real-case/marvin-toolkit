@@ -14,6 +14,7 @@ import type {
 import {
   SpecContract,
   HostBindings,
+  contractHash,
   extractContractBlock,
   extractHostBindings,
   resolveSpecBySlug,
@@ -26,6 +27,8 @@ import { searchLessons } from "../storage/lessons.js";
 import { loadConfig, trackerUrl } from "../storage/config.js";
 import type { Config } from "../storage/schema.js";
 import { currentBranch, git, inGitRepo } from "../lib/git.js";
+import { parseVerifyBlock, type VerifyBlockParse, type VerifyGate } from "../lib/reports.js";
+import { readOracleRuns, type OracleRun } from "../storage/oracles.js";
 import type { ServerEnv } from "../lib/env.js";
 import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
 
@@ -37,11 +40,22 @@ import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
  * re-parsed: criteria come from the shared spec-contract schema, gates from the
  * machine-readable `verify-result` block (persisted by the `verify` tool).
  *
- * Per-AC `outcome` is deliberately conservative — verify reports gate-level
- * results, not per-criterion, so a criterion is "pass" only when verification
- * passed AND its oracle is a real (test/command) proof; everything else
- * (prose-review oracle, a FAIL verdict, or no verification) is "unknown". The
- * summary never fabricates a per-AC pass/fail it cannot prove.
+ * Per-AC `outcome` is a JOIN AGAINST THE ORACLE JOURNAL, never an inference from
+ * the gate-level verdict (ADR-0036). Until 0.15.0 this function read
+ * `passed && real ? "pass" : "unknown"` — a green suite promoted every
+ * test/command criterion to `pass` with no per-criterion evidence of any kind,
+ * including a criterion whose test was never written. The comment here claimed
+ * the opposite, which is how the wrong invariant survived.
+ *
+ * What it does now: read `.marvin/task/runs/<slug>.oracles.md`, keep only the
+ * entries recorded at the spec's CURRENT `contract_sha` — recomputed from the
+ * block rather than read off the stamp, so an amendment that was never re-sealed
+ * cannot hand an old proof to a new statement — and let the newest entry for a
+ * criterion decide — a recorded green is `pass`, a recorded
+ * `expect: pass` run that exited non-zero is `fail`. A red-only entry, a
+ * `not-run` entry, an unsealed spec and an absent journal are all `unknown`, and
+ * the verify verdict does not participate at all. The visible effect is MORE
+ * `unknown` than before, and every remaining `pass` names a run that proves it.
  */
 
 const SummaryInput = z.object({
@@ -54,11 +68,6 @@ const SummaryInput = z.object({
     .optional()
     .describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
 });
-
-interface VerifyResult {
-  verdict: string;
-  gates: Array<{ name: string; status: string; code: number | null }>;
-}
 
 export function buildSummaryTool(env: ServerEnv): AnyToolDef {
   return defineTool({
@@ -100,9 +109,20 @@ function runSummary(
   const slug = frontmatter.slug?.trim() || basenameSlug(specPath);
   const contract = parseSpecContract(body);
   const hostBindings = parseHostBindings(body);
-  const verify = readVerifyResult(projectRoot);
+  const verification = readVerifyResult(projectRoot, slug);
+  // The joins below need the payload or nothing; only the text fallback cares
+  // which of the two "nothing" cases it was.
+  const verify = verification.parse.kind === "ok" ? verification.parse.result : null;
 
-  const acceptance: AcOutcome[] = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
+  // The seal is the join key, RECOMPUTED rather than trusted as stamped: a run
+  // recorded against a contract that has since been amended proves nothing about
+  // the criteria in force now, and an amendment that was never re-sealed leaves
+  // the stamp — and so a stamp-only join — pointing at the superseded run.
+  const seal = contractJoinKey(body, frontmatter);
+  const proofs = latestRunsByCriterion(projectRoot, slug, seal.key);
+  const acceptance: AcOutcome[] = (contract?.criteria ?? []).map((cr) =>
+    toAcOutcome(cr, proofs.get(cr.id) ?? null),
+  );
   const gates: GateOutcome[] = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config.base_branch);
   const lessons: LessonRef[] = searchLessons(env.memoryDir, { query: slug, limit: 10 }).map(
@@ -125,7 +145,7 @@ function runSummary(
   };
 
   return {
-    content: [{ type: "text", text: render(summary, verify) }],
+    content: [{ type: "text", text: render(summary, verification, seal.note) }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the task-summary view (#3).
     structuredContent: summary,
   };
@@ -183,44 +203,162 @@ function parseHostBindings(body: string): HostBindings | null {
   }
 }
 
-/** Read the machine-readable verify-result block from verification.md. */
-function readVerifyResult(projectRoot: string): VerifyResult | null {
-  const path = join(projectRoot, ".marvin", "task", "verification.md");
-  if (!existsSync(path)) return null;
-  const m = readFileSync(path, "utf8").match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) return null;
-  try {
-    const parsed = JSON.parse(m[1]!) as VerifyResult;
-    return { verdict: parsed.verdict, gates: parsed.gates ?? [] };
-  } catch {
-    return null;
+/** The kebab-case rule `verify` validates `specSlug` against before writing. */
+const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+interface VerificationSource {
+  parse: VerifyBlockParse;
+  /** Project-relative path of the artifact actually read, or null when none was. */
+  path: string | null;
+}
+
+/**
+ * Read the machine-readable verify-result block through the shared codec,
+ * preferring **this spec's** run (`.marvin/task/runs/<slug>.md`) over the global
+ * `verification.md` (ADR-0035).
+ *
+ * The global artifact means "the most recent verification in this project,
+ * whatever spec it was for", so joining against it presented a foreign run as
+ * this task's own. Writer and reader resolve the slug by one rule — the spec's
+ * frontmatter `slug`, else its filename slug — so they cannot disagree about
+ * which file this is. A missing artifact is `none`, the same as a prose-only
+ * one: from here both mean "no verification to join against".
+ */
+function readVerifyResult(projectRoot: string, slug: string): VerificationSource {
+  const taskDir = join(projectRoot, ".marvin", "task");
+  const candidates: Array<[string, string]> = [];
+  if (SLUG_RE.test(slug)) {
+    candidates.push([join(taskDir, "runs", `${slug}.md`), `.marvin/task/runs/${slug}.md`]);
   }
+  candidates.push([join(taskDir, "verification.md"), ".marvin/task/verification.md"]);
+
+  for (const [abs, rel] of candidates) {
+    if (!existsSync(abs)) continue;
+    return { parse: parseVerifyBlock(readFileSync(abs, "utf8")), path: rel };
+  }
+  return { parse: { kind: "none" }, path: null };
 }
 
 // ── joins ────────────────────────────────────────────────────────────────────
 
-/** Conservative per-AC outcome: only "pass" with a real proof on a passing
- * verification; never a fabricated per-AC "fail". */
-function toAcOutcome(cr: Criterion, verify: VerifyResult | null): AcOutcome {
+/**
+ * The seal to join the journal on — **recomputed from the block, never taken on
+ * the stamp's word** — plus the note that explains a refusal to a human.
+ *
+ * Trusting `frontmatter.contract_sha` closes only half the case it was written
+ * for. A spec amended AND re-sealed moves the stamp, so the old entries fall out
+ * of the join on their own. A spec amended and NOT re-sealed keeps the stamp the
+ * journal was written against, so a stamp-only join hands the run that proved the
+ * OLD statement of AC3 to the NEW statement of AC3 and prints `pass` beside it.
+ * That is the one defect class this feature exists to remove, and the summary is
+ * the surface a human actually reads: `action: "oracles"` already refuses to run
+ * such a spec (`readSealedSpec`) and the DoR gate already flags it, so the check
+ * belongs here too rather than only where nobody is looking.
+ *
+ * Three outcomes: a matching stamp joins; a missing block or missing stamp joins
+ * against nothing, silently, because an unsealed spec never had proofs to begin
+ * with; a stamp that disagrees with the block joins against nothing AND says so,
+ * because every criterion going `unknown` at once is otherwise indistinguishable
+ * from the feature not working. The note is text-fallback only — `TaskSummary`
+ * is a shared contract with pinned widget baselines, and this is not a reason to
+ * move it.
+ */
+function contractJoinKey(
+  body: string,
+  frontmatter: Record<string, string>,
+): { key: string | null; note: string | null } {
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const blockText = extractContractBlock(body);
+  if (!stamped || !blockText) return { key: null, note: null };
+  const actual = contractHash(blockText);
+  if (actual !== stamped) {
+    return {
+      key: null,
+      note:
+        `⚠️ The spec-contract has been EDITED SINCE IT WAS SEALED — stamped \`${stamped}\`, the ` +
+        `block now hashes to \`${actual}\`. Recorded runs prove the superseded contract, so no ` +
+        `criterion below can claim one and every outcome reads \`unknown\`. Re-seal the spec ` +
+        `deliberately (\`spec\` with \`mode: "seal"\`) and re-run the oracles.`,
+    };
+  }
+  return { key: actual, note: null };
+}
+
+/**
+ * The newest journalled run per criterion, **filtered by the seal first**.
+ *
+ * The `contract_sha` is the join key, not the criterion id: a spec amended and
+ * re-sealed means the criterion AC3 that a run proved is not the criterion AC3
+ * in force now, so an entry recorded against another contract is dropped before
+ * anything reads it (ADR-0036). A null key — an unsealed spec, or one whose
+ * stamp no longer matches its block (`contractJoinKey`) — joins against nothing
+ * rather than against every unsealed spec's runs at once.
+ *
+ * `readOracleRuns` yields oldest-first, so a plain `set` per criterion leaves
+ * the newest entry in the map.
+ */
+function latestRunsByCriterion(
+  projectRoot: string,
+  slug: string,
+  contractSha: string | null,
+): Map<string, OracleRun> {
+  const sha = contractSha?.trim();
+  const runs = new Map<string, OracleRun>();
+  if (!sha || !SLUG_RE.test(slug)) return runs;
+  for (const run of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
+    if (run.contract_sha !== sha) continue;
+    runs.set(run.criterion, run);
+  }
+  return runs;
+}
+
+/**
+ * Per-AC outcome from the RECORDED run, never from the gate-level verdict.
+ *
+ * The verdict does not appear here at all, and that is the change (ADR-0036):
+ * the previous body was `passed && real ? "pass" : "unknown"`, which promoted a
+ * green suite to a per-criterion `pass` for every test/command oracle — a
+ * criterion whose test was never written included. Keeping it as a fallback
+ * would preserve exactly that claim behind a new feature.
+ *
+ * What earns a `pass` is a green phase that exited zero. A green phase that
+ * exited non-zero is a `fail`. Everything else is `unknown`: a red-only entry
+ * (`expect: "fail"` proves the test fails, not that the criterion holds), a
+ * `not-run` entry, an unsealed spec, a stale seal, and an absent journal.
+ */
+function toAcOutcome(cr: Criterion, run: OracleRun | null): AcOutcome {
   const base = {
     id: cr.id,
     statement: cr.statement,
     oracle_kind: cr.oracle.kind,
     ...(cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}),
   };
-  const passed = verify?.verdict === "PASS" || verify?.verdict === "PASS WITH WARNINGS";
-  const real = cr.oracle.kind === "test" || cr.oracle.kind === "command";
-  return { ...base, outcome: passed && real ? "pass" : "unknown" };
+  return { ...base, outcome: recordedOutcome(run) };
 }
 
-function toGateOutcome(g: { name: string; status: string; code: number | null }): GateOutcome {
-  const status = g.status === "pass" ? "pass" : "fail";
+function recordedOutcome(run: OracleRun | null): AcOutcome["outcome"] {
+  if (!run || run.expect !== "pass") return "unknown";
+  if (run.status === "pass") return "pass";
+  if (run.status === "fail") return "fail";
+  return "unknown"; // not-run — an unresolved command, a signal kill, a launch failure
+}
+
+/**
+ * `not-run` (a gate whose binary was absent, ADR-0035) and `skip` both map to
+ * the `skip` member the `GateOutcome` contract, the widget and its committed
+ * fixtures already support — no schema edit, no baseline refresh. Mapping them
+ * to `fail` would show a red gate for a tool nobody installed.
+ */
+function toGateOutcome(g: VerifyGate): GateOutcome {
+  const status =
+    g.status === "pass" ? "pass" : g.status === "not-run" || g.status === "skip" ? "skip" : "fail";
   return {
     name: g.name as GateOutcome["name"],
     status,
     ...(status === "fail"
       ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` }
       : {}),
+    ...(g.status === "not-run" ? { detail: "not run — binary not on PATH" } : {}),
   };
 }
 
@@ -283,15 +421,31 @@ function extractTitle(body: string): string | null {
 
 // ── text fallback ────────────────────────────────────────────────────────────
 
-function render(s: TaskSummary, verify: VerifyResult | null): string {
+/**
+ * Four states, one of which used to print the word `undefined`: before the
+ * parser was unified, any JSON that survived `JSON.parse` was cast to a verdict
+ * and interpolated unchecked. A block that is present but unusable now says so
+ * instead of impersonating a verdict — a text-fallback change only; the widget
+ * payload never carried the verdict.
+ */
+function verdictLabel(v: VerifyBlockParse): string {
+  if (v.kind === "none") return "not run";
+  if (v.kind === "invalid") return "unreadable";
+  return v.result.verdict ?? "recorded, no verdict";
+}
+
+function render(s: TaskSummary, verification: VerificationSource, sealNote: string | null): string {
   const acIcon = (o: string) => (o === "pass" ? "✅" : o === "fail" ? "❌" : "⚪");
   const gateIcon = (st: string) => (st === "pass" ? "✅" : st === "skip" ? "⚪" : "❌");
   const lines: string[] = [
     `# Task summary — ${s.title}`,
     "",
-    `**Spec:** \`${s.slug}\` · **Status:** ${s.status}${
-      verify ? ` · **Verification:** ${verify.verdict}` : " · **Verification:** not run"
-    }`,
+    // Name the artifact the gates were joined from: with a per-spec run beside a
+    // global verification.md, "PASS" alone does not say which run passed.
+    `**Spec:** \`${s.slug}\` · **Status:** ${s.status} · **Verification:** ${verdictLabel(
+      verification.parse,
+    )}${verification.path ? ` (\`${verification.path}\`)` : ""}`,
+    ...(sealNote ? ["", sealNote] : []),
     "",
     `## Acceptance (${s.acceptance.length})`,
     ...(s.acceptance.length

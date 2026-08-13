@@ -15,12 +15,20 @@ Commit changes and create a pull request. This is the final phase — it gates o
 
 ### 1. Check verification (tool-backed gate)
 
-Call the **`verify` MCP tool** with `action: "gate"`. It reads `.marvin/task/verification.md`, parses the machine-readable `verify-result` verdict, and returns a `deliver-gate` decision — do **not** eyeball the prose verdict yourself.
+Call the **`verify` MCP tool** with `action: "gate"`, passing `specSlug` when a spec slug is known (resolve it the way `/marvin:task-verify` does — the spec's frontmatter `slug`, else its filename slug). It reads the run for that spec (`.marvin/task/runs/<slug>.md`, else `.marvin/task/verification.md`), parses the machine-readable `verify-result` verdict, compares the recorded provenance against the working tree in front of it, and returns a `deliver-gate` decision — do **not** eyeball the prose verdict yourself.
 
-- **BLOCK** — no `verification.md`, no parseable verdict, or verdict **FAIL**. **Stop.** Relay the gate's reason and tell the user to run or fix `/marvin:task-verify` before delivering. Do not deliver.
+- **BLOCK** — no `verification.md`, no parseable verdict, verdict **FAIL**, no test evidence, or **stale** evidence. **Stop.** Relay the gate's reason and tell the user what it asks for. Do not deliver.
 - **ALLOW** — verdict **PASS** or **PASS WITH WARNINGS**. Proceed. On PASS WITH WARNINGS, surface the warnings and confirm the user wants to proceed.
 
-In a **chained** run (invoked straight after `/marvin:task-verify` in the same session) you may reuse the verdict already in context. If the `verify` tool is unavailable, fall back to reading `.marvin/task/verification.md` yourself and refusing on a FAIL or a missing/unparseable verdict — never deliver unverified.
+Three cases the reason will name, each needing a different answer:
+
+- **Stale** (`"staleness": "stale"`) — the tree changed after the verification ran, so the proof no longer describes what you are about to ship. Relay it as an instruction: **re-run `/marvin:task-verify`**, then call the gate again. Only if the user, told this plainly, decides the change was inconsequential may you retry with `allowStale: true` — never on your own initiative, and never as a first response to a BLOCK. A delivery made that way carries an explicit override line into the PR body (step 3): `> **Freshness override:** delivered with allowStale after <the reason the user gave>.`
+- **No test evidence** — every recorded `test` gate, or every gate, was `not-run` because its binary is absent. No input waives this. Install the runner (or pin one in `.marvin/config.json`) and re-verify.
+- **FAIL** — fix the failing gates and re-run `/marvin:task-verify`. `allowStale` does not reach a FAIL.
+
+**Call the tool on every delivery, including a chained one.** A verdict already in context carries no freshness check — it was true when it was produced, and the point of this gate is that the tree may have moved since. Reusing it is exactly the case the gate exists to catch, and the chained run (verify → fix a lint error → deliver, one session) is where it happens most.
+
+**If the `verify` tool is unavailable, refuse — do not read the artifact by hand.** A hand-read `verification.md` gives you a verdict and no freshness check, which is a strictly weaker gate presented as the real one. Tell the user the delivery gate cannot run and stop.
 
 ### 2. Commit
 
@@ -39,6 +47,7 @@ When composing the PR:
 - Include the spec summary in the PR body
 - Include the verification results summary
 - Reference the original issue/ticket if one was identified during intake
+- **Carry a freshness override.** If step 1 returned ALLOW only because you passed `allowStale: true`, the PR body must say so on its own line, first in `## Self-Review Notes` — or at the top of the `pr-create` template's `## Notes` when the spec is not v2.0: `> **Freshness override:** delivered with allowStale — the recorded verification described commit <head_sha> on <branch>, not this tree. <the user's reason>.` A waived gate that leaves no trace in the PR is a gate the reviewer cannot see was waived
 - **Carry both critic verdicts.** Two semantic gates run in the pipeline and each gets its **own line**, first in `## Self-Review Notes` — or at the top of the `pr-create` template's `## Notes` when the spec is not v2.0. Render them independently, never merge them, never omit one, and never render an inability as a pass:
   - **Spec critic** (`marvin-tm-spec-critic`) — from the spec's `## Critic Verdict & Overrides` section (the spec is already resolved in step 2), with any recorded author override.
   - **Diff critic** (`marvin-tm-diff-critic`) — from the chained `/marvin:task-implement` result (its Step 6F / Step 9B), or from a `marvin-tm-diff-critic` run in this session. With no chained context — a standalone `/marvin:task-deliver` — render `not run — delivered standalone`.
