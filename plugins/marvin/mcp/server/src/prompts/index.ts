@@ -31,6 +31,14 @@ const CREATE_HINT =
 export const PROMPTS: PromptDef[] = [
   // ── core (bare + pr group) ───────────────────────────────────────────
   {
+    // First in the registry because registry order is catalog order — the order
+    // /marvin:help and the website render — and this is the first-contact command.
+    name: "onboard",
+    description:
+      "Guided first session with marvin in this project — reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks found in this codebase, and runs at most two side-effecting commands, each behind an explicit yes.",
+    skill: "onboard",
+  },
+  {
     name: "commit",
     description:
       "Safe git commit workflow — inspects repo state, stages intentionally, detects sensitive files, drafts a Conventional Commits message, confirms with the user, and handles pre-commit hook failures cleanly.",

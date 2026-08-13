@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -18,6 +18,7 @@
     "test": "npm run test --workspaces --if-present && node --test test/*.test.mjs",
     "lint": "eslint .",
     "lint:manifests": "node scripts/lint-manifests.mjs",
+    "lint:skills": "node scripts/lint-skills.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify-dist": "node scripts/verify-dist.mjs",
@@ -26,6 +27,7 @@
     "help:preview": "node scripts/help-preview.mjs",
     "dev:widget-host": "node scripts/dev-widget-host.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
+    "usage:surface": "node scripts/usage-surface.mjs",
     "eval:self-test": "node evals/trigger/self-test.mjs",
     "eval:trigger": "node evals/trigger/run.mjs --skill all --decider mock",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",

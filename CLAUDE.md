@@ -37,7 +37,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
-    │   │   └── index.ts              # 53 prompt entries (skill-backed + inline track)
+    │   │   └── index.ts              # 54 prompt entries (skill-backed + inline track)
     │   ├── tools/                    # 13 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # board persistence + helpers
@@ -75,7 +75,7 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 
 | Group | Source | Examples |
 |-------|--------|----------|
-| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export`, `/marvin:widget-preview` |
+| _(bare)_ | core dev tools | `/marvin:onboard`, `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export`, `/marvin:widget-preview` |
 | `adr-*` | ADR lifecycle around the bare `/marvin:adr` create (ADR-0027; accept/supersede/sync are human-run via `disable-model-invocation`) | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit`, `/marvin:adr-coverage`, `/marvin:adr-supersede`, `/marvin:adr-sync` |
 | `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
 | `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
@@ -188,6 +188,9 @@ The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//
 ```shell
 # Lint manifests + structure
 node scripts/lint-manifests.mjs
+
+# Lint the authored surfaces — frontmatter allowlists, skills/… references, wrapper coverage
+node scripts/lint-skills.mjs
 
 # Trigger-eval harness — guard it, then sweep every dataset with the mock decider
 npm run eval:self-test
@@ -330,7 +333,7 @@ node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"ti
 The canonical path is **skill-backed** — same content, three entry points:
 
 1. Create `plugins/marvin/skills/<command>/SKILL.md` with YAML frontmatter (`name` matching the directory, `description`). The `description` is the auto-discovery trigger Claude Code matches in chat. Follow the `<group>-<command>` naming scheme.
-2. Optionally create `plugins/marvin/commands/<command>.md` with frontmatter `description` and a body that instructs Claude to read `skills/<command>/SKILL.md` and pass `$ARGUMENTS`. Use existing `commit.md` / `sec-scan.md` as templates.
+2. Create `plugins/marvin/commands/<command>.md` with frontmatter `description` and a body that instructs Claude to read `skills/<command>/SKILL.md` and pass `$ARGUMENTS`. Use existing `commit.md` / `sec-scan.md` as templates. **Every prompt outside the `track-*` group ships a wrapper** — `scripts/lint-skills.mjs` fails the build without one.
 3. Add an entry to `plugins/marvin/mcp/server/src/prompts/index.ts`:
    ```ts
    {
@@ -340,10 +343,10 @@ The canonical path is **skill-backed** — same content, three entry points:
    }
    ```
 4. Run `npm run build` inside `plugins/marvin/mcp/server` to refresh `dist/server.js`.
-5. Commit `src/`, `dist/`, and the new `SKILL.md` (+ optional command file) together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
+5. Commit `src/`, `dist/`, the new `SKILL.md` and the command file together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
 6. Bump the version with `npm run sync-version <x.y.z>` (see [Version bumping](#version-bumping)).
 
-For prompts with **no skill** (thin tool wrappers like the `track-*` group), use `body: "..."` inline. Skip steps 1 and 2.
+For prompts with **no skill** (thin tool wrappers), use `body: "..."` inline and skip step 1. Step 2 applies to every group except `track-*`: a skill-less prompt is still a command a user types, so it ships a `commands/` wrapper. `track-*` is the one group the pin exempts, and the exemption is enforced in both directions — a `track-*` prompt gets no `commands/` entry, and `scripts/lint-skills.mjs` fails the build if one is added, because those prompts route between tools and have no prose to duplicate. Either way, a skill-less prompt gets no skill directory and no trigger dataset (a dataset with no matching skill directory is reported as an orphan).
 
 ## Adding a new MCP tool
 
@@ -387,7 +390,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 53 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 54 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool

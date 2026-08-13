@@ -25,8 +25,12 @@ import {
   auditSkillDatasets,
   readSkillFlags,
   skillDatasetFailures,
+  AUDIT_CATEGORIES,
+  DATASET_CATEGORIES,
+  SURFACE_CATEGORIES,
 } from "../scripts/lib/skill-datasets.mjs";
 import { validateDataset } from "../evals/trigger/lib/schema.mjs";
+import { scaffoldLintRoot } from "./_lint-root.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SHIPPED_SKILLS = join(repoRoot, "plugins", "marvin", "skills");
@@ -61,84 +65,6 @@ function makeTree() {
     },
     cleanup() {
       rmSync(root, { recursive: true, force: true });
-    },
-  };
-}
-
-/**
- * Build a repo root complete enough for lint-manifests to REACH its dataset rules.
- *
- * A minimal root is not enough and fails misleadingly: the linter has no try/catch
- * and reads the marketplace manifest at :33, plugins/marvin/.claude-plugin/plugin.json
- * at :128 and five package.json files at :138 with unguarded readFileSync calls, all
- * AFTER the skills block but BEFORE the failure print. An absent one throws ENOENT and
- * also exits 1, which a status-only assertion would happily accept. The plugin must be
- * named `marvin` because :128 hard-codes that path segment.
- *
- * `skills` / `datasets` control whether those two directories exist, which is what
- * lets the missing-directory regression witness each branch of the guard separately.
- */
-function scaffoldLintRoot(root, { skills = true, datasets = true } = {}) {
-  const skillsDir = join(root, "plugins", "marvin", "skills");
-  const datasetsDir = join(root, "evals", "trigger", "datasets");
-  if (skills) mkdirSync(skillsDir, { recursive: true });
-  if (datasets) mkdirSync(datasetsDir, { recursive: true });
-  mkdirSync(join(root, ".claude-plugin"), { recursive: true });
-  mkdirSync(join(root, "plugins", "marvin", ".claude-plugin"), { recursive: true });
-  writeFileSync(
-    join(root, ".claude-plugin", "marketplace.json"),
-    JSON.stringify({ plugins: [{ name: "marvin", version: "0.0.1" }] }),
-  );
-  writeFileSync(
-    join(root, "plugins", "marvin", ".claude-plugin", "plugin.json"),
-    JSON.stringify({ name: "marvin", version: "0.0.1" }),
-  );
-  for (const rel of [
-    "package.json",
-    "packages/marvin-mcp-shared/package.json",
-    "packages/marvin-widgets/package.json",
-    "packages/site/package.json",
-    "plugins/marvin/mcp/server/package.json",
-  ]) {
-    mkdirSync(join(root, dirname(rel)), { recursive: true });
-    writeFileSync(join(root, rel), JSON.stringify({ name: "x", version: "0.0.1" }));
-  }
-  mkdirSync(join(root, "plugins", "marvin", "mcp", "server", "dist"), { recursive: true });
-  writeFileSync(join(root, "plugins", "marvin", "mcp", "server", "dist", "server.js"), "//\n");
-
-  return {
-    skillsDir,
-    datasetsDir,
-    // Every fixture SKILL.md needs a description, or checkFrontmatter adds its own
-    // failure and a "clean" variant exits 1 for an unrelated reason.
-    writeSkill(name, flag) {
-      mkdirSync(join(skillsDir, name), { recursive: true });
-      const line = flag === undefined ? "" : `disable-model-invocation: ${flag}\n`;
-      writeFileSync(
-        join(skillsDir, name, "SKILL.md"),
-        `---\nname: ${name}\ndescription: ${name} fixture\n${line}---\n\nbody\n`,
-      );
-    },
-    writeDataset(name, extra = {}) {
-      writeFileSync(
-        join(datasetsDir, `${name}.json`),
-        JSON.stringify({ skill: name, target: name, queries: [], ...extra }),
-      );
-    },
-    /** Spawn the real linter against this root; returns { failed, output }. */
-    runLinter() {
-      try {
-        return {
-          failed: false,
-          output: execFileSync("node", [join(repoRoot, "scripts", "lint-manifests.mjs")], {
-            env: { ...process.env, MARVIN_LINT_ROOT: root },
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-          }),
-        };
-      } catch (e) {
-        return { failed: true, output: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-      }
     },
   };
 }
@@ -548,4 +474,48 @@ test("skillDatasetFailures reports only the categories it is asked for", () => {
   } finally {
     t.cleanup();
   }
+});
+
+// The only thing in the repository that can fail on the category split.
+//
+// Measured: nothing else imports a category constant — the consumers are
+// self-test.mjs, lint-skills.mjs and this module's own `keys` default. And because
+// a category whose input was not supplied is EMPTY, the self-test's
+// `filter(key => audit[key].length > 0)` yields `{}` for a thirteen-entry list
+// exactly as for a seven-entry one. So an implementer who appends the six surface
+// categories to AUDIT_CATEGORIES and never opens self-test.mjs satisfies every
+// other check in the tree while widening a claim that call site cannot substantiate
+// — it supplies neither agentsDir, commandsDir, packDir nor promptNames.
+test("the category list is split so the self-test claims only what its call site supplies", () => {
+  assert.deepEqual(DATASET_CATEGORIES, [
+    "missingDatasets",
+    "orphanDatasets",
+    "parityViolations",
+    "nonCanonicalFlags",
+    "unknownWinners",
+    "missingNotes",
+    "missingMockRate",
+  ]);
+  assert.deepEqual(SURFACE_CATEGORIES, [
+    "unknownFrontmatterKeys",
+    "badDescriptions",
+    "nameMismatches",
+    "danglingSkillRefs",
+    "untooledAgents",
+    "wrapperDrift",
+  ]);
+  assert.deepEqual(
+    AUDIT_CATEGORIES,
+    [...DATASET_CATEGORIES, ...SURFACE_CATEGORIES],
+    "the default key set must still mean everything",
+  );
+
+  const selfTest = readFileSync(join(repoRoot, "evals", "trigger", "self-test.mjs"), "utf8");
+  assert.match(selfTest, /import \{[^}]*DATASET_CATEGORIES[^}]*\}/, "imports the dataset half");
+  assert.match(selfTest, /DATASET_CATEGORIES\.filter\(/, "and iterates that half, not the union");
+  assert.doesNotMatch(
+    selfTest,
+    /AUDIT_CATEGORIES/,
+    "the self-test must not reach the surface categories at all",
+  );
 });

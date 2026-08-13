@@ -28502,6 +28502,13 @@ var CREATE_HINT = "If the user's message already contains a title, a description
 var PROMPTS = [
   // ── core (bare + pr group) ───────────────────────────────────────────
   {
+    // First in the registry because registry order is catalog order — the order
+    // /marvin:help and the website render — and this is the first-contact command.
+    name: "onboard",
+    description: "Guided first session with marvin in this project \u2014 reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks found in this codebase, and runs at most two side-effecting commands, each behind an explicit yes.",
+    skill: "onboard"
+  },
+  {
     name: "commit",
     description: "Safe git commit workflow \u2014 inspects repo state, stages intentionally, detects sensitive files, drafts a Conventional Commits message, confirms with the user, and handles pre-commit hook failures cleanly.",
     skill: "commit"
@@ -31939,6 +31946,7 @@ var GROUP_BLURBS = {
 };
 var COMMAND_BLURBS = {
   // core
+  onboard: "Guided first session in this project",
   commit: "Conventional commit, board-linked",
   debug: "Systematic root-cause debugging",
   adr: "Create an Architecture Decision Record",
@@ -32001,6 +32009,7 @@ var COMMAND_BLURBS = {
 };
 var COMMAND_DETAILS = {
   // core
+  onboard: "A first session with marvin in this project \u2014 reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks with file:line evidence, and gates the board card and the commit on an explicit yes.",
   commit: "Safe commit \u2014 inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
   debug: "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
   adr: "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
@@ -32099,6 +32108,11 @@ var COMMAND_EXAMPLES = {
 };
 var COMMAND_PROMPTS = {
   // core
+  onboard: [
+    "marvin, I just installed you \u2014 what now?",
+    "marvin, set yourself up in this project",
+    "marvin, walk me through my first session"
+  ],
   commit: [
     "marvin, commit this",
     "marvin, stage and commit my changes",
@@ -34891,7 +34905,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.13.0";
+var VERSION = "0.14.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

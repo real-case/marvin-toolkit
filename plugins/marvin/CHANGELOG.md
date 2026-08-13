@@ -4,6 +4,66 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.14.0] — 2026-08-13
+
+Phase 3 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the invariants
+CLAUDE.md asserts become machine-checked, and the first session gets a front door.
+
+### Added
+
+- **`/marvin:onboard`** — a guided first session in the user's own project. It reads the
+  repository, proposes starter tasks found in that codebase rather than invented ones, and runs
+  at most two side-effecting commands, each behind an explicit yes. Declining any step continues
+  the walkthrough rather than aborting it, and it never creates a branch, checks one out, or
+  pushes. It discloses the local `.marvin/usage/events.jsonl` log **before anything is written**
+  and offers the opt-out, showing the exact lines first — a disclosure step that writes a file the
+  user has not seen defeats its own purpose. The opt-out is a read-modify-write that preserves
+  every other key, because no shipped tool action can set `usage.enabled`: the `config` action's
+  schema has no such field.
+- **`scripts/lint-skills.mjs`**, wired as a blocking CI step, with six checks over the three
+  authored surfaces: closed frontmatter allowlists (skills, agents, commands), a description
+  present and within budget, `name` agreeing with the directory or filename, every `skills/…`
+  path in a body resolving on disk, an agent without a `tools:` allowlist being on an explicit
+  whitelist, and the set of prompts without a command wrapper matching the pin. It extends
+  `scripts/lib/skill-datasets.mjs` rather than opening a parallel module, and deliberately does
+  **not** re-implement the parity and canonical-form checks `lint-manifests` already reports.
+  Five of the six pass on the current tree with no content edits — they are regression fences,
+  not repairs, and the module says so.
+- **`plugins/marvin/commands/{lessons,dashboard,reports}.md`** (decision **D3**). Beyond
+  uniformity, this is what lets the wrapper check pin a *rule* rather than a list: the
+  wrapper-less set was ten prompts — those three plus the seven `track-*` — and is now exactly
+  the `track-*` group, which is what CLAUDE.md already asserted.
+- **`scripts/usage-surface.mjs`** — compares the declared registry against the names actually
+  invoked in `.marvin/usage/`, reporting the prompt and tool axes separately and reporting the
+  observation window prominently, so an empty log cannot read as "nothing is used". A
+  never-invoked name has no age, so the script reports the window plus per-name last-seen rather
+  than pretending otherwise.
+
+### Fixed
+
+- **The usage log was measuring its own test harness.** `scripts/smoke-commands.mjs` spawned the
+  server with no environment scrubbing and the project as its working directory, writing one
+  event per registry prompt into the very log any usage analysis would read. Every prompt
+  therefore appeared "invoked", and the never-invoked surface was empty and structurally always
+  would be. The smoke test now runs against a temporary usage directory. The uncontaminated
+  half is the tool axis, where only 4 of 13 tools have ever been recorded.
+- **The new linter disagreed with an existing one about quoted YAML.** `name: "commit"` is legal
+  and `evals/trigger/lib/catalog.mjs` — already enforcing the same fields in a blocking step —
+  strips the quotes. The frontmatter reader now borrows exactly that rule, so the three readers
+  agree. The canonical-form check for `disable-model-invocation` keeps its own verbatim read, so
+  quote-stripping cannot silently make `'true'` acceptable.
+
+### Changed
+
+- **CLAUDE.md now matches the linter it gained.** Creating `commands/<command>.md` was documented
+  as optional while the new wrapper pin makes it mandatory for every non-`track-*` prompt — and
+  the `track-*` exemption is stated where the rule is, not in a later aside, because a model
+  following the unqualified sentence would create the one file the build now rejects.
+- `docs/getting-started.md` is rewritten around the single entry point, keeping the
+  install-recovery path for a reader whose install did not appear.
+- `docs/configuration.md` records the one carve-out to "you do not edit `.marvin/config.json` by
+  hand": `usage.enabled`, which no tool action writes.
+
 ## [0.13.0] — 2026-08-13
 
 Phase 2 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the task

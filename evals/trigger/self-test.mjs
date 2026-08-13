@@ -17,7 +17,7 @@ import { loadCatalog } from "./lib/catalog.mjs";
 import { validateDataset } from "./lib/schema.mjs";
 import { score } from "./lib/score.mjs";
 import { makeDecider } from "./lib/deciders/index.mjs";
-import { auditSkillDatasets, AUDIT_CATEGORIES } from "../../scripts/lib/skill-datasets.mjs";
+import { auditSkillDatasets, DATASET_CATEGORIES } from "../../scripts/lib/skill-datasets.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -91,9 +91,13 @@ check("every skill has a dataset and every dataset has a skill", () =>
     { skillsWithNoDataset: [], datasetsWithNoSkill: [] },
   ),
 );
+// DATASET_CATEGORIES, not the union: this call site passes only skillsDir and
+// datasetsDir, so the six surface categories would sit inside a claim it supplies no
+// inputs for — permanently empty, permanently green, enforcement in name only. They
+// are reported by scripts/lint-skills.mjs, which does supply them.
 check("datasets satisfy every enforced invariant", () => {
   const violations = Object.fromEntries(
-    AUDIT_CATEGORIES.filter((key) => audit[key].length > 0).map((key) => [key, audit[key]]),
+    DATASET_CATEGORIES.filter((key) => audit[key].length > 0).map((key) => [key, audit[key]]),
   );
   assert.deepEqual(violations, {}, JSON.stringify(violations));
 });
