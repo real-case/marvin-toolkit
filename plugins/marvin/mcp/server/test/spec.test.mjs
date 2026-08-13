@@ -756,6 +756,58 @@ test("scope: an out-of-scope file declared in `allow` passes (recorded SPEC GAP)
   }
 });
 
+// The scope gate's answer is only meaningful if its inputs were understood.
+// `changedFiles` is the argument callers reach for by analogy — but the changed
+// set is always derived from git, so a non-strict schema dropped the key and
+// returned a confident PASS/FAIL over a file set the tool never saw. Two runs
+// with deliberately different lists produced byte-identical violations. The
+// input is strict so that an undeclared argument is an error, not a wrong
+// answer that looks right.
+test("an undeclared argument is rejected, not silently ignored", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n");
+    await assert.rejects(
+      () =>
+        callSpec({
+          specContent: SCOPE_SPEC,
+          mode: "scope",
+          projectRoot: dir,
+          changedFiles: ["nowhere-near-the-real-diff.ts"],
+        }),
+      (err) => {
+        const msg = String(err.message);
+        assert.match(msg, /changedFiles/, "the error must name the rejected argument");
+        // and it must tell the caller what IS accepted
+        assert.match(msg, /specPath/);
+        assert.match(msg, /allow/);
+        assert.match(msg, /base/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("every declared argument is still accepted (strictness rejects only unknowns)", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      mode: "scope",
+      projectRoot: dir,
+      allow: ["src/b.ts"],
+      base: "HEAD",
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("scope: marvin's own .marvin/ artifacts are never scope violations", async () => {
   const dir = gitScopeRepo();
   try {

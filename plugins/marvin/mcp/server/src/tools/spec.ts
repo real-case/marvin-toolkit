@@ -133,12 +133,28 @@ const SpecInput = z.object({
 });
 type SpecInput = z.infer<typeof SpecInput>;
 
+/**
+ * The gate is only as trustworthy as its inputs. Left non-strict, zod drops an
+ * unrecognised key instead of rejecting it — so a caller passing, say,
+ * `changedFiles` to `mode: "scope"` had it silently discarded and got a
+ * confident PASS/FAIL over a file set the tool never saw (scope is always
+ * computed from git). A wrong answer that looks right is worse than an error,
+ * and this tool's whole purpose is to be a deterministic guarantee. Strict
+ * turns that into an explicit failure naming the argument and the valid fields.
+ */
+const SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
+const SpecInputStrict = SpecInput.strict(
+  `unknown argument for the spec tool — it accepts only: ${SPEC_INPUT_FIELDS}. ` +
+    `The changed-file set for mode: "scope" is always derived from git (use \`base\` to pick the ref, ` +
+    `\`allow\` to permit extra paths); it cannot be supplied by the caller.`,
+);
+
 export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
       'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha — the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
-    inputSchema: SpecInput,
+    inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
 }
