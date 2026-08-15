@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **54 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **55 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -50,7 +50,7 @@ bundled.
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 54
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 55
 prompts divide into seven groups:
 
 | Group | Purpose | Count |
@@ -58,7 +58,7 @@ prompts divide into seven groups:
 | _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 5 |
+| `task-*` | Spec-driven task pipeline | 6 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
 | `track-*` | Lightweight task tracker | 7 |
@@ -133,6 +133,7 @@ These separate the human decisions in a spec from the automated execution that f
 | `/marvin:task-verify` | Run the quality gates with stack auto-detection. |
 | `/marvin:task-deliver` | Commit and open a PR, gated on verification passing. |
 | `/marvin:task-summary` | Aggregate a finished task into one delivery summary. |
+| `/marvin:task-audit` | Lint the spec corpus for consistency; read-only, with remediation notes. |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
 `marvin-tm-diff-critic`, and `marvin-tm-review-fixer` agents support this pipeline.
@@ -276,6 +277,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
 | [0035](./docs/adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Proposed |
 | [0036](./docs/adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Proposed |
+| [0037](./docs/adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Proposed |
 
 ## Contributing
 

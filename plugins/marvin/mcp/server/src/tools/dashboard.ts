@@ -17,6 +17,7 @@ import type { ServerEnv } from "../lib/env.js";
 import { loadConfig, type LoadedConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
+import { resolveSpecDir } from "../storage/spec.js";
 import { orderedStatuses } from "../storage/schema.js";
 import {
   artifactCounts,
@@ -103,7 +104,11 @@ function renderDashboard(
   const board = boardCounts(env, config);
   const git = gitState(env.projectDir);
   const verification = verificationFreshness(env.projectDir);
-  const artifacts = { ...artifactCounts(env), verification };
+  // Resolve the spec directory ONCE and hand it to both readers (ADR-0037): the
+  // Artifacts count and the current-work digest must read the same place, or one
+  // render names two directories. Mirrors `adrSummary(adrDir.rel, …)` below.
+  const specDir = resolveSpecDir(env.projectDir, config.spec);
+  const artifacts = { ...artifactCounts(env, specDir), verification };
   const lessons = lessonsStats(env.memoryDir);
   const adrDir = resolveAdrDir(env.projectDir, config.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
@@ -114,7 +119,10 @@ function renderDashboard(
   // tool's narrower payload. `auditDigest` honours MARVIN_SECURITY_DIR, matching
   // the `report` tool.
   const servers = projectMcpServers(env.projectDir);
-  const currentTasks = { board: boardDigest(env, config), specs: specDigest(env.projectDir) };
+  const currentTasks = {
+    board: boardDigest(env, config),
+    specs: specDigest(env.projectDir, specDir),
+  };
   const handoffs = handoffDigest(env.handoffDir);
   const audits = auditDigest({
     security: env.securityDir,
@@ -147,7 +155,7 @@ function renderDashboard(
       }),
       ...(board.malformed > 0 ? [`- ⚠ malformed files: ${board.malformed}`] : []),
     ],
-    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs)],
+    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs, specDir.rel)],
     handoffs: ["## Handoffs", ...renderHandoffs(handoffs)],
     audits: [
       "## Audits",
@@ -161,7 +169,9 @@ function renderDashboard(
     // security document count in the payload for the widget's Artifacts card.
     artifacts: [
       "## Artifacts",
-      `- Specs: ${artifacts.specs} · \`.marvin/task/\``,
+      // The trailing slash marks it as a directory, as the Handoffs line does;
+      // `rel` never carries one, whatever tier produced it.
+      `- Specs: ${artifacts.specs} · \`${specDir.rel}/\``,
       `- Verification: ${verification.exists ? `\`verification.md\` ${days(verification.age_days ?? 0)} old` : "none yet"}`,
       `- Handoffs: ${artifacts.handoffs} · \`.marvin/handoff/\``,
     ],
@@ -331,7 +341,7 @@ function readUsageSummary(projectDir: string): UsageSummary | null {
  * (wip/review) and pipeline specs that have not shipped. Each is an italic
  * zero-state line when empty, so the section keeps its shape on a fresh project.
  */
-function renderWork(board: TaskCard[], specs: DashboardSpec[]): string[] {
+function renderWork(board: TaskCard[], specs: DashboardSpec[], specDirRel: string): string[] {
   const lines: string[] = [];
   if (board.length === 0) {
     lines.push("- _No active board cards — nothing in wip or review._");
@@ -344,7 +354,7 @@ function renderWork(board: TaskCard[], specs: DashboardSpec[]): string[] {
     }
   }
   if (specs.length === 0) {
-    lines.push("- _No pipeline specs in flight under `.marvin/task/`._");
+    lines.push(`- _No pipeline specs in flight under \`${specDirRel}/\`._`);
   } else {
     lines.push("- Pipeline specs in flight:");
     for (const s of specs) lines.push(`  - ${s.id ? `\`${s.id}\` ` : ""}${s.title}`);

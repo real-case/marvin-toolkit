@@ -279,3 +279,49 @@ test("both help doors mark exactly the frontmatter human-run set", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * `/marvin:help` and `/marvin:dashboard` count specs in the same directory.
+ *
+ * Both render an artifact inventory for one project, so a reader who runs both
+ * sees two numbers and has no way to adjudicate between them. The dashboard has
+ * resolved the count through the `spec.dir` config tier since ADR-0037; help
+ * kept the detection default, which reads whichever conventional directory
+ * happens to exist.
+ *
+ * The fixture makes the two answers differ: a legacy `.marvin/task/` holding one
+ * spec (what detection finds first) and the configured `product/specs/` holding
+ * two (the real corpus). One number is right and a config-blind reader prints
+ * the other.
+ */
+test("help and dashboard report the same spec count under a configured spec.dir", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-help-specdir-"));
+  const spec = (slug) => `---\nslug: ${slug}\ntype: feature\nstatus: ready\n---\n\n# ${slug}\n`;
+  try {
+    mkdirSync(join(dir, ".marvin", "task"), { recursive: true });
+    mkdirSync(join(dir, "product", "specs"), { recursive: true });
+    writeFileSync(join(dir, ".marvin", "task", "001-legacy.md"), spec("legacy"));
+    writeFileSync(join(dir, "product", "specs", "001-alpha.md"), spec("alpha"));
+    writeFileSync(join(dir, "product", "specs", "002-beta.md"), spec("beta"));
+    writeFileSync(
+      join(dir, ".marvin", "config.json"),
+      JSON.stringify({ base_branch: "main", spec: { dir: "product/specs" } }),
+    );
+
+    const help = await callHelp(dir);
+    const dashboard = await callTool("dashboard", {}, { env: { CLAUDE_PROJECT_DIR: dir } });
+
+    assert.equal(
+      help.structuredContent.artifacts.specs,
+      dashboard.structuredContent.artifacts.specs,
+      "the two toolbox reports name one directory or contradict each other",
+    );
+    assert.equal(
+      help.structuredContent.artifacts.specs,
+      2,
+      "and the directory they name is the configured one, not the detected one",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

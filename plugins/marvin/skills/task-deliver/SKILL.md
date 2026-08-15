@@ -37,7 +37,7 @@ Follow the `/marvin:commit` workflow.
 When composing the commit:
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
-- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it. Only when invoked **standalone** read from disk: search the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) by slug from conversation (spec files are numeric-prefixed — match `<slug>.md` or `<NNN>-<slug>.md`), fall back to `.marvin/task/spec.md`
+- Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it, and do no lookup at all. Only when invoked **standalone** read from disk: call the `spec` MCP tool with `action: "list"` and match the slug from conversation against the records it returns, then fall back to `.marvin/task/spec.md`
 
 ### 3. Create pull request
 
@@ -89,9 +89,9 @@ Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 
 ### 4. Record delivery on the spec
 
-If the spec lives under one of the spec directories (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`)
-and the PR was created, update its lifecycle metadata — the only mutable part of an
-otherwise-immutable spec:
+If the spec is one of the records the `spec` tool's `action: "list"` returns — i.e. it lives under
+this project's resolved spec directory — and the PR was created, update its lifecycle metadata: the
+only mutable part of an otherwise-immutable spec:
 - Set frontmatter `status: shipped`.
 - Append a `## Delivery` section with the PR URL and today's date.
 

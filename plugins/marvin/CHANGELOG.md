@@ -4,6 +4,57 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.16.0] — 2026-08-15
+
+Phase 6 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the last large
+area where the model did mechanical work by hand becomes tool-backed, and an interrupted intake
+stops losing its answers. ADR-0037 accompanies it, `proposed`.
+
+### Added
+
+- **The spec corpus is read by a tool, not by prose.** `resolveSpecDir`, `readSpecCorpus` and
+  `nextSpecNumber` mirror the ADR family's equivalents, and the `spec` tool gains
+  `action: "next"` and `action: "list"` — corpus reads that answer with a `spec-corpus` block
+  instead of a verdict, and never error on an empty or absent directory. A `spec.dir` config tier
+  now decides where specs live; four skills stop performing the numbering arithmetic themselves.
+- **`/marvin:task-audit`** — a read-only lint over the whole corpus: duplicate numbers, numbering
+  holes, slug collisions, dangling `depends_on`, missing seals, statuses outside the vocabulary,
+  and files that do not identify themselves as specs, each with remediation guidance.
+- **An intake can be resumed.** `task-start` allocates and opens a draft at step 1.5 and appends
+  each resolved answer as it goes, instead of writing nothing until step 9; `task-implement` gains
+  a resume fork. The journal lives beside the verification runs under `.marvin/task/runs/`, which
+  makes the `spec` tool a **writer** for the first time — recorded in ADR-0037 alongside the
+  allocation change, since both narrow the same sentence of ADR-0022.
+- **An absent journal is never read as "nothing was done".** The resume fork degrades loudly and
+  says so in those words: with no journal, verify every criterion from scratch. The silent
+  alternative is the inference Phase 5 spent a package removing.
+
+### Fixed
+
+- **The slugless `/marvin:task-summary` picked the alphabetically last file.** It now takes the
+  highest-numbered spec that is neither a draft nor unsealed — without which step 1.5's drafts
+  would have become the default target of every summary the moment they started being written.
+- **A draft would have counted as work in flight.** The dashboard's current-work zone caps at
+  three rows ordered by number descending, so newly abandoned skeletons would have crowded out
+  real work first.
+- **One mistyped number could produce a million-byte finding.** The numbering-hole check copied a
+  mirror bounded by a five-digit filename pattern into a place where the prefix pattern is
+  deliberately unbounded for legacy tolerance. Measured on a two-file corpus, the message reached
+  1,000,033 bytes; it is now capped at ten listed ids plus a count, and measures 169.
+- **A file with no identity was reported as malformed.** The guard that skips such a file ran
+  *after* the channel it was meant to protect.
+- **`verify action: "oracles"` could not see a configured spec directory**, while every other
+  reader could — so a project setting `spec.dir` outside the conventional candidates worked
+  everywhere except the oracle runner. `/marvin:help` and `/marvin:dashboard` likewise printed
+  different spec counts on such a project.
+
+### Changed
+
+- `mode` on the `spec` tool becomes a deprecated synonym for `action`, bounded to its original
+  three values. The two are resolved in exactly one place and a disagreeing pair is refused naming
+  both keys — `mode` carried a default, so an unset one would otherwise have been
+  indistinguishable from an explicit `action`.
+
 ## [0.15.0] — 2026-08-13
 
 Phase 5 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): proofs get bound

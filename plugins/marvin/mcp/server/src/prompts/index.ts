@@ -250,6 +250,12 @@ export const PROMPTS: PromptDef[] = [
       "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons and links.",
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble — call the tool and present its result.",
   },
+  {
+    name: "task-audit",
+    description:
+      "Read-only consistency lint of the whole spec corpus — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, unidentified files — with remediation guidance per finding.",
+    skill: "task-audit",
+  },
 
   // ── sec (security) ───────────────────────────────────────────────────
   {

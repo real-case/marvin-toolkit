@@ -6,6 +6,7 @@ import { loadConfig } from "../storage/config.js";
 import { type Config } from "../storage/schema.js";
 import { PROMPTS } from "../prompts/index.js";
 import { artifactCounts, gitState, groupOf, boardCounts, GROUP_ORDER } from "../lib/state.js";
+import { resolveSpecDir } from "../storage/spec.js";
 import {
   COMMAND_BLURBS,
   COMMAND_DETAILS,
@@ -87,7 +88,12 @@ function renderHelp(
   // state module (ADR-0030).
   const { counts, malformed } = boardCounts(env, config);
   const git = gitState(env.projectDir);
-  const art = artifactCounts(env);
+  // The spec directory is resolved through the config tier, exactly as
+  // `/marvin:dashboard` resolves it (ADR-0037). Two toolbox reports over one
+  // project that print different spec counts are a self-contradiction the reader
+  // has no way to adjudicate; the count's own directory must not depend on which
+  // command asked.
+  const art = artifactCounts(env, resolveSpecDir(env.projectDir, config.spec));
   const servers = projectMcpServers(env.projectDir);
 
   const project = basename(env.projectDir) || env.projectDir;

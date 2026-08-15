@@ -7,6 +7,7 @@
  * on the server until a tool imports a schema (Stage-1 work).
  */
 export * from "./adr.js";
+export * from "./spec-audit.js";
 export * from "./links.js";
 export * from "./task.js";
 export * from "./summary.js";

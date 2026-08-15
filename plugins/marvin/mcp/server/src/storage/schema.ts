@@ -171,6 +171,27 @@ export const AdrConfig = z.object({
 export type AdrConfig = z.infer<typeof AdrConfig>;
 
 /**
+ * Spec corpus configuration (ADR-0037), owned by the `spec` tool.
+ *
+ * The field is obvious; the reason the tier exists is not. `/marvin:task-start`
+ * already asks the user to CHOOSE where this repository keeps its specs, and
+ * until now that choice was recorded nowhere — so the next session re-derived it
+ * from a directory listing and could answer differently. Detection cannot help:
+ * a directory the host has not created yet is invisible to it by construction,
+ * which is exactly the state a freshly chosen location is in. `spec.dir` is the
+ * place that answer survives the session that made it.
+ *
+ * Absent means detection (`.marvin/task/`, `specs/`, `docs/specs/`,
+ * `docs/rfcs/`, `rfcs/`) and then the `.marvin/task/` default. It moves where
+ * NEW specs are allocated and which directory the readers consult first; it
+ * never moves the `.marvin/`-pinned verification artifacts (ADR-0007).
+ */
+export const SpecConfig = z.object({
+  dir: z.string().min(1).optional(),
+});
+export type SpecConfig = z.infer<typeof SpecConfig>;
+
+/**
  * Usage-telemetry configuration (ADR-0030), owned by the usage-log middleware.
  * The single kill-switch: `enabled` defaults to `true`, so an absent `usage`
  * block (and an absent config file) means logging is ON — telemetry is
@@ -198,6 +219,8 @@ export const Config = z.object({
   gates: GateCommands.optional(),
   /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
   adr: AdrConfig.optional(),
+  /** Spec corpus location (ADR-0037); absent means detect/default. */
+  spec: SpecConfig.optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */

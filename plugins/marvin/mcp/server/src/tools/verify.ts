@@ -1,16 +1,17 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
-import type { ServerEnv } from "../lib/env.js";
+import { projectConfigPath, type ServerEnv } from "../lib/env.js";
 import { diffAgainstHead, headSha, untrackedFiles } from "../lib/git.js";
 import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
 import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
 import { loadConfig } from "../storage/config.js";
+import type { Config, SpecConfig } from "../storage/schema.js";
 import { parseFrontmatter } from "../storage/frontmatter.js";
 import {
   oracleJournalPath,
@@ -26,7 +27,7 @@ import {
   contractHash,
   extractContractBlock,
   resolveSpecBySlug,
-  SPEC_DIRS,
+  specSearchDirs,
   type Criterion,
 } from "../storage/spec.js";
 
@@ -215,7 +216,9 @@ const VerifyInput = z.object({
   write: z
     .boolean()
     .default(true)
-    .describe("Write verification.md to <projectRoot>/.marvin/task/."),
+    .describe(
+      "Write verification.md to <projectRoot>/.marvin/task/. That location is deliberately independent of where specs live: a spec is a project document and stays host-adaptive (ADR-0005), while everything marvin generates about a run is a service file pinned under .marvin/ (ADR-0007), so this path does not follow `spec.dir` (ADR-0037).",
+    ),
   dryRun: z
     .boolean()
     .default(false)
@@ -273,20 +276,25 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
 async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult> {
   const projectRoot = input.projectRoot ?? env.projectDir;
 
+  // ONE config read, ahead of the action fork. Every action needs it: the gate
+  // plan below, `gates.test_one` for oracle command resolution, and — the reason
+  // it moved above the two early returns — the `spec.dir` tier all three spec
+  // lookups on this path resolve through (ADR-0037). It is read per call rather
+  // than per server, so a `task config` edit applies without a restart.
+  const { config, warning: configWarning } = loadConfig(projectConfigPath(env, projectRoot));
+
   // Delivery gate: read the prior verification.md verdict, run nothing.
   if (input.action === "gate") {
-    return deliverGate(projectRoot, { specSlug: input.specSlug, allowStale: input.allowStale });
+    return deliverGate(projectRoot, {
+      specSlug: input.specSlug,
+      allowStale: input.allowStale,
+      specConfig: config.spec,
+    });
   }
 
   // Acceptance oracles: run a sealed spec's criteria, not the project's gates.
-  if (input.action === "oracles") return runOracles(projectRoot, input, env);
+  if (input.action === "oracles") return runOracles(projectRoot, input, config);
 
-  // When the caller targets an explicit projectRoot, read that project's config;
-  // otherwise honour MARVIN_TASKS_CONFIG via env.configPath.
-  const configPath = input.projectRoot
-    ? join(input.projectRoot, ".marvin", "config.json")
-    : env.configPath;
-  const { config, warning: configWarning } = loadConfig(configPath);
   const configGates = gateSpecsFromConfig(config.gates);
 
   // Resolve the gate plan: explicit per-call gates > config-declared gates > detection.
@@ -916,9 +924,18 @@ function slugRejection(rejected: string, consequence: string): string {
 
 // ── acceptance oracles (ADR-0036) ───────────────────────────────────────────
 
-/** The spec file for a validated slug, searched host-adaptively (ADR-0005). */
-function findSpec(slug: string, projectRoot: string): string | null {
-  for (const dir of SPEC_DIRS) {
+/**
+ * The spec file for a validated slug, searched host-adaptively (ADR-0005/0037).
+ *
+ * `specConfig` is the `spec.dir` tier and is REQUIRED to be threaded in by every
+ * caller, not optional-by-convenience: a project that configures a directory
+ * outside the five conventional candidates is reachable through no other tier,
+ * so a lookup that omits it answers "no spec found" for a spec `/marvin:task-start`,
+ * `/marvin:task-summary` and the dashboard all resolve. This runner used to be
+ * the one reader on the ADR-0037 list that omitted it.
+ */
+function findSpec(slug: string, projectRoot: string, specConfig?: SpecConfig): string | null {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
     const p = resolveSpecBySlug(dir, slug, projectRoot);
     if (p) return p;
   }
@@ -948,10 +965,20 @@ interface SealedSpec {
  * other leaves a spec that reads sealed to `spec mode: "seal"` and tampered to
  * this action, with no way to tell which is right.
  */
-function readSealedSpec(slug: string, projectRoot: string): SealedSpec | { error: string } {
-  const path = findSpec(slug, projectRoot);
+function readSealedSpec(
+  slug: string,
+  projectRoot: string,
+  specConfig?: SpecConfig,
+): SealedSpec | { error: string } {
+  const path = findSpec(slug, projectRoot, specConfig);
   if (!path) {
-    return { error: `No spec found for slug \`${slug}\` under ${SPEC_DIRS.join(", ")}.` };
+    // Name the list actually searched, config tier included — a project with a
+    // configured spec dir must not be told its spec is missing from five places
+    // that are not where the lookup looked.
+    const searched = specSearchDirs(projectRoot, specConfig)
+      .map((d) => relative(projectRoot, d) || d)
+      .join(", ");
+    return { error: `No spec found for slug \`${slug}\` under ${searched}.` };
   }
   let raw: string;
   try {
@@ -1038,7 +1065,7 @@ function unambiguousStack(input: VerifyInput, projectRoot: string): string | und
 async function runOracles(
   projectRoot: string,
   input: VerifyInput,
-  env: ServerEnv,
+  config: Config,
 ): Promise<ToolResult> {
   const { slug, rejected } = resolveRunSlug(input.specSlug);
   if (!slug) {
@@ -1050,7 +1077,7 @@ async function runOracles(
     );
   }
 
-  const spec = readSealedSpec(slug, projectRoot);
+  const spec = readSealedSpec(slug, projectRoot, config.spec);
   if ("error" in spec) return errText(spec.error);
 
   const wanted = input.criteria?.map((c) => c.trim().toLowerCase());
@@ -1067,10 +1094,6 @@ async function runOracles(
   const runnable = selected.filter((c) => c.oracle.kind !== "prose-review");
   const skipped = selected.filter((c) => c.oracle.kind === "prose-review").map((c) => c.id);
 
-  const configPath = input.projectRoot
-    ? join(input.projectRoot, ".marvin", "config.json")
-    : env.configPath;
-  const { config } = loadConfig(configPath);
   const testOne = config.gates?.test_one;
   const stack = unambiguousStack(input, projectRoot);
   const head = headSha(projectRoot);
@@ -1179,11 +1202,12 @@ type RedGreen = "proven" | "missing" | "unknown";
 function redGreenStatus(
   projectRoot: string,
   specSlug: string | undefined,
+  specConfig?: SpecConfig,
 ): { status: RedGreen; unproven: string[] } {
   const none = { status: "unknown" as const, unproven: [] as string[] };
   const { slug } = resolveRunSlug(specSlug);
   if (!slug) return none;
-  const spec = readSealedSpec(slug, projectRoot);
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
   // A tampered or unreadable contract is `unknown` here rather than an error:
   // this field is advisory, and the gate's own refusals are the ones that block.
   if ("error" in spec) return none;
@@ -1261,7 +1285,7 @@ function renderMarkdown(o: {
  */
 function deliverGate(
   projectRoot: string,
-  opts: { specSlug?: string; allowStale: boolean },
+  opts: { specSlug?: string; allowStale: boolean; specConfig?: SpecConfig },
 ): ToolResult {
   const { allowStale } = opts;
   // The gate must judge THIS task's proof: prefer the per-spec run when a valid
@@ -1276,7 +1300,7 @@ function deliverGate(
   // success rate has never been measured on a real project, so a blocking veto
   // would refuse delivery for the resolver's silence rather than for a missing
   // proof, and the first response would be to disable it.
-  const redGreen = redGreenStatus(projectRoot, opts.specSlug);
+  const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const extras: GateExtras = { artifactPath, allowStale, redGreen: redGreen.status };
 
   // A rejected slug decides WHICH artifact this gate judged, so it belongs on

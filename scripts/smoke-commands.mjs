@@ -67,6 +67,7 @@ const REQUIRED_PROMPTS = [
   "task-verify",
   "task-deliver",
   "task-summary",
+  "task-audit",
   // sec-*
   "sec-scan",
   "sec-secrets",

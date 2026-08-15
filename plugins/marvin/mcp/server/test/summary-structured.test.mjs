@@ -492,3 +492,95 @@ test("every emitted acceptance outcome is one of the three AcOutcome values", as
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+/**
+ * The artifact-location split this package decides (ADR-0037): a spec is a
+ * project document and follows `spec.dir`, while everything marvin GENERATES
+ * about a run stays `.marvin/`-pinned (ADR-0007). One test proves both halves —
+ * the spec is resolved from `docs/rfcs/`, and its verification still comes from
+ * `.marvin/task/verification.md`, which did not move with it.
+ */
+test("a host-adaptive spec still joins the .marvin-pinned verification", async () => {
+  const repo = seedRepo();
+  try {
+    // Move the spec out of .marvin/task/ entirely and declare where it went.
+    rmSync(join(repo, ".marvin", "task", "001-demo.md"));
+    const rfcs = join(repo, "docs", "rfcs");
+    mkdirSync(rfcs, { recursive: true });
+    writeFileSync(join(rfcs, "0001-demo.md"), SPEC);
+    writeFileSync(
+      join(repo, ".marvin", "config.json"),
+      JSON.stringify({ base_branch: "dev", spec: { dir: "docs/rfcs" } }),
+    );
+
+    for (const args of [{ slug: "demo" }, {}]) {
+      const result = await callSummary(repo, args);
+      const s = result.structuredContent;
+      assert.ok(s, `structuredContent present for ${JSON.stringify(args)}`);
+      assert.equal(s.slug, "demo", "the spec resolved from the configured directory");
+      assert.equal(s.title, "Demo feature");
+      assert.deepEqual(
+        s.gates.map((g) => [g.name, g.status]),
+        [["test", "pass"]],
+        "the verification artifact did not follow the spec out of .marvin/",
+      );
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A caller-supplied `projectRoot` reads THAT project's config.
+ *
+ * The tool's own `projectRoot` argument makes cross-project calls a supported
+ * shape, and `ServerEnv` is resolved once at startup — so a config loaded from
+ * the environment describes the project the server was spawned for, not the one
+ * being summarised. The leak is not merely a missing answer: both trees here
+ * declare a `spec.dir`, so the spawning project's setting picks a DIFFERENT,
+ * real file out of the target's tree and summarises it with full confidence.
+ *
+ * No slug is passed, because that is the path where the directory alone decides
+ * which spec is the answer.
+ */
+test("a foreign projectRoot is summarised through its own config, not the server's", async () => {
+  const home = seedRepo();
+  const target = seedRepo();
+  try {
+    // The target keeps its spec somewhere only its OWN config names.
+    rmSync(join(target, ".marvin", "task", "001-demo.md"));
+    const product = join(target, "product", "specs");
+    mkdirSync(product, { recursive: true });
+    writeFileSync(join(product, "001-demo.md"), SPEC);
+    writeFileSync(
+      join(target, ".marvin", "config.json"),
+      JSON.stringify({ base_branch: "dev", spec: { dir: "product/specs" } }),
+    );
+
+    // A decoy sitting exactly where the SPAWNING project's config points. It is
+    // in the target's tree, so a leaked `spec.dir` resolves it and answers.
+    const rfcs = join(target, "docs", "rfcs");
+    mkdirSync(rfcs, { recursive: true });
+    writeFileSync(join(rfcs, "001-decoy.md"), SPEC.replace("slug: demo", "slug: decoy"));
+    writeFileSync(
+      join(home, ".marvin", "config.json"),
+      JSON.stringify({ base_branch: "dev", spec: { dir: "docs/rfcs" } }),
+    );
+
+    const result = await callTool(
+      "summary",
+      { projectRoot: target },
+      { env: { CLAUDE_PROJECT_DIR: home } },
+    );
+    const s = result.structuredContent;
+    assert.ok(s, "structuredContent present");
+    assert.equal(
+      s.slug,
+      "demo",
+      "the target's own spec.dir decided; the server's project config leaked in",
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true });
+  }
+});
