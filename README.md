@@ -280,6 +280,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0037](./docs/adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Proposed |
 | [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Proposed |
 | [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Proposed |
+| [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Proposed |
 
 ## Contributing
 
