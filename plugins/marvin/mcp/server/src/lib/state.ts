@@ -259,10 +259,27 @@ export function auditDigest(
 
 const isRegister = (filename: string): boolean => /^\d+-(audit|smells)-.*\.md$/.test(filename);
 
+/**
+ * Kinds that are real security reports but not the project's security POSTURE.
+ * `gate` is written on the commit path, so it is usually the newest file in
+ * `.marvin/security/`, and `fix` records one closed vulnerability. Either would
+ * otherwise win the newest-report race and silently turn the dashboard's
+ * Security area from "the last full scan found this" into "the last pre-commit
+ * check saw this on the diff" — a different claim about the project, arriving
+ * with no message (ADR-0038). Both stay fully visible in `/marvin:reports` and
+ * `/marvin:sec-report`, where a report is one row among many rather than the
+ * single chosen area.
+ */
+const NON_POSTURE_KINDS = new Set(["gate", "fix"]);
+
 /** Findings of a `sec-*` report, or null when its Tier-2 block is absent/broken. */
 function findingsFromAuditBlock(raw: string): { severity: SeverityKey }[] | null {
   const parsed = parseAuditBlock(raw);
-  return parsed.kind === "ok" ? parsed.report.findings : null;
+  if (parsed.kind !== "ok") return null;
+  // null is `newestArea`'s "not a report of this kind, keep looking" — the same
+  // contract a prose-only legacy report already uses.
+  if (NON_POSTURE_KINDS.has(parsed.report.kind)) return null;
+  return parsed.report.findings;
 }
 
 /**

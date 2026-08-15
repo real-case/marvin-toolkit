@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ReportGroup,
   ReportBodyKind,
+  TriageState,
   ReportFinding,
   FindingsBody,
   ChecksBody,
@@ -18,6 +19,9 @@ const FINDING = {
   id: "F1",
   severity: "high",
   title: "SQL injection in login handler",
+  // Required since ADR-0038: identity is computable from the finding alone, so
+  // a construction site that omits it is a defect rather than a degraded row.
+  fingerprint: "0a1b2c3d4e5f6071",
 };
 
 const ENVELOPE = {
@@ -63,6 +67,28 @@ test("ReportFinding keeps audit Finding fields, relaxes category, adds refactor 
   );
   assert.equal(ReportFinding.safeParse({ ...FINDING, effort: "medium" }).success, false);
   assert.equal(ReportFinding.safeParse({ ...FINDING, severity: "sev1" }).success, false);
+
+  // ADR-0038: fingerprint is REQUIRED; firstSeen/state are the reconciliation
+  // pass's alone, and absent means "not reconciled" rather than "not yet seen".
+  const { fingerprint: _fp, ...noIdentity } = FINDING;
+  assert.equal(ReportFinding.safeParse(noIdentity).success, false, "fingerprint is required");
+  const reconciled = ReportFinding.safeParse({ ...FINDING, state: "regressed", firstSeen: NOW });
+  assert.equal(reconciled.success, true);
+  assert.equal(ReportFinding.safeParse({ ...FINDING, state: "resolved" }).success, false);
+  assert.equal(ReportFinding.safeParse({ ...FINDING, firstSeen: "yesterday" }).success, false);
+  const unreconciled = ReportFinding.safeParse(FINDING);
+  assert.equal(unreconciled.data.state, undefined, "absent state is not defaulted");
+  assert.equal(unreconciled.data.firstSeen, undefined);
+});
+
+test("TriageState is a three-member vocabulary — `resolved` is a roll-up, never a state", () => {
+  for (const state of ["new", "persisting", "regressed"]) {
+    assert.equal(TriageState.safeParse(state).success, true);
+  }
+  // A resolved finding has no row in any current report, so a fourth member
+  // would force the tool to synthesise a ReportFinding for something that
+  // exists nowhere on disk.
+  assert.equal(TriageState.safeParse("resolved").success, false);
 });
 
 test("body kinds: findings with optional truncation, checks with status vocabulary, document markdown", () => {

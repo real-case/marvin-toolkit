@@ -163,8 +163,8 @@ export const MockHost: StoryObj = {
       "the KPI strip to render after the mock-host handshake",
     );
     const count = canvasElement.querySelector('[data-testid="reports-count"]');
-    if (count?.textContent !== "8") {
-      throw new Error("mock-host story: expected all eight reports to arrive");
+    if (count?.textContent !== "9") {
+      throw new Error("mock-host story: expected all nine reports to arrive");
     }
     if (!canvasElement.querySelector('[data-testid="checks-body"]')) {
       throw new Error("mock-host story: expected the verification checks body to render");

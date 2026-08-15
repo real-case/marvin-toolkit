@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -29,7 +29,12 @@ import { searchLessons } from "../storage/lessons.js";
 import { loadConfig, trackerUrl } from "../storage/config.js";
 import type { Config, SpecConfig } from "../storage/schema.js";
 import { currentBranch, git, inGitRepo } from "../lib/git.js";
-import { parseVerifyBlock, type VerifyBlockParse, type VerifyGate } from "../lib/reports.js";
+import {
+  parseCritiqueBlock,
+  parseVerifyBlock,
+  type VerifyBlockParse,
+  type VerifyGate,
+} from "../lib/reports.js";
 import { readOracleRuns, type OracleRun } from "../storage/oracles.js";
 import { projectConfigPath, type ServerEnv } from "../lib/env.js";
 import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
@@ -428,6 +433,111 @@ function buildLinks(
   const adr = hostBindings?.decision_record?.path;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
 
+  links.push(...critiqueLinks(env, projectRoot, slug));
+
+  return links;
+}
+
+/** Human name for the critic that wrote a receipt. */
+const CRITIC_LABELS: Record<string, string> = {
+  "marvin-tm-spec-critic": "spec critic",
+  "marvin-tm-diff-critic": "diff critic",
+};
+
+/**
+ * The receipt directory for the root being summarised — `projectConfigPath`'s
+ * rule, applied to a second startup-resolved path.
+ *
+ * `ServerEnv` is resolved once at startup, so `env.critiqueDir` names the
+ * project the server was SPAWNED for. Every other project-scoped read in this
+ * handler resolves against the caller's `projectRoot` — the spec, the config,
+ * the verification artifact, the oracle journal, the git log — and reading the
+ * receipts from the environment while labelling them `relative(projectRoot, …)`
+ * broke that agreement twice over: `summary { projectRoot: <other tree> }`
+ * listed the SERVER's receipts, and stamped them with a `../../…` ref that
+ * escapes the root it claims to be relative to. The match is on `subject`, a
+ * spec slug, so all it takes for a foreign receipt to be attached to this task
+ * is two projects using one slug — `dashboard`, `readme` and `onboard` are not
+ * exotic names.
+ *
+ * The startup value is kept while the root is unchanged, which is what keeps
+ * `MARVIN_CRITIQUE_DIR` authoritative for the normal case (and for the test
+ * isolation it exists for); the target tree's own `.marvin/critique` otherwise.
+ *
+ * `env.memoryDir` (the lessons join above) still reads the spawning project
+ * under a foreign root — the same divergence, deferred rather than defended:
+ * lessons reach the payload as `{id, title}` with no path, so nothing there
+ * escapes a root, and changing which lessons a cross-project summary reports is
+ * a behavioural change no spec row asks for.
+ */
+function critiqueDirFor(env: ServerEnv, projectRoot: string): string {
+  return projectRoot === env.projectDir
+    ? env.critiqueDir
+    : join(projectRoot, ".marvin", "critique");
+}
+
+/**
+ * Critic receipts for this spec, as links (ADR-0039) — at most one per critic,
+ * newest wins.
+ *
+ * The receipt travels through the EXISTING `links` channel rather than a
+ * first-class `TaskSummary` field: a new field would change a third contract,
+ * add a row to `TaskSummaryWidget.tsx` and move nine committed darwin
+ * baselines, for a datum `/marvin:reports` already renders in full. The link
+ * route reaches both surfaces for free — the text fallback prints `## Links`
+ * and the widget renders `data.links` as ghost buttons.
+ *
+ * **The critic is in the LABEL, not only in the file.** A task with both
+ * receipts renders two ghost buttons that would otherwise differ only by their
+ * axis values, leaving the reader unable to tell which gate produced which.
+ *
+ * `kind: "external"` is the closed enum's catch-all; widening `LinkKind` would
+ * ripple into the `LinkRefSchema` mirror in `lib/reports.ts` and the widget's
+ * link classifier for no behavioural gain, since the 3-type link model keys off
+ * which of `url`/`ref` is populated and not off `kind`.
+ */
+function critiqueLinks(env: ServerEnv, projectRoot: string, slug: string): LinkRef[] {
+  const dir = critiqueDirFor(env, projectRoot);
+  if (!existsSync(dir)) return [];
+
+  let filenames: string[];
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return []; // an unreadable directory is an absent one — the zero-state doctrine
+  }
+
+  const found: { critic: string; label: string; ref: string; mtimeMs: number }[] = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    const full = join(dir, filename);
+    let raw: string;
+    let mtimeMs: number;
+    try {
+      raw = readFileSync(full, "utf8");
+      mtimeMs = statSync(full).mtimeMs;
+    } catch {
+      continue;
+    }
+    const parse = parseCritiqueBlock(raw);
+    if (parse.kind !== "ok" || parse.critique.subject !== slug) continue;
+    const { critic, compliance, quality } = parse.critique;
+    found.push({
+      critic,
+      label: `${CRITIC_LABELS[critic] ?? critic} — compliance ${compliance.verdict} · quality ${quality.verdict}`,
+      ref: relative(projectRoot, full),
+      mtimeMs,
+    });
+  }
+
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.ref.localeCompare(b.ref));
+  const seen = new Set<string>();
+  const links: LinkRef[] = [];
+  for (const f of found) {
+    if (seen.has(f.critic)) continue;
+    seen.add(f.critic);
+    links.push({ kind: "external", label: f.label, ref: f.ref });
+  }
   return links;
 }
 

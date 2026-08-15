@@ -28606,8 +28606,8 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the unified read side of every report
     // marvin writes under .marvin/ (docs/design/reports-widget.md, ADR-0024).
     name: "reports",
-    description: "Unified viewer over every generated .marvin/ report \u2014 security, refactor, task, handoff \u2014 newest first, with per-report freshness.",
-    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title \u2014 e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble \u2014 just call the tool and present its result.'
+    description: "Unified viewer over every generated .marvin/ report \u2014 security, refactor, task, handoff, critique \u2014 newest first, with per-report freshness.",
+    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title \u2014 e.g. "the verification report"), pass its project-relative path as the `selected` argument. If the user is asking what is new or what is still open since the last run, pass `action: "triage"`; pass `snapshot: true` only when they explicitly ask to record the current findings as the baseline. Otherwise call the tool with no arguments, which means `list`. Do not add preamble \u2014 just call the tool and present its result.'
   },
   {
     // Skill-backed (three doors) — the template-only export feature (ADR-0033):
@@ -28844,8 +28844,20 @@ function loadEnv(env2 = process.env) {
   const memoryDir = env2.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env2.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
   const securityDir = env2.MARVIN_SECURITY_DIR ?? join(projectDir, ".marvin", "security");
+  const critiqueDir = env2.MARVIN_CRITIQUE_DIR ?? join(projectDir, ".marvin", "critique");
   const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, securityDir, usageDir };
+  const reportDir = env2.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
+  return {
+    projectDir,
+    tasksDir,
+    configPath,
+    memoryDir,
+    handoffDir,
+    securityDir,
+    critiqueDir,
+    usageDir,
+    reportDir
+  };
 }
 
 // src/storage/schema.ts
@@ -30484,8 +30496,14 @@ var AuditKind = external_exports.enum([
   "ci",
   "threat-model",
   "compliance",
-  "pentest"
+  "pentest",
+  // ADR-0038: `sec-gate` and `sec-fix` emit blocks too. Widening the contract
+  // without widening this mirror makes both reports parse as `invalid` and
+  // vanish from all three readers with only a skip-note.
+  "gate",
+  "fix"
 ]);
+var TriageState = external_exports.enum(["new", "persisting", "regressed"]);
 var LinkRefSchema = external_exports.object({
   kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
   label: external_exports.string().min(1),
@@ -30524,6 +30542,57 @@ function parseAuditBlock(raw) {
     return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
   }
   return { kind: "ok", report: parsed.data };
+}
+var TerminalVerdictSchema = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
+var AxisVerdictSchema = external_exports.object({
+  verdict: TerminalVerdictSchema,
+  blockers: external_exports.number().int().nonnegative(),
+  warnings: external_exports.number().int().nonnegative()
+});
+var CritiqueSchema = external_exports.object({
+  critic: external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]),
+  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
+  judged_at: external_exports.string().datetime(),
+  compliance: AxisVerdictSchema,
+  quality: AxisVerdictSchema,
+  inability: external_exports.object({
+    blocker: external_exports.string().min(1),
+    attempted: external_exports.string().min(1),
+    recommendation: external_exports.string().min(1)
+  }).optional()
+}).superRefine((value, ctx) => {
+  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
+  if (unable && !value.inability) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["inability"],
+      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
+    });
+  }
+});
+var VERDICT_RANK = {
+  PASS: 0,
+  "PASS WITH WARNINGS": 1,
+  UNABLE: 2,
+  BLOCK: 3
+};
+function rollUp(compliance, quality) {
+  return VERDICT_RANK[compliance] >= VERDICT_RANK[quality] ? compliance : quality;
+}
+function parseCritiqueBlock(raw) {
+  const m = raw.match(/```json critic-verdict\n([\s\S]*?)\n```/);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: "critic-verdict block is not valid JSON" };
+  }
+  const parsed = CritiqueSchema.safeParse(json);
+  if (!parsed.success) {
+    return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
+  }
+  return { kind: "ok", critique: parsed.data };
 }
 var VERIFY_BLOCK_TAG = "verify-result";
 var VERIFY_BLOCK_RE = new RegExp("```json " + VERIFY_BLOCK_TAG + "\\n([\\s\\S]*?)\\n```");
@@ -30593,10 +30662,32 @@ function formatVerifyBlock(result2) {
   };
   return "```json " + VERIFY_BLOCK_TAG + "\n" + JSON.stringify(payload) + "\n```";
 }
+function normalisePath(file) {
+  return (file ?? "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+}
+function titleSlug(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function fingerprintFinding(input) {
+  const parts = [
+    input.kind,
+    normalisePath(input.file),
+    (input.category ?? "").trim(),
+    titleSlug(input.title)
+  ];
+  return createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 16);
+}
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var STALE_AFTER_DAYS = 7;
+var DECAYS = {
+  security: true,
+  refactor: true,
+  task: false,
+  handoff: false,
+  critique: false
+};
 function isStale(group, mtimeMs, nowMs) {
-  if (group !== "security" && group !== "refactor") return false;
+  if (!DECAYS[group]) return false;
   return nowMs - mtimeMs > STALE_AFTER_DAYS * DAY_MS;
 }
 function readMdFiles(dir, notes) {
@@ -30665,8 +30756,13 @@ var SEC_TITLES = {
   ci: "CI/CD audit",
   "threat-model": "Threat model",
   compliance: "Compliance check",
-  pentest: "Pentest checklist"
+  pentest: "Pentest checklist",
+  // A TOTAL record over the enum: it does not compile with a member missing,
+  // which is what forces this edit whenever `AuditKind` widens.
+  gate: "Security gate",
+  fix: "Security fix"
 };
+var SEC_FIX_GENERATED_BY = "sec-fix";
 function scanSecurityReports(dir, opts = {}) {
   const relDir = opts.relDir ?? ".marvin/security";
   const now = opts.now ?? Date.now();
@@ -30683,7 +30779,19 @@ function scanSecurityReports(dir, opts = {}) {
     const command = `sec-${report.kind}`;
     const findings = report.findings.map((f) => ({
       ...f,
-      fixCommand: `/marvin:sec-fix ${report.kind} ${f.id}`
+      // A `fix` report records what was already CLOSED, so a fix command there
+      // would ask the fix skill to fix its own record. Every other kind keeps
+      // it — `/marvin:sec-fix gate SCAN-1` is a legitimate suggestion.
+      ...report.kind === "fix" ? {} : { fixCommand: `/marvin:sec-fix ${report.kind} ${f.id}` },
+      // Identity only. `state`/`firstSeen` are filled by the reconciliation
+      // pass over envelopes (lib/triage.ts), never here: assembly must stay a
+      // pure function of the filesystem.
+      fingerprint: fingerprintFinding({
+        kind: report.kind,
+        file: f.file,
+        category: f.category,
+        title: f.title
+      })
     }));
     const path = `${relDir}/${file.filename}`;
     reports.push({
@@ -30709,7 +30817,7 @@ var EFFORT_MAP = {
   medium: "M",
   large: "L"
 };
-function parseRegisterFindings(raw) {
+function parseRegisterFindings(raw, kind = "audit") {
   const findings = [];
   for (const line of raw.split("\n")) {
     const m = line.match(/^\|\s*(F\d+)\s*\|(.*)\|\s*$/);
@@ -30731,7 +30839,9 @@ function parseRegisterFindings(raw) {
       ...line_ && line_ > 0 ? { line: line_ } : {},
       ...evidence ? { evidence } : {},
       ...effort ? { effort } : {},
-      ...direction ? { direction } : {}
+      ...direction ? { direction } : {},
+      // Identity only — never `state`/`firstSeen`; see the security site above.
+      fingerprint: fingerprintFinding({ kind, file: loc?.[1], title })
     });
   }
   return findings;
@@ -30767,7 +30877,7 @@ function scanRefactorReports(dir, opts = {}) {
       links: []
     };
     if (register) {
-      const findings = parseRegisterFindings(file.raw);
+      const findings = parseRegisterFindings(file.raw, register[1]);
       if (!heading && findings.length === 0) {
         notes.push({ file: file.filename, reason: "no heading or findings register found" });
         continue;
@@ -30886,63 +30996,306 @@ function scanHandoffReports(dir, opts = {}) {
   }
   return { reports, notes };
 }
+function scanCritiqueReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/critique";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const { body } = splitFrontmatter2(file.raw);
+    const parse4 = parseCritiqueBlock(file.raw);
+    const tag = parse4.kind === "ok" ? `critique \xB7 ${rollUp(parse4.critique.compliance.verdict, parse4.critique.quality.verdict)}` : parse4.kind === "invalid" ? "critique \xB7 unreadable" : "critique";
+    reports.push({
+      id: path,
+      group: "critique",
+      kind: "document",
+      title: firstHeading(body) ?? slugTitle(file.filename),
+      path,
+      generatedBy: parse4.kind === "ok" ? parse4.critique.critic : "critique",
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("critique", file.mtimeMs, now),
+      summary: { kind: "document", tag },
+      body: { markdown: body },
+      links: parse4.kind === "ok" ? [{ kind: "spec", label: parse4.critique.subject, ref: parse4.critique.subject }] : []
+    });
+  }
+  return { reports, notes };
+}
 function buildReportList(dirs, opts = {}) {
   const now = opts.now ?? Date.now();
   const scans = [
     scanSecurityReports(dirs.security, { now }),
     scanRefactorReports(dirs.refactor, { now }),
     scanTaskReports(dirs.task, { now }),
-    scanHandoffReports(dirs.handoff, { now })
+    scanHandoffReports(dirs.handoff, { now }),
+    scanCritiqueReports(dirs.critique, { now })
   ];
   const reports = scans.flatMap((s) => s.reports).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.id.localeCompare(b.id));
   return { reports, notes: scans.flatMap((s) => s.notes) };
+}
+var BASELINE_FILENAME = "triage.json";
+var BASELINE_VERSION = 1;
+var BaselineEntrySchema = external_exports.object({
+  fingerprint: external_exports.string().min(1),
+  firstSeen: external_exports.string().datetime(),
+  lastSeen: external_exports.string().datetime(),
+  present: external_exports.boolean()
+});
+var BaselineFileSchema = external_exports.object({
+  version: external_exports.literal(BASELINE_VERSION),
+  updatedAt: external_exports.string().optional(),
+  findings: external_exports.array(BaselineEntrySchema)
+});
+function readBaseline(path) {
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    if (lstatSync(path).isSymbolicLink()) return [];
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const parsed = BaselineFileSchema.safeParse(json);
+  return parsed.success ? parsed.data.findings : [];
+}
+function findingsOf(envelope) {
+  const body = envelope.body;
+  return Array.isArray(body.findings) ? body.findings : null;
+}
+function registerKey(envelope) {
+  const m = /^(\d+)-(audit|smells)-(.+)\.md$/.exec(basename(envelope.path));
+  return m ? { seq: Number(m[1]), key: `${m[2]}\0${m[3]}` } : null;
+}
+function newestFirst(envelopes) {
+  return [...envelopes].sort(
+    (a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.id.localeCompare(b.id)
+  );
+}
+function liveEnvelopeIds(envelopes) {
+  const live = /* @__PURE__ */ new Set();
+  const bestRegister = /* @__PURE__ */ new Map();
+  for (const envelope of envelopes) {
+    if (findingsOf(envelope) === null) continue;
+    if (envelope.generatedBy === SEC_FIX_GENERATED_BY) continue;
+    if (envelope.group === "refactor") {
+      const reg = registerKey(envelope);
+      if (!reg) continue;
+      const held = bestRegister.get(reg.key);
+      const wins = !held || reg.seq > held.seq || reg.seq === held.seq && envelope.generatedAt > held.generatedAt;
+      if (wins) {
+        bestRegister.set(reg.key, {
+          id: envelope.id,
+          seq: reg.seq,
+          generatedAt: envelope.generatedAt
+        });
+      }
+      continue;
+    }
+    live.add(envelope.id);
+  }
+  for (const held of bestRegister.values()) live.add(held.id);
+  return live;
+}
+function liveEntries(envelopes) {
+  const live = liveEnvelopeIds(envelopes);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const envelope of newestFirst(envelopes)) {
+    if (!live.has(envelope.id)) continue;
+    for (const finding of findingsOf(envelope) ?? []) {
+      if (seen.has(finding.fingerprint)) continue;
+      seen.add(finding.fingerprint);
+      out.push({ fingerprint: finding.fingerprint, generatedAt: envelope.generatedAt });
+    }
+  }
+  return out;
+}
+function attestedAt(generatedAt, now) {
+  const stamp = Date.parse(generatedAt);
+  return Number.isFinite(stamp) && stamp <= now ? generatedAt : new Date(now).toISOString();
+}
+function reconcile(envelopes, baseline, now) {
+  const remembered = new Map(baseline.map((e) => [e.fingerprint, e]));
+  const live = liveEnvelopeIds(envelopes);
+  const liveSet = new Set(liveEntries(envelopes).map((e) => e.fingerprint));
+  const annotated = envelopes.map((envelope) => {
+    const findings = findingsOf(envelope);
+    if (findings === null || !live.has(envelope.id)) return envelope;
+    return {
+      ...envelope,
+      body: {
+        ...envelope.body,
+        findings: findings.map((finding) => {
+          const known = remembered.get(finding.fingerprint);
+          const state = !known ? "new" : known.present ? "persisting" : "regressed";
+          return {
+            ...finding,
+            state,
+            firstSeen: known ? known.firstSeen : attestedAt(envelope.generatedAt, now)
+          };
+        })
+      }
+    };
+  });
+  const resolved = baseline.filter((e) => e.present && !liveSet.has(e.fingerprint));
+  return { envelopes: annotated, resolved };
+}
+function nextBaseline(envelopes, baseline, now) {
+  const live = new Map(liveEntries(envelopes).map((e) => [e.fingerprint, e]));
+  const stamp = new Date(now).toISOString();
+  const out = baseline.map(
+    (entry) => live.has(entry.fingerprint) ? { ...entry, lastSeen: stamp, present: true } : { ...entry, present: false }
+  );
+  const known = new Set(baseline.map((e) => e.fingerprint));
+  for (const entry of live.values()) {
+    if (known.has(entry.fingerprint)) continue;
+    const firstSeen = attestedAt(entry.generatedAt, now);
+    out.push({ fingerprint: entry.fingerprint, firstSeen, lastSeen: firstSeen, present: true });
+  }
+  return out;
+}
+function ensureTriageDir(dir) {
+  mkdirSync(dir, { recursive: true });
+  const gitignore = join(dir, ".gitignore");
+  if (!existsSync(gitignore)) writeFileSync(gitignore, "*\n");
+}
+function writeBaseline(path, entries, now) {
+  const payload = {
+    version: BASELINE_VERSION,
+    updatedAt: new Date(now).toISOString(),
+    findings: entries
+  };
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}
+`);
 }
 
 // src/tools/report.ts
 var REPORTS_WIDGET_URI = "ui://marvin/reports.html";
 var ReportInput = external_exports.object({
-  action: external_exports.enum(["list"]).optional(),
+  // Stays `.optional()`: an absent action means `list`, which is what both
+  // prose doors, `scripts/mcp-call.mjs` and every existing caller do. The
+  // `.strict()` below governs UNDECLARED keys only — it says nothing about
+  // whether a declared key is required.
+  action: external_exports.enum(["list", "triage"]).optional(),
   selected: external_exports.string().optional().describe(
     "Deep-link: report id (project-relative path) to pre-select in the widget, e.g. `.marvin/task/verification.md`."
+  ),
+  snapshot: external_exports.boolean().default(false).describe(
+    "Record the current findings as the new triage baseline. The ONLY writing path in this tool \u2014 default false, because the tool is widget-bound and an always-writing reconciliation would let merely opening the panel consume the baseline."
   )
-});
+}).strict();
 function buildReportTool(env2) {
   return defineTool({
     name: "report",
-    description: "List every report marvin generated under .marvin/ \u2014 security scans, refactor registers and plans, task specs, verification.md, handoffs \u2014 as one unified set, newest first, with per-report freshness. Terminals see the grouped text summary; MCP Apps hosts get the ReportListPayload reports widget.",
+    description: 'List every report marvin generated under .marvin/ \u2014 security scans, refactor registers and plans, task specs, verification.md, handoffs, critique receipts \u2014 as one unified set, newest first, with per-report freshness. `action: "triage"` adds the new/persisting/regressed/resolved roll-up against the stored baseline; `snapshot: true` records the current findings as that baseline. Terminals see the grouped text summary; MCP Apps hosts get the ReportListPayload reports widget.',
     inputSchema: ReportInput,
     // Bind the reports `ui://` widget for MCP Apps hosts (ADR-0024). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
     // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    //
+    // The binding is TOOL-level: every action inherits the widget whether or
+    // not it wants one. That is precisely why the write sits behind a
+    // default-false `snapshot` flag rather than behind the `triage` action.
     meta: { ui: { resourceUri: REPORTS_WIDGET_URI } },
-    // Only one action today (list); the optional enum leaves room to grow
-    // (e.g. a `show` detail action) without a breaking schema change.
-    handler: (input) => Promise.resolve(runList2(env2, input))
+    handler: (input) => Promise.resolve(run2(env2, input))
   });
 }
-var GROUP_ORDER = ["security", "refactor", "task", "handoff"];
+var GROUP_ORDER = ["security", "refactor", "task", "handoff", "critique"];
 var GROUP_LABELS = {
   security: "Security",
   refactor: "Refactor",
   task: "Task",
-  handoff: "Handoff"
+  handoff: "Handoff",
+  critique: "Critique"
 };
-function runList2(env2, input) {
-  const { reports, notes } = buildReportList({
+function run2(env2, input) {
+  const now = Date.now();
+  const scanDirs = {
     security: env2.securityDir,
     refactor: join(env2.projectDir, ".marvin", "refactor"),
     task: join(env2.projectDir, ".marvin", "task"),
-    handoff: env2.handoffDir
-  });
+    handoff: env2.handoffDir,
+    critique: env2.critiqueDir
+  };
+  const { reports, notes } = buildReportList(scanDirs);
+  const baselinePath = join(env2.reportDir, BASELINE_FILENAME);
+  const baseline = readBaseline(baselinePath);
+  const { envelopes, resolved } = reconcile(reports, baseline, now);
+  let recorded = null;
+  if (input.snapshot === true) {
+    recorded = nextBaseline(reports, baseline, now);
+    ensureTriageDir(env2.reportDir);
+    writeBaseline(baselinePath, recorded, now);
+  }
   const payload = {
-    reports,
+    reports: envelopes,
     ...input.selected ? { selected: input.selected } : {}
   };
+  const text = input.action === "triage" ? renderTriage(envelopes, resolved, notes, { baselineExists: baseline.length > 0, recorded }) : renderList(envelopes, notes);
   return {
-    content: [{ type: "text", text: renderList(reports, notes) }],
+    content: [{ type: "text", text }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the reports viewer.
     structuredContent: payload
   };
+}
+function reconciledFindings(reports) {
+  return reports.flatMap((r) => {
+    const body = r.body;
+    return (body.findings ?? []).filter((f) => f.state !== void 0);
+  });
+}
+function renderTriage(reports, resolved, notes, ctx) {
+  const findings = reconciledFindings(reports);
+  const lines = [`# Finding triage (${findings.length} live finding(s))`, ""];
+  if (!ctx.baselineExists) {
+    lines.push(
+      "_No baseline recorded yet \u2014 every finding reads as **new**. Run this again with `snapshot: true` to record the current state as the baseline._",
+      ""
+    );
+  }
+  for (const state of TriageState.options) {
+    const inState = findings.filter((f) => f.state === state);
+    lines.push(`- **${state}**: ${inState.length}`);
+  }
+  lines.push(`- **resolved**: ${resolved.length}`);
+  lines.push("");
+  for (const state of TriageState.options) {
+    const inState = findings.filter((f) => f.state === state);
+    if (inState.length === 0) continue;
+    lines.push(`## ${state} (${inState.length})`, "");
+    for (const f of inState) {
+      const where = f.file ? ` \u2014 \`${f.file}\`` : "";
+      lines.push(`- [${f.severity}] ${f.title}${where} \xB7 \`${f.fingerprint}\``);
+    }
+    lines.push("");
+  }
+  if (resolved.length > 0) {
+    lines.push(`## resolved (${resolved.length})`, "");
+    lines.push(
+      "_Gone from every current report; listed by identity because no row remains to describe them._",
+      ""
+    );
+    for (const e of resolved) lines.push(`- \`${e.fingerprint}\` \xB7 first seen ${e.firstSeen}`);
+    lines.push("");
+  }
+  lines.push(
+    ctx.recorded ? `_Baseline recorded: ${ctx.recorded.length} fingerprint(s)._` : "_Read-only: no baseline was written. Pass `snapshot: true` to record this state._"
+  );
+  if (notes.length > 0) {
+    lines.push(
+      "",
+      `_\u26A0 skipped ${notes.length} file(s):_`,
+      ...notes.map((n) => `- \`${n.file}\` \u2014 ${n.reason}`)
+    );
+  }
+  return lines.join("\n").trimEnd();
 }
 function renderList(reports, notes) {
   const lines = [`# Reports (${reports.length})`, ""];
@@ -31048,7 +31401,7 @@ var WIDGETS = [
     name: "reports",
     uri: REPORTS_WIDGET_URI,
     file: join("widgets", "reports.html"),
-    description: "Marvin reports \u2014 the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs \u2014 with KPI strip, group filter, and per-report freshness (ADR-0024)."
+    description: "Marvin reports \u2014 the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 with KPI strip, group filter, and per-report freshness (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -31138,7 +31491,7 @@ async function dispatchTask(server, env2, config2, input) {
     case "create":
       return runCreate(server, env2, config2, input);
     case "list":
-      return runList3(env2, config2);
+      return runList2(env2, config2);
     case "status":
       return runStatus(server, env2, config2);
     case "start":
@@ -31257,7 +31610,7 @@ To branch off and pick it up, call this tool with action="start", taskId="${crea
 File: \`${created.path}\`${templateWarning}${branchInfo}`
   );
 }
-function runList3(env2, config2) {
+function runList2(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const branch = currentBranch(env2.projectDir);
   const body = renderListTable(tasks, branch, config2);
@@ -32163,9 +32516,12 @@ function auditDigest(dirs, now = Date.now()) {
   };
 }
 var isRegister = (filename) => /^\d+-(audit|smells)-.*\.md$/.test(filename);
+var NON_POSTURE_KINDS = /* @__PURE__ */ new Set(["gate", "fix"]);
 function findingsFromAuditBlock(raw) {
   const parsed = parseAuditBlock(raw);
-  return parsed.kind === "ok" ? parsed.report.findings : null;
+  if (parsed.kind !== "ok") return null;
+  if (NON_POSTURE_KINDS.has(parsed.report.kind)) return null;
+  return parsed.report.findings;
 }
 function newestArea(dir, accepts, extract, now) {
   if (!existsSync(dir)) return null;
@@ -32300,7 +32656,7 @@ var COMMAND_DETAILS = {
   lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
   help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
   dashboard: "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
-  reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs \u2014 newest first, with per-report freshness.",
+  reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 newest first, with per-report freshness.",
   "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   "widget-preview": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it \u2014 the way to see a widget on a host that cannot render them, including the terminal.",
   // adr
@@ -35833,10 +36189,10 @@ function buildHandoffTool(env2) {
     // continue prompts) so the bound widget browses the whole set — no separate
     // `show` action (see .marvin/task/001-widget-handoffs.md, Variant A). The
     // optional enum still leaves room to grow without a breaking schema change.
-    handler: () => Promise.resolve(runList4(env2))
+    handler: () => Promise.resolve(runList3(env2))
   });
 }
-function runList4(env2) {
+function runList3(env2) {
   const { handoffs, malformed } = readAllHandoffs(env2.handoffDir);
   const body = handoffs.length === 0 ? "_No handoffs yet \u2014 run `/marvin:handoff` to capture the current work._" : handoffs.map(formatHandoffLine).join("\n");
   const warning = malformed.length > 0 ? `
@@ -36018,25 +36374,25 @@ function latestRunsByCriterion(projectRoot, slug, contractSha) {
   const sha = contractSha?.trim();
   const runs = /* @__PURE__ */ new Map();
   if (!sha || !SLUG_RE3.test(slug)) return runs;
-  for (const run2 of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
-    if (run2.contract_sha !== sha) continue;
-    runs.set(run2.criterion, run2);
+  for (const run3 of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
+    if (run3.contract_sha !== sha) continue;
+    runs.set(run3.criterion, run3);
   }
   return runs;
 }
-function toAcOutcome(cr, run2) {
+function toAcOutcome(cr, run3) {
   const base = {
     id: cr.id,
     statement: cr.statement,
     oracle_kind: cr.oracle.kind,
     ...cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}
   };
-  return { ...base, outcome: recordedOutcome(run2) };
+  return { ...base, outcome: recordedOutcome(run3) };
 }
-function recordedOutcome(run2) {
-  if (!run2 || run2.expect !== "pass") return "unknown";
-  if (run2.status === "pass") return "pass";
-  if (run2.status === "fail") return "fail";
+function recordedOutcome(run3) {
+  if (!run3 || run3.expect !== "pass") return "unknown";
+  if (run3.status === "pass") return "pass";
+  if (run3.status === "fail") return "fail";
   return "unknown";
 }
 function toGateOutcome(g) {
@@ -36076,6 +36432,55 @@ function buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings)
   }
   const adr = hostBindings?.decision_record?.path;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
+  links.push(...critiqueLinks(env2, projectRoot, slug));
+  return links;
+}
+var CRITIC_LABELS = {
+  "marvin-tm-spec-critic": "spec critic",
+  "marvin-tm-diff-critic": "diff critic"
+};
+function critiqueDirFor(env2, projectRoot) {
+  return projectRoot === env2.projectDir ? env2.critiqueDir : join(projectRoot, ".marvin", "critique");
+}
+function critiqueLinks(env2, projectRoot, slug) {
+  const dir = critiqueDirFor(env2, projectRoot);
+  if (!existsSync(dir)) return [];
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  const found = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    const full = join(dir, filename);
+    let raw;
+    let mtimeMs;
+    try {
+      raw = readFileSync(full, "utf8");
+      mtimeMs = statSync(full).mtimeMs;
+    } catch {
+      continue;
+    }
+    const parse4 = parseCritiqueBlock(raw);
+    if (parse4.kind !== "ok" || parse4.critique.subject !== slug) continue;
+    const { critic, compliance, quality } = parse4.critique;
+    found.push({
+      critic,
+      label: `${CRITIC_LABELS[critic] ?? critic} \u2014 compliance ${compliance.verdict} \xB7 quality ${quality.verdict}`,
+      ref: relative(projectRoot, full),
+      mtimeMs
+    });
+  }
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.ref.localeCompare(b.ref));
+  const seen = /* @__PURE__ */ new Set();
+  const links = [];
+  for (const f of found) {
+    if (seen.has(f.critic)) continue;
+    seen.add(f.critic);
+    links.push({ kind: "external", label: f.label, ref: f.ref });
+  }
   return links;
 }
 function prLabel(url) {
@@ -36183,11 +36588,11 @@ function buildAuditTool(env2) {
     meta: { ui: { resourceUri: AUDIT_WIDGET_URI } },
     // Only one action today (list); the optional enum leaves room to grow
     // (e.g. a `show` detail action) without a breaking schema change.
-    handler: () => Promise.resolve(runList5(env2))
+    handler: () => Promise.resolve(runList4(env2))
   });
 }
 var SEVERITY_ORDER2 = ["critical", "high", "medium", "low", "info"];
-function runList5(env2) {
+function runList4(env2) {
   const { reports, malformed } = readAllAuditReports(env2.securityDir);
   const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine2).join("\n");
   const warning = malformed.length > 0 ? `
@@ -36216,7 +36621,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.16.0";
+var VERSION = "0.17.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

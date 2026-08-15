@@ -139,7 +139,47 @@ Critical issues found. The commit should not proceed. Output:
 
 ## Output location
 
-The gate reports its verdict inline by default — it runs on the commit path and should stay quiet. If the user asks to keep a record, write it to `.marvin/security/gate-report.md` (create the `.marvin/security/` directory if needed).
+The gate reports its verdict inline by default — it runs on the commit path and should stay quiet. If the user asks to keep a record, write it to `.marvin/security/gate-report.md` (create the `.marvin/security/` directory if needed), and append the audit-report block below to that same file.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+**Only when a record was requested.** If the verdict stayed inline — the default — write nothing at all. The gate runs on the commit path and stays quiet by default; an unconditional write would break both that speed budget and ADR-0007's premise that service files are generated on request.
+
+When `.marvin/security/gate-report.md` is being written, append a machine-readable `audit-report` block after the prose so `/marvin:reports` and `/marvin:sec-report` can consume typed findings. Rules: set `kind` to `gate`; emit one finding per blocking or warning issue, with `file`/`line` where known and a short `category` (`secrets`, `injection`, `authz`, `deps` — this is a fast gate, not a compliance report, so an OWASP id is welcome but not required); make the `summary` counts match the `findings` you list; use the severity vocabulary `critical | high | medium | low | info`, ranked against `skills/sec-scan/references/severity-rubric.md` — read it from the plugin, the `skills/…` path resolves through all three entry points (ADR-0008). `scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+A gate record is a diff-scoped snapshot, not the project's security posture: `/marvin:reports` and `/marvin:sec-report` list it alongside everything else, and the dashboard deliberately keeps its Security area on the last full scan rather than on this (ADR-0038).
+
+Fill this shape from the real gate run (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "gate",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "staged diff",
+  "summary": { "critical": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "GATE-1",
+      "severity": "critical",
+      "title": "AWS access key in added lines",
+      "category": "secrets",
+      "file": "src/config/aws.ts",
+      "line": 12,
+      "evidence": "AKIA-prefixed literal assigned to accessKeyId",
+      "remediation": "Remove the literal, read it from the environment, rotate the key"
+    },
+    {
+      "id": "GATE-2",
+      "severity": "medium",
+      "title": "Shell command built from a request parameter",
+      "category": "injection",
+      "file": "src/jobs/export.ts",
+      "line": 44,
+      "remediation": "Pass arguments as an array instead of interpolating into a shell string"
+    }
+  ]
+}
+```
 
 ## Guidelines
 

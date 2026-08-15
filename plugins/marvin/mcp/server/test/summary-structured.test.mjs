@@ -584,3 +584,161 @@ test("a foreign projectRoot is summarised through its own config, not the server
     rmSync(target, { recursive: true, force: true });
   }
 });
+
+// ── critique receipts reach the summary as links (ADR-0039) ─────────────────
+
+/** A receipt for `slug`, written by `critic`, with the given axis verdicts. */
+function receipt(critic, slug, compliance, quality) {
+  return [
+    `# ${critic === "marvin-tm-spec-critic" ? "Spec" : "Diff"} Critique: ${slug}`,
+    "",
+    "Prose.",
+    "",
+    "```json critic-verdict",
+    JSON.stringify({
+      critic,
+      subject: slug,
+      judged_at: "2026-08-15T09:30:00.000Z",
+      compliance: { verdict: compliance, blockers: 0, warnings: 0 },
+      quality: { verdict: quality, blockers: 0, warnings: 1 },
+    }),
+    "```",
+    "",
+  ].join("\n");
+}
+
+const critiqueLinks = (s) =>
+  s.links.filter((l) => l.kind === "external" && (l.ref ?? "").includes(".marvin/critique/"));
+
+test("the task summary links a critique receipt when one exists", async () => {
+  const repo = seedRepo();
+  try {
+    // Baseline first: with no receipt the links array is exactly what it is
+    // today. This is what keeps the feature from silently altering every
+    // existing summary.
+    const before = (await callSummary(repo, { slug: "demo" })).structuredContent;
+    assert.deepEqual(critiqueLinks(before), [], "precondition: no receipt, no critique link");
+    const baselineKinds = before.links.map((l) => l.kind);
+
+    const dir = join(repo, ".marvin", "critique");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "001-demo.md"),
+      receipt("marvin-tm-diff-critic", "demo", "PASS", "PASS WITH WARNINGS"),
+    );
+
+    const s = (await callSummary(repo, { slug: "demo" })).structuredContent;
+    const links = critiqueLinks(s);
+    assert.equal(links.length, 1);
+    // The label names the producing critic AND both axis verdicts; the ref is
+    // the receipt path, so the summary reaches the file itself.
+    assert.equal(links[0].label, "diff critic — compliance PASS · quality PASS WITH WARNINGS");
+    assert.equal(links[0].ref, ".marvin/critique/001-demo.md");
+    // Every other link is unchanged — the receipt is added, nothing is replaced.
+    assert.deepEqual(
+      s.links.slice(0, baselineKinds.length).map((l) => l.kind),
+      baselineKinds,
+    );
+
+    // A receipt for another spec is not this spec's receipt.
+    writeFileSync(
+      join(dir, "002-other.md"),
+      receipt("marvin-tm-spec-critic", "unrelated", "PASS", "PASS"),
+    );
+    assert.equal(
+      critiqueLinks((await callSummary(repo, { slug: "demo" })).structuredContent).length,
+      1,
+      "the lookup keys on subject, not on being in the directory",
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("two receipts for one spec render one link per critic, told apart by the label", async () => {
+  const repo = seedRepo();
+  try {
+    const dir = join(repo, ".marvin", "critique");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "001-demo.md"),
+      receipt("marvin-tm-spec-critic", "demo", "PASS", "PASS"),
+    );
+    writeFileSync(
+      join(dir, "002-demo.md"),
+      receipt("marvin-tm-diff-critic", "demo", "PASS", "PASS"),
+    );
+
+    const links = critiqueLinks((await callSummary(repo, { slug: "demo" })).structuredContent);
+    assert.equal(links.length, 2, "one link per critic");
+
+    // The widget renders these as two ghost buttons. With identical axis values
+    // the critic prefix is the ONLY thing that tells the reader which gate
+    // produced which — the reason the critic is in the label and not only in
+    // the file.
+    const labels = links.map((l) => l.label).sort();
+    assert.deepEqual(labels, [
+      "diff critic — compliance PASS · quality PASS",
+      "spec critic — compliance PASS · quality PASS",
+    ]);
+    assert.notEqual(labels[0], labels[1]);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The receipts follow the ROOT BEING SUMMARISED, like every other read here.
+ *
+ * `ServerEnv` is resolved once at startup, so a receipt directory taken from the
+ * environment names the project the server was spawned for — while the `ref` is
+ * built with `relative(projectRoot, …)`. Under `summary { projectRoot: <other
+ * tree> }` that pairing listed the SERVER's receipts and stamped them with a
+ * `../../…` path escaping the root the ref claims to be relative to.
+ *
+ * Both trees hold a receipt for the slug `demo`, which is the arrangement that
+ * makes the wrong answer look right: the lookup keys on `subject`, so a slug two
+ * projects share is all it takes. The verdicts differ, so the label alone says
+ * which tree answered.
+ */
+test("critique receipts are read from the summarised project, not the server's own", async () => {
+  const home = seedRepo();
+  const target = seedRepo();
+  try {
+    const homeDir = join(home, ".marvin", "critique");
+    mkdirSync(homeDir, { recursive: true });
+    writeFileSync(
+      join(homeDir, "001-demo.md"),
+      receipt("marvin-tm-spec-critic", "demo", "PASS", "PASS"),
+    );
+
+    const targetDir = join(target, ".marvin", "critique");
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(
+      join(targetDir, "007-demo.md"),
+      receipt("marvin-tm-diff-critic", "demo", "BLOCK", "PASS WITH WARNINGS"),
+    );
+
+    const result = await callTool(
+      "summary",
+      { projectRoot: target, slug: "demo" },
+      { env: { CLAUDE_PROJECT_DIR: home } },
+    );
+    const links = critiqueLinks(result.structuredContent);
+    assert.equal(links.length, 1, "one receipt — the target's, and only the target's");
+    assert.equal(
+      links[0].label,
+      "diff critic — compliance BLOCK · quality PASS WITH WARNINGS",
+      "the spawning project's receipt is not this project's review record",
+    );
+    assert.equal(
+      links[0].ref,
+      ".marvin/critique/007-demo.md",
+      "the ref resolves inside the root it is relative to",
+    );
+    assert.ok(!links[0].ref.startsWith(".."), "and does not escape it");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true });
+  }
+});

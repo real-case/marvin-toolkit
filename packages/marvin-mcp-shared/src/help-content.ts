@@ -137,7 +137,7 @@ export const COMMAND_DETAILS: Record<string, string> = {
   dashboard:
     "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
   reports:
-    "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
+    "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts — newest first, with per-report freshness.",
   "report-export":
     "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest — Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   "widget-preview":

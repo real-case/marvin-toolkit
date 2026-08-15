@@ -164,8 +164,12 @@ real spec.
   switching. The only write is the report file.
 - **Verify the agent's claims.** The subagent accelerates reading; the register is
   yours. Adopt nothing you have not spot-checked.
-- **Severity is contextual.** A tangle in the payment path outranks the same tangle in
-  a dev script. Rank by what it costs this project.
+- **Rank against the rubric.** `skills/sec-scan/references/severity-rubric.md` is the one
+  scale every marvin producer uses — blast radius, likelihood, cost to reverse, with the
+  two stated adjustments (a tangle in the payment path is promoted one row; an
+  unreachable one is discounted one row). Read it from the plugin: the `skills/…` path
+  resolves through all three entry points (ADR-0008). When context moved a row, name the
+  context in the finding's evidence.
 - **Prefer few well-evidenced findings** over an exhaustive inventory of nitpicks —
   nitpick-scale issues belong to `refactor-smells` runs scoped to the module.
 - **No behaviour opinions.** The audit judges structure, not features; product choices

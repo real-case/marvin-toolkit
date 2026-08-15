@@ -139,7 +139,36 @@ File: <suggested test file path>
 
 ## Output location
 
-The fix is meant to be applied to the code, so the primary output is the diff and regression test inline. If the user asks for a written record, save it to `.marvin/security/fix-<slug>.md` (create the `.marvin/security/` directory if needed), where `<slug>` names the vulnerability.
+The fix is meant to be applied to the code, so the primary output is the diff and regression test inline. If the user asks for a written record, save it to `.marvin/security/fix-<slug>.md` (create the `.marvin/security/` directory if needed), where `<slug>` names the vulnerability, and append the audit-report block below to that same file.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+**Only when a written record was requested.** If the fix stayed inline — the default — write nothing at all.
+
+When `.marvin/security/fix-<slug>.md` is being written, append a machine-readable `audit-report` block after the prose so `/marvin:reports` and `/marvin:sec-report` can consume typed findings. Rules: set `kind` to `fix`; **the findings record what was FIXED**, so each one describes the vulnerability that was closed, at the location it lived, with `remediation` stating the change that closed it. That is why the reports viewer suppresses the continuation command for this kind: a `/marvin:sec-fix` chip on a fix record would ask this skill to fix its own record (ADR-0038). Set `category` to the finding's original taxonomy ref (the OWASP id or CWE it came in with), make the `summary` counts match the `findings` you list, and use the severity vocabulary `critical | high | medium | low | info` at the severity the vulnerability HAD, ranked against `skills/sec-scan/references/severity-rubric.md` — read it from the plugin, the `skills/…` path resolves through all three entry points (ADR-0008). `scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+Fill this shape from the real fix (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "fix",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "src/db/users.ts",
+  "summary": { "critical": 1 },
+  "findings": [
+    {
+      "id": "FIX-1",
+      "severity": "critical",
+      "title": "SQL injection in user lookup",
+      "category": "OWASP A05:2025",
+      "file": "src/db/users.ts",
+      "line": 88,
+      "evidence": "query built by concatenating req.params.id",
+      "remediation": "Replaced with a parameterized query; regression test added in test/users.test.ts"
+    }
+  ]
+}
+```
 
 ## Output format
 

@@ -223,7 +223,7 @@ Write the report to `.marvin/security/scan-report.md` (create the `.marvin/secur
 ...
 ```
 
-Group findings by severity (CRITICAL → HIGH → MEDIUM → LOW → INFO). Map each finding to its OWASP Top 10:2025 category. Include specific file paths and line numbers. Provide actionable fix recommendations, not generic advice.
+Group findings by severity (CRITICAL → HIGH → MEDIUM → LOW → INFO). Rank each one against the shared rubric at `skills/sec-scan/references/severity-rubric.md` — read it from the plugin before assigning severities; the `skills/…` path resolves through all three entry points (chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble, ADR-0008). Map each finding to its OWASP Top 10:2025 category. Include specific file paths and line numbers. Provide actionable fix recommendations, not generic advice.
 
 At the end, add a "Next Steps" section suggesting:
 - Run `sec-fix` for critical/high findings
@@ -239,6 +239,7 @@ At the end, add a "Next Steps" section suggesting:
 
 ## Guidelines
 
+- **Severity comes from the rubric, not from the moment.** `skills/sec-scan/references/severity-rubric.md` is the one scale every marvin producer ranks against — blast radius, likelihood, cost to reverse, plus the two stated adjustments. When context moved a finding's row, name the context in its evidence rather than writing that severity is contextual.
 - **This is the comprehensive audit.** Don't skip phases. If a phase doesn't apply (e.g., no Go code), briefly note "Phase 4 (Go): N/A — no Go code detected" and move on.
 - **Delegate, don't duplicate.** Phases 1 and 2 use the specialized skills; Phase 3 fans the OWASP walk out to three `marvin-auditor` lenses. Don't re-implement their logic inline.
 - **Phase 3 is where the scan finds the most, Phase 5 is where you add the most value.** External tools find pattern-level issues; the OWASP review finds logic-level issues — missing auth on a specific route, business logic bypasses, insecure design decisions. The lenses do that reading; the register is yours, and nothing enters it unverified.

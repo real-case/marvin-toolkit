@@ -77,8 +77,26 @@ Return a single structured report message:
 - **Evidence over vibes.** No finding without `file:line`. Numbers beat adjectives.
 - **Refute freely.** If a suspected hotspot turns out to be fine (large but cohesive,
   churn from mechanical renames), say so — preventing a useless refactor is a win.
-- **Severity is contextual.** The same tangle weighs more on the hot path of this
-  project than in a rarely-touched dev script.
+- **Rank against the shared severity rubric.** It is inlined here rather than referenced
+  by path: an agent body is loaded standalone, with no plugin-root preamble, so a
+  `skills/…` path would resolve against the working directory and silently fail to open.
+  The spine is blast radius × likelihood × cost to reverse, and the row is set by the
+  worst honest answer:
+  - **critical** — already broken and expensive to undo: the only deployment path depends
+    on a module no one can change, and the last three attempts were reverted.
+  - **high** — a real path to serious damage, gated by one condition: the payment module
+    and the notification module import each other, so neither can be changed alone.
+  - **medium** — damage is bounded: one 900-line module with four unrelated
+    responsibilities, changed by two teams every sprint.
+  - **low** — a real defect whose worst case is small: three copies of one date helper.
+  - **info** — no defect, worth recording: a large module that proved cohesive on
+    inspection. The refutation is the finding.
+
+  Two adjustments, and say in the evidence which you applied: an unreachable instance
+  (dead code, a path behind a flag that ships off) drops exactly one row, never to `info`;
+  the same tangle on a payment, authentication or credential path is promoted exactly one
+  row. "Hot path" means it carries value or trust, not that it is called often — never
+  write that severity is contextual and stop there.
 - **Stay in scope.** Audit what the brief covers; note out-of-scope observations in one
   line each rather than expanding the walk yourself.
 - **Never simulate fixes.** Suggesting a direction is your job; drafting the diff is

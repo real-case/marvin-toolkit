@@ -241,6 +241,38 @@ test("Unicode title round-trips; slug falls back to the task type", async () => 
   }
 });
 
+test("report rejects an undeclared argument instead of stripping it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
+  try {
+    // Strictness lives in `registerTool`'s safeParse, so this case has to run
+    // over STDIO: `report-tool.test.mjs` calls the handler directly and would
+    // never see it. It is also the first per-tool strictness case in this
+    // suite — `mcp-shared/test/strict-input.test.mjs` proves the plumbing with
+    // synthetic probe tools, not any real tool's schema.
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      // the dangerous direction: a caller who INTENDS to record a baseline
+      { name: "report", arguments: { action: "triage", snapshott: true } },
+      { name: "report", arguments: {} },
+    ]);
+
+    const [rejected, bare] = results;
+    assert.equal(rejected.isError, true, "an undeclared key is not silently stripped");
+    assert.match(textOf(rejected), /snapshott/, "the error names the argument");
+    assert.doesNotMatch(textOf(rejected), /# Finding triage/, "and no answer was computed");
+    assert.throws(
+      () => readdirSync(join(dir, ".marvin", "report")),
+      /ENOENT/,
+      "nothing was written on the rejected path",
+    );
+
+    // …while the declared surface is untouched: a bare call still means `list`.
+    assert.notEqual(bare.isError, true);
+    assert.match(textOf(bare), /# Reports \(0\)|No reports yet/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("nextSeq counts malformed files too — no duplicate ids (regression)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
   const tasksDir = join(dir, ".marvin", "track");

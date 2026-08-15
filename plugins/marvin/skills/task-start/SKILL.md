@@ -416,6 +416,19 @@ On a shape-valid spec, invoke the `marvin-tm-spec-critic` agent via Task-tool, p
 
 Record the verdict in the spec's **Critic Verdict & Overrides** section — that section is the carrier for **this** critic, and `/marvin:task-deliver` renders it on the PR's **Spec critic** line (the diff critic gets its own line, from `/marvin:task-implement`). Record only a terminal verdict: `PASS`, `PASS WITH WARNINGS`, `BLOCK` or `UNABLE`. If Task-tool is unavailable, write "none — critic skipped" there **and** carry that fact forward so the PR reads "⚠️ critic skipped" — a skipped semantic gate is never silent. An `UNABLE` verdict is carried the same way and reads "⚠️ critic UNABLE — <reason>".
 
+Where the critic emitted a ` ```json critic-verdict ` block, route on the **roll-up** computed from its two axes (`BLOCK` > `UNABLE` > `PASS WITH WARNINGS` > `PASS`); where it did not, route on the `**Verdict:**` line exactly as above.
+
+**Then write the receipt** (ADR-0039). After the verdict is recorded above — that section stays the DoR gate's carrier and is not replaced — save the critic's report **verbatim**, followed by its ` ```json critic-verdict ` block, to `.marvin/critique/<NNN>-<slug>.md`:
+
+- `<NNN>` is the highest existing leading-integer prefix in `.marvin/critique/` plus one, `001` when the directory is empty or absent — the same rule `skills/handoff/SKILL.md` states for its own sequence. Create the directory on first write.
+- `<slug>` is the spec slug, and the block's `subject` is that **same** slug. It is the key `/marvin:reports` links on and `/marvin:task-summary` looks up, so a receipt whose `subject` is anything else is orphaned from its task.
+
+Three rules make the receipt trustworthy:
+
+1. **Terminal verdicts only.** A `NEEDS_CONTEXT` gets no receipt until its single re-dispatch resolves; write the receipt for the resolved run.
+2. **A critic that emitted no block gets no receipt**, and the PR line renders exactly as specified above — the receipt adds evidence, it never invents a verdict.
+3. **The receipt is a record, never an input.** It is written after the decision, and nothing reads it back to make one.
+
 ### Step 9F: Finalize & write
 
 1. **Judgment items** the gates cannot assess:
@@ -534,6 +547,8 @@ On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the dra
 - `UNABLE` → never a pass; record it verbatim as `UNABLE — <reason>` and let the user decide whether to proceed.
 
 If Task-tool is unavailable, write "none — critic skipped" and carry it forward so `/marvin:task-deliver` renders it on the PR's **Spec critic** line. An `UNABLE` verdict is carried the same way.
+
+**Write the receipt** exactly as Step 8F states it: on a terminal verdict, and only where the critic emitted a ` ```json critic-verdict ` block, save the report verbatim plus that block to `.marvin/critique/<NNN>-<slug>.md` with `subject` set to this spec's slug. Route on the block's roll-up where there is one, on the `**Verdict:**` line where there is not. The receipt is a record, never an input to the decision just made.
 
 ### Step 9B: Finalize & write
 

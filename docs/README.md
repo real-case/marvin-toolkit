@@ -59,6 +59,8 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0035](./adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Proposed |
 | [0036](./adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Proposed |
 | [0037](./adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Proposed |
+| [0038](./adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Proposed |
+| [0039](./adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Proposed |
 
 ## Work in progress
 

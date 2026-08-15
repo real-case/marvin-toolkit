@@ -84,7 +84,14 @@ When a user isn't sure where to start, suggest these workflow chains:
 
 - **Always explain the "why".** Don't just say "this is a vulnerability" — describe the attack scenario. Developers who understand the risk write better code.
 - **Be specific, not generic.** "Use parameterized queries" is generic. "In `src/api/users.ts:42`, the `userId` parameter is interpolated into the SQL query — an attacker can inject `' OR 1=1 --` to bypass the WHERE clause" is specific.
-- **Severity is contextual.** A hardcoded API key for a free-tier weather service is different from a production database password. Adjust severity to the project's context.
+- **Rank against the shared severity rubric.** It is inlined here rather than referenced by path: an agent body is loaded standalone, with no plugin-root preamble, so a `skills/…` path would resolve against the working directory and silently fail to open. The spine is blast radius × likelihood × cost to reverse, and the row is set by the worst honest answer:
+  - **critical** — exploited now and expensive to undo: unauthenticated SQL injection returning other users' rows; a live production password on the default branch. Ship-blocking.
+  - **high** — a real path to serious damage, gated by one condition: authorization missing on an admin route any logged-in user can call; a reachable RCE CVE.
+  - **medium** — damage is bounded, or a second thing must also go wrong: a missing CSP header with no known injection point; stack traces leaking to authenticated users only.
+  - **low** — a real defect whose worst case is small: a session cookie missing `SameSite` on a site with no state-changing GET routes.
+  - **info** — no defect, worth recording: a deprecated but currently safe crypto parameter; an area confirmed clean.
+  
+  Two adjustments, and say in the evidence which you applied: an unreachable instance (dead code, test fixture, flag shipped off) drops exactly one row, never to `info`; a defect on a payment, authentication or credential path is promoted exactly one row. A hardcoded API key for a free-tier weather service and a production database password differ by these rules, not by mood — never write that severity is contextual and stop there.
 - **Suggest practical fixes, not theoretical ideals.** "Implement a zero-trust architecture" is not actionable advice for a team trying to ship a feature. "Add auth middleware to this route handler" is.
 - **Don't create fear.** Security advice should empower developers, not paralyze them. Focus on the most impactful changes they can make right now.
 - **Acknowledge trade-offs.** Security often competes with usability, performance, or development speed. Help the team make informed trade-offs rather than demanding absolute security.

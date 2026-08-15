@@ -60,10 +60,10 @@ describe("ReportsView — header, KPIs and list over the fixture", () => {
   it("renders the count, all rows newest-first, deterministic ages and the KPI strip", () => {
     renderFixture();
 
-    expect(screen.getByTestId("reports-count").textContent).toBe("8");
+    expect(screen.getByTestId("reports-count").textContent).toBe("9");
 
     const rows = screen.getAllByRole("option").map((o) => o.textContent ?? "");
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(9);
     expect(rows[0]).toContain("Verification");
     expect(rows[0]).toContain("task · task-verify · 5h");
     expect(rows[1]).toContain("Security scan");
@@ -103,7 +103,7 @@ describe("ReportsView — header, KPIs and list over the fixture", () => {
     ).toBe("true");
 
     fireEvent.click(within(groupFilter).getByRole("button", { name: /^All/ }));
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(9));
 
     const search = screen.getByTestId("reports-search") as HTMLInputElement;
     fireEvent.input(search, { target: { value: "PLAN" } }); // title, case-insensitive
@@ -119,6 +119,29 @@ describe("ReportsView — header, KPIs and list over the fixture", () => {
         "No reports match the current filters.",
       ),
     );
+  });
+
+  // ADR-0039: the fifth ReportGroup. A group that reaches rich hosts as data and
+  // has no button in the toolbar is unreachable — "all" buries it.
+  it("the critique segment renders with its count and filters the list", async () => {
+    renderFixture();
+
+    const groupFilter = screen.getByTestId("group-filter");
+    const segments = within(groupFilter).getAllByRole("button");
+    expect(segments).toHaveLength(6); // all + the five groups
+
+    const critique = within(groupFilter).getByRole("button", { name: /^Critique/ });
+    expect(critique.textContent).toContain("1"); // the segment carries its count
+    fireEvent.click(critique);
+
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+    expect(critique.getAttribute("aria-pressed")).toBe("true");
+    const row = screen.getByRole("option");
+    expect(row.textContent).toContain("Diff Critique: feat/widget-family");
+    expect(row.textContent).toContain("critique · marvin-tm-diff-critic");
+    // the derived roll-up rides the document tag pill, and receipts never decay
+    expect(row.textContent).toContain("critique · BLOCK");
+    expect(row.textContent).not.toContain("stale");
   });
 });
 
@@ -433,8 +456,8 @@ describe("ReportsWidget — mock-host handshake", () => {
     try {
       render(<ReportsWidget seam={host.seam} />);
       await screen.findByTestId("reports-kpis", {}, { timeout: 5000 });
-      expect(screen.getByTestId("reports-count").textContent).toBe("8");
-      expect(screen.getAllByRole("option")).toHaveLength(8);
+      expect(screen.getByTestId("reports-count").textContent).toBe("9");
+      expect(screen.getAllByRole("option")).toHaveLength(9);
       expect(screen.queryByTestId("reports-connecting")).toBeNull();
       expect(screen.getByTestId("detail-title").textContent).toBe("Verification");
     } finally {

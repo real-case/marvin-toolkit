@@ -9,7 +9,13 @@ import { callTool } from "./_driver.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const skillsDir = join(here, "..", "..", "..", "skills");
 
-/** The 8 sec-* scanners that emit a Tier-2 audit-report block (ADR-0024 #7). */
+/**
+ * The 10 sec-* skills that emit a Tier-2 audit-report block — the 8 scanners of
+ * ADR-0024 #7 plus `sec-gate` and `sec-fix`, which joined when `AuditKind` was
+ * widened (ADR-0038). This is the only oracle in the tree that feeds each
+ * skill's OWN shipped example block through the real reader; every other
+ * fixture is synthetic and written by its test.
+ */
 const SCANNERS = [
   "sec-scan",
   "sec-secrets",
@@ -19,6 +25,8 @@ const SCANNERS = [
   "sec-threat-model",
   "sec-compliance",
   "sec-pentest",
+  "sec-gate",
+  "sec-fix",
 ];
 
 /** A schema-valid audit-report block, the canonical shape the skills mirror. */
@@ -171,7 +179,7 @@ test("every sec-* skill example block is a valid audit-report", async () => {
     const result = await listAudits(dir);
 
     const sc = result.structuredContent;
-    assert.equal(sc.reports.length, SCANNERS.length, "all 8 skill example blocks validate");
+    assert.equal(sc.reports.length, SCANNERS.length, "all 10 skill example blocks validate");
     assert.doesNotMatch(
       textOf(result),
       /invalid audit-report block/,

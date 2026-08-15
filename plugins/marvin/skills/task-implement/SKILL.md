@@ -178,13 +178,33 @@ the receipt. One surviving blocker keeps the `BLOCK` and the draft PR.
 **Stale-review guard.** If a verify FAIL triggered a code fix, the critic's report is now stale —
 **re-run `marvin-tm-diff-critic` against the final diff** before delivery.
 
+**Write the receipt** (ADR-0039). Once the critic has returned and its verdict is terminal, save the
+critic's report **verbatim** followed by its ` ```json critic-verdict ` block to
+`.marvin/critique/<NNN>-<slug>.md`, where `<NNN>` is the highest existing leading-integer prefix in
+`.marvin/critique/` plus one (`001` when the directory is empty or absent — the rule
+`skills/handoff/SKILL.md` states for its own sequence) and `<slug>` is the spec slug, which is also
+the block's `subject`. Then:
+
+- **Write it after the merge point, never at dispatch.** The critic runs `run_in_background` in
+  step 1 above and step 3 is where its result arrives; a receipt written at dispatch records a
+  verdict that does not exist yet.
+- **The receipt records the FINAL run.** Where the stale-review guard forced a re-run, replace the
+  receipt already written for the superseded run rather than leaving it beside its successor — two
+  receipts for one diff make the newest ambiguous.
+- **Terminal verdicts only, and only with a block.** A `NEEDS_CONTEXT` gets its receipt after the
+  single re-dispatch resolves; a critic that emitted no block gets no receipt and the PR line
+  renders exactly as it does today.
+- **The receipt is evidence, not a gate.** It is written after the delivery decision is reached and
+  nothing reads it back to change one.
+
 ### Step 7F: Deliver
 
 Invoke `/marvin:task-deliver` (see `skills/task-deliver/SKILL.md`), passing the already-read spec
 context (so deliver does not re-parse it), any spec-gap notes, and self-review findings as
 additional context for the PR body. The diff-critic's verdict is part of that hand-off — deliver
 renders it as its own **Diff critic** line and cannot recover it from the spec, which carries only
-the spec critic's. Pass it even when it is `⚠️ critic skipped`.
+the spec critic's. Pass it even when it is `⚠️ critic skipped`. **Pass the receipt path with it**
+when one was written: deliver names it after the verdict on the **Diff critic** line.
 
 The skill ends when the PR is open. Report the PR URL to the user.
 
@@ -250,6 +270,12 @@ exactly one re-dispatch carrying the input the critic named and stating that it 
 (not a fix-cycle round), and a second one is treated as `UNABLE`; an `UNABLE` is never a pass — it
 travels verbatim to `/marvin:task-deliver` and onto the PR's **Diff critic** line. Findings refuted
 by the code are recorded, not fixed, exactly as in Step 6F.
+
+**Write the receipt** on the same terms as Step 6F: after the merge point and never at dispatch,
+for the final run when a re-run superseded an earlier one, and only for a terminal verdict carrying
+a ` ```json critic-verdict ` block — the critic's report verbatim plus that block, saved to
+`.marvin/critique/<NNN>-<slug>.md` with `subject` set to this spec's slug. It is evidence for the
+PR, not a gate on it.
 
 ### Step 10B: Deliver
 

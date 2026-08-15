@@ -5,16 +5,30 @@ import { Finding } from "./audit.js";
 /**
  * Unified report envelope (reports widget, docs/design/reports-widget.md).
  * Every document marvin generates under `.marvin/` — security reports,
- * refactor registers and plans, task specs, `verification.md`, handoffs —
- * arrives in one envelope and renders through one of three body kinds. The
+ * refactor registers and plans, task specs, `verification.md`, handoffs, and
+ * critique receipts (ADR-0039) — arrives in one envelope and renders through
+ * one of three body kinds. The
  * `report` tool assembles the payload server-side; the widget only renders.
  * Everything the widget shows (staleness verdicts, summary chips, continuation
  * commands) is derivable data — the widget never owns policy or assembles
  * command strings itself.
  */
 
-/** Which `.marvin/` family produced the report. */
-export const ReportGroup = z.enum(["security", "refactor", "task", "handoff"]);
+/**
+ * Which `.marvin/` family produced the report.
+ *
+ * `critique` is positioned LAST by display choice, not by ordering constraint:
+ * the enum is not alphabetical, `GROUP_ORDER` in `tools/report.ts` re-declares
+ * the display order independently, and the merged list sorts by `generatedAt`.
+ * Appending keeps the four existing positions untouched.
+ *
+ * **Widening this union is a build failure elsewhere by design** (ADR-0039):
+ * `GROUP_LABELS` is a total `Record<ReportGroup, string>` and `DECAYS` in
+ * `lib/reports.ts` is a total `Record<ReportGroup, boolean>`, and
+ * `test/report-groups.test.mjs` derives the group set from this very line and
+ * asserts it against every other enumeration and every pinned prose site.
+ */
+export const ReportGroup = z.enum(["security", "refactor", "task", "handoff", "critique"]);
 export type ReportGroup = z.infer<typeof ReportGroup>;
 
 /** How the report body renders: finding rows, check rows, or markdown. */
@@ -26,10 +40,33 @@ export const ReportEffort = z.enum(["S", "M", "L"]);
 export type ReportEffort = z.infer<typeof ReportEffort>;
 
 /**
+ * What the reconciliation pass concluded about a finding's identity across runs
+ * (ADR-0038): `new` — this fingerprint is not in the baseline; `persisting` —
+ * it was there and still is; `regressed` — it had gone and has come back.
+ *
+ * There is deliberately no `resolved` member. A resolved finding has no row in
+ * any current report, so a fourth member would force the tool to synthesise a
+ * `ReportFinding` for something that exists nowhere on disk; the `triage`
+ * roll-up carries it instead.
+ */
+export const TriageState = z.enum(["new", "persisting", "regressed"]);
+export type TriageState = z.infer<typeof TriageState>;
+
+/**
  * One finding row — the audit `Finding` fields extended with the refactor
  * register's `effort`/`direction` and an optional server-derived `fixCommand`
  * (e.g. `/marvin:sec-fix scan F1`; the widget renders it as a copyable chip).
  * `category` relaxes to optional: refactor findings carry no taxonomy ref.
+ *
+ * `fingerprint` is the finding's identity across runs (ADR-0038) and is
+ * REQUIRED: it is computable from the finding alone, so a construction site
+ * that omits it is a defect and the compile error is the point. `firstSeen` and
+ * `state` are OPTIONAL for a mechanical reason, not a cautious one — the
+ * register parser returns `ReportFinding[]` to a second consumer (the dashboard
+ * in `lib/state.ts`) which has no baseline and no envelope, so a required
+ * `state` would force that caller to fabricate a value it cannot know. **Absent
+ * means "not reconciled"**, a real third answer no enum member has to fake. Do
+ * not "tighten" them to required: it breaks the dashboard path.
  */
 export const ReportFinding = Finding.extend({
   category: z.string().optional(),
@@ -38,6 +75,16 @@ export const ReportFinding = Finding.extend({
   direction: z.string().optional(),
   /** Ready-to-run continuation command, supplied by the tool as data. */
   fixCommand: z.string().optional(),
+  /**
+   * Server-computed identity — sha256 over kind, path, category and title slug,
+   * first 16 hex chars. Deliberately excludes the line number: folding it in
+   * would make every finding below an unrelated insertion look new.
+   */
+  fingerprint: z.string(),
+  /** Filled by the reconciliation pass only — absent means "not reconciled". */
+  firstSeen: z.string().datetime().optional(),
+  /** Filled by the reconciliation pass only — absent means "not reconciled". */
+  state: TriageState.optional(),
 });
 export type ReportFinding = z.infer<typeof ReportFinding>;
 

@@ -6,9 +6,9 @@ description: Export a generated .marvin/ report to PDF, standalone print-ready H
 # Report Export
 
 Turn any report marvin generated under `.marvin/` — security scans, refactor registers and
-plans, task specs, `verification.md`, handoffs — into a shareable artifact: a **Markdown
-digest** or a **print-ready HTML** document (the PDF path). You fill the shipped template
-yourself; the server ships no export code (template-only architecture, ADR-0033).
+plans, task specs, `verification.md`, handoffs, critique receipts — into a shareable artifact:
+a **Markdown digest** or a **print-ready HTML** document (the PDF path). You fill the shipped
+template yourself; the server ships no export code (template-only architecture, ADR-0033).
 
 ## Input
 
@@ -25,7 +25,7 @@ generated report with its id (the project-relative source path), title, group, a
 - If the user named a report (path, title, or "latest"), match it against that list.
 - If the reference is ambiguous or absent, present the list and ask which one.
 - If the `report` tool is unavailable, read the `.marvin/` families directly
-  (`security/`, `refactor/`, `task/`, `handoff/`) and pick by filename/title.
+  (`security/`, `refactor/`, `task/`, `handoff/`, `critique/`) and pick by filename/title.
 
 Then **read the source file** — the export renders its full content, and the file's
 `mtime` supplies the *Generated* timestamp.
