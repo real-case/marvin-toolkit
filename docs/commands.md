@@ -2,7 +2,7 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **54** in total,
+`/marvin:<group>-<command>`, and singletons stay bare. There are **55** in total,
 divided into seven groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
@@ -132,6 +132,7 @@ follows, with artifacts landing under `.marvin/task/`.
 | `/marvin:task-verify` | Run the quality gates concurrently with stack auto-detection and write `verification.md`. | `marvin verify`, `run the gates`, `is this green?` |
 | `/marvin:task-deliver` | Commit and open a PR, refusing if verification did not pass. | `marvin deliver`, `ship it`, `commit and PR the task` |
 | `/marvin:task-summary` | Aggregate a finished task — spec criteria, gate outcomes, git log, lessons, and links — into one summary. | `marvin summarize the task`, `what was done?`, `task summary` |
+| `/marvin:task-audit` | Lint the whole spec corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling `depends_on` references, unsealed specs, invalid statuses, unidentified files — with a remediation note per class. Read-only. | `marvin audit the specs`, `lint the spec corpus`, `which specs are unsealed?` |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
 `marvin-tm-diff-critic`, and `marvin-tm-review-fixer` agents support this pipeline.
@@ -239,7 +240,7 @@ but they are not typed as slash commands.
 | `help` | The dashboard and the registry-derived command index. |
 | `dashboard` | The whole-toolbox state report. |
 | `verify` | The concurrent quality-gate runner that writes `verification.md`. |
-| `spec` | The Definition-of-Ready gate that validates the spec contract. |
+| `spec` | The Definition-of-Ready gate that validates the spec contract, plus the corpus reads and the consistency lint over the whole spec directory. |
 | `lessons` | The lessons-learned store — add with a duplicate guard, search, count, and prune. |
 | `summary` | The task-delivery summary aggregator. |
 | `handoff` | The session-continuation handoff documents. |

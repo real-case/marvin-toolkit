@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { callTool } from "./_driver.mjs";
 
@@ -819,5 +819,423 @@ test("scope: marvin's own .marvin/ artifacts are never scope violations", async 
     assert.doesNotMatch(find(parsed, "scope").detail, /verification/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── the action vocabulary and the corpus reads (ADR-0037) ──────────────────
+//
+// `callSpec` above cannot carry these: it asserts a ```json spec-result``` block
+// is present, which is exactly what a corpus read must NOT emit. These two
+// helpers drive the same `callTool` and read the other block, so no existing
+// mode test changes meaning.
+
+/** Drive `spec` and return the raw result plus its text, asserting nothing. */
+async function callSpecRaw(args) {
+  const result = await callTool("spec", args);
+  return { result, isError: result.isError, text: result.content.map((c) => c.text).join("\n") };
+}
+
+/** The ```json spec-corpus``` payload of a `next` / `list` answer. */
+async function callSpecCorpus(args) {
+  const { text, isError } = await callSpecRaw(args);
+  const m = text.match(/```json spec-corpus\n([\s\S]*?)\n```/);
+  assert.ok(m, `no spec-corpus block in output:\n${text}`);
+  return { payload: JSON.parse(m[1]), isError, text };
+}
+
+/** An empty temp project root, cleaned up by the caller. */
+function tempRoot() {
+  return mkdtempSync(join(tmpdir(), "marvin-spec-corpus-"));
+}
+
+test("a call with neither action nor mode still runs the DoR gate", async () => {
+  // The regression the `.default("dor")` removal must not cause: every shipped
+  // caller passes no mode at all, and `.optional()` — not deletion — is what
+  // keeps them working.
+  const { parsed } = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS");
+  assert.ok(parsed.checks.length > 1, "the full gate ran, not a single-check path");
+});
+
+test("action supersedes mode and a conflicting pair is rejected", async () => {
+  const viaMode = await callSpec({
+    specContent: VALID_FEATURE,
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  const viaAction = await callSpec({
+    specContent: VALID_FEATURE,
+    action: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(viaAction.parsed.verdict, viaMode.parsed.verdict, "the synonym is exact");
+  assert.deepEqual(
+    viaAction.parsed.checks.map((c) => [c.id, c.status]),
+    viaMode.parsed.checks.map((c) => [c.id, c.status]),
+  );
+
+  // An equal pair is not a conflict; a disagreeing pair is refused rather than
+  // answered for either key.
+  const agreeing = await callSpec({
+    specContent: VALID_FEATURE,
+    action: "seal",
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(agreeing.parsed.verdict, viaMode.parsed.verdict);
+
+  const { text, isError } = await callSpecRaw({
+    specContent: VALID_FEATURE,
+    action: "next",
+    mode: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(isError, true);
+  assert.match(text, /action/, "the refusal names both keys");
+  assert.match(text, /mode/);
+  assert.doesNotMatch(text, /```json spec-(result|corpus)/, "and answers for neither");
+});
+
+test("next and list render without a verdict", async () => {
+  const root = tempRoot();
+  try {
+    // An absent spec directory is an ANSWER, not a failure.
+    const empty = await callSpecCorpus({ action: "next", projectRoot: root });
+    assert.equal(empty.isError ?? false, false, "a zero-state corpus is not an error");
+    assert.equal(empty.payload.next.number, 1);
+    assert.equal(empty.payload.next.id, "001");
+    assert.equal(empty.payload.dir.source, "default");
+    assert.doesNotMatch(empty.text, /```json spec-result/, "no verdict block for a corpus read");
+    assert.doesNotMatch(empty.text, /Verdict:/);
+
+    const specs = join(root, ".marvin", "task");
+    mkdirSync(specs, { recursive: true });
+    const file = (slug, title) =>
+      `---\nslug: ${slug}\ntype: feature\nstatus: ready\n---\n\n# ${title}\n`;
+    writeFileSync(join(specs, "002-second.md"), file("second", "The second spec"));
+    writeFileSync(join(specs, "010-tenth.md"), file("tenth", "The tenth spec"));
+
+    const next = await callSpecCorpus({ action: "next", projectRoot: root, slug: "eleventh" });
+    assert.equal(next.payload.next.number, 11);
+    assert.equal(next.payload.next.filename, "011-eleventh.md");
+    assert.equal(next.payload.next.collision, null);
+    assert.equal(next.payload.dir.source, "detected");
+
+    const collided = await callSpecCorpus({ action: "next", projectRoot: root, slug: "second" });
+    assert.equal(collided.payload.next.collision.filename, "002-second.md");
+    assert.match(collided.text, /supersedes/, "the collision asks the judgement question");
+
+    const listed = await callSpecCorpus({ action: "list", projectRoot: root });
+    assert.deepEqual(
+      listed.payload.specs.map((s) => s.slug),
+      ["tenth", "second"],
+      "highest number first",
+    );
+    assert.equal(listed.payload.specs[0].title, "The tenth spec");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("next refuses a slug it would otherwise have to sanitise", async () => {
+  const root = tempRoot();
+  try {
+    const { text, isError } = await callSpecRaw({
+      action: "next",
+      projectRoot: root,
+      slug: "../escape",
+    });
+    assert.equal(isError, true);
+    assert.match(text, /kebab-case/);
+    assert.doesNotMatch(text, /```json spec-corpus/, "nothing was allocated");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("seal refuses a terminal status and is explicit about an absent one", async () => {
+  const sha = (await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot })).parsed
+    .contractSha;
+  const withStatus = (status) =>
+    VALID_FEATURE.replace("status: ready\n", `status: ${status}\ncontract_sha: ${sha}\n`);
+
+  for (const status of ["shipped", "superseded"]) {
+    const { parsed, isError } = await callSpec({
+      specContent: withStatus(status),
+      action: "seal",
+      projectRoot: repoRoot,
+    });
+    assert.equal(parsed.verdict, "FAIL", `a ${status} spec must not be executed again`);
+    assert.equal(isError, true);
+    const check = find(parsed, "status");
+    assert.equal(check.status, "fail");
+    assert.match(check.detail, new RegExp(status), "the refusal names the status");
+  }
+
+  // The states that still execute.
+  for (const status of ["ready", "in-progress"]) {
+    const { parsed } = await callSpec({
+      specContent: withStatus(status),
+      action: "seal",
+      projectRoot: repoRoot,
+    });
+    assert.equal(parsed.verdict, "PASS", `${status} is not terminal`);
+  }
+
+  // Frontmatter with no status at all — seal is legitimately called on an inline
+  // fragment, and a silent pass would report a check that never happened.
+  const { parsed } = await callSpec({
+    specContent: VALID_FEATURE.replace("status: ready\n", `contract_sha: ${sha}\n`),
+    action: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  const check = find(parsed, "status");
+  assert.equal(check.status, "warn");
+  assert.match(check.detail, /did not run/);
+
+  // A status outside the vocabulary warns and echoes the value rather than
+  // blocking a repository that uses its own lifecycle words.
+  const exotic = await callSpec({
+    specContent: withStatus("in-review"),
+    action: "seal",
+    projectRoot: repoRoot,
+  });
+  assert.equal(exotic.parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(exotic.parsed, "status").detail, /in-review/);
+});
+
+test("the spec.dir tier is read from the targeted project root", async () => {
+  const root = tempRoot();
+  try {
+    mkdirSync(join(root, ".marvin"), { recursive: true });
+    writeFileSync(
+      join(root, ".marvin", "config.json"),
+      JSON.stringify({ spec: { dir: "docs/rfcs" } }),
+    );
+    mkdirSync(join(root, "docs", "rfcs"), { recursive: true });
+    writeFileSync(
+      join(root, "docs", "rfcs", "0007-existing.md"),
+      "---\nslug: existing\ntype: feature\nstatus: ready\n---\n\n# An existing RFC\n",
+    );
+
+    const { payload } = await callSpecCorpus({
+      action: "next",
+      projectRoot: root,
+      slug: "new-one",
+    });
+    assert.deepEqual(payload.dir, { rel: "docs/rfcs", source: "config" });
+    assert.equal(payload.next.width, 4, "the corpus's own width, not a hard-coded 3");
+    assert.equal(payload.next.filename, "0008-new-one.md");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── the progress journal and the resume fork (spec resumability) ───────────
+//
+// These drive the COMMITTED bundle over stdio, so they mean nothing against a
+// stale `dist/server.js` — which is exactly why the rebuilt bundle is part of
+// the change rather than a step someone remembers.
+
+/** The ```json spec-progress``` payload of a `progress` / `resume` answer. */
+async function callSpecProgress(args) {
+  const { text, isError, result } = await callSpecRaw(args);
+  const m = text.match(/```json spec-progress\n([\s\S]*?)\n```/);
+  assert.ok(m, `no spec-progress block in output:\n${text}`);
+  return { payload: JSON.parse(m[1]), isError, text, result };
+}
+
+/** A temp project holding one spec, and the path to it. */
+function specRoot(slug = "demo", filename = "030-demo.md") {
+  const root = tempRoot();
+  const specs = join(root, ".marvin", "task");
+  mkdirSync(specs, { recursive: true });
+  const path = join(specs, filename);
+  writeFileSync(path, `---\nslug: ${slug}\ntype: feature\nstatus: draft\n---\n\n# A draft\n`);
+  return { root, specs, path };
+}
+
+test("progress appends and resume reads it back over stdio", async () => {
+  const { root, specs, path } = specRoot();
+  try {
+    const appended = await callSpecProgress({
+      action: "progress",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+      source: "task-start",
+      step: "1.5",
+      kind: "step",
+      detail: "allocated the draft",
+      draftPath: ".marvin/task/030-demo.md",
+    });
+    assert.equal(appended.isError ?? false, false);
+    assert.equal(appended.payload.entry.step, "1.5");
+
+    // The entry survives the process boundary — a fresh session reads it back.
+    const resumed = await callSpecProgress({
+      action: "resume",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+    });
+    assert.equal(resumed.payload.found, true);
+    assert.equal(resumed.payload.entries.length, 1);
+    assert.equal(resumed.payload.entries[0].detail, "allocated the draft");
+    assert.equal(resumed.payload.path, ".marvin/task/030-demo.md");
+
+    // The journal is a SIBLING under runs/, never at the spec directory's top
+    // level — where the slugless-summary resolver, the in-flight digest and the
+    // report scanner would each read it as a spec.
+    assert.equal(resumed.payload.journal, join(".marvin", "task", "runs", "demo.progress.md"));
+    assert.ok(existsSync(join(specs, "runs", "demo.progress.md")));
+    assert.deepEqual(
+      readdirSync(specs).sort(),
+      ["030-demo.md", "runs"],
+      "nothing new at the spec directory's top level",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume on a spec with no journal is a loud non-error", async () => {
+  const { root, path } = specRoot();
+  try {
+    const { payload, isError, text, result } = await callSpecProgress({
+      action: "resume",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+    });
+    assert.notEqual(isError, true, "an empty journal is an answer, not a failure");
+    assert.notEqual(result.isError, true);
+    assert.equal(payload.found, false);
+    assert.deepEqual(payload.entries, []);
+    assert.deepEqual(payload.criteria_done, []);
+
+    // The degradation rule is stated in WORDS at the surface a human reads, not
+    // only in the payload. The exact fragment is asserted rather than a
+    // paraphrase: this sentence is the feature's headline safety property, and a
+    // bare "no progress recorded" is read as "nothing was implemented".
+    assert.match(text, /is never evidence that nothing was done/);
+    assert.match(text, /verify every criterion from scratch/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a slug that is not kebab-case is refused and writes nothing", async () => {
+  const { root, specs, path } = specRoot();
+  try {
+    const { text, isError } = await callSpecRaw({
+      action: "progress",
+      projectRoot: root,
+      specPath: path,
+      slug: "../escape",
+      source: "task-start",
+      step: "1.5",
+      kind: "step",
+      detail: "should never be written",
+    });
+    assert.equal(isError, true);
+    assert.match(text, /\.\.\/escape/, "the refusal names the slug");
+    assert.match(text, /kebab-case/);
+    assert.doesNotMatch(text, /```json spec-progress/, "and answers with no journal");
+
+    // Refusing while still writing is the failure this guards: the runs/
+    // directory must not exist at all, and nothing may have escaped it.
+    assert.equal(existsSync(join(specs, "runs")), false, "no runs directory was created");
+    assert.deepEqual(readdirSync(specs), ["030-demo.md"]);
+    assert.equal(existsSync(join(root, ".marvin", "escape.progress.md")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("every declared progress argument is accepted in one call", async () => {
+  // The sibling of the scope-side strictness case: PR #186 made this input
+  // schema strict, so each new field is unproved until one call passes them all
+  // together and is not rejected as unknown.
+  const { root, path } = specRoot();
+  try {
+    const { payload, isError } = await callSpecProgress({
+      action: "progress",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+      source: "task-implement",
+      step: "5F",
+      kind: "criterion",
+      detail: "AC4 implemented and covered",
+      criterion: "AC4",
+      draftPath: ".marvin/task/030-demo.md",
+      contractSha: "1b0d247e9e203673",
+    });
+    assert.equal(isError ?? false, false);
+    assert.equal(payload.entry.criterion, "AC4");
+    assert.equal(payload.entry.contract_sha, "1b0d247e9e203673");
+
+    const resumed = await callSpecProgress({
+      action: "resume",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+    });
+    assert.deepEqual(resumed.payload.criteria_done, ["AC4"]);
+    assert.equal(resumed.payload.contract_sha, "1b0d247e9e203673");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the journal follows the caller's spec path, not the resolver's answer", async () => {
+  // The caller-first rule: at task-start step 1.5 the directory is a user choice
+  // among the host conventions, and a journal written beside a draft in a
+  // different tree is a journal nobody finds.
+  const root = tempRoot();
+  try {
+    mkdirSync(join(root, ".marvin", "task"), { recursive: true }); // what the resolver would pick
+    const rfcs = join(root, "docs", "rfcs");
+    mkdirSync(rfcs, { recursive: true });
+    const path = join(rfcs, "0007-elsewhere.md");
+    writeFileSync(path, "---\nslug: elsewhere\ntype: feature\nstatus: draft\n---\n\n# Elsewhere\n");
+
+    const { payload } = await callSpecProgress({
+      action: "progress",
+      projectRoot: root,
+      specPath: path,
+      slug: "elsewhere",
+      source: "task-start",
+      step: "1.5",
+      kind: "step",
+      detail: "draft opened in the host's own convention",
+    });
+    assert.equal(payload.journal, join("docs", "rfcs", "runs", "elsewhere.progress.md"));
+    assert.equal(existsSync(join(rfcs, "runs", "elsewhere.progress.md")), true);
+    assert.equal(existsSync(join(root, ".marvin", "task", "runs")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("progress refuses an entry that cannot say what happened", async () => {
+  const { root, specs, path } = specRoot();
+  try {
+    const { text, isError } = await callSpecRaw({
+      action: "progress",
+      projectRoot: root,
+      specPath: path,
+      slug: "demo",
+      source: "task-start",
+    });
+    assert.equal(isError, true);
+    assert.match(text, /step/);
+    assert.match(text, /kind/);
+    assert.match(text, /detail/);
+    assert.equal(existsSync(join(specs, "runs")), false, "a refused entry writes nothing");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

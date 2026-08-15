@@ -199,6 +199,29 @@ test(
   }),
 );
 
+test(
+  "a draft spec is not counted as current work",
+  withDir(async (root) => {
+    const specs = join(root, ".marvin", "task");
+    mkdirSync(specs, { recursive: true });
+    const spec = (slug, status, heading) =>
+      ["---", `slug: ${slug}`, `status: ${status}`, "---", `# ${heading}`, ""].join("\n");
+
+    writeFileSync(join(specs, "001-dispatchable.md"), spec("dispatchable", "ready", "Real work"));
+    // What `task-start` step 1.5 now writes at every intake: a skeleton on disk
+    // holding the answers so far. It carries no status field of its own in the
+    // digest payload, so if it appeared here it would be indistinguishable from
+    // the row above — and being the newest, it would displace it first.
+    writeFileSync(join(specs, "002-abandoned.md"), spec("abandoned", "draft", "Half-typed intake"));
+
+    // BOTH halves in one case: a test that only proves the draft is absent also
+    // passes against a `specDigest` that returns nothing at all.
+    assert.deepEqual(lib.specDigest(root), [
+      { slug: "dispatchable", title: "Real work", id: "001" },
+    ]);
+  }),
+);
+
 // ── AC3: handoffDigest ──────────────────────────────────────────────────────
 
 test(

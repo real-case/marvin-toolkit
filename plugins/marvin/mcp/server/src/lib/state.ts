@@ -10,7 +10,7 @@ import type {
 } from "@marvin-toolkit/mcp-shared/contracts";
 import { readAllTasks } from "../storage/tasks.js";
 import { readAllHandoffs } from "../storage/handoff.js";
-import { parseFrontmatter } from "../storage/frontmatter.js";
+import { readSpecCorpus, resolveSpecDir, type SpecDirResolution } from "../storage/spec.js";
 import { buildTaskCard } from "../flows/card.js";
 import { roleOfStatus, type Config, type StatusRole } from "../storage/schema.js";
 import { currentBranch, hasGh, hasGit, inGitRepo } from "./git.js";
@@ -84,11 +84,26 @@ export function commandGroups(): DashboardState["command_groups"] {
   })).filter((g) => g.count > 0);
 }
 
-/** Count the `.md` artifacts under each `.marvin/` subdir for the dashboard. */
-export function artifactCounts(env: ServerEnv): DashboardState["artifacts"] {
+/**
+ * Count the `.md` artifacts under each `.marvin/` subdir for the dashboard.
+ *
+ * The spec count is the ONE that is not a directory literal: it counts the same
+ * corpus {@link specDigest} reads, under the same resolved directory (ADR-0037),
+ * so the Artifacts zone and the current-work zone can never name two different
+ * places on one render. Both callers — `tools/dashboard.ts` and `tools/help.ts` —
+ * pass a directory resolved through the config tier, so the two toolbox reports
+ * agree on a project that sets `spec.dir`. The `resolveSpecDir(env.projectDir)`
+ * default is detection-only and therefore config-blind: it is a fallback for a
+ * caller that holds no config, never the path a tool should rely on.
+ */
+export function artifactCounts(
+  env: ServerEnv,
+  specDir: SpecDirResolution = resolveSpecDir(env.projectDir),
+): DashboardState["artifacts"] {
   const marvin = join(env.projectDir, ".marvin");
+  const specs = readSpecCorpus(specDir);
   return {
-    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    specs: specs.records.length + specs.malformed.length,
     handoffs: countMarkdown(join(marvin, "handoff")),
     audits: countMarkdown(join(marvin, "security")),
     lessons: countMarkdown(env.memoryDir, ["MEMORY.md"]),
@@ -122,12 +137,6 @@ function ageDays(ms: number, now: number): number | null {
   return Number.isNaN(ms) ? null : Math.max(0, Math.floor((now - ms) / DAY_MS));
 }
 
-/** First `# ` heading of a markdown body, or null. */
-function firstHeading(text: string): string | null {
-  const m = text.match(/^#\s+(.+?)\s*$/m);
-  return m ? m[1]! : null;
-}
-
 /**
  * Active board cards: roles `wip` and `review` only, newest `updated` first,
  * capped at {@link DIGEST_LIMIT}. Nothing active yields an empty list rather
@@ -151,55 +160,49 @@ export function boardDigest(env: ServerEnv, config: Config): TaskCard[] {
 }
 
 /**
- * Pipeline specs under `<projectDir>/.marvin/task` still in flight, each keyed by
- * its frontmatter `slug` (the filename slug when the spec carries none): any
- * frontmatter `status` that is not terminal, where terminal means `shipped` OR
- * `superseded` — the predicate `/marvin:task-implement` already applies at its
- * step 2, both of which mean the work is done and neither of which is current
- * work. A missing status counts as in flight, since a spec is only stamped on
- * delivery. `verification.md` is the gate
- * artifact, not a spec, and symlinked entries are skipped outright — a planted
- * link must not pull out-of-tree content into `structuredContent` (the
- * `readMdFiles` rule). Ordered by the numeric filename prefix descending, which
- * is stable under edits in a way mtime is not; capped at {@link DIGEST_LIMIT}.
+ * Pipeline specs still in flight, each keyed by its frontmatter `slug` (the
+ * filename slug when the spec carries none). A missing status counts as in
+ * flight, since a spec is only stamped on delivery. Ordered by the numeric
+ * filename prefix descending, which is stable under edits in a way mtime is not;
+ * capped at {@link DIGEST_LIMIT}.
+ *
+ * **The predicate is no longer simply "not terminal".** `shipped` and
+ * `superseded` are excluded because the work is done; `draft` is excluded
+ * because it has not started. That third exclusion is not symmetry — it is an
+ * over-claim this zone would otherwise make. `DashboardSpec` carries `{slug,
+ * title, id?}` and NO status, so a half-typed intake skeleton would appear here
+ * indistinguishable from a dispatchable spec — and since `task-start` opens a
+ * draft on disk at its step 1.5, such skeletons now exist by design and
+ * accumulate. The zone caps at {@link DIGEST_LIMIT} rows ordered by number
+ * descending, so the newest abandoned skeletons would crowd out the real work
+ * first: the report degrades fastest exactly where the drafts are freshest.
+ *
+ * Hiding rather than labelling is the bounded choice — labelling means a
+ * `status` field on `DashboardSpec`, which is a contract + tool + widget slice.
+ * Drafts stay reachable through the two doors that matter: `task-start`'s router
+ * resumes one, and `task-implement`'s no-argument listing names them. The
+ * ARTIFACT COUNT deliberately keeps counting them (`artifactCounts` is an
+ * inventory of documents on disk, the same reading under which
+ * `/marvin:reports` lists a draft); only this function claims *in flight*, so
+ * only this one is narrowed.
+ *
+ * The directory is the RESOLVED one (ADR-0037), not a hard-coded
+ * `.marvin/task/`: a project that keeps its specs by a host convention has a
+ * current-work zone at all. `specDir` defaults to detection so the existing
+ * single-argument callers keep working. Skipping `verification.md`, symlinked
+ * entries and unreadable files is `readSpecCorpus`'s job now — three guards that
+ * left this function rather than being duplicated beside it.
  */
-export function specDigest(projectDir: string): DashboardSpec[] {
-  const dir = join(projectDir, ".marvin", "task");
-  if (!existsSync(dir)) return [];
-  let filenames: string[];
-  try {
-    filenames = readdirSync(dir).sort();
-  } catch {
-    return []; // an unreadable directory counts as empty — the zero-state doctrine
-  }
+const SPEC_NOT_IN_FLIGHT = new Set(["shipped", "superseded", "draft"]);
 
-  const rows: { spec: DashboardSpec; order: number }[] = [];
-  for (const filename of filenames) {
-    if (!filename.endsWith(".md") || filename === "verification.md") continue;
-    try {
-      const path = join(dir, filename);
-      if (lstatSync(path).isSymbolicLink()) continue;
-      const { frontmatter, body } = parseFrontmatter(readFileSync(path, "utf8"));
-      if (frontmatter.status === "shipped" || frontmatter.status === "superseded") continue;
-      const base = filename.replace(/\.md$/, "");
-      const m = /^(\d+)-(.+)$/.exec(base);
-      const id = m?.[1];
-      // A spec's identity is its frontmatter `slug` (CLAUDE.md, task-start);
-      // the filename slug is the fallback for a spec written without one.
-      const slug = frontmatter.slug || (m?.[2] ?? base) || filename;
-      rows.push({
-        spec: { slug, title: firstHeading(body) ?? slug, ...(id ? { id } : {}) },
-        order: id ? Number(id) : -1,
-      });
-    } catch {
-      continue; // an unreadable spec is skipped, never fatal
-    }
-  }
-
-  return rows
-    .sort((a, b) => b.order - a.order || a.spec.slug.localeCompare(b.spec.slug))
+export function specDigest(
+  projectDir: string,
+  specDir: SpecDirResolution = resolveSpecDir(projectDir),
+): DashboardSpec[] {
+  return readSpecCorpus(specDir)
+    .records.filter((r) => r.status === null || !SPEC_NOT_IN_FLIGHT.has(r.status))
     .slice(0, DIGEST_LIMIT)
-    .map((r) => r.spec);
+    .map((r) => ({ slug: r.slug, title: r.title, ...(r.id ? { id: r.id } : {}) }));
 }
 
 /**

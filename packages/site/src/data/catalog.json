@@ -1,11 +1,11 @@
 {
-  "version": "0.15.0",
+  "version": "0.16.0",
   "counts": {
-    "prompts": 54,
+    "prompts": 55,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.15.0",
+    "version": "0.16.0",
     "license": "MIT"
   },
   "groups": [
@@ -27,7 +27,7 @@
     {
       "key": "task",
       "blurb": "Spec-driven pipeline — start, implement, verify, deliver",
-      "count": 5
+      "count": 6
     },
     {
       "key": "sec",
@@ -447,6 +447,20 @@
         "marvin, recap the task's acceptance criteria"
       ],
       "example": "/marvin:task-summary add-pagination",
+      "human": false
+    },
+    {
+      "name": "task-audit",
+      "group": "task",
+      "blurb": "Lint the whole spec corpus",
+      "description": "Read-only consistency lint of the spec corpus — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
+      "phrases": [
+        "marvin, audit the specs",
+        "marvin, lint the spec corpus",
+        "marvin, are there duplicate spec numbers?",
+        "marvin, which specs are unsealed?"
+      ],
+      "example": "/marvin:task-audit errors only",
       "human": false
     },
     {

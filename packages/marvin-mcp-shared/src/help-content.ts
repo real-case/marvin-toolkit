@@ -72,6 +72,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
   "task-verify": "Run the project quality gates",
   "task-deliver": "Commit and open a PR",
   "task-summary": "Delivery digest for a task",
+  "task-audit": "Lint the whole spec corpus",
   // sec
   "sec-scan": "Full OWASP Top-10 audit",
   "sec-secrets": "Scan for leaked secrets",
@@ -172,6 +173,8 @@ export const COMMAND_DETAILS: Record<string, string> = {
   "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
   "task-summary":
     "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons, and links.",
+  "task-audit":
+    "Read-only consistency lint of the spec corpus — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
   // sec
   "sec-scan":
     "Comprehensive security audit aligned with OWASP Top 10:2025 — orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
@@ -243,6 +246,7 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   // task
   "task-start": "/marvin:task-start add pagination",
   "task-summary": "/marvin:task-summary add-pagination",
+  "task-audit": "/marvin:task-audit errors only",
   // sec
   "sec-threat-model": "/marvin:sec-threat-model upload flow",
   "sec-fix": "/marvin:sec-fix CVE-2024-1234",
@@ -425,6 +429,12 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, summarize what this task delivered",
     "marvin, give me the delivery digest",
     "marvin, recap the task's acceptance criteria",
+  ],
+  "task-audit": [
+    "marvin, audit the specs",
+    "marvin, lint the spec corpus",
+    "marvin, are there duplicate spec numbers?",
+    "marvin, which specs are unsealed?",
   ],
   // sec
   "sec-scan": [

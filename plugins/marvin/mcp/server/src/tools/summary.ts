@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
@@ -17,19 +17,21 @@ import {
   contractHash,
   extractContractBlock,
   extractHostBindings,
+  readSpecCorpus,
   resolveSpecBySlug,
-  SPEC_DIRS,
+  resolveSpecDir,
+  specSearchDirs,
   type Criterion,
 } from "../storage/spec.js";
 import { parseFrontmatter } from "../storage/frontmatter.js";
 import { findTaskByBranch, readAllTasks } from "../storage/tasks.js";
 import { searchLessons } from "../storage/lessons.js";
 import { loadConfig, trackerUrl } from "../storage/config.js";
-import type { Config } from "../storage/schema.js";
+import type { Config, SpecConfig } from "../storage/schema.js";
 import { currentBranch, git, inGitRepo } from "../lib/git.js";
 import { parseVerifyBlock, type VerifyBlockParse, type VerifyGate } from "../lib/reports.js";
 import { readOracleRuns, type OracleRun } from "../storage/oracles.js";
-import type { ServerEnv } from "../lib/env.js";
+import { projectConfigPath, type ServerEnv } from "../lib/env.js";
 import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -79,29 +81,35 @@ export function buildSummaryTool(env: ServerEnv): AnyToolDef {
     // object literal — no ext-apps import — so tsup never bundles the SDK into
     // dist/server.js. The terminal ignores `_meta` and renders the text content.
     meta: { ui: { resourceUri: TASK_SUMMARY_WIDGET_URI } },
-    handler: (input) => {
-      // Fresh config per call — `task config` edits apply without a restart.
-      const { config } = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(runSummary(env, config, input));
-    },
+    handler: (input) => Promise.resolve(runSummary(env, input)),
   });
 }
 
-function runSummary(
-  env: ServerEnv,
-  config: Config,
-  input: z.infer<typeof SummaryInput>,
-): ToolResult {
+function runSummary(env: ServerEnv, input: z.infer<typeof SummaryInput>): ToolResult {
   const projectRoot = input.projectRoot ?? env.projectDir;
 
+  // Fresh config per call, from the config that governs THIS root — `task config`
+  // edits apply without a restart, and a caller-supplied `projectRoot` reads its
+  // own project's settings rather than the spawning project's. Loading from the
+  // startup env while resolving against a foreign root applied one tree's
+  // `spec.dir`, `base_branch` and tracker template to another tree's files.
+  const { config } = loadConfig(projectConfigPath(env, projectRoot), projectRoot);
+
+  const specDir = resolveSpecDir(projectRoot, config.spec);
   const specPath = input.slug
-    ? findSpecBySlug(input.slug, projectRoot)
-    : findLatestSpec(projectRoot);
+    ? findSpecBySlug(input.slug, projectRoot, config.spec)
+    : findLatestSpec(projectRoot, config.spec);
   if (!specPath) {
+    // Name the resolved directory and the list actually searched — a project
+    // with a configured spec dir must not be told its spec is missing from five
+    // places that are not where the lookup looked.
+    const searched = specSearchDirs(projectRoot, config.spec)
+      .map((d) => relative(projectRoot, d) || d)
+      .join(", ");
     return errOk(
       input.slug
-        ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.`
-        : `No spec found under ${SPEC_DIRS.join(", ")} — run /marvin:task-start first.`,
+        ? `No spec found for slug \`${input.slug}\` under ${searched}.`
+        : `No spec found under \`${specDir.rel}\` (${specDir.source}) — run /marvin:task-start first.`,
     );
   }
 
@@ -153,25 +161,39 @@ function runSummary(
 
 // ── spec resolution ──────────────────────────────────────────────────────────
 
-function findSpecBySlug(slug: string, projectRoot: string): string | null {
-  for (const dir of SPEC_DIRS) {
+function findSpecBySlug(slug: string, projectRoot: string, specConfig?: SpecConfig): string | null {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
     const p = resolveSpecBySlug(dir, slug, projectRoot);
     if (p) return p;
   }
   return null;
 }
 
-/** The newest spec (highest numeric prefix) in the first existing spec dir. */
-function findLatestSpec(projectRoot: string): string | null {
-  for (const dir of SPEC_DIRS) {
-    const abs = join(projectRoot, dir);
-    if (!existsSync(abs)) continue;
-    const specs = readdirSync(abs)
-      .filter((f) => f.endsWith(".md") && f !== "verification.md")
-      .sort();
-    if (specs.length) return join(abs, specs[specs.length - 1]!);
-  }
-  return null;
+/**
+ * The default target when no slug is given: the newest ELIGIBLE spec in the
+ * resolved directory (ADR-0037).
+ *
+ * "Newest" now means what the old comment claimed and the old body did not. It
+ * sorted lexicographically and took the last entry; the two agree only while
+ * every prefix shares one width, so a corpus holding `002-b.md` and `010-a.md`
+ * summarised `002-b`. Number-descending is the corpus's own order.
+ *
+ * Eligibility: a `draft`, or a spec carrying no `contract_sha`, is not something
+ * `/marvin:task-summary` can report against — it reports what a task DELIVERED,
+ * and a spec that never passed the gate has no sealed criteria to report. Once a
+ * `draft` skeleton is written to disk before authoring finishes, the newest
+ * record is routinely one, and an unfiltered "highest number wins" would make an
+ * empty skeleton the default summary target. If the filter empties the corpus,
+ * the unfiltered newest record wins anyway — a repository of legacy unsealed
+ * specs must not be told it has none. An explicit `slug` is never filtered: the
+ * rule governs the guess, never the instruction.
+ */
+function findLatestSpec(projectRoot: string, specConfig?: SpecConfig): string | null {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  const { records } = readSpecCorpus(dir);
+  if (records.length === 0) return null;
+  const eligible = records.find((r) => r.status !== "draft" && r.contract_sha !== null);
+  return join(dir.abs, (eligible ?? records[0]!).filename);
 }
 
 function basenameSlug(specPath: string): string {

@@ -60,7 +60,7 @@ accepts:
 | `status` | Router action |
 |----------|---------------|
 | `ready`, `in-progress` | Hand over. Stop. |
-| `draft` | Fall through to **Path C** — authoring is unfinished, and the hand-over target would only stop. |
+| `draft` | **Resume it, do not re-author it.** Read the draft, then call the `spec` tool with `action: "resume"` and its `specPath`. Show the recorded state — the last step reached, any decisions recorded — and continue intake from there. A draft holds answers the user has already given: falling through to Path C would ask for them again and then write over them. |
 | `shipped`, `superseded` | Fall through to **Path C** or **Path D** — that spec is history; the request in hand is new work. |
 
 ### Path B: no spec is warranted
@@ -115,7 +115,7 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - `git log --oneline -10` — recent activity
 - **Dependency manifest** — whatever the host actually uses: `package.json`, `pyproject.toml` / `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml` / `build.gradle`, `composer.json`, `Gemfile`, `*.csproj`, `mix.exs`, `pubspec.yaml`, … and a root `Makefile`. Detect by what is present — do not assume one of a fixed five. You will **verify** the stack-compliance marker against this, not guess it.
 - **CI config** — `.github/workflows/*`, `.gitlab-ci.yml`, etc. — to learn which gates actually run, so acceptance criteria align with enforcement.
-- **Existing specs** — list specs in `.marvin/task/` (the default home) and any host spec dir (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`); read frontmatter. Spec files are named `<NNN>-<slug>.md` (numeric-prefixed so the directory sorts by creation order); identify each by its frontmatter `slug`, not the number. Detect duplication and any sibling spec this task would depend on. The DoR gate now **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status.
+- **Existing specs** — call the `spec` MCP tool with `action: "list"`. It answers with the resolved spec directory and every spec in it — slug, title, status, and whether it is sealed — so you do not scan directories by hand or guess which one this project uses. Identify each spec by its `slug`, never by its number. Detect duplication and any sibling spec this task would depend on. The DoR gate **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status. If the tool is unavailable, list `.marvin/task/` (the default home) and any host spec dir, and say that the enumeration was done by hand.
 - `VISION.md` if present — future direction (informs variant evaluation).
 - **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the task) to recall lessons captured on past tasks and bug fixes in this repo (`.marvin/memory`). A relevant `bug-pattern` or `gotcha` becomes a constraint, a test to add, or an explicit non-goal — this is how the pipeline stops repeating mistakes (ADR-0021). If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
 - **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. These populate the spec's **host-bindings** block (`spec_location`, `decision_record`, `merge_obligations`, `gates`) so the artifact conforms to the host instead of importing marvin's layout.
@@ -200,13 +200,67 @@ why rather than interrogating on irrelevant ones.
 | Merge obligations | read | docs, CHANGELOG, version bump, committed build artefacts this repo requires — read them from `CLAUDE.md` or its equivalent; each becomes a `files` entry |
 | Scope boundaries | ask | what is explicitly out |
 
-### 1.5 Switch to the appropriate flow
+### 1.5 Allocate and open the draft
 
-Based on task type, continue with either **Feature Flow** (Step 2F) or **Bugfix Flow** (Step 2B).
+**Do this before switching flows.** Everything from here on is written into a file that already
+exists, so an intake interrupted at step 4 keeps the answers given at step 1.
+
+1. **Allocate.** Call the `spec` MCP tool with `action: "next"` and the derived slug (lowercase,
+   hyphens, e.g. `add-health-check-endpoint`). It answers with the resolved spec directory and how it
+   was resolved (`config` / `detected` / `default`), the next ordering number already zero-padded to
+   this directory's own width, the composed `<NNN>-{slug}.md` filename, and any existing spec whose
+   slug collides. Do **not** compute the number, the padding, or the collision yourself — the tool
+   owns all three (ADR-0037). The number lives **only in the filename**; `slug` stays the spec's
+   identity (do not add the number to frontmatter — it is not part of the contract hash).
+2. **Confirm the two judgements the tool cannot make.** The **directory**: propose the resolved one
+   and confirm it; if the user wants a different one, record it as `spec.dir` in `.marvin/config.json`
+   (via `/marvin:track-config`) or the next session resolves the old answer again, then re-run
+   `action: "next"` so the number comes from the directory actually chosen. A **collision**: do not
+   overwrite — ask whether this **supersedes** the existing spec (set `supersedes:` to the old slug
+   and choose a new slug) or is a distinct task (choose a different slug).
+3. **Open the draft.** Copy the **whole template** for the task type — `feature-spec-template.md` or
+   `bugfix-spec-template.md` under `skills/task-start/references/` — to `<dir>/<NNN>-{slug}.md`, and
+   fill only the three facts known now: `slug`, `type`, and `created` (today, `date +%F`). Copy it
+   **whole**, not summarised: steps 5F/6B fill the sections in place, and a section that does not
+   exist yet cannot be filled.
+4. **Record it.** Call the `spec` tool with `action: "progress"`, `kind: "step"`,
+   `source: "task-start"`, `step: "1.5"`, and the `draftPath`. That first entry is what a resumed
+   session finds.
+
+**No DoR-family action may run against the 1.5 skeleton.** The rule is pinned on the UNFILLED state,
+not on the `draft` status: the filled draft still carries `status: draft` right up to step 9, and
+that is exactly the file steps 7F/7B are supposed to gate. Three mechanical reasons the skeleton is
+ungateable:
+
+- `action: "dor"` FAILs on the template's own residue and on its example `files` paths.
+- `action: "scope"` diffs the working tree against the template's example allowlist.
+- `action: "seal"` is the dangerous one. The skeleton carries the template's `spec-contract` block,
+  so the seal takes its no-`contract_sha` branch and answers **PASS WITH WARNINGS** — a reassuring
+  verdict about a file in which nothing has been authored. Being the only DoR-family answer that is
+  not an obvious failure, it is the one that gets believed.
+
+So: **the first legitimate DoR-family call is step 7F/7B on the filled draft.** `status: draft` does
+not fail it — the gate only tests that the status is in its vocabulary, and `draft` is in it.
+
+Then, based on task type, continue with either **Feature Flow** (Step 2F) or **Bugfix Flow**
+(Step 2B).
+
+**Two different writes, and they do not overlap.** Resolved answers go into the **draft's prose
+sections** as they resolve — that is the content. The **journal** records only pipeline position:
+which step completed, which approach was chosen. Keep `detail` to one line of position and choice,
+and never paste a credential, a token or customer data into it — in a host layout that keeps specs
+in a tracked directory, the journal is tracked with them.
 
 ---
 
 ## Feature Flow
+
+**Record each step as it completes.** After finishing steps 2F through 8F, call the `spec` tool with
+`action: "progress"`, `kind: "step"`, `source: "task-start"`, the step id, and a one-line `detail`.
+Add a `kind: "decision"` entry for the approach chosen at 4F and for the split confirmed at 4.5F.
+The answers themselves go into the draft's prose sections as they resolve — the journal records
+**position, not content** — and `detail` stays one line of position and choice, never a pasted
+credential, token or customer datum.
 
 ### Step 2F: Context Mapping
 
@@ -314,7 +368,7 @@ chosen approach.
 
 ### Step 5F: Crystallization
 
-Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — copy its structure to the chosen spec path, fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them**. That guidance is addressed to you, not to the finished spec: it carries no braces, so no gate can see it, and a spec that ships with it reads as half-filled. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them**. Do not copy the template over that file: it holds every answer the user has given since step 1.5, and re-copying destroys them silently. That guidance is addressed to you, not to the finished spec: it carries no braces, so no gate can see it, and a spec that ships with it reads as half-filled. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section from the dialogue context — write "N/A" / "none" deliberately rather than leaving a section blank or a `{placeholder}` unfilled:
 - **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk`, `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
@@ -344,7 +398,7 @@ Suggest notes based on dialogue context (deliberately-excluded scope), VISION.md
 
 Run the deterministic gate **before** the critic. It is free, fast, and catches shape errors the expensive opus critic should not burn a pass on. The critic only ever sees shape-valid specs.
 
-Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the drafted spec as `specContent` and the project root. It deterministically verifies: required frontmatter keys + valid enums (including `breaking` and `spike_required: false`), all required prose sections present (including **Definition of Done**), and the **`spec-contract` YAML block** — parsed by `yaml` and schema-validated **fail-closed**: every `files` `edit`/`delete` path exists on disk, ≥3 criteria each with a typed `oracle`, the **traceability triple** (every criterion's `implemented_by` names real `files` ids, every `satisfies` points at a real criterion, every `kind: test` oracle's path is an allowlisted `files` entry, ≥1 non-prose-review oracle), a bugfix carries a `regression: true` criterion, Open Questions resolved to "none", and no leftover `{…}` placeholders (which parse as YAML maps and trip the schema).
+Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `specPath` and the project root. The drafted spec is a file on disk from step 1.5, so the gate reads it there rather than taking an inline `specContent` copy — the one instruction whose input changed when the write moved forward. `status: draft` does not fail the gate; the finalize step flips it. It deterministically verifies: required frontmatter keys + valid enums (including `breaking` and `spike_required: false`), all required prose sections present (including **Definition of Done**), and the **`spec-contract` YAML block** — parsed by `yaml` and schema-validated **fail-closed**: every `files` `edit`/`delete` path exists on disk, ≥3 criteria each with a typed `oracle`, the **traceability triple** (every criterion's `implemented_by` names real `files` ids, every `satisfies` points at a real criterion, every `kind: test` oracle's path is an allowlisted `files` entry, ≥1 non-prose-review oracle), a bugfix carries a `regression: true` criterion, Open Questions resolved to "none", and no leftover `{…}` placeholders (which parse as YAML maps and trip the schema).
 
 - **FAIL** — show the failing checks, loop back to the relevant step (usually 2F, 3F, or 5F), fix, re-run. **Do not invoke the critic and do not write the spec.**
 - **PASS / PASS WITH WARNINGS** — proceed to the critic; address or consciously accept warnings.
@@ -374,19 +428,37 @@ Record the verdict in the spec's **Critic Verdict & Overrides** section — that
 
    If any item fails, loop back (and re-run Step 7F after editing). Do not write the spec.
 
-2. **Choose the location.** marvin's own home for specs is `.marvin/task/` — use it by default. But if the host repo already keeps specs by a convention of its own — `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`, or a directory named in the host's `CONTRIBUTING` — prefer that, so the artifact conforms to the host instead of importing marvin's layout. Propose the chosen directory and confirm it with the user. `/marvin:task-implement` and `/marvin:task-deliver` search `.marvin/task/` first, then those host conventions, so either location resolves automatically.
+2. **The directory** — settled at step 1.5, with the user. Nothing to re-decide here.
 
-3. **Slug collision.** Derive the slug (lowercase, hyphens, e.g. `add-health-check-endpoint`). Check the chosen dir for an existing file whose slug part matches — i.e. any `{slug}.md` or `<NNN>-{slug}.md`. If one exists, do **not** overwrite: ask the user whether this **supersedes** the existing spec (set `supersedes:` to the old slug and choose a new slug) or is a distinct task (choose a different slug).
+3. **The slug and the number** — allocated at step 1.5 through `action: "next"`. The draft already
+   sits at `<chosen-dir>/<NNN>-{slug}.md`; do not allocate a second one.
 
-4. **Allocate the ordering number.** Spec files are written with a numeric prefix so the directory sorts by creation order: `<NNN>-{slug}.md`. Compute `<NNN>` as the **highest leading-integer prefix already present** in `<chosen-dir>` (across `*.md`) **plus one**, zero-padded to **at least 3 digits** (start at `001` when none exist; match a wider width if the dir already uses one — e.g. host RFC dirs). The number lives **only in the filename** — `slug` stays the spec's identity (do not add it to frontmatter; it is not part of the contract hash).
+4. **Re-check the collision, and skip the draft this run created.** Call `action: "next"` once more
+   with the same slug and match its reported collision against the draft's exact filename: a run
+   that does not skip the draft this run created collides with itself, every time. A collision on
+   any *other* file means a parallel session claimed the slug or the number while intake was
+   running — renumber or rename the draft, then record the new path in the journal
+   (`action: "progress"`, with the new `draftPath`).
 
-5. **Write & seal.** Confirm `created` is today, `status: ready`, `tracker`/`supersedes` recorded. Write to `<chosen-dir>/<NNN>-{slug}.md`, then **re-run the `spec` tool on the written file** (pass `specPath`, not the inline draft — the verdict must be PASS or PASS WITH WARNINGS, the same pair Step 7F accepts), and stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written artifact to a passing gate and seals the immutable contract: later tampering of the block is caught by re-hashing. Confirm the path to the user.
+5. **Write & seal.** This is an **edit of the file already on disk**, not a write of a new one.
+   Confirm `created` is today and `tracker`/`supersedes` are recorded, then
+   **flip `status: draft` to `status: ready`** in the frontmatter.
+   Then **re-run the `spec` tool on the written file** (pass
+   `specPath` — the verdict must be PASS or PASS WITH WARNINGS, the same pair Step 7F accepts), and
+   stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written
+   artifact to a passing gate and seals the immutable contract: later tampering of the block is
+   caught by re-hashing. Append a final `kind: "step"` journal entry and confirm the path to the user.
 
-**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`mode: "seal"`) on read and refuses a spec whose contract was edited after sealing.
+**Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`action: "seal"`) on read and refuses a spec whose contract was edited after sealing.
 
 ---
 
 ## Bugfix Flow
+
+**Record each step as it completes** — steps 2B through 8B, exactly as the Feature Flow states it
+above: a `kind: "step"` entry per completed step, a `kind: "decision"` entry for the fix approach
+chosen at 5B, answers into the draft's prose and position into the journal, `detail` one line and
+never a credential, token or customer datum.
 
 ### Step 2B: Reproduction
 
@@ -437,7 +509,7 @@ Determine the fix:
 
 ### Step 6B: Crystallization
 
-Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — copy its structure to the chosen spec path, fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them** (same rule as Step 5F: the guidance is for the author, and no gate can see it once it ships). The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them** (same rule as Step 5F: the guidance is for the author, and no gate can see it once it ships). Do not copy the template over that file — same reason as 5F: it would destroy the answers gathered since 1.5. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
 Fill **every** section (write "N/A"/"none" deliberately), including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
 
@@ -445,7 +517,7 @@ Present to user. Iterate until approved.
 
 ### Step 7B: Definition of Ready — mechanical gate (tool first)
 
-Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass `specContent` = draft plus project root. For bugfix it additionally expects the Root Cause Analysis, Fix Approach, Regression Test Specification, and Definition of Done sections, ≥2 criteria, a criterion marked `regression: true`, plus the traceability triple — the regression test named in its `oracle` must be an allowlisted `files` entry.
+Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass the draft's `specPath` — the file step 1.5 opened — plus the project root, not an inline `specContent` copy. For bugfix it additionally expects the Root Cause Analysis, Fix Approach, Regression Test Specification, and Definition of Done sections, ≥2 criteria, a criterion marked `regression: true`, plus the traceability triple — the regression test named in its `oracle` must be an allowlisted `files` entry.
 
 - **FAIL** → show failing checks, loop back (usually 3B or 5B), fix, re-run. **Do not invoke the critic and do not write.**
 - **PASS / PASS WITH WARNINGS** → proceed to the critic.
@@ -473,9 +545,16 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    - [ ] No dependency on an incomplete sibling spec
 
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
-2. **Location & slug collision** — same handling as 9F (default `.marvin/task/`; honor the host's convention if it has one; collision check is slug-based across `{slug}.md` / `<NNN>-{slug}.md`).
-3. **Allocate the ordering number** — same as 9F: `<NNN>` = highest leading-integer prefix in `<chosen-dir>` + 1, zero-padded to ≥3 digits.
-4. **Write & seal** — `status: ready`, write to `<chosen-dir>/<NNN>-{slug}.md`, re-run the `spec` tool on the written file (PASS or PASS WITH WARNINGS, the same pair Step 7B accepts), stamp `contract_sha` from the result, confirm path.
+2. **The directory and the collision** — both settled at step 1.5. Re-check the collision once with
+   `action: "next"`, and **skip the draft this run created**, matched by its exact filename; a
+   collision on any other file means a parallel session claimed the slug while intake ran, so
+   renumber or rename and record the new path in the journal.
+3. **The number** — allocated at step 1.5. The draft already carries it; do not allocate a second one.
+4. **Write & seal** — **same as 9F item 5**: an in-place edit of the draft that must
+   **flip `status: draft` to `status: ready`**, re-running the `spec` tool on the written file
+   (PASS or PASS WITH WARNINGS,
+   the same pair Step 7B accepts), stamping `contract_sha` from the result, appending a final journal
+   entry, and confirming the path.
 
 **Immutability** — same carve-out as the feature flow.
 

@@ -68,7 +68,7 @@ diff-critic first (in the background), then run the gates** so the two overlap; 
 the PR step.
 
 **Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
-`mode: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
+`action: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
 the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
 re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
 unavailable.)

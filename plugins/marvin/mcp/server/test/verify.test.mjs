@@ -806,15 +806,18 @@ const contractSeal = (block) =>
   createHash("sha256").update(block.trim()).digest("hex").slice(0, 16);
 
 /**
- * Write `<dir>/.marvin/task/001-<slug>.md` carrying `block` as its spec-contract
+ * Write `<dir>/<specDir>/001-<slug>.md` carrying `block` as its spec-contract
  * and, unless `seal` says otherwise, the `contract_sha` that block hashes to.
  * `seal: null` writes an UNSEALED spec; any string writes that string verbatim,
  * which is how a tampered contract is staged.
+ *
+ * `specDir` defaults to `.marvin/task`; the configured-directory case passes a
+ * path deliberately outside the five conventional candidates.
  */
-function writeSpec(dir, { slug, type, block, seal }) {
-  mkdirSync(join(dir, ".marvin", "task"), { recursive: true });
+function writeSpec(dir, { slug, type, block, seal, specDir = join(".marvin", "task") }) {
+  mkdirSync(join(dir, specDir), { recursive: true });
   const sha = seal === undefined ? contractSeal(block) : seal;
-  const path = join(dir, ".marvin", "task", `001-${slug}.md`);
+  const path = join(dir, specDir, `001-${slug}.md`);
   writeFileSync(
     path,
     [
@@ -945,6 +948,65 @@ test("oracles appends to runs and leaves the spec dir top level untouched", asyn
       topLevelSpecs(dir),
       before,
       "the spec directory's top level gained no .md — `findLatestSpec` takes the LAST name there",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The `spec.dir` config tier reaches the oracle runner (ADR-0037).
+ *
+ * The fixture directory is `product/specs`, deliberately outside the five
+ * conventional candidates: no other tier can reach it, so resolution here proves
+ * the config tier was consulted rather than that detection got lucky. The
+ * negative control in the same test is what pins the regression — before the
+ * config was threaded into `findSpec`, this runner was the one reader on the
+ * ADR-0037 list that answered "No spec found" for a spec `/marvin:task-summary`
+ * and `/marvin:dashboard` resolved from the same config.
+ */
+test("oracles resolves a spec from the configured spec.dir, and not without it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-oracles-configdir-"));
+  try {
+    const specDir = join("product", "specs");
+    writeSpec(dir, { slug: "demo-feature", type: "feature", block: FEATURE_BLOCK, specDir });
+    writeFileSync(join(dir, "thing.test.sh"), "exit 0\n");
+    const call = {
+      action: "oracles",
+      projectRoot: dir,
+      specSlug: "demo-feature",
+      criteria: ["AC1"],
+    };
+
+    // Negative control FIRST, with no config: the spec exists on disk and is
+    // unreachable, and the refusal names the directories actually searched.
+    const unconfigured = await callTool("verify", call);
+    const unconfiguredText = unconfigured.content.map((c) => c.text).join("\n");
+    assert.equal(unconfigured.isError, true, "an unresolvable spec is an error, not an empty run");
+    assert.match(unconfiguredText, /No spec found for slug `demo-feature`/);
+    assert.doesNotMatch(unconfiguredText, /product\/specs/, "the searched list cannot name it yet");
+
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    writeFileSync(
+      join(dir, ".marvin", "config.json"),
+      JSON.stringify({ spec: { dir: "product/specs" } }),
+    );
+
+    const res = await callVerify(call, "oracle-result");
+    assert.equal(runsOf(res).length, 1, "the configured directory resolved the spec");
+    assert.equal(runsOf(res)[0].criterion, "AC1");
+    assert.equal(runsOf(res)[0].status, "pass");
+
+    // The artifact-location split (ADR-0007 vs ADR-0037): the SPEC followed the
+    // config, the journal marvin generates about the run did not.
+    assert.ok(
+      existsSync(join(dir, ".marvin", "task", "runs", "demo-feature.oracles.md")),
+      "the journal stays .marvin-pinned, where `summary` reads it",
+    );
+    assert.equal(
+      existsSync(join(dir, "product", "specs", "runs")),
+      false,
+      "and did not follow the spec out of .marvin/",
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

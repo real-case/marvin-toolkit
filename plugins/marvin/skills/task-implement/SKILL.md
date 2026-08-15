@@ -24,33 +24,61 @@ Execute a spec that passed the Definition-of-Ready gate. Runs interactively in t
 
 ### 1. Resolve the spec
 
-**Spec directories.** A spec lives where the host keeps it. Search, in order:
-`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/` (the same set the DoR gate uses to resolve
-`depends_on`). "the spec directories" below means this set; use the first that contains the target.
+**Where specs live.** Call the `spec` MCP tool with `action: "list"`. It answers with the resolved
+spec directory — configured, detected, or the `.marvin/task/` default — and every spec in it, each
+with its slug, title, status and seal. That answer is "the spec corpus" below; do not enumerate
+directories by hand. A slug resolves to a file prefix-tolerantly (`<slug>.md`, else
+`<NNN>-<slug>.md`), which is the contract, not something to re-implement.
 
 Resolution order:
 
-Spec files are numeric-prefixed (`<NNN>-<slug>.md`), so resolve a slug by matching the slug part: prefer an exact `<slug>.md`, otherwise the file matching `<NNN>-<slug>.md`.
-
 1. **Argument provided:**
    - If it ends in `.md` and the file exists — use it.
-   - Else treat as a slug: across the spec directories, find `<dir>/<arg>.md` or `<dir>/<NNN>-<arg>.md`. If not found, fail with a list of available specs.
+   - Else treat as a slug and take the matching record from the corpus. If there is none, fail and print the corpus as the list of available specs.
 2. **No argument — match current branch:**
    - Read current branch with `git rev-parse --abbrev-ref HEAD`.
-   - If it matches `task/<slug>`, resolve `<slug>` (exact `<slug>.md` or `<NNN>-<slug>.md`) across the spec directories.
+   - If it matches `task/<slug>`, resolve `<slug>` against the corpus.
 3. **No branch match — prompt user:**
-   - List specs across the spec directories whose frontmatter `status` is `ready`.
-   - Ask the user to choose one.
-   - If none exist, tell the user to run `/marvin:task-start` first and stop.
+   - List the corpus records whose `status` is `ready`. Ask the user to choose one.
+   - **List the `draft` records too, in their own labelled group, and mark them not selectable
+     here.** A draft is an intake that was interrupted, not a spec to execute — its continuation is
+     `/marvin:task-start <slug>`, which each draft row carries. Without this group a resumable draft
+     is invisible from the command a user reaches for first. Step 2's refusal stays the backstop if
+     one is named anyway.
+   - If neither group has anything, tell the user to run `/marvin:task-start` first and stop.
 
 ### 2. Validate Definition of Ready
 
 Read the resolved spec. Confirm:
-- Frontmatter `status` is `ready` or `in-progress` — if it is `draft`, stop (the spec has not passed DoR; run `/marvin:task-start` to finish authoring); if it is `shipped` or `superseded`, stop (already delivered).
+- Frontmatter `status` is not `draft` — if it is, stop: the spec has not passed DoR, so run `/marvin:task-start` to finish authoring. This one rule stays here in prose because the seal gate below deliberately does not implement it.
 - Frontmatter `type` is `feature` or `bugfix` — if missing, stop and report the malformed spec.
-- **Immutability check (tool-backed).** Verify the contract seal deterministically — call the **`spec` MCP tool** with `mode: "seal"` and the resolved `specPath`. It re-hashes the `spec-contract` block and compares it to the stamped `contract_sha`. A **FAIL** (`TAMPERED`) means the contract was edited after DoR sealed it — **stop and report; do not execute a tampered spec.** A `PASS WITH WARNINGS` (unsealed — no `contract_sha`) is allowed but noted. Do **not** compute the hash yourself — the tool owns the algorithm. If the `spec` tool is unavailable, report the spec as unverified rather than guessing.
+- **Seal gate (tool-backed).** Call the **`spec` MCP tool** with `action: "seal"` (`mode:` still works) and the resolved `specPath`. It checks two things and returns one verdict. It re-hashes the `spec-contract` block against the stamped `contract_sha`: a **FAIL** (`TAMPERED`) means the contract was edited after DoR sealed it — **stop and report; do not execute a tampered spec** — while a `PASS WITH WARNINGS` (unsealed, no `contract_sha`) is allowed but noted. It also refuses a spec whose lifecycle is over: a **FAIL** naming `shipped` or `superseded` means that work was already delivered, and the request in hand needs a new spec whose `supersedes:` points at it. Do **not** compute the hash or re-check the terminal statuses yourself — the tool owns both. If the `spec` tool is unavailable, report the spec as unverified rather than guessing.
 
-Then set the spec's `status: in-progress` — the lifecycle carve-out (content stays immutable) so a resumed or concurrent run sees the task is being worked.
+### 2.5 Resume check
+
+The spec is resolved and validated, so now ask what this session is walking into. Call the `spec`
+MCP tool with `action: "resume"` and the resolved `specPath`.
+
+**With no journal**, say so out loud and verify **every** criterion from scratch. An absent journal
+**is never evidence that nothing was done** — the record can be missing for a dozen reasons that
+have nothing to do with the work, and this fork's output is what a human uses to decide what *not*
+to re-check. The tool renders the same sentence; the two surfaces state one rule.
+
+**With a journal**, show the recorded state — the last step, the criteria recorded complete, and any
+`contract_sha` that differs from the spec's current seal (a differing seal means the contract was
+re-sealed after those entries were written, so they describe a different contract). Then offer
+exactly two options and take one:
+
+- **Resume** — continue from the recorded position. A recorded criterion is a claim, not a proof:
+  skip nothing without re-reading that criterion's own `oracle`.
+- **Archive** — append a `kind: "archived"` boundary (`action: "progress"`) and start clean.
+  Everything before the boundary stops counting without being deleted, so what was abandoned stays
+  answerable.
+
+Then set the spec's `status: in-progress` — the lifecycle carve-out (content stays immutable) so a
+resumed or concurrent run sees the task is being worked — and append a `kind: "step"` entry
+recording it. The flip lives **here**, not at the end of step 2, so a run that is archived and then
+abandoned at this fork leaves no lifecycle change behind it.
 
 ### 3. Read context
 
@@ -84,13 +112,20 @@ Follow the spec's **Chosen Approach** section. Rules:
 
 Use TodoWrite to track acceptance criteria as you go — one todo per criterion, marked complete as each is implemented and covered by a test.
 
+**And record each one durably.** As each acceptance criterion is completed, call the `spec` tool with
+`action: "progress"`, `kind: "criterion"`, the criterion id, and the resolved `specPath`. These are
+not duplicates of the TodoWrite list: TodoWrite is the live in-session view and **context compaction
+destroys it with no trace**, while the journal is what survives compaction and is what Step 2.5 reads
+on the next run. Keep `detail` to one line of position and choice — never a pasted credential, token
+or customer datum.
+
 ### Step 6F: Self-review ‖ Verify (concurrent)
 
 Self-review (`marvin-tm-diff-critic`) and verification are both slow and **independent** — the
 critic is read-only; the `verify` tool writes only `verification.md`. Run them **concurrently**
 so wall-clock collapses to the slower of the two instead of their sum.
 
-**First, the scope gate (deterministic, fast).** Call the `spec` tool with `mode: "scope"` (pass the
+**First, the scope gate (deterministic, fast).** Call the `spec` tool with `action: "scope"` (pass the
 resolved `specPath`). It checks `git diff` ⊆ the contract `files` allowlist and **FAILs** listing any
 out-of-scope file. Resolve a FAIL before continuing: revert genuine scope creep, or — if the file is a
 legitimate discovery — record it as a **SPEC GAP** and re-run with `allow: [<paths>]` (the sealed
@@ -156,6 +191,10 @@ The skill ends when the PR is open. Report the PR URL to the user.
 ---
 
 ## Bugfix Pipeline
+
+**Record each criterion durably**, exactly as Step 5F states it above: as each acceptance criterion
+is completed, append a `kind: "criterion"` entry through the `spec` tool's `action: "progress"`.
+TodoWrite is the live view that compaction destroys; the journal is what Step 2.5 reads next run.
 
 ### Step 5B: Write regression test first
 

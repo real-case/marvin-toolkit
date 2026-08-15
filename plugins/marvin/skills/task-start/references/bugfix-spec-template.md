@@ -1,7 +1,7 @@
 ---
 slug: {kebab-case-slug}
 type: bugfix
-status: ready
+status: draft
 created: {YYYY-MM-DD}
 tracker: {#issue | PROJ-123 | URL | none}
 supersedes: {prior-slug | none}

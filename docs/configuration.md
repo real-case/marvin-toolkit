@@ -15,6 +15,7 @@ makes them easy to include in or exclude from version control as a unit.
 | Path | Written by | Contents |
 | ---- | ---------- | -------- |
 | `.marvin/task/` | The `task-*` pipeline | Immutable specs and the current `verification.md`. |
+| `.marvin/task/runs/` | The `verify` and `spec` tools | What each spec's own runs recorded: whether the gates passed, whether its acceptance oracles went red then green, and how far an interrupted intake or implementation run got before it stopped. That last one is what a resumed session recovers instead of starting the dialogue over. Nothing here is edited by hand. |
 | `.marvin/track/` | The `track-*` tracker | The task board as markdown files. |
 | `.marvin/security/` | The `sec-*` scanners | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |
@@ -27,7 +28,10 @@ makes them easy to include in or exclude from version control as a unit.
 
 Spec storage is host-adaptive. `.marvin/task/` is the default, but Marvin prefers an
 existing host convention when it finds one, searching `.marvin/task/` first and then
-`specs/`, `docs/specs/`, `docs/rfcs/`, and `rfcs/`.
+`specs/`, `docs/specs/`, `docs/rfcs/`, and `rfcs/`. The [`spec`](#spec) setting overrides
+that search with an explicit directory. Specs move with it; the verification artifacts
+Marvin writes about a run do not, because `verification.md` and `runs/` are service files
+and stay under `.marvin/task/` wherever the specs themselves live.
 
 ## `.marvin/config.json`
 
@@ -147,6 +151,27 @@ with two optional string fields: `dir`, the corpus directory relative to the pro
 and `index_file`, the file that carries the managed corpus-index block. When it is absent,
 Marvin detects the corpus from `docs/adr/`, `docs/decisions/`, or `adr/`, and defaults to
 `docs/adr/`.
+
+### `spec`
+
+This is the location of the spec corpus, owned by the `spec` tool. It is an optional object
+with one optional string field, `dir`, the spec directory relative to the project root. When
+it is set, it wins over the host-adaptive search: it decides where a new spec's ordering
+number is allocated, which directory `/marvin:task-implement`, `/marvin:task-verify` and
+`/marvin:task-deliver` consult first, and which specs `/marvin:dashboard` counts and lists.
+When it is absent, Marvin detects the directory from `.marvin/task/`, `specs/`,
+`docs/specs/`, `docs/rfcs/`, or `rfcs/` — in that order — and defaults to `.marvin/task/`.
+
+Setting it is how a choice survives the session that made it. Detection cannot see a
+directory that does not exist yet, which is exactly the state a freshly chosen location is
+in, so without this key the next session re-derives the answer and may pick differently.
+
+A slug lookup still searches every conventional directory, so configuring this never orphans
+specs that already live elsewhere. What does **not** move is the verification artifacts:
+`verification.md` and the per-run files under `runs/` stay in `.marvin/task/` whatever `dir`
+says. A spec is a project document and follows the host's conventions; everything Marvin
+generates about a run is a service file and stays in the working directory
+([ADR-0037](./adr/0037-spec-corpus-mechanics.md)).
 
 ## Environment variables
 

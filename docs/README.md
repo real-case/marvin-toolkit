@@ -58,6 +58,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0034](./adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
 | [0035](./adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Proposed |
 | [0036](./adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Proposed |
+| [0037](./adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Proposed |
 
 ## Work in progress
 
