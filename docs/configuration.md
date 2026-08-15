@@ -21,8 +21,10 @@ makes them easy to include in or exclude from version control as a unit.
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |
 | `.marvin/memory/` | The `lessons` tool | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | The `handoff` tool | Session-continuation documents. |
+| `.marvin/critique/` | The calling session, at the four pipeline critic call sites | Critic receipts: the critic's report verbatim plus a typed verdict block with a compliance and a quality axis. Read back by `/marvin:reports` and `/marvin:task-summary`; they never change a delivery decision. |
 | `.marvin/research-results/` | The `marvin-researcher` agent | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
+| `.marvin/report/` | The `report` tool's `triage` action | The triage baseline — which finding identities were last recorded as seen. Local and self-ignoring, never committed. Despite the name it is not a report group: it holds the tool's own state, not generated reports, and the viewer never lists it. Created only when a `snapshot` is asked for. |
 | `.marvin/preview/` | The `widget-preview` command | Rendered widget panels, never committed. |
 | `.marvin/config.json` | `track-config` and `verify` | The settings documented below. |
 
@@ -187,7 +189,9 @@ the rest exist mainly for test isolation, and each defaults to a subdirectory of
 | `MARVIN_MEMORY_DIR` | `.marvin/memory` | The lessons-learned store. |
 | `MARVIN_HANDOFF_DIR` | `.marvin/handoff` | The session-continuation documents. |
 | `MARVIN_SECURITY_DIR` | `.marvin/security` | The `sec-*` scanner reports. |
+| `MARVIN_CRITIQUE_DIR` | `.marvin/critique` | The critic receipts. |
 | `MARVIN_USAGE_DIR` | `.marvin/usage` | The local usage log. |
+| `MARVIN_REPORT_DIR` | `.marvin/report` | The triage baseline — local and self-ignoring, written only on a `snapshot`. |
 
 ## Verify gates
 

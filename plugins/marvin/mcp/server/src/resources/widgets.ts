@@ -86,7 +86,7 @@ const WIDGETS: WidgetResource[] = [
     uri: REPORTS_WIDGET_URI,
     file: join("widgets", "reports.html"),
     description:
-      "Marvin reports — the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs — with KPI strip, group filter, and per-report freshness (ADR-0024).",
+      "Marvin reports — the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts — with KPI strip, group filter, and per-report freshness (ADR-0024).",
   },
 ];
 

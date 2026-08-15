@@ -11,6 +11,17 @@ import { LinkRef } from "./links.js";
 export const Severity = z.enum(["critical", "high", "medium", "low", "info"]);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * Which `sec-*` command wrote the block. `gate` and `fix` joined the eight
+ * scanners in ADR-0038, so `sec-gate` and `sec-fix` can keep a typed record of
+ * what they saw and what they closed.
+ *
+ * Widening is read-compatible in one direction only: an eight-member block
+ * still parses here, but a `gate`/`fix` block written under this version parses
+ * as `invalid` against an older server. It MUST be applied to the runtime
+ * mirror in `lib/reports.ts` in the same commit — otherwise those reports are
+ * dropped by all three readers of `parseAuditBlock` with only a skip-note.
+ */
 export const AuditKind = z.enum([
   "scan",
   "secrets",
@@ -20,6 +31,8 @@ export const AuditKind = z.enum([
   "threat-model",
   "compliance",
   "pentest",
+  "gate",
+  "fix",
 ]);
 export type AuditKind = z.infer<typeof AuditKind>;
 

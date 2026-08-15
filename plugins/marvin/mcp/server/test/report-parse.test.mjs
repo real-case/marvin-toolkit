@@ -366,6 +366,125 @@ test(
     assert.equal(lib.isStale("refactor", NOW - 7 * DAY_MS - 1, NOW), true);
     assert.equal(lib.isStale("task", NOW - 30 * DAY_MS, NOW), false);
     assert.equal(lib.isStale("handoff", NOW - 30 * DAY_MS, NOW), false);
+    assert.equal(lib.isStale("critique", NOW - 365 * DAY_MS, NOW), false);
+  }),
+);
+
+test("staleness is a total classification over every group", () => {
+  // The record is the assertion the old negative allowlist made unwriteable: its
+  // default branch silently declared any future group fresh forever, so there was
+  // no set to compare against. A total Record<ReportGroup, boolean> has one.
+  const decaying = Object.entries(lib.DECAYS)
+    .filter(([, decays]) => decays)
+    .map(([group]) => group)
+    .sort();
+  assert.deepEqual(decaying, ["refactor", "security"]);
+
+  for (const group of Object.keys(lib.DECAYS)) {
+    const ancient = NOW - 365 * DAY_MS;
+    assert.equal(lib.isStale(group, ancient, NOW), lib.DECAYS[group], `${group} at one year`);
+    assert.equal(lib.isStale(group, NOW, NOW), false, `${group} written just now`);
+  }
+  // critique specifically: a dated judgement of one artifact at one moment stays
+  // exactly as true a year later, so it never decays regardless of age.
+  assert.equal(lib.DECAYS.critique, false);
+});
+
+// ── finding identity at assembly (ADR-0038) ─────────────────────────────────
+
+const GATE_BLOCK = JSON.stringify({
+  kind: "gate",
+  scanned_at: "2026-07-15T10:00:00Z",
+  summary: { high: 1 },
+  findings: [
+    {
+      id: "GATE-1",
+      severity: "high",
+      title: "Hardcoded token in added lines",
+      category: "secrets",
+      file: "src/config.ts",
+    },
+  ],
+});
+
+const FIX_BLOCK = JSON.stringify({
+  kind: "fix",
+  scanned_at: "2026-07-15T11:00:00Z",
+  summary: { high: 1 },
+  findings: [
+    {
+      id: "FIX-1",
+      severity: "high",
+      title: "SQL injection in login handler",
+      category: "OWASP A05:2025",
+      file: "src/auth/login.ts",
+    },
+  ],
+});
+
+const withBlock = (block) =>
+  `# Security report\n\nProse.\n\n\`\`\`json audit-report\n${block}\n\`\`\`\n`;
+
+test(
+  "assembly fills fingerprint at both construction sites and never fills state or firstSeen",
+  withDir(async (root) => {
+    const { mkdirSync } = await import("node:fs");
+    const dirs = {
+      security: join(root, "security"),
+      refactor: join(root, "refactor"),
+      task: join(root, "task"),
+      handoff: join(root, "handoff"),
+      critique: join(root, "critique"),
+    };
+    for (const d of Object.values(dirs)) mkdirSync(d);
+    writeAt(dirs.security, "scan-report.md", SECURITY_REPORT, NOW - 2 * DAY_MS);
+    writeAt(dirs.refactor, "001-audit-core.md", REGISTER, NOW - 3 * DAY_MS);
+
+    const { reports } = lib.buildReportList(dirs, { now: NOW });
+    const findings = reports.flatMap((r) => r.body.findings ?? []);
+    assert.equal(findings.length, 4, "two security findings + two register rows");
+
+    for (const f of findings) {
+      assert.match(f.fingerprint, /^[0-9a-f]{16}$/, `${f.id} carries a 16-hex fingerprint`);
+      // Assembly is baseline-free on purpose: consulting a baseline here would
+      // make buildReportList a function of prior state as well as the
+      // filesystem, and this suite could no longer run without a server build.
+      assert.equal(f.state, undefined, `${f.id} carries no state at assembly`);
+      assert.equal(f.firstSeen, undefined, `${f.id} carries no firstSeen at assembly`);
+    }
+    assert.equal(new Set(findings.map((f) => f.fingerprint)).size, 4, "four distinct identities");
+  }),
+);
+
+test(
+  "gate and fix audit-report blocks parse valid and only fix suppresses the fix command",
+  withDir((dir) => {
+    writeAt(dir, "gate-report.md", withBlock(GATE_BLOCK), NOW - DAY_MS);
+    writeAt(dir, "fix-login.md", withBlock(FIX_BLOCK), NOW - DAY_MS);
+
+    const { reports, notes } = lib.scanSecurityReports(dir, { now: NOW });
+    assert.equal(notes.length, 0, "the widened enum accepts both — no invalid-block note");
+    assert.equal(reports.length, 2);
+
+    const gate = reports.find((r) => r.id.endsWith("gate-report.md"));
+    assert.equal(gate.title, "Security gate", "SEC_TITLES covers the widened enum");
+    assert.equal(gate.generatedBy, "sec-gate");
+    assert.equal(gate.rerunCommand, "/marvin:sec-gate");
+    assert.equal(
+      gate.body.findings[0].fixCommand,
+      "/marvin:sec-fix gate GATE-1",
+      "a gate finding is still worth fixing",
+    );
+
+    const fix = reports.find((r) => r.id.endsWith("fix-login.md"));
+    assert.equal(fix.title, "Security fix");
+    assert.equal(fix.generatedBy, "sec-fix");
+    assert.equal(
+      fix.body.findings[0].fixCommand,
+      undefined,
+      "a fix record describes what was already closed — no self-referential fix command",
+    );
+    assert.match(fix.body.findings[0].fingerprint, /^[0-9a-f]{16}$/);
   }),
 );
 
@@ -374,7 +493,7 @@ test(
 test("empty project: buildReportList over missing dirs yields an empty payload", () => {
   const ghost = join(tmpdir(), "marvin-report-does-not-exist");
   const { reports, notes } = lib.buildReportList(
-    { security: ghost, refactor: ghost, task: ghost, handoff: ghost },
+    { security: ghost, refactor: ghost, task: ghost, handoff: ghost, critique: ghost },
     { now: NOW },
   );
   assert.deepEqual(reports, []);
@@ -389,6 +508,7 @@ test(
       refactor: join(root, "refactor"),
       task: join(root, "task"),
       handoff: join(root, "handoff"),
+      critique: join(root, "critique"),
     };
     for (const d of Object.values(dirs)) {
       rmSync(d, { recursive: true, force: true });
@@ -409,5 +529,187 @@ test(
     );
     const stamps = reports.map((r) => r.generatedAt);
     assert.deepEqual(stamps, [...stamps].sort().reverse());
+  }),
+);
+
+// ── critique receipts (ADR-0039) ────────────────────────────────────────────
+
+const AXIS = (verdict, blockers = 0, warnings = 0) => ({ verdict, blockers, warnings });
+
+/** A schema-valid receipt block; `over` patches any field for the negative cases. */
+const critiqueBlock = (over = {}) =>
+  JSON.stringify({
+    critic: "marvin-tm-diff-critic",
+    subject: "critic-receipts",
+    judged_at: "2026-07-15T10:00:00.000Z",
+    compliance: AXIS("PASS"),
+    quality: AXIS("PASS WITH WARNINGS", 0, 2),
+    ...over,
+  });
+
+const receipt = (block, heading = "# Diff Critique: feat/demo") =>
+  block === null
+    ? `${heading}\n\nProse only — this critic emitted no block.\n`
+    : `${heading}\n\nProse.\n\n\`\`\`json critic-verdict\n${block}\n\`\`\`\n`;
+
+test("parseCritiqueBlock is a tri-state: absent, unparseable, invalid, ok", () => {
+  assert.deepEqual(lib.parseCritiqueBlock(receipt(null)), { kind: "none" });
+
+  const notJson = lib.parseCritiqueBlock(receipt("{ not json"));
+  assert.equal(notJson.kind, "invalid");
+  assert.match(notJson.reason, /not valid JSON/);
+
+  // Schema-invalid: a member the contract does not admit.
+  const badCritic = lib.parseCritiqueBlock(receipt(critiqueBlock({ critic: "some-other-agent" })));
+  assert.equal(badCritic.kind, "invalid");
+
+  const ok = lib.parseCritiqueBlock(receipt(critiqueBlock()));
+  assert.equal(ok.kind, "ok");
+  assert.equal(ok.critique.subject, "critic-receipts");
+  assert.equal(ok.critique.critic, "marvin-tm-diff-critic");
+  assert.equal(ok.critique.quality.warnings, 2);
+});
+
+test("a receipt claiming UNABLE without an inability is invalid", () => {
+  // The fail-closed half of the contract: a receipt cannot assert that the
+  // semantic gate did not run while declining to say why. Invisible without it —
+  // every other field of such a block is perfectly well-formed.
+  const withoutInability = lib.parseCritiqueBlock(
+    receipt(critiqueBlock({ compliance: AXIS("UNABLE") })),
+  );
+  assert.equal(withoutInability.kind, "invalid");
+  assert.match(withoutInability.reason, /inability/i);
+
+  const withInability = lib.parseCritiqueBlock(
+    receipt(
+      critiqueBlock({
+        quality: AXIS("UNABLE"),
+        inability: {
+          blocker: "the diff range resolved to nothing",
+          attempted: "git diff over the named range and its two-dot form",
+          recommendation: "pass the range <base>..<head>",
+        },
+      }),
+    ),
+  );
+  assert.equal(withInability.kind, "ok");
+
+  // NEEDS_CONTEXT is structurally unrecordable: the protocol says it resolves on
+  // the single re-dispatch or becomes UNABLE, and is never the verdict recorded.
+  const needsContext = lib.parseCritiqueBlock(
+    receipt(critiqueBlock({ compliance: AXIS("NEEDS_CONTEXT") })),
+  );
+  assert.equal(needsContext.kind, "invalid");
+
+  // The subject is the key BOTH the reports link and the summary lookup resolve
+  // on, so an empty one is an orphaned receipt rather than a lenient one.
+  assert.equal(lib.parseCritiqueBlock(receipt(critiqueBlock({ subject: "" }))).kind, "invalid");
+});
+
+test("rollUp is total over the sixteen axis pairs and BLOCK outranks UNABLE", () => {
+  const VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
+  const expected = {
+    "PASS|PASS": "PASS",
+    "PASS|PASS WITH WARNINGS": "PASS WITH WARNINGS",
+    "PASS|BLOCK": "BLOCK",
+    "PASS|UNABLE": "UNABLE",
+    "PASS WITH WARNINGS|PASS": "PASS WITH WARNINGS",
+    "PASS WITH WARNINGS|PASS WITH WARNINGS": "PASS WITH WARNINGS",
+    "PASS WITH WARNINGS|BLOCK": "BLOCK",
+    "PASS WITH WARNINGS|UNABLE": "UNABLE",
+    "BLOCK|PASS": "BLOCK",
+    "BLOCK|PASS WITH WARNINGS": "BLOCK",
+    "BLOCK|BLOCK": "BLOCK",
+    "BLOCK|UNABLE": "BLOCK",
+    "UNABLE|PASS": "UNABLE",
+    "UNABLE|PASS WITH WARNINGS": "UNABLE",
+    "UNABLE|BLOCK": "BLOCK",
+    "UNABLE|UNABLE": "UNABLE",
+  };
+  assert.equal(Object.keys(expected).length, 16, "the truth table is complete");
+
+  for (const compliance of VERDICTS) {
+    for (const quality of VERDICTS) {
+      const key = `${compliance}|${quality}`;
+      assert.equal(lib.rollUp(compliance, quality), expected[key], key);
+    }
+  }
+
+  // The one ordering choice a reasonable reader would make differently, named on
+  // its own: BLOCK carries an action and UNABLE carries none, and task-deliver's
+  // draft-PR rule keys off BLOCK. The other ordering disarms it.
+  assert.equal(lib.rollUp("BLOCK", "UNABLE"), "BLOCK");
+  assert.equal(lib.rollUp("UNABLE", "BLOCK"), "BLOCK");
+});
+
+test(
+  "scanCritiqueReports maps a receipt into the unified envelope",
+  withDir(async (dir) => {
+    writeAt(dir, "001-critic-receipts.md", receipt(critiqueBlock()), NOW - 2 * DAY_MS);
+    const { reports, notes } = lib.scanCritiqueReports(dir, { now: NOW });
+
+    assert.deepEqual(notes, []);
+    assert.equal(reports.length, 1);
+    const r = reports[0];
+    assert.equal(r.group, "critique");
+    assert.equal(r.kind, "document");
+    assert.equal(r.id, ".marvin/critique/001-critic-receipts.md");
+    assert.equal(r.title, "Diff Critique: feat/demo", "title from the first heading");
+    assert.equal(r.generatedBy, "marvin-tm-diff-critic", "generatedBy from the parsed critic");
+    assert.equal(r.stale, false, "a dated judgement never decays");
+    // The tag carries the DERIVED roll-up: PASS + PASS WITH WARNINGS.
+    assert.deepEqual(r.summary, { kind: "document", tag: "critique · PASS WITH WARNINGS" });
+    assert.match(r.body.markdown, /# Diff Critique/);
+    assert.deepEqual(
+      r.links,
+      [{ kind: "spec", label: "critic-receipts", ref: "critic-receipts" }],
+      "the spec link is emitted whenever the block parses — subject is always a slug",
+    );
+    assert.equal(
+      r.rerunCommand,
+      undefined,
+      "re-running a critic is a pipeline step, not a command",
+    );
+  }),
+);
+
+test(
+  "one malformed receipt degrades one report and skips nothing",
+  withDir(async (dir) => {
+    writeAt(dir, "001-good.md", receipt(critiqueBlock()), NOW - 3 * DAY_MS);
+    writeAt(dir, "002-broken.md", receipt("{ not json"), NOW - 2 * DAY_MS);
+    writeAt(dir, "003-prose.md", receipt(null, "# Spec Critique: legacy"), NOW - DAY_MS);
+
+    const { reports, notes } = lib.scanCritiqueReports(dir, { now: NOW });
+
+    // Unlike scanSecurityReports this scan skips NOTHING: a receipt without a
+    // usable block is still a complete prose critique that renders as a document,
+    // and `notes` reaches the user as "skipped N file(s)" — which would be false.
+    assert.deepEqual(notes, [], "no note pushed for a block-less or broken receipt");
+    assert.equal(reports.length, 3, "every receipt appears, including the malformed one");
+
+    const byId = Object.fromEntries(reports.map((r) => [r.id.split("/").pop(), r]));
+    assert.equal(byId["001-good.md"].summary.tag, "critique · PASS WITH WARNINGS");
+    assert.equal(byId["002-broken.md"].summary.tag, "critique · unreadable");
+    assert.equal(byId["003-prose.md"].summary.tag, "critique");
+
+    // No parsed slug → no link to hang on it, rather than a guessed one.
+    assert.deepEqual(byId["002-broken.md"].links, []);
+    assert.deepEqual(byId["003-prose.md"].links, []);
+    // Title still resolves for a block-less receipt, and falls back to the slug.
+    assert.equal(byId["003-prose.md"].title, "Spec Critique: legacy");
+    assert.equal(byId["002-broken.md"].generatedBy, "critique");
+  }),
+);
+
+test(
+  "a receipt with no heading falls back to its slug, and an absent directory is empty",
+  withDir(async (dir) => {
+    writeAt(dir, "007-no-heading.md", `Prose with no heading.\n`, NOW - DAY_MS);
+    const { reports } = lib.scanCritiqueReports(dir, { now: NOW });
+    assert.equal(reports[0].title, "no-heading");
+
+    const ghost = join(tmpdir(), "marvin-critique-does-not-exist");
+    assert.deepEqual(lib.scanCritiqueReports(ghost, { now: NOW }), { reports: [], notes: [] });
   }),
 );

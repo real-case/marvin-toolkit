@@ -6,7 +6,7 @@ This document fixes the approved visual and interaction design for the `reports`
 
 ## Overview
 
-The reports widget replaces per-family report browsing with one master–detail surface. Every generated document — security reports, refactor registers and plans, task specs, `verification.md`, handoffs — arrives in the same envelope and renders through one of three body kinds:
+The reports widget replaces per-family report browsing with one master–detail surface. Every generated document — security reports, refactor registers and plans, task specs, `verification.md`, handoffs, critique receipts — arrives in the same envelope and renders through one of three body kinds:
 
 - `findings` — severity-ranked, expandable finding rows (all `sec-*` reports, refactor audit and smells registers);
 - `checks` — pass/fail/pending rows with notes (verification gates, refactor plan steps);
@@ -96,7 +96,7 @@ A flex row with `align-items: stretch` so both controls always share one height.
 
 The list column is `15.5rem` wide (11rem under 640px) with a right hairline. Rows are two-line buttons with 9px/12px padding: line one holds the title (13px/500, ellipsized) and a right-aligned status badge; line two is `group · command · age` in `--t3`, with a `--amb` "stale" note when applicable. Every row, including the last one, draws a 0.5px bottom border, so the column closes with a rule even when the detail pane is taller.
 
-The status badge shows the worst finding severity for `findings` reports, `pass`/`fail`/`n/m` for `checks`, and a neutral kind tag (`spec`, `handoff`) for `document`. Selection follows the `ListDetail` primitive: `--acbg` background plus a 2px inset accent rail (`box-shadow: inset 2px 0 0 var(--ac)` — a border technique, kept deliberately), keyboard navigation over a `listbox` role with `aria-activedescendant`.
+The status badge shows the worst finding severity for `findings` reports, `pass`/`fail`/`n/m` for `checks`, and a neutral kind tag for `document` — `spec`, `handoff`, or, for a critique receipt, `critique` alone when it carries no readable verdict block and `critique · <rollUp>` when it does (ADR-0039). Selection follows the `ListDetail` primitive: `--acbg` background plus a 2px inset accent rail (`box-shadow: inset 2px 0 0 var(--ac)` — a border technique, kept deliberately), keyboard navigation over a `listbox` role with `aria-activedescendant`.
 
 ### E — Detail envelope
 
@@ -136,7 +136,7 @@ The widget binds to a new `report` tool through the shared contracts package. Th
 
 ```ts
 // packages/marvin-mcp-shared/src/contracts/report.ts (sketch)
-export const ReportGroup = z.enum(["security", "refactor", "task", "handoff"]);
+export const ReportGroup = z.enum(["security", "refactor", "task", "handoff", "critique"]);
 export const ReportBodyKind = z.enum(["findings", "checks", "document"]);
 
 export const ReportEnvelope = z.object({
@@ -160,7 +160,7 @@ export const ReportListPayload = z.object({
 });
 ```
 
-Findings reuse the existing `Finding` shape from the `audit` contracts (severity, title, file/line, evidence, remediation, links) extended with the refactor register fields (`effort`, `direction`) as optionals, plus an optional `fixCommand`. Continuation commands (`fixCommand`, `rerunCommand`) are data supplied by the tool — the widget never assembles command strings itself. The security group is aggregated from the `audit-report` blocks the `audit` tool already parses; refactor registers, plans, verification, specs, and handoffs get thin parsers in the `report` tool.
+Findings reuse the existing `Finding` shape from the `audit` contracts (severity, title, file/line, evidence, remediation, links) extended with the refactor register fields (`effort`, `direction`) as optionals, plus an optional `fixCommand`. Three further fields carry finding identity across runs (ADR-0038): a required `fingerprint` — sha256 over kind, path, category and title slug, first 16 hex chars, filled at assembly for every finding — and the optional pair `firstSeen` and `state` (`new | persisting | regressed`), filled only by the `triage` action's reconciliation pass, where absent means "not reconciled" rather than "not yet seen". **The widget does not render any of the three yet**: `FindingRow` is unchanged, and a state badge plus a `new` filter is the natural follow-on slice against a contract that already carries the data. Continuation commands (`fixCommand`, `rerunCommand`) are data supplied by the tool — the widget never assembles command strings itself; a `fix`-kind report suppresses `fixCommand` entirely, because a fix record describes what was already closed. The security group is aggregated from the `audit-report` blocks the `audit` tool already parses; refactor registers, plans, verification, specs, handoffs, and critique receipts get thin parsers in the `report` tool.
 
 Staleness is a server-side verdict (current rule: older than 7 days for scan-type reports), so the widget renders `stale` without owning the policy.
 

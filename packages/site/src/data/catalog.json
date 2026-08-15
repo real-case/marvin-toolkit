@@ -1,11 +1,11 @@
 {
-  "version": "0.16.0",
+  "version": "0.17.0",
   "counts": {
     "prompts": 55,
     "tools": 13,
     "agents": 10,
     "widgets": 9,
-    "version": "0.16.0",
+    "version": "0.17.0",
     "license": "MIT"
   },
   "groups": [
@@ -279,7 +279,7 @@
       "name": "reports",
       "group": "core",
       "blurb": "Unified viewer over all reports",
-      "description": "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs — newest first, with per-report freshness.",
+      "description": "Unified viewer over every generated .marvin/ report — security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts — newest first, with per-report freshness.",
       "phrases": [
         "marvin, show me the reports",
         "marvin, what reports do we have?",

@@ -261,8 +261,10 @@ together and easy to include in or exclude from version control.
 | `.marvin/track/` | `track-*` | The task board as markdown files. |
 | `.marvin/memory/` | `lessons` | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | `handoff` | Session-continuation documents. |
+| `.marvin/critique/` | The calling session, at the four pipeline critic call sites | Critic receipts `<NNN>-<slug>.md`: the critic's report verbatim plus a typed `critic-verdict` block carrying a compliance and a quality axis ([ADR-0039](./adr/0039-critique-receipts.md)). The fifth report group; evidence for the reader, never a veto over delivery. |
 | `.marvin/research-results/` | `marvin-researcher` | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
+| `.marvin/report/` | `report` (the `triage` action) | The triage baseline: which finding identities were last recorded as seen ([ADR-0038](./adr/0038-finding-identity-and-triage.md)). Local, self-ignoring, written only when a snapshot is asked for. Not a report group — it holds the tool's own state, and the viewer never lists it. |
 | `.marvin/preview/` | `widget-preview` | Rendered widget panels, never committed ([ADR-0034](./adr/0034-widget-preview-door.md)). |
 | `.marvin/config.json` | `track-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
 

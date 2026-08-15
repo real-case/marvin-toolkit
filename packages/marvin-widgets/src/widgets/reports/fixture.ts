@@ -3,9 +3,9 @@ import type { ReportListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 /**
  * Representative `ReportListPayload` fixtures shared by the tests and stories,
  * mirroring the approved mockup's content: three security reports (one stale),
- * a refactor register + plan, a green verification, and a spec + handoff
- * document — every body kind, every group, truncation, deep-link and the
- * degraded/positive empty shapes. Timestamps are fixed literals against
+ * a refactor register + plan, a green verification, and a spec + handoff +
+ * critique-receipt document — every body kind, every group, truncation,
+ * deep-link and the degraded/positive empty shapes. Timestamps are fixed literals against
  * {@link REPORTS_NOW} (no `Date.now()`), so ages ("5h", "2d", "9d") and visual
  * snapshots are deterministic.
  *
@@ -55,6 +55,7 @@ export const reportsFixture: ReportListPayload = {
         findings: [
           {
             id: "F1",
+            fingerprint: "8bdad780bbd4562d",
             severity: "critical",
             title: "Command injection in exec wrapper",
             category: "CWE-78",
@@ -73,6 +74,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F2",
+            fingerprint: "cd67e640f0e9799b",
             severity: "critical",
             title: "Hardcoded token in test fixture",
             category: "CWE-798",
@@ -83,6 +85,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F3",
+            fingerprint: "c02dec1934332dc5",
             severity: "high",
             title: "Path traversal in file resolver",
             category: "CWE-22",
@@ -93,6 +96,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F4",
+            fingerprint: "478d189709bbc8c4",
             severity: "high",
             title: "Unvalidated redirect in PR flow",
             category: "CWE-601",
@@ -104,6 +108,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F5",
+            fingerprint: "8934b7dbbb62f3b5",
             severity: "high",
             title: "zod schema passes unknown keys",
             category: "CWE-20",
@@ -114,6 +119,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F6",
+            fingerprint: "470bbe62e852e374",
             severity: "medium",
             title: "No size cap on rotated usage log",
             category: "CWE-400",
@@ -142,6 +148,7 @@ export const reportsFixture: ReportListPayload = {
         findings: [
           {
             id: "F1",
+            fingerprint: "b2caff80088aef4a",
             severity: "high",
             title: "AWS key pattern in git history",
             category: "CWE-540",
@@ -151,6 +158,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F2",
+            fingerprint: "9a1bd646e5278e17",
             severity: "medium",
             title: "Slack webhook in docs example",
             category: "CWE-540",
@@ -161,6 +169,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F3",
+            fingerprint: "e3c02233e676cec4",
             severity: "medium",
             title: "Entropy string in e2e seed",
             category: "CWE-540",
@@ -189,6 +198,7 @@ export const reportsFixture: ReportListPayload = {
         findings: [
           {
             id: "F1",
+            fingerprint: "d8fd118479e05a1f",
             severity: "high",
             title: "God module: server.ts",
             file: "src/server.ts",
@@ -199,6 +209,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F2",
+            fingerprint: "4d7edc66ec21a692",
             severity: "high",
             title: "Duplicated status roll-up",
             file: "tools/task.ts",
@@ -209,6 +220,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F3",
+            fingerprint: "7131a86b73e777d5",
             severity: "medium",
             title: "Boolean trap in elicit()",
             file: "lib/elicit.ts",
@@ -219,6 +231,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F4",
+            fingerprint: "ac11dcad13e58c30",
             severity: "medium",
             title: "Stringly-typed gate keys",
             file: "flows/verify.ts",
@@ -300,6 +313,7 @@ export const reportsFixture: ReportListPayload = {
         findings: [
           {
             id: "F1",
+            fingerprint: "96bb98dfac5eddc7",
             severity: "critical",
             title: "Prototype pollution in transitive lodash",
             category: "CVE-2024-3721",
@@ -309,6 +323,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F2",
+            fingerprint: "39d3acaf05525e93",
             severity: "high",
             title: "ReDoS in semver range parser",
             category: "CVE-2023-2588",
@@ -318,6 +333,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F3",
+            fingerprint: "790cd2d43d63d94f",
             severity: "high",
             title: "Unpinned build plugin range",
             category: "supply chain",
@@ -327,6 +343,7 @@ export const reportsFixture: ReportListPayload = {
           },
           {
             id: "F4",
+            fingerprint: "f3fc45a25a5190b1",
             severity: "high",
             title: "Unmaintained transitive parser",
             category: "maintenance",
@@ -364,6 +381,43 @@ export const reportsFixture: ReportListPayload = {
         ].join("\n"),
       },
       links: [],
+    },
+    {
+      id: ".marvin/critique/003-widget-family.md",
+      group: "critique",
+      kind: "document",
+      title: "Diff Critique: feat/widget-family",
+      path: ".marvin/critique/003-widget-family.md",
+      generatedBy: "marvin-tm-diff-critic",
+      generatedAt: "2026-07-15T12:00:00.000Z", // 1d — receipts never go stale
+      stale: false,
+      // The tag carries the DERIVED roll-up, never a stored one (ADR-0039).
+      summary: { kind: "document", tag: "critique · BLOCK" },
+      body: {
+        markdown: [
+          "**Spec:** `.marvin/task/014-widget-family.md`",
+          "**Compliance:** BLOCK",
+          "**Quality:** PASS WITH WARNINGS",
+          "**Verdict:** BLOCK",
+          "",
+          "## Coverage",
+          "",
+          "- AC1 — ✅ covered by `ReportsWidget.tsx:1319`",
+          "- AC2 — ❌ no implementing change for the deep-link preselect",
+          "",
+          "## Blockers",
+          "",
+          "- **[coverage]** AC2 has no implementing change",
+          "  - Evidence: `ReportsWidget.tsx:1004` ignores `data.selected`",
+          "  - Suggested action: fix",
+          "",
+          "## Warnings",
+          "",
+          "- **[pattern-drift]** the segment table is rebuilt on every render",
+          "  - Evidence: `ReportsWidget.tsx:947`",
+        ].join("\n"),
+      },
+      links: [{ kind: "spec", label: "widget-family", ref: "widget-family" }],
     },
   ],
 };

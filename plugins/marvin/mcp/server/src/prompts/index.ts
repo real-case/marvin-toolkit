@@ -157,8 +157,8 @@ export const PROMPTS: PromptDef[] = [
     // marvin writes under .marvin/ (docs/design/reports-widget.md, ADR-0024).
     name: "reports",
     description:
-      "Unified viewer over every generated .marvin/ report — security, refactor, task, handoff — newest first, with per-report freshness.",
-    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title — e.g. "the verification report"), pass its project-relative path as the `selected` argument; otherwise call with no arguments. Do not add preamble — just call the tool and present its result.',
+      "Unified viewer over every generated .marvin/ report — security, refactor, task, handoff, critique — newest first, with per-report freshness.",
+    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title — e.g. "the verification report"), pass its project-relative path as the `selected` argument. If the user is asking what is new or what is still open since the last run, pass `action: "triage"`; pass `snapshot: true` only when they explicitly ask to record the current findings as the baseline. Otherwise call the tool with no arguments, which means `list`. Do not add preamble — just call the tool and present its result.',
   },
   {
     // Skill-backed (three doors) — the template-only export feature (ADR-0033):

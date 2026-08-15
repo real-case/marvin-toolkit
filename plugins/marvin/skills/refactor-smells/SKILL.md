@@ -154,8 +154,12 @@ spec.
   the convention — not thirty findings.
 - **One finding per root cause.** Ten occurrences of the same copy-paste are one
   finding with ten evidence locations.
-- **Severity is contextual.** The same smell weighs more on a hot, shared path than in
-  a test helper.
+- **Rank against the rubric.** `skills/sec-scan/references/severity-rubric.md` is the one
+  scale every marvin producer uses — blast radius, likelihood, cost to reverse, with the
+  two stated adjustments (the same smell on a hot, shared path is promoted one row; an
+  unreachable one is discounted one row). Read it from the plugin: the `skills/…` path
+  resolves through all three entry points (ADR-0008). When context moved a row, name the
+  context in the finding's evidence.
 - **Compose with the audit.** If a recent `refactor-audit` report exists under
   `.marvin/refactor/`, read its register first and cross-reference overlapping findings
   instead of re-filing them.

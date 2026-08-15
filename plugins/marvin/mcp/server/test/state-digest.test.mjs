@@ -359,3 +359,57 @@ test(
     );
   }),
 );
+
+/** A `gate`/`fix` audit-report block — schema-valid, and deliberately alarming. */
+const kindBlock = (kind, id) =>
+  JSON.stringify({
+    kind,
+    scanned_at: "2026-07-16T09:00:00Z",
+    summary: { critical: 1 },
+    findings: [
+      { id, severity: "critical", title: "Hardcoded token on the diff", category: "secrets" },
+    ],
+  });
+
+const securityReport = (block) =>
+  `# Security report\n\nProse.\n\n\`\`\`json audit-report\n${block}\n\`\`\`\n`;
+
+test(
+  "the dashboard security area skips gate and fix reports and keeps the newest real scan",
+  withDir(async (root) => {
+    // The gate runs on the commit path, so its record is usually the NEWEST
+    // file in .marvin/security/ — and `newestArea`'s security filter accepts
+    // every filename. Left alone, the dashboard's Security area would switch
+    // from "the last full scan found this" to "the last pre-commit check saw
+    // this on the diff", with no message and no version signal (ADR-0038).
+    const security = join(root, "security");
+    mkdirSync(security, { recursive: true });
+    writeAt(security, "scan-report.md", securityReport(AUDIT_BLOCK), NOW - 3 * DAY_MS);
+    writeAt(security, "gate-report.md", securityReport(kindBlock("gate", "GATE-1")), NOW - DAY_MS);
+
+    const withGate = lib.auditDigest({ security, refactor: join(root, "none") }, NOW).security;
+    assert.equal(withGate.newest_report, "scan-report.md");
+    assert.equal(withGate.total, 4, "the gate's finding is not counted");
+    assert.equal(
+      withGate.scanned_age_days,
+      3,
+      "the age is the scan's, so a future change that keeps the filename but takes the gate's mtime is caught",
+    );
+
+    // …and the same for a `fix-<slug>.md`, newer still.
+    writeAt(security, "fix-login.md", securityReport(kindBlock("fix", "FIX-1")), NOW - 60_000);
+    const withFix = lib.auditDigest({ security, refactor: join(root, "none") }, NOW).security;
+    assert.equal(withFix.newest_report, "scan-report.md");
+    assert.equal(withFix.scanned_age_days, 3);
+
+    // A directory holding ONLY non-posture reports is `null` — never scanned —
+    // rather than a security posture assembled from a pre-commit check.
+    const gateOnly = join(root, "gate-only");
+    mkdirSync(gateOnly, { recursive: true });
+    writeAt(gateOnly, "gate-report.md", securityReport(kindBlock("gate", "GATE-1")), NOW - DAY_MS);
+    assert.equal(
+      lib.auditDigest({ security: gateOnly, refactor: join(root, "none") }, NOW).security,
+      null,
+    );
+  }),
+);

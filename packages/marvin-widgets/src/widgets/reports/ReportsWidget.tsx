@@ -950,6 +950,7 @@ const GROUPS = [
   ["refactor", "Refactor"],
   ["task", "Task"],
   ["handoff", "Handoff"],
+  ["critique", "Critique"],
 ] as const;
 
 type GroupKey = "all" | ReportGroup;

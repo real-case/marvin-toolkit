@@ -4,6 +4,88 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.17.0] — 2026-08-15
+
+Phase 7 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`), and the last of
+the seven: a finding stops being anonymous within one run and gets an identity that survives the
+next scan, the four disagreeing severity bullets become one rubric with anchored examples, and a
+critic's verdict becomes a typed artefact instead of prose in a conversation. ADR-0038 and
+ADR-0039 accompany it, both `proposed`.
+
+### Added
+
+- **Every finding carries a `fingerprint`.** A sha256 over the report kind, the file path, the
+  category and the title slug, first 16 hex characters, computed server-side at assembly. Line
+  numbers are deliberately excluded, so an unrelated insertion above a finding does not mint a new
+  identity — the whole point being that "what is new since last week" survives a renumbering.
+- **`/marvin:reports` answers what is new.** A `triage` action reconciles the live findings against
+  a stored baseline into `new`, `persisting` and `regressed`, plus a `resolved` roll-up for
+  fingerprints that have left every current report. Both actions reconcile — the terminal and the
+  widget see the same data — and only `snapshot: true` writes the baseline, to
+  `.marvin/report/triage.json`, a local self-ignoring directory created lazily on that path alone.
+  The write is a flag rather than an action because the tool is widget-bound at tool level: an
+  action-keyed write would let a host consume the baseline by merely opening the panel.
+- **`sec-gate` and `sec-fix` emit typed `audit-report` blocks**, strictly inside their existing
+  "if the user asks to keep a record" branches. The gate runs on the commit path and still stays
+  quiet by default.
+- **One severity rubric with anchored examples**, at `skills/sec-scan/references/severity-rubric.md`:
+  a spine of blast radius × likelihood × cost to reverse, five rows, two stated adjustments, and two
+  concrete anchors per row — one security, one code-health. `sec-scan`, `sec-gate`, `sec-fix`,
+  `refactor-audit` and `refactor-smells` reference it by path; `marvin-auditor` and
+  `marvin-refactor-auditor` carry an inlined condensed copy, because an agent body is loaded
+  standalone and a `skills/…` path there resolves against the working directory and silently fails
+  to open.
+
+### Changed
+
+- **`AuditKind` accepts two new members, `gate` and `fix`** — ten in total. A project that pinned or
+  switched over the eight-member enum downstream needs to widen with it. Reading is compatible in
+  one direction only: an eight-member block still parses here, but a `gate`- or `fix`-kind report
+  written under this version parses as invalid against an older server and is dropped by every
+  reader with only a skip-note.
+- **The dashboard's Security area never shows a `gate` or `fix` report.** Those two kinds are
+  excluded from candidacy, so a pre-commit gate record — usually the newest file in
+  `.marvin/security/`, since it is written on the commit path — cannot silently replace the last
+  full scan as the project's stated security posture. Both kinds remain fully visible in
+  `/marvin:reports` and `/marvin:sec-report`, where a report is one row among many.
+- **The `report` tool rejects undeclared arguments** instead of stripping them — the second tool
+  after `spec` to do so. A caller who intends `snapshot: true` and mistypes the key now gets an
+  error naming the key, rather than a successful-looking call that wrote nothing and left every
+  later triage reporting the whole finding set as new.
+- **A `fix`-kind report carries no `fixCommand`.** Its findings describe what was already closed, so
+  the continuation chip would have asked the fix skill to fix its own record.
+- **A `fix`-kind report is never reconciled as live state.** Its findings record what was repaired,
+  not what is currently wrong, so counting them would let a fix report displace the very findings it
+  closed. ADR-0038's premise that `.marvin/security/` is current state because scanners overwrite
+  fixed filenames is corrected in the record: `fix-<slug>.md` accumulates, exactly like a refactor
+  register.
+
+### Added — critic receipts
+
+- **A critic's verdict becomes a typed artefact.** Both critics now end with a `critic-verdict`
+  block carrying two axes — spec compliance and quality — and the calling session writes the
+  receipt to a new `.marvin/critique/` group, the fifth `ReportGroup`, browsable in
+  `/marvin:reports` and linked from `/marvin:task-summary`. Until now a verdict existed only as
+  prose in a conversation, and a skipped critic left no trace any tool could read.
+- **`.marvin/critique/` rather than `.marvin/task/`**, because three independent readers classify
+  any file in the task directory other than the verification artifact as a spec. The directory is
+  registered in ADR-0039, honours `MARVIN_CRITIQUE_DIR`, and never goes stale — a verdict describes
+  the moment it was made, so ageing it would be meaningless.
+- **A guard that the group set stays enumerated in one place.** `report-groups.test.mjs` asserts
+  the enum equals every code enumeration in the tool, the library and the widget, and that each
+  pinned prose surface names every group — the enumeration debt this phase inherited was roughly
+  twenty unguarded sites.
+
+### Changed — critic receipts
+
+- **Both critic agent protocols are rewritten, not extended.** The single `**Verdict:**` line
+  becomes the roll-up of the two axes and is preserved, as is the spec critic's explicit no-veto
+  statement and the five-verdict vocabulary Phase 1 introduced.
+- **A receipt cannot change a delivery decision.** ADR-0017 puts enforcement in the draft PR, and
+  making the audited party the author of its own audit record would invert that. The delivery gate
+  returns byte-identical output with and without a `BLOCK` receipt present — asserted on a fixture
+  that would otherwise ALLOW, so the test reaches the code that could violate it.
+
 ## [0.16.0] — 2026-08-15
 
 Phase 6 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`): the last large
