@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-07-17 |
+| Status        | **Accepted** |
+| Date          | 2026-08-15 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0024](0024-mcp-apps-widget-architecture.md) (widget theme + data-first staging), [ADR-0013](0013-self-contained-server-bundle.md) (committed self-contained bundle), [ADR-0014](0014-distribution-release-model.md) (no-postinstall distribution), [ADR-0007](0007-marvin-working-directory.md) (`.marvin/` layout), [ADR-0008](0008-mcp-door-resource-resolution.md) (door-3 resource resolution) |

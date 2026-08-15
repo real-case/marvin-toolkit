@@ -29516,7 +29516,7 @@ function formatAdrId(number3) {
   return String(number3).padStart(4, "0");
 }
 function stripCodeSpans(raw) {
-  return raw.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
+  return raw.replace(/^```[\s\S]*?^```/gm, "").replace(/(`+)[^\n]*?\1/g, "");
 }
 function findPlaceholders(raw) {
   return (stripCodeSpans(raw).match(/\{[^{}\n]*\}/g) ?? []).map(compact);
@@ -36621,7 +36621,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.17.0";
+var VERSION = "0.17.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

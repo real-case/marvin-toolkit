@@ -420,8 +420,17 @@ test("ADR-0022 is amended, not retired", () => {
     "its header links forward to the record that amends it",
   );
 
+  // The successor's own status is deliberately NOT pinned. This test asserts
+  // that 0022 was amended rather than retired; 0037 moving from proposed to
+  // accepted is the normal lifecycle of the record that amends it, and pinning
+  // the transient value made a legitimate ratification fail the build.
   const successor = adr("0037-spec-corpus-mechanics.md");
-  assert.match(successor, /\|\s*Status\s*\|\s*\*\*Proposed\*\*/);
+  assert.match(successor, /\|\s*Status\s*\|\s*\*\*(Proposed|Accepted)\*\*/);
+  assert.doesNotMatch(
+    successor.split("## Context")[0],
+    /\|\s*Superseded by\s*\|\s*(?!—)\S/,
+    "the amending record is not itself superseded",
+  );
 
   for (const index of ["README.md", "docs/README.md"]) {
     assert.match(
