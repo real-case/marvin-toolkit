@@ -4,6 +4,32 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.17.1] — 2026-08-15
+
+### Fixed
+
+- **The ADR readiness gate read a record's own content as unfilled template residue.** Its
+  code-stripper matched a fenced-block marker that appeared *inside* an inline code span — the
+  shipped example is a record describing the ` ```json oracle-run ` block it writes — and consumed
+  everything up to the next fence in the document. The resulting odd backtick run re-paired every
+  span after it, exposing their contents to a lint that is supposed to ignore code. ADR-0036 was
+  refused acceptance because `{file}` and `{name}`, written inside backticks as the substitution
+  tokens they are, were reported as placeholders.
+
+  The fence pattern is now anchored to line starts and the inline pattern no longer crosses a
+  newline, so a single unbalanced backtick cannot cascade. Measured across the corpus: one record
+  false-positived before, none after, and no other record changes classification. Both narrowings
+  cost something — an indented fence, and an inline span wrapping a soft line break, neither of
+  which occurs here — and both fail towards reporting rather than towards silence.
+
+### Changed
+
+- **Every ADR is now `accepted`.** The eight that stood at `proposed` — 0033 and 0034, whose
+  features shipped some time ago, and 0035 through 0040 from the workflow-hardening plan — were
+  ratified by the owner. Both index tables were corrected with them: `check-docs-drift` verifies
+  that an ADR is *linked* from each, never that the status it prints is the status the record
+  carries, so they had gone on saying `Proposed` after each acceptance.
+
 ## [0.17.0] — 2026-08-15
 
 Phase 7 of the workflow-hardening plan (`docs/proposals/workflow-hardening.md`), and the last of

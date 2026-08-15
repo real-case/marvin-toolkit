@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-08-13 |
+| Status        | **Accepted** |
+| Date          | 2026-08-15 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0002](0002-tool-backed-verification.md) (the `verify` gate runner), [ADR-0012](0012-tool-backed-delivery-gate.md) (the delivery gate), [ADR-0009](0009-config-first-gate-resolution.md) (config-first gate resolution), [ADR-0015](0015-verify-shell-trust-boundary.md) (the shell trust boundary the probe sits inside), [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` layout), [ADR-0024](0024-mcp-apps-widget-architecture.md) (the widget data contracts) |

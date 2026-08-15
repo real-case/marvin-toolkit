@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-08-14 |
+| Status        | **Accepted** |
+| Date          | 2026-08-15 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0022](0022-numbered-spec-files.md) (numeric-prefixed spec filenames — **amended**, not retired), [ADR-0005](0005-portable-spec-contract.md) (host-adaptive spec location), [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` service-file convention), [ADR-0027](0027-tool-backed-adr-lifecycle.md) (the ADR corpus mechanics this mirrors), [ADR-0003](0003-tool-backed-dor.md) (the `spec` tool this widens), [ADR-0009](0009-config-first-gate-resolution.md) (the config-tier precedent), [ADR-0035](0035-evidence-provenance.md) and [ADR-0036](0036-oracle-execution-and-red-green.md) (the `runs/` artifacts that stay pinned) |

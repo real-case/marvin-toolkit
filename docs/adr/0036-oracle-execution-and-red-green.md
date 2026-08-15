@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-08-13 |
+| Status        | **Accepted** |
+| Date          | 2026-08-15 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0015](0015-verify-shell-trust-boundary.md) (the shell trust boundary this **extends**), [ADR-0003](0003-tool-backed-dor.md) and [ADR-0004](0004-spec-contract-schema.md) (the oracle graph the DoR gate validates), [ADR-0009](0009-config-first-gate-resolution.md) (the precedence chain generalised here), [ADR-0002](0002-tool-backed-verification.md) (the gate runner whose spawn primitive is reused), [ADR-0035](0035-evidence-provenance.md) (the `runs/` directory the journal lives in), [ADR-0024](0024-mcp-apps-widget-architecture.md) (the `AcOutcome` contract this does **not** change) |

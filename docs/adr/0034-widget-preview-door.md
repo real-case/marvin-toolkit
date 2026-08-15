@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-07-31 |
+| Status        | **Accepted** |
+| Date          | 2026-08-15 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0024](0024-mcp-apps-widget-architecture.md) (the MCP Apps widget layer), [ADR-0033](0033-report-export.md) (report export is template-only), [ADR-0013](0013-self-contained-server-bundle.md) (committed self-contained bundle), [ADR-0030](0030-toolbox-dashboard-and-usage-log.md) (self-ignoring working directories), [ADR-0008](0008-mcp-door-resource-resolution.md) (door-3 resource resolution) |

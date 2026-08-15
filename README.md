@@ -273,14 +273,14 @@ rationale is folded into 0001, 0013, and 0018.
 | [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
 | [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
 | [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
-| [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Proposed |
-| [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Proposed |
-| [0035](./docs/adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Proposed |
-| [0036](./docs/adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Proposed |
-| [0037](./docs/adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Proposed |
-| [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Proposed |
-| [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Proposed |
-| [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Proposed |
+| [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Accepted |
+| [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Accepted |
+| [0035](./docs/adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Accepted |
+| [0036](./docs/adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Accepted |
+| [0037](./docs/adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Accepted |
+| [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
+| [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
+| [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
 
 ## Contributing
 
