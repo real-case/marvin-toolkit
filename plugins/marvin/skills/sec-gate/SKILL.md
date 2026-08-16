@@ -36,13 +36,48 @@ Collect:
 
 ## Phase 2 — Secret check (diff only)
 
-Scan **added lines only** for hardcoded secrets. Use the high-signal patterns:
+Scan **added lines only** for hardcoded secrets.
 
-1. **Cloud provider keys**: `AKIA[0-9A-Z]{16}`, `AIza[0-9A-Za-z_-]{35}`, `AccountKey=`
-2. **Platform tokens**: `ghp_`, `gho_`, `ghs_`, `sk-`, `sk_live_`, `xox[bps]-`, `SG.`, `glpat-`
-3. **Private keys**: `-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----`
-4. **Generic credentials**: assignments to `password`, `secret`, `api_key`, `token`, `credential` variables with non-placeholder string values
-5. **Connection strings**: `(mysql|postgres|mongodb|redis)://.*:.*@`
+**The same list runs as a blocking hook on the commit path.** Marvin ships a `PreToolUse`
+guard (`hooks/secret-guard.mjs`, ADR-0040) that scans the pending commit against exactly
+these patterns and refuses the `git commit` call on a match. The hook's `SECRET_PATTERNS`
+is the canonical source and the block below is mirrored from it, so the skill and the hook
+cannot report differently on the same diff; `test/hook-surface.test.mjs` asserts the parity
+in both directions. Edit the hook, then mirror — never the other way round.
+
+Every pattern is an anchored regex with a shape or length requirement rather than a bare
+prefix, because this skill's own low-false-positive constraint forbids one: `sk-` is a
+substring of the literal `task-start`, which appears in nearly every commit this project
+makes.
+
+```json secret-patterns
+[
+  { "id": "aws-access-key-id", "regex": "\\bAKIA[0-9A-Z]{16}\\b" },
+  { "id": "google-api-key", "regex": "\\bAIza[0-9A-Za-z_-]{35}\\b" },
+  { "id": "github-token", "regex": "\\bgh[pousr]_[A-Za-z0-9]{36}\\b" },
+  { "id": "gitlab-token", "regex": "\\bglpat-[A-Za-z0-9_]{20}\\b" },
+  { "id": "openai-key", "regex": "\\bsk-[A-Za-z0-9]{20,}\\b" },
+  { "id": "stripe-live-key", "regex": "\\bsk_live_[A-Za-z0-9]{24,}\\b" },
+  { "id": "slack-token", "regex": "\\bxox[abprs]-[A-Za-z0-9]{10,}\\b" },
+  { "id": "sendgrid-key", "regex": "\\bSG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}\\b" },
+  { "id": "azure-storage-key", "regex": "\\bAccountKey=[A-Za-z0-9+/]{64,}={0,2}" },
+  {
+    "id": "private-key-header",
+    "regex": "-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"
+  },
+  {
+    "id": "credentialed-uri",
+    "regex": "\\b(?:mysql|postgres|postgresql|mongodb|redis|amqp)(?:\\+srv)?://[^\\s:/@]+:[^\\s:/@]+@"
+  }
+]
+```
+
+**Generic credentials — model judgement, not machine-enforced.** Assignments to
+`password`, `secret`, `api_key`, `token` or `credential` variables with non-placeholder
+string values are a real finding and you should report them, but the rule has no
+deterministic form: deciding that `"changeme"` is a placeholder and `"Tr0ub4dor&3"` is not
+is a judgement. It is deliberately outside the block above and outside the parity test, and
+the hook does not enforce it.
 
 Also check:
 - New `.env` files added to staging — flag immediately

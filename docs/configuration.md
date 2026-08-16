@@ -146,6 +146,51 @@ This is the kill-switch for the local usage log. It is an optional object with a
 boolean field `enabled` that defaults to `true`. Set it to `false` to turn telemetry off
 entirely, as the [telemetry](#telemetry) section describes.
 
+### `hooks`
+
+This is the kill-switch for Marvin's two blocking hooks. It is an optional object with a
+single boolean field `enabled` that defaults to `true`.
+
+**Marvin can block a shell command.** The plugin ships two `PreToolUse` hooks that run
+before every `Bash` tool call and can refuse one
+([ADR-0040](./adr/0040-runtime-enforcement-hooks.md)). They arrive with the plugin and are
+armed with no enablement step:
+
+- **`bypass-guard`** refuses a commit that skips your local gates — `git commit
+  --no-verify` or `-n`, and `git merge --no-verify` — and a force-push or branch deletion
+  aimed at a protected branch. The flag has to be a real argument on a command that
+  actually runs: a commit message that mentions `--no-verify` is not a match, and neither
+  is an `echo`, a `#` comment, or a heredoc body that shows the command — including the
+  one that produced this page. Nor is `git merge -n` (there `-n` is `--no-stat`), any
+  `git push --dry-run`, or a `git commit --dry-run`; an attached option value is read as a
+  value and not as flag letters, so `git commit -uno` is `--untracked-files=no`.
+- **`secret-guard`** scans the lines the pending commit would add against a
+  high-confidence credential-pattern list and refuses on a match. It names the pattern and
+  the `file:line` and never prints the matched value.
+
+The protected set is the union of three inputs: `base_branch` below, the default branch
+`origin/HEAD` resolves to, and a shipped list of conventional integration-branch names
+(`main`, `master`, `dev`, `develop`). A project whose integration branch is named anything
+else sets `base_branch` and is covered.
+
+**Two ways to turn it off.** Set `hooks.enabled` to `false` in this file to disable both
+guards for the project, or export `MARVIN_HOOKS_DISABLED=1` to disable them for one
+session. Every deny message repeats both.
+
+**The failure direction is deliberate.** An absent, unreadable or malformed config file, a
+config with no `hooks` block, an unrecognised key under `hooks`, an unreadable command, a
+directory that is not a git repository, a failed `git` call, and any unexpected error all
+leave the command **allowed**. Only an explicit `false`, or `MARVIN_HOOKS_DISABLED` set to
+exactly `1`, disables the guards, and only a confirmed match blocks a command. Nothing is
+written to disk and nothing leaves your machine.
+
+**A trap worth naming: `MARVIN_TASKS_CONFIG` does not repoint the hooks.** That variable
+scopes to the MCP server, and the hooks deliberately ignore it even when it is set in the
+session — a test-isolation affordance must not decide what a blocking guard reads. The
+hooks read `$CLAUDE_PROJECT_DIR/.marvin/config.json` and nothing else. So a project that
+repoints its server config gets a server reading one file and a hook reading another, and
+the kill switch lives in the hook's file.
+
 ### `adr`
 
 This is the location of the ADR corpus, owned by the `adr` tool. It is an optional object
@@ -192,6 +237,13 @@ the rest exist mainly for test isolation, and each defaults to a subdirectory of
 | `MARVIN_CRITIQUE_DIR` | `.marvin/critique` | The critic receipts. |
 | `MARVIN_USAGE_DIR` | `.marvin/usage` | The local usage log. |
 | `MARVIN_REPORT_DIR` | `.marvin/report` | The triage baseline — local and self-ignoring, written only on a `snapshot`. |
+| `MARVIN_HOOKS_DISABLED` | unset | Set to exactly `1` to disable both blocking hooks. Read by the hooks, not by the server. |
+
+`MARVIN_HOOKS_DISABLED` is the one variable in this table whose scope is a **session**
+rather than a call. A `PreToolUse` hook runs before the command it inspects and inherits
+the session's environment, never the inspected command's, so prefixing it onto the blocked
+git command puts it inside the command string where the hook does not read it. Export it in
+the session instead.
 
 ## Verify gates
 
@@ -314,6 +366,12 @@ size-capped with rotation so it cannot grow without bound.
 Telemetry is opt-out. To disable it, set `usage.enabled` to `false` in `.marvin/config.json`;
 the switch is re-read on every event, so the change applies immediately. Recording is
 fail-open, meaning a logging error never interferes with the command you ran.
+
+The log is the smaller of the two things installing Marvin turns on. The other is that
+Marvin can block a shell command: two `PreToolUse` hooks arrive with the plugin, armed with
+no enablement step, and refuse a gate-skipping commit, a destructive push at a protected
+branch, or a commit carrying a credential-shaped string. The [`hooks`](#hooks) section above
+states what they block and the two ways to turn them off.
 
 ### Reading the surface back
 

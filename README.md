@@ -40,6 +40,16 @@ The plugin registers one MCP server named `marvin`, and its commands appear as
 `/marvin:<group>-<command>`. No clone or build step is needed, because the server ships
 bundled.
 
+**Installing also lets Marvin block a shell command.** Two hooks arrive with the plugin and
+are armed with no enablement step: one refuses a commit that skips your local gates
+(`git commit --no-verify`) and a force-push or deletion aimed at a protected branch, the
+other refuses a commit whose added lines carry a credential-shaped string. Everything else
+runs untouched — a quoted `--no-verify` in a commit message is not a match, a dry-run push
+is never blocked, and any internal error allows the command rather than blocking it. To turn
+them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or export
+`MARVIN_HOOKS_DISABLED=1` for one session. The
+[configuration reference](./docs/configuration.md#hooks) has the details.
+
 ## Documentation
 
 - **[Getting started](./docs/getting-started.md)** — install the plugin, then run the guided `/marvin:onboard` walkthrough.

@@ -4,6 +4,78 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.18.0] — 2026-08-16
+
+WP4.1, and the last work package of the workflow-hardening plan
+(`docs/proposals/workflow-hardening.md`). Marvin gains the one mechanism a model cannot reason
+its way around: a guard the host runs **before** the call, rather than prose a model reads or a
+tool a model chooses. ADR-0040 binds it and was ratified before any of it was written.
+
+### Added
+
+- **Two blocking `PreToolUse` guards on `Bash`**, in `plugins/marvin/hooks/`. Hook A refuses
+  `--no-verify` and `-n` as standalone arguments of `git commit` / `git merge`, and refuses a
+  force-push or branch deletion aimed at a protected ref. Hook B scans the added lines of the
+  commit a call is about to create against a high-confidence secret list, resolving what
+  "pending" means rather than reading the index alone — at `PreToolUse` time the index is
+  frequently empty, so `git commit -a` widens to unstaged tracked changes and a pathspec to
+  those paths. A hook reading only `git diff --cached` would pass every `git commit -am` while
+  appearing to work.
+- **The protected set is a three-input union** — `base_branch` from the config, the `origin/HEAD`
+  default, and a shipped list of conventional names. In this repository the first two both
+  resolve to `main`, so `dev` — the branch ADR-0019 designates and every PR in this plan targets
+  — is protected only because of the third. ADR-0040 recorded that gap as an open question; this
+  is the answer.
+- **A kill switch a separate process can actually read**: `hooks.enabled` in
+  `.marvin/config.json`, via an independent raw-JSON reader, plus `MARVIN_HOOKS_DISABLED=1` for
+  one session. Absent, unreadable, malformed, no `hooks` block, or an unrecognised key under
+  `hooks` all leave the guards **enabled** — only an explicit `false` disables. The reader
+  ignores `MARVIN_TASKS_CONFIG`: that variable scopes to the server, and honouring it would let
+  a test-isolation affordance decide what a blocking guard reads.
+- **Disclosure on four install-facing surfaces** — both READMEs, `docs/configuration.md`, and
+  both manifest descriptions — each stating that marvin can refuse a shell command, which ones,
+  and both ways to turn it off. A skills-directory plugin is enabled by default with no install
+  step, which ADR-0040 established by probe, so the disclosure is the only consent surface there
+  is.
+
+### Fixed
+
+Every defect found in review was a **false denial** — the direction that breaks a release rather
+than skipping a check — and each was found by spawning the shipped guard, not by reading it:
+
+- **A mention became a denial.** The subcommand was located anywhere in a segment, so
+  `echo git push --force origin main` and a comment line reached exit 2. The git token must now
+  be the segment's first, after leading environment assignments only.
+- **A heredoc body was cut into segments.** A delimiter word closes its own quotes before the
+  newline, so `cat > doc.md <<'EOF'` split every body line into a command — and a document whose
+  text contained `git push --force` was refused.
+- **An attached option value was read as flag letters.** `git commit -uno` is
+  `--untracked-files=no`, which git accepts and the guard refused. A bundle's letters are now
+  read left to right and the read stops at the first letter that is not a known no-argument short
+  flag for that subcommand.
+- **`-C <dir>` was parsed and discarded**, so the protected set resolved in the wrong repository
+  — and, because the unresolved case fell back to the current branch, produced a wrong deny.
+- **`--all` / `--mirror` denied where nothing was protected**, naming four branches that did not
+  exist in that repository.
+- **`refs/heads/<name>` was not recognised as a refspec**, an asymmetry inside one module: the
+  guard both missed the protected target and refused an unprotected one.
+- **Three secret patterns matched kebab-case identifiers.** `sk-` admitted `-` in the body, so
+  `sk-workflow-latency-optimization` matched inside `task-workflow-latency-optimization` — a
+  string in this repository's own ADRs. AWS's documented example key is exempted by name rather
+  than by editing the fixture that carries it, because a guard that refuses a well-known example
+  string will keep surprising people.
+- **A dry run was scanned and could deny.** `git commit --dry-run` creates no commit; the sibling
+  guard already exempted dry runs on the same reasoning.
+
+### Changed
+
+- `scripts/lint-manifests.mjs` gains a rule that every hook command resolves and is executable.
+  It lives inside that script rather than as a new CI step, because `test/ci-workflow.test.mjs`
+  pins step adjacency — and its negatives assert the specific failure message, since
+  `lint-manifests` also exits 1 on an unrelated missing file.
+- The instrument taxonomy gains a seventh kind. A hook is the only one the host runs on its own
+  initiative; every other instrument waits to be chosen.
+
 ## [0.17.1] — 2026-08-15
 
 ### Fixed
