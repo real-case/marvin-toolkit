@@ -28,6 +28,7 @@ plugins/marvin/
 ├── skills/<command>/SKILL.md      # source of truth for prompt bodies
 ├── commands/<command>.md          # short /<command> slash wrappers
 ├── agents/*.md                    # Claude Code subagents
+├── hooks/                         # blocking PreToolUse guards, shipped armed (ADR-0040)
 ├── widgets/*.html                 # committed self-contained MCP Apps widgets
 └── mcp/server/                    # TypeScript MCP server, bundled to dist/server.js
 ```

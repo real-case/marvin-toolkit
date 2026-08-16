@@ -12,8 +12,13 @@
 //      agrees with the skill frontmatter, and the frontmatter value is canonical
 //      (scripts/lib/skill-datasets.mjs; the harness's own invariants are checked by
 //      evals/trigger/self-test.mjs instead)
+//   8. Every pack with hooks/hooks.json declares the plugin wrapper shape, every
+//      { type: "command" } entry resolves ${CLAUDE_PLUGIN_ROOT} to a script that
+//      exists and is readable (and executable when invoked as a bare path), and
+//      plugin.json does not also declare the standard hooks path — which the loader
+//      treats as an error rather than a harmless duplicate (ADR-0040 §8)
 
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,7 +40,137 @@ if (!Array.isArray(marketplace.plugins)) {
   failures.push("marketplace.json: 'plugins' must be an array");
 }
 
-// 2 + 3 + 4. Per-pack checks
+// Rule 8's helpers. A hook manifest is the one file in a pack that names executable
+// code by path, so "does the path resolve" is the only thing standing between a
+// renamed script and a loader that fails silently at the one moment the guard was
+// supposed to run.
+const PLUGIN_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}";
+
+/** Split a command line into tokens, honouring quotes so a quoted path stays one token. */
+function splitCommandTokens(command) {
+  const tokens = [];
+  let text = "";
+  let started = false;
+  let quote = null;
+  for (const ch of command) {
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else text += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (started) {
+        tokens.push(text);
+        text = "";
+        started = false;
+      }
+      continue;
+    }
+    text += ch;
+    started = true;
+  }
+  if (started) tokens.push(text);
+  return tokens;
+}
+
+/** Rule 8 for one pack. Returns its failures; an absent manifest is not one. */
+function hookManifestFailures(packName, packDir, manifestPath, pluginJson) {
+  const label = `${packName}/hooks/hooks.json`;
+  const out = [];
+
+  const declared = pluginJson.hooks;
+  const declaredPaths =
+    typeof declared === "string"
+      ? [declared]
+      : Array.isArray(declared)
+        ? declared.filter((value) => typeof value === "string")
+        : [];
+  if (declaredPaths.some((path) => path.replace(/^\.\//, "") === "hooks/hooks.json")) {
+    out.push(
+      `${packName}/.claude-plugin/plugin.json: declares a "hooks" key pointing at the standard hooks/hooks.json path — the loader auto-discovers that file and treats the duplicate as an error`,
+    );
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (err) {
+    out.push(`${label}: is not valid JSON — ${err.message}`);
+    return out;
+  }
+
+  const events = manifest?.hooks;
+  if (typeof events !== "object" || events === null || Array.isArray(events)) {
+    out.push(
+      `${label}: is not the plugin wrapper shape — events must be nested under a top-level "hooks" key`,
+    );
+    return out;
+  }
+
+  let commands = 0;
+  for (const [event, matchers] of Object.entries(events)) {
+    if (!Array.isArray(matchers)) {
+      out.push(`${label}: "${event}" must be an array of matcher entries`);
+      continue;
+    }
+    for (const matcher of matchers) {
+      if (!Array.isArray(matcher?.hooks)) {
+        out.push(`${label}: a "${event}" matcher entry has no "hooks" array`);
+        continue;
+      }
+      for (const hook of matcher.hooks) {
+        if (hook?.type !== "command") continue;
+        commands += 1;
+        const raw = typeof hook.command === "string" ? hook.command : "";
+        const tokens = splitCommandTokens(raw.split(PLUGIN_ROOT_VAR).join(packDir));
+        const at = tokens.findIndex((token) => token.includes("/"));
+        if (at === -1) {
+          out.push(`${label}: the "${event}" command names no script file: ${raw || "(missing)"}`);
+          continue;
+        }
+        const script = tokens[at];
+        let stats;
+        try {
+          stats = statSync(script);
+        } catch {
+          stats = null;
+        }
+        if (stats === null || !stats.isFile()) {
+          out.push(
+            `${label}: the "${event}" command references a script that does not exist: ${script}`,
+          );
+          continue;
+        }
+        try {
+          accessSync(script, constants.R_OK);
+        } catch {
+          out.push(
+            `${label}: the "${event}" command references a script that is not readable: ${script}`,
+          );
+          continue;
+        }
+        // Only a bare-path invocation depends on the mode bit. `node <script>` does
+        // not, which is exactly why the shipped commands name an interpreter.
+        if (at === 0 && (stats.mode & 0o100) === 0) {
+          out.push(
+            `${label}: the "${event}" command invokes ${script} as a bare path but it is not owner-executable`,
+          );
+        }
+      }
+    }
+  }
+  if (commands === 0) {
+    out.push(`${label}: declares no { "type": "command" } hook entry`);
+  }
+  return out;
+}
+
+// 2 + 3 + 4 + 8. Per-pack checks
 for (const entry of marketplace.plugins) {
   const packDir = join(repoRoot, "plugins", entry.name);
   const pluginJsonPath = join(packDir, ".claude-plugin", "plugin.json");
@@ -71,6 +206,13 @@ for (const entry of marketplace.plugins) {
   const serverPkg = join(packDir, "mcp", "server", "package.json");
   if (existsSync(serverPkg) && !existsSync(distFile)) {
     failures.push(`${entry.name}: dist/server.js missing — pack server is not built`);
+  }
+
+  // 8. Hook manifest. An absent hooks/hooks.json is not a failure: marvin is the only
+  //    pack that ships one, and a pack without hooks is a pack without this obligation.
+  const hooksJsonPath = join(packDir, "hooks", "hooks.json");
+  if (existsSync(hooksJsonPath)) {
+    failures.push(...hookManifestFailures(entry.name, packDir, hooksJsonPath, pluginJson));
   }
 }
 

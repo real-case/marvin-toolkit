@@ -14,7 +14,7 @@ a tool, or an agent, read [CLAUDE.md](../CLAUDE.md).
 
 ## The primary stack
 
-Everything Marvin ships is built from five kinds of file, all auto-loaded by Claude
+Everything Marvin ships is built from six kinds of file, all auto-loaded by Claude
 Code on `/plugin install`:
 
 - **Skills** are Markdown workflow documents under `skills/<command>/SKILL.md`. They are the source of truth for what each command does.
@@ -22,6 +22,7 @@ Code on `/plugin install`:
 - **MCP prompts** are registered by the bundled server and surface each workflow as `/marvin:<command>`.
 - **MCP tools** are deterministic TypeScript, each with a zod input schema, used wherever an operation must be exact rather than narrative.
 - **Agents** under `agents/*.md` are Claude Code subagents with constrained tool access.
+- **Hooks** under `hooks/` are the one exception to "auto-loaded and then inert": two blocking `PreToolUse` guards that the host runs before every `Bash` tool call, armed from the moment the plugin is present. They can refuse a call, and the [configuration reference](./configuration.md#hooks) states what they block and how to turn them off.
 
 The server itself is a TypeScript MCP server that targets Node.js 20 or later. It is
 bundled with `tsup` into a single self-contained `dist/server.js` that is committed to
@@ -46,6 +47,7 @@ flowchart TB
     SERVER["mcp/server<br/>MCP server, key: marvin"]
     AGENTS["agents/*.md<br/>subagents"]
     WIDGETS["widgets/*.html<br/>ui:// documents"]
+    HOOKS["hooks/hooks.json + *.mjs<br/>blocking PreToolUse guards"]
   end
 
   PLUGIN -->|/plugin install| CC["Claude Code"]
@@ -53,6 +55,7 @@ flowchart TB
   CC -->|/&lt;command&gt;| CMDS
   CC -->|/marvin:&lt;command&gt;| SERVER
   CC -->|Task tool| AGENTS
+  CC -->|before every Bash call| HOOKS
   SERVER -->|structuredContent| WIDGETS
 
   SERVER -.->|reads at request time| SKILLS
@@ -121,6 +124,7 @@ point rather than an accident.
 | MCP tool | `mcp/server/src/tools/*.ts` | Deterministic TypeScript with a zod schema, used where exactness matters. |
 | Agent | `agents/*.md` | A Claude Code subagent with constrained tool access. |
 | Widget | `widgets/*.html` | A sandboxed `ui://` document a tool binds for rich hosts. |
+| Hook | `hooks/hooks.json` + `hooks/*.mjs` | A blocking `PreToolUse` guard on `Bash`, run by the host before the call rather than by a model that chose it. |
 
 Narrative judgement lives in skills, while anything that must be deterministic lives in a
 tool. File CRUD on the board, the verification gate, and the Definition-of-Ready gate are
@@ -128,7 +132,7 @@ all tools precisely because their behavior must not vary with phrasing.
 
 ## Deterministic tools
 
-Twelve MCP tools sit behind the prompts, each declaring a zod input schema. They group by
+Thirteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
 the job they do.
 
 | Tool | Group | Role |
@@ -143,6 +147,7 @@ the job they do.
 | `summary` | Read-side | A finished task's delivery digest. |
 | `handoff` | Read-side | The session-continuation handoff documents. |
 | `audit` | Read-side | The structured findings the `sec-*` scanners wrote. |
+| `report` | Read-side | Every report under `.marvin/` as one set, with freshness, plus the triage roll-up against a stored baseline. |
 | `lessons` | Read-side | The team lessons-learned store. |
 | `adr` | Decision lifecycle | ADR numbering, corpus parsing, the accept gate, and the managed index. |
 
@@ -198,8 +203,8 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 ## The MCP Apps widget layer
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
-Marvin ships eight such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Eight of the twelve tools bind a widget, so on a capable host the same command that prints
+Marvin ships nine such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
+Nine of the thirteen tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid
