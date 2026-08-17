@@ -11,9 +11,9 @@ const TITLE = 'Fix: the "tricky" title (v2) & more';
 const TRACKER = "OSI-7";
 
 /**
- * Drive the live server through the kanban `task` tool — create a task (which
+ * Drive the live server through the board `task` tool — create a task (which
  * goes through stringifyFrontmatter) then list it (parseFrontmatter) — so the
- * full YAML-codec round-trip is exercised end-to-end through the real kanban
+ * full YAML-codec round-trip is exercised end-to-end through the real board
  * path. Responds to the create form's elicitation request as a client would.
  * Project dir is a fresh temp dir (not a git repo), so no branch elicitation.
  */
@@ -41,7 +41,7 @@ function createThenList(dir) {
   );
 }
 
-test("kanban task frontmatter round-trips through the YAML codec (create → list)", async () => {
+test("board task frontmatter round-trips through the YAML codec (create → list)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-fm-"));
   try {
     const { createText, listText } = await createThenList(dir);

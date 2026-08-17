@@ -1,0 +1,217 @@
+{
+  "skill": "widget-preview",
+  "target": "widget-preview",
+  "note": "widget-preview renders a bound ui:// widget PLUS this project's live payload into one self-contained file under .marvin/preview/ and opens it, which is the escape hatch for hosts that cannot resolve _meta.ui.resourceUri — the Claude Code CLI among them (ADR-0034). Its two nearest neighbours, /marvin:dashboard and /marvin:help, are prompts with no SKILL.md and so are absent from the catalog a decider is shown; they cannot be competition winners and appear in negative notes instead. The distinction to measure is SEEING a widget rendered versus reading the same data as terminal text, and previewing a widget versus changing one.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "show me the dashboard as an actual widget, not a wall of text",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "open the reports widget with our real data",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "покажи виджет задач с нашими данными",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "why is the task-detail widget not showing up in my terminal?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "I want to see what the audit panel looks like before I demo it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "render the handoffs widget into a file I can open in chrome",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "/marvin:widget-preview tracker-list",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "can I preview the help panel the way it looks in the desktop app?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "my host only ever shows the markdown fallback — get me the real rendered panel somehow",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "screenshot-ready view of the task-summary widget for the readme, please",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "what's the current state of the project — board, git, artifacts?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the whole-toolbox state report itself → /marvin:dashboard; nothing here asks to SEE it rendered"
+    },
+    {
+      "id": "neg-2",
+      "text": "what commands does marvin have for security?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the command index → /marvin:help, whose terminal output already answers this"
+    },
+    {
+      "id": "neg-3",
+      "text": "the dashboard widget shows zero handoffs but there are three on disk",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a data defect behind the panel → debug; previewing it again re-renders the same wrong payload"
+    },
+    {
+      "id": "neg-4",
+      "text": "change the severity colours in the audit widget to match the new tokens",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "editing packages/marvin-widgets source → the task pipeline; preview only renders what is committed"
+    },
+    {
+      "id": "neg-5",
+      "text": "rebuild the committed widget html after my change to ListDetail",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a build step (npm run build:watch -w @marvin-toolkit/widgets), not a preview"
+    },
+    {
+      "id": "neg-6",
+      "text": "run the storybook visual regression suite on darwin",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the widgets workspace test harness → task-verify or a direct npm script"
+    },
+    {
+      "id": "neg-7",
+      "text": "explain how the ui:// resource gets resolved by a rich MCP host",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "conceptual walkthrough of the ADR-0024 mechanism → explain"
+    },
+    {
+      "id": "neg-8",
+      "text": "list the tasks on the board",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a plain board read → track-list; the widget binding is incidental to the question"
+    },
+    {
+      "id": "neg-9",
+      "text": "export the reports view to a pdf for the sprint review",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a shareable document from a generated report → report-export; preview opens a live panel, not a document to send"
+    },
+    {
+      "id": "neg-10",
+      "text": "register this checkout as marvin-dev so the desktop app renders our widgets",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "npm run dev:widget-host rewires claude_desktop_config.json; a different door to the same problem, and not this skill"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "the terminal keeps printing the markdown version — I want to actually look at the panel",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "widget-preview",
+      "mock_rate": 1,
+      "note": "shares 'why is this not working' vocab with debug, but the ask is to SEE the render, which is exactly the ADR-0034 escape hatch"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "give me the project state as the visual panel rather than the text report",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "widget-preview",
+      "mock_rate": 1,
+      "note": "overlaps /marvin:dashboard's subject matter, but 'as the visual panel' is the preview door; dashboard has no SKILL.md and never auto-loads"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "the preview file opens blank and the console says the zod parse failed",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "debug",
+      "mock_rate": 0,
+      "note": "names the preview but the ask is root-cause analysis of a silent failure → debug is more specific"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "walk me through how the postMessage host in widget-preview.mjs answers ui/initialize",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "explain",
+      "mock_rate": 0,
+      "note": "asks about the preview's internals rather than asking to run it → explain"
+    }
+  ]
+}

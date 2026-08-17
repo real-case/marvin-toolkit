@@ -1,0 +1,225 @@
+---
+// Base.astro (spec 004, F6) — the shared page shell. Owns the <head> (meta, the
+// self-hosted Fontsource faces, the theme + global + primitives stylesheets, and the
+// pre-paint anti-FOUC theme script) and wraps every page in Nav + Footer around a
+// <slot/>. See docs/design/website-implementation-plan.md, Phase 1.
+import "@fontsource-variable/hanken-grotesk/wght.css";
+import "@fontsource-variable/jetbrains-mono/wght.css";
+import "../styles/theme.css";
+import "../styles/global.css";
+import "../styles/primitives.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import Analytics from "@vercel/analytics/astro";
+import { catalog } from "../data/catalog";
+import { ogImages } from "../data/og";
+import { pages } from "../data/pages";
+import { absoluteUrl, findPage, ogImageFor, requireOrigin, resolvePlaceholders } from "../lib/seo";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+// Per-page metadata (spec 013, F5 — FR-23). Titles and descriptions used to live inline in each
+// page's <Base> call, and index.astro passed none at all, so the home page silently advertised the
+// generic default to every crawler. They now come from the registry, which is also what the sitemap
+// and llms.txt read — one source, so the three cannot disagree.
+//
+// The explicit props still win when passed. Nothing uses them today; keeping the override means a
+// future page with a genuinely dynamic title does not have to fight the registry.
+const page = findPage(pages, Astro.url.pathname);
+
+const title =
+  Astro.props.title ??
+  (page ? resolvePlaceholders(page.title, catalog) : "Marvin — Claude Code toolset");
+const description =
+  Astro.props.description ??
+  (page
+    ? resolvePlaceholders(page.description, catalog)
+    : "Claude Code toolset for AI-assisted development.");
+
+// canonical / og:url come from the REGISTRY path, never from Astro.url. With directory build output
+// a page resolves as "/commands" or "/commands/", so deriving these from the request while the
+// sitemap derives <loc> from the registry would let one page advertise two canonical forms — and
+// both AC3 and AC5 would still pass. Building both from one source removes the failure instead of
+// testing for it. A route with no registry entry (404) falls back to its own path.
+const origin = requireOrigin(Astro.site);
+const canonical = absoluteUrl(page?.path ?? Astro.url.pathname, origin);
+
+// The OpenGraph card (spec 014, F12 — FR-23). Absolute like canonical and for the same reason:
+// every crawler fetches og:image without page context to resolve a relative URL against, so a
+// relative value is silently dropped rather than reported.
+//
+// Resolved through the registry path, not Astro.url — the one rule this file and lib/seo.ts share.
+// A route with no card row (the three text endpoints, a future 404) emits NO image tags at all,
+// which is why every tag below is inside the conditional: a broken og:image is worse than none,
+// because it renders as an empty box rather than falling back to the text card.
+const ogImage = page ? ogImageFor(ogImages, page.path) : undefined;
+const ogImageUrl = ogImage ? absoluteUrl(ogImage.file, origin) : undefined;
+
+const favicon =
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
+  "<rect width='32' height='32' rx='7' fill='%237c3aed'/>" +
+  "<path d='M20 8 12 24' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={favicon} type="image/svg+xml" />
+
+    <!-- OpenGraph + Twitter (FR-23). twitter:card is the one tag X will not infer from OpenGraph:
+         omit it and a shared link renders as the small square card regardless of what the OG tags
+         say. It reads `summary_large_image` because Phase 6b shipped the cards — the two must move
+         together, since declaring the large type with no image renders an empty box. Title and
+         description are read from OG by every major crawler, so they are not repeated under the
+         twitter: namespace. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Marvin" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {
+      ogImage && ogImageUrl && (
+        <>
+          <meta property="og:image" content={ogImageUrl} />
+          <meta property="og:image:width" content={String(ogImage.width)} />
+          <meta property="og:image:height" content={String(ogImage.height)} />
+          <meta property="og:image:alt" content={`${title} — ${ogImage.card}`} />
+        </>
+      )
+    }
+    <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
+
+    <!-- Anti-FOUC: set the theme before first paint. Light is the site default — a first-time
+         visitor gets light regardless of their OS preference; only an explicit toggle (persisted
+         to localStorage) switches to dark. is:inline keeps Astro from bundling/deferring it, so it
+         runs synchronously in <head> and there is no flash of the wrong theme. -->
+    <script is:inline>
+      (() => {
+        try {
+          const theme = localStorage.getItem("theme") || "light";
+          document.documentElement.dataset.theme = theme;
+        } catch {
+          /* storage unavailable — the CSS :root light default already applies */
+        }
+      })();
+    </script>
+
+    <!-- Vercel Web Analytics (spec 015, F7 — FR-22). The <Analytics/> component injects the
+         window.va queue + the /_vercel/insights collector script; measurement only happens on a
+         Vercel deployment, so on any other origin the collector 404s and events simply queue. No
+         @astrojs/vercel adapter is required — the component is a client-side custom element. -->
+    <Analytics />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <Nav />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+
+    <!-- Copy-to-clipboard (FR-2), wired ONCE for the whole site. Base wraps every page, so a
+         single delegated listener serves every `.copy` button — both the server-rendered
+         CodeCommand rows (home / quickstart / install) and the ones the CommandCatalog island
+         renders on /commands after it hydrates. Delegation is what makes the island case work:
+         the listener is attached before those buttons exist. is:inline keeps this out of the
+         bundle, so no astro-island appears and the static pages still ship zero framework JS. -->
+    <script is:inline>
+      (() => {
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          const button = target.closest(".copy");
+          if (!button) return;
+
+          const code = button.closest(".command")?.querySelector(".code");
+          if (!code || !navigator.clipboard) return;
+
+          navigator.clipboard.writeText(code.textContent ?? "").then(
+            () => {
+              // Remember the original label and accessible name ONCE, so a rapid second click
+              // cannot capture the feedback text as the thing to restore.
+              if (!button.dataset.copyLabel) {
+                button.dataset.copyLabel = button.textContent || "copy";
+              }
+              const name = button.getAttribute("aria-label");
+              if (name && !button.dataset.copyName) button.dataset.copyName = name;
+
+              button.textContent = "copied";
+              // aria-label IS the accessible name on these buttons, so it has to change too —
+              // otherwise the confirmation is sighted-only.
+              if (button.dataset.copyName) button.setAttribute("aria-label", "Copied");
+
+              // Restart the timer rather than stacking them, so a second click still gets a
+              // full window of feedback instead of the first timer cutting it short.
+              window.clearTimeout(Number(button.dataset.copyTimer));
+              button.dataset.copyTimer = String(
+                window.setTimeout(() => {
+                  button.textContent = button.dataset.copyLabel || "copy";
+                  if (button.dataset.copyName) {
+                    button.setAttribute("aria-label", button.dataset.copyName);
+                  }
+                }, 1200),
+              );
+            },
+            () => {
+              /* clipboard denied (permissions / insecure context) — leave the label alone */
+            },
+          );
+        });
+      })();
+    </script>
+
+    <!-- Vercel Analytics custom events (spec 015, F7 — FR-22). A processed module <script> (NOT
+         is:inline — track() is a module import); Astro bundles just this plus the tiny track()
+         helper. Two delegated listeners: a .copy on a [data-va-event] .command row fires that
+         event name (install rows = install_copy), and any github.com link fires github_click.
+         Kept separate from the is:inline clipboard handler above on purpose — clipboard must keep
+         working even if this module fails to load. -->
+    <script>
+      import { track } from "@vercel/analytics";
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        // A copy button on a marked command row → the row's declared event (install → install_copy).
+        const copy = target.closest(".copy");
+        if (copy) {
+          const name = copy.closest(".command")?.getAttribute("data-va-event");
+          if (name) track(name);
+          return;
+        }
+
+        // Any GitHub link is a "GitHub visit" (FR-22) — nav, footer, and the in-page CTAs.
+        const gh = target.closest('a[href*="github.com"]');
+        if (gh) track("github_click");
+      });
+    </script>
+
+    <style>
+      .skip-link {
+        position: absolute;
+        left: 0.5rem;
+        top: -3rem;
+        z-index: 100;
+        padding: 0.5rem 0.9rem;
+        background: var(--acfill);
+        color: var(--acfillt);
+        border-radius: 8px;
+        transition: top 0.15s ease;
+      }
+      .skip-link:focus {
+        top: 0.5rem;
+      }
+    </style>
+  </body>
+</html>

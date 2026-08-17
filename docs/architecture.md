@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-kanban tracker, and it ships **57 prompts, 12 MCP tools, 10 agents, and 7 interactive
+task tracker, and it ships **55 prompts, 13 MCP tools, 10 agents, and 9 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -14,7 +14,7 @@ a tool, or an agent, read [CLAUDE.md](../CLAUDE.md).
 
 ## The primary stack
 
-Everything Marvin ships is built from five kinds of file, all auto-loaded by Claude
+Everything Marvin ships is built from six kinds of file, all auto-loaded by Claude
 Code on `/plugin install`:
 
 - **Skills** are Markdown workflow documents under `skills/<command>/SKILL.md`. They are the source of truth for what each command does.
@@ -22,10 +22,11 @@ Code on `/plugin install`:
 - **MCP prompts** are registered by the bundled server and surface each workflow as `/marvin:<command>`.
 - **MCP tools** are deterministic TypeScript, each with a zod input schema, used wherever an operation must be exact rather than narrative.
 - **Agents** under `agents/*.md` are Claude Code subagents with constrained tool access.
+- **Hooks** under `hooks/` are the one exception to "auto-loaded and then inert": two blocking `PreToolUse` guards that the host runs before every `Bash` tool call, armed from the moment the plugin is present. They can refuse a call, and the [configuration reference](./configuration.md#hooks) states what they block and how to turn them off.
 
 The server itself is a TypeScript MCP server that targets Node.js 20 or later. It is
 bundled with `tsup` into a single self-contained `dist/server.js` that is committed to
-the repository, so installation never runs a build step. The seven widgets are a
+the repository, so installation never runs a build step. The nine widgets are a
 separate browser workspace built to committed, self-contained HTML.
 
 ## System at a glance
@@ -46,6 +47,7 @@ flowchart TB
     SERVER["mcp/server<br/>MCP server, key: marvin"]
     AGENTS["agents/*.md<br/>subagents"]
     WIDGETS["widgets/*.html<br/>ui:// documents"]
+    HOOKS["hooks/hooks.json + *.mjs<br/>blocking PreToolUse guards"]
   end
 
   PLUGIN -->|/plugin install| CC["Claude Code"]
@@ -53,6 +55,7 @@ flowchart TB
   CC -->|/&lt;command&gt;| CMDS
   CC -->|/marvin:&lt;command&gt;| SERVER
   CC -->|Task tool| AGENTS
+  CC -->|before every Bash call| HOOKS
   SERVER -->|structuredContent| WIDGETS
 
   SERVER -.->|reads at request time| SKILLS
@@ -62,28 +65,28 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-57 prompts divide into seven groups. The [command reference](./commands.md) lists every
+55 prompts divide into seven groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 13 |
+| _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 5 |
+| `task-*` | Spec-driven task pipeline | 6 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
-| `kanban-*` | Lightweight task tracker | 14 |
+| `track-*` | Lightweight task tracker | 7 |
 
-The `task-*` pipeline and the `kanban-*` tracker are deliberately separate domains. Reach
-for `task-*` when a change is large enough to deserve a written spec, and for `kanban-*`
+The `task-*` pipeline and the `track-*` tracker are deliberately separate domains. Reach
+for `task-*` when a change is large enough to deserve a written spec, and for `track-*`
 when you want fast day-to-day tracking.
 
-## Three doors, one room
+## Call it your way
 
 The defining design choice, recorded in [ADR-0001](./adr/0001-single-plugin-consolidation.md),
 is that each workflow is authored **once** in a `SKILL.md`, and three independent entry
-points reach it. Editing the skill updates all three doors at once, with no server
+points reach it. Editing the skill updates all three entry points at once, with no server
 rebuild, because two of them read the file at request time and the third rediscovers it
 on the next match.
 
@@ -103,7 +106,7 @@ Each door resolves the skill a different way, but the reader ends up in the same
 | Markdown command | `/commit` | `commands/commit.md` instructs the model to read the skill. |
 | MCP prompt | `/marvin:commit` | The server reads the skill, strips its frontmatter, and returns the body. |
 
-The `kanban-*` group is the deliberate exception. Its 14 prompts are thin
+The `track-*` group is the deliberate exception. Its 7 prompts (ADR-0032) are thin
 tool-invocation wrappers that carry an inline body rather than pointing at a skill, so
 only the MCP door exists for them. There is no separate workflow prose to share, because
 the work is done by the underlying tools.
@@ -121,6 +124,7 @@ point rather than an accident.
 | MCP tool | `mcp/server/src/tools/*.ts` | Deterministic TypeScript with a zod schema, used where exactness matters. |
 | Agent | `agents/*.md` | A Claude Code subagent with constrained tool access. |
 | Widget | `widgets/*.html` | A sandboxed `ui://` document a tool binds for rich hosts. |
+| Hook | `hooks/hooks.json` + `hooks/*.mjs` | A blocking `PreToolUse` guard on `Bash`, run by the host before the call rather than by a model that chose it. |
 
 Narrative judgement lives in skills, while anything that must be deterministic lives in a
 tool. File CRUD on the board, the verification gate, and the Definition-of-Ready gate are
@@ -128,21 +132,22 @@ all tools precisely because their behavior must not vary with phrasing.
 
 ## Deterministic tools
 
-Twelve MCP tools sit behind the prompts, each declaring a zod input schema. They group by
+Thirteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
 the job they do.
 
 | Tool | Group | Role |
 |------|-------|------|
-| `task` | Kanban board | Task CRUD, role-driven transitions, PR-URL capture, archive, and board configuration. |
-| `task-detail` | Kanban board | A single task's fields and body, for the detail widget. |
-| `tracker` | Kanban board | Read-only list of tasks that carry an external tracker id. |
+| `task` | Task board | Task CRUD, role-driven transitions, PR-URL capture, archive, and board configuration. |
+| `task-detail` | Task board | A single task's fields and body, for the detail widget. |
+| `tracker` | Task board | Read-only list of tasks that carry an external tracker id. |
 | `help` | Toolbox state | The project dashboard and the registry-derived command index. |
 | `dashboard` | Toolbox state | The whole-toolbox status report. |
 | `verify` | Task pipeline | The concurrent quality-gate runner that writes `verification.md`. |
-| `spec` | Task pipeline | The Definition-of-Ready gate that validates a spec contract. |
+| `spec` | Task pipeline | The Definition-of-Ready gate that validates a spec contract, the seal and scope gates around it, the corpus reads that resolve the spec directory, enumerate it, allocate the next ordering number and lint the corpus as a whole, and the progress journal that lets an interrupted intake resume. Eight actions: `dor \| seal \| scope \| next \| list \| audit \| progress \| resume`. |
 | `summary` | Read-side | A finished task's delivery digest. |
 | `handoff` | Read-side | The session-continuation handoff documents. |
 | `audit` | Read-side | The structured findings the `sec-*` scanners wrote. |
+| `report` | Read-side | Every report under `.marvin/` as one set, with freshness, plus the triage roll-up against a stored baseline. |
 | `lessons` | Read-side | The team lessons-learned store. |
 | `adr` | Decision lifecycle | ADR numbering, corpus parsing, the accept gate, and the managed index. |
 
@@ -198,8 +203,8 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 ## The MCP Apps widget layer
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
-Marvin ships seven such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Seven of the twelve tools bind a widget, so on a capable host the same command that prints
+Marvin ships nine such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
+Nine of the thirteen tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid
@@ -212,8 +217,9 @@ flowchart LR
     T5["audit"] --> W5["audit"]
     T6["handoff"] --> W6["handoffs"]
     T7["dashboard"] --> W7["dashboard"]
+    T8["help"] --> W8["help"]
   end
-  W1 & W2 & W3 & W4 & W5 & W6 & W7 --> HOST["Rich MCP host<br/>ui:// iframe"]
+  W1 & W2 & W3 & W4 & W5 & W6 & W7 & W8 --> HOST["Rich MCP host<br/>ui:// iframe"]
 ```
 
 Three properties keep this layer from leaking complexity into the rest of the project:
@@ -241,7 +247,7 @@ flowchart LR
 | Document | `readme`, `changelog` |
 | Ship | `commit`, `pr-create`, `pr-resolve`, `pr-merge` |
 
-Layer the `kanban-*` tracker on top of any of these for day-to-day task tracking, and run
+Layer the `track-*` tracker on top of any of these for day-to-day task tracking, and run
 `/marvin:dashboard` to see the whole toolbox's state at a glance.
 
 ## The working directory
@@ -254,13 +260,18 @@ together and easy to include in or exclude from version control.
 | Path | Written by | Contents |
 |------|-----------|----------|
 | `.marvin/task/` | `task-*` | Immutable specs and the current `verification.md`. |
+| `.marvin/task/runs/` | `verify`, `spec` | The three per-spec artifacts: the verification run `<slug>.md` ([ADR-0035](./adr/0035-evidence-provenance.md)), the oracle journal `<slug>.oracles.md` ([ADR-0036](./adr/0036-oracle-execution-and-red-green.md)), and the progress journal `<slug>.progress.md`. A subdirectory on purpose — the enumerators over the spec directory are non-recursive, so nothing here is ever mistaken for a spec. |
 | `.marvin/security/` | `sec-*` | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | `refactor-*` | Numbered findings registers and sequenced step plans. |
-| `.marvin/kanban/` | `kanban-*` | The task board as markdown files. |
+| `.marvin/track/` | `track-*` | The task board as markdown files. |
 | `.marvin/memory/` | `lessons` | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | `handoff` | Session-continuation documents. |
+| `.marvin/critique/` | The calling session, at the four pipeline critic call sites | Critic receipts `<NNN>-<slug>.md`: the critic's report verbatim plus a typed `critic-verdict` block carrying a compliance and a quality axis ([ADR-0039](./adr/0039-critique-receipts.md)). The fifth report group; evidence for the reader, never a veto over delivery. |
+| `.marvin/research-results/` | `marvin-researcher` | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
-| `.marvin/config.json` | `kanban-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
+| `.marvin/report/` | `report` (the `triage` action) | The triage baseline: which finding identities were last recorded as seen ([ADR-0038](./adr/0038-finding-identity-and-triage.md)). Local, self-ignoring, written only when a snapshot is asked for. Not a report group — it holds the tool's own state, and the viewer never lists it. |
+| `.marvin/preview/` | `widget-preview` | Rendered widget panels, never committed ([ADR-0034](./adr/0034-widget-preview-door.md)). |
+| `.marvin/config.json` | `track-*` and `verify` | The project settings documented in the [configuration reference](./configuration.md). |
 
 Project deliverables are deliberately left out of this sweep. Architecture Decision
 Records stay under `docs/adr/`, and `CHANGELOG.md` and `README.md` stay at the root.

@@ -6,7 +6,7 @@
 | Date          | 2026-06-22                                                  |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
-| Related       | [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` working dir), [ADR-0005](0005-portable-spec-contract.md) (host-adaptive spec location), [ADR-0003](0003-tool-backed-dor.md) (the `spec` DoR gate resolves `depends_on`), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
+| Related       | [ADR-0037](0037-spec-corpus-mechanics.md) (**amends item 1**: allocation is tool-backed; items 2 and 3 still govern), [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` working dir), [ADR-0005](0005-portable-spec-contract.md) (host-adaptive spec location), [ADR-0003](0003-tool-backed-dor.md) (the `spec` DoR gate resolves `depends_on`), `plugins/marvin/skills/task-start/SKILL.md`, `plugins/marvin/mcp/server/src/tools/spec.ts` |
 
 ## Context
 

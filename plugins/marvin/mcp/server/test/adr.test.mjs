@@ -305,6 +305,79 @@ test("accept: stamps status and date into a table-style record", async () => {
   }
 });
 
+test("accept: a fence named inside an inline span does not expose the rest of the record", async () => {
+  // ADR-0036 shipped this exact shape and was refused: an inline span naming a
+  // fence (`` ` ```json oracle-run ` ``) left an odd backtick run, which re-paired
+  // every span after it, so `{file}` and `{name}` — both written inside backticks
+  // as the substitution tokens they are — were read as unfilled template residue.
+  // The record was correct; the gate was wrong.
+  const proj = freshProject();
+  try {
+    seed(
+      proj,
+      "0001-tokens.md",
+      tableAdr({
+        number: 1,
+        title: "Tokens",
+        sections: [
+          "## Context",
+          "",
+          "One fenced ` ```json oracle-run ` block per run, appended, never rewritten.",
+          "",
+          "## Decision",
+          "",
+          "Resolve `gates.test_one` with `{file}` and `{name}` substituted.",
+          "",
+          "## Consequences",
+          "",
+          "The tokens above are content, not placeholders.",
+        ].join("\n"),
+      }),
+    );
+    const { text, isError } = await callAdr(proj, { action: "accept", number: 1 });
+    assert.equal(isError, false, text);
+    assert.doesNotMatch(text, /placeholder/i, "no placeholder should be reported");
+    const raw = readFileSync(join(proj, "docs/adr/0001-tokens.md"), "utf8");
+    assert.match(raw, /\| Status {8}\| \*\*Accepted\*\* \|/);
+  } finally {
+    rmSync(proj, { recursive: true, force: true });
+  }
+});
+
+test("accept: a genuine placeholder outside code is still refused", async () => {
+  const proj = freshProject();
+  try {
+    seed(
+      proj,
+      "0001-residue.md",
+      tableAdr({
+        number: 1,
+        title: "Residue",
+        sections: [
+          "## Context",
+          "",
+          "{describe the forces}",
+          "",
+          "## Decision",
+          "",
+          "x",
+          "",
+          "## Consequences",
+          "",
+          "y",
+        ].join("\n"),
+      }),
+    );
+    const { text, isError } = await callAdr(proj, { action: "accept", number: 1 });
+    assert.equal(isError, true, text);
+    assert.match(text, /placeholder/i);
+    const raw = readFileSync(join(proj, "docs/adr/0001-residue.md"), "utf8");
+    assert.match(raw, /\| Status {8}\| \*\*Proposed\*\* \|/, "nothing is written on a refusal");
+  } finally {
+    rmSync(proj, { recursive: true, force: true });
+  }
+});
+
 test("accept: stamps a heading-style record in its own style", async () => {
   const proj = freshProject();
   try {
@@ -588,7 +661,7 @@ test("index: appends a managed block to a marker-less README detected inside the
   }
 });
 
-// ── config round-trip with the kanban surface ──────────────────────────────
+// ── config round-trip with the board config surface ──────────────────────────────
 
 test("config: the adr block and foreign keys survive a task-config read-modify-write", async () => {
   const proj = freshProject();
@@ -599,7 +672,7 @@ test("config: the adr block and foreign keys survive a task-config read-modify-w
       future_tool_key: { keep: true },
     });
 
-    // The kanban config surface writes through the shared fail-closed path.
+    // The board config surface writes through the shared fail-closed path.
     const configured = await callTool(proj, "task", { action: "config", base_branch: "main" });
     assert.equal(configured.isError, false, configured.text);
 

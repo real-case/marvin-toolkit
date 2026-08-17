@@ -77,3 +77,117 @@ export const handoffsFixture: HandoffDetailPayload = {
     },
   ],
 };
+
+/**
+ * The zero-handoffs payload — a project where `/marvin:handoff` has never run.
+ * Drives the `<ListDetail>` empty state ("No handoffs yet — run /marvin:handoff…").
+ */
+export const emptyHandoffsFixture: HandoffDetailPayload = {
+  handoffs: [],
+};
+
+/**
+ * The minimal contract shape as a one-row payload: `pr_url` null and the optional
+ * `base` / `spec_slug` keys absent entirely, so the detail pane's Base/Spec rows
+ * and the PR button all take their hidden branch. Mirrors the fixture's `001` card
+ * but isolated, so the story shows nothing else.
+ */
+export const minimalHandoffFixture: HandoffDetailPayload = {
+  handoffs: [
+    {
+      id: "001",
+      slug: "usage-log-rotation",
+      objective: "Cap the usage events log with rotation",
+      branch: "fix/usage-log-rotation",
+      pr_url: null,
+      created: "2026-06-28T08:45:00.000Z",
+      continue_prompt:
+        'Continue work on Cap the usage events log with rotation. Full context is in `.marvin/handoff/001-usage-log-rotation.md` — read that file first, then resume at its "Next steps". Repo is on branch `fix/usage-log-rotation`.',
+      body_markdown:
+        "## Objective\n\nRotate `.marvin/usage/events.jsonl` to `events.jsonl.1` once it crosses the size cap.",
+    },
+  ],
+};
+
+/**
+ * The pre-wrap stress payload: a 30-line `continue_prompt` (a full step-by-step
+ * continuation brief instead of the usual one-liner) plus a long multi-section
+ * `body_markdown`, so the story exercises the prompt `<pre>`'s `pre-wrap` /
+ * `break-word` behaviour and a detail pane that genuinely scrolls.
+ */
+const LONG_CONTINUE_PROMPT = [
+  "Continue work on Migrate the verify gates to config-first resolution.",
+  "Full context is in `.marvin/handoff/004-verify-config-first.md` — read that file first.",
+  "",
+  "State when this session ended:",
+  "1. `.marvin/config.json` now carries a `gates` block (ADR-0009 shape).",
+  "2. The `verify` tool reads it before stack detection — done, tested.",
+  "3. Gate overrides merge over the detected defaults — done, tested.",
+  "4. The `verification.md` writer records which source each gate came from — HALF DONE.",
+  "5. The e2e stdio test for the override path is still red — see below.",
+  "",
+  "Next steps, in order:",
+  "- Finish the source column in `verification.md` (writer is in `flows/verify-report.ts`).",
+  "- Fix the red e2e: the test inherits `MARVIN_TASKS_CONFIG` from the worktree;",
+  "  run it hermetically (`env -u MARVIN_TASKS_CONFIG npm test`) before debugging further.",
+  "- Rebuild `dist/server.js` and re-run `node scripts/verify-dist.mjs`.",
+  "- Run the full gate sweep: tests, lint, type-check, build.",
+  "",
+  "Constraints to respect:",
+  "- Do NOT change the `gates` schema — ADR-0009 is accepted; overrides stay additive.",
+  "- Config-first, detection-second: a configured gate always wins over a detected one.",
+  "- The single merge point in `verify.ts` must stay the only place results join.",
+  "- Keep the terminal fallback text byte-identical; only `structuredContent` grew.",
+  "- Cross-check ADR-0009's consequences section before touching resolution order.",
+  "",
+  "Verification before delivery:",
+  "- `npm run test` green from the repo root (hermetic env, see above).",
+  "- `node scripts/mcp-call.mjs verify '{}'` shows the configured gate set.",
+  "- `verification.md` lists every gate with its source (config vs detected).",
+  "",
+  "Repo is on branch `feat/verify-config-first`, based on `dev`.",
+].join("\n");
+
+const LONG_BODY = [
+  "## Objective",
+  "",
+  "Move the `verify` tool's gate resolution to a **config-first** model: gates",
+  "declared in `.marvin/config.json` win over stack detection, per ADR-0009.",
+  "",
+  "## Decisions taken",
+  "",
+  "- Config gates merge *over* detected gates key-by-key — no all-or-nothing switch,",
+  "  so a project can pin just its test command and keep detected lint/build.",
+  "- Resolution order is recorded per gate and written into `verification.md`,",
+  "  because a red gate is only debuggable when you know where its command came from.",
+  "- The e2e flake was root-caused to a `MARVIN_TASKS_CONFIG` env-leak, not load:",
+  "  the config-write test pollutes the worktree config the read tests then see.",
+  "",
+  "### Open questions",
+  "",
+  "- Should a configured gate that names a missing binary fail closed or degrade",
+  "  to the detected command? Current draft fails closed (matches the spec gate).",
+  "",
+  "Reference resolution:",
+  "",
+  FENCE,
+  "const gates = { ...detectGates(stack), ...configGates };",
+  FENCE,
+].join("\n");
+
+export const longPromptHandoffFixture: HandoffDetailPayload = {
+  handoffs: [
+    {
+      id: "004",
+      slug: "verify-config-first",
+      objective: "Migrate the verify gates to config-first resolution",
+      branch: "feat/verify-config-first",
+      base: "dev",
+      pr_url: "https://github.com/acme/app/pull/92",
+      spec_slug: "verify-config-first",
+      created: "2026-07-08T16:20:00.000Z",
+      continue_prompt: LONG_CONTINUE_PROMPT,
+      body_markdown: LONG_BODY,
+    },
+  ],
+};

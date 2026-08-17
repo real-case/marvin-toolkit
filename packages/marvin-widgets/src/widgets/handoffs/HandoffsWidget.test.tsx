@@ -1,10 +1,34 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (fixtures/stories stay type-only).
+import { HandoffDetailPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { HandoffsView, HandoffsWidget } from "./HandoffsWidget";
-import { handoffsFixture } from "./fixture";
+import {
+  handoffsFixture,
+  emptyHandoffsFixture,
+  minimalHandoffFixture,
+  longPromptHandoffFixture,
+} from "./fixture";
+import { formatDate } from "../../lib/format";
 import { createMockHost } from "../../lib/mock-host";
 
 const FIRST = handoffsFixture.handoffs[0];
+
+describe("handoffs fixtures — contract conformance", () => {
+  // Every fixture the stories render must parse against the real zod contract:
+  // a fixture that drifts from HandoffDetailPayload would render fine (the view
+  // is duck-typed) while silently diverging from what the handoff tool can emit.
+  it.each([
+    ["handoffsFixture", handoffsFixture],
+    ["emptyHandoffsFixture", emptyHandoffsFixture],
+    ["minimalHandoffFixture", minimalHandoffFixture],
+    ["longPromptHandoffFixture", longPromptHandoffFixture],
+  ])("%s parses as HandoffDetailPayload", (_name, fixture) => {
+    const result = HandoffDetailPayload.safeParse(fixture);
+    expect(result.error?.issues ?? []).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+});
 
 describe("HandoffsWidget — pure view over the fixture", () => {
   it("renders the master list and the selected handoff's fields and markdown body", () => {
@@ -23,6 +47,9 @@ describe("HandoffsWidget — pure view over the fixture", () => {
     expect(pane.textContent).toContain(FIRST.branch); // branch
     expect(pane.textContent).toContain("dev"); // base
     expect(pane.textContent).toContain("widget-handoffs"); // spec slug
+    // created renders as the formatted YYYY-MM-DD date, never the raw ISO string
+    expect(pane.textContent).toContain(formatDate(FIRST.created)); // "2026-07-07"
+    expect(pane.textContent).not.toContain(FIRST.created);
     // the PR link renders from pr_url (handoff-specific — no tracker field exists)
     expect(within(pane).getByRole("button", { name: /PR #88/ })).toBeTruthy();
 
@@ -74,6 +101,58 @@ describe("HandoffsWidget — continue prompt copy-to-chat", () => {
       });
     } finally {
       host.close();
+    }
+  });
+});
+
+describe("HandoffsWidget — copy prompt affordance", () => {
+  it("copies the selected handoff's continue_prompt through the clipboard when available", async () => {
+    // happy-dom has no navigator.clipboard by default; install a configurable
+    // stub for this test and remove it after, so the environment stays untouched.
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      render(<HandoffsView data={handoffsFixture} />);
+      fireEvent.click(screen.getByTestId("copy-prompt"));
+      expect(writeText).toHaveBeenCalledWith(FIRST.continue_prompt);
+      // the chip acknowledges the successful write ("Copied" feedback state)
+      await screen.findByText("Copied");
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+    }
+  });
+
+  it("falls back to selecting the prompt text when no clipboard is available", () => {
+    // Mask happy-dom's native navigator.clipboard — the deny path. Its Selection
+    // is a stub (addRange never registers), so prove the fallback through a spied
+    // getSelection: the widget selects the prompt <pre>'s contents so a manual
+    // copy still lands in one gesture.
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const removeAllRanges = vi.fn();
+    const addRange = vi.fn();
+    const getSelection = vi
+      .spyOn(window, "getSelection")
+      .mockReturnValue({ removeAllRanges, addRange } as unknown as Selection);
+    try {
+      render(<HandoffsView data={handoffsFixture} />);
+      fireEvent.click(screen.getByTestId("copy-prompt"));
+      const chip = screen.getByTestId("copy-prompt");
+      expect(chip.textContent).toContain("Copy prompt"); // no false "Copied" claim
+      expect(removeAllRanges).toHaveBeenCalled();
+      expect(addRange).toHaveBeenCalledTimes(1);
+      const range = addRange.mock.calls[0][0] as Range;
+      const promptEl = screen.getByTestId("continue-prompt");
+      expect(
+        range.commonAncestorContainer === promptEl ||
+          promptEl.contains(range.commonAncestorContainer),
+      ).toBe(true);
+    } finally {
+      getSelection.mockRestore();
+      // drop the own-property mask so the prototype clipboard shows through again
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
     }
   });
 });

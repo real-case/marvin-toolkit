@@ -18,7 +18,7 @@ Start by committing your work:
 ```
 
 The command stages changes intentionally, checks for sensitive files, drafts a Conventional
-Commits message, and commits only after you confirm. When the branch belongs to a kanban
+Commits message, and commits only after you confirm. When the branch belongs to a board
 task, it adds a `Refs:` footer that links the task.
 
 Then open the pull request:
@@ -28,7 +28,7 @@ Then open the pull request:
 ```
 
 This runs pre-flight checks, writes a structured description with a verification checklist,
-links any referenced issue, and captures the resulting PR URL back onto the kanban task
+links any referenced issue, and captures the resulting PR URL back onto the board task
 when there is one. From there the rest of the pull-request family takes over:
 `/marvin:pr-review` posts a review with severity-tagged inline comments, `/marvin:pr-resolve`
 works through the unresolved threads, and `/marvin:pr-merge` merges and returns you to the
@@ -57,26 +57,27 @@ The stages run in order:
 4. **`/marvin:task-deliver`** commits and opens the pull request, and refuses to proceed if verification did not pass.
 
 Reach for this pipeline when the work benefits from an explicit contract and a verifiable
-finish. For quick day-to-day changes, the kanban board and a direct commit are lighter.
+finish. For quick day-to-day changes, the task board and a direct commit are lighter.
 
-## Track work on the kanban board
+## Track work on the task board
 
-The board is a per-project tracker stored as markdown under `.marvin/kanban/`. Create a
-task with the command for its type — `/marvin:kanban-bug`, `/marvin:kanban-feature`,
-`/marvin:kanban-chore`, or `/marvin:kanban-spike`:
+The board is a per-project tracker stored as markdown under `.marvin/track/`. Create a
+task — a bug, feature, chore, or spike — with `/marvin:track-new`:
 
 ```text
-/marvin:kanban-bug
+/marvin:track-new bug
 ```
 
-Move a task through its lifecycle with `/marvin:kanban-start`, which branches off and marks
-it in progress, then `/marvin:kanban-review` and `/marvin:kanban-done`. See the whole board
-grouped by status with `/marvin:kanban-list`, inspect one task with `/marvin:kanban-show`,
-and check what you are working on with `/marvin:kanban-status`. On a host that supports the
-Apps widget layer, the list, show, and tracker views also render as interactive panels.
+Move a task through its lifecycle with `/marvin:track-start`, which branches off and marks
+it in progress, then `/marvin:track-move` — say "to review", "done", or name any
+configured status. See the whole board grouped by status with `/marvin:track-list` (ask it
+"what am I working on?" for the current-branch view, or for the tracked tasks to get the
+tracker link-outs), and inspect one task with `/marvin:track-show`. On a host that
+supports the Apps widget layer, the list, show, and tracker views also render as
+interactive panels.
 
 The board adapts to your team's workflow rather than imposing a fixed one. Configure the
-status vocabulary and a tracker link template through `/marvin:kanban-config`, which the
+status vocabulary and a tracker link template through `/marvin:track-config`, which the
 [configuration reference](./configuration.md) documents in full.
 
 ## Audit the codebase for security issues

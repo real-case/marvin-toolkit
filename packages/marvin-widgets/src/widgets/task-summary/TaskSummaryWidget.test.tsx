@@ -1,22 +1,53 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/preact";
-import type { TaskSummary } from "@marvin-toolkit/mcp-shared/contracts";
+// Runtime zod import — the contract schema doubles as the TaskSummary type; tests
+// are the one place the widget workspace may import the schema at runtime.
+import { TaskSummary } from "@marvin-toolkit/mcp-shared/contracts";
 import { TaskSummaryView, TaskSummaryWidget } from "./TaskSummaryWidget";
-import { taskSummaryFixture } from "./fixture";
+import {
+  taskSummaryFixture,
+  allPassingSummaryFixture,
+  failingSummaryFixture,
+  emptySummaryFixture,
+  longSummaryFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("fixtures — TaskSummary contract", () => {
+  // Every fixture the stories render must parse against the real zod contract,
+  // so a contract change can never silently drift the visual fixtures.
+  const fixtures = {
+    taskSummaryFixture,
+    allPassingSummaryFixture,
+    failingSummaryFixture,
+    emptySummaryFixture,
+    longSummaryFixture,
+  };
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`${name} parses against the TaskSummary contract`, () => {
+      const parsed = TaskSummary.safeParse(fixture);
+      expect(parsed.success ? true : parsed.error.issues).toBe(true);
+    });
+  }
+});
 
 describe("TaskSummaryView — panel over the fixture", () => {
   it("renders the panel sections with per-outcome badges", () => {
     render(<TaskSummaryView data={taskSummaryFixture} />);
 
-    // header: title + status + the roll-up computed from the payload
+    // the view renders inside its own MvRoot theme scope (both wiring paths share it)
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+
+    // header: title + status + the roll-up stat cells computed from the payload
     const header = screen.getByTestId("summary-header");
     expect(header.textContent).toContain("Task-summary MCP Apps widget");
     expect(header.textContent).toContain("in-review");
     const rollup = screen.getByTestId("summary-rollup").textContent ?? "";
-    expect(rollup).toContain("1/3 acceptance passed"); // one of three ACs is pass
-    expect(rollup).toContain("2 gates passed");
-    expect(rollup).toContain("1 failed");
+    expect(rollup).toContain("Acceptance");
+    expect(rollup).toContain("1/3"); // one of three ACs is pass
+    expect(rollup).toContain("Gates");
+    expect(rollup).toContain("2/4"); // two of four gates passed
+    expect(rollup).toContain("1 failed"); // the failure context is spelled out
 
     // acceptance: three rows whose badge reflects pass / unknown / fail in order
     const acRows = screen.getAllByTestId("ac-row");

@@ -8,12 +8,29 @@
 //   5. All agent .md files start with YAML frontmatter containing description
 //   6. Every workspace package.json version matches the plugin version — one source
 //      of truth, propagated by scripts/sync-version.mjs
+//   7. Every skill has a trigger-eval dataset, its disable_model_invocation field
+//      agrees with the skill frontmatter, and the frontmatter value is canonical
+//      (scripts/lib/skill-datasets.mjs; the harness's own invariants are checked by
+//      evals/trigger/self-test.mjs instead)
+//   8. Every pack with hooks/hooks.json declares the plugin wrapper shape, every
+//      { type: "command" } entry resolves ${CLAUDE_PLUGIN_ROOT} to a script that
+//      exists and is readable (and executable when invoked as a bare path), and
+//      plugin.json does not also declare the standard hooks path — which the loader
+//      treats as an error rather than a harmless duplicate (ADR-0040 §8)
 
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+import { skillDatasetFailures } from "./lib/skill-datasets.mjs";
+
+// MARVIN_LINT_ROOT lets a test run this linter against a synthetic root. It is a
+// test affordance in the same family as MARVIN_TASKS_DIR, unset in CI and in normal
+// use, and test/ci-workflow.test.mjs asserts no workflow step, job or workflow env
+// block sets it — otherwise it would be a way to make a blocking gate pass.
+// `||` rather than `??`: an empty value is a mistake, not a request to lint `/`.
+const repoRoot =
+  process.env.MARVIN_LINT_ROOT || join(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
 
 // 1. Marketplace manifest
@@ -23,7 +40,137 @@ if (!Array.isArray(marketplace.plugins)) {
   failures.push("marketplace.json: 'plugins' must be an array");
 }
 
-// 2 + 3 + 4. Per-pack checks
+// Rule 8's helpers. A hook manifest is the one file in a pack that names executable
+// code by path, so "does the path resolve" is the only thing standing between a
+// renamed script and a loader that fails silently at the one moment the guard was
+// supposed to run.
+const PLUGIN_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}";
+
+/** Split a command line into tokens, honouring quotes so a quoted path stays one token. */
+function splitCommandTokens(command) {
+  const tokens = [];
+  let text = "";
+  let started = false;
+  let quote = null;
+  for (const ch of command) {
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else text += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (started) {
+        tokens.push(text);
+        text = "";
+        started = false;
+      }
+      continue;
+    }
+    text += ch;
+    started = true;
+  }
+  if (started) tokens.push(text);
+  return tokens;
+}
+
+/** Rule 8 for one pack. Returns its failures; an absent manifest is not one. */
+function hookManifestFailures(packName, packDir, manifestPath, pluginJson) {
+  const label = `${packName}/hooks/hooks.json`;
+  const out = [];
+
+  const declared = pluginJson.hooks;
+  const declaredPaths =
+    typeof declared === "string"
+      ? [declared]
+      : Array.isArray(declared)
+        ? declared.filter((value) => typeof value === "string")
+        : [];
+  if (declaredPaths.some((path) => path.replace(/^\.\//, "") === "hooks/hooks.json")) {
+    out.push(
+      `${packName}/.claude-plugin/plugin.json: declares a "hooks" key pointing at the standard hooks/hooks.json path — the loader auto-discovers that file and treats the duplicate as an error`,
+    );
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (err) {
+    out.push(`${label}: is not valid JSON — ${err.message}`);
+    return out;
+  }
+
+  const events = manifest?.hooks;
+  if (typeof events !== "object" || events === null || Array.isArray(events)) {
+    out.push(
+      `${label}: is not the plugin wrapper shape — events must be nested under a top-level "hooks" key`,
+    );
+    return out;
+  }
+
+  let commands = 0;
+  for (const [event, matchers] of Object.entries(events)) {
+    if (!Array.isArray(matchers)) {
+      out.push(`${label}: "${event}" must be an array of matcher entries`);
+      continue;
+    }
+    for (const matcher of matchers) {
+      if (!Array.isArray(matcher?.hooks)) {
+        out.push(`${label}: a "${event}" matcher entry has no "hooks" array`);
+        continue;
+      }
+      for (const hook of matcher.hooks) {
+        if (hook?.type !== "command") continue;
+        commands += 1;
+        const raw = typeof hook.command === "string" ? hook.command : "";
+        const tokens = splitCommandTokens(raw.split(PLUGIN_ROOT_VAR).join(packDir));
+        const at = tokens.findIndex((token) => token.includes("/"));
+        if (at === -1) {
+          out.push(`${label}: the "${event}" command names no script file: ${raw || "(missing)"}`);
+          continue;
+        }
+        const script = tokens[at];
+        let stats;
+        try {
+          stats = statSync(script);
+        } catch {
+          stats = null;
+        }
+        if (stats === null || !stats.isFile()) {
+          out.push(
+            `${label}: the "${event}" command references a script that does not exist: ${script}`,
+          );
+          continue;
+        }
+        try {
+          accessSync(script, constants.R_OK);
+        } catch {
+          out.push(
+            `${label}: the "${event}" command references a script that is not readable: ${script}`,
+          );
+          continue;
+        }
+        // Only a bare-path invocation depends on the mode bit. `node <script>` does
+        // not, which is exactly why the shipped commands name an interpreter.
+        if (at === 0 && (stats.mode & 0o100) === 0) {
+          out.push(
+            `${label}: the "${event}" command invokes ${script} as a bare path but it is not owner-executable`,
+          );
+        }
+      }
+    }
+  }
+  if (commands === 0) {
+    out.push(`${label}: declares no { "type": "command" } hook entry`);
+  }
+  return out;
+}
+
+// 2 + 3 + 4 + 8. Per-pack checks
 for (const entry of marketplace.plugins) {
   const packDir = join(repoRoot, "plugins", entry.name);
   const pluginJsonPath = join(packDir, ".claude-plugin", "plugin.json");
@@ -59,6 +206,13 @@ for (const entry of marketplace.plugins) {
   const serverPkg = join(packDir, "mcp", "server", "package.json");
   if (existsSync(serverPkg) && !existsSync(distFile)) {
     failures.push(`${entry.name}: dist/server.js missing — pack server is not built`);
+  }
+
+  // 8. Hook manifest. An absent hooks/hooks.json is not a failure: marvin is the only
+  //    pack that ships one, and a pack without hooks is a pack without this obligation.
+  const hooksJsonPath = join(packDir, "hooks", "hooks.json");
+  if (existsSync(hooksJsonPath)) {
+    failures.push(...hookManifestFailures(entry.name, packDir, hooksJsonPath, pluginJson));
   }
 }
 
@@ -119,6 +273,7 @@ const lockedVersionFiles = [
   "package.json",
   "packages/marvin-mcp-shared/package.json",
   "packages/marvin-widgets/package.json",
+  "packages/site/package.json",
   "plugins/marvin/mcp/server/package.json",
 ];
 for (const rel of lockedVersionFiles) {
@@ -128,6 +283,39 @@ for (const rel of lockedVersionFiles) {
       `${rel}: version "${version}" does not match the plugin version "${marvinVersion}" — run \`npm run sync-version\``,
     );
   }
+}
+
+// 7. Skill surface vs trigger-eval datasets. Called ONCE here rather than inside the
+//    marketplace loop above: the datasets tree is repo-global and describes the marvin
+//    plugin alone, so a per-plugin call would report every skill of a second plugin as
+//    missing a dataset. This sits beside the version check, which makes the same
+//    single-plugin assumption two lines up.
+//
+//    Only the three categories that are shipping obligations of the skill surface are
+//    reported here. orphanDatasets, unknownWinners, missingNotes and missingMockRate are
+//    invariants of the eval harness and are asserted by evals/trigger/self-test.mjs.
+//
+//    An absent directory is a FAILURE, not a reason to skip: a guard of the form
+//    `if (existsSync(a) && existsSync(b))` would turn this blocking gate green over
+//    a skill surface with zero datasets, which is the same "guard that cannot fail"
+//    defect a32a288 repaired in the drift guards.
+const skillsDir = join(repoRoot, "plugins", "marvin", "skills");
+const datasetsDir = join(repoRoot, "evals", "trigger", "datasets");
+for (const [label, dir] of [
+  ["plugins/marvin/skills", skillsDir],
+  ["evals/trigger/datasets", datasetsDir],
+]) {
+  if (!existsSync(dir))
+    failures.push(`${label}: directory is missing — the dataset rules cannot run`);
+}
+if (existsSync(skillsDir) && existsSync(datasetsDir)) {
+  failures.push(
+    ...skillDatasetFailures({
+      skillsDir,
+      datasetsDir,
+      keys: ["missingDatasets", "parityViolations", "nonCanonicalFlags"],
+    }),
+  );
 }
 
 if (failures.length > 0) {

@@ -1,0 +1,219 @@
+{
+  "skill": "task-audit",
+  "target": "task-audit",
+  "note": "Read-only consistency LINT of the whole SPEC corpus under .marvin/task (duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, invalid statuses, unidentified files). Distinct from adr-audit (decision records), refactor-audit (code structure), sec-scan (vulnerabilities) and task-start (authoring one spec). mock_rate encodes the ideal outcome for --decider mock; real deciders ignore it.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "audit the specs",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "lint .marvin/task and tell me what's inconsistent",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "are there duplicate spec numbers? two of us authored specs off the same base",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "do any specs depend on something that doesn't exist? check the depends_on rows",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "which specs are unsealed — no contract_sha in the frontmatter?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "check the spec corpus before I start the next task",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "sanity-check every file in the spec directory — slug collisions, weird statuses, files that aren't specs at all",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "two spec files seem to claim the same slug, can you sweep the task specs and confirm?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "run a spec-corpus health check, we haven't looked at .marvin/task in months and I bet the numbering has gaps",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "is our spec directory internally consistent? numbering, slugs, sibling references, seals",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "audit the ADRs — dangling references and broken supersede pairs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "decision-record corpus, not the spec corpus → adr-audit"
+    },
+    {
+      "id": "neg-2",
+      "text": "audit the codebase for structural problems — hotspots, dependency tangles, dead code",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "shares 'audit' but it is code structure → refactor-audit"
+    },
+    {
+      "id": "neg-3",
+      "text": "audit our dependencies for known CVEs and license risk",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "shares 'audit' but it is a security scan → sec-deps / sec-scan"
+    },
+    {
+      "id": "neg-4",
+      "text": "what did that task deliver? acceptance criteria, commits, the lot",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "delivery digest for ONE finished spec → task-summary (a prompt with no SKILL.md; unreachable in catalogText, so it may only appear here in a note)"
+    },
+    {
+      "id": "neg-5",
+      "text": "spec this out — I want to add pagination to the list endpoint",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring a NEW spec → task-start"
+    },
+    {
+      "id": "neg-6",
+      "text": "is this one spec ready to implement? run the Definition-of-Ready gate on it",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "per-file contract validation is the DoR gate, explicitly outside the corpus lint → task-start"
+    },
+    {
+      "id": "neg-7",
+      "text": "run the quality gates — tests, lint, type-check, build",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "project gates, nothing to do with the spec corpus → task-verify"
+    },
+    {
+      "id": "neg-8",
+      "text": "renumber 012 and 013 so there are no gaps in the spec directory",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "asks to PERFORM the renumbering; the audit is read-only and explicitly advises against closing holes → manual edit"
+    },
+    {
+      "id": "neg-9",
+      "text": "where's the spec that covers the widget preview door? point me to it",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "find/retrieve one document → docs-search"
+    },
+    {
+      "id": "neg-10",
+      "text": "implement the ready spec in this session",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "execution of one spec → task-implement"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "sweep the task specs for internal inconsistencies — repeated numbers, two files claiming one slug, references to siblings that were never written",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-audit",
+      "mock_rate": 1,
+      "note": "corpus-wide spec lint despite generic 'sweep' vocabulary — must beat task-start, which authors one spec"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "before the next planning round, lint everything under .marvin/task and tell me which specs are unsealed or unidentifiable",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-audit",
+      "mock_rate": 1,
+      "note": "names the spec directory and two of its own classes — must beat adr-audit, the nearest neighbour in shape"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "check whether our decision records are consistent — numbering holes, invalid statuses, a stale index",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "adr-audit",
+      "mock_rate": 0,
+      "note": "same finding vocabulary, different corpus — must lose to adr-audit"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "do a project-wide audit of code health — churn hotspots, tangles, oversized modules",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 0,
+      "note": "'audit' plus a codebase-wide read, the nearest neighbour in vocabulary — must lose to refactor-audit"
+    }
+  ]
+}

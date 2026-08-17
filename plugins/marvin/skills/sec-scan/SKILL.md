@@ -15,11 +15,11 @@ For focused, faster scans use the specialized skills: `sec-secrets`, `sec-deps`,
 
 ## Core principle
 
-**Breadth then depth.** Phase 1 and 2 delegate to specialized skills for thorough coverage. Phase 3 and 4 add the value that only a full-codebase manual review can provide — understanding how components interact, where trust boundaries are violated, and which patterns external tools miss.
+**Breadth, then depth, then one register.** Phases 1 and 2 delegate to specialized skills for thorough coverage. Phase 3 fans the OWASP walk out to three concurrent lenses and Phase 4 covers the detected stack — together they add what only a full-codebase manual review can provide: how components interact, where trust boundaries are violated, and which patterns external tools miss. Phase 5 consolidates every return into the single register the report ships.
 
 ## Scan sequence
 
-Run all phases in order. Skip phases that don't apply to the project.
+Run all phases in order. Skip phases that don't apply to the project — Phase 5 always runs, because it is where the findings become the report.
 
 ## Phase 1 — Secrets detection (delegated)
 
@@ -35,7 +35,21 @@ Incorporate all findings into the unified report at the end.
 
 ## Phase 3 — Static analysis (OWASP Top 10:2025)
 
-Perform manual code review following the OWASP Top 10:2025 categories. This is the core value of the full scan — understanding context that automated tools miss.
+Manual code review across the OWASP Top 10:2025 categories. This is the core value of the full scan — understanding context that automated tools miss — and it is more reading than one pass can hold, so it is split into three **lenses** and read concurrently.
+
+Before dispatching, fix the brief once: the **detected stack** (languages, frameworks, package managers), the **file scope** (the source tree minus vendored, generated, and lockfile paths), and the **focus areas** from `$ARGUMENTS` if any.
+
+Launch three **`marvin-auditor`** subagents (via the Task tool) **in a single response**, so they run concurrently — the agent is read-only by construction. Hand each one the same brief and one lens, and ask it to work only its own categories:
+
+- **Lens 1 — A01, A05, A08**: broken access control, injection, software/data integrity failures.
+- **Lens 2 — A02, A04, A07, A09**: security misconfiguration, cryptographic failures, authentication failures, logging & alerting failures.
+- **Lens 3 — A03, A06, A10**: software supply chain failures, insecure design, mishandling exceptional conditions.
+
+The category blocks below are the lens content: paste the blocks belonging to a lens into that dispatch — an agent cannot read this skill by path — so each agent walks the same checklist you would have walked inline.
+
+Require **register-ready output**: one block per candidate finding carrying `severity` (`critical | high | medium | low | info`), `title`, `category` (the OWASP id, e.g. `OWASP A05:2025`), `file`, `line`, `evidence`, and `remediation`, plus the categories it examined that produced nothing so you know its coverage. Do **not** ask for finding ids — Phase 5 owns the `SCAN-N` sequence, and three concurrent dispatches would collide on it. Spot-check the evidence before adopting a finding — open the cited locations and confirm they say what the finding claims.
+
+**If the Task tool is unavailable**, walk the ten categories below inline yourself, in lens order, carrying the same fields into Phase 5. A missing agent costs the scan wall-clock, never coverage.
 
 #### A01 — Broken Access Control
 - Missing or inconsistent authorization checks on endpoints/handlers
@@ -148,6 +162,25 @@ Framework-specific: Next.js — check `next.config.js` for `poweredByHeader: tru
 
 If the project uses a stack not covered above, research current best practices for that language/framework before proceeding. Identify the primary SAST tool, dependency auditor, and top vulnerability patterns for the stack. Apply the same OWASP Top 10 categories.
 
+## Phase 5 — Consolidate the findings
+
+The lenses return candidates; the report is yours. Merge the three returns with your own Phase 1, 2, and 4 findings into one list:
+
+- **Merge on matching location and substance.** Two candidates describing the same defect at the same location are one finding — keep the fuller evidence and remediation, and list every occurrence in the evidence rather than filing one finding per occurrence. The lenses overlap by design (an injection reachable only past a missing authorization check belongs to two of them), so expect duplicates.
+- **On a severity disagreement, take the higher severity.** When the gap is more than one level, say why in the finding's description: it usually means the two lenses saw different exploit paths, and the wider path is the one that decides the rating.
+- **Drop what you could not evidence.** A candidate whose cited location does not say what it claims is dropped, not downgraded.
+- **Account for every lens.** State per lens what it covered and what it returned. A lens that returned nothing is recorded as checked and clean; a lens that failed, timed out, or returned nothing verifiable is recorded as a coverage gap. Silence and cleanliness must not read the same way in the report.
+
+Then number the surviving findings `SCAN-1…SCAN-n` in severity order (critical first) — one sequence across the whole report, not one per phase — and map each to its OWASP Top 10:2025 category. These are the ids the `audit-report` block carries.
+
+Each surviving `critical`, `high`, `medium` or `low` finding is counted exactly once in the Summary Dashboard, in exactly one row:
+
+- **Merged across lenses** — the row of the lens that owns the OWASP category the finding was finally mapped to.
+- **Merged across phases**, the lenses counting as Phase 3 — the earlier phase's row: a Phase 2 finding a lens also raised counts in Dependencies, a lens finding Phase 4 also raised counts in that lens's row.
+- **Unmerged** — the row of the phase that found it: Phase 1 in Secrets, Phase 2 in Dependencies, Phase 4 in Stack-Specific, a lens candidate in its own lens row.
+
+`info` findings have no dashboard column and no header bucket. List them in the body after the low group and count them in neither, so the four dashboard columns sum to the header's `**Findings:**` count. They still belong in the `audit-report` block below.
+
 ## Output location
 
 Write the report to `.marvin/security/scan-report.md` (create the `.marvin/security/` directory if it doesn't exist), then tell the user the path — every security artifact lives together under the marvin working tree. If the user only wants a quick read, you may skip the file and report inline.
@@ -168,8 +201,16 @@ Write the report to `.marvin/security/scan-report.md` (create the `.marvin/secur
 |----------|----------|------|--------|-----|
 | Secrets  |          |      |        |     |
 | Dependencies |      |      |        |     |
-| OWASP Static Analysis | | |        |     |
+| Lens 1 (A01/A05/A08) | |   |        |     |
+| Lens 2 (A02/A04/A07/A09) | | |      |     |
+| Lens 3 (A03/A06/A10) | |   |        |     |
 | Stack-Specific |     |      |        |     |
+
+### Lens coverage
+
+- Lens 1 (A01/A05/A08) — <what was read> · <findings, "checked and clean", or "coverage gap: reason">
+- Lens 2 (A02/A04/A07/A09) — ...
+- Lens 3 (A03/A06/A10) — ...
 
 ---
 
@@ -182,7 +223,7 @@ Write the report to `.marvin/security/scan-report.md` (create the `.marvin/secur
 ...
 ```
 
-Group findings by severity (CRITICAL → HIGH → MEDIUM → LOW). Map each finding to its OWASP Top 10:2025 category. Include specific file paths and line numbers. Provide actionable fix recommendations, not generic advice.
+Group findings by severity (CRITICAL → HIGH → MEDIUM → LOW → INFO). Rank each one against the shared rubric at `skills/sec-scan/references/severity-rubric.md` — read it from the plugin before assigning severities; the `skills/…` path resolves through all three entry points (chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble, ADR-0008). Map each finding to its OWASP Top 10:2025 category. Include specific file paths and line numbers. Provide actionable fix recommendations, not generic advice.
 
 At the end, add a "Next Steps" section suggesting:
 - Run `sec-fix` for critical/high findings
@@ -198,9 +239,10 @@ At the end, add a "Next Steps" section suggesting:
 
 ## Guidelines
 
+- **Severity comes from the rubric, not from the moment.** `skills/sec-scan/references/severity-rubric.md` is the one scale every marvin producer ranks against — blast radius, likelihood, cost to reverse, plus the two stated adjustments. When context moved a finding's row, name the context in its evidence rather than writing that severity is contextual.
 - **This is the comprehensive audit.** Don't skip phases. If a phase doesn't apply (e.g., no Go code), briefly note "Phase 4 (Go): N/A — no Go code detected" and move on.
-- **Delegate, don't duplicate.** Phases 1 and 2 use the specialized skills. Don't re-implement their logic inline.
-- **Phase 3 is where you add the most value.** External tools find pattern-level issues. The manual OWASP review finds logic-level issues — missing auth on a specific route, business logic bypasses, insecure design decisions. Invest time here.
+- **Delegate, don't duplicate.** Phases 1 and 2 use the specialized skills; Phase 3 fans the OWASP walk out to three `marvin-auditor` lenses. Don't re-implement their logic inline.
+- **Phase 3 is where the scan finds the most, Phase 5 is where you add the most value.** External tools find pattern-level issues; the OWASP review finds logic-level issues — missing auth on a specific route, business logic bypasses, insecure design decisions. The lenses do that reading; the register is yours, and nothing enters it unverified.
 - **If external tools fail or are missing, continue.** Note it in the report and perform manual analysis instead. Never produce an empty report because a tool wasn't installed.
 
 ## Audit-report block (Tier-2 — ADR-0024)

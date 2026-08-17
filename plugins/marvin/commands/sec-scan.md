@@ -12,7 +12,7 @@ Run a comprehensive security audit of the codebase.
 
 ## Instructions
 
-**Read `skills/sec-scan/SKILL.md`** and follow its full scan sequence (Phases 1–4).
+**Read `skills/sec-scan/SKILL.md`** and follow its full scan sequence (Phases 1–5).
 
 Pass `$ARGUMENTS` to scope the scan if provided.
 

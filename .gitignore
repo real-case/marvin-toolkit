@@ -40,6 +40,43 @@ coverage/
 # Storybook static build (marvin-widgets dev/verify harness — regenerated in CI)
 storybook-static/
 
-# Claude Code local state — per-machine settings and agent worktrees, never shared
+# Visual-regression diff artifacts (failure output only — the per-platform
+# baseline dirs under __image_snapshots__/ ARE committed)
+packages/marvin-widgets/__image_snapshots__/__diff_output__/
+
+# Claude Code local state — per-machine settings, agent worktrees and agent
+# memory, never shared
 .claude/settings.local.json
 .claude/worktrees/
+.claude/agent-memory/
+
+# Marvin working directory (ADR-0007). Almost all of it is local dogfood/test state —
+# board fixtures, specs, handoffs, research output, the usage log — and stays out of git.
+#
+# The lessons store is the deliberate exception. ADR-0021 specifies `.marvin/memory/` as
+# "git-committed, team-shared … so lessons are shared with the team on clone", CLAUDE.md
+# documents it that way, and the `lessons` tool tells you so every time it writes one. A
+# blanket `.marvin/` contradicted all three: no lesson was ever shared, and one had to be
+# hand-rescued from a worktree before it was lost with it.
+#
+# The pattern matters. It is `.marvin/*`, NOT `.marvin/` — git does not descend into an
+# excluded DIRECTORY, so with a blanket `.marvin/` the negation below is unreachable and
+# silently does nothing. `.marvin/*` excludes each entry instead, which leaves the
+# re-include below able to work.
+.marvin/*
+!.marvin/memory/
+
+# Runtime markers written next to the installed plugin while a session uses it
+plugins/marvin/.in_use/
+
+# Playwright MCP scratch screenshots (local verification, never shared)
+.playwright-mcp/
+
+# Playwright output from a run started in the WRONG directory. `npx playwright test` from the repo
+# root finds no config, so baseURL is unset and every navigation fails — but it still writes its
+# artifacts here rather than under packages/site/ (which ignores its own). Root-anchored on
+# purpose: each workspace should ignore its own output, and a bare pattern would silently swallow
+# artifacts in workspaces that have not opted in.
+/test-results/
+.vercel
+.env*

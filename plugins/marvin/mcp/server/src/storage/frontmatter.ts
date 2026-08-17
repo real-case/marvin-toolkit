@@ -6,7 +6,7 @@
  * **string** values. We parse with the YAML **failsafe** schema so every scalar
  * stays a string — no surprise coercion of `001` to the number 1 or an ISO
  * timestamp like `2026-06-14T07:52:00.000Z` to a `Date`, either of which would
- * silently corrupt a round-tripped kanban task file. Typed structures (the
+ * silently corrupt a round-tripped board task file. Typed structures (the
  * spec-contract block) are parsed separately, with the default schema, by the
  * spec tool — failsafe lives here, where strings-in-strings-out is the contract.
  */
@@ -34,7 +34,7 @@ export function parseFrontmatter(text: string): FrontmatterFile {
     doc = parse(raw, { schema: "failsafe" });
   } catch {
     // A malformed frontmatter block yields an empty map rather than throwing —
-    // callers (kanban `readAllTasks`, the spec gate) treat missing keys as their
+    // callers (the board `readAllTasks`, the spec gate) treat missing keys as their
     // own validation failure, which is the right place to report it.
     return { frontmatter: {}, body };
   }

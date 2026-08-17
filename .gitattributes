@@ -1,0 +1,9 @@
+# Binary assets — tell git not to attempt line-ending normalization or textual diffs.
+#
+# Added with the OpenGraph cards (spec 014-website-og-images). The repo already committed browser-
+# rendered PNGs before this file existed — packages/marvin-widgets/__image_snapshots__/ holds 101
+# visual-regression baselines — and got away without it because those change rarely. The OG cards
+# are different in kind: they are DESIGNED to be regenerated whenever a page title, its card copy or
+# a theme token changes, so without this every regeneration invites git to render a diff of binary
+# content.
+*.png binary

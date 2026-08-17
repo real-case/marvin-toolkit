@@ -1,190 +1,524 @@
-import { describe, it, expect } from "vitest";
-import { render, screen, within } from "@testing-library/preact";
-import type { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
-import { DashboardView, DashboardWidget } from "./DashboardWidget";
-import { dashboardFixture } from "./fixture";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, within, fireEvent, waitFor, cleanup } from "@testing-library/preact";
+// Runtime zod import — the contract schema doubles as the DashboardState type;
+// tests are the one place the widget workspace may import the schema at runtime.
+import { DashboardState } from "@marvin-toolkit/mcp-shared/contracts";
+import { DashboardView, DashboardWidget, DASHBOARD_STYLE_ID } from "./DashboardWidget";
+import { AFFORDANCE_COMMANDS, type AffordanceId } from "./helpers";
+import {
+  dashboardFixture,
+  coreOnlyDashboardFixture,
+  freshDashboardFixture,
+  noGitDashboardFixture,
+  longPathsDashboardFixture,
+  scannedCleanDashboardFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
 
-describe("DashboardView — panel over the full fixture", () => {
-  it("renders every section from a full DashboardState", () => {
-    render(<DashboardView data={dashboardFixture} />);
+/**
+ * Dashboard widget render + wiring tests (spec dashboard-widget-rework, AC2/AC9).
+ *
+ * AC2 covers the three-zone layout, the audit null-versus-clean discriminator
+ * and the injected breakpoint rules. AC9 covers the wiring, and does it by
+ * ITERATING the exported affordance map rather than hand-listing controls: an
+ * entry added later without a rendered control fails, and a control that renders
+ * without a handler fails. Hand-listing would let both through.
+ */
 
-    // header: title + version + git/gh availability + branch
-    const header = screen.getByTestId("dashboard-header");
-    expect(header.textContent).toContain("toolbox dashboard");
-    expect(screen.getByTestId("dashboard-version").textContent).toContain("v0.1.0");
-    expect(header.textContent).toContain("git ✓");
-    expect(header.textContent).toContain("gh ✓");
-    expect(screen.getByTestId("dashboard-branch").textContent).toContain("feat/widget-dashboard");
+beforeEach(() => {
+  cleanup();
+  document.getElementById(DASHBOARD_STYLE_ID)?.remove();
+});
 
-    // paths: the three project paths as code
-    expect(screen.getByTestId("card-paths").textContent).toContain("/Users/dev/acme-api");
+describe("fixtures — DashboardState contract", () => {
+  // Every fixture the stories render must parse against the real zod contract,
+  // so a contract change can never silently drift the visual fixtures.
+  const fixtures = {
+    dashboardFixture,
+    coreOnlyDashboardFixture,
+    freshDashboardFixture,
+    noGitDashboardFixture,
+    longPathsDashboardFixture,
+    scannedCleanDashboardFixture,
+  };
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`${name} parses against the DashboardState contract`, () => {
+      const parsed = DashboardState.safeParse(fixture);
+      expect(parsed.success ? true : parsed.error.issues).toBe(true);
+    });
+  }
 
-    // config: base branch, the resolved tracker template, gate chips, the statuses vocabulary
-    const config = screen.getByTestId("card-config");
-    expect(config.textContent).toContain("main");
-    const tracker = within(config).getByTestId("config-tracker");
-    expect(tracker.textContent).toContain("linear.app");
-    expect(tracker.textContent).not.toContain("not configured");
-    const gates = within(config).getByTestId("config-gates");
-    for (const g of ["test", "lint", "typecheck", "build"]) expect(gates.textContent).toContain(g);
-    const statuses = within(config).getByTestId("config-statuses");
-    expect(statuses.textContent).toContain("backlog");
-    expect(statuses.textContent).toContain("in-review · review"); // key ≠ role gets the role note
-
-    // kanban: role roll-up + one row per configured status, count from the right field
-    const kanban = screen.getByTestId("card-kanban");
-    expect(kanban.textContent).toContain("Kanban (15)"); // total across statuses
-    expect(within(kanban).getByTestId("kanban-roles").textContent).toContain("done 7");
-    const statusRows = within(kanban).getAllByTestId("kanban-status");
-    expect(statusRows).toHaveLength(5);
-    const doneRow = statusRows.find((r) => r.getAttribute("data-status") === "done");
-    expect(doneRow?.textContent).toContain("7");
-
-    // artifacts: stat tiles + verification freshness rendered human-friendly
-    const artifacts = screen.getByTestId("card-artifacts");
-    expect(within(artifacts).getByTestId("artifacts-specs").textContent).toContain("3");
-    expect(within(artifacts).getByTestId("artifacts-verification").textContent).toContain("2d ago");
-
-    // adr: total + per-status counts + the malformed note
-    const adr = screen.getByTestId("card-adr");
-    expect(adr.textContent).toContain("ADR (30)");
-    expect(adr.textContent).toContain("accepted 24");
-    expect(within(adr).getByTestId("adr-malformed").textContent).toContain("1 malformed");
-
-    // security + refactor inventories — assert the values (not just labels), so a
-    // field-swap regression is caught, plus the human-friendly age
-    const security = screen.getByTestId("card-security");
-    expect(within(security).getByTestId("security-reports").textContent).toContain("1");
-    expect(within(security).getByTestId("security-newest").textContent).toContain("6d ago");
-    const refactor = screen.getByTestId("card-refactor");
-    expect(within(refactor).getByTestId("refactor-audits").textContent).toContain("2");
-    expect(within(refactor).getByTestId("refactor-smells").textContent).toContain("1");
-    expect(within(refactor).getByTestId("refactor-plans").textContent).toContain("1");
-
-    // lessons: total + by-type breakdown
-    const lessons = screen.getByTestId("card-lessons");
-    expect(lessons.textContent).toContain("Lessons (5)");
-    expect(lessons.textContent).toContain("bug-pattern 2");
-
-    // usage: event count + window + top prompts/tools
-    const usage = screen.getByTestId("card-usage");
-    expect(usage.textContent).toContain("Usage (128)");
-    expect(within(usage).getByTestId("usage-window").textContent).toContain(
-      "2026-06-01 → 2026-07-07",
-    );
-    const top = within(usage).getAllByTestId("usage-top");
-    expect(top).toHaveLength(3);
-    expect(top[0].textContent).toContain("commit");
-
-    // commands: group tallies + the total in the title
-    const commands = screen.getByTestId("card-commands");
-    expect(commands.textContent).toContain("Commands (40)"); // 9+4+5+10+12
-    expect(commands.textContent).toContain("sec 10");
+  it("no fixture carries the removed v1 security / refactor inventories", () => {
+    for (const fixture of [dashboardFixture, freshDashboardFixture, coreOnlyDashboardFixture]) {
+      expect("security" in fixture).toBe(false);
+      expect("refactor" in fixture).toBe(false);
+    }
   });
 });
 
-describe("DashboardView — fresh-project and narrow (help-shaped) states", () => {
-  // The dashboard tool's REAL fresh-project payload: the extended sections are PRESENT
-  // but zeroed, ages/branch/tracker are null, and usage is absent (no log yet).
-  const fresh: DashboardState = {
-    version: "0.1.0",
-    paths: {
-      project: "/tmp/new",
-      tasks_dir: "/tmp/new/.marvin/kanban",
-      config_path: "/tmp/new/.marvin/config.json",
-    },
-    config: {
-      base_branch: "main",
-      tracker_url_template: null,
-      statuses: [
-        { key: "todo", role: "todo" },
-        { key: "doing", role: "wip" },
-        { key: "done", role: "done" },
-      ],
-    },
-    kanban_counts: { todo: 0, doing: 0, done: 0 },
-    kanban_role_counts: { todo: 0, wip: 0, review: 0, done: 0, blocked: 0 },
-    git: { has_git: false, has_gh: false, branch: null },
-    artifacts: {
-      specs: 0,
-      handoffs: 0,
-      audits: 0,
-      lessons: 0,
-      verification: { exists: false, age_days: null },
-    },
-    command_groups: [
-      { group: "core", count: 9 },
-      { group: "kanban", count: 12 },
-    ],
-    adr: {
-      dir: "docs/adr",
-      total: 0,
-      counts: { proposed: 0, accepted: 0, deprecated: 0, superseded: 0, rejected: 0 },
-      malformed: 0,
-    },
-    security: { reports: 0, newest_age_days: null },
-    refactor: { audits: 0, smells: 0, plans: 0 },
-    lessons: { total: 0, by_type: {}, by_tag: {} },
-    // usage intentionally absent — the tool spreads it only when the log exists
-  };
+describe("layout — the nav shell and three zones", () => {
+  it("renders the sidebar and all three zones from the full payload", () => {
+    render(<DashboardView data={dashboardFixture} />);
 
-  it("renders neutral zero-states on a fresh project", () => {
-    const { rerender } = render(<DashboardView data={fresh} />);
+    expect(screen.getByTestId("dashboard-sidebar")).toBeTruthy();
+    expect(screen.getByTestId("zone-project")).toBeTruthy();
+    expect(screen.getByTestId("zone-work")).toBeTruthy();
+    expect(screen.getByTestId("zone-toolbox")).toBeTruthy();
 
-    // the panel renders (no throw on null ages / absent usage)
-    expect(screen.getByTestId("dashboard-panel")).toBeTruthy();
+    // the v1 cards are gone with the contract fields that fed them
+    expect(screen.queryByTestId("card-security")).toBeNull();
+    expect(screen.queryByTestId("card-refactor")).toBeNull();
 
-    // git unavailable → ✗ badges and the neutral branch note
+    // …while the security DOCUMENT count survives on the Artifacts card
+    expect(screen.getByTestId("artifacts-audits").textContent).toContain("2");
+  });
+
+  it("renders the identity strip with version, branch and base", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const header = screen.getByTestId("dashboard-header");
+    expect(within(header).getByTestId("dashboard-version").textContent).toContain("0.1.0");
+    expect(within(header).getByTestId("dashboard-branch").textContent).toContain(
+      "feat/dashboard-rework",
+    );
+    expect(header.textContent).toContain("base main");
+  });
+
+  it("outside a git repo the branch reads as a note, not an empty chip", () => {
+    render(<DashboardView data={noGitDashboardFixture} />);
     expect(screen.getByTestId("dashboard-branch").textContent).toContain("not in a git repo");
-    expect(screen.getByTestId("dashboard-header").textContent).toContain("git ✗");
+  });
 
-    // config neutral placeholders
-    expect(screen.getByTestId("config-tracker").textContent).toContain("not configured");
-    expect(screen.getByTestId("config-gates").textContent).toContain("defaults");
+  it("the board bar follows the configured status order and totals every status", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    expect(screen.getByTestId("board-total").textContent).toBe("15");
+    const legend = screen.getAllByTestId("board-bar-legend").map((el) => el.dataset.key);
+    expect(legend).toEqual(["backlog", "in-progress", "in-review", "done", "blocked"]);
+  });
 
-    // artifacts: a present-but-not-existing verification → "none" (null age never dereferenced)
-    expect(screen.getByTestId("artifacts-verification").textContent).toContain("none");
+  it("renders the MCP servers lit and dim by enabled state", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const card = screen.getByTestId("card-servers");
+    const pills = Array.from(card.querySelectorAll("[data-server]")) as HTMLElement[];
+    const byName = Object.fromEntries(pills.map((el) => [el.dataset.server, el.dataset.enabled]));
+    expect(byName.marvin).toBe("true");
+    expect(byName.playwright).toBe("false");
+  });
 
-    // present-but-zeroed extended sections DO render a card, with a neutral zero-state …
-    expect(screen.getByTestId("card-adr").textContent).toContain("No records yet");
-    expect(screen.queryByTestId("adr-malformed")).toBeNull(); // 0 malformed → no note
-    expect(screen.getByTestId("security-newest").textContent).toContain("none"); // formatAge(null)
-    expect(screen.getByTestId("card-lessons").textContent).toContain("No lessons captured yet");
+  it("renders the current-work digest rows for board cards, specs and handoffs", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    expect(screen.getAllByTestId("current-board-row")).toHaveLength(3);
+    expect(screen.getAllByTestId("current-spec-row")).toHaveLength(3);
+    expect(screen.getAllByTestId("handoff-row")).toHaveLength(3);
+  });
 
-    // … but `usage` is ABSENT here, so its card is omitted entirely (present ≠ absent)
+  it("renders the toolbox cards from the extended sections", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    expect(screen.getByTestId("card-adr").textContent).toContain("Decisions · ADR (30)");
+    expect(screen.getByTestId("adr-malformed").textContent).toContain("1 malformed");
+    expect(screen.getByTestId("card-lessons").textContent).toContain("Lessons (5)");
+    expect(screen.getByTestId("usage-window").textContent).toContain("2026-06-01 → 2026-07-07");
+    expect(screen.getAllByTestId("usage-top")).toHaveLength(3);
+    expect(screen.getByTestId("card-commands").textContent).toContain("Commands (35)");
+  });
+
+  it("a help-narrow payload omits the v2 zones instead of rendering empty ones", () => {
+    render(<DashboardView data={coreOnlyDashboardFixture} />);
+    // absent (not zero) → the whole work zone has nothing to show
+    expect(screen.queryByTestId("zone-work")).toBeNull();
+    expect(screen.queryByTestId("card-servers")).toBeNull();
+    expect(screen.queryByTestId("card-adr")).toBeNull();
     expect(screen.queryByTestId("card-usage")).toBeNull();
-
-    // A narrower, help-shaped payload omits the extended sections entirely — every
-    // extended card disappears, while the always-present cards stay.
-    const narrow: DashboardState = {
-      version: fresh.version,
-      paths: fresh.paths,
-      config: fresh.config,
-      kanban_counts: fresh.kanban_counts,
-      kanban_role_counts: fresh.kanban_role_counts,
-      git: fresh.git,
-      artifacts: { specs: 0, handoffs: 0, audits: 0, lessons: 0 }, // no verification either
-      command_groups: fresh.command_groups,
-      // adr / security / refactor / lessons / usage all absent
-    };
-    rerender(<DashboardView data={narrow} />);
-    for (const id of ["card-adr", "card-security", "card-refactor", "card-lessons", "card-usage"]) {
-      expect(screen.queryByTestId(id)).toBeNull();
-    }
-    // the always-present cards survive, and an absent verification renders as "—"
-    expect(screen.getByTestId("card-kanban")).toBeTruthy();
+    // the always-present cards still render
+    expect(screen.getByTestId("card-paths")).toBeTruthy();
+    expect(screen.getByTestId("card-board")).toBeTruthy();
     expect(screen.getByTestId("card-commands")).toBeTruthy();
-    expect(screen.getByTestId("artifacts-verification").textContent).toContain("—");
+  });
 
-    // connecting / no-data / error states
-    rerender(<DashboardView data={null} />);
+  it("a fresh project renders present-but-empty sections rather than omitting them", () => {
+    render(<DashboardView data={freshDashboardFixture} />);
+    // present-but-zero → the zone renders WITH its zero states, which is the
+    // opposite of the help-narrow case above. Collapsing the two would make a
+    // configured-but-idle project indistinguishable from an unconfigured one.
+    expect(screen.getByTestId("zone-work")).toBeTruthy();
+    expect(screen.getByTestId("card-servers").textContent).toContain("No MCP servers configured");
+    expect(screen.getByTestId("card-usage").textContent).toContain("No events recorded");
+    expect(screen.getByTestId("board-total").textContent).toBe("0");
+    expect(screen.getByTestId("card-board").textContent).toContain("No cards on the board yet");
+  });
+
+  it("longPathsDashboardFixture renders the deep paths and the long base branch", () => {
+    render(<DashboardView data={longPathsDashboardFixture} />);
+    expect(screen.getByTestId("card-paths").textContent).toContain(
+      "payments-orchestration-gateway/.marvin/config.json",
+    );
+    expect(screen.getByTestId("card-config").textContent).toContain(
+      "release/2026.07-payments-orchestration-long-term-support",
+    );
+  });
+});
+
+describe("audit areas — never-scanned is not clean", () => {
+  const areaByName = (name: string) =>
+    screen.getAllByTestId("audit-area").find((el) => el.dataset.area === name)!;
+
+  it("renders a scanned-clean area differently from a never-scanned one", () => {
+    render(<DashboardView data={scannedCleanDashboardFixture} />);
+
+    const security = areaByName("security");
+    const refactor = areaByName("refactor");
+
+    // The two areas carry the same renderable numbers — no findings, no
+    // severities — so only the discriminant separates them. A widget that
+    // collapsed the states would render these two identically and pass any
+    // assertion made on counts alone.
+    expect(security.dataset.state).toBe("clean");
+    expect(refactor.dataset.state).toBe("never-scanned");
+    expect(security.dataset.state).not.toBe(refactor.dataset.state);
+
+    expect(within(security).getByTestId("audit-note").textContent).toContain("no findings");
+    expect(within(refactor).getByTestId("audit-note").textContent).toContain("never scanned");
+
+    // the scanned area still reports WHEN it was scanned; the other cannot
+    expect(security.textContent).toContain("today");
+    expect(refactor.textContent).not.toContain("today");
+  });
+
+  it("an area with findings renders a ranked severity bar, not payload order", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const security = areaByName("security");
+    expect(security.dataset.state).toBe("findings");
+    expect(within(security).getByTestId("audit-total").textContent).toBe("14");
+
+    // the fixture lists `medium` FIRST in by_severity; the bar must still read
+    // critical → high → medium → low
+    const legend = within(security)
+      .getAllByTestId("audit-bar-legend")
+      .map((el) => el.dataset.key);
+    expect(legend).toEqual(["critical", "high", "medium", "low"]);
+  });
+
+  it("a fresh project shows both areas as never-scanned", () => {
+    render(<DashboardView data={freshDashboardFixture} />);
+    for (const name of ["security", "refactor"]) {
+      expect(areaByName(name).dataset.state).toBe("never-scanned");
+    }
+  });
+});
+
+describe("responsive rules — the injected stylesheet", () => {
+  it("carries all four of the mockup's breakpoints", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const sheet = document.getElementById(DASHBOARD_STYLE_ID);
+    expect(sheet).toBeTruthy();
+    const css = sheet?.textContent ?? "";
+
+    // No image baseline can catch a dropped breakpoint: the Storybook runner
+    // pins the viewport at 1000×800, above every one of these. The sheet text is
+    // the only oracle available, which is why all four are asserted by name.
+    // Assert the rule BODY, not just the query header: an empty or mis-targeted
+    // media block satisfies a header-only check while reflowing nothing. F13
+    // pins each width to a specific grid, so that pairing is what gets asserted.
+    const bodyOf = (width: string) => {
+      const at = css.indexOf(`@media (max-width:${width})`);
+      expect(at, `breakpoint ${width} missing`).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("\n@media", at + 1) + 1 || undefined);
+    };
+    expect(bodyOf("860px")).toContain(".mvdash-grid-tb{grid-template-columns:repeat(2");
+    expect(bodyOf("720px")).toContain(".mvdash-shell{flex-direction:column}");
+    expect(bodyOf("720px")).toContain(".mvdash-sidefoot{display:none}");
+    expect(bodyOf("680px")).toContain(".mvdash-grid-sum{grid-template-columns:1fr}");
+    expect(bodyOf("600px")).toContain(".mvdash-grid-2{grid-template-columns:1fr}");
+  });
+
+  it("guards the entrance animations behind prefers-reduced-motion", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const css = document.getElementById(DASHBOARD_STYLE_ID)?.textContent ?? "";
+    // ported from the mockup, guard included — the baselines are unaffected
+    // because the Storybook runner screenshots with animations: "disabled"
+    const at = css.indexOf("@media (prefers-reduced-motion:no-preference)");
+    expect(at).toBeGreaterThan(-1);
+    // BOUND the slice at the block's closing brace. A one-argument slice runs to
+    // the end of the sheet, so the two assertions below would be satisfied by
+    // the rules appearing anywhere after the guard OPENS — including outside it,
+    // which is exactly the regression this test exists to prevent.
+    const guarded = css.slice(at, css.indexOf("\n}", at));
+    expect(guarded).toContain(".mvdash-reveal{opacity:0;animation:mvDashUp");
+    expect(guarded).toContain(".mvdash-bar{animation:mvDashWipe");
+    // `opacity:0` MUST be inside the guard: outside it, a reduced-motion user
+    // gets a permanently invisible panel rather than a non-animated one.
+    expect(guarded).toContain("opacity:0");
+  });
+
+  it("injects the sheet exactly once across repeated renders", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    cleanup();
+    render(<DashboardView data={freshDashboardFixture} />);
+    expect(document.querySelectorAll(`#${DASHBOARD_STYLE_ID}`)).toHaveLength(1);
+  });
+});
+
+describe("connection states", () => {
+  it("renders the connecting placeholder", () => {
+    render(<DashboardView data={null} connecting />);
     expect(screen.getByTestId("dashboard-connecting").textContent).toContain("Connecting");
-    rerender(<DashboardView data={null} connecting={false} />);
+  });
+
+  it("renders the no-data placeholder once connected", () => {
+    render(<DashboardView data={null} connecting={false} />);
     expect(screen.getByTestId("dashboard-connecting").textContent).toContain("No dashboard data");
-    rerender(<DashboardView data={null} error="boom" />);
-    expect(screen.getByTestId("dashboard-error").textContent).toContain("boom");
-    expect(screen.queryByTestId("dashboard-panel")).toBeNull();
+  });
+
+  it("renders the transport error", () => {
+    render(<DashboardView data={null} error="transport dropped" />);
+    expect(screen.getByTestId("dashboard-error").textContent).toContain("transport dropped");
+  });
+});
+
+describe("AC9 — every affordance is wired to the action handler", () => {
+  it("every entry in the affordance map has a control that emits its command", () => {
+    const onAction = vi.fn();
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+
+    const controls = screen.getAllByTestId("dash-action");
+    const rendered = new Set(controls.map((el) => el.dataset.affordance));
+
+    // ITERATE the map, do not hand-list. An entry added to helpers.ts without a
+    // control fails here; a control rendered without a handler fails below.
+    for (const id of Object.keys(AFFORDANCE_COMMANDS) as AffordanceId[]) {
+      expect(rendered.has(id), `affordance ${id} has no rendered control`).toBe(true);
+    }
+
+    // EVERY control, not `controls.find(...)`. Two affordances render twice
+    // (`nav-tasks` as the sidebar item and the "open board →" footer,
+    // `nav-reports` likewise), and `find` always returns the sidebar one — so a
+    // dead column-footer link would have gone unproven behind its live twin.
+    for (const control of controls) {
+      const id = control.dataset.affordance as AffordanceId;
+      onAction.mockClear();
+      fireEvent.click(control);
+      expect(onAction, `a ${id} control did not call the handler`).toHaveBeenCalledTimes(1);
+      const emitted = onAction.mock.calls[0]![0] as string;
+      // row affordances append their own row's identifier, so the invariant is
+      // the PREFIX — asserting equality would force the rows to drop their ids
+      expect(emitted.startsWith(AFFORDANCE_COMMANDS[id]), `${id} emitted ${emitted}`).toBe(true);
+    }
+  });
+
+  it("gives every action control a distinct accessible name", () => {
+    render(<DashboardView data={dashboardFixture} onAction={vi.fn()} />);
+    // eight controls read "open →" verbatim; without an explicit label a screen
+    // reader hears the same control eight times, since the row title is a
+    // sibling node and contributes nothing to the accessible name
+    const links = screen
+      .getAllByTestId("dash-action")
+      .filter((el) => el.textContent?.includes("open →"));
+    expect(links.length).toBeGreaterThanOrEqual(3);
+    const names = links.map((el) => el.getAttribute("aria-label"));
+    expect(names.every((n) => n && n.length > 0)).toBe(true);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("row affordances carry their row's identifier, not a bare prefix", () => {
+    const onAction = vi.fn();
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+
+    const boardRow = screen.getAllByTestId("current-board-row")[0]!;
+    fireEvent.click(within(boardRow).getByTestId("dash-action"));
+    expect(onAction).toHaveBeenCalledWith("/marvin:track-show 042");
+
+    onAction.mockClear();
+    const specRow = screen.getAllByTestId("current-spec-row")[0]!;
+    fireEvent.click(within(specRow).getByTestId("dash-action"));
+    expect(onAction).toHaveBeenCalledWith("/marvin:task-summary dashboard-widget-rework");
+  });
+
+  it("the controls sharing /marvin:reports are separately wired", () => {
+    const onAction = vi.fn();
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+
+    // nav-reports and audit-open-report carry the same command. Keying the map
+    // by COMMAND would have collapsed them, letting a dead audit link hide
+    // behind the live nav item.
+    const byAffordance = (id: string) =>
+      screen.getAllByTestId("dash-action").filter((el) => el.dataset.affordance === id);
+
+    expect(byAffordance("nav-reports")).toHaveLength(2); // sidebar + "open specs →"
+    expect(byAffordance("audit-open-report")).toHaveLength(2); // one per audit area
+
+    for (const control of byAffordance("audit-open-report")) {
+      onAction.mockClear();
+      fireEvent.click(control);
+      expect(onAction).toHaveBeenCalledWith("/marvin:reports");
+    }
+  });
+
+  it("a view with no handler still renders every control without throwing", () => {
+    render(<DashboardView data={dashboardFixture} />);
+    const controls = screen.getAllByTestId("dash-action");
+    expect(controls.length).toBeGreaterThanOrEqual(11);
+    expect(() => fireEvent.click(controls[0]!)).not.toThrow();
+  });
+});
+
+describe("AC9 — the manual recovery line", () => {
+  it("reveals the command when the handler reports manual", async () => {
+    const onAction = vi.fn().mockResolvedValue("manual" as const);
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+
+    expect(screen.queryByTestId("dashboard-manual")).toBeNull();
+
+    const runAudit = screen
+      .getAllByTestId("dash-action")
+      .find((el) => el.dataset.affordance === "run-audit")!;
+    fireEvent.click(runAudit);
+
+    await waitFor(() => expect(screen.getByTestId("dashboard-manual")).toBeTruthy());
+    expect(screen.getByTestId("dashboard-manual").textContent).toContain("/marvin:sec-scan");
+  });
+
+  it("stays hidden when the command was sent", async () => {
+    const onAction = vi.fn().mockResolvedValue("sent" as const);
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+    fireEvent.click(
+      screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "run-audit")!,
+    );
+    await waitFor(() => expect(onAction).toHaveBeenCalled());
+    expect(screen.queryByTestId("dashboard-manual")).toBeNull();
+  });
+
+  it("acknowledges a clipboard copy instead of looking inert", async () => {
+    const onAction = vi.fn().mockResolvedValue("copied" as const);
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+    fireEvent.click(
+      screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "run-audit")!,
+    );
+    await waitFor(() => expect(screen.getByTestId("dashboard-copied")).toBeTruthy());
+    // without this the "copied" rung is a button that visibly does nothing while
+    // silently overwriting the clipboard
+    expect(screen.getByTestId("dashboard-copied").textContent).toContain("/marvin:sec-scan");
+    expect(screen.queryByTestId("dashboard-manual")).toBeNull();
+  });
+
+  it("shows no line at all when the command was sent", async () => {
+    const onAction = vi.fn().mockResolvedValue("sent" as const);
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+    fireEvent.click(
+      screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "run-audit")!,
+    );
+    await waitFor(() => expect(onAction).toHaveBeenCalled());
+    // the conversation itself is the feedback
+    expect(screen.queryByTestId("dashboard-manual")).toBeNull();
+    expect(screen.queryByTestId("dashboard-copied")).toBeNull();
+  });
+
+  it("PRE-SELECTS the revealed command, not merely reveals it", async () => {
+    // AC9's clause is "reveals that command text pre-selected". Without this
+    // assertion, deleting the selection effect leaves the whole suite green —
+    // the reveal alone would satisfy every other test here. happy-dom's own
+    // Selection is a stub, so spy on it (the ReportsWidget precedent).
+    const addRange = vi.fn();
+    const removeAllRanges = vi.fn();
+    const getSelection = vi
+      .spyOn(window, "getSelection")
+      .mockReturnValue({ removeAllRanges, addRange } as unknown as Selection);
+    try {
+      const onAction = vi.fn().mockResolvedValue("manual" as const);
+      render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+      fireEvent.click(
+        screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "run-audit")!,
+      );
+      await waitFor(() => expect(screen.getByTestId("dashboard-manual")).toBeTruthy());
+      await waitFor(() => expect(addRange).toHaveBeenCalled());
+    } finally {
+      getSelection.mockRestore();
+    }
+  });
+
+  it("announces the outcome line to assistive tech", () => {
+    render(
+      <DashboardView data={dashboardFixture} onAction={vi.fn().mockResolvedValue("manual")} />,
+    );
+    fireEvent.click(
+      screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "run-audit")!,
+    );
+    return waitFor(() => {
+      const line = screen.getByTestId("dashboard-manual");
+      // the line can sit ~1400px below the control that produced it
+      expect(line.getAttribute("role")).toBe("status");
+      expect(line.getAttribute("aria-live")).toBe("polite");
+    });
+  });
+
+  it("ignores a stale resolution when a second click has already landed", async () => {
+    // Overlapping clicks resolve out of order. Without a generation guard the
+    // slow first resolution overwrites the fast second one, showing a command
+    // the user has moved on from and hijacking the selection to do it.
+    //
+    // Asserted POSITIVELY — "the line still shows the second command" — not as
+    // an absence. An absence assertion passes without the guard: the widget's
+    // continuation runs before the test's, Preact defers the patch by another
+    // microtask, and waitFor's first synchronous check therefore sees the
+    // not-yet-rendered DOM and resolves immediately. Measured, not assumed.
+    let releaseSlow: (v: "manual") => void = () => {};
+    const slow = new Promise<"manual">((resolve) => {
+      releaseSlow = resolve;
+    });
+    const onAction = vi
+      .fn()
+      .mockReturnValueOnce(slow)
+      .mockReturnValueOnce(Promise.resolve("manual" as const));
+
+    render(<DashboardView data={dashboardFixture} onAction={onAction} />);
+    const controls = screen.getAllByTestId("dash-action");
+    fireEvent.click(controls.find((el) => el.dataset.affordance === "run-audit")!); // slow
+    fireEvent.click(controls.find((el) => el.dataset.affordance === "new-task")!); // fast
+    await waitFor(() => expect(onAction).toHaveBeenCalledTimes(2));
+
+    // the fast (second) click's line lands first
+    await waitFor(() =>
+      expect(screen.getByTestId("dashboard-manual").textContent).toContain("/marvin:track-new"),
+    );
+
+    releaseSlow("manual");
+    await slow;
+    await new Promise((r) => setTimeout(r, 0)); // let any stale patch flush
+
+    // …and the slow first click must NOT overwrite it
+    const line = screen.getByTestId("dashboard-manual").textContent ?? "";
+    expect(line).toContain("/marvin:track-new");
+    expect(line).not.toContain("/marvin:sec-scan");
+  });
+});
+
+describe("AC9 — the wiring layers bind runChatAction", () => {
+  it("a control clicked on the seam-wired widget reaches the host as ui/message", async () => {
+    // The AC9 tests above inject their own handler, so they prove the VIEW.
+    // Nothing proved that either wiring component actually passes `onAction` —
+    // deleting both bindings left the suite green. This closes that: it drives
+    // the real widget through the mock host and asserts the message arrives.
+    const host = createMockHost(dashboardFixture);
+    await host.start();
+    try {
+      const sendMessage = vi
+        .spyOn(host.seam.app, "sendMessage")
+        .mockResolvedValue({} as Awaited<ReturnType<typeof host.seam.app.sendMessage>>);
+
+      render(<DashboardWidget seam={host.seam} />);
+      await screen.findByTestId("dashboard-header", {}, { timeout: 5000 });
+
+      fireEvent.click(
+        screen.getAllByTestId("dash-action").find((el) => el.dataset.affordance === "nav-tasks")!,
+      );
+
+      await waitFor(() =>
+        expect(sendMessage).toHaveBeenCalledWith({
+          role: "user",
+          content: [{ type: "text", text: "/marvin:track-list" }],
+        }),
+      );
+    } finally {
+      host.close();
+    }
   });
 });
 
@@ -197,10 +531,37 @@ describe("DashboardWidget — mock-host handshake", () => {
 
       // starts connecting, then the pushed tool-result's dashboard renders
       const header = await screen.findByTestId("dashboard-header", {}, { timeout: 5000 });
-      expect(header.textContent).toContain("toolbox dashboard");
+      expect(header.textContent).toContain("acme-api");
       expect(screen.queryByTestId("dashboard-connecting")).toBeNull();
       // a section from the delivered payload reached the view
-      expect(screen.getByTestId("card-usage").textContent).toContain("Usage (128)");
+      expect(screen.getByTestId("card-usage").textContent).toContain("128");
+      expect(screen.getByTestId("zone-work")).toBeTruthy();
+    } finally {
+      host.close();
+    }
+  });
+
+  it("follows a later host theme change", async () => {
+    // The change-over-time proof on a whole widget rather than on the resolver
+    // in isolation: the theme must survive the trip through the wiring, the
+    // view's props and MvRoot's attribute — not merely reach a hook's state.
+    const host = createMockHost(dashboardFixture, "marvin-dashboard-mock", { theme: "dark" });
+    await host.start();
+    try {
+      render(<DashboardWidget seam={host.seam} />);
+
+      await waitFor(
+        () => expect(screen.getByTestId("mv-root").getAttribute("data-theme")).toBe("dark"),
+        { timeout: 5000 },
+      );
+
+      host.setHostContext({ theme: "light" });
+
+      // No remount: the same node carries the new theme, which is what makes
+      // this a subscription test rather than a second mount in disguise.
+      await waitFor(() =>
+        expect(screen.getByTestId("mv-root").getAttribute("data-theme")).toBe("light"),
+      );
     } finally {
       host.close();
     }

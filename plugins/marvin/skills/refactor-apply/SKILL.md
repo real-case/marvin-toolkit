@@ -134,7 +134,7 @@ level.
    commit ref once one exists); for a direct `F<n>` run, annotate the finding
    row/detail in the register as applied (with date) instead.
 2. **Offer to commit** — one step, one commit (delegate to `/marvin:commit`;
-   it is kanban-aware). If the user commits, add the commit ref to the step
+   it is board-aware). If the user commits, add the commit ref to the step
    log line.
 3. **Capture at most one lesson** — only when the step taught something
    non-obvious (a hidden coupling, a misleading abstraction, a pin-down test

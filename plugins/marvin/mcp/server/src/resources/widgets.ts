@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ResourceDef } from "@marvin-toolkit/mcp-shared";
+import { REPORTS_WIDGET_URI } from "../tools/report.js";
 
 /**
  * Server-side registration of the MCP Apps `ui://` widget documents (ADR-0024).
@@ -30,7 +31,7 @@ const WIDGETS: WidgetResource[] = [
     name: "task-list",
     uri: "ui://marvin/task-list.html",
     file: join("widgets", "task-list.html"),
-    description: "Marvin kanban board — the task-list widget (ADR-0024).",
+    description: "Marvin task board — the task-list widget (ADR-0024).",
   },
   {
     name: "task-detail",
@@ -71,7 +72,21 @@ const WIDGETS: WidgetResource[] = [
     uri: "ui://marvin/dashboard.html",
     file: join("widgets", "dashboard.html"),
     description:
-      "Marvin toolbox dashboard — the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024).",
+      "Marvin toolbox dashboard — the whole-toolbox status panel: project paths, config, board counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024).",
+  },
+  {
+    name: "help",
+    uri: "ui://marvin/help.html",
+    file: join("widgets", "help.html"),
+    description:
+      "Marvin help — the welcome dashboard: gradient wordmark, project summary, configured MCP servers, and the full command index grouped by family (ADR-0024).",
+  },
+  {
+    name: "reports",
+    uri: REPORTS_WIDGET_URI,
+    file: join("widgets", "reports.html"),
+    description:
+      "Marvin reports — the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts — with KPI strip, group filter, and per-report freshness (ADR-0024).",
   },
 ];
 
@@ -94,6 +109,9 @@ export const TASK_SUMMARY_WIDGET_URI = "ui://marvin/task-summary.html";
 
 /** The `ui://marvin/dashboard.html` binding, exported for the tool `_meta`. */
 export const DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
+
+/** The `ui://marvin/help.html` binding, exported for the tool `_meta`. */
+export const HELP_WIDGET_URI = "ui://marvin/help.html";
 
 /**
  * Build the `ResourceDef[]` the server registers. `packRoot` is the plugin root

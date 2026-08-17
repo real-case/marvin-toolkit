@@ -63,6 +63,13 @@ command per stage — under the existing three-doors model.**
    and calls `resolveReviewThread` — REST is used only for posting replies and
    fetching non-threaded discussion.
 
+   > **Update 2026-07-16:** thread replies also moved to GraphQL
+   > (`addPullRequestReviewThreadReply`, keyed on the same thread node id as
+   > `resolveReviewThread`). The REST `/replies` path depended on a `$REPO` shell
+   > variable set in an earlier step — commands run in separate shells, so the
+   > variable was empty and replies silently 404'd. REST now serves only to fetch
+   > non-threaded discussion.
+
 ## Consequences
 
 - The PR lifecycle reads as four natural commands: `pr-create`, `pr-review`,

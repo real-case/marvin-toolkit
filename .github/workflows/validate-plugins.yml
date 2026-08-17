@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: "npm"
@@ -33,8 +33,26 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci
 
+      # Deliberately BEFORE the manifest lint, not after it: test/ci-workflow.test.mjs
+      # requires the trigger-eval step at exactly the index after `Lint manifests`, so
+      # inserting here shifts both indices together and leaves that adjacency intact.
+      # It also puts the legible surface report ahead of evals/trigger/lib/catalog.mjs,
+      # which throws tersely on three of the same defects.
+      - name: Lint skills (frontmatter + references + surface pins)
+        run: npm run lint:skills
+
       - name: Lint manifests (marketplace + per-pack)
         run: node scripts/lint-manifests.mjs
+
+      # Deliberately unconditional and intolerant of failure: `evals/` is not an npm
+      # workspace, so nothing under it runs during `npm test`, and this step is the
+      # only thing that makes the trigger harness observable at all. Needs no network
+      # (the mock decider is deterministic) and takes well under a second.
+      # test/ci-workflow.test.mjs asserts this step's shape.
+      - name: Trigger-eval harness (self-test + mock sweep)
+        run: |
+          npm run eval:self-test
+          npm run eval:trigger
 
       - name: Check docs for drift (ADR coverage + working-dir paths)
         run: npm run lint:docs
@@ -73,6 +91,16 @@ jobs:
           npx --yes concurrently -k -s first -n "SB,TEST" \
             "npx --yes http-server packages/marvin-widgets/storybook-static --port 6006 --silent" \
             "npx --yes wait-on tcp:127.0.0.1:6006 && npm run test-storybook -w @marvin-toolkit/widgets"
+
+      - name: Site e2e (Playwright)
+        if: matrix.node == '22'
+        # Astro 7 requires Node >=22.12, so the site build + e2e run only on the Node-22 leg
+        # (the Node-20 leg no-ops the site build via packages/site/scripts/build.mjs). The
+        # webServer runs `astro preview`, so the site is built first.
+        run: |
+          npm run build -w @marvin-toolkit/site
+          npx --yes playwright install --with-deps chromium
+          npm run test:e2e -w @marvin-toolkit/site
 
       - name: Smoke-test each pack MCP server
         run: |

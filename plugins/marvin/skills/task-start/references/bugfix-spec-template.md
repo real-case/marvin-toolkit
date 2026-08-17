@@ -1,7 +1,7 @@
 ---
 slug: {kebab-case-slug}
 type: bugfix
-status: ready
+status: draft
 created: {YYYY-MM-DD}
 tracker: {#issue | PROJ-123 | URL | none}
 supersedes: {prior-slug | none}
@@ -33,7 +33,8 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 - Impact scope: {what else may be affected}
 
 ## Severity & Impact
-{Severity from frontmatter, plus blast radius: how many users / flows are affected.}
+{severity from frontmatter, plus blast radius}
+How many users, and which flows, are affected.
 
 ## Spec Contract
 The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
@@ -71,8 +72,18 @@ criteria:
     oracle:
       kind: test
       ref: test/path.test.ts::the test name
+      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
+                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
+                            # per-stack default, then records `not-run` rather than guessing.
     failure: passes before the fix → the test does not exercise the bug
 ```
+
+A `regression: true` criterion's red→green pair is **recorded, not narrated**:
+`/marvin:task-implement` calls the `verify` tool's `action: "oracles"` once with `expect: "fail"`
+before the fix and once with `expect: "pass"` after it, and the delivery gate reads the resulting
+journal — a red and a green at the same `contract_sha` over an unchanged test file — as
+`red_green: "proven"`. Anything else, including a pair that was run by hand, reads as `missing`.
+That is a warning on the gate's reason line today and does not block delivery.
 
 ## Host Bindings
 Discovered from **this repo**, not assumed. Optional and advisory — the gate uses `spec_location` to
@@ -111,16 +122,32 @@ gates:
 ## Non-goals
 - {what we explicitly do NOT fix in this task}
 
+## Deferred slices
+Slices split off from this task at the scope gate, each already a board card. The rows are
+descriptive — the card is the work item, this list is the back-reference. Write `none` when nothing
+was deferred: an unfilled section is reported by the DoR gate, an absent one is silent.
+
+- {board id + one-line scope + why it is a separate PR, or none}
+
 ## Assumptions
 {Decisions made under uncertainty. "none" if there are none.}
+Every default the intake assumed instead of asking belongs here, written as "assumed X because Y;
+correct now if wrong". "none" is an accepted value; the DoR gate records it as an advisory warning,
+not a failure.
 
 ## Open Questions
-{MUST be "none" before the DoR gate passes. A genuine unknown that needs investigation is NOT an
-Assumption: set `spike_required: true` and resolve it first.}
+{any question still unresolved — MUST be "none" before DoR passes}
+A genuine unknown that needs investigation is NOT an Assumption: set `spike_required: true` and
+resolve it first.
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict; any author override. "none" if skipped — a skipped critic is
-surfaced in the PR, never silent.}
+{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE); any author override.
+The DoR gate reads the verdict off the first non-empty line, so write the token in capitals there. It
+may lead the line ("BLOCK — resolved in this revision") or follow the critic's name
+("marvin-tm-spec-critic — **PASS WITH WARNINGS**"); a lower-case mention inside prose is not read as
+a verdict, and "none" is recognised only leading the line. NEEDS_CONTEXT is never recorded here — it
+resolves on the re-dispatch or becomes UNABLE. "none" if skipped — a skipped critic is surfaced in
+the PR, never silent, and an UNABLE verdict ("UNABLE — {reason}") is surfaced the same way.}
 
 ## Design Notes
 {Related bugs, workarounds to remove, potential side effects of the fix.}

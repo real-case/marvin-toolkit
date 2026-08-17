@@ -202,7 +202,7 @@ test("full lifecycle: create → start → move → review → link-pr → done 
 
 test("bulk archive asks for confirmation and moves only done-role tasks", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" });
     seedTask(tasksDir, { id: "002", status: "wip" });
@@ -235,7 +235,7 @@ test("bulk archive asks for confirmation and moves only done-role tasks", async 
 
 test("bulk archive declined leaves the board untouched", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" });
 
@@ -254,7 +254,7 @@ test("bulk archive declined leaves the board untouched", async () => {
 
 test("bulk archive with confirm:true runs formless on a host without elicitation", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" });
 
@@ -274,7 +274,7 @@ test("bulk archive with confirm:true runs formless on a host without elicitation
 
 test("bulk archive without confirm on a host without elicitation names the arguments to pass", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "done" });
 
@@ -297,7 +297,7 @@ test("bulk archive without confirm on a host without elicitation names the argum
 
 test("archive of a non-done task is refused with the role-check error", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "wip" });
 
@@ -315,7 +315,7 @@ test("archive of a non-done task is refused with the role-check error", async ()
 
 test("archive with nothing to archive answers honestly", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -333,7 +333,7 @@ test("archive with nothing to archive answers honestly", async () => {
 
 test("archived and malformed ids stay reserved; list keeps working around both", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-lifecycle-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     // 001 was archived in some earlier session; 002 has broken frontmatter.
     const archive = join(tasksDir, "archive");

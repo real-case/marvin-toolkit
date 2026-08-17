@@ -7,7 +7,7 @@
  * (`## Status`) — into one record shape, and performs the surgical header
  * mutations (`accept` stamp, supersede link flips) that must never touch a
  * record's prose. Files the tolerant parser cannot read are surfaced through a
- * malformed channel (the kanban precedent), never silently dropped and never
+ * malformed channel (the board-storage precedent), never silently dropped and never
  * fatal to the rest of the corpus.
  *
  * The record shape mirrors the `AdrRecord` contract in
@@ -331,11 +331,24 @@ export function formatAdrId(number: number): string {
 /**
  * Drop fenced blocks and inline code spans — content inside code is
  * illustrative, not part of the decision graph, so neither the placeholder
- * lint nor the cross-reference lint may read it. Inline spans may cross soft
- * line breaks (CommonMark), so the span pattern admits newlines.
+ * lint nor the cross-reference lint may read it.
+ *
+ * Both patterns are narrower than the obvious ones, and both narrowings are
+ * load-bearing. The fence pattern is anchored to line starts, because a record
+ * that mentions a fence inside an inline span — `` ` ```json oracle-run ` `` is
+ * the shipped example — otherwise has that inner backtick run read as a fence
+ * opener, and everything up to the next fence in the document is consumed. The
+ * inline pattern does not cross a newline and matches its opening backtick run
+ * exactly, because a single unbalanced backtick would otherwise re-pair every
+ * span after it and silently expose their contents to both lints.
+ *
+ * Cost of the first narrowing: an indented fenced block is no longer stripped.
+ * Cost of the second: an inline span that genuinely wraps a soft line break is
+ * no longer stripped, which CommonMark permits. Neither shape occurs in the
+ * corpus, and both fail towards reporting rather than towards silence.
  */
 export function stripCodeSpans(raw: string): string {
-  return raw.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
+  return raw.replace(/^```[\s\S]*?^```/gm, "").replace(/(`+)[^\n]*?\1/g, "");
 }
 
 /**
@@ -512,7 +525,7 @@ export function renderAdrSkeleton(opts: {
 }
 
 /**
- * Crash-safe write (the kanban pattern): land the bytes next to the target,
+ * Crash-safe write (the board-storage pattern): land the bytes next to the target,
  * then rename over it — readers see the old record or the new one, never a
  * torn half-write. The temp name never matches `NNNN-*.md`, so a crash
  * leftover is invisible to `readAdrCorpus`.

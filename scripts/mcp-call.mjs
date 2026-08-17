@@ -14,7 +14,7 @@
 //
 // Point storage at fixtures with the server's env vars, e.g.
 //   MARVIN_HANDOFF_DIR=/tmp/h node scripts/mcp-call.mjs handoff '{"action":"list"}'
-//   MARVIN_TASKS_DIR=.marvin/kanban node scripts/mcp-call.mjs task '{"action":"list"}'
+//   MARVIN_TASKS_DIR=.marvin/track node scripts/mcp-call.mjs task '{"action":"list"}'
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -71,8 +71,13 @@ const timer = setTimeout(() => {
 }, 15000);
 
 let buf = "";
+// Decode through the stream's own StringDecoder, never per chunk: this driver prints
+// whole `structuredContent` payloads, and a character split across two pipe reads
+// would decode to U+FFFD on both sides of the boundary. Same defect as
+// bin/widget-preview.mjs and test/_driver.mjs.
+child.stdout.setEncoding("utf8");
 child.stdout.on("data", (d) => {
-  buf += d.toString();
+  buf += d;
   let nl;
   while ((nl = buf.indexOf("\n")) !== -1) {
     const line = buf.slice(0, nl);

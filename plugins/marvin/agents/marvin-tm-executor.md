@@ -30,7 +30,7 @@ Read the spec's `type` field in the frontmatter:
 ```
 READ SPEC → IMPLEMENT → ( SELF-TEST ‖ SELF-REVIEW ) → merge → CREATE PR
                 ↑            |
-                └── retry (2x) ┘
+                └─ fix cycle ┘
 ```
 
 Self-test (quality gates) and self-review (diff-critic) are independent and slow — run them
@@ -44,6 +44,7 @@ The spec is provided inline below (injected by the batch-dispatch caller). Read 
 - The `spec-contract` block's `files` — the authoritative allowlist of files you may touch
 - Non-goals (what NOT to do)
 - Design notes (nuances and warnings)
+- The `## Critic Verdict & Overrides` section — the spec critic's recorded verdict, which you render on the PR's **Spec critic** line together with any recorded author override. Render the recorded value when it holds one of the four terminal verdicts (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE`), an `UNABLE` as `⚠️ critic UNABLE — <reason>` with the reason verbatim, and `⚠️ critic skipped` in every other case: "none", "none — critic skipped", an empty section, or an absent section. A semantic gate that did not run is never silent in the PR
 
 **Search lessons before writing code.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the spec's slug and touched areas — a prior lesson from this repo is a constraint on your implementation, same rank as a design note. If the tool is unavailable in this headless run, skip silently.
 
@@ -67,7 +68,7 @@ diff-critic first (in the background), then run the gates** so the two overlap; 
 the PR step.
 
 **Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
-`mode: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
+`action: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
 the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
 re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
 unavailable.)
@@ -102,9 +103,11 @@ unavailable.)
   best-effort — a non-standard toolchain is declared in `.marvin/config.json`.
 
 **On gate failure:** read the error, fix it, then re-confirm by re-running **only the failed gate**
-(`only: ["<gate>"]` with the tool, or that single command in fallback). Up to 2 retries, then one
-final full pass. If still failing, proceed to PR as **draft** and note the failures. If a fix
-changed the diff, **re-run the critic against the final diff** — its earlier report is stale.
+(`only: ["<gate>"]` with the tool, or that single command in fallback). This is the gate loop of the
+Fix-cycle Protocol (below) and it carries its own budget; after it, one final full pass. If the loop
+reaches its limit unresolved, proceed to PR as **draft** and record each surviving failure as a
+deferred or blocked item in Self-Review Notes. If a fix changed the diff, **re-run the critic
+against the final diff** — its earlier report is stale.
 
 ### 4. Self-Review (merge point)
 
@@ -113,12 +116,21 @@ the gate results, **before** creating the PR — never decide on one alone.
 
 **Preferred path — the `marvin-tm-diff-critic` report:**
 
+Before acting on any finding, open the file it cites at the cited lines and read enough around them to
+judge the claim. A finding whose premise the current code contradicts is not fixed but recorded as
+`Refuted: <finding> — <file>:<line> shows <what>` in Self-Review Notes. A refuted blocker is resolved,
+not deferred: a `BLOCK` whose every blocker was refuted this way no longer gates delivery and the PR
+opens normally, with the `Refuted:` lines as the receipt. One surviving blocker keeps the `BLOCK` and
+the draft PR.
+
 Use its structured report as your self-review:
-- **`BLOCK`** verdict — attempt to fix blockers (up to 2 retries on failed test/lint loops). If still blocked, proceed to PR as **draft** and include the critic report in Self-Review Notes.
+- **`BLOCK`** verdict — attempt to fix the blockers under the Fix-cycle Protocol (below). This is the critic loop; its budget is counted separately from the gate loop's. If still blocked at the limit, proceed to PR as **draft**, include the critic report in Self-Review Notes, and record each surviving blocker there as a deferred or blocked item.
 - **`PASS WITH WARNINGS`** — keep the code, include warnings and out-of-scope inventory in Self-Review Notes.
 - **`PASS`** — proceed to PR with a clean self-review.
+- **`NEEDS_CONTEXT`** — the critic could not judge yet and named the exact input it lacks (the spec path was not passed, the diff range resolves to nothing, a touched file is unreadable). Supply that input and re-dispatch the critic **exactly once**, stating in the dispatch that this is the re-dispatch for the `NEEDS_CONTEXT` it raised — it enters with a fresh context and cannot see the earlier turn. A second `NEEDS_CONTEXT` on the same critique counts as `UNABLE`.
+- **`UNABLE`** — the critic could not judge and could not name what would fix that. It is **not** a pass. Copy its Blocker / Attempted / Recommendation verbatim into Self-Review Notes, record `⚠️ critic UNABLE — <reason>` on the notes' **Diff critic** line, then fall back to the inline checklist below — that is now your only self-review — exactly as you would if the critic could not be dispatched at all.
 
-**Fallback path — inline checklist (use only if Task-tool is unavailable):**
+**Fallback path — inline checklist (use if Task-tool is unavailable, or if the critic returned `UNABLE`):**
 
 Re-read your diff against the spec:
 
@@ -129,7 +141,10 @@ Re-read your diff against the spec:
 - [ ] Error handling is present where needed
 - [ ] New code follows existing patterns in the codebase
 
-Remove any changes not justified by the spec. Record concerns for the PR description.
+Remove any changes not justified by the spec. Record concerns for the PR description. This path
+produced no critic verdict, so the Self-Review Notes' **Diff critic** line must read `⚠️ critic skipped`
+(or the `UNABLE` rendering above, when the critic ran and could not judge). A self-review that did not
+run is never silent in the PR.
 
 ### 5. Create PR
 
@@ -182,7 +197,17 @@ gh pr create --title "<short imperative title>" --body "$(cat <<'EOF'
 | ⚠️ SPEC GAP: <situation> | <what you decided> | <why> |
 
 ## Self-Review Notes
+**Spec critic:** <PASS | PASS WITH WARNINGS | BLOCK | ⚠️ critic UNABLE — <reason> | ⚠️ critic skipped>
+**Diff critic:** <PASS | PASS WITH WARNINGS | BLOCK | ⚠️ critic UNABLE — <reason> | ⚠️ critic skipped>
+
 <findings from self-review, potential concerns>
+
+<every critic finding the code refuted, one line each — omit this line when there are none>
+Refuted: <finding> — <file>:<line> shows <what>
+
+<every item the fix cycle left open, one line each — omit these lines when there are none>
+Deferred: <item> — Rationale: <why the change is safe to ship without it>
+Blocked: <item> — Cause: <what prevents it, and what would unblock it>
 
 ## Tests
 - [ ] TypeScript compilation / type-check
@@ -210,8 +235,8 @@ Include the failure details in the Self-Review Notes section.
 
 ```
 READ SPEC → WRITE REGRESSION TEST → VERIFY FAIL → FIX → VERIFY PASS
-                                                    ↑         |
-                                                    └─ retry ──┘
+                                                   ↑            |
+                                                   └─ fix cycle ┘
           → SELF-TEST → SELF-REVIEW → CREATE PR
 ```
 
@@ -253,18 +278,63 @@ Apply the fix approach from the spec:
 Run the regression test again. It **MUST pass** now.
 
 - If it **passes** → proceed to step 6
-- If it **fails** → re-read the fix approach, adjust, retry. Up to 2 retries.
+- If it **fails** → re-read the fix approach, adjust, retry under the Fix-cycle Protocol (below). This is the red-green loop and its budget is its own.
 
 ### 6–8. Self-Test, Self-Review, Create PR
 
 Same as Feature Pipeline steps 3–5, with `mode: bug`: launch `marvin-tm-diff-critic` in the
 background and run the gates (via the `verify` tool, or inline-Bash fallback) **concurrently**;
-merge both before the PR. On a gate failure, retry only the failed gate then a final full pass;
-if a fix changed the diff, **re-run the critic against the final diff** (its earlier report is
-stale); a critic `BLOCK` still gates delivery (PR opens as draft). The PR description should
-include:
+merge both before the PR. On a gate failure, retry only the failed gate under the Fix-cycle Protocol
+then a final full pass; if a fix changed the diff, **re-run the critic against the final diff** (its
+earlier report is stale); a critic `BLOCK` still gates delivery (PR opens as draft) and runs its own
+fix-cycle budget; a `NEEDS_CONTEXT` earns exactly one re-dispatch carrying the input the critic
+named and stating that it is the re-dispatch (not a fix-cycle round), and a second one counts as
+`UNABLE`; an `UNABLE` is copied verbatim into Self-Review Notes, recorded on their `**Diff critic:**`
+line, and never read as a pass. The PR description should include:
 - Root cause summary (from spec)
 - Confirmation that regression test fails before fix and passes after
+
+---
+
+## Fix-cycle Protocol
+
+One shape for every "it failed, try again" loop. A **round** is one fix attempt following a failure.
+The budget is **three rounds per loop**, and each loop counts its own: the gate loop (§3), the critic
+loop (§4), and the red-green loop (bugfix step 5). Two spent gate rounds do not shorten the critic's
+budget, and the reverse holds too. A `NEEDS_CONTEXT` re-dispatch is **not** a round — it is a
+re-dispatch for missing input, not a retry of a failed attempt, and it has its own one-shot
+allowance.
+
+**Rounds 1–2 — retry the same path.** Read the failure, fix it, re-run only the thing that failed.
+Carry the feedback **verbatim** into the fix: the gate output, the critic's blocker text, the test's
+assertion message. A paraphrased error is a new guess.
+
+**Round 3 — change the conditions, not the attempt.** For the gate loop and the red-green loop — a
+failure with a reproducible symptom — dispatch `marvin-debugger` via Task-tool with
+exactly three inputs — the failure output verbatim, the spec path, and the diff range under
+investigation. **Do not pass the history of the failed attempts:** not the rounds already tried, not
+the hypotheses rejected, not your own reading of the cause. That agent's value is reasoning from
+evidence with no prior commitment, and handed your dead ends it inherits them. It diagnoses and does
+not apply — take its fix approach, apply it, re-run the failed thing once. If Task-tool is
+unavailable in this headless run, spend round 3 on a different approach to the same failure rather
+than a third attempt of the same kind, and say so in Self-Review Notes.
+
+**The critic loop does not go to `marvin-debugger`.** A blocker about missing coverage or
+out-of-scope change has no symptom to reproduce and no regression test to write, which is that
+agent's whole contract. Spend the critic loop's round 3 re-reading the spec section the blocker
+cites, then either fix it, refute it with file and line, or classify it as deferred or blocked in
+Self-Review Notes.
+
+**At the limit — record, never drop.** Stop that loop and classify each open item as exactly one of
+these lines in the PR's Self-Review Notes:
+
+```
+Deferred: {item} — Rationale: {why the change is safe to ship without it}
+Blocked: {item} — Cause: {what prevents it, and what would unblock it}
+```
+
+Silently dropping an open item is banned: a draft PR whose Self-Review Notes list nothing is an
+unreported failure, not a clean run.
 
 ---
 

@@ -1,0 +1,97 @@
+[
+  {
+    "path": "/",
+    "file": "/og/home.png",
+    "width": 1200,
+    "height": 630,
+    "title": "Marvin — Claude Code toolset",
+    "card": "AI-assisted development without panic.",
+    "palette": {
+      "bg": "#fbfbfc",
+      "t1": "#18181b",
+      "t2": "#52525b",
+      "bd": "#e9e9ec",
+      "acfill": "#7c3aed"
+    },
+    "fonts": {
+      "Hanken Grotesk Variable": "loaded",
+      "JetBrains Mono Variable": "loaded"
+    }
+  },
+  {
+    "path": "/quickstart",
+    "file": "/og/quickstart.png",
+    "width": 1200,
+    "height": 630,
+    "title": "Quickstart — Marvin",
+    "card": "From zero to your first command in about a minute.",
+    "palette": {
+      "bg": "#fbfbfc",
+      "t1": "#18181b",
+      "t2": "#52525b",
+      "bd": "#e9e9ec",
+      "acfill": "#7c3aed"
+    },
+    "fonts": {
+      "Hanken Grotesk Variable": "loaded",
+      "JetBrains Mono Variable": "loaded"
+    }
+  },
+  {
+    "path": "/commands",
+    "file": "/og/commands.png",
+    "width": 1200,
+    "height": 630,
+    "title": "Commands — Marvin",
+    "card": "Every command, searchable and filterable by group.",
+    "palette": {
+      "bg": "#fbfbfc",
+      "t1": "#18181b",
+      "t2": "#52525b",
+      "bd": "#e9e9ec",
+      "acfill": "#7c3aed"
+    },
+    "fonts": {
+      "Hanken Grotesk Variable": "loaded",
+      "JetBrains Mono Variable": "loaded"
+    }
+  },
+  {
+    "path": "/pipeline",
+    "file": "/og/pipeline.png",
+    "width": 1200,
+    "height": 630,
+    "title": "Pipeline — Marvin",
+    "card": "Spec, implement, verify, deliver — then learn.",
+    "palette": {
+      "bg": "#fbfbfc",
+      "t1": "#18181b",
+      "t2": "#52525b",
+      "bd": "#e9e9ec",
+      "acfill": "#7c3aed"
+    },
+    "fonts": {
+      "Hanken Grotesk Variable": "loaded",
+      "JetBrains Mono Variable": "loaded"
+    }
+  },
+  {
+    "path": "/toolbox",
+    "file": "/og/toolbox.png",
+    "width": 1200,
+    "height": 630,
+    "title": "Toolbox — Marvin",
+    "card": "Interactive widgets. Plain text in any terminal.",
+    "palette": {
+      "bg": "#fbfbfc",
+      "t1": "#18181b",
+      "t2": "#52525b",
+      "bd": "#e9e9ec",
+      "acfill": "#7c3aed"
+    },
+    "fonts": {
+      "Hanken Grotesk Variable": "loaded",
+      "JetBrains Mono Variable": "loaded"
+    }
+  }
+]

@@ -9,7 +9,7 @@ Turn open review feedback into code. Fetch the **unresolved** review threads on 
 
 ## Core principle
 
-**Fix what the reviewer asked, nothing more — then close the loop.** Apply the minimum change that satisfies each comment; do not refactor opportunistically. A thread is only resolved once it is actually addressed (a fix, an answer, or an explicit "won't do" with reasoning). If a comment conflicts with the spec, flag it instead of silently deviating.
+**Fix what the reviewer asked, nothing more — then close the loop.** Apply the minimum change that satisfies each comment; do not refactor opportunistically. A thread is only resolved once it is actually addressed (a fix, an answer, or an explicit "won't do" with reasoning). If a comment conflicts with the spec, flag it instead of silently deviating. A comment can also be simply wrong about the code; refute it with the file and line rather than changing code that already does what it asks.
 
 ## Interactive vs. autonomous path
 
@@ -22,11 +22,14 @@ For the **autonomous** path — a one-shot dispatch that runs the whole cycle to
 `$ARGUMENTS` — optional PR number (e.g., `42`). If omitted, detect from the current branch:
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh pr view --json number,headRefName,baseRefName,url -q '{number,branch:.headRefName,base:.baseRefName,url}'
 ```
 
 If no PR is found, stop: "No open PR found for the current branch. Provide a PR number: `/marvin:pr-resolve 42`".
+
+> Every `gh` command below is self-contained: repository identity comes from gh's own
+> `{owner}`/`{repo}` placeholders, never from a shell variable set in an earlier step —
+> commands run in separate shells, so exported variables do not survive between steps.
 
 ## Workflow
 
@@ -54,7 +57,7 @@ query($owner:String!, $repo:String!, $pr:Int!) {
           isResolved
           isOutdated
           comments(first:50) {
-            nodes { databaseId body path line author { login } }
+            nodes { body path line originalLine diffHunk author { login } }
           }
         }
       }
@@ -66,31 +69,51 @@ query($owner:String!, $repo:String!, $pr:Int!) {
 Keep only threads where `isResolved == false`. Also pull issue-level discussion that isn't part of a thread:
 
 ```bash
-gh api "repos/$REPO/issues/<number>/comments"        # general discussion
+gh api "repos/{owner}/{repo}/issues/<number>/comments"        # general discussion
 ```
 
-If there are no unresolved threads, report "No unresolved review comments to address" and stop.
+If there are no unresolved threads **and** no actionable general discussion, report "No unresolved review comments to address" and stop.
 
 ### 3. Classify and draft a change plan
 
-Assign each unresolved thread exactly one class, then **present the plan to the user before touching code**:
+**Re-ground every thread before classifying it.** A class assigned from the comment text alone is a
+guess about code you have not read. For each thread, open the cited file at the cited lines and read
+enough around them to judge the claim — the enclosing function, the callers the comment names, the
+test that covers it. Confirm the code still says what the comment quotes: a thread carrying
+`isOutdated: true` has `line: null` — anchor it on `originalLine` and search the current file for
+the code quoted in its `diffHunk`; a comment on a line that has since moved may already be
+satisfied. A thread anchored that way is grounded like any other, and never triggers the
+all-or-nothing hold. What the file actually contains decides the class, not the comment's
+confidence.
+
+Then assign each thread exactly one class and **present the plan to the user before touching code**:
 
 | Class | Definition | Action |
 |-------|-----------|--------|
 | **requested-change** | Concrete change requested ("rename X", "add a null check", "extract this") | Apply the minimal fix |
 | **question** | Clarification sought ("why X?", "is this intentional?") | Draft a factual answer |
 | **suggestion** | Non-blocking improvement ("nit: …") | Apply if trivial, else skip with a reason |
-| **spec-conflict** | Request contradicts the spec's Chosen Approach / Acceptance Criteria / Non-goals | Do **not** apply; queue a reply asking the reviewer to confirm |
+| **spec-conflict** | Request contradicts the spec's Chosen Approach / Acceptance Criteria / Non-goals, or disputes a decision the spec records as a SPEC GAP | Do **not** apply; queue a reply asking the reviewer to confirm |
+| **unfounded** | The comment's premise is not true of the code — a misread, a line that has moved, or a claim the file contradicts. Requires positive evidence that the file contradicts the comment; a comment you cannot ground either way is never `unfounded` — it triggers the all-or-nothing hold | Change **nothing**; queue a reply refuting it with file and line |
 
-The plan lists, per thread: the file/line, the class, and the intended change (or the reason for skipping). This is the "составить план изменений" step — get the user's go-ahead.
+The plan lists, per thread: the file/line, the class, the intended change (or the reason for skipping, or the evidence that refutes it), **and the draft reply text** that will be posted to the thread. This is the discussion checkpoint — walk the user through it and get their go-ahead before touching code. The user may reclassify a thread, change a fix, or reword a reply; what they approve here is what gets posted in step 6.
 
 ### 4. Apply the fixes
 
-For each **requested-change** not in spec-conflict:
-1. Read the referenced file at the cited lines.
+**All or nothing.** Review comments on one PR are frequently interdependent: the rename asked for in
+one thread is what makes the null check asked for in another land in the right place. If a single
+comment is still not understood after the re-grounding in step 3, apply **none** of them. Stop, tell
+the user which comment you could not ground and what is missing, and wait for their answer. A
+partial pass that quietly skips the one comment you did not follow is the failure this prevents.
+
+For each **requested-change** not classified spec-conflict or unfounded:
+
+1. Re-read the location grounded in step 3, extended to whatever the edit will touch.
 2. Apply the **minimal** edit that satisfies the request — do not touch adjacent code.
 
 For each **suggestion**: apply if trivial (rename, formatting, small expression swap); otherwise skip and note why.
+
+**spec-conflict** and **unfounded** threads change no code — they are answered in step 6.
 
 Never stage a sensitive file (`.env`, `*.pem`, `*.key`, `credentials`, `secret`, `token`) — if a fix requires one, flag it for human approval instead.
 
@@ -110,22 +133,31 @@ Capture the pushed short SHA — you'll cite it in the replies.
 
 ### 6. Reply to each thread, then resolve it
 
-For every thread you addressed, **first reply** (so the resolution has a visible reason), **then resolve**.
+This step is the deliverable the reviewer sees — a pushed commit with silent threads reads as ignored feedback. For every thread you addressed, **first reply** (so the resolution has a visible reason), **then resolve**. Both mutations key on the same thread `id` captured in step 2 — no other identifier is needed.
 
-Reply to a thread (post in-reply to its first comment via REST):
+Replies are the approved drafts from step 3, updated with the pushed SHA. They must be meaningful — a sentence or two answering the comment's substance, not a bare acknowledgement:
+- **requested-change / applied suggestion** — what changed and where: `Renamed resolvePath to resolveSpecPath and updated both call sites — fixed in <short_sha>.`
+- **skipped suggestion** — the actual reason: `Noted — skipping: <why it's out of scope or not worth the churn here>.`
+- **question** — the drafted factual answer (cite file/line where it helps)
+- **spec-conflict** — `This contradicts <spec section>. Confirm you want to override the spec, or we address it in a follow-up.`
+- **unfounded** — the refutation, carrying the evidence: `<file>:<line> already does <X> — <quoted line or one-line paraphrase>. Leaving the code as it stands; reopen if I've misread the case you meant.` Never soften it into a promise to look again, and never apply a change you have just shown is unnecessary.
+
+Reply to the thread:
 
 ```bash
-gh api "repos/$REPO/pulls/<number>/comments/<comment_databaseId>/replies" \
-  --method POST -f body='Fixed in <short_sha>.'
+gh api graphql -F threadId='<thread_node_id>' -f body='<reply text>' -f query='
+mutation($threadId:ID!, $body:String!) {
+  addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}) {
+    comment { url }
+  }
+}'
 ```
 
-Reply text by class:
-- **requested-change / applied suggestion** — `Fixed in <short_sha>.`
-- **skipped suggestion** — `Noted — skipping; out of scope for this PR.`
-- **question** — the drafted factual answer
-- **spec-conflict** — `This contradicts <spec section>. Confirm you want to override the spec, or we address it in a follow-up.`
+The body must go through `-f` (raw string), never `-F` — `-F` magic-types values (`true`/`42` fail String coercion) and substitutes `{owner}`/`{repo}` anywhere inside the text. For replies containing single quotes or newlines, pass the body on stdin instead: replace `-f body='…'` with `-F body=@-` and feed the text with a quoted heredoc (`<<'EOF' … EOF`) — `@`-file/stdin values are passed verbatim.
 
-Then resolve the thread (GraphQL only) — **except spec-conflicts, which stay open** pending the reviewer:
+Then resolve the thread — **except spec-conflicts and unfounded findings, which stay open**. A
+spec-conflict waits on the reviewer's confirmation; an unfounded finding is an open disagreement
+about what the code does, and only the reviewer can close it once they have read the refutation:
 
 ```bash
 gh api graphql -F threadId='<thread_node_id>' -f query='
@@ -136,7 +168,13 @@ mutation($threadId:ID!) {
 }'
 ```
 
-### 7. Capture a lesson (retrospective)
+General discussion (issue-level comments outside review threads) has no resolved state. If one asked a question or requested a change you addressed, answer it with `gh pr comment <number> --body '<answer>'` and count it in the report.
+
+### 7. Verify closure
+
+Re-run the step-2 query and compare against the plan: every thread you replied to and resolved must now report `isResolved: true`. If one is still unresolved (failed mutation, wrong id), retry it once; if it still fails, list it in the report as **failed to resolve** with the error. Never report success over a silent failure.
+
+### 8. Capture a lesson (retrospective)
 
 Close the feedback loop (ADR-0021/0028). If the review revealed something future work should inherit — the same class of mistake flagged across threads, a project convention you did not know, a recurring reviewer expectation — capture **one** lesson via the `lessons` tool:
 
@@ -145,24 +183,36 @@ Close the feedback loop (ADR-0021/0028). If the review revealed something future
 
 Skip it for routine feedback — typos, one-off nits, style preferences already covered — an empty lesson is noise, and the store earns its value by staying scannable. Capture at most one or two. If the `lessons` tool is unavailable, append the index line to `.marvin/memory/MEMORY.md` yourself.
 
-### 8. Report
+### 9. Report
 
 ```
 ## PR #<number> — Review Resolved
 
 **Commit:** <sha> pushed to <branch>
-**Resolved:** <N> threads
+**Resolved:** <N> of <M> unresolved threads (confirmed by re-query)
   - <one line per fix>
 **Answered:** <N> questions
 **Skipped:** <N> suggestions
 **Left open (spec-conflict):** <N>
   - <thread url> — <why>
+**Left open (unfounded):** <N>
+  - <thread url> — <the refutation, in one line>
+**Failed to resolve:** <N>
+  - <thread url> — <error>
 ```
+
+Omit the "Failed to resolve" section when step 7 confirmed everything. If the pass was held under
+the all-or-nothing rule, the report is that instead: nothing applied, nothing resolved, the comment
+that could not be grounded, and what would resolve it.
 
 ## Guidelines
 
 - **Unresolved only.** Never re-touch an already-resolved thread — that's why step 2 filters on `isResolved`.
+- **Read the code before you classify it.** Every class, every reply and every skip is grounded in the cited file, not in the comment's wording.
+- **All or nothing.** One comment you cannot ground holds the entire pass: apply nothing and ask. Comments on one PR depend on each other, so a half-applied review leaves the branch in a state neither the reviewer nor the next round expects.
+- **The push is not the finish line.** Replying and resolving (steps 6–7) is the part the reviewer actually sees; skipping it leaves the review loop open no matter how good the fixes are.
 - **Reply before you resolve.** A silently-resolved thread reads as dismissed; the reply is the receipt.
-- **Don't resolve what you didn't address.** Spec-conflicts and anything you couldn't fix stay open.
+- **Self-contained commands.** Each `gh` call runs in a fresh shell — use `{owner}`/`{repo}` placeholders and literal values, never a variable exported in an earlier step.
+- **Don't resolve what you didn't address.** Spec-conflicts, unfounded findings and anything you couldn't fix stay open.
 - **Respect the spec.** The spec is immutable. If the review exposes a real gap, flag it — the author opens a new spec.
 - **Stop on auth failures.** If `gh` fails auth, don't loop — report and stop.

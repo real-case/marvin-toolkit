@@ -6,13 +6,58 @@
 plugins/marvin/widgets/
 node_modules/
 package-lock.json
+# The site's generated command catalog is emitted by packages/site/scripts/gen-catalog.mjs as
+# JSON.stringify(…,2)+"\n" and byte-guarded by test/catalog.test.mjs (spec 005). Prettier's JSON
+# collapsing would fight the generator and churn the file, so it is excluded like the other
+# committed build artefacts above.
+packages/site/src/data/catalog.json
+# The site's live widget-demo assets (spec 011) — copies of the committed widget HTML above plus
+# each widget's fixture as JSON, emitted by packages/site/scripts/gen-widget-demos.mjs into
+# public/ on every dev/build. They are git-ignored, but Prettier does not read nested .gitignore
+# files, so without this entry `format:check` would check (and reject) the copied widget HTML for
+# exactly the reason the plugins/marvin/widgets/ entry above exists.
+packages/site/public/widget-demos/
+# The site's pipeline-tour recordings (spec 012) — asciicast files plus a copy of the asciinema
+# vendor stylesheet, emitted by packages/site/scripts/gen-casts.mjs into public/ on every dev/build.
+# Git-ignored, but Prettier does not read nested .gitignore files, so without this entry
+# `format:check` would reject both the JSONL casts and the vendor CSS. Same reason as the entry
+# above; the CSS half is exactly why `plugins/marvin/widgets/` is listed too.
+packages/site/public/casts/
+# Its committed manifest, emitted as JSON.stringify(…,2)+"\n" and byte-guarded by
+# test/casts.test.mjs — excluded for the same reason catalog.json is: Prettier's JSON formatting
+# would fight the generator and churn the file on every format run.
+packages/site/src/data/casts.json
+# The OpenGraph card manifest (spec 014), emitted by packages/site/scripts/gen-og.mjs as
+# JSON.stringify(…,2)+"\n" — excluded for the same reason as the two manifests above. The cards
+# themselves need no entry: Prettier infers no parser for .png and leaves them alone, which is also
+# why the 101 committed widget visual baselines do not break format:check.
+packages/site/src/data/og.json
 
 # Markdown is authored prose (READMEs, SKILL bodies, ADRs) with hand-aligned
 # tables and prompt formatting that Prettier would reflow. Left as-is.
 **/*.md
+
+# Committed hi-fi design reference (website Phase 3) — the stripped mockup HTML is a read-only
+# porting source preserved verbatim from the private artifact; reformatting it would defeat the
+# "verbatim" contract. Like the committed widget HTML above, it is an artifact, not source.
+docs/design/mockups/
 
 # Local Claude Code state, not part of the published packages.
 .claude/
 
 # Trigger-eval run artifacts (also git-ignored)
 evals/trigger/results/
+
+# Generated output under packages/site that is git-ignored but NOT prettier-ignored.
+#
+# Prettier does not read nested .gitignore files — only the root .gitignore and this file. So
+# `packages/site/.gitignore` listing `.astro/`, `test-results/` and `playwright-report/` keeps them
+# out of git but does nothing for `format:check`, which happily checks and rejects them.
+#
+# They only exist after `astro build` / `astro dev` or a Playwright run, and CI runs `format:check`
+# BEFORE `npm run build` — so CI has been passing by accident of step ordering while any local run
+# after a build was red. Listing them here fixes the local signal and removes that dependence on
+# ordering.
+packages/site/.astro/
+packages/site/test-results/
+packages/site/playwright-report/

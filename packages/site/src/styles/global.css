@@ -1,0 +1,135 @@
+/*
+ * global.css — base reset, the two-tier container widths, and the blueprint-grid
+ * utility (spec 004, F11). Loaded after theme.css so it may reference the tokens.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+ul,
+ol {
+  margin: 0;
+}
+
+body {
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--act);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+img,
+picture,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Display face for headings + the wordmark. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+/* Motion-safe colour transitions on theme flip; killed under reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  a,
+  .btn,
+  .card {
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── container tiers (research-informed: 1200 shell, ≤72ch measure, ~1360 media) ── */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.container-text {
+  width: 100%;
+  max-width: 72ch;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.container-wide {
+  width: 100%;
+  max-width: 1360px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+/* ── blueprint-grid texture — zinc hairlines at ≤6% alpha on an 8px-multiple pitch ── */
+.blueprint {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+
+/* vertical rhythm for page sections + a lead paragraph */
+.section {
+  padding-block: clamp(3rem, 8vw, 5rem);
+}
+
+.page-lead {
+  margin-top: 0.75rem;
+  max-width: 60ch;
+  color: var(--t2);
+  font-size: 1.125rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

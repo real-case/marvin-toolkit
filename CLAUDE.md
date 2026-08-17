@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Marvin is a Claude Code plugin marketplace that ships **one plugin** (`marvin`) backed by a
 **single MCP server** (per ADR-0001). The plugin exposes the whole development lifecycle —
-core dev tools, a spec-driven task pipeline, security scanners, and a lightweight kanban
-tracker — under one slash prefix `/marvin:`. There is no eject/scaffold step; the plugin
+core dev tools, a spec-driven task pipeline, security scanners, and a lightweight task
+board tracker — under one slash prefix `/marvin:`. There is no eject/scaffold step; the plugin
 works as installed by `/plugin install`.
 
 > Until 2026-06 the toolkit was four independently-installable packs each with its own
@@ -24,11 +24,12 @@ commands under `commands/`, and `agents/*.md` files (all auto-loaded by Claude C
 ```
 plugins/marvin/
 ├── .claude-plugin/plugin.json        # name: "marvin"
-├── .mcp.json                         # registers server key "marvin" (+ context7, gitmcp; MARVIN_TASKS_* default to .marvin/kanban + .marvin/config.json)
+├── .mcp.json                         # registers server key "marvin" (+ context7, gitmcp; MARVIN_TASKS_* default to .marvin/track + .marvin/config.json)
 ├── CHANGELOG.md
 ├── skills/<command>/SKILL.md         # source of truth for prompt bodies (dir name == command)
 ├── commands/<command>.md             # short markdown slash entries
 ├── agents/*.md                       # Claude Code subagents
+├── hooks/hooks.json + *.mjs          # SHIPPED-BY-DEFAULT blocking PreToolUse guards on Bash (ADR-0040); loader-discovered by existence, so plugin.json declares no `hooks` key
 ├── widgets/*.html                    # COMMITTED self-contained MCP Apps widget documents (built by packages/marvin-widgets; served as ui:// resources, ADR-0024)
 └── mcp/server/
     ├── package.json
@@ -37,10 +38,10 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
-    │   │   └── index.ts              # 57 prompt entries (skill-backed + inline kanban)
-    │   ├── tools/                    # 12 MCP tools: kanban task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings)
+    │   │   └── index.ts              # 55 prompt entries (skill-backed + inline track)
+    │   ├── tools/                    # 13 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
-    │   ├── storage/ flows/ lib/      # kanban persistence + helpers
+    │   ├── storage/ flows/ lib/      # board persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
 ```
 
@@ -52,18 +53,30 @@ project root, one subdirectory per command group (ADR-0007):
 | Path | Written by | Contents |
 |------|-----------|----------|
 | `.marvin/task/` | `task-*` pipeline | spec `<NNN>-<slug>.md` files (numeric-prefixed so the dir sorts by creation order; `slug` stays the identity) + the current `verification.md` |
+| `.marvin/task/runs/` | `verify` (when a valid `specSlug` is passed) | per-spec verification runs `<slug>.md`, byte-identical to the `verification.md` the same run writes (ADR-0035). A **subdirectory** on purpose: the three top-level enumerators (`readMdFiles`, `countMarkdown`/`specDigest`, `findLatestSpec`) are non-recursive `readdirSync` + `.endsWith(".md")`, so a directory is invisible to all of them by construction rather than by an exclusion list. `runs/<slug>.md` means "the latest run for that spec"; `verification.md` keeps meaning "the latest run in this project". Its first sibling is the **oracle journal** `runs/<slug>.oracles.md` (ADR-0036) — append-only, one `json oracle-run` block per acceptance-oracle run, keyed by the spec's `contract_sha`; it lives here for the same invisibility reason, and a red and a green in it are what the delivery gate reads as a proof. Its second sibling is the **progress journal** `runs/<slug>.progress.md` — append-only, one `json spec-progress` block per entry, written by the `spec` tool's `action: "progress"` from `task-start` (step 1.5 onward) and `task-implement` (per completed criterion) and read back by `action: "resume"`, so an intake interrupted mid-dialogue or a run whose context was compacted can say where it got to; it lives here for the same structural-invisibility reason as its two siblings. **This makes `spec` a writer**: every other path in that tool is `existsSync`/`readFileSync`, and the DoR gate it is otherwise described as still only validates — the journal is the one thing it writes |
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/refactor/` | `refactor-*` family | numbered findings-register reports `NNN-audit-<slug>.md` / `NNN-smells-<slug>.md` (`F<n>` id, severity, effort, evidence, direction — ADR-0029) + sequenced step plans `NNN-plan-<slug>.md` (one shared number sequence) |
-| `.marvin/kanban/` | `kanban-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
+| `.marvin/track/` | `track-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
+| `.marvin/critique/` | the calling session — `task-start` 8F/8B and `task-implement` 6F/9B, not a tool | critic receipts `<NNN>-<slug>.md` (numeric-prefixed, creation order; `slug` is the SPEC's slug, so a task's two receipts differ only by their number): the critic's report verbatim plus one ` ```json critic-verdict ` block carrying two axes — `compliance` and `quality` — and no roll-up, which is derived by the single `rollUp` declaration in `lib/reports.ts` (ADR-0039). Ingested by `report` as the fifth `ReportGroup` and linked from `/marvin:task-summary`. **A receipt is evidence, never a veto**: enforcement stays at `task-deliver`'s draft PR on a surviving `BLOCK`, and `test/critique-protocol.test.mjs` asserts the delivery gate's block is byte-identical with and without one. Written only for a TERMINAL verdict (`NEEDS_CONTEXT` is structurally unrecordable), and never for the diff critic's standalone mode, which has no spec slug to hold. Does not decay: a dated judgement of one artifact stays as true a year later |
+| `.marvin/research-results/` | `marvin-researcher` agent (creates the dir on first write) | dated library/API research notes `<library>-<topic>-<YYYY-MM-DD>-<HHmmss>.md`, capped at 200 lines each. **Write-only**: the agent is forbidden from reading them back, because a cached lookup is exactly the stale answer it exists to avoid. Not ingested by the `report` tool |
 | `.marvin/usage/` | usage-log middleware (`runPackServer`) | **local, never-committed** telemetry: `events.jsonl` — one JSONL event `{ts, kind, name}` per prompt-get / tool-call — plus a self-written `.gitignore` = `*` so nothing here reaches git; size-capped with rotation to `events.jsonl.1`; read only by `/marvin:dashboard`. Kill-switch `usage.enabled: false`; fail-open (ADR-0030) |
-| `.marvin/config.json` | `kanban-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:kanban-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
+| `.marvin/report/` | `report` tool, `action: "triage"` with `snapshot: true` | the triage baseline `triage.json` — `{version: 1, updatedAt, findings: [{fingerprint, firstSeen, lastSeen, present}]}` — plus a self-written `.gitignore` = `*`, both created lazily and ONLY on the snapshot path (ADR-0038). **Not a report group at all**, despite sitting beside the five the tool scans (`security`, `refactor`, `task`, `handoff`, `critique`): it holds the tool's own state, is never enumerated by the viewer, and `MARVIN_REPORT_DIR` repoints it. `present: false` is what makes a `regressed` finding expressible — `nextBaseline` RETAINS a fingerprint that has left the live set rather than dropping it, and without that retention a reappearance would classify as `new` |
+| `.marvin/preview/` | `widget-preview` command (`mcp/server/bin/widget-preview.mjs`) | rendered widget panels `<widget>.html` — the committed `ui://` document plus the tool's live `structuredContent` and an inlined ~90-line postMessage host, in one self-contained file — plus a self-written `.gitignore` = `*`. The way to see a widget on a host that does not resolve `_meta.ui.resourceUri`, which the Claude Code CLI does not (ADR-0034) |
+| `.marvin/export/` | `report-export` skill (Claude fills the shipped template in-session — no server export code, ADR-0033) | shareable report exports `<group>-<source-basename>.<md\|html>` (print-ready HTML = the PDF path) + a self-written `.gitignore` = `*` — derived artifacts, never versioned |
+| `.marvin/config.json` | `track-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), the spec corpus location (`spec.dir`, ADR-0037), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:track-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
 
-Spec location stays **host-adaptive** (ADR-0005): `.marvin/task/` is the default, but an existing
-host convention (`specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/`) is preferred when present, and
-`task-implement` / `task-deliver` / the `spec` gate search `.marvin/task/` first, then those. The
-`MARVIN_TASKS_*` env vars in `.mcp.json` can repoint the kanban paths. Project **deliverables** are
+Spec location stays **host-adaptive** (ADR-0005) and is now resolved by one function,
+`resolveSpecDir` in `storage/spec.ts` (ADR-0037): config `spec.dir` wins, else the first existing
+candidate in `SPEC_DIRS` order (`.marvin/task/`, `specs/`, `docs/specs/`, `docs/rfcs/`, `rfcs/` —
+`.marvin/task/` leads detection, which is code order and what every reader already did), else the
+`.marvin/task/` default. Every enumerator goes through it — the DoR gate's `depends_on`, `summary`,
+`verify`, `specDigest` and the dashboard's spec count — while a slug lookup keeps searching all five
+via `specSearchDirs`, so configuring a directory never orphans specs that already live elsewhere.
+The **artifacts do not follow the specs**: `verification.md` and `runs/` stay `.marvin/`-pinned per
+ADR-0007 whatever `spec.dir` says. The
+`MARVIN_TASKS_*` env vars in `.mcp.json` can repoint the board paths. Project **deliverables** are
 deliberately *not* swept in — ADRs stay under `docs/adr/`, `CHANGELOG.md` and `README.md` at the root.
 
 ### Command naming scheme
@@ -72,18 +85,18 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 
 | Group | Source | Examples |
 |-------|--------|----------|
-| _(bare)_ | core dev tools | `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard` |
+| _(bare)_ | core dev tools | `/marvin:onboard`, `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:changelog`, `/marvin:readme`, `/marvin:migration-plan`, `/marvin:explain`, `/marvin:docs-search`, `/marvin:handoff`, `/marvin:dashboard`, `/marvin:reports`, `/marvin:report-export`, `/marvin:widget-preview` |
 | `adr-*` | ADR lifecycle around the bare `/marvin:adr` create (ADR-0027; accept/supersede/sync are human-run via `disable-model-invocation`) | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit`, `/marvin:adr-coverage`, `/marvin:adr-supersede`, `/marvin:adr-sync` |
 | `pr-*` | core PR ops (full PR lifecycle) | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
-| `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver` |
+| `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver`, `/marvin:task-audit` |
 | `sec-*` | security scanners | `/marvin:sec-scan`, `/marvin:sec-secrets`, `/marvin:sec-deps`, `/marvin:sec-gate`, `/marvin:sec-threat-model`, `/marvin:sec-iac`, `/marvin:sec-ci`, `/marvin:sec-fix`, `/marvin:sec-compliance`, `/marvin:sec-pentest`, `/marvin:sec-report` |
 | `refactor-*` | code-health family, read → plan → apply (ADR-0029) | `/marvin:refactor-audit`, `/marvin:refactor-smells`, `/marvin:refactor-plan`, `/marvin:refactor-apply` |
-| `kanban-*` | lightweight task tracker (board-only, ADR-0025) | `/marvin:kanban-menu`, `/marvin:kanban-bug`, `/marvin:kanban-feature`, `/marvin:kanban-chore`, `/marvin:kanban-spike`, `/marvin:kanban-start`, `/marvin:kanban-review`, `/marvin:kanban-done`, `/marvin:kanban-list`, `/marvin:kanban-show`, `/marvin:kanban-tracker`, `/marvin:kanban-status`, `/marvin:kanban-config`, `/marvin:kanban-help` |
+| `track-*` | lightweight task tracker (board-only, ADR-0025; seven-command surface, ADR-0032) | `/marvin:track-menu`, `/marvin:track-new`, `/marvin:track-list`, `/marvin:track-show`, `/marvin:track-start`, `/marvin:track-move`, `/marvin:track-config` |
 
-`task-*` (heavyweight spec pipeline) and `kanban-*` (quick tracker) are intentionally
+`task-*` (heavyweight spec pipeline) and `track-*` (quick tracker) are intentionally
 distinct domains — keep them separate.
 
-### Three doors, one room
+### Call it your way
 
 The same `SKILL.md` is reached through **three independent entry points**:
 
@@ -91,17 +104,18 @@ The same `SKILL.md` is reached through **three independent entry points**:
 2. **Markdown slash commands.** Each `plugins/marvin/commands/<command>.md` is a thin Claude Code slash command that instructs the model to read its matching `SKILL.md` and pass `$ARGUMENTS`. Surfaces as `/<command>` (e.g. `/commit`, `/sec-scan`, `/task-start`).
 3. **MCP slash commands.** Each prompt entry in `plugins/marvin/mcp/server/src/prompts/index.ts` declares `skill: "<command>"`. At request time the server reads the corresponding `SKILL.md`, strips its frontmatter, and returns the prose as a prompt body. Surfaces as `/marvin:<command>` (e.g. `/marvin:commit`).
 
-All three doors lead to the same prose. Editing `SKILL.md` updates all three paths without a server rebuild (doors 2 and 3 read it at runtime; door 1 on next auto-discovery).
+All three entry points lead to the same prose. Editing `SKILL.md` updates all three paths without a server rebuild (the slash and MCP entries read it at runtime; chat auto-discovery picks it up on the next match).
 
 ### Instrument types
 
 - **Skills** (`plugins/marvin/skills/<command>/SKILL.md`) — Markdown with frontmatter. Source of truth for workflow content. Dir name, `name:`, and command all match.
 - **Markdown commands** (`plugins/marvin/commands/<command>.md`) — Short slash wrappers with frontmatter `description` and a body that delegates to the matching skill. Optional `$ARGUMENTS` placeholder.
-- **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `kanban-*` group, an inline `body:`) under `/marvin:<command>`.
-- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the kanban `task`/`help` tools (file CRUD, role-driven transitions over the configured status set plus a generic `move` — ADR-0026, PR-URL capture via `link-pr` — ADR-0025, the `config` action that shows/edits `.marvin/config.json` fail-closed, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0002/0009) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0003/0004/0005). `lessons` is the tool-backed lessons-learned store (`.marvin/memory/`: `add`/`search` typed lessons captured at delivery and by `marvin-debugger`, recalled at `task-start` intake; see ADR-0021). `adr` owns the decision-record lifecycle mechanics (ADR-0027): host-adaptive corpus resolution, a dual-style parser, `next | list | index | audit` reads, and the fail-closed mutating pair — gate-checked `accept`, paired-link `supersede` — surfaced by the `adr-*` skills, whose accept/supersede/sync entries are human-run. `dashboard` renders the whole-toolbox state report (ADR-0030): kanban/config/git plus artifact inventories with freshness, lessons stats, the ADR corpus by status, and the local usage summary when `.marvin/usage/events.jsonl` exists — emitting the extended `DashboardState` contract alongside the text. Three read-side helpers round out the ten tools: `summary` aggregates a finished task's criteria, gates, commits, lessons and links into a delivery digest (`/marvin:task-summary`), `handoff` lists the session-continuation docs under `.marvin/handoff/` (`/marvin:handoff-list`), and `audit` recovers the typed `audit-report` blocks the `sec-*` scanners write under `.marvin/security/` and returns them as an `AuditListPayload` (`/marvin:sec-report`; ADR-0024 #7 Tier-2).
+- **MCP prompts** — Thin server-side registration that exposes a skill (or, for the `track-*` group, an inline `body:`) under `/marvin:<command>`.
+- **MCP tools** — Deterministic TypeScript invoked from prompts or by the model. Each tool declares a zod input schema. Used where determinism matters: the board `task`/`help` tools (file CRUD, role-driven transitions over the configured status set plus a generic `move` — ADR-0026, PR-URL capture via `link-pr` — ADR-0025, the `config` action that shows/edits `.marvin/config.json` fail-closed, dashboards), `verify` — the task pipeline's quality-gate runner (concurrent gates, single merge point, config-first gate resolution from `.marvin/config.json`, writes `verification.md`; see ADR-0002/0009; a gate whose binary is absent is recorded `not-run` rather than failed, and every run records the tree it proved — `head_sha`, `branch`, `dirty`, a `worktree_digest` over a structural path list, ADR-0035; two optional inputs carry that: `specSlug` writes/reads `.marvin/task/runs/<slug>.md`, and `allowStale` waives the gate's freshness refusal *only*, never a FAIL and never the unwaivable no-test-evidence BLOCK; a third action `oracles` runs a **sealed** spec's acceptance oracles rather than the project's gates — refusing a tampered or unsealed contract before any child process, resolving each criterion through the ADR-0009-shaped chain (`command` → `oracle.run` → a `kind: command` ref → `gates.test_one` → a three-row default table → `not-run`, never a guess), and appending each outcome to `.marvin/task/runs/<slug>.oracles.md`; the delivery gate reads that journal into an advisory `red_green` field that never flips `decision`, ADR-0036) — and `spec`, the tool-backed Definition-of-Ready gate for `/marvin:task-start` (parses and zod-validates the `spec-contract` YAML block fail-closed — schema, file-path existence, the AC⇄files⇄tests traceability triple, typed oracles; see ADR-0003/0004/0005; its surface is `action: dor | seal | scope | next | list | audit | progress | resume`, with `mode` kept as a deprecated synonym bounded to the original three — `action ?? mode ?? "dor"`, a disagreeing pair refused naming both; `seal` now returns two checks rather than one hand-picked verdict, refusing a `shipped`/`superseded` spec as well as a tampered contract and warning when the frontmatter carries no status at all; `next` and `list` are corpus reads over `readSpecCorpus` that emit a ```json spec-corpus``` block instead of a verdict and never error on an empty or absent directory, ADR-0037; `audit` lints the corpus as a whole — duplicate numbers, bounded numbering holes, slug collisions, dangling `depends_on`, missing seals, statuses outside the vocabulary, files that do not identify themselves as specs — behind `/marvin:task-audit`; and `progress`/`resume` append to and read back the resumability journal, which is what makes `spec` a **writer** for the first time). `lessons` is the tool-backed lessons-learned store (`.marvin/memory/`: `add`/`search` typed lessons captured at delivery and by `marvin-debugger`, recalled at `task-start` intake; see ADR-0021). `adr` owns the decision-record lifecycle mechanics (ADR-0027): host-adaptive corpus resolution, a dual-style parser, `next | list | index | audit` reads, and the fail-closed mutating pair — gate-checked `accept`, paired-link `supersede` — surfaced by the `adr-*` skills, whose accept/supersede/sync entries are human-run. `dashboard` renders the whole-toolbox state report (ADR-0030): board/config/git plus the configured MCP servers, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact counts with freshness, lessons stats, the ADR corpus by status, and the local usage summary when `.marvin/usage/events.jsonl` exists — emitting the extended `DashboardState` contract alongside the text. The v1 `SecurityInventory` / `RefactorInventory` blocks were removed in 0.10.0: `DashboardAudits` supersedes them, and the refactor register counts by kind were dropped rather than relocated. Four read-side helpers round out the thirteen tools: `summary` aggregates a finished task's criteria, gates, commits, lessons and links into a delivery digest (`/marvin:task-summary`), `handoff` lists the session-continuation docs under `.marvin/handoff/` (`/marvin:handoff-list`), `audit` recovers the typed `audit-report` blocks the `sec-*` scanners write under `.marvin/security/` and returns them as an `AuditListPayload` (`/marvin:sec-report`; ADR-0024 #7 Tier-2), and `report` scans every document marvin generates under `.marvin/` — security, refactor, task, handoff, critique — into one `ReportListPayload` with server-computed staleness (`/marvin:reports`; docs/design/reports-widget.md). ADR-0039 added the fifth group: `.marvin/critique/` receipts arrive as `document` envelopes tagged `critique · <rollUp>`, carrying a spec `LinkRef` on their `subject` slug; staleness became a total `Record<ReportGroup, boolean>` (`DECAYS`) so the next group cannot default silently through a removed `else` branch, and `test/report-groups.test.mjs` derives the group set from the contract and asserts it against every code enumeration and twelve pinned prose sites. `report` gained finding identity in ADR-0038: every `ReportFinding` carries a server-computed `fingerprint` (sha256 over kind, path, category and title slug, first 16 hex chars — line numbers deliberately excluded, so an unrelated insertion above a finding does not mint a new identity), filled at both construction sites in `lib/reports.ts` and nowhere else; a second action `triage` reconciles the live findings against the `.marvin/report/` baseline into `new`/`persisting`/`regressed` plus a `resolved` roll-up, where the live set is every security envelope except a `fix` record, plus only the NEWEST refactor register per `(kind, slug)` — the scanners overwrite fixed filenames, while refactor registers and `sec-fix`'s `fix-<slug>.md` both accumulate, and a fix record states what was CLOSED rather than what is open — and a superseded register's findings are left unreconciled rather than relabelled. **Both actions reconcile (read-only); only `snapshot: true` writes**, because `_meta.ui.resourceUri` binds at tool level, so an action-keyed write would let a host that merely opens the widget consume the baseline. `report` is also the second tool after `spec` with a `.strict()` input schema: a caller who intends `snapshot: true` and mistypes the key must get an error, not a successful-looking call that wrote nothing.
+- **Hooks** (`plugins/marvin/hooks/`) — the only instrument that runs whether or not a model chooses to invoke it (ADR-0040). `hooks.json` is the plugin wrapper shape (events under a top-level `hooks` key) and is loader-discovered by existence, so `plugin.json` must declare no `hooks` key. Two blocking `PreToolUse` guards on the `Bash` matcher, shipped by default and armed with no enablement step: `bypass-guard.mjs` refuses `git commit --no-verify`/`-n` and `git merge --no-verify`, plus a force-push or deletion whose resolved target is in the protected union (config `base_branch` ∪ `origin/HEAD` ∪ `main`/`master`/`dev`/`develop`); `secret-guard.mjs` refuses a commit whose added lines match `SECRET_PATTERNS`, mirrored into the `sec-gate` skill's `secret-patterns` block and parity-tested. Both share `lib/hook-io.mjs`, exit 2 ONLY on a confirmed match and 0 on every other path including any throw, and are disabled by `hooks.enabled: false` in `.marvin/config.json` or `MARVIN_HOOKS_DISABLED=1` — a switch the hooks read from `$CLAUDE_PROJECT_DIR` alone, deliberately ignoring `MARVIN_TASKS_CONFIG`. `scripts/lint-manifests.mjs` rule 8 checks the manifest resolves to real scripts.
 - **Agents** (`plugins/marvin/agents/*.md`) — Claude Code subagents, auto-loaded on `/plugin install`. The read-only / read-mostly agents (`marvin-auditor`, `marvin-refactor-auditor`, `marvin-guide`, `marvin-tm-writer`, the two `marvin-tm-*-critic`s, and `marvin-debugger`) pin their access with a `tools:` frontmatter allowlist — a subagent that omits `tools:` inherits *every* tool, so the allowlist is what actually enforces the read-only contract. Code-writing agents (`marvin-tm-executor`, `marvin-tm-review-fixer`) and `marvin-researcher` deliberately omit `tools:` and inherit the full toolset.
 
-> The `kanban-*` group has **no `skills/` or `commands/` entries**. Its 14 prompts are thin tool-invocation wrappers (inline `body:`) that call the `task`/`help`/`task-detail`/`tracker` MCP tools. There is no standalone workflow prose to duplicate into a skill. Git operations on board tasks live in the kanban-aware `commit`/`pr-create` skills (ADR-0025).
+> The `track-*` group has **no `skills/` or `commands/` entries**. Its 7 prompts (ADR-0032) are thin tool-invocation wrappers (inline `body:`) that call and route between the `task`/`task-detail`/`tracker` MCP tools. There is no standalone workflow prose to duplicate into a skill. Git operations on board tasks live in the board-aware `commit`/`pr-create` skills (ADR-0025).
 
 ### Server key and slash prefix
 
@@ -134,12 +148,39 @@ into the server bundle:
   `meta.ui.resourceUri` object literal — so `tsup` never bundles ext-apps/React into `dist/server.js`.
 - **The terminal fallback is unchanged.** `_meta` is additive; a text-only host ignores it and renders
   the tool's `content` exactly as before.
+- **No host in the Claude Code loop renders these.** Measured 2026-07-31: the CLI that spawns the
+  plugin server contains no MCP Apps implementation (`resourceUri` / `profile=mcp-app` / `ui://` all
+  absent), so every widget-bound tool shows its markdown fallback there. The desktop app does
+  implement the extension, but only for the servers *it* connects (`claude_desktop_config.json`),
+  not for plugin servers the CLI spawns. `mcp/server/bin/widget-preview.mjs` is the escape hatch
+  (ADR-0034): it drives the committed `dist/server.js` over stdio, resolves the widget generically
+  from `tools/list` `_meta.ui.resourceUri`, and writes the document + payload + a ~90-line
+  postMessage host into one self-contained file under `.marvin/preview/`. Surfaced as
+  `/marvin:widget-preview`.
 - **`scripts/verify-widgets.mjs`** guards the committed HTML like `verify-dist` guards `dist/`: it
   rebuilds `@marvin-toolkit/mcp-shared` then `@marvin-toolkit/widgets`, hash-compares each committed
   `plugins/marvin/widgets/*.html` against the fresh build, and asserts each file is self-contained.
+- **Visual regression baselines are committed** under
+  `packages/marvin-widgets/__image_snapshots__/<platform>/` (darwin only today, ~5 MB of PNGs — one
+  per story, jest-image-snapshot via the `test-storybook` postVisit hook). They are NOT regenerable
+  junk and NOT guarded by CI (ubuntu has no committed baseline dir, so it skips the comparison by
+  design): after an intentional visual change, update them **on darwin** with
+  `npm run test-storybook:update -w @marvin-toolkit/widgets` and commit the changed PNGs alongside
+  the source. Full workflow (theming, `parameters.visual` opt-out, platform bootstrap) in
+  `packages/marvin-widgets/README.md`.
 
-The first widget is `task-list` (a `<ListDetail>` over `TaskListPayload`); the remaining widgets are
-follow-up specs reusing this foundation.
+The committed widgets — `task-list`, `task-detail`, `tracker-list`, `handoffs`, `audit`,
+`task-summary`, `dashboard`, `help`, and `reports` — reuse this foundation (`<ListDetail>` for the
+master-detail browsers, single-object panels for the rest). The whole family renders on one theme
+module, `packages/marvin-widgets/src/theme/`: a token stylesheet scoped to a `.mvroot` class (light
++ dark via `prefers-color-scheme`, pinnable with `data-theme`), the `MvRoot` boundary component
+that injects it once, and TS token constants (`TOKENS`/`SEVERITY_TOKENS`/`BAR_TOKENS`) widgets
+reference inline — literal colors live only in the theme module. The `help` widget renders the
+welcome dashboard from the `help` tool's `HelpState`: a CSS gradient wordmark, the project summary,
+the configured MCP servers lit/dim by enabled state, and the full curated command index — the rich
+counterpart to the tool's markdown/emoji terminal fallback. The `reports` widget is the unified
+viewer over every generated `.marvin/` report (`report` tool, `/marvin:reports`): KPI strip, group
+segments, local search, per-kind detail bodies, copy-only continuation-command chips.
 
 ## Shared library
 
@@ -149,7 +190,7 @@ follow-up specs reusing this foundation.
 - `runPackServer({ name, version, promptsDir, packRoot, build, onInvoke? })` — the standard server entry. The optional `onInvoke(event)` middleware hook fires once per prompt-get and per tool-call with `{ kind, name }`, *before* the handler runs; it is fire-and-forget and fail-open (throws and rejected promises are swallowed), leaving dispatch byte-for-byte unchanged. marvin wires it to the `.marvin/usage/` log (ADR-0030); the shared library stays project-agnostic.
 - `elicit(server, message, zodSchema)` + `canElicit(server)` — typed MCP elicitation wrapper with client-capability detection (tools degrade to instructive errors on hosts without elicitation)
 - `resolvePromptBody`, `promptsDirFromMeta`, `packRootFromMeta`, `interpolateArgs` — body loaders
-- `contracts/` — zod data contracts for the planned MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
+- `contracts/` — zod data contracts for the MCP Apps widget family (`LinkRef`, `TaskCard`, `TaskSummary`, `AuditReport`, `DashboardState`, `HelpState`, …); one schema per artifact block, reused across storage / gates / `structuredContent` / widget props (ADR-0024). Data-only — no runtime effect until a tool imports a schema.
 
 The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//, ...]`) into a single self-contained `dist/server.js`.
 
@@ -158,6 +199,13 @@ The server bundles the shared lib via `tsup` (`noExternal: [/^@marvin-toolkit\//
 ```shell
 # Lint manifests + structure
 node scripts/lint-manifests.mjs
+
+# Lint the authored surfaces — frontmatter allowlists, skills/… references, wrapper coverage
+node scripts/lint-skills.mjs
+
+# Trigger-eval harness — guard it, then sweep every dataset with the mock decider
+npm run eval:self-test
+npm run eval:trigger
 
 # Build the server
 npm run build
@@ -171,11 +219,113 @@ node scripts/verify-dist.mjs
 # Verify committed widget HTML is in sync + self-contained (ADR-0024)
 node scripts/verify-widgets.mjs
 
+# Storybook interaction + visual tests (widgets; CI runs the same trio)
+npm run build-storybook -w @marvin-toolkit/widgets
+npx http-server packages/marvin-widgets/storybook-static --port 6006 --silent &
+npm run test-storybook -w @marvin-toolkit/widgets
+
 # Local plugin validation
 claude plugin validate .
 ```
 
 CI (`.github/workflows/validate-plugins.yml`) runs the same checks plus ESLint, Prettier, and a stdio smoke-test that sends `initialize` to the server and verifies a valid response (`serverInfo.name == "marvin"`).
+
+Both drift guards take their baseline from `git show HEAD:<path>`, never from the working tree
+(`scripts/lib/committed-artifact.mjs`). They rebuild the artifact in place, and so does the build
+step that precedes them in CI, so a working-tree baseline would leave them comparing a fresh build
+against itself — which it did, until a bundle built inside a git worktree reached `dev` past two
+green guard steps. The consequence for local use: they judge **what is committed**, so a rebuilt
+artifact you have not staged yet is reported as out of sync (`git add` it). `npm run test` covers
+them through the root `test/` suite, which runs after the workspace suites.
+
+Whether a build is committable turns on the checkout having its own installed `node_modules`, not
+on it being a worktree. `git worktree add` gives you one with none, so `@marvin-toolkit/*` resolves
+by walking up past the checkout and esbuild bakes that longer relative depth into every module-path
+comment in `dist/server.js`: functionally identical, byte-different. `tsup.config.ts` warns when it
+sees no `node_modules` in the checkout; that warning means run `npm install` here, or rebuild in the
+main checkout, before committing. A worktree that has been installed into builds a committable
+bundle. Settle it either way without touching the committed artifact, which `verify-dist` cannot do
+because it rebuilds in place:
+
+```shell
+TMP=$(mktemp -d)
+npm run build -w @marvin-toolkit/server -- --out-dir "$TMP"
+diff <(git show HEAD:plugins/marvin/mcp/server/dist/server.js) "$TMP/server.js"
+```
+
+Only intended lines differ, so build here and commit. Hundreds of `../../../../node_modules` comment
+lines differ, so use the main checkout.
+
+### Testing unreleased changes in a locally installed plugin
+
+A local install (a symlink at `~/.claude/skills/<name>` → `plugins/marvin`) serves build
+artefacts, not sources: `mcp/server/dist/server.js` and `widgets/*.html`. Only `SKILL.md`
+bodies are live. `npm run dev:plugin` rebuilds all three workspaces the plugin serves, in
+dependency order (`mcp-shared` → `widgets` → `server`); a new `dist/server.js` needs a
+session restart, while a rebuilt widget document is picked up on the host's next
+`resources/read`. While iterating on one widget,
+`npm run build:watch -w @marvin-toolkit/widgets -- <name>` keeps its committed HTML current.
+
+`npm run dev:watch` is the standing loop that removes the manual step. It watches the three
+source trees plus every file a build actually reads without living under `src` — each
+workspace's compiler or bundler config, the `tsconfig.base.json` they extend, and each
+workspace's `package.json` — then maps each change to the smallest set of workspaces that can
+be affected and reruns their existing build scripts. A change under one widget's directory
+rebuilds that widget alone (≈1 s); shared widget code rebuilds all nine (≈5 s); a shared-package
+change rebuilds every consumer. Test and story files build nothing. Changes are coalesced. A
+failed build aborts the rest of that pass — like `dev:plugin`'s `&&` chain, so nothing is built
+against an artefact the failed step did not update — but never stops the watch itself, and the
+session-restart notice is printed only for a `dist/server.js` that was actually produced. Run it
+in a checkout that has its own `node_modules`: without one the bundle is byte-different and not
+committable, as above. `npm run dev:watch -- --dry-run` prints the plan and the current watch counts without
+building anything, which is the list to consult rather than one written out here.
+
+### Seeing the widgets render in chat
+
+The plugin server is spawned by the Claude Code CLI, which implements no part of the MCP Apps
+extension, so a widget-bound tool always falls back to markdown there (ADR-0034). The desktop
+application's own MCP client does implement it — it advertises
+`extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } }` —
+but only for the servers listed in `claude_desktop_config.json`. The local plugin symlink is no
+help either: it resolves to the main checkout, so a feature branch's widgets are invisible twice
+over.
+
+`npm run dev:widget-host` closes both gaps. It rebuilds the three artefact workspaces of the
+checkout it is run from, then writes `mcpServers.marvin-dev` in `claude_desktop_config.json`
+pointing at that checkout, with `CLAUDE_PROJECT_DIR` set to it so the tools read that tree's
+`.marvin/`. Run it again from another worktree to follow another branch. Every other key in the
+config survives the read-modify-write, and the previous file is kept as `.marvin-backup`.
+
+Restart the desktop application afterwards — the server process is spawned once per connection.
+A rebuilt **widget document** needs no restart: the `ui://` resource is read from disk per request
+(ADR-0008), so `build:watch` is live. Only a new `dist/server.js` requires one.
+
+#### Routing rule: which copy to call
+
+Both copies of the tools are then in scope, `marvin-dev` (renders widgets) and the plugin's own
+(markdown fallback). They expose identical names, so the choice of server — not the tool, not the
+prompt — decides whether the user sees a widget. The intended contract is a widget in chat and the
+markdown fallback only in a terminal, so in this repository:
+
+- **In the desktop application, a widget-bound tool is always invoked on `marvin-dev`.** This
+  overrides the prompt bodies, which name the `marvin` server: those bodies ship to end users, who
+  have no second registration, and must stay as they are.
+- **In the terminal, only the plugin's copy is connected**, and it returns the markdown fallback by
+  design. Nothing needs to be selected there, and `marvin-dev` must not be assumed present.
+- **Nine tools bind a widget:** `audit`, `dashboard`, `handoff`, `help`, `report`, `summary`,
+  `task`, `task-detail`, `tracker`. Every other tool is text-only, so either copy will do.
+
+`marvin-dev` follows whichever checkout `dev:widget-host` was last run from, and a merged worktree
+leaves the entry pointing at a path that still exists. Before trusting a rendered widget, confirm
+the entry resolves to the tree you are working in:
+
+```shell
+node -p "require(require('os').homedir()+'/Library/Application Support/Claude/claude_desktop_config.json').mcpServers['marvin-dev'].args[0]"
+```
+
+`/marvin:widget-preview` remains the answer for terminal users and for anyone who does not want a
+second server: it renders one widget plus its live payload into a self-contained file under
+`.marvin/preview/`.
 
 ### Manually driving a tool
 
@@ -191,10 +341,10 @@ node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"ti
 
 ## Adding a new prompt
 
-The canonical path is **skill-backed** — same content, three doors:
+The canonical path is **skill-backed** — same content, three entry points:
 
 1. Create `plugins/marvin/skills/<command>/SKILL.md` with YAML frontmatter (`name` matching the directory, `description`). The `description` is the auto-discovery trigger Claude Code matches in chat. Follow the `<group>-<command>` naming scheme.
-2. Optionally create `plugins/marvin/commands/<command>.md` with frontmatter `description` and a body that instructs Claude to read `skills/<command>/SKILL.md` and pass `$ARGUMENTS`. Use existing `commit.md` / `sec-scan.md` as templates.
+2. Create `plugins/marvin/commands/<command>.md` with frontmatter `description` and a body that instructs Claude to read `skills/<command>/SKILL.md` and pass `$ARGUMENTS`. Use existing `commit.md` / `sec-scan.md` as templates. **Every prompt outside the `track-*` group ships a wrapper** — `scripts/lint-skills.mjs` fails the build without one.
 3. Add an entry to `plugins/marvin/mcp/server/src/prompts/index.ts`:
    ```ts
    {
@@ -204,10 +354,10 @@ The canonical path is **skill-backed** — same content, three doors:
    }
    ```
 4. Run `npm run build` inside `plugins/marvin/mcp/server` to refresh `dist/server.js`.
-5. Commit `src/`, `dist/`, and the new `SKILL.md` (+ optional command file) together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
+5. Commit `src/`, `dist/`, the new `SKILL.md` and the command file together — CI verifies dist is in sync and that SKILL.md / commands have valid frontmatter.
 6. Bump the version with `npm run sync-version <x.y.z>` (see [Version bumping](#version-bumping)).
 
-For prompts with **no skill** (thin tool wrappers like the `kanban-*` group), use `body: "..."` inline. Skip steps 1 and 2.
+For prompts with **no skill** (thin tool wrappers), use `body: "..."` inline and skip step 1. Step 2 applies to every group except `track-*`: a skill-less prompt is still a command a user types, so it ships a `commands/` wrapper. `track-*` is the one group the pin exempts, and the exemption is enforced in both directions — a `track-*` prompt gets no `commands/` entry, and `scripts/lint-skills.mjs` fails the build if one is added, because those prompts route between tools and have no prose to duplicate. Either way, a skill-less prompt gets no skill directory and no trigger dataset (a dataset with no matching skill directory is reported as an orphan).
 
 ## Adding a new MCP tool
 
@@ -251,7 +401,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 57 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 55 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool
@@ -270,6 +420,9 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `docs/adr/0028-lessons-hygiene-and-recall-expansion.md` — lessons v2: `stats`/`prune` hygiene surface, near-duplicate guard on `add`, wider recall/capture wiring
 - `docs/adr/0029-refactoring-command-family.md` — the `refactor-*` family: read → plan → apply split, findings registers under `.marvin/refactor/`, verify-gated apply rails
 - `docs/adr/0030-toolbox-dashboard-and-usage-log.md` — the `dashboard` tool (whole-toolbox report, extended `DashboardState`) + the local self-ignoring `.marvin/usage/` events log (implemented by WP7)
+- `docs/adr/0031-track-command-group-rename.md` — the `kanban-*` group renamed to `track-*`; the artifact is the "board" (`.marvin/track/`, `board_counts`), accepted ADRs keep the old name as history
+- `docs/adr/0032-track-surface-reduction.md` — the track surface reduced 14 → 7 prompts (`track-new`, routing `track-list`/`track-move`); tools, actions, and widget bindings unchanged
+- `docs/adr/0033-report-export.md` — report export is template-only: Claude fills the shipped print template (`skills/report-export/references/`, `.mvroot`-locked by `export-template.test.ts`); no export code in the server
 - `packages/marvin-widgets/` — the React browser workspace for MCP Apps `ui://` widgets (ADR-0024); builds committed self-contained HTML to `plugins/marvin/widgets/`
 - `plugins/marvin/mcp/server/src/resources/widgets.ts` — server-side `ui://` widget `ResourceDef`s (no ext-apps import)
 - `scripts/lint-manifests.mjs` — manifest + structure linter

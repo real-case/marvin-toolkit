@@ -1,0 +1,593 @@
+---
+// toolbox.astro (spec 011, F6) — the /toolbox page with LIVE widget demos.
+//
+// Phase 3 (spec 009) shipped this as a static shell; Phase 4 (spec 010) gave its demo canvas a
+// state-only Live/Screenshot toggle. This slice attaches the real embeds: the canvas becomes the
+// WidgetCanvas island, which frames the committed widget document for whichever widget the picker
+// selects, and clones that widget's static mini for the Screenshot side and for the failure path.
+//
+// The nine minis are authored ONCE, here, as the MINIS array below and rendered by a single loop.
+// They deliberately stay plain Astro rather than being wrapped in islands: `.wgrid > *
+// { min-width: 0 }` targets direct grid children, and an <astro-island> wrapper would steal that
+// rule and drop each mini a level, reintroducing the 360px overflow the Phase-3 slices had to fix.
+// The canvas island clones what it needs instead, so the artwork keeps one source and the grid
+// keeps its shrink behaviour.
+//
+// Style ownership split: `.wmini` and the journey layout stay in this file's scoped <style>
+// (Astro-rendered DOM). The canvas, its toggle and its stage moved to WidgetDemo.css, because
+// Astro's scoping never reaches Preact-rendered DOM.
+import Base from "../layouts/Base.astro";
+import { catalog } from "../data/catalog";
+import { WidgetCanvas } from "../components/WidgetDemo";
+
+const { counts, commands, groups } = catalog;
+const widgetCount = counts.widgets; // generated, never a literal (FR-20)
+const commandCount = commands.length; // generated, never a literal (FR-20)
+const groupCount = groups.length; // generated, never a literal (FR-20)
+
+// The nine committed widgets as the arrive → steer → review journey (FR-16).
+//
+// `widget` is the widget FILE name — what /widget-demos/<widget>.{html,json} is keyed by, and what
+// the canvas island matches on. `label` is the command a user actually types to reach it. The two
+// are NOT the same namespace and must never be derived from each other:
+//   - five diverge outright — task-list→/marvin:track-list, task-detail→/marvin:track-show,
+//     tracker-list→/marvin:track-list, audit→/marvin:sec-report, handoffs→/marvin:handoff-list
+//   - /marvin:track-list legitimately answers TWO widgets: the board by default (task-list) and
+//     the tracked view when asked for it (tracker-list)
+// Widgets are bound to MCP *tools* (task, task-detail, tracker), and tools have no slash form —
+// which is how the widget names "task-list" and "task-detail" were once printed here as if they
+// were commands. Neither exists. test/command-refs.test.mjs now checks every command this page
+// prints against the generated catalog; keep prose here free of literal slash-command spellings
+// for names that are not commands, since that guard reads comments too.
+//
+// `kind` selects one of three body shapes below. task-detail and task-summary are new artwork —
+// the approved mockup never drew them, but FR-16 covers all nine widgets.
+const MINIS = [
+  {
+    widget: "help",
+    label: "/marvin:help",
+    tag: "welcome",
+    kind: "help" as const,
+    step: "arrive",
+  },
+  {
+    widget: "dashboard",
+    label: "/marvin:dashboard",
+    tag: "analytics",
+    kind: "kpi" as const,
+    step: "steer",
+    kpis: [
+      { n: "4", l: "board" },
+      { n: "2", l: "specs" },
+      { n: "12", l: "lessons" },
+    ],
+    spark: [
+      { w: "14%", c: "var(--barR)" },
+      { w: "22%", c: "var(--barO)" },
+      { w: "34%", c: "var(--barA)" },
+      { w: "30%", c: "var(--barB)" },
+    ],
+  },
+  {
+    widget: "task-list",
+    label: "/marvin:track-list",
+    tag: "board",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "#12 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
+      { name: "#13 widget", dot: "dota", badge: "review", badgeClass: "b-amb" },
+      { name: "#11 tracker", dot: "dotg", badge: "done", badgeClass: "b-grn" },
+    ],
+  },
+  {
+    widget: "tracker-list",
+    label: "/marvin:track-list",
+    tag: "tracker",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "backlog", badge: "6", badgeClass: "b-acc" },
+      { name: "in progress", badge: "2", badgeClass: "b-blu" },
+      { name: "done", badge: "14", badgeClass: "b-grn" },
+    ],
+  },
+  {
+    widget: "task-detail",
+    label: "/marvin:track-show",
+    tag: "one task",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "#12 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
+      { name: "acceptance", badge: "4/4", badgeClass: "b-grn" },
+      { name: "branch", badge: "feat/spec", badgeClass: "b-acc" },
+    ],
+    note: "The whole task, body and links, in one pane.",
+  },
+  {
+    widget: "reports",
+    label: "/marvin:reports",
+    tag: "formatted",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "sec-scan", dot: "dotg", badge: "fresh", badgeClass: "b-grn" },
+      { name: "refactor-audit", dot: "dota", badge: "3d", badgeClass: "b-amb" },
+      { name: "task 001 summary", dot: "dotv", badge: "sealed", badgeClass: "b-acc" },
+    ],
+    exports: ["Export PDF", "Export MD"],
+  },
+  {
+    widget: "audit",
+    label: "/marvin:sec-report",
+    tag: "findings",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "critical", badge: "0", badgeClass: "b-red" },
+      { name: "high", badge: "2", badgeClass: "b-amb" },
+      { name: "audit", badge: "task-summary", badgeClass: "b-acc" },
+    ],
+  },
+  {
+    widget: "task-summary",
+    label: "/marvin:task-summary",
+    tag: "delivery",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "criteria", dot: "dotg", badge: "6/6", badgeClass: "b-grn" },
+      { name: "gates", dot: "dotg", badge: "pass", badgeClass: "b-grn" },
+      { name: "commits", badge: "3", badgeClass: "b-acc" },
+    ],
+    note: "What the task actually delivered.",
+  },
+  {
+    widget: "handoffs",
+    label: "/marvin:handoff-list",
+    tag: "continuity",
+    kind: "rows" as const,
+    step: "review",
+    rows: [
+      { name: "001 widget-stage", badge: "newest", badgeClass: "b-acc" },
+      { name: "handoffs", badge: "3", badgeClass: "b-blu" },
+    ],
+    note: "Resume any session in a fresh context.",
+  },
+];
+
+const steer = MINIS.filter((m) => m.step === "steer");
+const review = MINIS.filter((m) => m.step === "review");
+const help = MINIS.find((m) => m.widget === "help")!;
+
+// What the canvas picker offers — the same nine, same order. The label carries the tag as well as
+// the command because two widgets legitimately answer the SAME command: /marvin:track-list shows
+// the board by default (task-list widget) and the tracked view when asked for it (tracker-list
+// widget), so command alone would render two identical chips.
+const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · ${m.tag}` }));
+---
+
+<Base>
+  <div class="bp">
+    <div class="container">
+      <!-- header -->
+      <header class="phead">
+        <p class="eyebrow">visual toolbox</p>
+        <h1>The toolbox.</h1>
+        <p class="lead">
+          Fully set up on install. In MCP Apps hosts every tool renders live, interactive UI —
+          <b>and the same commands answer in plain text in any terminal</b>.
+        </p>
+        <span class="chip">{widgetCount} widgets</span>
+      </header>
+
+      <!-- arrive -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">arrive</span>
+          <h2 class="lbl">First contact</h2>
+          <span class="sub">— one command orients you</span>
+        </div>
+        <div class="wgrid c2">
+          <div class="wmini" data-widget={help.widget}>
+            <div class="h"><span>{help.label}</span><span>{help.tag}</span></div>
+            <div class="b">
+              <p class="wordmark">◆ marvin</p>
+              <div class="badges">
+                <span class="badge b-acc">/marvin:commit</span>
+                <span class="badge b-acc">task-start</span>
+                <span class="badge b-acc">sec-scan</span>
+              </div>
+              <p class="wnote">
+                {commandCount} commands · {groupCount} groups · servers lit by status
+              </p>
+            </div>
+          </div>
+          <div class="parity-mini">
+            $ /marvin:help — the same welcome as plain terminal text. Nothing is locked behind the
+            GUI.
+          </div>
+        </div>
+      </section>
+
+      <!-- steer -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">steer</span>
+          <h2 class="lbl">Run the project</h2>
+          <span class="sub">— state at a glance</span>
+        </div>
+        <div class="wgrid cauto">
+          {
+            steer.map((mini) => (
+              <div class="wmini" data-widget={mini.widget}>
+                <div class="h">
+                  <span>{mini.label}</span>
+                  <span>{mini.tag}</span>
+                </div>
+                <div class="b">
+                  {mini.kind === "kpi" && (
+                    <>
+                      <div class="kpis">
+                        {mini.kpis?.map((k) => (
+                          <div class="kpi">
+                            <div class="kn">{k.n}</div>
+                            <div class="kl">{k.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div class="spark">
+                        {mini.spark?.map((s) => (
+                          <i style={`width:${s.w};background:${s.c};`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {mini.kind === "rows" &&
+                    mini.rows?.map((row) => (
+                      <div class="rrow">
+                        <span class="rn">
+                          {row.dot && <span class={`dot ${row.dot}`} />}
+                          {row.name}
+                        </span>
+                        <span class={`badge ${row.badgeClass}`}>{row.badge}</span>
+                      </div>
+                    ))}
+                  {mini.note && <p class="wnote">{mini.note}</p>}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </section>
+
+      <!-- review & share -->
+      <section class="journey">
+        <div class="jhead">
+          <span class="step">review &amp; share</span>
+          <h2 class="lbl">Results out</h2>
+          <span class="sub">— formatted, exportable</span>
+        </div>
+        <div class="wgrid cauto">
+          {
+            review.map((mini) => (
+              <div class="wmini" data-widget={mini.widget}>
+                <div class="h">
+                  <span>{mini.label}</span>
+                  <span>{mini.tag}</span>
+                </div>
+                <div class="b">
+                  {mini.rows?.map((row) => (
+                    <div class="rrow">
+                      <span class="rn">
+                        {row.dot && <span class={`dot ${row.dot}`} />}
+                        {row.name}
+                      </span>
+                      <span class={`badge ${row.badgeClass}`}>{row.badge}</span>
+                    </div>
+                  ))}
+                  {mini.exports && (
+                    <div class="rexport">
+                      {mini.exports.map((e) => (
+                        <span class="badge b-acc">{e}</span>
+                      ))}
+                    </div>
+                  )}
+                  {mini.note && <p class="wnote">{mini.note}</p>}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </section>
+
+      <!-- The demo canvas — now a real island (spec 011, F4). It frames the committed widget
+           document for the selected widget on the Live side, and clones that widget's mini above
+           for the Screenshot side and whenever a frame fails to come up. client:visible, never
+           client:only. -->
+      <WidgetCanvas client:visible widgets={canvasWidgets} initial="help" />
+
+      <p class="parline">
+        Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
+        glass.
+      </p>
+    </div>
+  </div>
+</Base>
+
+<style>
+  /* page-local blueprint — 40px pitch, matching the siblings + the mockup (the scaffold
+     .blueprint is 32px). Spans the full width behind the centred .container. */
+  .bp {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    padding-bottom: 40px;
+  }
+
+  /* ---------- header ---------- */
+  .phead {
+    padding: 56px 0 8px;
+  }
+  /* Toolbox eyebrows are accent-coloured (mockup) — overrides the muted scaffold .eyebrow. */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--act);
+    margin: 0 0 10px;
+  }
+  .phead h1 {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.026em;
+    line-height: 1.02;
+    margin: 0 0 10px;
+  }
+  .lead {
+    color: var(--t2);
+    font-size: 15.5px;
+    margin: 0 0 12px;
+    max-width: 64ch;
+  }
+  .lead b {
+    color: var(--t1);
+  }
+  .chip {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: var(--srf);
+  }
+
+  /* ---------- journey blocks ---------- */
+  .journey {
+    border: 1px solid var(--bd);
+    border-radius: 14px;
+    background: var(--srf);
+    padding: 20px 22px;
+    margin-top: 16px;
+  }
+  .jhead {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .jhead .step {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--act);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* the section label is a real <h2> (a11y outline) styled to the mockup's dimensions */
+  .jhead .lbl {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0;
+  }
+  .jhead .sub {
+    font-size: 12.5px;
+    color: var(--t3);
+  }
+
+  /* ---------- widget minis ---------- */
+  .wgrid {
+    display: grid;
+    gap: 14px;
+  }
+  /* The steer / review rows carry four minis each since task-detail and task-summary joined them.
+     auto-fit keeps them 4-up on a wide viewport and collapses to 2 then 1 without a breakpoint
+     ladder. */
+  .wgrid.cauto {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  }
+  .wgrid.c2 {
+    grid-template-columns: 1.1fr 1fr;
+  }
+  /* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap). */
+  .wgrid > * {
+    min-width: 0;
+  }
+  .wmini {
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .wmini .h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--bd);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--t3);
+  }
+  .wmini .b {
+    padding: 13px;
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 750;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(100deg, var(--acfill), var(--ac));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin: 0 0 9px;
+  }
+  .badges {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .wnote {
+    font-size: 11.5px;
+    color: var(--t3);
+    margin: 9px 0 0;
+  }
+
+  /* status badges (on the shared tokens) */
+  .b-acc {
+    color: var(--act);
+    background: var(--acbg);
+    border-color: transparent;
+  }
+  .b-amb {
+    color: var(--amb);
+    background: var(--ambbg);
+    border-color: transparent;
+  }
+  .b-grn {
+    color: var(--grn);
+    background: var(--grnbg);
+    border-color: transparent;
+  }
+  .b-blu {
+    color: var(--blu);
+    background: var(--blubg);
+    border-color: transparent;
+  }
+  .b-red {
+    color: var(--red);
+    background: var(--redbg);
+    border-color: transparent;
+  }
+
+  /* dashboard KPIs + spark */
+  .kpis {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .kpi {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 7px 9px;
+  }
+  .kpi .kn {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 750;
+  }
+  .kpi .kl {
+    font-size: 9.5px;
+    color: var(--t3);
+  }
+  .spark {
+    display: flex;
+    height: 7px;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .spark i {
+    display: block;
+    height: 100%;
+  }
+
+  /* result rows */
+  .rrow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--bd);
+    font-size: 12px;
+  }
+  .rrow:last-child {
+    border-bottom: none;
+  }
+  .rrow .rn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 7px;
+  }
+  .dotb {
+    background: var(--blu);
+  }
+  .dota {
+    background: var(--amb);
+  }
+  .dotg {
+    background: var(--grn);
+  }
+  .dotv {
+    background: var(--ac);
+  }
+  .rexport {
+    display: flex;
+    gap: 6px;
+    margin-top: 11px;
+  }
+
+  .parity-mini {
+    border: 1px dashed var(--bd2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--t3);
+    background: transparent;
+    display: flex;
+    align-items: center;
+  }
+
+  .parline {
+    font-size: 13px;
+    color: var(--t3);
+    margin-top: 16px;
+  }
+
+  /* ---------- responsive (mockup breakpoint) ---------- */
+  @media (max-width: 860px) {
+    .wgrid.c2 {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Marvin · Help</title>
+    <style>
+      /* The widget paints its own canvas (the MvRoot token panel), so the entry
+         document stays transparent — the host surface shows through around the
+         framed panel in both schemes. color-scheme keeps UA chrome (scrollbars,
+         form controls) matched to the host theme. */
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        padding: 1.1rem 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

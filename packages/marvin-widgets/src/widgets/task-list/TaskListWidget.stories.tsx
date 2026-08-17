@@ -1,24 +1,127 @@
 import { useEffect, useState } from "react";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { TaskListView, TaskListWidget, type TaskListSeam } from "./TaskListWidget";
-import { taskListFixture } from "./fixture";
+import {
+  emptyTaskListFixture,
+  minimalCardFixture,
+  singleTaskFixture,
+  stressTaskListFixture,
+  taskListFixture,
+} from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+import { waitForCondition } from "../../lib/story-helpers";
+import type { MvTheme } from "../../theme";
 
 /**
- * Stories for the task-list widget (ADR-0024): a static component story over the
- * fixture (visual/dev), and a mock-host story whose `play` drives the real
- * ext-apps handshake over an in-memory transport and asserts the cards render —
- * the `@storybook/test-runner` (test-storybook) oracle.
+ * Stories for the task-list widget (ADR-0024): static stories over the fixtures
+ * cover every render shape the pure view has (board, pinned dark theme, empty,
+ * single, minimal card, stress content, connecting/no-data/error), a `play` story
+ * drives row selection, and the mock-host story runs the real ext-apps handshake
+ * over an in-memory transport — the `@storybook/test-runner` (test-storybook)
+ * oracle.
  */
+
+/**
+ * The view renders its own `<MvRoot>` (production follows the OS scheme), so a
+ * story pins a theme by forwarding the `hostTheme` parameter/toolbar global into
+ * the view's `theme` prop — the `data-theme` attribute override, deterministic
+ * for visual baselines regardless of the browser's `prefers-color-scheme`.
+ */
+const withHostTheme: Decorator = (Story, context) => {
+  const t: unknown = context.parameters.hostTheme ?? context.globals.hostTheme;
+  const theme: MvTheme | undefined = t === "dark" ? "dark" : t === "light" ? "light" : undefined;
+  return <Story args={{ ...context.args, theme }} />;
+};
+
 const meta: Meta<typeof TaskListView> = {
   title: "Widgets/TaskList",
   component: TaskListView,
+  decorators: [withHostTheme],
 };
 export default meta;
 
-/** Static story — the pure view rendering the fixture directly. */
-export const Fixture: StoryObj<typeof TaskListView> = {
+type Story = StoryObj<typeof TaskListView>;
+
+/** Static story — the pure view rendering the fixture directly (light theme). */
+export const Fixture: Story = {
   args: { data: taskListFixture },
+};
+
+/** The fixture with the dark theme pinned via `MvRoot`'s attribute override. */
+export const FixtureDark: Story = {
+  args: { data: taskListFixture },
+  parameters: { hostTheme: "dark" },
+};
+
+/** A freshly initialised board — "0 tasks" header over the ListDetail empty label. */
+export const EmptyBoard: Story = {
+  args: { data: emptyTaskListFixture },
+};
+
+/** Exactly one card — the singular "1 task" header and a fully-featured detail pane. */
+export const SingleTask: Story = {
+  args: { data: singleTaskFixture },
+};
+
+/** The minimal legal card — the detail renders no link buttons and no Spec row. */
+export const MinimalCard: Story = {
+  args: { data: minimalCardFixture },
+};
+
+/** 25 cards with ~140-char titles, a many-segment branch, and unicode/emoji — the truncation/wrap stress shot. */
+export const LongContent: Story = {
+  args: { data: stressTaskListFixture },
+};
+
+/** Clicking the second row swaps the detail pane to the second card. */
+export const SecondTaskSelected: Story = {
+  args: { data: taskListFixture },
+  play: async ({ canvasElement }) => {
+    const options = canvasElement.querySelectorAll<HTMLElement>('[role="option"]');
+    if (options.length < 2) {
+      throw new Error("SecondTaskSelected: expected at least two rows to render");
+    }
+    options[1].click();
+    await waitForCondition(
+      () =>
+        canvasElement.querySelector('[data-testid="detail-title"]')?.textContent ===
+        taskListFixture.tasks[1].title,
+      "the detail pane to show the second card's title",
+    );
+  },
+};
+
+/** Two statuses picked — the multi-select filter narrows the board to wip + blocked. */
+export const FilteredByStatus: Story = {
+  args: { data: taskListFixture },
+  play: async ({ canvasElement }) => {
+    const chip = (role: string) =>
+      canvasElement.querySelector<HTMLElement>(`[data-testid="role-filter"][data-role="${role}"]`);
+    for (const role of ["wip", "blocked"]) {
+      const target = chip(role);
+      if (!target) throw new Error(`FilteredByStatus: no "${role}" filter chip rendered`);
+      target.click();
+    }
+    await waitForCondition(
+      () => canvasElement.querySelectorAll('[role="option"]').length === 2,
+      "the list to narrow to the two selected statuses",
+    );
+  },
+};
+
+/** The handshake-in-flight state — no data yet, "Connecting…" placeholder. */
+export const Connecting: Story = {
+  args: { data: null, connecting: true },
+};
+
+/** Connected but the host never delivered a payload — the "No data." copy. */
+export const NoData: Story = {
+  args: { data: null, connecting: false },
+};
+
+/** A transport error — the danger-coloured failure banner. (Named ErrorState — `Error` shadows the global.) */
+export const ErrorState: Story = {
+  args: { data: null, error: "kaboom: transport dropped" },
 };
 
 /** Wire the widget to a fresh mock-host and connect once the host is armed. */
@@ -38,18 +141,15 @@ function MockHostHarness() {
   return seam ? <TaskListWidget seam={seam} /> : <div>Starting mock host…</div>;
 }
 
-async function waitForCards(root: HTMLElement, count: number) {
-  for (let i = 0; i < 50; i += 1) {
-    if (root.querySelectorAll('[role="option"]').length >= count) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`mock-host story: expected ${count} cards to render`);
-}
-
-/** Mock-host story — the handshake delivers a tool-result and the widget renders it. */
+/** Mock-host story — the handshake delivers a tool-result and the widget renders it. Excluded from screenshots (`visual: false`): its settled DOM duplicates Fixture. */
 export const MockHost: StoryObj = {
   render: () => <MockHostHarness />,
+  parameters: { visual: false },
   play: async ({ canvasElement }) => {
-    await waitForCards(canvasElement, taskListFixture.tasks.length);
+    await waitForCondition(
+      () =>
+        canvasElement.querySelectorAll('[role="option"]').length === taskListFixture.tasks.length,
+      "the mock-host handshake to deliver the fixture's cards",
+    );
   },
 };

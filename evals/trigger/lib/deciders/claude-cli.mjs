@@ -61,6 +61,11 @@ function run(cmd, args, { cwd, timeoutMs }) {
       child.kill("SIGKILL");
       reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
+    // Decode through each stream's own StringDecoder, never per chunk: the CLI emits
+    // long multibyte prose, and a character split across two pipe reads would decode
+    // to U+FFFD on both sides of the boundary. Same defect as bin/widget-preview.mjs.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
     child.on("error", (e) => {

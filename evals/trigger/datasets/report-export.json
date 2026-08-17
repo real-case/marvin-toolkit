@@ -1,0 +1,217 @@
+{
+  "skill": "report-export",
+  "target": "report-export",
+  "note": "report-export turns an ALREADY-GENERATED .marvin/ report into a shareable artifact (PDF, print-ready HTML, Markdown digest) by filling the shipped template in-session (ADR-0033). Its neighbourhood is crowded with two prompts that have no SKILL.md and so are absent from the catalog a decider is shown — /marvin:reports (list every generated report) and /marvin:sec-report (list security findings by severity). Those cannot be competition winners; they appear in negative notes instead. The competition rows name real, catalog-reachable siblings (handoff, changelog). The sharpest distinction to measure: producing a report versus SHARING one that already exists.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "export the latest security scan report to PDF",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "save the refactor audit as a standalone html file I can send round",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "the auditor wants the ASVS compliance report as a pdf by friday, can you produce it",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "turn .marvin/security/002-threat-model-auth.md into a print-ready document",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "I need a markdown digest of the handoff doc to paste into slack",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "make the pentest checklist shareable outside the terminal",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "/marvin:report-export .marvin/refactor/003-plan-storage.md pdf",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "can you give me a client-facing version of the last verification run",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "my lead can't open the terminal — export that scan somewhere she can read it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "print-ready html of the dependency audit please, same styling as the widgets",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "what reports have we generated under .marvin/ so far?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "listing the generated corpus → /marvin:reports; export acts on one report that is already chosen"
+    },
+    {
+      "id": "neg-2",
+      "text": "show me the security audit findings by severity",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reading typed findings out of .marvin/security/ → /marvin:sec-report, not an export of them"
+    },
+    {
+      "id": "neg-3",
+      "text": "which of our reports are stale and worth regenerating?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "staleness is server-computed by the report tool → /marvin:reports; nothing is being shared"
+    },
+    {
+      "id": "neg-4",
+      "text": "run a full security scan of the codebase",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "PRODUCING a report → sec-scan; export only consumes one that already exists"
+    },
+    {
+      "id": "neg-5",
+      "text": "convert this random markdown file in my downloads folder to pdf",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "generic file conversion of a non-.marvin document; the skill fills a template over a generated report, not arbitrary markdown"
+    },
+    {
+      "id": "neg-6",
+      "text": "the exported html renders in the wrong font when I open it in safari",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "diagnosing a defect in the produced artifact → debug, not another export run"
+    },
+    {
+      "id": "neg-7",
+      "text": "explain how the print template gets filled in-session instead of server-side",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "conceptual walkthrough of the ADR-0033 mechanism → explain"
+    },
+    {
+      "id": "neg-8",
+      "text": "add a severity-summary block to the export template",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a code change to references/ under the skill → the task pipeline, not an export"
+    },
+    {
+      "id": "neg-9",
+      "text": "summarise what task 004 actually delivered",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "aggregating criteria, gates and commits for a finished spec → task-summary"
+    },
+    {
+      "id": "neg-10",
+      "text": "open the reports widget so I can browse them visually",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "rendering a ui:// panel → widget-preview; export writes a document, not a live panel"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "we're done with the audit — package the findings so I can email them to the client",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "report-export",
+      "mock_rate": 1,
+      "note": "shares 'package up the work' vocab with handoff, but the artifact is an existing report leaving the terminal → report-export wins"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "produce a shareable pdf of everything the security review found",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "report-export",
+      "mock_rate": 1,
+      "note": "overlaps sec-report's vocabulary, but sec-report only lists findings in the terminal; a pdf is an export"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "write up where we got to so a fresh session can pick this up tomorrow",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "handoff",
+      "mock_rate": 0,
+      "note": "shares 'write it up so someone else can read it' with export, but the artifact is session continuation → handoff is more specific"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "put together a nicely formatted release summary for v0.13.0 from the git history",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "changelog",
+      "mock_rate": 0,
+      "note": "'nicely formatted document' overlaps export, but the source is git history rather than a generated .marvin/ report → changelog"
+    }
+  ]
+}

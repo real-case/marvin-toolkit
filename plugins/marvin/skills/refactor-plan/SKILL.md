@@ -154,7 +154,7 @@ next moves:
 - **Execute** — `/marvin:refactor-apply` for Step 1 (one step per invocation,
   under its verify/coverage/lessons rails).
 - **File to the board** — for steps or routed items not being executed now,
-  offer to file kanban chores via the `task` MCP tool, one call per item:
+  offer to file board chores via the `task` MCP tool, one call per item:
   `action: "create"`, `type: "chore"`, `title`: `"Step <n>: <step title>"` (or
   `"F<n>: <finding title>"`), `description`: the step's rationale plus a
   pointer to `.marvin/refactor/<NNN>-plan-<slug>.md`.

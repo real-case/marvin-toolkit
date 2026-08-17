@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import {
   AdrCorpusSummary,
   DashboardState,
-  RefactorInventory,
-  SecurityInventory,
   UsageSummary,
   VerificationFreshness,
 } from "../dist/contracts/index.js";
+import * as contracts from "../dist/contracts/index.js";
 
 /**
  * The ADR-0030 DashboardState extension: whole-toolbox sections are optional
@@ -17,7 +16,7 @@ import {
 
 const BASE = {
   version: "0.12.0",
-  paths: { project: "/p", tasks_dir: "/p/.marvin/kanban", config_path: "/p/.marvin/config.json" },
+  paths: { project: "/p", tasks_dir: "/p/.marvin/track", config_path: "/p/.marvin/config.json" },
   config: {
     base_branch: "dev",
     tracker_url_template: null,
@@ -27,8 +26,8 @@ const BASE = {
       { key: "done", role: "done" },
     ],
   },
-  kanban_counts: { todo: 1, wip: 0, done: 2 },
-  kanban_role_counts: { todo: 1, wip: 0, done: 2 },
+  board_counts: { todo: 1, wip: 0, done: 2 },
+  board_role_counts: { todo: 1, wip: 0, done: 2 },
   git: { has_git: true, has_gh: false, branch: "dev" },
   artifacts: { specs: 1, handoffs: 0, audits: 2, lessons: 3 },
   command_groups: [{ group: "core", count: 13 }],
@@ -49,8 +48,6 @@ test("DashboardState accepts the full ADR-0030 extension", () => {
       counts: { proposed: 1, accepted: 27, deprecated: 0, superseded: 2, rejected: 0 },
       malformed: 0,
     },
-    security: { reports: 2, newest_age_days: 4 },
-    refactor: { audits: 1, smells: 2, plans: 1 },
     lessons: { total: 3, by_type: { gotcha: 2, pitfall: 1 }, by_tag: { ci: 1 } },
     usage: {
       events: 12,
@@ -89,11 +86,40 @@ test("AdrCorpusSummary: status counts stay on the closed vocabulary", () => {
   );
 });
 
-test("SecurityInventory and RefactorInventory reject negative counts", () => {
-  assert.equal(SecurityInventory.safeParse({ reports: 0, newest_age_days: null }).success, true);
-  assert.equal(SecurityInventory.safeParse({ reports: -1, newest_age_days: null }).success, false);
-  assert.equal(RefactorInventory.safeParse({ audits: 0, smells: 0, plans: 0 }).success, true);
-  assert.equal(RefactorInventory.safeParse({ audits: 0, smells: -2, plans: 0 }).success, false);
+test("the v1 SecurityInventory / RefactorInventory schemas are gone from the surface", () => {
+  assert.equal(contracts.SecurityInventory, undefined);
+  assert.equal(contracts.RefactorInventory, undefined);
+});
+
+test("DashboardState no longer carries the v1 security / refactor fields", () => {
+  // zod STRIPS unknown keys rather than rejecting them, so "it still parses" is
+  // not the proof — the parsed OUTPUT is. A payload carrying the old blocks
+  // parses, and they are absent from the result precisely because the schema no
+  // longer declares them. Were either field still declared, it would survive
+  // into `data` and this assertion would fail: that is what makes it a removal
+  // proof rather than a restatement.
+  const parsed = DashboardState.safeParse({
+    ...BASE,
+    security: { reports: 2, newest_age_days: 4 },
+    refactor: { audits: 1, smells: 2, plans: 1 },
+  });
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+  assert.equal("security" in parsed.data, false);
+  assert.equal("refactor" in parsed.data, false);
+  // the sibling that supersedes them is still declared and still round-trips,
+  // so this cannot pass by the schema having lost both blocks wholesale
+  const withAudits = DashboardState.safeParse({
+    ...BASE,
+    audits: {
+      security: { scanned_age_days: 1, total: 1, by_severity: { high: 1 } },
+      refactor: null,
+    },
+  });
+  assert.equal(withAudits.success, true, JSON.stringify(withAudits.error?.issues));
+  assert.deepEqual(withAudits.data.audits.refactor, null);
+  assert.equal(withAudits.data.audits.security.total, 1);
+  // and `artifacts.audits` — the security DOCUMENT count — is untouched
+  assert.equal(parsed.data.artifacts.audits, 2);
 });
 
 test("UsageSummary: kind is closed to prompt|tool, window may be null", () => {
@@ -119,4 +145,73 @@ test("UsageSummary: kind is closed to prompt|tool, window may be null", () => {
       .success,
     false,
   );
+});
+
+/**
+ * DashboardState v2 (ADR-0024 data-first staging): the added sections —
+ * `servers`, `current_tasks` {board, specs}, `handoffs`, `audits` — are all
+ * optional, so a full v2 payload parses, a v1-narrow payload still parses
+ * (ADR-0030 back-compat), and malformed v2 data is rejected fail-closed.
+ */
+
+const V2_CARD = {
+  id: "001",
+  type: "feature",
+  status: { key: "wip", role: "wip" },
+  title: "Rework dashboard",
+  branch: "task/dashboard-state-v2",
+  tracker_url: null,
+  pr: null,
+  created: "2026-07-01T10:00:00.000Z",
+  updated: "2026-07-02T10:00:00.000Z",
+};
+
+test("parses a full v2 payload", () => {
+  const parsed = DashboardState.safeParse({
+    ...BASE,
+    servers: [
+      { name: "marvin", enabled: true },
+      { name: "context7", enabled: false },
+    ],
+    current_tasks: {
+      board: [V2_CARD],
+      specs: [{ slug: "dashboard-state-v2", title: "DashboardState v2", id: "017" }],
+    },
+    handoffs: [{ slug: "resume-widget", objective: "Continue the widget slice", age_days: 1 }],
+    audits: {
+      security: {
+        scanned_age_days: 4,
+        total: 3,
+        by_severity: { high: 1, low: 2 },
+        newest_report: "003-sec-scan.md",
+      },
+      refactor: { scanned_age_days: null, total: 0, by_severity: {} },
+    },
+  });
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+});
+
+test("keeps a narrow no-v2-section payload valid", () => {
+  // BASE omits every v2 field — an existing narrow producer must still conform.
+  const parsed = DashboardState.safeParse(BASE);
+  assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
+});
+
+test("rejects malformed v2 sections", () => {
+  // by_severity carries a key outside the closed Severity vocabulary.
+  const badSeverity = DashboardState.safeParse({
+    ...BASE,
+    audits: {
+      security: { scanned_age_days: 1, total: 1, by_severity: { blocker: 1 } },
+      refactor: null,
+    },
+  });
+  assert.equal(badSeverity.success, false);
+
+  // current_tasks.board holds a TaskCard with a malformed id (not 3 digits).
+  const badCard = DashboardState.safeParse({
+    ...BASE,
+    current_tasks: { board: [{ ...V2_CARD, id: "1" }], specs: [] },
+  });
+  assert.equal(badCard.success, false);
 });

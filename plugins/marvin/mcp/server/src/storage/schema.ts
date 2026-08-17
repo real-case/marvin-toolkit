@@ -137,6 +137,23 @@ export const GateCommands = z.object({
   lint: z.string().min(1).optional(),
   typecheck: z.string().min(1).optional(),
   build: z.string().min(1).optional(),
+  /**
+   * **Not a gate.** The template that runs ONE test — how a `kind: test`
+   * acceptance oracle resolves to a command (ADR-0036). It is never scheduled,
+   * never appears in a verdict and never reaches `verification.md`, and that is
+   * mechanical rather than a convention: all three gate paths
+   * (`gatesFromStacks`, `mergeConfigGates`, `gateSpecsFromConfig`) iterate the
+   * `GATE_NAMES` tuple, so a key outside that tuple is structurally unreachable
+   * as a gate. Leave those loops as they are.
+   *
+   * It must nonetheless be DECLARED here, because zod strips unknown keys
+   * silently — ADR-0009 records that as an accepted trade-off ("a typo
+   * (`tests:`) is stripped by the schema"). An undeclared `test_one` would
+   * vanish inside `loadConfig` with no error anywhere to observe.
+   *
+   * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
+   */
+  test_one: z.string().min(1).optional(),
 });
 export type GateCommands = z.infer<typeof GateCommands>;
 
@@ -154,6 +171,27 @@ export const AdrConfig = z.object({
 export type AdrConfig = z.infer<typeof AdrConfig>;
 
 /**
+ * Spec corpus configuration (ADR-0037), owned by the `spec` tool.
+ *
+ * The field is obvious; the reason the tier exists is not. `/marvin:task-start`
+ * already asks the user to CHOOSE where this repository keeps its specs, and
+ * until now that choice was recorded nowhere — so the next session re-derived it
+ * from a directory listing and could answer differently. Detection cannot help:
+ * a directory the host has not created yet is invisible to it by construction,
+ * which is exactly the state a freshly chosen location is in. `spec.dir` is the
+ * place that answer survives the session that made it.
+ *
+ * Absent means detection (`.marvin/task/`, `specs/`, `docs/specs/`,
+ * `docs/rfcs/`, `rfcs/`) and then the `.marvin/task/` default. It moves where
+ * NEW specs are allocated and which directory the readers consult first; it
+ * never moves the `.marvin/`-pinned verification artifacts (ADR-0007).
+ */
+export const SpecConfig = z.object({
+  dir: z.string().min(1).optional(),
+});
+export type SpecConfig = z.infer<typeof SpecConfig>;
+
+/**
  * Usage-telemetry configuration (ADR-0030), owned by the usage-log middleware.
  * The single kill-switch: `enabled` defaults to `true`, so an absent `usage`
  * block (and an absent config file) means logging is ON — telemetry is
@@ -169,10 +207,20 @@ export type UsageConfig = z.infer<typeof UsageConfig>;
 
 export const Config = z.object({
   base_branch: z.string().default("dev"),
+  /**
+   * URL template for a task's external tracker item, with `{tracker_id}`
+   * marking where the id goes. Whether it can actually substitute is checked
+   * on the way out of `loadConfig`, not here: a `.refine()` would fail the
+   * whole parse, so one mistyped template would reset `statuses`, `gates` and
+   * `base_branch` to their defaults as well. The loader drops this field alone
+   * and reports why (`trackerTemplateIssue`).
+   */
   tracker_url_template: z.string().nullable().default(null),
   gates: GateCommands.optional(),
   /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
   adr: AdrConfig.optional(),
+  /** Spec corpus location (ADR-0037); absent means detect/default. */
+  spec: SpecConfig.optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */

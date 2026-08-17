@@ -59,7 +59,7 @@ function seedTask(tasksDir, { id = "001", status = "todo", branch = `${id}--seed
 
 test("create with all fields as arguments runs with no elicitation round-trip", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
       {
@@ -95,7 +95,7 @@ test("create with all fields as arguments runs with no elicitation round-trip", 
 
 test("create with type+title only skips the form; optionals stay optional", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
       { name: "task", arguments: { action: "create", type: "feature", title: "Dark mode" } },
@@ -131,7 +131,7 @@ test("create validates argument values: bad tracker_id is an instructive isError
 
 test("move with a valid status argument skips the picker", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -150,7 +150,7 @@ test("move with a valid status argument skips the picker", async () => {
 
 test("move with an unknown status key lists the configured keys", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
 
@@ -170,7 +170,7 @@ test("move with an unknown status key lists the configured keys", async () => {
 
 test("host without elicitation: create missing title gets an instructive error, not a wire error", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive(
       { CLAUDE_PROJECT_DIR: dir },
@@ -192,7 +192,7 @@ test("host without elicitation: create missing title gets an instructive error, 
 
 test("host without elicitation: argument-complete calls still work end to end", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const { results, elicitations } = await drive(
       { CLAUDE_PROJECT_DIR: dir },
@@ -218,7 +218,7 @@ test("host without elicitation: argument-complete calls still work end to end", 
 
 test("Unicode title round-trips; slug falls back to the task type", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     const title = "Исправить таймаут логина";
     const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
@@ -241,9 +241,41 @@ test("Unicode title round-trips; slug falls back to the task type", async () => 
   }
 });
 
+test("report rejects an undeclared argument instead of stripping it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
+  try {
+    // Strictness lives in `registerTool`'s safeParse, so this case has to run
+    // over STDIO: `report-tool.test.mjs` calls the handler directly and would
+    // never see it. It is also the first per-tool strictness case in this
+    // suite — `mcp-shared/test/strict-input.test.mjs` proves the plumbing with
+    // synthetic probe tools, not any real tool's schema.
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      // the dangerous direction: a caller who INTENDS to record a baseline
+      { name: "report", arguments: { action: "triage", snapshott: true } },
+      { name: "report", arguments: {} },
+    ]);
+
+    const [rejected, bare] = results;
+    assert.equal(rejected.isError, true, "an undeclared key is not silently stripped");
+    assert.match(textOf(rejected), /snapshott/, "the error names the argument");
+    assert.doesNotMatch(textOf(rejected), /# Finding triage/, "and no answer was computed");
+    assert.throws(
+      () => readdirSync(join(dir, ".marvin", "report")),
+      /ENOENT/,
+      "nothing was written on the rejected path",
+    );
+
+    // …while the declared surface is untouched: a bare call still means `list`.
+    assert.notEqual(bare.isError, true);
+    assert.match(textOf(bare), /# Reports \(0\)|No reports yet/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("nextSeq counts malformed files too — no duplicate ids (regression)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
-  const tasksDir = join(dir, ".marvin", "kanban");
+  const tasksDir = join(dir, ".marvin", "track");
   try {
     seedTask(tasksDir, { id: "001", status: "todo" });
     // 002 has broken frontmatter (no title): invisible to readAllTasks, but its

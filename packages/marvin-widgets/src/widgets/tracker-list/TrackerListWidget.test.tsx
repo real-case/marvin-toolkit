@@ -1,20 +1,38 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/preact";
+// Runtime zod import — allowed in tests only (stories/fixtures stay type-only).
+import { TrackerListPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { TrackerListView, TrackerListWidget } from "./TrackerListWidget";
-import { trackerListFixture, emptyTrackerListFixture } from "./fixture";
+import { trackerListFixture, noUrlTrackerFixture, emptyTrackerFixture } from "./fixture";
 import { createMockHost } from "../../lib/mock-host";
+
+describe("TrackerListWidget — fixtures satisfy the data contract", () => {
+  it("every fixture parses as a TrackerListPayload", () => {
+    // The fixtures feed the stories and the mock-host handshake; parsing them
+    // here pins them to the real zod contract the `tracker` tool emits.
+    expect(() => TrackerListPayload.parse(trackerListFixture)).not.toThrow();
+    expect(() => TrackerListPayload.parse(noUrlTrackerFixture)).not.toThrow();
+    expect(() => TrackerListPayload.parse(emptyTrackerFixture)).not.toThrow();
+  });
+});
 
 describe("TrackerListWidget — pure view over the fixture", () => {
   it("lists tracked tasks and renders the tracker link-out button", () => {
     render(<TrackerListView data={trackerListFixture} />);
 
+    // the view provides its own theme scope — the family token boundary
+    expect(screen.getByTestId("mv-root")).toBeTruthy();
+
     // thin payload: a count header, no board-role roll-up
     expect(screen.getByTestId("tracker-counts").textContent).toContain("2 tracked tasks");
 
-    // one row per tracked task, in payload order
+    // one row per tracked task, in payload order — two-line rows: the title
+    // plus a meta line carrying the tracker id (as a mono chip) and the type
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
     expect(options[0].textContent).toContain("Fix login timeout on slow networks");
+    expect(options[0].textContent).toContain("OSI-101");
+    expect(options[0].textContent).toContain("bug");
 
     // the first (selected) card has a tracker_url → an external link-out button
     const pane = screen.getByTestId("list-detail-pane");
@@ -23,6 +41,10 @@ describe("TrackerListWidget — pure view over the fixture", () => {
     expect(link.textContent).toContain("↗"); // external marker
     // and the PR link renders alongside it
     expect(within(pane).getByRole("button", { name: /PR #12/ })).toBeTruthy();
+
+    // Updated renders as the deterministic YYYY-MM-DD date, not the raw ISO string
+    expect(pane.textContent).toContain("2026-07-03");
+    expect(pane.textContent).not.toContain("2026-07-03T14:15:00.000Z");
   });
 
   it("a tracker task with no tracker_url renders the id and a configure hint, not a link", () => {
@@ -39,7 +61,7 @@ describe("TrackerListWidget — pure view over the fixture", () => {
   });
 
   it("empty state renders when no task carries a tracker id", () => {
-    render(<TrackerListView data={emptyTrackerListFixture} />);
+    render(<TrackerListView data={emptyTrackerFixture} />);
     expect(screen.getByTestId("tracker-empty").textContent).toMatch(/No tasks carry a tracker id/);
     // no master-detail list at all
     expect(screen.queryByRole("option")).toBeNull();

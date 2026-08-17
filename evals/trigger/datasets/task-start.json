@@ -1,7 +1,7 @@
 {
   "skill": "task-start",
   "target": "task-start",
-  "note": "task-start OWNS Phase 1 of the taskmaster pipeline: a structured dialogue that produces an immutable, testable spec (context capture, solution variants, file-change allowlist, acceptance criteria bound to oracles, red-team critic, tool-backed Definition-of-Ready gate) BEFORE any code is written. Near-misses are the downstream pipeline siblings (task-implement executes a ready spec, task-verify runs gates, task-deliver commits+PRs, task-fix-pr applies review feedback) plus debug (root-cause with no spec), migration-plan (a different planning artifact), adr (records a decision, not a work spec), and the lightweight kanban-* tracker (board cards, not a heavyweight spec). mock_rate encodes the IDEAL outcome for `--decider mock`; real deciders ignore it.",
+  "note": "task-start OWNS Phase 1 of the taskmaster pipeline: a structured dialogue that produces an immutable, testable spec (context capture, solution variants, file-change allowlist, acceptance criteria bound to oracles, red-team critic, tool-backed Definition-of-Ready gate) BEFORE any code is written. Near-misses are the downstream pipeline siblings (task-implement executes a ready spec, task-verify runs gates, task-deliver commits+PRs, task-fix-pr applies review feedback) plus debug (root-cause with no spec), migration-plan (a different planning artifact), adr (records a decision, not a work spec), and the lightweight track-* tracker (board cards, not a heavyweight spec). mock_rate encodes the IDEAL outcome for `--decider mock`; real deciders ignore it.",
   "queries": [
     {
       "id": "pos-1",
@@ -145,7 +145,7 @@
       "split": "validation",
       "kind": "negative",
       "mock_rate": 0,
-      "note": "lightweight tracker card → kanban-bug, not the heavyweight spec pipeline"
+      "note": "lightweight tracker card → track-new, not the heavyweight spec pipeline"
     },
     {
       "id": "neg-8",
@@ -172,7 +172,7 @@
       "split": "validation",
       "kind": "negative",
       "mock_rate": 0,
-      "note": "quick spike on the board → kanban-spike, not a full spec"
+      "note": "quick spike on the board → track-new (spike), not a full spec"
     },
 
     {

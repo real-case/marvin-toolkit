@@ -1,4 +1,5 @@
 import { App } from "@modelcontextprotocol/ext-apps";
+import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import { AppBridge } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
@@ -28,6 +29,13 @@ export interface MockHost {
    * tool-result carrying `payload`. Call before the widget connects its App.
    */
   start(): Promise<void>;
+  /**
+   * Replace the host context and notify the view, exactly as a real host does
+   * when the user toggles their appearance. Delegates to `AppBridge`, which
+   * sends `ui/notifications/host-context-changed` itself — so a theme test
+   * drives the genuine protocol rather than poking the widget's state.
+   */
+  setHostContext(hostContext: McpUiHostContext): void;
   /** Tear down both protocol peers. Best-effort. */
   close(): void;
 }
@@ -48,6 +56,7 @@ export interface MockHost {
 export function createMockHost(
   payload: Record<string, unknown>,
   appName = "marvin-widget-mock",
+  hostContext?: McpUiHostContext,
 ): MockHost {
   const [appTransport, hostTransport] = InMemoryTransport.createLinkedPair();
 
@@ -62,10 +71,15 @@ export function createMockHost(
   // Advertise the `openLinks` host capability (matches the ext-apps host ctor
   // examples) so `app.openLink` round-trips here. Additive — the task-list and
   // task-detail suites never call openLink, so their handshakes are unaffected.
+  // The fourth argument is `HostOptions`; its `hostContext` is what the bridge
+  // returns in the `ui/initialize` result, so a widget's very first
+  // `getHostContext()` sees it. Omitted, the bridge answers with its own empty
+  // default and every existing suite behaves exactly as before.
   const bridge = new AppBridge(
     null,
     { name: "marvin-mock-host", version: "0.0.0-test" },
     { openLinks: {} },
+    hostContext ? { hostContext } : undefined,
   );
 
   // Record every link the widget opens via `app.openLink` → `ui/open-link`. This
@@ -91,6 +105,9 @@ export function createMockHost(
         })();
       });
       await bridge.connect(hostTransport);
+    },
+    setHostContext(next) {
+      bridge.setHostContext(next);
     },
     close() {
       try {

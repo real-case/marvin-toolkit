@@ -28,6 +28,7 @@ plugins/marvin/
 ├── skills/<command>/SKILL.md      # source of truth for prompt bodies
 ├── commands/<command>.md          # short /<command> slash wrappers
 ├── agents/*.md                    # Claude Code subagents
+├── hooks/                         # blocking PreToolUse guards, shipped armed (ADR-0040)
 ├── widgets/*.html                 # committed self-contained MCP Apps widgets
 └── mcp/server/                    # TypeScript MCP server, bundled to dist/server.js
 ```
@@ -39,7 +40,7 @@ workspace that builds the committed widget HTML. Every command is
 
 The architectural rationale is recorded in [`docs/adr/`](./docs/adr/); start with
 [ADR-0001](./docs/adr/0001-single-plugin-consolidation.md). For the full architecture
-reference, including the "three doors, one room" model and step-by-step recipes for adding
+reference, including the "call it your way" model and step-by-step recipes for adding
 prompts, tools, and agents, read [CLAUDE.md](./CLAUDE.md).
 
 ## Quality gates
@@ -51,6 +52,8 @@ npm run lint                      # ESLint over the TypeScript source
 npm run format:check              # Prettier; run `npm run format` to auto-fix
 npm run lint:manifests            # marketplace and plugin manifest structure
 npm run lint:docs                 # ADR coverage and working-directory paths
+npm run eval:self-test            # trigger-eval harness guard (no network)
+npm run eval:trigger              # mock sweep over every trigger dataset
 npm run build                     # build every workspace
 npm run test                      # Node.js native test suites
 npm run verify-dist               # committed dist/server.js matches a fresh build
@@ -86,7 +89,7 @@ Maintainers cut a release by promoting `dev → main` through a PR and tagging `
 ## Commit messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/), for example
-`feat(core): add migration-plan prompt` or `fix(kanban): handle missing config`.
+`feat(core): add migration-plan prompt` or `fix(track): handle missing config`.
 
 ## Versioning
 

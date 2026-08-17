@@ -33,7 +33,7 @@ export interface PromptDef {
    * Filename (relative to the server's `src/prompts/` directory)
    * whose content is the prompt body. Used for inline prompt files
    * that have no frontmatter and no equivalent skill — e.g. thin
-   * tool-wrapper prompts in the kanban group. Mutually exclusive
+   * tool-wrapper prompts in the track group. Mutually exclusive
    * with `body` and `skill`.
    */
   bodyFile?: string;

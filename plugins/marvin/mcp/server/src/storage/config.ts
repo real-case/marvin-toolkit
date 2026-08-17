@@ -10,6 +10,14 @@ export type BaseBranchSource = "config" | "origin/HEAD" | "default";
 export interface LoadedConfig {
   config: ConfigType;
   warning: string | null;
+  /**
+   * Reasons individual settings were dropped to their default at load time,
+   * one per setting. Distinct from `warning`, which reports the *whole* file
+   * falling back: here the rest of the configuration is intact and only the
+   * named setting is inert, so a consumer that renders these must not claim
+   * defaults are in force everywhere.
+   */
+  settingWarnings: string[];
   base_branch_source: BaseBranchSource;
 }
 
@@ -31,10 +39,10 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
       const detected = defaultBranchFromOrigin(projectDir);
       if (detected) {
         config.base_branch = detected;
-        return { config, warning: null, base_branch_source: "origin/HEAD" };
+        return { config, warning: null, settingWarnings: [], base_branch_source: "origin/HEAD" };
       }
     }
-    return { config, warning: null, base_branch_source: "default" };
+    return { config, warning: null, settingWarnings: [], base_branch_source: "default" };
   }
   let raw: string;
   try {
@@ -44,6 +52,7 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
     return {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`,
+      settingWarnings: [],
       base_branch_source: "default",
     };
   }
@@ -55,6 +64,7 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
     return {
       config: Config.parse({}),
       warning: `config.json is not valid JSON: ${reason}`,
+      settingWarnings: [],
       base_branch_source: "default",
     };
   }
@@ -63,6 +73,7 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
     return {
       config: Config.parse({}),
       warning: `config.json failed schema validation: ${parsed.error.message}`,
+      settingWarnings: [],
       base_branch_source: "default",
     };
   }
@@ -71,14 +82,81 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
   return {
     config: parsed.data,
     warning: null,
+    settingWarnings: neutraliseUnusableSettings(parsed.data),
     base_branch_source: hasOwnBase ? "config" : "default",
   };
 }
 
-/** Apply a tracker URL template, returning null when no template is set. */
+/**
+ * Drop settings whose value passes the schema but cannot do its job to their
+ * default, in place, and return one reason per drop. The config surface
+ * validates what it writes, but `.marvin/config.json` is a plain file the docs
+ * invite people to edit by hand, so the loader is the only place that sees
+ * every value that ever reaches a tool.
+ *
+ * Scoped to one setting deliberately. The whole-file fallback (`warning`) is
+ * the wrong instrument here: it would reset `statuses`, `gates` and
+ * `base_branch` too, so one mistyped URL template would take the board's
+ * vocabulary with it.
+ */
+function neutraliseUnusableSettings(config: ConfigType): string[] {
+  const warnings: string[] = [];
+  if (config.tracker_url_template) {
+    const issue = trackerTemplateIssue(config.tracker_url_template);
+    if (issue) {
+      warnings.push(
+        `\`tracker_url_template\` ${JSON.stringify(config.tracker_url_template)} is ignored — ${issue}. Tasks show their tracker id without a link until it is fixed (\`/marvin:track-config\`).`,
+      );
+      config.tracker_url_template = null;
+    }
+  }
+  return warnings;
+}
+
+/**
+ * A `{…}` placeholder left in a string after substitution. Any match in a
+ * derived URL means the template asked for something nothing fills in, so the
+ * link would point at a page that cannot exist.
+ */
+const PLACEHOLDER = /\{[^}]*\}/;
+
+/**
+ * Why a `tracker_url_template` cannot produce per-task URLs, or `null` when it
+ * can. `{tracker_id}` is the only placeholder substitution fills, so a template
+ * is unusable when it omits that marker (nothing identifies the task) or when
+ * it carries a second placeholder nobody replaces.
+ */
+export function trackerTemplateIssue(template: string): string | null {
+  if (!template.includes("{tracker_id}")) {
+    return "it has no `{tracker_id}` placeholder, so a task's id has nowhere to go";
+  }
+  const leftover = PLACEHOLDER.exec(template.replaceAll("{tracker_id}", "TRACKER-1"));
+  if (leftover) {
+    return `it leaves \`${leftover[0]}\` unsubstituted — \`{tracker_id}\` is the only placeholder that gets filled in`;
+  }
+  return null;
+}
+
+/**
+ * Apply a tracker URL template, returning null when no usable template is set.
+ *
+ * The single point where a `tracker_url` is derived — the board cards, the
+ * list table and the delivery summary all route through here — and therefore
+ * the place that guarantees the invariant: a returned URL never carries an
+ * unsubstituted `{…}` placeholder. `loadConfig` already drops an unusable
+ * template, but the check is repeated here because the argument is a `Config`,
+ * which a test or a future loader can build without passing through it. The
+ * cost of missing this is a live link to a page that does not exist, rendered
+ * as a real link by both the tracker tool and the tracker-list widget; `null`
+ * is the state both already render as "no URL".
+ */
 export function trackerUrl(config: ConfigType, trackerId: string | undefined): string | null {
-  if (!trackerId || !config.tracker_url_template) return null;
-  return config.tracker_url_template.replace("{tracker_id}", trackerId);
+  const template = config.tracker_url_template;
+  if (!trackerId || !template || trackerTemplateIssue(template)) return null;
+  const url = template.replaceAll("{tracker_id}", trackerId);
+  // Substitution can reintroduce a placeholder through the id itself: the
+  // summary tool passes free-form spec frontmatter here, not a `TrackerId`.
+  return PLACEHOLDER.test(url) ? null : url;
 }
 
 // ── config surface (WP4) ─────────────────────────────────────────────────

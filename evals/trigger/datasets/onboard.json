@@ -1,0 +1,202 @@
+{
+  "skill": "onboard",
+  "target": "onboard",
+  "note": "Two traps shape the negatives: the read-side near-misses (`help`, `dashboard`, `reports` are prompts with no SKILL.md, so they are unreachable in catalogText and appear only in notes, never as a winner), and the ordinary English sense of \"onboard\", which is about people rather than about the toolkit. mock_rate encodes the IDEAL outcome; real deciders (api/claude-cli) ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "I just installed marvin, what now?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "set marvin up in this project",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "walk me through marvin",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "first time using this plugin — where do I start?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "onbord me pls",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "give me the guided tour of this toolkit on my repo",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "im new to marvin, take me through it",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "get me going with marvin on this codebase",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "the plugin is installed — now what do I actually do with it?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+
+    {
+      "id": "neg-1",
+      "text": "what commands does marvin have?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the command index → help, a prompt with no SKILL.md; unreachable in catalogText, so it is a plain negative rather than a competition row"
+    },
+    {
+      "id": "neg-2",
+      "text": "show me the state of this project",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "whole-toolbox state report → dashboard, also skill-less; the near-miss the description must not absorb"
+    },
+    {
+      "id": "neg-3",
+      "text": "onboard the new hire to this codebase",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the ordinary English sense — a person, not the plugin; no marvin command applies"
+    },
+    {
+      "id": "neg-4",
+      "text": "write onboarding docs for the team",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "authoring team documentation → readme; the word overlaps, the task does not"
+    },
+    {
+      "id": "neg-5",
+      "text": "install the marvin plugin for me",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "installation happens in /plugin before any command exists; the walkthrough presupposes it"
+    },
+    {
+      "id": "neg-6",
+      "text": "list every marvin command grouped by family",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ help; reference lookup, not first contact"
+    },
+    {
+      "id": "neg-7",
+      "text": "draft an onboarding checklist for new backend engineers",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "people process, nothing marvin-specific — the human sense again, in its most plausible phrasing"
+    },
+    {
+      "id": "neg-8",
+      "text": "what reports do we have?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ reports, another skill-less prompt; a read of existing artifacts, not a first session"
+    },
+    {
+      "id": "neg-9",
+      "text": "create a board task for the login bug",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "→ track-new directly; the user already knows the command they want"
+    },
+
+    {
+      "id": "cmp-win-1",
+      "text": "set marvin up here and explain how it works",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "onboard",
+      "mock_rate": 1,
+      "note": "must beat explain — the ask is the first-session setup, not a reading of code"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "first session with marvin here — where do I start?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "onboard",
+      "mock_rate": 1,
+      "note": "must beat task-start — \"start\" is its vocabulary, but there is no task yet"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "start work on the caching bug and spec it out",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-start",
+      "mock_rate": 0,
+      "note": "must lose to task-start — a real task, not a first session"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "find the getting-started docs in this repo",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "docs-search",
+      "mock_rate": 0,
+      "note": "must lose to docs-search — a documentation lookup, not a walkthrough"
+    }
+  ]
+}

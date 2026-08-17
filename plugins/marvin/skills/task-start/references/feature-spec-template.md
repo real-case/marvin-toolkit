@@ -1,7 +1,7 @@
 ---
 slug: {kebab-case-slug}
 type: feature
-status: ready
+status: draft
 created: {YYYY-MM-DD}
 tracker: {#issue | PROJ-123 | URL | none}
 supersedes: {prior-slug | none}
@@ -15,7 +15,8 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 # {Title}
 
 ## Goal
-{1–2 sentences — what and why. Specific: "add X for Y", never "improve X".}
+{what this task delivers, and why — one or two sentences}
+Be specific: "add X for Y", never "improve X".
 
 ## Context
 - Related patterns: {existing code this builds on — file:line}
@@ -62,6 +63,9 @@ criteria:
     oracle:
       kind: test            # test | command | prose-review
       ref: test/path.test.ts::the test name
+      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
+                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
+                            # per-stack default, then records `not-run` rather than guessing.
     failure: what the wrong behaviour looks like
   - id: AC2
     statement: <observable behaviour>
@@ -95,7 +99,8 @@ gates:                           # the host's actual gate commands
 ```
 
 ## Data & Config
-{Migrations (direction + rollback), new env vars, feature flags, config keys. "N/A" if none.}
+{migrations, new env vars, feature flags, config keys — or "N/A"}
+State a migration in both directions: forward and rollback.
 
 ## Chosen Approach
 {The selected variant, concrete enough to implement without further human input.}
@@ -128,23 +133,39 @@ must appear as `files` rows in the contract if they touch files.
 ## Non-goals
 - {what is explicitly NOT in scope}
 
+## Deferred slices
+Slices split off from this task at the scope gate, each already a board card. The rows are
+descriptive — the card is the work item, this list is the back-reference. Write `none` when nothing
+was deferred: an unfilled section is reported by the DoR gate, an absent one is silent.
+
+- {board id + one-line scope + why it is a separate PR, or none}
+
 ## Assumptions
-{Decisions made under uncertainty, recorded so the implementer inherits them rather than
-re-deciding. "none" if there are none.}
+{each decision taken under uncertainty — or "none"}
+Record them so the implementer inherits the decisions rather than re-deciding them. Every default
+the intake assumed instead of asking belongs here, written as "assumed X because Y; correct now if
+wrong". "none" is an accepted value; the DoR gate records it as an advisory warning, not a failure.
 
 ## Open Questions
-{Unresolved questions. MUST be "none" before the DoR gate passes — an open question is a
-reason to keep authoring, not to dispatch. A genuine unknown that needs investigation is NOT an
-Assumption: set `spike_required: true` and resolve it (e.g. via `/marvin:kanban-spike`) first.}
+{any question still unresolved — MUST be "none" before DoR passes}
+An open question is a reason to keep authoring, not to dispatch. A genuine unknown that needs
+investigation is NOT an Assumption: set `spike_required: true` and resolve it (e.g. a spike via
+`/marvin:track-new`) first.
 
 ## Security / NFR
 {Does this touch auth, crypto, PII, input parsing, or infra? Note observability,
 rollout/rollback, performance, a11y/i18n where relevant. "N/A — {one-line reason}" if none apply.}
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK). Record any author
-override as "Critic flagged X — override: Y". "none" if the critic step was skipped — and a
-skipped critic is surfaced in the PR, never silent.}
+{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE). The DoR gate reads the
+verdict off the first non-empty line, so write the token in capitals there. It may lead the line
+("BLOCK — resolved in this revision") or follow the critic's name
+("marvin-tm-spec-critic — **PASS WITH WARNINGS**"); a lower-case mention inside prose is not read as
+a verdict, and "none" is recognised only leading the line. NEEDS_CONTEXT is never recorded here — it
+resolves on the re-dispatch or becomes UNABLE. Record any author override as
+"Critic flagged X — override: Y". "none" if the critic step was skipped. A skipped critic and an
+UNABLE verdict are both surfaced in the PR, never silent; record an UNABLE verbatim as
+"UNABLE — {reason}".}
 
 ## Design Notes
 {Nuances, warnings, "write it so it's easy to replace with X later".}

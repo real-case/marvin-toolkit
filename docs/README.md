@@ -5,9 +5,9 @@ the key decisions were made, and where the work is heading.
 
 ## Start here
 
-- **[Getting started](./getting-started.md)** teaches you to install the plugin, confirm it works, and run your first commands.
-- **[Usage guide](./usage.md)** walks through the common workflows: committing and opening a PR, the task pipeline, the kanban board, security, and refactoring.
-- **[Architecture](./architecture.md)** is the visual tour of how the plugin is built, covering the "three doors" model, the task pipeline, the widget layer, and the working directory, with diagrams.
+- **[Getting started](./getting-started.md)** teaches you to install the plugin, then hands you to the guided `/marvin:onboard` walkthrough.
+- **[Usage guide](./usage.md)** walks through the common workflows: committing and opening a PR, the task pipeline, the task board, security, and refactoring.
+- **[Architecture](./architecture.md)** is the visual tour of how the plugin is built, covering the "call it your way" model, the task pipeline, the widget layer, and the working directory, with diagrams.
 - **[Command reference](./commands.md)** lists every `/marvin:` command with a synopsis and the phrases that invoke it from chat.
 - **[Configuration](./configuration.md)** documents the `.marvin/` working directory, the `.marvin/config.json` schema, and the `MARVIN_*` environment variables.
 - **[Contributing](../CONTRIBUTING.md)** covers local setup, the quality gates every change must pass, and how to submit a PR.
@@ -52,6 +52,16 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0028](./adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
+| [0031](./adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
+| [0032](./adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
+| [0033](./adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Accepted |
+| [0034](./adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Accepted |
+| [0035](./adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Accepted |
+| [0036](./adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Accepted |
+| [0037](./adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Accepted |
+| [0038](./adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
+| [0039](./adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
+| [0040](./adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
 
 ## Work in progress
 

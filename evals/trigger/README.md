@@ -39,7 +39,9 @@ exists only so `self-test.mjs` can guard the harness with no network.
 ## Run it
 
 ```shell
-node evals/trigger/self-test.mjs                                  # guard the harness (no network)
+npm run eval:self-test                                            # guard the harness (no network)
+npm run eval:trigger                                              # mock sweep over every dataset
+node evals/trigger/self-test.mjs                                  # the same guard, directly
 node evals/trigger/run.mjs --skill commit --decider mock          # pipeline demo
 ANTHROPIC_API_KEY=… node evals/trigger/run.mjs --skill all --runs 5 --decider api --model claude-sonnet-5
 node evals/trigger/run.mjs --skill pr-create --decider claude-cli --workspace /path/with/plugin
@@ -81,9 +83,61 @@ a `disable-model-invocation` skill, which never auto-triggers by design).
   trivial query is a broken test regardless of the description.
 - **Competition** queries name the sibling that should win (`winner`) and set
   `should_trigger` to whether *this* skill should win.
-- `mock_rate` is optional and only consumed by `--decider mock`.
+- `mock_rate` is **mandatory on every query** and consumed by `--decider mock`. A
+  blocking gate has required it since Phase 0; the invariants table below is the rule.
 
 Validate any dataset with `validateDataset` (run the runner; it checks and warns).
+
+## Enforced invariants
+
+All three CI steps run on every leg and none is allowed to fail, so these are rules
+rather than guidance. They live in `scripts/lib/skill-datasets.mjs` and have three
+reporters: `scripts/lint-manifests.mjs` takes the three that are obligations of the
+shipped skill surface, `self-test.mjs` the four that belong to the harness, and
+`scripts/lint-skills.mjs` the six structural pins over the authored surfaces —
+`skills/`, `agents/`, `commands/` — which no other gate checks.
+
+| Rule | Reported by |
+|------|-------------|
+| every skill has `datasets/<name>.json` | `lint-manifests` |
+| a dataset's `disable_model_invocation` matches the skill's frontmatter | `lint-manifests` |
+| the frontmatter value is canonical | `lint-manifests` |
+| every dataset has a matching skill | `self-test` |
+| a competition `winner` is reachable in the catalog | `self-test` |
+| every negative and competition query carries a `note` | `self-test` |
+| every query carries an explicit `mock_rate` | `self-test` |
+| frontmatter keys stay inside the closed allowlist for their surface | `lint-skills` |
+| every description is non-empty and within the 1024-character budget | `lint-skills` |
+| a skill's `name` equals its directory, an agent's its filename stem | `lint-skills` |
+| every `skills/…` path written in a body resolves under the plugin root | `lint-skills` |
+| an agent omitting `tools:` is on the untooled whitelist | `lint-skills` |
+| the prompts with no `commands/<name>.md` are exactly the `track-*` ones | `lint-skills` |
+
+The **allowlists are closed** on purpose: skills admit `name`, `description` and
+`disable-model-invocation`; agents add `model`, `color` and `tools`; commands admit
+`description` alone. An unknown key is silently ignored by the host, so nothing else
+would report a typo in one — and the cost is that a legitimate new key from Claude
+Code has to be added to `FRONTMATTER_KEYS` in the same commit as the upgrade.
+
+**Untooled** is the security-shaped rule of the six: an agent that omits `tools:`
+inherits *every* tool, so the allowlist is what actually enforces a read-only
+contract. Exactly three code-writing agents omit it by design, and widening that
+whitelist is meant to be a reviewed line in a PR.
+
+**Canonical** means one of `true`, `false`, `"true"`, `"false"`, or an absent key.
+That is the *intersection* of what the three readers of the flag accept, not their
+union: `catalog.mjs` strips both quote styles and the server's ADR-0005 codec
+accepts either, but the site's generator matches `"?true"?` with no `i` flag and no
+single-quote alternative. So `'true'` would be human-run here and in `/marvin:help`
+while the public catalog advertised the command as model-invocable, and `True`
+would be human-run in Claude Code and unmarked everywhere else. Both are rejected.
+
+**Reachable** is stricter than "is a skill directory": `catalogText` renders skills
+only *and* filters human-run ones out, so a prompt without a `SKILL.md`
+(`/marvin:reports`, `/marvin:dashboard`, `/marvin:help`, `/marvin:sec-report`) and a
+human-run skill are equally unpickable by a decider. Name those in a negative's
+`note` instead — a competition row against one passes for the wrong reason, because
+`winner` is checked for presence by the schema and then read by nothing.
 
 ## Fidelity caveat
 

@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.18.0",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -13,15 +13,23 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "dev:plugin": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/widgets && npm run build -w @marvin-toolkit/server && echo '\\nPlugin artefacts rebuilt. Restart the Claude Code session to load the new dist/server.js.'",
+    "dev:watch": "node scripts/dev-watch.mjs",
+    "test": "npm run test --workspaces --if-present && node --test test/*.test.mjs",
     "lint": "eslint .",
     "lint:manifests": "node scripts/lint-manifests.mjs",
+    "lint:skills": "node scripts/lint-skills.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify-dist": "node scripts/verify-dist.mjs",
     "sync-version": "node scripts/sync-version.mjs",
     "smoke": "node scripts/smoke-commands.mjs",
+    "help:preview": "node scripts/help-preview.mjs",
+    "dev:widget-host": "node scripts/dev-widget-host.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
+    "usage:surface": "node scripts/usage-surface.mjs",
+    "eval:self-test": "node evals/trigger/self-test.mjs",
+    "eval:trigger": "node evals/trigger/run.mjs --skill all --decider mock",
     "coverage": "c8 --reporter=text-summary --reporter=lcov npm test",
     "prepare": "husky"
   },
@@ -38,24 +46,26 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.0",
-    "c8": "^11.0.0",
-    "eslint": "^10.6.0",
+    "@types/node": "^26.1.1",
+    "c8": "^12.0.0",
+    "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "prettier": "^3.9.4",
+    "prettier": "^3.9.5",
+    "prettier-plugin-astro": "^0.14.1",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "typescript-eslint": "^8.63.0"
+    "typescript-eslint": "^8.64.0",
+    "yaml": "^2.9.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-arm64": "4.60.4",
-    "@rollup/rollup-darwin-x64": "4.60.4",
-    "@rollup/rollup-linux-arm64-gnu": "4.60.4",
-    "@rollup/rollup-linux-x64-gnu": "4.60.4",
-    "@rollup/rollup-win32-x64-msvc": "4.60.4"
+    "@rollup/rollup-darwin-arm64": "4.62.2",
+    "@rollup/rollup-darwin-x64": "4.62.2",
+    "@rollup/rollup-linux-arm64-gnu": "4.62.2",
+    "@rollup/rollup-linux-x64-gnu": "4.62.2",
+    "@rollup/rollup-win32-x64-msvc": "4.62.2"
   },
   "license": "MIT"
 }

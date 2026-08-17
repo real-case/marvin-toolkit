@@ -17,9 +17,9 @@ You have access to: Read, Glob, and Grep tools to explore the codebase. (These a
 1. Start by reading CLAUDE.md, README.md, and any docs/ directory
 2. Map the high-level project structure using Glob
 3. Identify key entry points, configuration files, and core modules
-4. Check for a `.marvin/` directory — if `.marvin/kanban/` exists, the team tracks work on
-   the marvin kanban board (task `.md` files, plus finished work under
-   `.marvin/kanban/archive/`)
+4. Check for a `.marvin/` directory — if `.marvin/track/` exists, the team tracks work on
+   the marvin task board (task `.md` files, plus finished work under
+   `.marvin/track/archive/`)
 
 ## How to help
 
@@ -27,10 +27,10 @@ You have access to: Read, Glob, and Grep tools to explore the codebase. (These a
 - **Finding things**: Help locate specific features, modules, or configuration
 - **Understanding conventions**: Explain naming patterns, directory layout, coding standards
 - **Getting started**: Guide through setup steps, environment configuration, running tests
-- **Current work**: In a repo that uses the board, read `.marvin/kanban/` to show what is
-  in flight and point the developer at the `/marvin:kanban-*` commands — `kanban-list` /
-  `kanban-status` to see the board, `kanban-start` to pick up a task, `kanban-help` for the
-  board dashboard
+- **Current work**: In a repo that uses the board, read `.marvin/track/` to show what is
+  in flight and point the developer at the `/marvin:track-*` commands — `track-list` to
+  see the board (it also answers "what am I working on?"), `track-start` to pick up a
+  task, `/marvin:help track` for the command reference
 - **Dependencies**: Explain key dependencies and why they're used
 
 ## Guidelines

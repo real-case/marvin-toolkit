@@ -1,22 +1,35 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type {
   AdrCorpusSummary,
+  DashboardAudits,
+  DashboardHandoff,
+  DashboardSpec,
   DashboardState,
-  RefactorInventory,
-  SecurityInventory,
+  TaskCard,
   UsageSummary,
   UsageTopEntry,
   VerificationFreshness,
 } from "@marvin-toolkit/mcp-shared/contracts";
 import type { ServerEnv } from "../lib/env.js";
-import { loadConfig } from "../storage/config.js";
+import { loadConfig, type LoadedConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
-import { orderedStatuses, type Config } from "../storage/schema.js";
-import { artifactCounts, commandGroups, gitState, kanbanCounts } from "../lib/state.js";
+import { resolveSpecDir } from "../storage/spec.js";
+import { orderedStatuses } from "../storage/schema.js";
+import {
+  artifactCounts,
+  auditDigest,
+  boardCounts,
+  boardDigest,
+  commandGroups,
+  gitState,
+  handoffDigest,
+  specDigest,
+} from "../lib/state.js";
+import { projectMcpServers } from "../lib/help-data.js";
 import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -32,7 +45,10 @@ import { DASHBOARD_WIDGET_URI } from "../resources/widgets.js";
 
 const SECTION_ORDER = [
   "project",
-  "kanban",
+  "board",
+  "work",
+  "handoffs",
+  "audits",
   "artifacts",
   "adr",
   "lessons",
@@ -51,13 +67,16 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
   return defineTool({
     name: "dashboard",
     description:
-      "Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, " +
-      "artifact inventories with freshness (task specs + verification.md age, security reports + " +
-      "newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus " +
-      'by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what ' +
-      'state is the toolbox in?" — the command index stays on the `help` tool. Pass `section` ' +
-      `(${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full ` +
-      "DashboardState. Works on a fresh project — missing directories render as zeros.",
+      "Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board " +
+      "counters, the current-work digest (active board cards + pipeline specs in flight), recent " +
+      "handoffs with their age, audit findings by severity for the newest security and refactor " +
+      "report, artifact inventories with freshness (task specs + verification.md age, handoffs), " +
+      "lessons statistics, the " +
+      "ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. " +
+      'Answers "what state is the toolbox in?" — the command index stays on the `help` tool. Pass ' +
+      `\`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always ` +
+      "carries the full DashboardState. Works on a fresh project — missing directories render as " +
+      "zeros.",
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -67,7 +86,7 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
       // Fresh config per call — `task config` edits and hand edits must apply
       // immediately (the help-tool precedent).
       const loaded = loadConfig(env.configPath, env.projectDir);
-      return Promise.resolve(renderDashboard(env, loaded.config, loaded.warning, version, input));
+      return Promise.resolve(renderDashboard(env, loaded, version, input));
     },
   });
 }
@@ -76,26 +95,39 @@ type DashboardInput = z.infer<typeof DashboardInput>;
 
 function renderDashboard(
   env: ServerEnv,
-  config: Config,
-  configWarning: string | null,
+  loaded: LoadedConfig,
   version: string,
   input: DashboardInput,
 ): ToolResult {
+  const { config, warning: configWarning, settingWarnings } = loaded;
   // ── aggregate (every source degrades to zeros on a fresh project) ────────
-  const kanban = kanbanCounts(env, config);
+  const board = boardCounts(env, config);
   const git = gitState(env.projectDir);
   const verification = verificationFreshness(env.projectDir);
-  const artifacts = { ...artifactCounts(env), verification };
-  const security: SecurityInventory = {
-    reports: artifacts.audits,
-    newest_age_days: newestAgeDays(join(env.projectDir, ".marvin", "security")),
-  };
-  const refactor = refactorInventory(env.projectDir);
+  // Resolve the spec directory ONCE and hand it to both readers (ADR-0037): the
+  // Artifacts count and the current-work digest must read the same place, or one
+  // render names two directories. Mirrors `adrSummary(adrDir.rel, …)` below.
+  const specDir = resolveSpecDir(env.projectDir, config.spec);
+  const artifacts = { ...artifactCounts(env, specDir), verification };
   const lessons = lessonsStats(env.memoryDir);
   const adrDir = resolveAdrDir(env.projectDir, config.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env.projectDir);
   const groups = commandGroups();
+  // v2 sections (ADR-0024) — always emitted, empty rather than absent, so a
+  // consumer can tell "the dashboard ran and found nothing" from the `help`
+  // tool's narrower payload. `auditDigest` honours MARVIN_SECURITY_DIR, matching
+  // the `report` tool.
+  const servers = projectMcpServers(env.projectDir);
+  const currentTasks = {
+    board: boardDigest(env, config),
+    specs: specDigest(env.projectDir, specDir),
+  };
+  const handoffs = handoffDigest(env.handoffDir);
+  const audits = auditDigest({
+    security: env.securityDir,
+    refactor: join(env.projectDir, ".marvin", "refactor"),
+  });
 
   // ── text report, section by section ───────────────────────────────────────
   const sections: Record<(typeof SECTION_ORDER)[number], string[]> = {
@@ -105,24 +137,42 @@ function renderDashboard(
       `- Config: \`${env.configPath}\`${existsSync(env.configPath) ? "" : " _(not created yet)_"}`,
       `- Base branch: \`${config.base_branch}\``,
       `- git: ${git.has_git ? "✓" : "✗"} · gh: ${git.has_gh ? "✓" : "✗"} · branch: \`${git.branch ?? "(not in a git repo)"}\``,
+      `- MCP servers: ${
+        servers.length > 0
+          ? servers.map((s) => `\`${s.name}\` ${s.enabled ? "✓" : "✗"}`).join(" · ")
+          : "_none configured_"
+      }`,
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
+      // Per-setting fallbacks, not a whole-file one: the rest of the config
+      // stands, so these carry no "using defaults" clause.
+      ...settingWarnings.map((w) => `- ⚠ config: ${w}`),
     ],
-    kanban: [
-      "## Kanban",
+    board: [
+      "## Board",
       ...orderedStatuses(config).map((s) => {
         const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-        return `- ${s.key}${roleNote}: ${kanban.counts[s.key] ?? 0}`;
+        return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
-      ...(kanban.malformed > 0 ? [`- ⚠ malformed files: ${kanban.malformed}`] : []),
+      ...(board.malformed > 0 ? [`- ⚠ malformed files: ${board.malformed}`] : []),
     ],
+    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs, specDir.rel)],
+    handoffs: ["## Handoffs", ...renderHandoffs(handoffs)],
+    audits: [
+      "## Audits",
+      renderAuditArea("Security", audits.security, "/marvin:sec-scan"),
+      renderAuditArea("Refactor", audits.refactor, "/marvin:refactor-audit"),
+    ],
+    // Security and refactor are NOT counted here. The Audits section above
+    // reports their findings, and a document count beside a finding count
+    // measured two different things (every report versus the newest parseable
+    // one), which read as a contradiction. `artifacts.audits` still carries the
+    // security document count in the payload for the widget's Artifacts card.
     artifacts: [
       "## Artifacts",
-      `- Specs: ${artifacts.specs} · \`.marvin/task/\``,
+      // The trailing slash marks it as a directory, as the Handoffs line does;
+      // `rel` never carries one, whatever tier produced it.
+      `- Specs: ${artifacts.specs} · \`${specDir.rel}/\``,
       `- Verification: ${verification.exists ? `\`verification.md\` ${days(verification.age_days ?? 0)} old` : "none yet"}`,
-      `- Security reports: ${security.reports} · \`.marvin/security/\`${
-        security.newest_age_days !== null ? ` (newest ${days(security.newest_age_days)} old)` : ""
-      }`,
-      `- Refactor: ${refactor.audits} audit · ${refactor.smells} smells · ${refactor.plans} plan register(s) · \`.marvin/refactor/\``,
       `- Handoffs: ${artifacts.handoffs} · \`.marvin/handoff/\``,
     ],
     adr: [
@@ -179,16 +229,18 @@ function renderDashboard(
       ...(config.gates ? { gates: config.gates } : {}),
       statuses: config.statuses,
     },
-    kanban_counts: kanban.counts,
-    kanban_role_counts: kanban.roleCounts,
+    board_counts: board.counts,
+    board_role_counts: board.roleCounts,
     git,
     artifacts,
     command_groups: groups,
     adr,
-    security,
-    refactor,
     lessons,
     ...(usage ? { usage } : {}),
+    servers,
+    current_tasks: currentTasks,
+    handoffs,
+    audits,
   };
 
   return {
@@ -215,39 +267,6 @@ function fileAgeDays(path: string): number | null {
   } catch {
     return null;
   }
-}
-
-/** Age of the newest `.md` in a directory; null when none exists. */
-function newestAgeDays(dir: string): number | null {
-  if (!existsSync(dir)) return null;
-  let newest: number | null = null;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".md")) continue;
-      const mtime = statSync(join(dir, f)).mtimeMs;
-      if (newest === null || mtime > newest) newest = mtime;
-    }
-  } catch {
-    return null;
-  }
-  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS));
-}
-
-/** Registers/plans by kind, from the ADR-0029 filename convention. */
-function refactorInventory(projectDir: string): RefactorInventory {
-  const dir = join(projectDir, ".marvin", "refactor");
-  const inv = { audits: 0, smells: 0, plans: 0 };
-  if (!existsSync(dir)) return inv;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (/^\d+-audit-.*\.md$/.test(f)) inv.audits += 1;
-      else if (/^\d+-smells-.*\.md$/.test(f)) inv.smells += 1;
-      else if (/^\d+-plan-.*\.md$/.test(f)) inv.plans += 1;
-    }
-  } catch {
-    // an unreadable directory counts as empty — the zero-state doctrine
-  }
-  return inv;
 }
 
 /** Corpus roll-up: every status of the closed vocabulary present, even at 0. */
@@ -316,6 +335,63 @@ function readUsageSummary(projectDir: string): UsageSummary | null {
 }
 
 // ── rendering helpers ───────────────────────────────────────────────────────
+
+/**
+ * Current work — the two in-flight lists side by side: active board cards
+ * (wip/review) and pipeline specs that have not shipped. Each is an italic
+ * zero-state line when empty, so the section keeps its shape on a fresh project.
+ */
+function renderWork(board: TaskCard[], specs: DashboardSpec[], specDirRel: string): string[] {
+  const lines: string[] = [];
+  if (board.length === 0) {
+    lines.push("- _No active board cards — nothing in wip or review._");
+  } else {
+    lines.push("- Active cards (wip/review):");
+    for (const c of board) {
+      lines.push(
+        `  - \`${c.id}\` ${c.title} · ${c.status.key} · updated ${c.updated.slice(0, 10)}`,
+      );
+    }
+  }
+  if (specs.length === 0) {
+    lines.push(`- _No pipeline specs in flight under \`${specDirRel}/\`._`);
+  } else {
+    lines.push("- Pipeline specs in flight:");
+    for (const s of specs) lines.push(`  - ${s.id ? `\`${s.id}\` ` : ""}${s.title}`);
+  }
+  return lines;
+}
+
+/** Recent handoffs, newest id first, each with the age of its `created` date. */
+function renderHandoffs(handoffs: DashboardHandoff[]): string[] {
+  if (handoffs.length === 0) {
+    return ["- _No handoffs yet — `/marvin:handoff` captures the first one._"];
+  }
+  return handoffs.map(
+    (h) =>
+      `- \`${h.slug}\` ${h.objective}${h.age_days === null ? "" : ` · ${days(h.age_days)} old`}`,
+  );
+}
+
+/**
+ * One audit area: findings of its newest report bucketed by severity. A `null`
+ * area is "never scanned", which is deliberately distinct from a report that
+ * found nothing (`0 finding(s)`).
+ */
+function renderAuditArea(
+  label: string,
+  area: DashboardAudits["security"],
+  command: string,
+): string {
+  if (area === null) return `- ${label}: _no report yet — \`${command}\` writes one._`;
+  const severities = nonZero(area.by_severity);
+  return [
+    `- ${label}: ${area.total} finding(s)`,
+    ...(severities.length > 0 ? [severities.join(" · ")] : []),
+    ...(area.newest_report ? [`\`${area.newest_report}\``] : []),
+    ...(area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]),
+  ].join(" · ");
+}
 
 function renderUsage(usage: UsageSummary): string[] {
   if (usage.events === 0) return ["- Usage log present but empty — 0 event(s)."];

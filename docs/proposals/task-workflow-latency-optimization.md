@@ -110,6 +110,10 @@ quality depends on undivided attention. Furthermore, Phase 1 wall-clock is human
 batching would save API round-trips but almost no real time — trading focus for a negligible
 gain. The one-at-a-time cadence stays.
 
+**Superseded 2026-08-12** by the workflow-hardening plan (`docs/proposals/workflow-hardening.md`,
+WP2.2): `task-start` step 1.4 now runs a bounded intake — six questions for a feature, four for a
+bugfix, batched up to three per turn when independent — and the rejection above no longer holds.
+
 ## Do not touch (quality backbone)
 
 Out of scope for any latency change — these are the source of quality:

@@ -106,11 +106,13 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 
 ### 4. Emit structured report
 
-```markdown
+````markdown
 # Diff Critique: <branch or range>
 
 **Spec:** <path or "standalone">
-**Verdict:** PASS | PASS WITH WARNINGS | BLOCK
+**Compliance:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
+**Quality:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
+**Verdict:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
 **Files changed:** <N> (<spec-aligned>/<spec-adjacent>/<out-of-scope>/<test>/<generated>)
 
 ## Coverage
@@ -132,12 +134,64 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 
 ## Confirmations
 <non-obvious good choices worth noting — list or "none">
-```
 
-**Verdict rules:**
-- Any blocker → `BLOCK`
-- No blockers, ≥1 warning or ≥1 out-of-scope change → `PASS WITH WARNINGS`
-- Clean, everything spec-aligned or spec-adjacent → `PASS`
+## Inability
+<only for NEEDS_CONTEXT or UNABLE — omit this section entirely otherwise>
+
+**Blocker:** <what prevented the critique>
+**Attempted:** <what you tried before concluding you could not judge>
+**Recommendation:** <the exact input or action that unblocks it>
+
+```json critic-verdict
+{
+  "critic": "marvin-tm-diff-critic",
+  "subject": "critic-receipts",
+  "judged_at": "2026-08-15T09:30:00.000Z",
+  "compliance": { "verdict": "PASS", "blockers": 0, "warnings": 0 },
+  "quality": { "verdict": "PASS WITH WARNINGS", "blockers": 0, "warnings": 2 }
+}
+```
+````
+
+**The two axes.** `Compliance` is the diff against the spec: coverage of every acceptance
+criterion and scope discipline (sections 2 and 3.1). `Quality` is the diff on its own terms: the
+section 3.x smell, error-handling and pattern-drift checks. Judge each independently and by the
+same rules; a diff can implement the spec exactly in code that drifts from every pattern around
+it, and the single line used to hide that.
+
+**Verdict rules — applied PER AXIS:**
+- Any blocker on that axis → `BLOCK`
+- No blockers, ≥1 warning or (for `Compliance`) ≥1 out-of-scope change → `PASS WITH WARNINGS`
+- Clean → `PASS`
+- Cannot judge yet, but you can name the exact missing input → `NEEDS_CONTEXT`
+- Cannot judge and cannot name the missing input, **or** the caller states this is the re-dispatch for a `NEEDS_CONTEXT` you raised and the named input is still missing → `UNABLE`
+
+**`Verdict` is the roll-up of the two axes**, ordered `BLOCK` > `UNABLE` > `PASS WITH WARNINGS` >
+`PASS`. `BLOCK` outranks `UNABLE` because `BLOCK` carries an action and `UNABLE` carries none, and
+because the caller's draft-PR rule keys off `BLOCK` — rolling a `BLOCK` + `UNABLE` pair up to
+`UNABLE` would disarm the one enforcement in the pipeline. Keep the `**Verdict:**` line: four call
+sites read it, and a caller that has only your prose has nothing else to route on.
+
+**The `critic-verdict` block.** Emit it as the last thing in the report, filled with this run's own
+values — the example above is a real, schema-valid instance and a test parses it, so keep it one. It carries no roll-up field on purpose: a caller that has the block
+computes the roll-up from the two axes, and a caller that has only the prose reads the
+`**Verdict:**` line, so the two can never disagree. `subject` is the **spec slug**, always — the
+task being critiqued, not the artifact you looked at, which `critic` already says. The block
+records only terminal verdicts: a `NEEDS_CONTEXT` axis does not validate, because a
+`NEEDS_CONTEXT` resolves on its single re-dispatch or becomes `UNABLE`. If either axis is
+`UNABLE`, add an `"inability": {"blocker": …, "attempted": …, "recommendation": …}` member
+mirroring the **Inability** section — a receipt cannot claim the gate did not run while declining
+to say why.
+
+**`NEEDS_CONTEXT`** (on either axis) — you cannot judge yet *and* you can name the one input that would let you: the spec path was not passed (and coverage was expected of you), the diff range resolves to nothing, a file the diff touches is unreadable. Name that input precisely enough for the caller to supply it in a single turn ("the range `<base>..<head>`, the given one is empty" — not "more context"). The caller re-dispatches you once with the answer and says that it is the re-dispatch.
+
+**`UNABLE`** (on either axis) — you cannot judge and cannot name what would fix that, or the caller told you this dispatch answers a `NEEDS_CONTEXT` you raised and the input it named is still missing. You do not track re-dispatches yourself: you enter with a fresh context and cannot observe a prior turn, so recurrence is a fact the caller states, never one you infer. `UNABLE` is never a pass; it is a statement that that half of the review did not run.
+
+**Escalation licence.** Never emit `PASS` or `PASS WITH WARNINGS` on an axis in place of an inability — an empty critique that reads as approval is worse than no critique, because the caller opens the PR on it. When either axis is `NEEDS_CONTEXT` or `UNABLE`, fill the **Inability** section with Blocker / Attempted / Recommendation. Do not silently fail, and do not manufacture findings to look productive.
+
+**Routing.** `NEEDS_CONTEXT` earns exactly **one** re-dispatch, carrying the input you named and marked as the re-dispatch; a second occurrence is treated as `UNABLE`. `UNABLE` is never treated as success — the caller records it verbatim in the PR's Self-Review Notes, on their **Diff critic** line, exactly as it records a critic that could not be dispatched at all.
+
+Note that "standalone mode" (no spec supplied, per **Input**) is not `NEEDS_CONTEXT`: it is a supported mode in which you drop coverage checks and keep the quality checks. Standalone mode has no spec, so `subject` would have nothing to hold: emit the two axes in the report as usual and **no receipt is written for the run**. Receipts come from the four spec-backed pipeline call sites (`/marvin:task-start` 8F/8B, `/marvin:task-implement` 6F/9B), never from a standalone dispatch.
 
 ## Guidelines
 

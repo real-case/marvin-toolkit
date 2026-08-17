@@ -1,0 +1,140 @@
+---
+// ThemeToggle.astro (spec 004, F9) — a no-framework theme toggle, styled as a sliding
+// sun/moon switch. The pre-paint anti-FOUC script that sets the initial data-theme lives in
+// Base.astro's <head>; this component renders the control plus an is:inline handler that flips
+// :root[data-theme], mirrors the state to aria-pressed, and persists the choice to
+// localStorage. No hydration. The knob position and lit icon are driven purely from
+// :root[data-theme] in CSS, so the switch always reflects the live theme.
+---
+
+<button
+  type="button"
+  id="theme-toggle"
+  class="theme-toggle"
+  aria-label="Toggle light or dark theme"
+  aria-pressed="false"
+  title="Toggle light / dark theme"
+>
+  <span class="theme-toggle__thumb" aria-hidden="true"></span>
+  <svg class="theme-toggle__ic theme-toggle__ic--sun" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.5"></circle>
+    <path
+      d="M12 1.8v2.4M12 19.8v2.4M4.7 4.7l1.7 1.7M17.6 17.6l1.7 1.7M1.8 12h2.4M19.8 12h2.4M4.7 19.3l1.7-1.7M17.6 6.4l1.7-1.7"
+    ></path>
+  </svg>
+  <svg class="theme-toggle__ic theme-toggle__ic--moon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M20.5 13.2A8.2 8.2 0 1 1 10.8 3.5 6.4 6.4 0 0 0 20.5 13.2Z"></path>
+  </svg>
+</button>
+
+<script is:inline>
+  (() => {
+    const btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    const root = document.documentElement;
+    // Mirror Base.astro's anti-FOUC default: absent an explicit stored choice, the theme is light.
+    const current = () => root.dataset.theme || "light";
+    // Reflect the live theme as the switch's pressed (= dark) state for assistive tech.
+    const sync = () => btn.setAttribute("aria-pressed", String(current() === "dark"));
+    sync();
+    btn.addEventListener("click", () => {
+      const next = current() === "dark" ? "light" : "dark";
+      root.dataset.theme = next;
+      sync();
+      try {
+        localStorage.setItem("theme", next);
+      } catch {
+        /* storage unavailable (private mode) — the flip still holds for this page */
+      }
+    });
+  })();
+</script>
+
+<style>
+  /* The track. A pill that holds a sun on the left, a moon on the right, and a knob that slides
+     under whichever matches the active theme. space-around centers the two icons at the 1/4 and
+     3/4 points, which is exactly where the absolutely-positioned knob travels between. */
+  .theme-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-around;
+    box-sizing: border-box;
+    width: 54px;
+    height: 26px;
+    padding: 0;
+    background: var(--srf2);
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--bd2);
+  }
+
+  .theme-toggle:focus-visible {
+    outline: 2px solid var(--ac);
+    outline-offset: 2px;
+  }
+
+  /* The sliding knob — behind the icons (z-index 0), so the lit icon reads on top of it. */
+  .theme-toggle__thumb {
+    position: absolute;
+    top: 50%;
+    left: 3px;
+    z-index: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--srf);
+    border: 1px solid var(--bd2);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+    transform: translateY(-50%);
+    transition: transform 0.22s ease;
+  }
+
+  .theme-toggle__ic {
+    position: relative;
+    z-index: 1;
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: color 0.22s ease;
+  }
+
+  /* Light is the default: the sun is lit (accent), the moon recedes (muted). */
+  .theme-toggle__ic--sun {
+    color: var(--act);
+  }
+
+  .theme-toggle__ic--moon {
+    color: var(--t3);
+  }
+
+  /* Dark: slide the knob to the moon and swap which icon is lit. `:global()` keeps the
+     :root ancestor unscoped while the knob/icon targets stay component-scoped. */
+  :global(:root[data-theme="dark"]) .theme-toggle__thumb {
+    transform: translate(26px, -50%);
+  }
+
+  :global(:root[data-theme="dark"]) .theme-toggle__ic--sun {
+    color: var(--t3);
+  }
+
+  :global(:root[data-theme="dark"]) .theme-toggle__ic--moon {
+    color: var(--act);
+  }
+
+  /* The slide is decorative — honour a reduced-motion preference. */
+  @media (prefers-reduced-motion: reduce) {
+    .theme-toggle__thumb {
+      transition: none;
+    }
+  }
+</style>

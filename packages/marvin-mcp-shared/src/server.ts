@@ -182,14 +182,23 @@ function registerTool<TInput extends z.ZodTypeAny>(
   def: ToolDef<TInput>,
   onInvoke?: (event: InvocationEvent) => void,
 ): void {
-  // Tool input schemas in our contract are zod ObjectS — extract their raw
-  // shape so registerTool can compose the JSON Schema itself.
-  const shape = def.inputSchema instanceof z.ZodObject ? def.inputSchema.shape : undefined;
+  // Tool input schemas in our contract are zod objects. Pass the schema
+  // **itself**, not its raw `.shape`: handed a raw shape, the SDK rebuilds it
+  // with a plain `z.object()`, which is non-strict and therefore *strips*
+  // unknown keys before the handler — and before our own `safeParse` below —
+  // ever sees them. A `.strict()` schema could then never reject anything: an
+  // argument the tool does not declare was silently discarded and the caller
+  // got a confident answer computed without it. Passing the schema preserves
+  // its strictness (the SDK accepts a whole schema, not only a shape), so a
+  // `.strict()` tool now fails loudly on an unknown key. Non-strict schemas are
+  // unaffected, and the advertised JSON Schema is identical either way.
+  const inputSchema: z.ZodTypeAny | undefined =
+    def.inputSchema instanceof z.ZodObject ? def.inputSchema : undefined;
   server.registerTool(
     def.name,
     {
       description: def.description,
-      inputSchema: shape,
+      inputSchema,
       // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
       // (ADR-0024); omitted by text-only tools.
       ...(def.meta ? { _meta: def.meta } : {}),

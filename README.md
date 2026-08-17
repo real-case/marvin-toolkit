@@ -10,11 +10,11 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **57 prompts, 12 MCP tools, 10 agents, and 7 interactive widgets**
+Under the hood it ships **55 prompts, 13 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
-## Three doors, one room
+## Call it your way
 
 Each workflow is authored once at `plugins/marvin/skills/<command>/SKILL.md`, and three
 independent entry points reach the same body:
@@ -24,7 +24,7 @@ independent entry points reach the same body:
 3. **MCP prompt.** Type the namespaced form, such as `/marvin:commit`, served by the bundled server.
 
 Pick whichever feels right; they all run the same skill. The
-[architecture tour](./docs/architecture.md) explains how the three doors resolve, with
+[architecture tour](./docs/architecture.md) explains how the three entry points resolve, with
 diagrams.
 
 ## Install
@@ -40,28 +40,38 @@ The plugin registers one MCP server named `marvin`, and its commands appear as
 `/marvin:<group>-<command>`. No clone or build step is needed, because the server ships
 bundled.
 
+**Installing also lets Marvin block a shell command.** Two hooks arrive with the plugin and
+are armed with no enablement step: one refuses a commit that skips your local gates
+(`git commit --no-verify`) and a force-push or deletion aimed at a protected branch, the
+other refuses a commit whose added lines carry a credential-shaped string. Everything else
+runs untouched — a quoted `--no-verify` in a commit message is not a match, a dry-run push
+is never blocked, and any internal error allows the command rather than blocking it. To turn
+them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or export
+`MARVIN_HOOKS_DISABLED=1` for one session. The
+[configuration reference](./docs/configuration.md#hooks) has the details.
+
 ## Documentation
 
-- **[Getting started](./docs/getting-started.md)** — install, confirm it works, and run your first commands.
-- **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, kanban, security, and refactoring.
+- **[Getting started](./docs/getting-started.md)** — install the plugin, then run the guided `/marvin:onboard` walkthrough.
+- **[Usage guide](./docs/usage.md)** — worked walkthroughs for committing, the task pipeline, the task board, security, and refactoring.
 - **[Configuration](./docs/configuration.md)** — the `.marvin/` working directory, `.marvin/config.json`, and the `MARVIN_*` environment variables.
 - **[Command reference](./docs/commands.md)** — every `/marvin:` command with a synopsis and the phrases that invoke it.
 - **[Architecture](./docs/architecture.md)** — how the plugin is built, with diagrams.
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 57
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 55
 prompts divide into seven groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 13 |
+| _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 5 |
+| `task-*` | Spec-driven task pipeline | 6 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
-| `kanban-*` | Lightweight task tracker | 14 |
+| `track-*` | Lightweight task tracker | 7 |
 
 The tables below give a one-line synopsis per command. The
 [command reference](./docs/commands.md) adds the natural-language phrases that invoke each
@@ -69,16 +79,18 @@ one from chat.
 
 ### Core developer tools
 
-These are language-agnostic and used by every engineer.
+These are language-agnostic and used by every engineer. 👤 = human-run: the model never
+auto-triggers these, you invoke them yourself.
 
 | Command | Description |
 |---------|-------------|
+| `/marvin:onboard` | Guided first session in this project — every write behind an explicit yes. |
 | `/marvin:commit` | Draft a Conventional Commits message with sensitive-file detection. |
 | `/marvin:debug` | Systematic root-cause analysis with hypotheses. |
 | `/marvin:adr` | Draft an Architecture Decision Record; drafts land `proposed`. |
 | `/marvin:changelog` | Generate a changelog from git history. |
 | `/marvin:readme` | Generate or update `README.md` from codebase analysis. |
-| `/marvin:migration-plan` | Plan a migration with risks and a rollback strategy. |
+| `/marvin:migration-plan` 👤 | Plan a migration with risks and a rollback strategy. |
 | `/marvin:explain` | Explain code, architecture, and execution flow. |
 | `/marvin:docs-search` | Search and synthesize the project documentation. |
 | `/marvin:handoff` | Capture the session context into `.marvin/handoff/` to continue later. |
@@ -86,6 +98,9 @@ These are language-agnostic and used by every engineer.
 | `/marvin:lessons` | Browse the lessons-learned store — search, add, stats, and prune. |
 | `/marvin:help` | Show the project dashboard and the full command index. |
 | `/marvin:dashboard` | Report the whole-toolbox state at a glance. |
+| `/marvin:reports` | Browse every generated `.marvin/` report, newest first, with freshness. |
+| `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
+| `/marvin:widget-preview` | Open a widget as a rendered panel with this project's data, on any host ([ADR-0034](./docs/adr/0034-widget-preview-door.md)). |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands. The plugin also registers two external MCP servers: `context7` for library docs
@@ -128,6 +143,7 @@ These separate the human decisions in a spec from the automated execution that f
 | `/marvin:task-verify` | Run the quality gates with stack auto-detection. |
 | `/marvin:task-deliver` | Commit and open a PR, gated on verification passing. |
 | `/marvin:task-summary` | Aggregate a finished task into one delivery summary. |
+| `/marvin:task-audit` | Lint the spec corpus for consistency; read-only, with remediation notes. |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
 `marvin-tm-diff-critic`, and `marvin-tm-review-fixer` agents support this pipeline.
@@ -166,42 +182,43 @@ split by mutation into read, plan, and apply.
 
 The `marvin-refactor-auditor` agent supports these commands.
 
-### Kanban tracker — `kanban-*`
+### Task tracker — `track-*`
 
 These drive a lightweight per-project board with interactive forms
 ([ADR-0025](./docs/adr/0025-kanban-board-only.md)). New tasks branch off following the
 convention `<type-prefix>/<seq>[-<tracker>]--<slug>`, and committing or opening a PR for a
-board task goes through the kanban-aware `/marvin:commit` and `/marvin:pr-create`, which
+board task goes through the board-aware `/marvin:commit` and `/marvin:pr-create`, which
 pick up the linked task automatically.
 
 | Command | Description |
 |---------|-------------|
-| `/marvin:kanban-menu` | Open the main menu. |
-| `/marvin:kanban-bug`, `-feature`, `-chore`, `-spike` | Quick-create a task of the given type. |
-| `/marvin:kanban-start` | Pick a todo task, branch off, and mark it in progress. |
-| `/marvin:kanban-review` | Move the current task to review. |
-| `/marvin:kanban-done` | Mark the current task done. |
-| `/marvin:kanban-list` | List all tasks grouped by status. |
-| `/marvin:kanban-show` | Show one task in full. |
-| `/marvin:kanban-tracker` | List tasks with an external tracker id, linking out. |
-| `/marvin:kanban-status` | Show the current branch and its work-in-progress tasks. |
-| `/marvin:kanban-config` | Show or edit the board configuration. |
-| `/marvin:kanban-help` | Show the board dashboard scoped to the kanban commands. |
+| `/marvin:track-menu` | Open the main menu — every board action, including `link-pr` and `archive`. |
+| `/marvin:track-new` | Create a task — bug, feature, chore, or spike. |
+| `/marvin:track-list` | List the board: all tasks by status, the work-in-progress view, or the tracked tasks linking out. |
+| `/marvin:track-show` | Show one task in full. |
+| `/marvin:track-start` | Pick a todo task, branch off, and mark it in progress. |
+| `/marvin:track-move` | Move a task — to review, done, or any configured status. |
+| `/marvin:track-config` | Show or edit the board configuration. |
+
+The board dashboard and command reference stay one call away as `/marvin:help track`
+([ADR-0032](./docs/adr/0032-track-surface-reduction.md) records the seven-command
+surface).
 
 Statuses are project data ([ADR-0026](./docs/adr/0026-configurable-status-model.md)):
-configure your tracker's vocabulary through `/marvin:kanban-config`, and the lifecycle
+configure your tracker's vocabulary through `/marvin:track-config`, and the lifecycle
 commands drive it by role. The [configuration reference](./docs/configuration.md) documents
 every setting.
 
 ## Interactive widgets
 
-On an MCP host that supports the Apps widget layer, seven commands render an interactive
-panel in addition to their text output
+On an MCP host that supports the Apps widget layer, nine widgets render an interactive
+panel in addition to the text output
 ([ADR-0024](./docs/adr/0024-mcp-apps-widget-architecture.md)). The panel is additive, so a
 text-only host shows the same information as text and no command depends on a rich host.
-The widget-backed commands are `/marvin:kanban-list`, `/marvin:kanban-show`,
-`/marvin:kanban-tracker`, `/marvin:task-summary`, `/marvin:sec-report`,
-`/marvin:handoff-list`, and `/marvin:dashboard`.
+The widget-backed commands are `/marvin:track-list` (which fronts both the board list and
+the tracked link-out view), `/marvin:track-show`, `/marvin:task-summary`,
+`/marvin:sec-report`, `/marvin:handoff-list`, `/marvin:dashboard`, `/marvin:help`, and
+`/marvin:reports`.
 
 ## Development lifecycle
 
@@ -222,7 +239,7 @@ flowchart LR
 | Document | `readme`, `changelog` |
 | Ship | `commit`, `pr-create`, `pr-resolve`, `pr-merge` |
 
-Layer the `kanban-*` tracker on top of any of these for day-to-day tracking, and run
+Layer the `track-*` tracker on top of any of these for day-to-day tracking, and run
 `/marvin:dashboard` to see the whole toolbox's state at a glance.
 
 ## Architecture decisions
@@ -264,6 +281,16 @@ rationale is folded into 0001, 0013, and 0018.
 | [0028](./docs/adr/0028-lessons-hygiene-and-recall-expansion.md) | Lessons v2: hygiene surface and recall or capture expansion | Accepted |
 | [0029](./docs/adr/0029-refactoring-command-family.md) | Refactoring command family: read, plan, apply under hard rails | Accepted |
 | [0030](./docs/adr/0030-toolbox-dashboard-and-usage-log.md) | Toolbox dashboard and local usage log | Accepted |
+| [0031](./docs/adr/0031-track-command-group-rename.md) | Rename the `kanban-*` command group to `track-*` | Accepted |
+| [0032](./docs/adr/0032-track-surface-reduction.md) | Reduce the `track-*` surface to seven commands | Accepted |
+| [0033](./docs/adr/0033-report-export.md) | Report export is template-only (Claude fills a shipped print template) | Accepted |
+| [0034](./docs/adr/0034-widget-preview-door.md) | A local preview door renders widgets on hosts that cannot | Accepted |
+| [0035](./docs/adr/0035-evidence-provenance.md) | A verification is bound to the tree it verified | Accepted |
+| [0036](./docs/adr/0036-oracle-execution-and-red-green.md) | Acceptance oracles are executed and journalled, not narrated | Accepted |
+| [0037](./docs/adr/0037-spec-corpus-mechanics.md) | Spec corpus mechanics are tool-backed | Accepted |
+| [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
+| [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
+| [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
 
 ## Contributing
 
@@ -274,6 +301,8 @@ npm run lint              # ESLint over the TypeScript source
 npm run format:check      # Prettier
 npm run lint:manifests    # marketplace and plugin manifest structure
 npm run lint:docs         # ADR coverage and working-directory paths
+npm run eval:self-test    # trigger-eval harness guard (no network)
+npm run eval:trigger      # mock sweep over every trigger dataset
 npm run build             # build every workspace
 npm run test              # Node.js native test suites
 npm run verify-dist       # committed dist/ matches a fresh build

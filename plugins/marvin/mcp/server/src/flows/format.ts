@@ -19,8 +19,7 @@ export function renderListTable(
   currentBranch: string | null,
   config: Config,
 ): string {
-  if (tasks.length === 0)
-    return "_No tasks yet — use `/marvin:kanban-bug` or similar to create one._";
+  if (tasks.length === 0) return "_No tasks yet — use `/marvin:track-new` to create one._";
   const groups = groupByStatus(tasks);
   const sections: string[] = [];
   for (const status of orderedStatuses(config)) {

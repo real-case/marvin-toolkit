@@ -4,12 +4,22 @@
 // self-contained (no external http(s) references — the host renders them under a
 // strict CSP that blocks external hosts). Mirrors verify-dist.mjs for the server
 // bundle. Nonzero exit on drift or an external reference.
+//
+// Like verify-dist.mjs, the drift baseline comes from git rather than the working
+// tree: this script rebuilds the documents in place, and CI's "Build all
+// workspaces" step already did too. See scripts/lib/committed-artifact.mjs.
 
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  classifyRebuild,
+  gitPath,
+  hashBytes,
+  hashFile,
+  readCommittedBytes,
+} from "./lib/committed-artifact.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const widgetsDir = join(repoRoot, "plugins", "marvin", "widgets");
@@ -23,8 +33,21 @@ if (committed.length === 0) {
   process.exit(1);
 }
 
-// Snapshot committed hashes before rebuilding over them.
-const before = new Map(committed.map((f) => [f, hashFile(join(widgetsDir, f))]));
+// The committed baseline comes from git. The working-tree snapshot is kept only
+// to tell "built elsewhere" apart from "rebuilt but not staged" when a file fails.
+const worktreeBefore = new Map(committed.map((f) => [f, hashFile(join(widgetsDir, f))]));
+const baseline = new Map();
+for (const f of committed) {
+  const abs = join(widgetsDir, f);
+  const { bytes, reason } = readCommittedBytes(repoRoot, abs);
+  if (!bytes) {
+    console.warn(
+      `NOTE: ${gitPath(repoRoot, abs)} is not readable at HEAD (${reason}) — ` +
+        "falling back to the working-tree copy as the baseline",
+    );
+  }
+  baseline.set(f, bytes ? hashBytes(bytes) : worktreeBefore.get(f));
+}
 
 // Build @marvin-toolkit/mcp-shared first (the widgets type-check against its
 // dist/contracts), then rebuild the widgets — npm workspace order is not
@@ -54,15 +77,23 @@ for (const f of committed) {
     failures += 1;
     continue;
   }
-  const after = hashFile(join(widgetsDir, f));
-  if (before.get(f) !== after) {
+  const rebuiltHash = hashFile(join(widgetsDir, f));
+  const { ok, kind } = classifyRebuild({
+    baseline: baseline.get(f),
+    worktreeBefore: worktreeBefore.get(f),
+    rebuilt: rebuiltHash,
+  });
+  if (ok) {
+    console.log(`OK   drift: ${f} in sync`);
+  } else {
     console.error(
       `FAIL: committed plugins/marvin/widgets/${f} differs from a fresh build.\n` +
-        `  fix: npm run build -w @marvin-toolkit/widgets && git add plugins/marvin/widgets/`,
+        (kind === "uncommitted"
+          ? `  the working tree already holds this exact build — only the commit is behind.\n` +
+            `  fix: git add plugins/marvin/widgets/${f}`
+          : `  fix: npm run build -w @marvin-toolkit/widgets && git add plugins/marvin/widgets/`),
     );
     failures += 1;
-  } else {
-    console.log(`OK   drift: ${f} in sync`);
   }
 }
 for (const f of rebuilt) {
@@ -104,7 +135,3 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log(`\nverify-widgets: all ${rebuilt.length} widget(s) in sync and self-contained`);
-
-function hashFile(p) {
-  return createHash("sha256").update(readFileSync(p)).digest("hex");
-}

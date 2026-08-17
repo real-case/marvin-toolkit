@@ -2,7 +2,7 @@
  * Persistence for the project lessons-learned store (`.marvin/memory`).
  *
  * A lesson is one markdown file with a flat string frontmatter header (the same
- * failsafe codec the kanban tasks use) plus a prose body. `MEMORY.md` is the
+ * failsafe codec the board tasks use) plus a prose body. `MEMORY.md` is the
  * human-readable index — one line per lesson — appended on every add. The store
  * is committed to git, so lessons captured during a task or a debug session are
  * shared with the team and recalled at the next task's intake (ADR-0021).

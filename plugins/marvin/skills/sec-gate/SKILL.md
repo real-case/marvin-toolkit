@@ -36,13 +36,48 @@ Collect:
 
 ## Phase 2 — Secret check (diff only)
 
-Scan **added lines only** for hardcoded secrets. Use the high-signal patterns:
+Scan **added lines only** for hardcoded secrets.
 
-1. **Cloud provider keys**: `AKIA[0-9A-Z]{16}`, `AIza[0-9A-Za-z_-]{35}`, `AccountKey=`
-2. **Platform tokens**: `ghp_`, `gho_`, `ghs_`, `sk-`, `sk_live_`, `xox[bps]-`, `SG.`, `glpat-`
-3. **Private keys**: `-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----`
-4. **Generic credentials**: assignments to `password`, `secret`, `api_key`, `token`, `credential` variables with non-placeholder string values
-5. **Connection strings**: `(mysql|postgres|mongodb|redis)://.*:.*@`
+**The same list runs as a blocking hook on the commit path.** Marvin ships a `PreToolUse`
+guard (`hooks/secret-guard.mjs`, ADR-0040) that scans the pending commit against exactly
+these patterns and refuses the `git commit` call on a match. The hook's `SECRET_PATTERNS`
+is the canonical source and the block below is mirrored from it, so the skill and the hook
+cannot report differently on the same diff; `test/hook-surface.test.mjs` asserts the parity
+in both directions. Edit the hook, then mirror — never the other way round.
+
+Every pattern is an anchored regex with a shape or length requirement rather than a bare
+prefix, because this skill's own low-false-positive constraint forbids one: `sk-` is a
+substring of the literal `task-start`, which appears in nearly every commit this project
+makes.
+
+```json secret-patterns
+[
+  { "id": "aws-access-key-id", "regex": "\\bAKIA[0-9A-Z]{16}\\b" },
+  { "id": "google-api-key", "regex": "\\bAIza[0-9A-Za-z_-]{35}\\b" },
+  { "id": "github-token", "regex": "\\bgh[pousr]_[A-Za-z0-9]{36}\\b" },
+  { "id": "gitlab-token", "regex": "\\bglpat-[A-Za-z0-9_]{20}\\b" },
+  { "id": "openai-key", "regex": "\\bsk-[A-Za-z0-9]{20,}\\b" },
+  { "id": "stripe-live-key", "regex": "\\bsk_live_[A-Za-z0-9]{24,}\\b" },
+  { "id": "slack-token", "regex": "\\bxox[abprs]-[A-Za-z0-9]{10,}\\b" },
+  { "id": "sendgrid-key", "regex": "\\bSG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}\\b" },
+  { "id": "azure-storage-key", "regex": "\\bAccountKey=[A-Za-z0-9+/]{64,}={0,2}" },
+  {
+    "id": "private-key-header",
+    "regex": "-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"
+  },
+  {
+    "id": "credentialed-uri",
+    "regex": "\\b(?:mysql|postgres|postgresql|mongodb|redis|amqp)(?:\\+srv)?://[^\\s:/@]+:[^\\s:/@]+@"
+  }
+]
+```
+
+**Generic credentials — model judgement, not machine-enforced.** Assignments to
+`password`, `secret`, `api_key`, `token` or `credential` variables with non-placeholder
+string values are a real finding and you should report them, but the rule has no
+deterministic form: deciding that `"changeme"` is a placeholder and `"Tr0ub4dor&3"` is not
+is a judgement. It is deliberately outside the block above and outside the parity test, and
+the hook does not enforce it.
 
 Also check:
 - New `.env` files added to staging — flag immediately
@@ -139,7 +174,47 @@ Critical issues found. The commit should not proceed. Output:
 
 ## Output location
 
-The gate reports its verdict inline by default — it runs on the commit path and should stay quiet. If the user asks to keep a record, write it to `.marvin/security/gate-report.md` (create the `.marvin/security/` directory if needed).
+The gate reports its verdict inline by default — it runs on the commit path and should stay quiet. If the user asks to keep a record, write it to `.marvin/security/gate-report.md` (create the `.marvin/security/` directory if needed), and append the audit-report block below to that same file.
+
+## Audit-report block (Tier-2 — ADR-0024)
+
+**Only when a record was requested.** If the verdict stayed inline — the default — write nothing at all. The gate runs on the commit path and stays quiet by default; an unconditional write would break both that speed budget and ADR-0007's premise that service files are generated on request.
+
+When `.marvin/security/gate-report.md` is being written, append a machine-readable `audit-report` block after the prose so `/marvin:reports` and `/marvin:sec-report` can consume typed findings. Rules: set `kind` to `gate`; emit one finding per blocking or warning issue, with `file`/`line` where known and a short `category` (`secrets`, `injection`, `authz`, `deps` — this is a fast gate, not a compliance report, so an OWASP id is welcome but not required); make the `summary` counts match the `findings` you list; use the severity vocabulary `critical | high | medium | low | info`, ranked against `skills/sec-scan/references/severity-rubric.md` — read it from the plugin, the `skills/…` path resolves through all three entry points (ADR-0008). `scanned_at` is an ISO-8601 timestamp (`date -u +%FT%TZ`). Leave the prose above unchanged.
+
+A gate record is a diff-scoped snapshot, not the project's security posture: `/marvin:reports` and `/marvin:sec-report` list it alongside everything else, and the dashboard deliberately keeps its Security area on the last full scan rather than on this (ADR-0038).
+
+Fill this shape from the real gate run (the example values are illustrative — the structure is canonical):
+
+```json audit-report
+{
+  "kind": "gate",
+  "scanned_at": "2026-01-15T14:30:00Z",
+  "target": "staged diff",
+  "summary": { "critical": 1, "medium": 1 },
+  "findings": [
+    {
+      "id": "GATE-1",
+      "severity": "critical",
+      "title": "AWS access key in added lines",
+      "category": "secrets",
+      "file": "src/config/aws.ts",
+      "line": 12,
+      "evidence": "AKIA-prefixed literal assigned to accessKeyId",
+      "remediation": "Remove the literal, read it from the environment, rotate the key"
+    },
+    {
+      "id": "GATE-2",
+      "severity": "medium",
+      "title": "Shell command built from a request parameter",
+      "category": "injection",
+      "file": "src/jobs/export.ts",
+      "line": 44,
+      "remediation": "Pass arguments as an array instead of interpolating into a shell string"
+    }
+  ]
+}
+```
 
 ## Guidelines
 
@@ -149,3 +224,4 @@ The gate reports its verdict inline by default — it runs on the commit path an
 - **No OWASP mapping.** This is a quick gate, not a compliance report. Keep the output compact.
 - **Suggest next steps.** On FAIL, point to `sec-fix`. On WARN with dependency issues, point to `sec-deps`.
 - **Don't block on missing tools.** If `npm audit` isn't available, skip the dependency check and add a line to the verdict: "Note: Dependency check skipped — `npm audit` not available. Run `/marvin:sec-deps` for manual analysis." The gate should never fail because a tool is missing.
+- **To make a scan blocking, make it a gate.** This skill's verdict is advice on the commit path; nothing enforces it. A scan that must stop delivery belongs in the `gates` block of `.marvin/config.json`, chained onto an existing gate (`"lint": "npm run lint && gitleaks detect"`), where `verify` runs it and the result reaches the delivery gate. The trade is the inverse of the bullet above: a verify gate does fail when its binary is missing, so propose this only where the tool is a documented prerequisite of the project.

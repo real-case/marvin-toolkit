@@ -1,11 +1,35 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
-import type { ServerEnv } from "../lib/env.js";
+import { projectConfigPath, type ServerEnv } from "../lib/env.js";
+import { diffAgainstHead, headSha, untrackedFiles } from "../lib/git.js";
+import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
+import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
 import { loadConfig } from "../storage/config.js";
+import type { Config, SpecConfig } from "../storage/schema.js";
+import { parseFrontmatter } from "../storage/frontmatter.js";
+import {
+  oracleJournalPath,
+  oracleTestFile,
+  readOracleRuns,
+  recordOracleRun,
+  redGreenProof,
+  resolveOracleCommand,
+  type OracleRun,
+} from "../storage/oracles.js";
+import {
+  SpecContract,
+  contractHash,
+  extractContractBlock,
+  resolveSpecBySlug,
+  specSearchDirs,
+  type Criterion,
+} from "../storage/spec.js";
 
 /**
  * Deterministic quality-gate runner (ADR-0002). Runs the project's
@@ -26,7 +50,12 @@ interface GateSpec {
   command: string;
 }
 
-type GateStatus = "pass" | "fail" | "error";
+/**
+ * `not-run` (ADR-0035) is decided by a pre-flight probe, never by an exit code:
+ * the gate's binary was absent, so nothing was spawned. It is not a failure and
+ * not a pass — the two states the verdict used to have to squeeze it into.
+ */
+type GateStatus = "pass" | "fail" | "error" | "not-run";
 
 interface GateResult {
   name: GateName;
@@ -36,6 +65,8 @@ interface GateResult {
   durationMs: number;
   summary: string;
   details: string;
+  /** Set only on `not-run`: the command token the probe could not resolve. */
+  missingToken?: string;
 }
 
 type Verdict = "PASS" | "FAIL" | "PASS WITH WARNINGS";
@@ -185,16 +216,49 @@ const VerifyInput = z.object({
   write: z
     .boolean()
     .default(true)
-    .describe("Write verification.md to <projectRoot>/.marvin/task/."),
+    .describe(
+      "Write verification.md to <projectRoot>/.marvin/task/. That location is deliberately independent of where specs live: a spec is a project document and stays host-adaptive (ADR-0005), while everything marvin generates about a run is a service file pinned under .marvin/ (ADR-0007), so this path does not follow `spec.dir` (ADR-0037).",
+    ),
   dryRun: z
     .boolean()
     .default(false)
     .describe("Report the detected gate plan without executing anything."),
   action: z
-    .enum(["run", "gate"])
+    .enum(["run", "gate", "oracles"])
     .default("run")
     .describe(
-      "run: execute the gates (default). gate: do not run anything — read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver.",
+      "run: execute the gates (default). gate: do not run anything — read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver. oracles: run a sealed spec's acceptance oracles (not gates) and append each outcome to .marvin/task/runs/<slug>.oracles.md — the red-green recorder for /marvin:task-implement.",
+    ),
+  criteria: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'oracles only: run just these criterion ids (e.g. ["AC2"]). Omit to run every non-prose-review criterion. Distinct from `only`, which selects GATES.',
+    ),
+  expect: z
+    .enum(["pass", "fail"])
+    .default("pass")
+    .describe(
+      'oracles only: which phase this is. "fail" is the red phase (the test must fail before the fix); "pass" is the green phase. Recorded on every journal entry — a red and a green at the same contract_sha with the same test hash are what the delivery gate reads as a proof.',
+    ),
+  command: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "oracles only: run this exact command for every selected criterion, outranking the criterion's own `run`, its `ref` and the project's `gates.test_one`.",
+    ),
+  specSlug: z
+    .string()
+    .optional()
+    .describe(
+      "Spec slug (kebab-case) this run verifies. On run: also writes the identical artifact to .marvin/task/runs/<slug>.md. On gate: reads that per-spec run instead of the global verification.md, so the gate judges THIS task's proof. A non-kebab-case slug is rejected with a warning, never sanitised.",
+    ),
+  allowStale: z
+    .boolean()
+    .default(false)
+    .describe(
+      "gate only: deliver even though the recorded verification no longer describes this working tree. Waives the freshness check ONLY — it never turns a FAIL verdict into an ALLOW, and never waives the no-test-evidence refusal. Requires an explicit user decision.",
     ),
 });
 type VerifyInput = z.infer<typeof VerifyInput>;
@@ -203,7 +267,7 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "verify",
     description:
-      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver.',
+      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env),
   });
@@ -212,15 +276,25 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
 async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult> {
   const projectRoot = input.projectRoot ?? env.projectDir;
 
-  // Delivery gate: read the prior verification.md verdict, run nothing.
-  if (input.action === "gate") return deliverGate(projectRoot);
+  // ONE config read, ahead of the action fork. Every action needs it: the gate
+  // plan below, `gates.test_one` for oracle command resolution, and — the reason
+  // it moved above the two early returns — the `spec.dir` tier all three spec
+  // lookups on this path resolve through (ADR-0037). It is read per call rather
+  // than per server, so a `task config` edit applies without a restart.
+  const { config, warning: configWarning } = loadConfig(projectConfigPath(env, projectRoot));
 
-  // When the caller targets an explicit projectRoot, read that project's config;
-  // otherwise honour MARVIN_TASKS_CONFIG via env.configPath.
-  const configPath = input.projectRoot
-    ? join(input.projectRoot, ".marvin", "config.json")
-    : env.configPath;
-  const { config, warning: configWarning } = loadConfig(configPath);
+  // Delivery gate: read the prior verification.md verdict, run nothing.
+  if (input.action === "gate") {
+    return deliverGate(projectRoot, {
+      specSlug: input.specSlug,
+      allowStale: input.allowStale,
+      specConfig: config.spec,
+    });
+  }
+
+  // Acceptance oracles: run a sealed spec's criteria, not the project's gates.
+  if (input.action === "oracles") return runOracles(projectRoot, input, config);
+
   const configGates = gateSpecsFromConfig(config.gates);
 
   // Resolve the gate plan: explicit per-call gates > config-declared gates > detection.
@@ -251,15 +325,37 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     );
   }
 
+  // Availability is probed HERE — once per gate, before the clock starts — and
+  // the answer is carried into the run. The probe is a blocking `spawnSync`, so
+  // inside the measured window it would serialise the concurrent path and take
+  // back the latency guarantee ADR-0002 exists for (AC-7).
+  const planned = planGates(gates, projectRoot);
+
   // Run gates and merge.
   const wallStart = performance.now();
-  const results = await executeGates(gates, input.execution, projectRoot);
+  const results = await executeGates(planned, input.execution, projectRoot);
   const wallClockMs = Math.round(performance.now() - wallStart);
   const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
 
   const warnings = modeWarnings(input.mode, projectRoot);
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`);
+  }
+  // A gate whose binary was absent is loud but not fatal: one warning each, which
+  // is what degrades an otherwise-green plan to PASS WITH WARNINGS. That is a
+  // VISIBILITY measure — PASS WITH WARNINGS delivers. The refusal that closes the
+  // bypass lives in deliverGate (ADR-0035).
+  for (const r of results) {
+    if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
+  }
+  const runSlug = resolveRunSlug(input.specSlug);
+  if (runSlug.rejected) {
+    warnings.push(
+      slugRejection(
+        runSlug.rejected,
+        "wrote only `.marvin/task/verification.md`, no per-spec run.",
+      ),
+    );
   }
   const verdict = computeVerdict(results, warnings);
 
@@ -281,8 +377,23 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   // back from the file rather than scraping prose; previously the block was only
   // in the tool's return value, so a real verify → deliver never found it.
   const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
+  // The per-spec run is written beside the global artifact with IDENTICAL text —
+  // `artifactPath` stays the global path in both copies, so the two files are
+  // byte-for-byte the same document (ADR-0035).
+  const runPath =
+    input.write && runSlug.slug
+      ? join(projectRoot, ".marvin", "task", "runs", `${runSlug.slug}.md`)
+      : null;
 
-  const machine = JSON.stringify({
+  // Provenance is collected HERE — after every gate has settled and immediately
+  // before the artifact is written — never at the start of the run. A gate can
+  // change the tree it is verifying: this repository's own build gate is
+  // `npm run build`, which rewrites the tracked dist/server.js and widgets/*.html.
+  // Collected first, the digest would describe a tree the run itself then changed,
+  // and every post-build delivery would read as stale.
+  const provenance = collectProvenance(projectRoot) ?? undefined;
+
+  const machine = formatVerifyBlock({
     verdict,
     gates: results.map((r) => ({
       name: r.name,
@@ -295,13 +406,18 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     wallClockMs,
     sumOfGatesMs,
     artifactPath,
+    provenance,
   });
 
-  const fullText = `${markdown}\n\n\`\`\`json verify-result\n${machine}\n\`\`\``;
+  const fullText = `${markdown}\n\n${machine}`;
 
   if (input.write && artifactPath) {
     mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(artifactPath, fullText, "utf8");
+    if (runPath) {
+      mkdirSync(dirname(runPath), { recursive: true });
+      writeFileSync(runPath, fullText, "utf8");
+    }
   }
 
   return {
@@ -479,67 +595,248 @@ function detectMakefile(projectRoot: string): { stacks: string[]; gates: GateSpe
  * loss of sibling results (R-V-3 / F-1).
  */
 async function executeGates(
-  gates: GateSpec[],
+  planned: PlannedGate[],
   execution: VerifyInput["execution"],
   cwd: string,
 ): Promise<GateResult[]> {
   if (execution === "parallel") {
-    const settled = await Promise.allSettled(gates.map((g) => runGate(g, cwd)));
+    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
     return settled.map((s, i) =>
-      s.status === "fulfilled" ? s.value : crashResult(gates[i]!, s.reason),
+      s.status === "fulfilled" ? s.value : crashResult(planned[i]!.gate, s.reason),
     );
   }
 
   // sequential / fail-fast: one at a time.
   const results: GateResult[] = [];
-  for (const g of gates) {
+  for (const p of planned) {
     let r: GateResult;
     try {
-      r = await runGate(g, cwd);
+      r = await runGate(p, cwd);
     } catch (err) {
-      r = crashResult(g, err);
+      r = crashResult(p.gate, err);
     }
     results.push(r);
-    if (execution === "fail-fast" && r.status !== "pass") break;
+    // fail-fast stops at the first *failure*. A `not-run` gate is not one —
+    // nothing was spawned — so it must not cut the remaining gates short.
+    if (execution === "fail-fast" && r.status !== "pass" && r.status !== "not-run") break;
   }
   return results;
 }
 
-/** Spawn one gate command via the shell, capturing output and exit code. */
-function runGate(gate: GateSpec, cwd: string): Promise<GateResult> {
+// ── the pre-flight availability probe (ADR-0035) ────────────────────────────
+
+/**
+ * Anything that makes a command more than one simple invocation — a chain, a
+ * pipe, a substitution, a redirection, a glob, a quote. Its presence is the
+ * signal to abstain, and it doubles as the injection screen: a command that
+ * reaches the probe provably contains no metacharacter, so neither can the
+ * token interpolated into `sh -c`.
+ */
+const SHELL_METACHARACTERS = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
+
+type Probe = { kind: "abstain" } | { kind: "available" } | { kind: "missing"; token: string };
+
+const ABSTAIN: Probe = { kind: "abstain" };
+
+/** A gate paired with the pre-flight answer for its command, so the two cannot
+ * drift apart on the way into the runner. */
+interface PlannedGate {
+  gate: GateSpec;
+  probe: Probe;
+}
+
+/**
+ * Can each gate's binary be resolved, before anything is spawned?
+ *
+ * Deliberately **partial**. It answers for a single simple command — which is
+ * every built-in stack default except the C/C++ build — and abstains on
+ * everything else, so the documented chained form (`"lint": "npm run lint &&
+ * gitleaks detect"`) keeps failing exactly as it does today. Parsing the chain
+ * was rejected: a mis-parse produces a *false* `not-run`, which downgrades a real
+ * failure to a warning, and that is strictly worse than a missed one.
+ *
+ * Exit code 127 is deliberately NOT the signal. `npm`, `make` and most test
+ * runners propagate a child's 127 as their own, so classifying after the fact
+ * would silently convert real failures into warnings.
+ *
+ * Probing is a whole-plan step rather than a per-gate one for two reasons, both
+ * about the concurrency this runner exists to provide. Each probe is a blocking
+ * `spawnSync`, so run from inside a gate it would hold the event loop and start
+ * the gates one after another — the sequential shape, wearing the parallel
+ * label. And a plan whose gates share a runner (`npm test`, `npm run lint`)
+ * probes that token once for all of them: the memo is per token, so N gates cost
+ * one spawn.
+ */
+function planGates(gates: GateSpec[], cwd: string): PlannedGate[] {
+  const byToken = new Map<string, Probe>();
+  return gates.map((gate) => {
+    if (SHELL_METACHARACTERS.test(gate.command)) return { gate, probe: ABSTAIN };
+    const token = gate.command.trim().split(/\s+/)[0];
+    if (!token) return { gate, probe: ABSTAIN };
+    let probe = byToken.get(token);
+    if (!probe) {
+      probe = probeToken(token, cwd);
+      byToken.set(token, probe);
+    }
+    return { gate, probe };
+  });
+}
+
+/** Resolve one command token against PATH. The token provably carries no shell
+ * metacharacter (`planGates` screened the whole command), so neither can the
+ * string interpolated into `sh -c` here. */
+function probeToken(token: string, cwd: string): Probe {
+  const probe = spawnSync("sh", ["-c", `command -v -- ${token}`], { cwd, encoding: "utf8" });
+  // A probe that could not itself run tells us nothing — abstain and let the
+  // gate run exactly as it does today.
+  if (probe.error || probe.status === null) return ABSTAIN;
+  return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
+}
+
+function notRunWarning(gate: GateName, token: string | undefined): string {
+  return (
+    `gate not run: \`${gate}\` — \`${token ?? "the gate command"}\` is not on PATH ` +
+    `(install it, or pin a different command in \`.marvin/config.json\`)`
+  );
+}
+
+/** The prefix `deliverGate` filters on to quote these warnings back. */
+const NOT_RUN_WARNING_PREFIX = "gate not run:";
+
+// ── the single child-process site (ADR-0015, ADR-0036) ──────────────────────
+
+/** What one child process did. `error` means it never ran at all. */
+interface SpawnOutcome {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  /**
+   * The child could not be LAUNCHED — the `error` event, or a command node
+   * rejects outright. Distinct from every exit code, including 127: a launch
+   * failure proves nothing about the code under test.
+   */
+  error?: Error;
+}
+
+/**
+ * Run one command through the shell and report what happened. Deliberately free
+ * of gate vocabulary — no `GateName`, no `GateSpec` — because the gate runner
+ * and the acceptance-oracle runner both call it, and the next caller (a timeout,
+ * a per-gate environment) should not have to launder its subject into a gate.
+ *
+ * This is the ONE `shell: true` site in the server, which is what keeps
+ * ADR-0015's claim literally true after `action: "oracles"` was added rather
+ * than nearly true.
+ */
+function spawnCommand(command: string, cwd: string): Promise<SpawnOutcome> {
+  const start = performance.now();
+  const since = () => Math.round(performance.now() - start);
+  const asError = (err: unknown) => (err instanceof Error ? err : new Error(String(err)));
+
   return new Promise((resolve) => {
-    const start = performance.now();
-    const child = spawn(gate.command, { cwd, shell: true });
+    let child;
+    try {
+      child = spawn(command, { cwd, shell: true });
+    } catch (err) {
+      // `spawn` validates its arguments synchronously (a NUL byte, an
+      // unrepresentable command). Same class as the `error` event below, so it
+      // takes the same exit — a throw here would otherwise escape as a crash.
+      resolve({
+        code: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        durationMs: since(),
+        error: asError(err),
+      });
+      return;
+    }
+
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (d) => (stdout += d.toString()));
-    child.stderr?.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => {
-      resolve(crashResult(gate, err, Math.round(performance.now() - start)));
-    });
-    child.on("close", (code, signal) => {
-      const durationMs = Math.round(performance.now() - start);
-      // code === null means the process was terminated by a signal (e.g. a
-      // timeout SIGKILL) — that is an execution error, not a clean gate failure.
-      const status: GateStatus = code === 0 ? "pass" : code === null ? "error" : "fail";
-      const tail = (stderr || stdout).trim().split("\n").slice(-12).join("\n");
-      const summary =
-        status === "pass"
-          ? "passed"
-          : status === "error"
-            ? `terminated (${signal})`
-            : `exit ${code}`;
-      resolve({
-        name: gate.name,
-        command: gate.command,
-        status,
-        code,
-        durationMs,
-        summary,
-        details: tail,
-      });
-    });
+    let settled = false;
+    const settle = (o: SpawnOutcome) => {
+      if (settled) return;
+      settled = true;
+      resolve(o);
+    };
+    // Decode through each stream's own StringDecoder rather than per chunk. A
+    // command's output is arbitrarily long and full of multibyte characters —
+    // test reporters emit ✔/✖/→ by the line — so a character straddling a pipe
+    // read would decode to U+FFFD on both sides of the boundary and land as
+    // mojibake in `details`, which is what the user reads back out of
+    // verification.md.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (d) => (stdout += d));
+    child.stderr?.on("data", (d) => (stderr += d));
+    child.on("error", (err) =>
+      settle({ code: null, signal: null, stdout, stderr, durationMs: since(), error: err }),
+    );
+    child.on("close", (code, signal) =>
+      settle({ code, signal, stdout, stderr, durationMs: since() }),
+    );
   });
+}
+
+/**
+ * The exit trichotomy, stated ONCE. A clean zero is a pass, a clean non-zero is
+ * a failure, and a null code — the process was terminated by a signal, which
+ * `signal` names — is an execution error rather than a verdict about the code.
+ *
+ * Copying this into the oracle runner is the defect the extraction exists to
+ * prevent: a missing runner exits 127 and a timeout SIGKILL exits null, and a
+ * copy that treated "non-zero or null" alike would read both as "the test failed
+ * before the fix" — exactly the evidence a red phase must never fabricate.
+ */
+function classifyExit(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): "pass" | "fail" | "error" {
+  if (code === 0) return "pass";
+  if (code === null || signal !== null) return "error";
+  return "fail";
+}
+
+/** Spawn one gate command via the shell, capturing output and exit code. The
+ * availability answer is decided before the run (`planGates`) and passed in — a
+ * gate whose binary is missing spawns nothing here. */
+async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateResult> {
+  if (probe.kind === "missing") {
+    return {
+      name: gate.name,
+      command: gate.command,
+      status: "not-run",
+      code: null,
+      durationMs: 0,
+      summary: `not run — \`${probe.token}\` is not on PATH`,
+      details: "",
+      missingToken: probe.token,
+    };
+  }
+
+  const out = await spawnCommand(gate.command, cwd);
+  if (out.error) return crashResult(gate, out.error, out.durationMs);
+
+  const status: GateStatus = classifyExit(out.code, out.signal);
+  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const summary =
+    status === "pass"
+      ? "passed"
+      : status === "error"
+        ? `terminated (${out.signal})`
+        : `exit ${out.code}`;
+  return {
+    name: gate.name,
+    command: gate.command,
+    status,
+    code: out.code,
+    durationMs: out.durationMs,
+    summary,
+    details: tail,
+  };
 }
 
 function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResult {
@@ -570,31 +867,363 @@ function modeWarnings(mode: VerifyInput["mode"], cwd: string): string[] {
   return [];
 }
 
+/**
+ * Reads the same file set as before, now through the shared `lib/git.ts`
+ * helpers. Today's asymmetry is preserved exactly: a failed diff returns null
+ * (not a git repository — nothing to assert), a failed untracked read
+ * contributes an empty list. Neither read excludes anything, so the mode
+ * warnings still see the files they have always seen.
+ */
 function changedFiles(cwd: string): string[] | null {
+  const diff = diffAgainstHead(cwd, { format: "name-only" });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(cwd) ?? [];
+  return [...diff.split("\n"), ...untracked].map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Reduce all gate results + warnings to one verdict — the single decision point.
+ *
+ * `not-run` is excluded from the failure predicate: nothing ran, so nothing
+ * failed. Each such gate has already contributed a warning, so the plan lands on
+ * PASS WITH WARNINGS and never on a silent PASS.
+ */
+function computeVerdict(results: GateResult[], warnings: string[]): Verdict {
+  if (results.some((r) => r.status !== "pass" && r.status !== "not-run")) return "FAIL";
+  if (warnings.length > 0) return "PASS WITH WARNINGS";
+  return "PASS";
+}
+
+// ── the per-spec run file (ADR-0035) ────────────────────────────────────────
+
+/** The kebab-case rule the DoR gate applies to a spec's frontmatter `slug`. */
+const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/**
+ * Validate, never sanitise. A slug that does not match resolves to no per-spec
+ * file at all, so path traversal is closed by construction rather than by
+ * scrubbing a path — and the caller is told, because a silently-skipped run file
+ * is a summary that silently joins against the wrong verification.
+ *
+ * The rejection is returned as the offending value rather than as a finished
+ * sentence: what happened *instead* differs per caller — the run writes only the
+ * global artifact, the gate judges it, the oracle runner refuses outright — and
+ * a rejection that names the wrong consequence is its own small lie.
+ */
+function resolveRunSlug(specSlug: string | undefined): { slug: string | null; rejected?: string } {
+  if (specSlug === undefined) return { slug: null };
+  const slug = specSlug.trim();
+  if (SLUG_RE.test(slug)) return { slug };
+  return { slug: null, rejected: slug };
+}
+
+/** The one rejection sentence, closed by the caller's own consequence clause. */
+function slugRejection(rejected: string, consequence: string): string {
+  return `\`specSlug\` \`${rejected}\` is not kebab-case — ${consequence}`;
+}
+
+// ── acceptance oracles (ADR-0036) ───────────────────────────────────────────
+
+/**
+ * The spec file for a validated slug, searched host-adaptively (ADR-0005/0037).
+ *
+ * `specConfig` is the `spec.dir` tier and is REQUIRED to be threaded in by every
+ * caller, not optional-by-convenience: a project that configures a directory
+ * outside the five conventional candidates is reachable through no other tier,
+ * so a lookup that omits it answers "no spec found" for a spec `/marvin:task-start`,
+ * `/marvin:task-summary` and the dashboard all resolve. This runner used to be
+ * the one reader on the ADR-0037 list that omitted it.
+ */
+function findSpec(slug: string, projectRoot: string, specConfig?: SpecConfig): string | null {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+
+/** The per-spec run directory 027 introduced; the oracle journal lives beside
+ * the run reports there, never at the top level of the spec directory. */
+function runsDirOf(projectRoot: string): string {
+  return join(projectRoot, ".marvin", "task", "runs");
+}
+
+interface SealedSpec {
+  slug: string;
+  path: string;
+  type: string;
+  contractSha: string;
+  criteria: Criterion[];
+}
+
+/**
+ * Resolve a spec by slug and prove its contract is intact, or say why not.
+ *
+ * The digest is recomputed with the ONE exported seal function
+ * (`storage/spec.ts`), never re-derived here. Two copies of the seal drift the
+ * first time either is touched, and a journal keyed by one and read against the
+ * other leaves a spec that reads sealed to `spec mode: "seal"` and tampered to
+ * this action, with no way to tell which is right.
+ */
+function readSealedSpec(
+  slug: string,
+  projectRoot: string,
+  specConfig?: SpecConfig,
+): SealedSpec | { error: string } {
+  const path = findSpec(slug, projectRoot, specConfig);
+  if (!path) {
+    // Name the list actually searched, config tier included — a project with a
+    // configured spec dir must not be told its spec is missing from five places
+    // that are not where the lookup looked.
+    const searched = specSearchDirs(projectRoot, specConfig)
+      .map((d) => relative(projectRoot, d) || d)
+      .join(", ");
+    return { error: `No spec found for slug \`${slug}\` under ${searched}.` };
+  }
+  let raw: string;
   try {
-    // Tracked changes vs HEAD (staged + unstaged) ...
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], { cwd, encoding: "utf8" });
-    if (diff.status !== 0) return null;
-    // ... plus brand-new untracked files (a fresh test file is often untracked).
-    const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
-      cwd,
-      encoding: "utf8",
-    });
-    const lines = `${diff.stdout || ""}\n${untracked.status === 0 ? untracked.stdout || "" : ""}`;
-    return lines
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    return { error: `could not read \`${path}\`: ${err instanceof Error ? err.message : err}` };
+  }
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const blockText = extractContractBlock(body);
+  if (!blockText) {
+    return { error: `\`${path}\` has no \`\`\`yaml spec-contract block — nothing to run.` };
+  }
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const actual = contractHash(blockText);
+  if (!stamped) {
+    return {
+      error:
+        `spec \`${slug}\` is UNSEALED — its frontmatter carries no \`contract_sha\`, so a run has ` +
+        `no key to be journalled against and every unsealed spec would share one proof namespace. ` +
+        `Seal it first (/marvin:task-start's seal step, \`spec\` with \`mode: "seal"\`; the current ` +
+        `block hash is ${actual}), then re-run.`,
+    };
+  }
+  if (stamped !== actual) {
+    return {
+      error:
+        `spec \`${slug}\` has been edited since it was sealed — stamped \`${stamped}\`, the block ` +
+        `now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore ` +
+        `the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`,
+    };
+  }
+  let parsed;
+  try {
+    parsed = SpecContract.safeParse(parseYaml(blockText));
+  } catch (err) {
+    return {
+      error: `spec-contract block is not valid YAML: ${err instanceof Error ? err.message : err}`,
+    };
+  }
+  if (!parsed.success) {
+    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
+  }
+  return {
+    slug,
+    path,
+    type: (frontmatter.type ?? "").trim(),
+    contractSha: actual,
+    criteria: parsed.data.criteria,
+  };
+}
+
+/** 16 hex over the referenced test file's bytes, or null when it is absent. */
+function testFileHash(projectRoot: string, file: string | null): string | null {
+  if (!file) return null;
+  const abs = join(projectRoot, file);
+  if (!existsSync(abs)) return null;
+  try {
+    return createHash("sha256").update(readFileSync(abs)).digest("hex").slice(0, 16);
   } catch {
     return null;
   }
 }
 
-/** Reduce all gate results + warnings to one verdict — the single decision point. */
-function computeVerdict(results: GateResult[], warnings: string[]): Verdict {
-  if (results.some((r) => r.status !== "pass")) return "FAIL";
-  if (warnings.length > 0) return "PASS WITH WARNINGS";
-  return "PASS";
+/**
+ * A stack id for the default table, ONLY when detection is unambiguous. A
+ * polyglot tree matching two detectors names none: the table's admission
+ * criterion is that exactly one single-test runner is in play, and guessing
+ * between two is the inference the whole resolver refuses to make.
+ */
+function unambiguousStack(input: VerifyInput, projectRoot: string): string | undefined {
+  if (input.stack) return input.stack;
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  return matched.length === 1 ? matched[0]!.id : undefined;
+}
+
+/**
+ * Run a sealed spec's acceptance oracles and append each outcome to its journal.
+ *
+ * Refuses before any child process on a tampered or unsealed contract; resolves
+ * each selected criterion to a command through the ADR-0009-shaped chain; and
+ * records `not-run` — never a fabricated red or green — whenever the command
+ * could not be resolved, could not be launched, or died on a signal.
+ */
+async function runOracles(
+  projectRoot: string,
+  input: VerifyInput,
+  config: Config,
+): Promise<ToolResult> {
+  const { slug, rejected } = resolveRunSlug(input.specSlug);
+  if (!slug) {
+    return errText(
+      `\`action: "oracles"\` needs a kebab-case \`specSlug\` naming the sealed spec to run.` +
+        (rejected
+          ? ` ${slugRejection(rejected, "nothing was run and nothing was journalled.")}`
+          : ""),
+    );
+  }
+
+  const spec = readSealedSpec(slug, projectRoot, config.spec);
+  if ("error" in spec) return errText(spec.error);
+
+  const wanted = input.criteria?.map((c) => c.trim().toLowerCase());
+  const selected = spec.criteria.filter((c) => !wanted || wanted.includes(c.id.toLowerCase()));
+  if (selected.length === 0) {
+    return errText(
+      `No criterion in \`${slug}\` matched \`criteria\` (${input.criteria?.join(", ")}). ` +
+        `The spec declares ${spec.criteria.map((c) => c.id).join(", ")}.`,
+    );
+  }
+  // A prose-review criterion has no command by construction; it is skipped
+  // rather than journalled, so the journal never carries a row nothing could
+  // ever prove.
+  const runnable = selected.filter((c) => c.oracle.kind !== "prose-review");
+  const skipped = selected.filter((c) => c.oracle.kind === "prose-review").map((c) => c.id);
+
+  const testOne = config.gates?.test_one;
+  const stack = unambiguousStack(input, projectRoot);
+  const head = headSha(projectRoot);
+  const runsDir = runsDirOf(projectRoot);
+
+  const entries: OracleRun[] = [];
+  for (const criterion of runnable) {
+    const resolved = resolveOracleCommand(criterion, {
+      call: input.command,
+      testOne,
+      stack,
+      projectRoot,
+    });
+    const file = oracleTestFile(criterion);
+    const base = {
+      slug,
+      contract_sha: spec.contractSha,
+      criterion: criterion.id,
+      expect: input.expect,
+      test_file: file,
+      test_sha: testFileHash(projectRoot, file),
+      head_sha: head,
+      ran_at: new Date().toISOString(),
+    };
+
+    if (resolved.command === null) {
+      entries.push({
+        ...base,
+        status: "not-run",
+        command: null,
+        source: null,
+        reason: resolved.reason,
+        code: null,
+        signal: null,
+      });
+      continue;
+    }
+
+    const out = await spawnCommand(resolved.command, projectRoot);
+    const shared = {
+      ...base,
+      command: resolved.command,
+      source: resolved.source,
+      durationMs: out.durationMs,
+    };
+    if (out.error) {
+      entries.push({
+        ...shared,
+        status: "not-run",
+        reason: `launch-failed: ${out.error.message}`,
+        code: null,
+        signal: null,
+      });
+      continue;
+    }
+    const classified = classifyExit(out.code, out.signal);
+    entries.push({
+      ...shared,
+      status: classified === "error" ? "not-run" : classified,
+      ...(classified === "error" ? { reason: `signal-killed: ${out.signal ?? "unknown"}` } : {}),
+      code: out.code,
+      signal: out.signal,
+    });
+  }
+
+  for (const entry of entries) recordOracleRun(runsDir, entry);
+
+  const journal = oracleJournalPath(runsDir, slug);
+  const icon = (s: OracleRun["status"]) => (s === "pass" ? "✅" : s === "fail" ? "❌" : "⚪");
+  const md = [
+    `# Acceptance Oracles — ${slug}`,
+    ``,
+    `**Contract:** \`${spec.contractSha}\` · **Phase:** expect ${input.expect} · **Journal:** \`${journal}\``,
+    ``,
+    ...entries.map(
+      (e) =>
+        `- ${icon(e.status)} **${e.criterion}** — ${e.status}` +
+        (e.command ? ` · \`${e.command}\` (${e.source})` : "") +
+        (e.reason ? ` · ${e.reason}` : ""),
+    ),
+    ...(entries.length ? [] : ["_no runnable criterion selected_"]),
+    ...(skipped.length ? ["", `Skipped (prose-review): ${skipped.join(", ")}.`] : []),
+    ``,
+  ].join("\n");
+
+  const machine = JSON.stringify({
+    slug,
+    contract_sha: spec.contractSha,
+    expect: input.expect,
+    journal,
+    runs: entries,
+  });
+  return {
+    content: [{ type: "text", text: `${md}\n\`\`\`json oracle-result\n${machine}\n\`\`\`` }],
+  };
+}
+
+/**
+ * Advisory red-green status for the delivery gate. `unknown` is the answer for
+ * everything that is not a bugfix spec with regression criteria at a readable
+ * seal — including every caller that passes no slug, which is why the field is
+ * strictly additive.
+ */
+type RedGreen = "proven" | "missing" | "unknown";
+
+function redGreenStatus(
+  projectRoot: string,
+  specSlug: string | undefined,
+  specConfig?: SpecConfig,
+): { status: RedGreen; unproven: string[] } {
+  const none = { status: "unknown" as const, unproven: [] as string[] };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  // A tampered or unreadable contract is `unknown` here rather than an error:
+  // this field is advisory, and the gate's own refusals are the ones that block.
+  if ("error" in spec) return none;
+  if (spec.type !== "bugfix") return none;
+  const regression = spec.criteria.filter((c) => c.regression === true);
+  if (regression.length === 0) return none;
+
+  const runs = readOracleRuns(runsDirOf(projectRoot), slug);
+  const unproven = regression
+    .filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing")
+    .map((c) => c.id);
+  return { status: unproven.length ? "missing" : "proven", unproven };
+}
+
+function errText(text: string): ToolResult {
+  return { content: [{ type: "text", text }], isError: true };
 }
 
 function renderMarkdown(o: {
@@ -650,14 +1279,47 @@ function renderMarkdown(o: {
  * Delivery gate (the tool-backed half of /marvin:task-deliver's pre-flight).
  * Reads the verdict the verify run already wrote to verification.md — the same
  * machine-readable `verify-result` block this tool emits — and decides ALLOW /
- * BLOCK. Deterministic by construction: write and read share one format, so the
- * delivery decision cannot drift from what verify recorded, and the model never
- * eyeballs a prose verdict.
+ * BLOCK. Deterministic by construction: write and read share one codec
+ * (`lib/reports.ts`), so the delivery decision cannot drift from what verify
+ * recorded, and the model never eyeballs a prose verdict.
  */
-function deliverGate(projectRoot: string): ToolResult {
-  const artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
+function deliverGate(
+  projectRoot: string,
+  opts: { specSlug?: string; allowStale: boolean; specConfig?: SpecConfig },
+): ToolResult {
+  const { allowStale } = opts;
+  // The gate must judge THIS task's proof: prefer the per-spec run when a valid
+  // slug names one that exists, and fall back to the global artifact otherwise,
+  // which is exactly today's behaviour for every caller that passes no slug.
+  const globalPath = join(projectRoot, ".marvin", "task", "verification.md");
+  const { slug, rejected } = resolveRunSlug(opts.specSlug);
+  const runPath = slug ? join(projectRoot, ".marvin", "task", "runs", `${slug}.md`) : null;
+  const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
+  // Advisory, and computed regardless of the verdict so the field is always
+  // present on the block. It never reaches `decision` (ADR-0036): the resolver's
+  // success rate has never been measured on a real project, so a blocking veto
+  // would refuse delivery for the resolver's silence rather than for a missing
+  // proof, and the first response would be to disable it.
+  const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const extras: GateExtras = { artifactPath, allowStale, redGreen: redGreen.status };
+
+  // A rejected slug decides WHICH artifact this gate judged, so it belongs on
+  // every decision below rather than only on the ALLOW that already concatenates
+  // the freshness, not-run and red-green notes. The same input warns on
+  // `action: "run"` and is refused outright on `action: "oracles"`; the gate must
+  // not be the one surface that rejects a slug without saying so.
+  const slugNote = rejected
+    ? ` · ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}`
+    : "";
+  const decide = (
+    decision: "ALLOW" | "BLOCK",
+    verdict: string | null,
+    reason: string,
+    extra: GateExtras = extras,
+  ) => gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+
   if (!existsSync(artifactPath)) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       "no verification.md found — run /marvin:task-verify before delivering",
@@ -667,50 +1329,137 @@ function deliverGate(projectRoot: string): ToolResult {
   try {
     text = readFileSync(artifactPath, "utf8");
   } catch (err) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       `could not read verification.md: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) {
-    return gateResult(
+  // Three distinguishable BLOCK reasons, because they call for three different
+  // user actions: no block at all, a block that cannot be read, and a block
+  // whose verdict this gate does not recognise.
+  const parse = parseVerifyBlock(text);
+  if (parse.kind === "none") {
+    return decide(
       "BLOCK",
       null,
       "verification.md has no machine-readable verify-result block — re-run /marvin:task-verify",
     );
   }
-  let verdict: unknown;
-  try {
-    verdict = (JSON.parse(m[1]!) as { verdict?: unknown }).verdict;
-  } catch {
-    return gateResult(
-      "BLOCK",
-      null,
-      "verify-result block is not valid JSON — re-run /marvin:task-verify",
-    );
+  if (parse.kind === "invalid") {
+    return decide("BLOCK", null, `${parse.reason} — re-run /marvin:task-verify`);
   }
-  if (verdict === "PASS") return gateResult("ALLOW", "PASS", "verification passed");
-  if (verdict === "PASS WITH WARNINGS") {
-    return gateResult(
-      "ALLOW",
-      "PASS WITH WARNINGS",
-      "verification passed with warnings — review them before delivering",
-    );
-  }
+
+  const verdict = parse.result.verdict;
   if (verdict === "FAIL") {
-    return gateResult(
+    return decide(
       "BLOCK",
       "FAIL",
       "verification FAILED — fix the failing gates and re-run /marvin:task-verify",
     );
   }
-  return gateResult(
-    "BLOCK",
-    typeof verdict === "string" ? verdict : null,
-    "unrecognised verdict — re-run /marvin:task-verify",
-  );
+  if (verdict !== "PASS" && verdict !== "PASS WITH WARNINGS") {
+    return decide(
+      "BLOCK",
+      typeof verdict === "string" ? verdict : null,
+      "unrecognised verdict — re-run /marvin:task-verify",
+    );
+  }
+
+  // No-evidence refusal — the measure that actually closes the bypass `not-run`
+  // would otherwise open. Read off the block's `gates` array, which this gate
+  // already parsed and used to ignore. NO input waives either case: `allowStale`
+  // is about freshness and does not reach here.
+  const noEvidence = noEvidenceRefusal(parse.result.gates, parse.result.warnings ?? []);
+  if (noEvidence) return decide("BLOCK", verdict, noEvidence);
+
+  // Freshness. Missing provenance is `unknown`, which ALLOWs — and costs no git
+  // spawn, which is what keeps the gate a pure file read in a non-git project.
+  const recorded = parse.result.provenance;
+  const staleness: Staleness = recorded
+    ? classifyStaleness(recorded, collectProvenance(projectRoot))
+    : "unknown";
+
+  const base =
+    verdict === "PASS"
+      ? "verification passed"
+      : "verification passed with warnings — review them before delivering";
+  const notRun = quoteNotRunWarnings(parse.result.warnings ?? []);
+
+  if (staleness === "stale" && !allowStale) {
+    return decide(
+      "BLOCK",
+      verdict,
+      `the recorded verification no longer describes this working tree — verified at ` +
+        `\`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`. ` +
+        `Re-run /marvin:task-verify, or deliver with allowStale: true after an explicit decision.`,
+      { ...extras, staleness },
+    );
+  }
+  const freshness =
+    staleness === "fresh"
+      ? " · the evidence matches this working tree"
+      : staleness === "stale"
+        ? ` · STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\`` +
+          ` on \`${recorded?.branch ?? "unknown"}\`)`
+        : " · freshness not checked (this run recorded no provenance)";
+  // A WARNING, not a veto: it lengthens the reason and leaves the decision alone.
+  const redGreenNote =
+    redGreen.status === "missing"
+      ? ` · no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}` +
+        ` — record one with \`verify action: "oracles"\` (this does not block delivery)`
+      : "";
+  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}`, {
+    ...extras,
+    staleness,
+  });
+}
+
+/**
+ * Two cases, both meaning the run proved nothing about the code:
+ *   1. at least one gate named `test` was recorded and EVERY one is `not-run`;
+ *   2. at least one gate was recorded and EVERY gate is `not-run`.
+ *
+ * The asymmetry with a `not-run` optional scanner is the point. A missing
+ * scanner leaves the pipeline's central claim intact and degrades to a warning;
+ * "no tests ran" is not a degraded proof, it is the absence of one. In the limit
+ * a machine with none of the four binaries installed would otherwise deliver
+ * green with zero gates executed.
+ */
+function noEvidenceRefusal(gates: VerifyGate[], warnings: string[]): string | null {
+  if (gates.length === 0) return null;
+  const notRun = (g: VerifyGate) => g.status === "not-run";
+  const testGates = gates.filter((g) => g.name === "test");
+  const quoted = quoteNotRunWarnings(warnings);
+  if (testGates.length > 0 && testGates.every(notRun)) {
+    return (
+      `no test evidence — every recorded \`test\` gate was not run${quoted}. ` +
+      `Install the test runner (or pin one in \`.marvin/config.json\`) and re-run ` +
+      `/marvin:task-verify. No input waives this refusal.`
+    );
+  }
+  if (gates.every(notRun)) {
+    return (
+      `no evidence — every recorded gate was not run${quoted}. ` +
+      `Install the missing tooling (or pin gate commands in \`.marvin/config.json\`) and re-run ` +
+      `/marvin:task-verify. No input waives this refusal.`
+    );
+  }
+  return null;
+}
+
+/** Quote the run's own not-run warnings, which name each gate and its token. */
+function quoteNotRunWarnings(warnings: string[]): string {
+  const relevant = warnings.filter((w) => w.startsWith(NOT_RUN_WARNING_PREFIX));
+  return relevant.length ? ` — ${relevant.join("; ")}` : "";
+}
+
+/** The context every delivery decision carries beside its reason. */
+interface GateExtras {
+  artifactPath: string;
+  allowStale: boolean;
+  staleness?: Staleness;
+  redGreen?: RedGreen;
 }
 
 /** Render an ALLOW/BLOCK delivery decision with a machine-readable block. */
@@ -718,13 +1467,29 @@ function gateResult(
   decision: "ALLOW" | "BLOCK",
   verdict: string | null,
   reason: string,
+  extras: GateExtras,
 ): ToolResult {
-  const machine = JSON.stringify({ decision, verdict, reason });
+  // `staleness` and `red_green` are SIBLINGS of the two-valued decision, never a
+  // third decision value: /marvin:task-deliver branches exactly two ways.
+  const staleness: Staleness = extras.staleness ?? "unknown";
+  const redGreen: RedGreen = extras.redGreen ?? "unknown";
+  const machine = JSON.stringify({
+    decision,
+    verdict,
+    reason,
+    staleness,
+    red_green: redGreen,
+    artifactPath: extras.artifactPath,
+    allowStale: extras.allowStale,
+  });
   const md = [
     `# Delivery Gate`,
     ``,
     `**Decision:** ${decision}`,
     `**Verdict:** ${verdict ?? "—"}`,
+    `**Freshness:** ${staleness}`,
+    `**Red-green:** ${redGreen}`,
+    `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
     ``,
   ].join("\n");

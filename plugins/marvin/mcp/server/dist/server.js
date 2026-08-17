@@ -1,11 +1,11 @@
 import { createRequire } from 'node:module';
-import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, unlinkSync } from 'fs';
-import { join, dirname, isAbsolute, relative, posix, sep } from 'path';
+import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, lstatSync, unlinkSync } from 'fs';
+import { join, dirname, basename, isAbsolute, relative, sep, posix } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { spawn, spawnSync, execFileSync } from 'child_process';
-import { performance } from 'perf_hooks';
+import { spawnSync, execFileSync, spawn } from 'child_process';
 import { createHash } from 'crypto';
+import { performance } from 'perf_hooks';
 
 const require$1 = createRequire(import.meta.url);
 var __create = Object.create;
@@ -3638,49 +3638,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative6, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative2 = parse4(serialize(relative2, options), options);
+        relative6 = parse4(serialize(relative6, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative6.scheme) {
+        target.scheme = relative6.scheme;
+        target.userinfo = relative6.userinfo;
+        target.host = relative6.host;
+        target.port = relative6.port;
+        target.path = removeDotSegments(relative6.path || "");
+        target.query = relative6.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative6.userinfo !== void 0 || relative6.host !== void 0 || relative6.port !== void 0) {
+          target.userinfo = relative6.userinfo;
+          target.host = relative6.host;
+          target.port = relative6.port;
+          target.path = removeDotSegments(relative6.path || "");
+          target.query = relative6.query;
         } else {
-          if (!relative2.path) {
+          if (!relative6.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative6.query !== void 0) {
+              target.query = relative6.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative6.path[0] === "/") {
+              target.path = removeDotSegments(relative6.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative6.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative6.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative6.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative6.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3688,7 +3688,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative6.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -10743,10 +10743,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -10760,7 +10760,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep2) {
+          if (!keyProps.anchor && !keyProps.tag && !sep4) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -10784,7 +10784,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep4 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -10800,7 +10800,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep4, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -10889,7 +10889,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep2 = "";
+        let sep4 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -10903,13 +10903,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep2 + cb;
-              sep2 = "";
+                comment += sep4 + cb;
+              sep4 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep2 += source;
+                sep4 += source;
               hasSpace = true;
               break;
             default:
@@ -10951,18 +10951,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep2 && !value) {
+          if (!props.anchor && !props.tag && !sep4 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11016,8 +11016,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep2 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
+        if (!isMap && !sep4 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep4, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11029,7 +11029,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep4 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11040,8 +11040,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep2)
-                for (const st of sep2) {
+              if (sep4)
+                for (const st of sep4) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11058,7 +11058,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -11236,7 +11236,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep2 = "";
+      let sep4 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -11253,24 +11253,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep2 === " ")
-            sep2 = "\n";
-          else if (!prevMoreIndented && sep2 === "\n")
-            sep2 = "\n\n";
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          if (sep4 === " ")
+            sep4 = "\n";
+          else if (!prevMoreIndented && sep4 === "\n")
+            sep4 = "\n\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep2 === "\n")
+          if (sep4 === "\n")
             value += "\n";
           else
-            sep2 = "\n";
+            sep4 = "\n";
         } else {
-          value += sep2 + content;
-          sep2 = " ";
+          value += sep4 + content;
+          sep4 = " ";
           prevMoreIndented = false;
         }
       }
@@ -11451,25 +11451,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep2 = " ";
+      let sep4 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep2 === "\n")
-            res += sep2;
+          if (sep4 === "\n")
+            res += sep4;
           else
-            sep2 = "\n";
+            sep4 = "\n";
         } else {
-          res += sep2 + match[1];
-          sep2 = " ";
+          res += sep4 + match[1];
+          sep4 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep2 + (match?.[1] ?? "");
+      return res + sep4 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -12272,14 +12272,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep2, value }) {
+    function stringifyItem({ start, key, sep: sep4, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep2)
-        for (const st of sep2)
+      if (sep4)
+        for (const st of sep4)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -13441,18 +13441,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep2;
+          let sep4;
           if (scalar.end) {
-            sep2 = scalar.end;
-            sep2.push(this.sourceToken);
+            sep4 = scalar.end;
+            sep4.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep2 = [this.sourceToken];
+            sep4 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep2 }]
+            items: [{ start, key: scalar, sep: sep4 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -13605,15 +13605,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep2 = it.sep;
-                  sep2.push(this.sourceToken);
+                  const sep4 = it.sep;
+                  sep4.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep2 }]
+                    items: [{ start: start2, key, sep: sep4 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -13807,13 +13807,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep2 = fc.end.splice(1, fc.end.length);
-            sep2.push(this.sourceToken);
+            const sep4 = fc.end.splice(1, fc.end.length);
+            sep4.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep2 }]
+              items: [{ start, key: fc, sep: sep4 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -28453,10 +28453,10 @@ function withPluginResourceContext(text, ctx) {
 ${text}`;
 }
 function registerTool(server, def, onInvoke) {
-  const shape = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema.shape : void 0;
+  const inputSchema = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema : void 0;
   server.registerTool(def.name, {
     description: def.description,
-    inputSchema: shape,
+    inputSchema,
     // `_meta.ui.resourceUri` binds a widget to the tool for MCP Apps hosts
     // (ADR-0024); omitted by text-only tools.
     ...def.meta ? { _meta: def.meta } : {}
@@ -28501,6 +28501,13 @@ function callTool(tool, args = {}, hint = "") {
 var CREATE_HINT = "If the user's message already contains a title, a description, or a tracker id (like ABC-123) for the task, pass them as the `title` / `description` / `tracker_id` arguments instead of leaving them to the form.";
 var PROMPTS = [
   // ── core (bare + pr group) ───────────────────────────────────────────
+  {
+    // First in the registry because registry order is catalog order — the order
+    // /marvin:help and the website render — and this is the first-contact command.
+    name: "onboard",
+    description: "Guided first session with marvin in this project \u2014 reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks found in this codebase, and runs at most two side-effecting commands, each behind an explicit yes.",
+    skill: "onboard"
+  },
   {
     name: "commit",
     description: "Safe git commit workflow \u2014 inspects repo state, stages intentionally, detects sensitive files, drafts a Conventional Commits message, confirms with the user, and handles pre-commit hook failures cleanly.",
@@ -28584,16 +28591,39 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
-    description: "Marvin dashboard \u2014 project state and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/kanban).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, kanban) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard as-is; no preamble."
+    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim \u2014 reproduce the fenced banner block exactly, do not summarise or add preamble."
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
     // by the deterministic `dashboard` tool (ADR-0030). The command index
     // stays on `help`; this aggregates the artifact/corpus/usage state.
     name: "dashboard",
-    description: "Marvin toolbox dashboard \u2014 kanban board, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
-    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, kanban, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
+    description: "Marvin toolbox dashboard \u2014 task board, current work, recent handoffs, audit findings, artifact inventories with freshness, ADR corpus by status, lessons stats, and the local usage summary in one report.",
+    body: "Invoke the `dashboard` MCP tool from the `marvin` server. If the user named a section (project, board, work, handoffs, audits, artifacts, adr, lessons, usage, commands) in their message, pass it as `section`; otherwise call with no arguments. Present the report as-is; no preamble."
+  },
+  {
+    // Thin tool wrapper (inline body) — the unified read side of every report
+    // marvin writes under .marvin/ (docs/design/reports-widget.md, ADR-0024).
+    name: "reports",
+    description: "Unified viewer over every generated .marvin/ report \u2014 security, refactor, task, handoff, critique \u2014 newest first, with per-report freshness.",
+    body: 'Invoke the `report` MCP tool from the `marvin` server. If the user named a specific report (a path under .marvin/, or unambiguously by title \u2014 e.g. "the verification report"), pass its project-relative path as the `selected` argument. If the user is asking what is new or what is still open since the last run, pass `action: "triage"`; pass `snapshot: true` only when they explicitly ask to record the current findings as the baseline. Otherwise call the tool with no arguments, which means `list`. Do not add preamble \u2014 just call the tool and present its result.'
+  },
+  {
+    // Skill-backed (three doors) — the template-only export feature (ADR-0033):
+    // Claude fills the shipped print template; the server ships no export code.
+    name: "report-export",
+    description: "Export a generated .marvin/ report to PDF (print-ready HTML), standalone HTML, or a Markdown digest \u2014 filled from the print-quality template styled on the widget theme tokens.",
+    skill: "report-export"
+  },
+  {
+    // Skill-backed (three doors) — the local widget door (ADR-0034). A host that
+    // does not resolve `_meta.ui.resourceUri` (the Claude Code CLI does not) never
+    // renders a widget; this renders one into a file instead, via the shipped
+    // `mcp/server/bin/widget-preview.mjs`.
+    name: "widget-preview",
+    description: "Open a marvin widget as a rendered panel with this project's own data \u2014 renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
+    skill: "widget-preview"
   },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
@@ -28653,6 +28683,11 @@ var PROMPTS = [
     name: "task-summary",
     description: "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons and links.",
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble \u2014 call the tool and present its result."
+  },
+  {
+    name: "task-audit",
+    description: "Read-only consistency lint of the whole spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, unidentified files \u2014 with remediation guidance per finding.",
+    skill: "task-audit"
   },
   // ── sec (security) ───────────────────────────────────────────────────
   {
@@ -28733,9 +28768,10 @@ var PROMPTS = [
     description: "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
     skill: "refactor-apply"
   },
-  // ── kanban (lightweight task tracker; inline tool wrappers) ──────────
+  // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─
+  // Seven commands over the same tools: the prompts route, the tools decide.
   {
-    name: "kanban-menu",
+    name: "track-menu",
     description: "Marvin tasks main menu",
     body: callTool(
       "task",
@@ -28744,61 +28780,26 @@ var PROMPTS = [
     )
   },
   {
-    name: "kanban-bug",
-    description: "Create a bug task",
-    body: callTool("task", { action: "create", type: "bug" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-feature",
-    description: "Create a feature task",
-    body: callTool("task", { action: "create", type: "feature" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-chore",
-    description: "Create a chore task",
-    body: callTool("task", { action: "create", type: "chore" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-spike",
-    description: "Create a spike task",
-    body: callTool("task", { action: "create", type: "spike" }, CREATE_HINT)
-  },
-  {
-    name: "kanban-start",
-    description: "Pick a todo task, branch off, and mark it WIP",
+    name: "track-new",
+    description: "Create a board task \u2014 bug, feature, chore, or spike",
     body: callTool(
       "task",
-      { action: "start" },
-      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+      { action: "create" },
+      `Pass \`type\` (bug / feature / chore / spike) when the user named or implied one. ${CREATE_HINT}`
     )
   },
   {
-    name: "kanban-review",
-    description: "Move current task to review",
-    body: callTool(
-      "task",
-      { action: "review" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
-    )
-  },
-  {
-    name: "kanban-done",
-    description: "Mark current task done",
-    body: callTool(
-      "task",
-      { action: "done" },
-      "Defaults to the current branch's task; if the user named a different task, pass its id as the `taskId` argument."
-    )
-  },
-  {
-    name: "kanban-list",
-    description: "List all tasks grouped by status",
-    body: callTool("task", { action: "list" })
+    // Routing wrapper (ADR-0032): three read views of the same board — the
+    // full list, the current-branch + WIP view (`status`), and the tracked
+    // link-out view (the `tracker` tool + widget, ADR-0024 #6).
+    name: "track-list",
+    description: "List board tasks \u2014 all, work-in-progress, or tracked",
+    body: 'Show the board. Default: invoke the `task` MCP tool from the `marvin` server with action="list". If the user asked what they are working on (the current branch / work-in-progress view), invoke `task` with action="status" instead. If they asked for the tracked tasks (external tracker ids, linking out), invoke the `tracker` MCP tool with no arguments. Do not add preamble \u2014 just call the right tool.'
   },
   {
     // Thin tool wrapper (inline body) — one task's full detail (fields +
     // markdown body), backed by the task-detail tool + widget (ADR-0024 #2).
-    name: "kanban-show",
+    name: "track-show",
     description: "Show one task in full \u2014 fields + markdown body",
     body: callTool(
       "task-detail",
@@ -28807,41 +28808,56 @@ var PROMPTS = [
     )
   },
   {
-    // Thin tool wrapper (inline body) — the board tasks that carry an external
-    // tracker id, each linking out, backed by the tracker tool + widget (ADR-0024 #6).
-    name: "kanban-tracker",
-    description: "Show tracked tasks (external tracker id) \u2014 link out to each",
-    body: callTool("tracker", {})
+    name: "track-start",
+    description: "Pick a todo task, branch off, and mark it WIP",
+    body: callTool(
+      "task",
+      { action: "start" },
+      "If the user named the task (an id like 007, or unambiguously by title), pass its id as the `taskId` argument."
+    )
   },
   {
-    name: "kanban-status",
-    description: "Current branch + WIP tasks",
-    body: callTool("task", { action: "status" })
+    // Routing wrapper (ADR-0032): one verb for every status transition. The
+    // role-driven `review` / `done` actions (ADR-0026) stay preferred when the
+    // user names a lifecycle stage; `move` covers any configured status key.
+    name: "track-move",
+    description: "Move a task \u2014 to review, done, or any configured status",
+    body: 'Move a board task between statuses via the `task` MCP tool from the `marvin` server. When the user names a lifecycle stage, prefer the role-driven actions: action="review" (send to review) or action="done" (finish) \u2014 both default to the current branch\'s task and take `taskId` if a task was named. For any other target, call action="move" with `taskId` and `status` (the target status key). Do not add preamble \u2014 just call the tool.'
   },
   {
-    name: "kanban-config",
+    name: "track-config",
     description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses",
     body: callTool(
       "task",
       { action: "config" },
       "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown."
     )
-  },
-  {
-    name: "kanban-help",
-    description: "Marvin dashboard scoped to the kanban group \u2014 board state + kanban commands",
-    body: callTool("help", { section: "kanban" })
   }
 ];
+function projectConfigPath(env2, projectRoot) {
+  return projectRoot === env2.projectDir ? env2.configPath : join(projectRoot, ".marvin", "config.json");
+}
 function loadEnv(env2 = process.env) {
   const projectDir = env2.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "kanban");
+  const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "track");
   const configPath = env2.MARVIN_TASKS_CONFIG ?? join(projectDir, ".marvin", "config.json");
   const memoryDir = env2.MARVIN_MEMORY_DIR ?? join(projectDir, ".marvin", "memory");
   const handoffDir = env2.MARVIN_HANDOFF_DIR ?? join(projectDir, ".marvin", "handoff");
   const securityDir = env2.MARVIN_SECURITY_DIR ?? join(projectDir, ".marvin", "security");
+  const critiqueDir = env2.MARVIN_CRITIQUE_DIR ?? join(projectDir, ".marvin", "critique");
   const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
-  return { projectDir, tasksDir, configPath, memoryDir, handoffDir, securityDir, usageDir };
+  const reportDir = env2.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
+  return {
+    projectDir,
+    tasksDir,
+    configPath,
+    memoryDir,
+    handoffDir,
+    securityDir,
+    critiqueDir,
+    usageDir,
+    reportDir
+  };
 }
 
 // src/storage/schema.ts
@@ -28913,21 +28929,51 @@ var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
   typecheck: external_exports.string().min(1).optional(),
-  build: external_exports.string().min(1).optional()
+  build: external_exports.string().min(1).optional(),
+  /**
+   * **Not a gate.** The template that runs ONE test — how a `kind: test`
+   * acceptance oracle resolves to a command (ADR-0036). It is never scheduled,
+   * never appears in a verdict and never reaches `verification.md`, and that is
+   * mechanical rather than a convention: all three gate paths
+   * (`gatesFromStacks`, `mergeConfigGates`, `gateSpecsFromConfig`) iterate the
+   * `GATE_NAMES` tuple, so a key outside that tuple is structurally unreachable
+   * as a gate. Leave those loops as they are.
+   *
+   * It must nonetheless be DECLARED here, because zod strips unknown keys
+   * silently — ADR-0009 records that as an accepted trade-off ("a typo
+   * (`tests:`) is stripped by the schema"). An undeclared `test_one` would
+   * vanish inside `loadConfig` with no error anywhere to observe.
+   *
+   * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
+   */
+  test_one: external_exports.string().min(1).optional()
 });
 var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
   index_file: external_exports.string().min(1).optional()
+});
+var SpecConfig = external_exports.object({
+  dir: external_exports.string().min(1).optional()
 });
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
 });
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
+  /**
+   * URL template for a task's external tracker item, with `{tracker_id}`
+   * marking where the id goes. Whether it can actually substitute is checked
+   * on the way out of `loadConfig`, not here: a `.refine()` would fail the
+   * whole parse, so one mistyped template would reset `statuses`, `gates` and
+   * `base_branch` to their defaults as well. The loader drops this field alone
+   * and reports why (`trackerTemplateIssue`).
+   */
   tracker_url_template: external_exports.string().nullable().default(null),
   gates: GateCommands.optional(),
   /** ADR corpus location + index target (ADR-0027); absent means detect/default. */
   adr: AdrConfig.optional(),
+  /** Spec corpus location (ADR-0037); absent means detect/default. */
+  spec: SpecConfig.optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
@@ -28963,8 +29009,13 @@ function statusKeys(config2) {
 function keysOfRoles(config2, roles) {
   return config2.statuses.filter((s) => roles.includes(s.role)).map((s) => s.key);
 }
-function run(cmd, args, cwd) {
-  const result2 = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+function run(cmd, args, cwd, opts) {
+  const result2 = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    ...opts?.input !== void 0 ? { input: opts.input } : {},
+    ...opts?.maxBuffer !== void 0 ? { maxBuffer: opts.maxBuffer } : {}
+  });
   if (result2.error) {
     return { ok: false, code: -1, stderr: result2.error.message };
   }
@@ -28977,8 +29028,8 @@ function run(cmd, args, cwd) {
   }
   return { ok: true, value: (result2.stdout || "").trim() };
 }
-function git(args, cwd) {
-  return run("git", args, cwd);
+function git(args, cwd, opts) {
+  return run("git", args, cwd, opts);
 }
 function inGitRepo(cwd) {
   return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
@@ -29008,6 +29059,42 @@ function defaultBranchFromOrigin(cwd) {
   if (!r.ok || !r.value) return null;
   const name = r.value.replace(/^refs\/remotes\/origin\//, "");
   return name && name !== r.value ? name : null;
+}
+var WORKTREE_READ_MAX_BUFFER = 64 * 1024 * 1024;
+function worktreeRoot(cwd) {
+  const r = git(["rev-parse", "--show-toplevel"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function headSha(cwd) {
+  const r = git(["rev-parse", "HEAD"], cwd);
+  return r.ok && r.value ? r.value : null;
+}
+function diffAgainstHead(cwd, opts = {}) {
+  const format = opts.format ?? "name-only";
+  const args = ["diff", "HEAD", `--${format}`];
+  if (format === "name-status") args.push("--no-renames");
+  if (opts.nul) args.push("-z");
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  return r.ok ? r.value : null;
+}
+function untrackedFiles(cwd, opts = {}) {
+  const args = ["ls-files", "--others", "--exclude-standard", "-z"];
+  if (opts.exclude?.length) args.push("--", ...opts.exclude.map((p) => `:(exclude)${p}`));
+  const r = git(args, cwd, { maxBuffer: WORKTREE_READ_MAX_BUFFER });
+  if (!r.ok) return null;
+  return r.value.split("\0").filter(Boolean);
+}
+function hashObjects(paths, cwd) {
+  if (paths.length === 0) return [];
+  const r = git(["hash-object", "--stdin-paths"], cwd, {
+    input: `${paths.join("\n")}
+`,
+    maxBuffer: WORKTREE_READ_MAX_BUFFER
+  });
+  if (!r.ok) return null;
+  const ids = r.value.split("\n").map((s) => s.trim());
+  return ids.length === paths.length ? ids : null;
 }
 function hasUncommittedChanges(cwd) {
   const r = git(["status", "--porcelain"], cwd);
@@ -29040,10 +29127,10 @@ function loadConfig(configPath, projectDir) {
       const detected = defaultBranchFromOrigin(projectDir);
       if (detected) {
         config2.base_branch = detected;
-        return { config: config2, warning: null, base_branch_source: "origin/HEAD" };
+        return { config: config2, warning: null, settingWarnings: [], base_branch_source: "origin/HEAD" };
       }
     }
-    return { config: config2, warning: null, base_branch_source: "default" };
+    return { config: config2, warning: null, settingWarnings: [], base_branch_source: "default" };
   }
   let raw;
   try {
@@ -29053,6 +29140,7 @@ function loadConfig(configPath, projectDir) {
     return {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`,
+      settingWarnings: [],
       base_branch_source: "default"
     };
   }
@@ -29064,6 +29152,7 @@ function loadConfig(configPath, projectDir) {
     return {
       config: Config.parse({}),
       warning: `config.json is not valid JSON: ${reason}`,
+      settingWarnings: [],
       base_branch_source: "default"
     };
   }
@@ -29072,6 +29161,7 @@ function loadConfig(configPath, projectDir) {
     return {
       config: Config.parse({}),
       warning: `config.json failed schema validation: ${parsed.error.message}`,
+      settingWarnings: [],
       base_branch_source: "default"
     };
   }
@@ -29079,12 +29169,39 @@ function loadConfig(configPath, projectDir) {
   return {
     config: parsed.data,
     warning: null,
+    settingWarnings: neutraliseUnusableSettings(parsed.data),
     base_branch_source: hasOwnBase ? "config" : "default"
   };
 }
+function neutraliseUnusableSettings(config2) {
+  const warnings = [];
+  if (config2.tracker_url_template) {
+    const issue2 = trackerTemplateIssue(config2.tracker_url_template);
+    if (issue2) {
+      warnings.push(
+        `\`tracker_url_template\` ${JSON.stringify(config2.tracker_url_template)} is ignored \u2014 ${issue2}. Tasks show their tracker id without a link until it is fixed (\`/marvin:track-config\`).`
+      );
+      config2.tracker_url_template = null;
+    }
+  }
+  return warnings;
+}
+var PLACEHOLDER = /\{[^}]*\}/;
+function trackerTemplateIssue(template) {
+  if (!template.includes("{tracker_id}")) {
+    return "it has no `{tracker_id}` placeholder, so a task's id has nowhere to go";
+  }
+  const leftover = PLACEHOLDER.exec(template.replaceAll("{tracker_id}", "TRACKER-1"));
+  if (leftover) {
+    return `it leaves \`${leftover[0]}\` unsubstituted \u2014 \`{tracker_id}\` is the only placeholder that gets filled in`;
+  }
+  return null;
+}
 function trackerUrl(config2, trackerId) {
-  if (!trackerId || !config2.tracker_url_template) return null;
-  return config2.tracker_url_template.replace("{tracker_id}", trackerId);
+  const template = config2.tracker_url_template;
+  if (!trackerId || !template || trackerTemplateIssue(template)) return null;
+  const url = template.replaceAll("{tracker_id}", trackerId);
+  return PLACEHOLDER.test(url) ? null : url;
 }
 function updateConfigFile(configPath, patch) {
   const created = !existsSync(configPath);
@@ -29399,7 +29516,7 @@ function formatAdrId(number3) {
   return String(number3).padStart(4, "0");
 }
 function stripCodeSpans(raw) {
-  return raw.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
+  return raw.replace(/^```[\s\S]*?^```/gm, "").replace(/(`+)[^\n]*?\1/g, "");
 }
 function findPlaceholders(raw) {
   return (stripCodeSpans(raw).match(/\{[^{}\n]*\}/g) ?? []).map(compact);
@@ -30214,7 +30331,7 @@ function createTask(tasksDir, config2, input) {
     if (rendered !== null) {
       branch = rendered;
     } else {
-      branchWarning = `the configured branch_template ${JSON.stringify(config2.branch_template)} renders an invalid git branch name \u2014 used the default \`${branch}\` instead. Fix the template with /marvin:kanban-config.`;
+      branchWarning = `the configured branch_template ${JSON.stringify(config2.branch_template)} renders an invalid git branch name \u2014 used the default \`${branch}\` instead. Fix the template with /marvin:track-config.`;
     }
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -30323,8 +30440,7 @@ function groupByStatus(tasks) {
   return groups;
 }
 function renderListTable(tasks, currentBranch2, config2) {
-  if (tasks.length === 0)
-    return "_No tasks yet \u2014 use `/marvin:kanban-bug` or similar to create one._";
+  if (tasks.length === 0) return "_No tasks yet \u2014 use `/marvin:track-new` to create one._";
   const groups = groupByStatus(tasks);
   const sections = [];
   for (const status of orderedStatuses(config2)) {
@@ -30371,13 +30487,873 @@ function prRefFromUrl(url) {
   const match = url.match(/\/pull\/(\d+)/);
   return match ? { url, number: Number(match[1]) } : { url };
 }
+var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest",
+  // ADR-0038: `sec-gate` and `sec-fix` emit blocks too. Widening the contract
+  // without widening this mirror makes both reports parse as `invalid` and
+  // vanish from all three readers with only a skip-note.
+  "gate",
+  "fix"
+]);
+var TriageState = external_exports.enum(["new", "persisting", "regressed"]);
+var LinkRefSchema = external_exports.object({
+  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+var FindingSchema = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity,
+  title: external_exports.string().min(1),
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRefSchema).optional()
+});
+var AuditReportSchema = external_exports.object({
+  kind: AuditKind,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(FindingSchema)
+});
+function parseAuditBlock(raw) {
+  const m = raw.match(/```json audit-report\n([\s\S]*?)\n```/);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: "audit-report block is not valid JSON" };
+  }
+  const parsed = AuditReportSchema.safeParse(json);
+  if (!parsed.success) {
+    return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
+  }
+  return { kind: "ok", report: parsed.data };
+}
+var TerminalVerdictSchema = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
+var AxisVerdictSchema = external_exports.object({
+  verdict: TerminalVerdictSchema,
+  blockers: external_exports.number().int().nonnegative(),
+  warnings: external_exports.number().int().nonnegative()
+});
+var CritiqueSchema = external_exports.object({
+  critic: external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]),
+  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
+  judged_at: external_exports.string().datetime(),
+  compliance: AxisVerdictSchema,
+  quality: AxisVerdictSchema,
+  inability: external_exports.object({
+    blocker: external_exports.string().min(1),
+    attempted: external_exports.string().min(1),
+    recommendation: external_exports.string().min(1)
+  }).optional()
+}).superRefine((value, ctx) => {
+  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
+  if (unable && !value.inability) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["inability"],
+      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
+    });
+  }
+});
+var VERDICT_RANK = {
+  PASS: 0,
+  "PASS WITH WARNINGS": 1,
+  UNABLE: 2,
+  BLOCK: 3
+};
+function rollUp(compliance, quality) {
+  return VERDICT_RANK[compliance] >= VERDICT_RANK[quality] ? compliance : quality;
+}
+function parseCritiqueBlock(raw) {
+  const m = raw.match(/```json critic-verdict\n([\s\S]*?)\n```/);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: "critic-verdict block is not valid JSON" };
+  }
+  const parsed = CritiqueSchema.safeParse(json);
+  if (!parsed.success) {
+    return { kind: "invalid", reason: parsed.error.issues.map((i) => i.message).join("; ") };
+  }
+  return { kind: "ok", critique: parsed.data };
+}
+var VERIFY_BLOCK_TAG = "verify-result";
+var VERIFY_BLOCK_RE = new RegExp("```json " + VERIFY_BLOCK_TAG + "\\n([\\s\\S]*?)\\n```");
+var VerifyGateSchema = external_exports.object({
+  name: external_exports.string(),
+  status: external_exports.string().optional(),
+  code: external_exports.number().nullable().optional().catch(null),
+  durationMs: external_exports.number().optional().catch(void 0)
+});
+var ProvenanceSchema = external_exports.object({
+  head_sha: external_exports.string().nullable(),
+  branch: external_exports.string().nullable(),
+  dirty: external_exports.boolean().nullable(),
+  worktree_digest: external_exports.string().nullable(),
+  generated_at: external_exports.string()
+});
+var VerifyResultSchema = external_exports.object({
+  verdict: external_exports.string().optional().catch(void 0),
+  gates: external_exports.array(external_exports.unknown()).optional().catch(void 0),
+  detectedStacks: external_exports.array(external_exports.string()).optional().catch(void 0),
+  warnings: external_exports.array(external_exports.string()).optional().catch(void 0),
+  wallClockMs: external_exports.number().optional().catch(void 0),
+  sumOfGatesMs: external_exports.number().optional().catch(void 0),
+  artifactPath: external_exports.string().nullable().optional().catch(null),
+  // Optional on read so every artifact written before ADR-0035 still parses, and
+  // `.catch(undefined)` like every other member so a corrupt provenance degrades
+  // alone — a freshness field must never cost a reader the verdict it came for.
+  provenance: ProvenanceSchema.optional().catch(void 0)
+});
+function parseVerifyBlock(raw) {
+  const m = raw.match(VERIFY_BLOCK_RE);
+  if (!m) return { kind: "none" };
+  let json;
+  try {
+    json = JSON.parse(m[1]);
+  } catch {
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is not valid JSON` };
+  }
+  const parsed = VerifyResultSchema.safeParse(json);
+  if (!parsed.success) {
+    const reason = parsed.error.issues.map((i) => i.message).join("; ");
+    return { kind: "invalid", reason: `${VERIFY_BLOCK_TAG} block is malformed: ${reason}` };
+  }
+  const { gates, ...rest } = parsed.data;
+  return {
+    kind: "ok",
+    result: { ...rest, gates: (gates ?? []).flatMap(coerceGate) },
+    gatesDeclared: Array.isArray(json.gates)
+  };
+}
+function coerceGate(entry) {
+  const parsed = VerifyGateSchema.safeParse(entry);
+  return parsed.success ? [parsed.data] : [];
+}
+function formatVerifyBlock(result2) {
+  const payload = {
+    verdict: result2.verdict,
+    gates: result2.gates,
+    detectedStacks: result2.detectedStacks,
+    warnings: result2.warnings,
+    wallClockMs: result2.wallClockMs,
+    sumOfGatesMs: result2.sumOfGatesMs,
+    artifactPath: result2.artifactPath,
+    // Appended last on purpose: every artifact written before ADR-0035 keeps a
+    // byte-identical prefix, which keeps a `verification.md` diff readable.
+    provenance: result2.provenance
+  };
+  return "```json " + VERIFY_BLOCK_TAG + "\n" + JSON.stringify(payload) + "\n```";
+}
+function normalisePath(file) {
+  return (file ?? "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+}
+function titleSlug(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function fingerprintFinding(input) {
+  const parts = [
+    input.kind,
+    normalisePath(input.file),
+    (input.category ?? "").trim(),
+    titleSlug(input.title)
+  ];
+  return createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 16);
+}
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var STALE_AFTER_DAYS = 7;
+var DECAYS = {
+  security: true,
+  refactor: true,
+  task: false,
+  handoff: false,
+  critique: false
+};
+function isStale(group, mtimeMs, nowMs) {
+  if (!DECAYS[group]) return false;
+  return nowMs - mtimeMs > STALE_AFTER_DAYS * DAY_MS;
+}
+function readMdFiles(dir, notes) {
+  if (!existsSync(dir)) return [];
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    try {
+      const path = join(dir, filename);
+      if (lstatSync(path).isSymbolicLink()) continue;
+      files.push({ filename, raw: readFileSync(path, "utf8"), mtimeMs: statSync(path).mtimeMs });
+    } catch {
+      notes.push({ file: filename, reason: "file could not be read" });
+    }
+  }
+  return files;
+}
+function firstHeading(text) {
+  const m = text.match(/^#\s+(.+?)\s*$/m);
+  return m ? m[1] : null;
+}
+function splitFrontmatter2(text) {
+  if (!text.startsWith("---\n")) return { frontmatter: "", body: text };
+  const end = text.indexOf("\n---", 4);
+  if (end === -1) return { frontmatter: "", body: text };
+  const after = text.slice(end + 4);
+  return {
+    frontmatter: text.slice(4, end),
+    body: after.startsWith("\n") ? after.slice(1) : after
+  };
+}
+function frontmatterValue(frontmatter, key) {
+  const m = frontmatter.match(new RegExp(`^${key}:\\s*(.+?)\\s*$`, "m"));
+  if (!m) return null;
+  return m[1].replace(/^["']|["']$/g, "") || null;
+}
+function slugTitle(filename) {
+  return filename.replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findingCounts(findings) {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of findings) {
+    if (f.severity !== "info") counts[f.severity] += 1;
+  }
+  return counts;
+}
+function checksSummary(checks) {
+  return {
+    kind: "checks",
+    done: checks.filter((c) => c.status === "pass").length,
+    total: checks.length,
+    failed: checks.filter((c) => c.status === "fail").length
+  };
+}
+var SEC_TITLES = {
+  scan: "Security scan",
+  secrets: "Secrets scan",
+  deps: "Dependency audit",
+  iac: "IaC review",
+  ci: "CI/CD audit",
+  "threat-model": "Threat model",
+  compliance: "Compliance check",
+  pentest: "Pentest checklist",
+  // A TOTAL record over the enum: it does not compile with a member missing,
+  // which is what forces this edit whenever `AuditKind` widens.
+  gate: "Security gate",
+  fix: "Security fix"
+};
+var SEC_FIX_GENERATED_BY = "sec-fix";
+function scanSecurityReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/security";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const parsed = parseAuditBlock(file.raw);
+    if (parsed.kind === "none") continue;
+    if (parsed.kind === "invalid") {
+      notes.push({ file: file.filename, reason: parsed.reason });
+      continue;
+    }
+    const report = parsed.report;
+    const command = `sec-${report.kind}`;
+    const findings = report.findings.map((f) => ({
+      ...f,
+      // A `fix` report records what was already CLOSED, so a fix command there
+      // would ask the fix skill to fix its own record. Every other kind keeps
+      // it — `/marvin:sec-fix gate SCAN-1` is a legitimate suggestion.
+      ...report.kind === "fix" ? {} : { fixCommand: `/marvin:sec-fix ${report.kind} ${f.id}` },
+      // Identity only. `state`/`firstSeen` are filled by the reconciliation
+      // pass over envelopes (lib/triage.ts), never here: assembly must stay a
+      // pure function of the filesystem.
+      fingerprint: fingerprintFinding({
+        kind: report.kind,
+        file: f.file,
+        category: f.category,
+        title: f.title
+      })
+    }));
+    const path = `${relDir}/${file.filename}`;
+    reports.push({
+      id: path,
+      group: "security",
+      kind: "findings",
+      title: SEC_TITLES[report.kind],
+      path,
+      generatedBy: command,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("security", file.mtimeMs, now),
+      summary: { kind: "findings", counts: findingCounts(findings) },
+      body: { findings },
+      links: [],
+      rerunCommand: `/marvin:${command}`
+    });
+  }
+  return { reports, notes };
+}
+var EFFORT_MAP = {
+  trivial: "S",
+  small: "S",
+  medium: "M",
+  large: "L"
+};
+function parseRegisterFindings(raw, kind = "audit") {
+  const findings = [];
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^\|\s*(F\d+)\s*\|(.*)\|\s*$/);
+    if (!m) continue;
+    const cells = m[2].split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
+    if (cells.length < 5) continue;
+    const [title, severityRaw, effortRaw, evidenceRaw, direction] = cells;
+    const severity = Severity.safeParse(severityRaw.toLowerCase());
+    if (!severity.success || !title) continue;
+    const evidence = evidenceRaw.replace(/`/g, "").trim();
+    const loc = evidence.match(/([\w./-]+\.[A-Za-z]+)(?::(\d+))?/);
+    const line_ = loc?.[2] ? Number(loc[2]) : void 0;
+    const effort = EFFORT_MAP[effortRaw.toLowerCase()];
+    findings.push({
+      id: m[1],
+      severity: severity.data,
+      title,
+      ...loc?.[1] ? { file: loc[1] } : {},
+      ...line_ && line_ > 0 ? { line: line_ } : {},
+      ...evidence ? { evidence } : {},
+      ...effort ? { effort } : {},
+      ...direction ? { direction } : {},
+      // Identity only — never `state`/`firstSeen`; see the security site above.
+      fingerprint: fingerprintFinding({ kind, file: loc?.[1], title })
+    });
+  }
+  return findings;
+}
+function parsePlanChecks(raw) {
+  const checks = [];
+  const re = /^###\s+Step\s+\d+\s+—\s+(.+?)(?:\s+\[([^\]]+)\])?\s*$/gm;
+  for (const m of raw.matchAll(re)) {
+    const marker = (m[2] ?? "pending").trim().toLowerCase();
+    const status = marker.startsWith("done") ? "pass" : marker.startsWith("blocked") ? "fail" : "pending";
+    const note = marker.startsWith("done") && marker.length > 4 ? marker.slice(5) : void 0;
+    checks.push({ name: m[1].trim(), status, ...note ? { note } : {} });
+  }
+  return checks;
+}
+function scanRefactorReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/refactor";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const register = /^\d+-(audit|smells)-.*\.md$/.exec(file.filename);
+    const plan = /^\d+-plan-.*\.md$/.test(file.filename);
+    if (!register && !plan) continue;
+    const path = `${relDir}/${file.filename}`;
+    const heading = firstHeading(file.raw);
+    const common = {
+      id: path,
+      group: "refactor",
+      path,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("refactor", file.mtimeMs, now),
+      links: []
+    };
+    if (register) {
+      const findings = parseRegisterFindings(file.raw, register[1]);
+      if (!heading && findings.length === 0) {
+        notes.push({ file: file.filename, reason: "no heading or findings register found" });
+        continue;
+      }
+      const command = `refactor-${register[1]}`;
+      reports.push({
+        ...common,
+        kind: "findings",
+        title: heading ?? slugTitle(file.filename),
+        generatedBy: command,
+        summary: { kind: "findings", counts: findingCounts(findings) },
+        body: { findings },
+        rerunCommand: `/marvin:${command}`
+      });
+    } else {
+      const checks = parsePlanChecks(file.raw);
+      if (!heading && checks.length === 0) {
+        notes.push({ file: file.filename, reason: "no heading or plan steps found" });
+        continue;
+      }
+      reports.push({
+        ...common,
+        kind: "checks",
+        title: heading ?? slugTitle(file.filename),
+        generatedBy: "refactor-plan",
+        summary: checksSummary(checks),
+        body: { checks },
+        rerunCommand: "/marvin:refactor-plan"
+      });
+    }
+  }
+  return { reports, notes };
+}
+function parseVerificationChecks(raw) {
+  const parse4 = parseVerifyBlock(raw);
+  if (parse4.kind !== "ok" || !parse4.gatesDeclared) return null;
+  return parse4.result.gates.map((g) => {
+    const status = g.status === "pass" ? "pass" : g.status === "skip" || g.status === "not-run" ? "pending" : "fail";
+    const note = status === "fail" ? g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` : void 0;
+    return {
+      name: g.name,
+      status,
+      ...note ? { note } : {}
+    };
+  });
+}
+function scanTaskReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/task";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const common = {
+      id: path,
+      group: "task",
+      path,
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("task", file.mtimeMs, now),
+      links: []
+    };
+    if (file.filename === "verification.md") {
+      const checks = parseVerificationChecks(file.raw);
+      if (checks === null) {
+        notes.push({ file: file.filename, reason: "no machine-readable verify-result block" });
+        continue;
+      }
+      reports.push({
+        ...common,
+        kind: "checks",
+        title: "Verification",
+        generatedBy: "task-verify",
+        summary: checksSummary(checks),
+        body: { checks },
+        rerunCommand: "/marvin:task-verify"
+      });
+    } else {
+      const { frontmatter, body } = splitFrontmatter2(file.raw);
+      const title = firstHeading(body) ?? frontmatterValue(frontmatter, "title") ?? slugTitle(file.filename);
+      reports.push({
+        ...common,
+        kind: "document",
+        title,
+        generatedBy: "task-start",
+        summary: { kind: "document", tag: "spec" },
+        body: { markdown: body },
+        rerunCommand: "/marvin:task-start"
+      });
+    }
+  }
+  return { reports, notes };
+}
+function scanHandoffReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/handoff";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const { frontmatter, body } = splitFrontmatter2(file.raw);
+    const title = firstHeading(body) ?? frontmatterValue(frontmatter, "objective") ?? slugTitle(file.filename);
+    reports.push({
+      id: path,
+      group: "handoff",
+      kind: "document",
+      title,
+      path,
+      generatedBy: "handoff",
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("handoff", file.mtimeMs, now),
+      summary: { kind: "document", tag: "handoff" },
+      body: { markdown: body },
+      links: [],
+      rerunCommand: "/marvin:handoff"
+    });
+  }
+  return { reports, notes };
+}
+function scanCritiqueReports(dir, opts = {}) {
+  const relDir = opts.relDir ?? ".marvin/critique";
+  const now = opts.now ?? Date.now();
+  const notes = [];
+  const reports = [];
+  for (const file of readMdFiles(dir, notes)) {
+    const path = `${relDir}/${file.filename}`;
+    const { body } = splitFrontmatter2(file.raw);
+    const parse4 = parseCritiqueBlock(file.raw);
+    const tag = parse4.kind === "ok" ? `critique \xB7 ${rollUp(parse4.critique.compliance.verdict, parse4.critique.quality.verdict)}` : parse4.kind === "invalid" ? "critique \xB7 unreadable" : "critique";
+    reports.push({
+      id: path,
+      group: "critique",
+      kind: "document",
+      title: firstHeading(body) ?? slugTitle(file.filename),
+      path,
+      generatedBy: parse4.kind === "ok" ? parse4.critique.critic : "critique",
+      generatedAt: new Date(file.mtimeMs).toISOString(),
+      stale: isStale("critique", file.mtimeMs, now),
+      summary: { kind: "document", tag },
+      body: { markdown: body },
+      links: parse4.kind === "ok" ? [{ kind: "spec", label: parse4.critique.subject, ref: parse4.critique.subject }] : []
+    });
+  }
+  return { reports, notes };
+}
+function buildReportList(dirs, opts = {}) {
+  const now = opts.now ?? Date.now();
+  const scans = [
+    scanSecurityReports(dirs.security, { now }),
+    scanRefactorReports(dirs.refactor, { now }),
+    scanTaskReports(dirs.task, { now }),
+    scanHandoffReports(dirs.handoff, { now }),
+    scanCritiqueReports(dirs.critique, { now })
+  ];
+  const reports = scans.flatMap((s) => s.reports).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.id.localeCompare(b.id));
+  return { reports, notes: scans.flatMap((s) => s.notes) };
+}
+var BASELINE_FILENAME = "triage.json";
+var BASELINE_VERSION = 1;
+var BaselineEntrySchema = external_exports.object({
+  fingerprint: external_exports.string().min(1),
+  firstSeen: external_exports.string().datetime(),
+  lastSeen: external_exports.string().datetime(),
+  present: external_exports.boolean()
+});
+var BaselineFileSchema = external_exports.object({
+  version: external_exports.literal(BASELINE_VERSION),
+  updatedAt: external_exports.string().optional(),
+  findings: external_exports.array(BaselineEntrySchema)
+});
+function readBaseline(path) {
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    if (lstatSync(path).isSymbolicLink()) return [];
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const parsed = BaselineFileSchema.safeParse(json);
+  return parsed.success ? parsed.data.findings : [];
+}
+function findingsOf(envelope) {
+  const body = envelope.body;
+  return Array.isArray(body.findings) ? body.findings : null;
+}
+function registerKey(envelope) {
+  const m = /^(\d+)-(audit|smells)-(.+)\.md$/.exec(basename(envelope.path));
+  return m ? { seq: Number(m[1]), key: `${m[2]}\0${m[3]}` } : null;
+}
+function newestFirst(envelopes) {
+  return [...envelopes].sort(
+    (a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.id.localeCompare(b.id)
+  );
+}
+function liveEnvelopeIds(envelopes) {
+  const live = /* @__PURE__ */ new Set();
+  const bestRegister = /* @__PURE__ */ new Map();
+  for (const envelope of envelopes) {
+    if (findingsOf(envelope) === null) continue;
+    if (envelope.generatedBy === SEC_FIX_GENERATED_BY) continue;
+    if (envelope.group === "refactor") {
+      const reg = registerKey(envelope);
+      if (!reg) continue;
+      const held = bestRegister.get(reg.key);
+      const wins = !held || reg.seq > held.seq || reg.seq === held.seq && envelope.generatedAt > held.generatedAt;
+      if (wins) {
+        bestRegister.set(reg.key, {
+          id: envelope.id,
+          seq: reg.seq,
+          generatedAt: envelope.generatedAt
+        });
+      }
+      continue;
+    }
+    live.add(envelope.id);
+  }
+  for (const held of bestRegister.values()) live.add(held.id);
+  return live;
+}
+function liveEntries(envelopes) {
+  const live = liveEnvelopeIds(envelopes);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const envelope of newestFirst(envelopes)) {
+    if (!live.has(envelope.id)) continue;
+    for (const finding of findingsOf(envelope) ?? []) {
+      if (seen.has(finding.fingerprint)) continue;
+      seen.add(finding.fingerprint);
+      out.push({ fingerprint: finding.fingerprint, generatedAt: envelope.generatedAt });
+    }
+  }
+  return out;
+}
+function attestedAt(generatedAt, now) {
+  const stamp = Date.parse(generatedAt);
+  return Number.isFinite(stamp) && stamp <= now ? generatedAt : new Date(now).toISOString();
+}
+function reconcile(envelopes, baseline, now) {
+  const remembered = new Map(baseline.map((e) => [e.fingerprint, e]));
+  const live = liveEnvelopeIds(envelopes);
+  const liveSet = new Set(liveEntries(envelopes).map((e) => e.fingerprint));
+  const annotated = envelopes.map((envelope) => {
+    const findings = findingsOf(envelope);
+    if (findings === null || !live.has(envelope.id)) return envelope;
+    return {
+      ...envelope,
+      body: {
+        ...envelope.body,
+        findings: findings.map((finding) => {
+          const known = remembered.get(finding.fingerprint);
+          const state = !known ? "new" : known.present ? "persisting" : "regressed";
+          return {
+            ...finding,
+            state,
+            firstSeen: known ? known.firstSeen : attestedAt(envelope.generatedAt, now)
+          };
+        })
+      }
+    };
+  });
+  const resolved = baseline.filter((e) => e.present && !liveSet.has(e.fingerprint));
+  return { envelopes: annotated, resolved };
+}
+function nextBaseline(envelopes, baseline, now) {
+  const live = new Map(liveEntries(envelopes).map((e) => [e.fingerprint, e]));
+  const stamp = new Date(now).toISOString();
+  const out = baseline.map(
+    (entry) => live.has(entry.fingerprint) ? { ...entry, lastSeen: stamp, present: true } : { ...entry, present: false }
+  );
+  const known = new Set(baseline.map((e) => e.fingerprint));
+  for (const entry of live.values()) {
+    if (known.has(entry.fingerprint)) continue;
+    const firstSeen = attestedAt(entry.generatedAt, now);
+    out.push({ fingerprint: entry.fingerprint, firstSeen, lastSeen: firstSeen, present: true });
+  }
+  return out;
+}
+function ensureTriageDir(dir) {
+  mkdirSync(dir, { recursive: true });
+  const gitignore = join(dir, ".gitignore");
+  if (!existsSync(gitignore)) writeFileSync(gitignore, "*\n");
+}
+function writeBaseline(path, entries, now) {
+  const payload = {
+    version: BASELINE_VERSION,
+    updatedAt: new Date(now).toISOString(),
+    findings: entries
+  };
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}
+`);
+}
+
+// src/tools/report.ts
+var REPORTS_WIDGET_URI = "ui://marvin/reports.html";
+var ReportInput = external_exports.object({
+  // Stays `.optional()`: an absent action means `list`, which is what both
+  // prose doors, `scripts/mcp-call.mjs` and every existing caller do. The
+  // `.strict()` below governs UNDECLARED keys only — it says nothing about
+  // whether a declared key is required.
+  action: external_exports.enum(["list", "triage"]).optional(),
+  selected: external_exports.string().optional().describe(
+    "Deep-link: report id (project-relative path) to pre-select in the widget, e.g. `.marvin/task/verification.md`."
+  ),
+  snapshot: external_exports.boolean().default(false).describe(
+    "Record the current findings as the new triage baseline. The ONLY writing path in this tool \u2014 default false, because the tool is widget-bound and an always-writing reconciliation would let merely opening the panel consume the baseline."
+  )
+}).strict();
+function buildReportTool(env2) {
+  return defineTool({
+    name: "report",
+    description: 'List every report marvin generated under .marvin/ \u2014 security scans, refactor registers and plans, task specs, verification.md, handoffs, critique receipts \u2014 as one unified set, newest first, with per-report freshness. `action: "triage"` adds the new/persisting/regressed/resolved roll-up against the stored baseline; `snapshot: true` records the current findings as that baseline. Terminals see the grouped text summary; MCP Apps hosts get the ReportListPayload reports widget.',
+    inputSchema: ReportInput,
+    // Bind the reports `ui://` widget for MCP Apps hosts (ADR-0024). A plain
+    // object literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    //
+    // The binding is TOOL-level: every action inherits the widget whether or
+    // not it wants one. That is precisely why the write sits behind a
+    // default-false `snapshot` flag rather than behind the `triage` action.
+    meta: { ui: { resourceUri: REPORTS_WIDGET_URI } },
+    handler: (input) => Promise.resolve(run2(env2, input))
+  });
+}
+var GROUP_ORDER = ["security", "refactor", "task", "handoff", "critique"];
+var GROUP_LABELS = {
+  security: "Security",
+  refactor: "Refactor",
+  task: "Task",
+  handoff: "Handoff",
+  critique: "Critique"
+};
+function run2(env2, input) {
+  const now = Date.now();
+  const scanDirs = {
+    security: env2.securityDir,
+    refactor: join(env2.projectDir, ".marvin", "refactor"),
+    task: join(env2.projectDir, ".marvin", "task"),
+    handoff: env2.handoffDir,
+    critique: env2.critiqueDir
+  };
+  const { reports, notes } = buildReportList(scanDirs);
+  const baselinePath = join(env2.reportDir, BASELINE_FILENAME);
+  const baseline = readBaseline(baselinePath);
+  const { envelopes, resolved } = reconcile(reports, baseline, now);
+  let recorded = null;
+  if (input.snapshot === true) {
+    recorded = nextBaseline(reports, baseline, now);
+    ensureTriageDir(env2.reportDir);
+    writeBaseline(baselinePath, recorded, now);
+  }
+  const payload = {
+    reports: envelopes,
+    ...input.selected ? { selected: input.selected } : {}
+  };
+  const text = input.action === "triage" ? renderTriage(envelopes, resolved, notes, { baselineExists: baseline.length > 0, recorded }) : renderList(envelopes, notes);
+  return {
+    content: [{ type: "text", text }],
+    // Widget payload for MCP Apps hosts (ADR-0024) — the reports viewer.
+    structuredContent: payload
+  };
+}
+function reconciledFindings(reports) {
+  return reports.flatMap((r) => {
+    const body = r.body;
+    return (body.findings ?? []).filter((f) => f.state !== void 0);
+  });
+}
+function renderTriage(reports, resolved, notes, ctx) {
+  const findings = reconciledFindings(reports);
+  const lines = [`# Finding triage (${findings.length} live finding(s))`, ""];
+  if (!ctx.baselineExists) {
+    lines.push(
+      "_No baseline recorded yet \u2014 every finding reads as **new**. Run this again with `snapshot: true` to record the current state as the baseline._",
+      ""
+    );
+  }
+  for (const state of TriageState.options) {
+    const inState = findings.filter((f) => f.state === state);
+    lines.push(`- **${state}**: ${inState.length}`);
+  }
+  lines.push(`- **resolved**: ${resolved.length}`);
+  lines.push("");
+  for (const state of TriageState.options) {
+    const inState = findings.filter((f) => f.state === state);
+    if (inState.length === 0) continue;
+    lines.push(`## ${state} (${inState.length})`, "");
+    for (const f of inState) {
+      const where = f.file ? ` \u2014 \`${f.file}\`` : "";
+      lines.push(`- [${f.severity}] ${f.title}${where} \xB7 \`${f.fingerprint}\``);
+    }
+    lines.push("");
+  }
+  if (resolved.length > 0) {
+    lines.push(`## resolved (${resolved.length})`, "");
+    lines.push(
+      "_Gone from every current report; listed by identity because no row remains to describe them._",
+      ""
+    );
+    for (const e of resolved) lines.push(`- \`${e.fingerprint}\` \xB7 first seen ${e.firstSeen}`);
+    lines.push("");
+  }
+  lines.push(
+    ctx.recorded ? `_Baseline recorded: ${ctx.recorded.length} fingerprint(s)._` : "_Read-only: no baseline was written. Pass `snapshot: true` to record this state._"
+  );
+  if (notes.length > 0) {
+    lines.push(
+      "",
+      `_\u26A0 skipped ${notes.length} file(s):_`,
+      ...notes.map((n) => `- \`${n.file}\` \u2014 ${n.reason}`)
+    );
+  }
+  return lines.join("\n").trimEnd();
+}
+function renderList(reports, notes) {
+  const lines = [`# Reports (${reports.length})`, ""];
+  if (reports.length === 0) {
+    lines.push(
+      "_No reports yet \u2014 run `/marvin:sec-scan`, `/marvin:refactor-audit` or `/marvin:task-verify` to generate the first one._"
+    );
+  } else {
+    for (const group of GROUP_ORDER) {
+      const inGroup = reports.filter((r) => r.group === group);
+      if (inGroup.length === 0) continue;
+      lines.push(`## ${GROUP_LABELS[group]} (${inGroup.length})`, "");
+      for (const r of inGroup) lines.push(formatReportLine(r));
+      lines.push("");
+    }
+  }
+  if (notes.length > 0) {
+    lines.push(
+      "",
+      `_\u26A0 skipped ${notes.length} file(s):_`,
+      ...notes.map((n) => `- \`${n.file}\` \u2014 ${n.reason}`)
+    );
+  }
+  return lines.join("\n").trimEnd();
+}
+function formatReportLine(r) {
+  const stale = r.stale ? " \xB7 **stale**" : "";
+  return `- **${r.title}** \u2014 ${formatSummary(r)} \xB7 ${formatAge(r.generatedAt)}${stale} \xB7 \`${r.path}\``;
+}
+function formatSummary(r) {
+  const s = r.summary;
+  if (s.kind === "findings") {
+    const total = s.counts.critical + s.counts.high + s.counts.medium + s.counts.low;
+    const breakdown = ["critical", "high", "medium", "low"].filter((k) => s.counts[k] > 0).map((k) => `${k} ${s.counts[k]}`).join(", ");
+    return `${total} finding(s)${breakdown ? ` (${breakdown})` : ""}`;
+  }
+  if (s.kind === "checks") {
+    return s.total === 0 ? "0 checks" : s.failed > 0 ? `${s.done}/${s.total} checks, ${s.failed} failed` : `${s.done}/${s.total} checks`;
+  }
+  return s.tag;
+}
+function formatAge(iso) {
+  const ms = Math.max(0, Date.now() - Date.parse(iso));
+  const minutes = Math.floor(ms / 6e4);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// src/resources/widgets.ts
 var WIDGET_MIME = "text/html;profile=mcp-app";
 var WIDGETS = [
   {
     name: "task-list",
     uri: "ui://marvin/task-list.html",
     file: join("widgets", "task-list.html"),
-    description: "Marvin kanban board \u2014 the task-list widget (ADR-0024)."
+    description: "Marvin task board \u2014 the task-list widget (ADR-0024)."
   },
   {
     name: "task-detail",
@@ -30413,7 +31389,19 @@ var WIDGETS = [
     name: "dashboard",
     uri: "ui://marvin/dashboard.html",
     file: join("widgets", "dashboard.html"),
-    description: "Marvin toolbox dashboard \u2014 the whole-toolbox status panel: project paths, config, kanban counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024)."
+    description: "Marvin toolbox dashboard \u2014 the whole-toolbox status panel: project paths, config, board counters, artifact inventories with freshness, the ADR corpus, and the security/refactor/lessons/usage sections (ADR-0024)."
+  },
+  {
+    name: "help",
+    uri: "ui://marvin/help.html",
+    file: join("widgets", "help.html"),
+    description: "Marvin help \u2014 the welcome dashboard: gradient wordmark, project summary, configured MCP servers, and the full command index grouped by family (ADR-0024)."
+  },
+  {
+    name: "reports",
+    uri: REPORTS_WIDGET_URI,
+    file: join("widgets", "reports.html"),
+    description: "Marvin reports \u2014 the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 with KPI strip, group filter, and per-report freshness (ADR-0024)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -30423,6 +31411,7 @@ var HANDOFFS_WIDGET_URI = "ui://marvin/handoffs.html";
 var AUDIT_WIDGET_URI = "ui://marvin/audit.html";
 var TASK_SUMMARY_WIDGET_URI = "ui://marvin/task-summary.html";
 var DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
+var HELP_WIDGET_URI = "ui://marvin/help.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -30473,7 +31462,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env2) {
   return defineTool({
     name: "task",
-    description: 'The marvin kanban board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
+    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -30673,7 +31662,7 @@ function runStatus(_server, env2, config2) {
   lines.push("");
   lines.push(`**WIP tasks (${wip.length}):**`);
   if (wip.length === 0) {
-    lines.push("_None \u2014 use `/marvin:kanban-start` to pick one up._");
+    lines.push("_None \u2014 use `/marvin:track-start` to pick one up._");
   } else {
     for (const t of wip) lines.push(`- ${formatTaskLine(t)}`);
   }
@@ -30695,7 +31684,7 @@ async function runStart(server, env2, config2, preselected) {
   } else {
     if (todo.length === 0) {
       return ok(
-        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`
+        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:track-new\` (bug / feature / chore / spike) to create one.`
       );
     }
     if (!canElicit(server)) {
@@ -30766,7 +31755,7 @@ async function runMove(server, env2, config2, input) {
   const { tasks } = readAllTasks(env2.tasksDir, config2);
   if (tasks.length === 0) {
     return ok(
-      "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+      "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one."
     );
   }
   const keys = statusKeys(config2);
@@ -30924,11 +31913,6 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
   if (input.tracker_url_template !== void 0) {
     const value = input.tracker_url_template.trim();
     patch.tracker_url_template = value === "" ? null : value;
-    if (value !== "" && !value.includes("{tracker_id}")) {
-      notes.push(
-        "the tracker_url_template has no `{tracker_id}` placeholder \u2014 every task will link to the same URL."
-      );
-    }
   }
   if (input.branch_template !== void 0) {
     const value = input.branch_template.trim();
@@ -30968,6 +31952,15 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
       patch.tracker_url_template = data.tracker_url_template.trim();
     if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
   }
+  if (typeof patch.tracker_url_template === "string") {
+    const issue2 = trackerTemplateIssue(patch.tracker_url_template);
+    if (issue2) {
+      return errOk(
+        `Invalid \`tracker_url_template\` \u2014 ${issue2}.
+Mark where a task's id goes with \`{tracker_id}\`, e.g. \`https://acme.atlassian.net/browse/{tracker_id}\`. Nothing was written.`
+      );
+    }
+  }
   if (Object.keys(patch).length === 0) {
     return ok(renderConfigView(env2, loaded));
   }
@@ -31001,13 +31994,14 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
   return ok(lines.join("\n"));
 }
 function renderConfigView(env2, loaded) {
-  const { config: config2, warning, base_branch_source } = loaded;
+  const { config: config2, warning, settingWarnings, base_branch_source } = loaded;
   const fileExists = existsSync(env2.configPath);
   const sourceLabel = base_branch_source === "config" ? "from config" : base_branch_source === "origin/HEAD" ? "auto-detected from origin/HEAD" : "default";
   const lines = [];
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
+  for (const w of settingWarnings) lines.push(`\u26A0 ${w}`, "");
   lines.push(`- **Project:** \`${env2.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
@@ -31094,7 +32088,7 @@ var TaskDetailInput = external_exports.object({
 function buildTaskDetailTool(env2) {
   return defineTool({
     name: "task-detail",
-    description: 'Show one kanban task in full \u2014 its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
+    description: 'Show one board task in full \u2014 its fields (id, type, status, branch, tracker/PR links) plus its markdown body. Given a `taskId` (e.g. 007), or with none the task linked to the current git branch, returns the task detail as text and, for MCP Apps hosts, binds the task-detail widget (ADR-0024). Read-only. Serves requests like "show task 3", "open the details for the current task", or "what\'s in OSI-42".',
     inputSchema: TaskDetailInput,
     // Bind the task-detail `ui://` widget for MCP Apps hosts (ADR-0024). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -31115,7 +32109,7 @@ function buildTaskDetailTool(env2) {
         if (!task) {
           if (tasks.length === 0) {
             return ok2(
-              "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one."
+              "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one."
             );
           }
           return errOk2(
@@ -31183,25 +32177,27 @@ function buildTrackerTool(env2) {
     // dist/server.js. The terminal ignores `_meta` and renders the text content.
     meta: { ui: { resourceUri: TRACKER_LIST_WIDGET_URI } },
     handler: async () => {
-      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      const { config: config2, settingWarnings } = loadConfig(env2.configPath, env2.projectDir);
       const { tasks } = readAllTasks(env2.tasksDir, config2);
       const cards = tasks.filter((t) => t.frontmatter.tracker_id).map((t) => buildTaskCard(t, config2));
       const payload = { tasks: cards };
       const result2 = {
-        content: [{ type: "text", text: renderTrackerText(cards) }],
+        content: [{ type: "text", text: renderTrackerText(cards, settingWarnings) }],
         structuredContent: payload
       };
       return result2;
     }
   });
 }
-function renderTrackerText(cards) {
+function renderTrackerText(cards, settingWarnings) {
+  const notes = settingWarnings.map((w) => `_\u26A0 ${w}_`);
   if (cards.length === 0) {
     return [
       "# Tracked tasks (0)",
       "",
       "No tasks carry a tracker id. Add one when you create a task (e.g. `tracker_id: OSI-123`),",
-      "and set `tracker_url_template` via `/marvin:kanban-config` to link out."
+      "and set `tracker_url_template` via `/marvin:track-config` to link out.",
+      ...notes.length > 0 ? ["", ...notes] : []
     ].join("\n");
   }
   const lines = [`# Tracked tasks (${cards.length})`, ""];
@@ -31215,12 +32211,221 @@ function renderTrackerText(cards) {
   if (anyUnlinked) {
     lines.push("");
     lines.push(
-      "_Some tasks have no tracker URL \u2014 set `tracker_url_template` via `/marvin:kanban-config` to link out._"
+      ...notes.length > 0 ? notes : [
+        "_Some tasks have no tracker URL \u2014 set `tracker_url_template` via `/marvin:track-config` to link out._"
+      ]
     );
   }
   return lines.join("\n");
 }
-function kanbanCounts(env2, config2) {
+function readAllHandoffs(handoffDir) {
+  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
+  const handoffs = [];
+  const malformed = [];
+  for (const filename of readdirSync(handoffDir).sort()) {
+    if (!filename.endsWith(".md")) continue;
+    const seq = parseSeq(filename);
+    if (!seq) continue;
+    const raw = readFileSync(join(handoffDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const parsed = HandoffFrontmatter.safeParse(frontmatter);
+    if (!parsed.success) {
+      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
+      continue;
+    }
+    if (parsed.data.id !== seq) {
+      malformed.push({
+        filename,
+        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
+      });
+      continue;
+    }
+    handoffs.push({ frontmatter: parsed.data, body, filename });
+  }
+  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
+  return { handoffs, malformed };
+}
+var ID_FILE = /^F\d+$/i;
+var ID_AC = /^AC\d+$/i;
+var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
+var FileRow = external_exports.object({
+  id: external_exports.string().regex(ID_FILE, "file id must look like F1, F2, \u2026"),
+  path: external_exports.string().min(1),
+  action: external_exports.enum(["new", "edit", "delete"]),
+  intent: external_exports.string().optional(),
+  satisfies: RefList.optional(),
+  anchor: external_exports.string().optional()
+});
+var Oracle = external_exports.object({
+  kind: external_exports.enum(["test", "command", "prose-review"]),
+  ref: external_exports.string().optional(),
+  run: external_exports.string().min(1).optional()
+});
+var Criterion = external_exports.object({
+  id: external_exports.string().regex(ID_AC, "criterion id must look like AC1, AC2, \u2026"),
+  statement: external_exports.string().min(1),
+  implemented_by: RefList,
+  oracle: Oracle,
+  failure: external_exports.string().optional(),
+  regression: external_exports.boolean().optional()
+});
+var ContractObj = external_exports.object({
+  kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
+  signature: external_exports.string().optional()
+});
+var SpecContract = external_exports.object({
+  files: external_exports.array(FileRow).min(1),
+  build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
+  contract: ContractObj.optional(),
+  criteria: external_exports.array(Criterion).min(1),
+  depends_on: external_exports.array(external_exports.string()).optional()
+});
+var HostBindings = external_exports.object({
+  spec_location: external_exports.string().optional(),
+  decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
+  merge_obligations: external_exports.array(external_exports.string()).optional(),
+  gates: external_exports.record(external_exports.string()).optional()
+}).passthrough();
+function extractContractBlock(body) {
+  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+function contractHash(blockText) {
+  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
+}
+function extractHostBindings(body) {
+  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
+  return m ? m[1] : null;
+}
+var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+var DEFAULT_SPEC_DIR = SPEC_DIRS[0];
+function resolveSpecDir(projectDir, specConfig) {
+  if (specConfig?.dir) {
+    const abs = isAbsolute(specConfig.dir) ? specConfig.dir : join(projectDir, specConfig.dir);
+    return { abs, rel: toPosixPath(relative(projectDir, abs)) || specConfig.dir, source: "config" };
+  }
+  for (const rel of SPEC_DIRS) {
+    const abs = join(projectDir, rel);
+    try {
+      if (existsSync(abs) && statSync(abs).isDirectory()) return { abs, rel, source: "detected" };
+    } catch {
+      continue;
+    }
+  }
+  return { abs: join(projectDir, DEFAULT_SPEC_DIR), rel: DEFAULT_SPEC_DIR, source: "default" };
+}
+function toPosixPath(p) {
+  return p.split(sep).join(posix.sep);
+}
+function specSearchDirs(projectDir, specConfig, hostSpecLocation) {
+  const resolved = resolveSpecDir(projectDir, specConfig);
+  const candidates = [
+    ...hostSpecLocation ? [hostSpecLocation] : [],
+    resolved.abs,
+    ...SPEC_DIRS
+  ].map((d) => isAbsolute(d) ? d : join(projectDir, d));
+  return [...new Set(candidates)];
+}
+var SPEC_PREFIX_RE = /^(\d+)-(.+)$/;
+function readSpecCorpus(dir) {
+  if (!existsSync(dir.abs)) return { records: [], malformed: [] };
+  let filenames;
+  try {
+    filenames = readdirSync(dir.abs).sort();
+  } catch {
+    return { records: [], malformed: [] };
+  }
+  const records = [];
+  const malformed = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md") || filename === "verification.md") continue;
+    const base = filename.slice(0, -3);
+    const prefix = SPEC_PREFIX_RE.exec(base);
+    const id = prefix?.[1] ?? null;
+    const number3 = id === null ? null : Number(id);
+    const path = join(dir.abs, filename);
+    let raw;
+    try {
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink() || !stat.isFile()) continue;
+      raw = readFileSync(path, "utf8");
+    } catch (err3) {
+      malformed.push({ filename, number: number3, reason: `could not read the file: ${errText(err3)}` });
+      continue;
+    }
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (id === null && !frontmatter.slug && !frontmatter.type) continue;
+    if (Object.keys(frontmatter).length === 0) {
+      const defect = frontmatterDefect(raw);
+      if (defect !== null) {
+        malformed.push({ filename, number: number3, reason: defect });
+        continue;
+      }
+    }
+    const slug = frontmatter.slug?.trim() || prefix?.[2] || base;
+    records.push({
+      number: number3,
+      id,
+      slug,
+      title: firstHeading2(body) ?? slug,
+      status: frontmatter.status?.trim() || null,
+      contract_sha: frontmatter.contract_sha?.trim() || null,
+      filename,
+      path: posix.join(dir.rel, filename)
+    });
+  }
+  records.sort(
+    (a, b) => (b.number ?? -1) - (a.number ?? -1) || a.filename.localeCompare(b.filename)
+  );
+  return { records, malformed };
+}
+var FRONTMATTER_BLOCK_RE = /^---\r?\n([\s\S]*?)\r?\n?---(\r?\n|$)/;
+function frontmatterDefect(raw) {
+  if (!raw.startsWith("---\n")) return null;
+  const block = FRONTMATTER_BLOCK_RE.exec(raw);
+  if (block === null) return "frontmatter block opens with `---` but is never closed";
+  return block[1].trim() === "" ? null : "frontmatter block is present but could not be parsed";
+}
+function firstHeading2(text) {
+  const m = /^#\s+(.+?)\s*$/m.exec(text);
+  return m ? m[1] : null;
+}
+function errText(err3) {
+  return (err3 instanceof Error ? err3.message : String(err3)).split("\n")[0].slice(0, 120);
+}
+function nextSpecNumber(corpus) {
+  const numbers = [
+    ...corpus.records.map((r) => r.number),
+    ...corpus.malformed.map((m) => m.number)
+  ].filter((n) => n !== null);
+  return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
+}
+function specIdWidth(corpus) {
+  const observed = (filename) => SPEC_PREFIX_RE.exec(filename.replace(/\.md$/, ""))?.[1]?.length ?? 0;
+  const widths = [
+    ...corpus.records.map((r) => r.id?.length ?? 0),
+    ...corpus.malformed.map((m) => observed(m.filename))
+  ];
+  return Math.max(3, ...widths);
+}
+function formatSpecId(n, width) {
+  return String(n).padStart(width, "0");
+}
+
+// src/lib/state.ts
+function boardCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
   const counts = {};
   for (const s of config2.statuses) counts[s.key] = 0;
@@ -31244,22 +32449,23 @@ function gitState(projectDir) {
     branch: inGitRepo(projectDir) ? currentBranch(projectDir) : null
   };
 }
-var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "kanban"];
-var GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "kanban"];
+var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
+var GROUP_ORDER2 = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
 function groupOf(name) {
   const prefix = name.split("-")[0] ?? "";
   return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
 }
 function commandGroups() {
-  return GROUP_ORDER.map((group) => ({
+  return GROUP_ORDER2.map((group) => ({
     group,
     count: PROMPTS.filter((p) => groupOf(p.name) === group).length
   })).filter((g) => g.count > 0);
 }
-function artifactCounts(env2) {
+function artifactCounts(env2, specDir = resolveSpecDir(env2.projectDir)) {
   const marvin = join(env2.projectDir, ".marvin");
+  const specs = readSpecCorpus(specDir);
   return {
-    specs: countMarkdown(join(marvin, "task"), ["verification.md"]),
+    specs: specs.records.length + specs.malformed.length,
     handoffs: countMarkdown(join(marvin, "handoff")),
     audits: countMarkdown(join(marvin, "security")),
     lessons: countMarkdown(env2.memoryDir, ["MEMORY.md"])
@@ -31273,89 +32479,578 @@ function countMarkdown(dir, exclude = []) {
     return 0;
   }
 }
-
-// src/tools/help.ts
-var HelpInput = external_exports.object({
-  section: external_exports.string().optional().describe("Filter the command index to one group: core, adr, pr, task, sec, refactor, kanban.")
-});
-function buildHelpTool(env2, version2) {
-  return defineTool({
-    name: "help",
-    description: 'Marvin dashboard: project state, kanban board counters, dependency status, and the full command index (derived from the prompt registry). Answers "what\'s on the board?" / "marvin help". Pass `section` to filter to one group (core/adr/pr/task/sec/refactor/kanban).',
-    inputSchema: HelpInput,
-    handler: (input) => {
-      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
-      return Promise.resolve(renderHelp(env2, config2, version2, input.section));
-    }
-  });
+var DIGEST_LIMIT = 3;
+var DAY_MS2 = 24 * 60 * 60 * 1e3;
+function ageDays(ms, now) {
+  return Number.isNaN(ms) ? null : Math.max(0, Math.floor((now - ms) / DAY_MS2));
 }
-function renderHelp(env2, config2, version2, section) {
-  const { counts, roleCounts, malformed } = kanbanCounts(env2, config2);
-  const git2 = gitState(env2.projectDir);
-  const lines = [];
-  lines.push(`# marvin \xB7 kanban tracker \xB7 v${version2}`);
-  lines.push("");
-  lines.push("## State");
-  lines.push(`- Project: \`${env2.projectDir}\``);
-  lines.push(`- Tasks dir: \`${env2.tasksDir}\``);
-  lines.push(`- Config: \`${env2.configPath}\``);
-  lines.push(`- Base branch: \`${config2.base_branch}\``);
-  lines.push(
-    `- Tracker template: ${config2.tracker_url_template ? `\`${config2.tracker_url_template}\`` : "not configured"}`
-  );
-  lines.push("");
-  lines.push("## Counters");
-  for (const s of orderedStatuses(config2)) {
-    const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-    lines.push(`- ${s.key}${roleNote}: ${counts[s.key] ?? 0}`);
-  }
-  if (malformed > 0) lines.push(`- \u26A0 malformed files: ${malformed}`);
-  lines.push("");
-  lines.push("## Git");
-  lines.push(`- git: ${git2.has_git ? "\u2713" : "\u2717 (lifecycle commands disabled)"}`);
-  lines.push(`- gh:  ${git2.has_gh ? "\u2713" : "\u2717 (PR commands fall back to printing the command)"}`);
-  lines.push(`- branch: \`${git2.branch ?? "(not in a git repo)"}\``);
-  lines.push("");
-  lines.push(...renderCommandIndex(section));
-  const dashboard = {
-    version: version2,
-    paths: { project: env2.projectDir, tasks_dir: env2.tasksDir, config_path: env2.configPath },
-    config: {
-      base_branch: config2.base_branch,
-      tracker_url_template: config2.tracker_url_template,
-      ...config2.gates ? { gates: config2.gates } : {},
-      statuses: config2.statuses
-    },
-    kanban_counts: counts,
-    kanban_role_counts: roleCounts,
-    git: git2,
-    artifacts: artifactCounts(env2),
-    command_groups: commandGroups()
-  };
+function boardDigest(env2, config2) {
+  const { tasks } = readAllTasks(env2.tasksDir, config2);
+  return tasks.filter((t) => {
+    const role = roleOfStatus(config2, t.frontmatter.status);
+    return role === "wip" || role === "review";
+  }).sort(
+    (a, b) => (
+      // `updated` is an ISO datetime — it compares correctly as a string.
+      b.frontmatter.updated.localeCompare(a.frontmatter.updated) || Number(b.frontmatter.id) - Number(a.frontmatter.id)
+    )
+  ).slice(0, DIGEST_LIMIT).map((t) => buildTaskCard(t, config2));
+}
+var SPEC_NOT_IN_FLIGHT = /* @__PURE__ */ new Set(["shipped", "superseded", "draft"]);
+function specDigest(projectDir, specDir = resolveSpecDir(projectDir)) {
+  return readSpecCorpus(specDir).records.filter((r) => r.status === null || !SPEC_NOT_IN_FLIGHT.has(r.status)).slice(0, DIGEST_LIMIT).map((r) => ({ slug: r.slug, title: r.title, ...r.id ? { id: r.id } : {} }));
+}
+function handoffDigest(handoffDir, now = Date.now()) {
+  const { handoffs } = readAllHandoffs(handoffDir);
+  return handoffs.slice(0, DIGEST_LIMIT).map((h) => ({
+    slug: h.frontmatter.slug,
+    objective: h.frontmatter.objective,
+    age_days: ageDays(Date.parse(h.frontmatter.created), now)
+  }));
+}
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function auditDigest(dirs, now = Date.now()) {
   return {
-    content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: dashboard
+    security: newestArea(dirs.security, () => true, findingsFromAuditBlock, now),
+    refactor: newestArea(dirs.refactor, isRegister, parseRegisterFindings, now)
   };
 }
-function renderCommandIndex(section) {
-  const want = section?.trim().toLowerCase();
-  const known = !!want && GROUP_ORDER.includes(want);
-  const groups = known ? [want] : GROUP_ORDER;
-  const lines = [
-    known ? `## Commands \xB7 \`${want}\` group` : `## Commands (${PROMPTS.length})`
-  ];
-  if (want && !known) {
-    lines.push(`_Unknown section \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER.join(", ")}._`);
-  }
-  for (const group of groups) {
-    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
-    if (inGroup.length === 0) continue;
-    lines.push("", `### ${group} (${inGroup.length})`);
-    for (const p of inGroup) lines.push(`- \`/marvin:${p.name}\` \u2014 ${shortDesc(p.description)}`);
-  }
-  return lines;
+var isRegister = (filename) => /^\d+-(audit|smells)-.*\.md$/.test(filename);
+var NON_POSTURE_KINDS = /* @__PURE__ */ new Set(["gate", "fix"]);
+function findingsFromAuditBlock(raw) {
+  const parsed = parseAuditBlock(raw);
+  if (parsed.kind !== "ok") return null;
+  if (NON_POSTURE_KINDS.has(parsed.report.kind)) return null;
+  return parsed.report.findings;
 }
-function shortDesc(desc, max = 80) {
+function newestArea(dir, accepts, extract, now) {
+  if (!existsSync(dir)) return null;
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md") || !accepts(filename)) continue;
+    try {
+      const path = join(dir, filename);
+      if (lstatSync(path).isSymbolicLink()) continue;
+      candidates.push({ filename, mtimeMs: statSync(path).mtimeMs });
+    } catch {
+      continue;
+    }
+  }
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || b.filename.localeCompare(a.filename));
+  for (const candidate of candidates) {
+    let findings;
+    try {
+      findings = extract(readFileSync(join(dir, candidate.filename), "utf8"));
+    } catch {
+      continue;
+    }
+    if (findings === null) continue;
+    const by_severity = {};
+    for (const severity of SEVERITY_ORDER) {
+      const n = findings.filter((f) => f.severity === severity).length;
+      if (n > 0) by_severity[severity] = n;
+    }
+    return {
+      scanned_age_days: ageDays(candidate.mtimeMs, now),
+      total: findings.length,
+      by_severity,
+      newest_report: candidate.filename
+    };
+  }
+  return null;
+}
+
+// ../../../../packages/marvin-mcp-shared/dist/help-content.js
+var GROUP_BLURBS = {
+  core: "Everyday dev \u2014 commits, debugging, docs, ADRs, handoffs",
+  adr: "Architecture Decision Record lifecycle",
+  pr: "Pull-request lifecycle \u2014 create, review, resolve, merge",
+  task: "Spec-driven pipeline \u2014 start, implement, verify, deliver",
+  sec: "Security scanners \u2014 secrets, deps, threat models & more",
+  refactor: "Code-health \u2014 audit, smells, plan, apply",
+  track: "Lightweight board tracker \u2014 create, move, list, configure"
+};
+var COMMAND_BLURBS = {
+  // core
+  onboard: "Guided first session in this project",
+  commit: "Conventional commit, board-linked",
+  debug: "Systematic root-cause debugging",
+  adr: "Create an Architecture Decision Record",
+  changelog: "Changelog from git history",
+  readme: "Generate or update README",
+  "migration-plan": "Plan a migration or major refactor",
+  explain: "Explain code, logic, and design",
+  "docs-search": "Search project documentation",
+  handoff: "Capture a session handoff",
+  "handoff-list": "List handoff documents",
+  lessons: "Team lessons-learned store",
+  help: "This dashboard + command index",
+  dashboard: "Whole-toolbox state report",
+  reports: "Unified viewer over all reports",
+  "report-export": "Export a report to PDF / MD",
+  "widget-preview": "Open a widget as a rendered panel",
+  // adr
+  "adr-review": "Review a proposed ADR",
+  "adr-accept": "Ratify an ADR (human-run)",
+  "adr-audit": "Lint the whole ADR corpus",
+  "adr-coverage": "Find undocumented decisions",
+  "adr-supersede": "Roll back an accepted ADR (human-run)",
+  "adr-sync": "Refresh the ADR digest in CLAUDE.md (human-run)",
+  // pr
+  "pr-create": "Open a pull request",
+  "pr-review": "Review a PR on GitHub",
+  "pr-resolve": "Address PR review threads",
+  "pr-merge": "Merge a PR, then sync the base",
+  // task
+  "task-start": "Spec out a task (Phase 1)",
+  "task-implement": "Implement a ready spec",
+  "task-verify": "Run the project quality gates",
+  "task-deliver": "Commit and open a PR",
+  "task-summary": "Delivery digest for a task",
+  "task-audit": "Lint the whole spec corpus",
+  // sec
+  "sec-scan": "Full OWASP Top-10 audit",
+  "sec-secrets": "Scan for leaked secrets",
+  "sec-deps": "Dependency CVE / license audit",
+  "sec-gate": "Fast pre-commit security gate",
+  "sec-threat-model": "STRIDE threat model",
+  "sec-iac": "Infrastructure-as-Code review",
+  "sec-ci": "CI/CD pipeline audit",
+  "sec-fix": "Patch a vulnerability with tests",
+  "sec-compliance": "OWASP ASVS gap analysis",
+  "sec-pentest": "Tailored pentest checklist",
+  "sec-report": "List saved security reports",
+  // refactor
+  "refactor-audit": "Structural audit + hotspots",
+  "refactor-smells": "Scoped code-smell scan",
+  "refactor-plan": "Sequence findings into steps",
+  "refactor-apply": "Apply one refactor step, gated",
+  // track
+  "track-menu": "Board action menu",
+  "track-new": "New board task",
+  "track-list": "List tasks \u2014 all, WIP, tracked",
+  "track-show": "Show one task",
+  "track-start": "Pick up a task, branch off",
+  "track-move": "Move a task between statuses",
+  "track-config": "Show or edit board config"
+};
+var COMMAND_DETAILS = {
+  // core
+  onboard: "A first session with marvin in this project \u2014 reads the repository, discloses the local usage log and its opt-out before anything is written, proposes real starter tasks with file:line evidence, and gates the board card and the commit on an explicit yes.",
+  commit: "Safe commit \u2014 inspects repo state, stages intentionally, screens for secrets (.env, keys, tokens), drafts a Conventional Commits message, and links the current board task.",
+  debug: "Hypothesis-driven root-cause analysis: reproduce the bug, gather evidence, rank hypotheses, confirm the mechanism at file:line, then propose a minimal fix.",
+  adr: "Draft an Architecture Decision Record capturing context, alternatives, the decision, and consequences. Lands as status proposed; ratification is the separate human-run adr-accept.",
+  changelog: "Generate a changelog from git history between tags, dates, or arbitrary refs.",
+  readme: "Generate or refresh README.md from actual codebase analysis.",
+  "migration-plan": "Plan a migration or major refactor: dependency analysis, sequenced steps, risks, and a rollback strategy.",
+  explain: "Explain how code works \u2014 logic, architecture, and design rationale \u2014 without changing it.",
+  "docs-search": "Search and synthesize project documentation \u2014 ADRs, README, runbooks, conventions.",
+  handoff: "Capture the session's full context into a durable handoff document plus a paste-ready prompt to continue in a fresh session.",
+  "handoff-list": "List the saved session-continuation handoff documents under .marvin/handoff/, newest first.",
+  lessons: "Team lessons-learned store \u2014 capture and recall bug-patterns and gotchas across tasks (.marvin/memory).",
+  help: "This welcome dashboard and the full command index; pass a group to focus the reference.",
+  dashboard: "Whole-toolbox state report: paths, config, git and MCP servers; the board; current work, recent handoffs and audit findings by severity; artifacts, the ADR corpus, lessons and local usage.",
+  reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 newest first, with per-report freshness.",
+  "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
+  "widget-preview": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it \u2014 the way to see a widget on a host that cannot render them, including the terminal.",
+  // adr
+  "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
+  "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
+  "adr-audit": "Read-only lint of the whole ADR corpus \u2014 dangling references, numbering holes, broken supersede pairs, stale index.",
+  "adr-coverage": "Gap analysis \u2014 recorded ADRs vs the decisions visible in the actual stack, ranked by blast radius.",
+  "adr-supersede": "Roll back an accepted ADR properly \u2014 a successor record supersedes it and the links pair both ways. Human-run.",
+  "adr-sync": "Regenerate the Architecture-decisions digest in CLAUDE.md from accepted ADRs only. Human-run.",
+  // pr
+  "pr-create": "Open a pull request with a structured description and verification checklist; picks up board-task context when present.",
+  "pr-review": "Review a pull request on GitHub and post the review there \u2014 inline comments by severity plus a summary.",
+  "pr-resolve": "Resolve open PR review threads \u2014 fetch the unresolved ones, plan and apply fixes, push, then reply and mark each resolved.",
+  "pr-merge": "Merge a pull request, then switch back to the base branch and pull.",
+  // task
+  "task-start": "Phase 1 of the task pipeline \u2014 a structured dialogue that produces an immutable, testable spec under .marvin/task/.",
+  "task-implement": "Execute a ready spec interactively in the current session, then auto-chain into verify and deliver.",
+  "task-verify": "Run the project quality gates \u2014 tests, lint, type-check, build \u2014 with automatic stack detection, and write verification.md.",
+  "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
+  "task-summary": "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons, and links.",
+  "task-audit": "Read-only consistency lint of the spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
+  // sec
+  "sec-scan": "Comprehensive security audit aligned with OWASP Top 10:2025 \u2014 orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
+  "sec-secrets": "Deep scan for leaked secrets, credentials, and API keys across code, config, and git history.",
+  "sec-deps": "Audit dependencies for known vulnerabilities, license risk, and maintenance health.",
+  "sec-gate": "Fast security check on staged or recent changes \u2014 a lightweight pre-commit gate.",
+  "sec-threat-model": "Generate a STRIDE-based threat model for a feature, system, or the whole application.",
+  "sec-iac": "Security review of Infrastructure-as-Code \u2014 Terraform, CloudFormation, Kubernetes, Docker, Helm.",
+  "sec-ci": "Audit CI/CD pipelines for supply-chain risks, secret exposure, and excessive permissions.",
+  "sec-fix": "Generate and verify a minimal, tested patch for a security finding, with a regression test.",
+  "sec-compliance": "Check code against OWASP ASVS compliance requirements \u2014 a structured compliance matrix.",
+  "sec-pentest": "Generate a penetration-testing checklist tailored to the specific application.",
+  "sec-report": "List the structured security-audit reports under .marvin/security/ \u2014 typed findings by severity, newest first.",
+  // refactor
+  "refactor-audit": "Whole-project structural refactoring audit \u2014 architecture map, churn\xD7size hotspots, dependency tangles, dead-code candidates. Read-only.",
+  "refactor-smells": "Scoped code-smell scan of a path, module, or diff \u2014 smells, anti-patterns, and naming inconsistencies. Read-only.",
+  "refactor-plan": "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
+  "refactor-apply": "Execute exactly one behaviour-preserving refactoring step under hard rails \u2014 verify green before and after, rollback on red.",
+  // track
+  "track-menu": "Open the board action menu.",
+  "track-new": "Create a board task \u2014 bug, feature, chore, or spike \u2014 through an interactive form.",
+  "track-list": "List the board \u2014 the full status-grouped list, the current-branch + work-in-progress view, or the tracked tasks linking out to the external tracker.",
+  "track-show": "Show one board task in detail.",
+  "track-start": "Pick a todo task, create its branch, and mark it work-in-progress.",
+  "track-move": "Move a board task \u2014 to review, to done, or to any configured status.",
+  "track-config": "Show or edit the board configuration (.marvin/config.json)."
+};
+var COMMAND_EXAMPLES = {
+  // core
+  commit: "/marvin:commit fix: guard null session",
+  debug: "/marvin:debug TypeError in auth middleware",
+  adr: "/marvin:adr Adopt one MCP server",
+  changelog: "/marvin:changelog since v0.1.0",
+  "migration-plan": "/marvin:migration-plan bundler to Vite",
+  explain: "/marvin:explain src/server.ts",
+  "docs-search": "/marvin:docs-search how does the verify gate work?",
+  handoff: "/marvin:handoff widget work WIP",
+  lessons: "/marvin:lessons search dist staleness",
+  help: "/marvin:help sec",
+  "widget-preview": "/marvin:widget-preview dashboard",
+  // adr
+  "adr-review": "/marvin:adr-review 31",
+  "adr-accept": "/marvin:adr-accept 31",
+  "adr-supersede": "/marvin:adr-supersede 12",
+  // pr
+  "pr-review": "/marvin:pr-review 42",
+  "pr-resolve": "/marvin:pr-resolve 42",
+  "pr-merge": "/marvin:pr-merge 42",
+  // task
+  "task-start": "/marvin:task-start add pagination",
+  "task-summary": "/marvin:task-summary add-pagination",
+  "task-audit": "/marvin:task-audit errors only",
+  // sec
+  "sec-threat-model": "/marvin:sec-threat-model upload flow",
+  "sec-fix": "/marvin:sec-fix CVE-2024-1234",
+  // refactor
+  "refactor-smells": "/marvin:refactor-smells src/tools",
+  "refactor-plan": "/marvin:refactor-plan F3,F4",
+  // track
+  "track-new": "/marvin:track-new bug login 500s",
+  "track-start": "/marvin:track-start 12",
+  "track-move": "/marvin:track-move 12 blocked",
+  "track-show": "/marvin:track-show 12"
+};
+var COMMAND_PROMPTS = {
+  // core
+  onboard: [
+    "marvin, I just installed you \u2014 what now?",
+    "marvin, set yourself up in this project",
+    "marvin, walk me through my first session"
+  ],
+  commit: [
+    "marvin, commit this",
+    "marvin, stage and commit my changes",
+    "marvin, make a commit linked to the board"
+  ],
+  debug: [
+    "marvin, why is this test failing?",
+    "marvin, help me debug this crash",
+    "marvin, find the root cause of this error"
+  ],
+  adr: [
+    "marvin, record this decision as an ADR",
+    "marvin, write an architecture decision record",
+    "marvin, capture the rationale for this choice"
+  ],
+  changelog: [
+    "marvin, generate a changelog",
+    "marvin, what changed since the last release?",
+    "marvin, draft release notes since v0.1.0"
+  ],
+  readme: [
+    "marvin, update the README",
+    "marvin, generate the project documentation",
+    "marvin, refresh the readme from the code"
+  ],
+  "migration-plan": [
+    "marvin, plan this migration",
+    "marvin, how do we refactor this safely?",
+    "marvin, draft a migration plan with a rollback"
+  ],
+  explain: [
+    "marvin, explain how this works",
+    "marvin, walk me through this module",
+    "marvin, what does this function do?"
+  ],
+  "docs-search": [
+    "marvin, where is this documented?",
+    "marvin, find the docs on the verify gate",
+    "marvin, search the project docs for this"
+  ],
+  handoff: [
+    "marvin, hand off this session",
+    "marvin, save the context so I can continue later",
+    "marvin, prep a handoff for a fresh session"
+  ],
+  "handoff-list": [
+    "marvin, list the handoffs",
+    "marvin, show me the saved handoff docs",
+    "marvin, what handoffs do we have?"
+  ],
+  lessons: [
+    "marvin, save this as a lesson",
+    "marvin, what lessons do we have on this?",
+    "marvin, recall past gotchas for this bug"
+  ],
+  help: ["marvin, show the help dashboard", "marvin, what commands are available?", "marvin, help"],
+  dashboard: [
+    "marvin, show me the dashboard",
+    "marvin, what's the state of the toolbox?",
+    "marvin, give me the whole-project report"
+  ],
+  reports: [
+    "marvin, show me the reports",
+    "marvin, what reports do we have?",
+    "marvin, open the latest security report"
+  ],
+  "report-export": [
+    "marvin, export the security report to PDF",
+    "marvin, save this report as markdown",
+    "marvin, make the scan report shareable"
+  ],
+  "widget-preview": [
+    "marvin, show me the help widget",
+    "marvin, open the dashboard as a panel",
+    "marvin, why do I never see the widgets?"
+  ],
+  // adr
+  "adr-review": [
+    "marvin, review this ADR",
+    "marvin, is ADR 31 ready to accept?",
+    "marvin, check this decision record"
+  ],
+  "adr-accept": [
+    "marvin, accept this ADR",
+    "marvin, ratify ADR 31",
+    "marvin, mark the decision record accepted"
+  ],
+  "adr-audit": [
+    "marvin, audit the ADRs",
+    "marvin, lint the decision records",
+    "marvin, are the ADRs consistent?"
+  ],
+  "adr-coverage": [
+    "marvin, what decisions are undocumented?",
+    "marvin, check our ADR coverage",
+    "marvin, which ADRs are we missing?"
+  ],
+  "adr-supersede": [
+    "marvin, supersede this ADR",
+    "marvin, roll back ADR 12",
+    "marvin, replace an accepted decision record"
+  ],
+  "adr-sync": [
+    "marvin, sync the ADR digest",
+    "marvin, refresh the decisions in CLAUDE.md",
+    "marvin, regenerate the ADR summary"
+  ],
+  // pr
+  "pr-create": [
+    "marvin, open a pull request",
+    "marvin, create a PR for this branch",
+    "marvin, push and open a PR"
+  ],
+  "pr-review": [
+    "marvin, review this PR",
+    "marvin, review PR 42 on GitHub",
+    "marvin, start a pull-request review"
+  ],
+  "pr-resolve": [
+    "marvin, address the PR feedback",
+    "marvin, resolve the review comments",
+    "marvin, apply the reviewer's suggestions on PR 42"
+  ],
+  "pr-merge": [
+    "marvin, merge this PR",
+    "marvin, merge PR 42 and sync the base",
+    "marvin, land the pull request"
+  ],
+  // task
+  "task-start": [
+    "marvin, start a new task",
+    "marvin, spec this out",
+    "marvin, define the task for pagination"
+  ],
+  "task-implement": [
+    "marvin, implement the spec",
+    "marvin, run the task",
+    "marvin, build out the ready spec"
+  ],
+  "task-verify": [
+    "marvin, run the quality gates",
+    "marvin, verify the project",
+    "marvin, are the tests and lint green?"
+  ],
+  "task-deliver": [
+    "marvin, deliver the task",
+    "marvin, commit and open a PR for this",
+    "marvin, ship this task"
+  ],
+  "task-summary": [
+    "marvin, summarize what this task delivered",
+    "marvin, give me the delivery digest",
+    "marvin, recap the task's acceptance criteria"
+  ],
+  "task-audit": [
+    "marvin, audit the specs",
+    "marvin, lint the spec corpus",
+    "marvin, are there duplicate spec numbers?",
+    "marvin, which specs are unsealed?"
+  ],
+  // sec
+  "sec-scan": [
+    "marvin, run a security scan",
+    "marvin, do a full OWASP audit",
+    "marvin, harden this before release"
+  ],
+  "sec-secrets": [
+    "marvin, scan for leaked secrets",
+    "marvin, check for exposed API keys",
+    "marvin, look for credentials in the git history"
+  ],
+  "sec-deps": [
+    "marvin, audit the dependencies",
+    "marvin, any vulnerable packages?",
+    "marvin, check dependency CVEs and licenses"
+  ],
+  "sec-gate": [
+    "marvin, quick security check on my changes",
+    "marvin, run the pre-commit security gate",
+    "marvin, is this staged diff safe?"
+  ],
+  "sec-threat-model": [
+    "marvin, threat-model this feature",
+    "marvin, run a STRIDE analysis on the upload flow",
+    "marvin, what are the attack surfaces here?"
+  ],
+  "sec-iac": [
+    "marvin, review the Terraform for security",
+    "marvin, scan the Kubernetes manifests",
+    "marvin, check the infrastructure-as-code"
+  ],
+  "sec-ci": [
+    "marvin, audit the CI pipeline",
+    "marvin, check the GitHub Actions for supply-chain risk",
+    "marvin, review the workflow permissions"
+  ],
+  "sec-fix": [
+    "marvin, fix this vulnerability",
+    "marvin, patch CVE-2024-1234 with a test",
+    "marvin, remediate this security finding"
+  ],
+  "sec-compliance": [
+    "marvin, check OWASP ASVS compliance",
+    "marvin, run a compliance gap analysis",
+    "marvin, build the compliance matrix"
+  ],
+  "sec-pentest": [
+    "marvin, give me a pentest checklist",
+    "marvin, plan a penetration test for this app",
+    "marvin, what should I test for exploits?"
+  ],
+  "sec-report": [
+    "marvin, list the security reports",
+    "marvin, show me past audit findings",
+    "marvin, what security scans have we run?"
+  ],
+  // refactor
+  "refactor-audit": [
+    "marvin, audit the code health",
+    "marvin, where is the tech debt?",
+    "marvin, map the refactoring hotspots"
+  ],
+  "refactor-smells": [
+    "marvin, scan this module for code smells",
+    "marvin, check src/tools for anti-patterns",
+    "marvin, find the smells in this diff"
+  ],
+  "refactor-plan": [
+    "marvin, plan the refactoring",
+    "marvin, sequence findings F3 and F4 into steps",
+    "marvin, turn these findings into a plan"
+  ],
+  "refactor-apply": [
+    "marvin, apply the next refactor step",
+    "marvin, execute step 2 of the plan",
+    "marvin, do the refactoring under the gates"
+  ],
+  // track
+  "track-menu": [
+    "marvin, open the board menu",
+    "marvin, show the board actions",
+    "marvin, what can I do on the board?"
+  ],
+  "track-new": [
+    "marvin, add a bug to the board",
+    "marvin, new feature: dark mode",
+    "marvin, track this chore"
+  ],
+  "track-list": [
+    "marvin, what's on the board?",
+    "marvin, what am I working on?",
+    "marvin, show the tracked tasks"
+  ],
+  "track-show": [
+    "marvin, show task 12",
+    "marvin, open this card",
+    "marvin, give me the details of task 12"
+  ],
+  "track-start": [
+    "marvin, start task 12",
+    "marvin, pick up the next todo",
+    "marvin, begin work on this task"
+  ],
+  "track-move": [
+    "marvin, move task 12 to review",
+    "marvin, mark this task done",
+    "marvin, set task 12 to blocked"
+  ],
+  "track-config": [
+    "marvin, show the board config",
+    "marvin, edit the board statuses",
+    "marvin, configure the board"
+  ]
+};
+
+// src/lib/help-data.ts
+var SLOGAN = "Claude Code toolset for AI development without panic";
+function humanRunSkills(packRoot2) {
+  const skillsDir = join(packRoot2, "skills");
+  const flagged = /* @__PURE__ */ new Set();
+  let entries;
+  try {
+    entries = readdirSync(skillsDir, { withFileTypes: true });
+  } catch (err3) {
+    if (err3?.code !== "ENOENT") {
+      console.error(`marvin: cannot read ${skillsDir} \u2014 no human-run markers will render`, err3);
+    }
+    return flagged;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const { frontmatter } = parseFrontmatter(
+        readFileSync(join(skillsDir, entry.name, "SKILL.md"), "utf8")
+      );
+      if (frontmatter["disable-model-invocation"] === "true") flagged.add(entry.name);
+    } catch {
+      continue;
+    }
+  }
+  return flagged;
+}
+function shortDesc(desc, max = 72) {
   const oneLine = desc.replace(/\s+/g, " ").trim();
   const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
   const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
@@ -31363,6 +33058,199 @@ function shortDesc(desc, max = 80) {
   const cut = base.slice(0, max);
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}\u2026`;
+}
+function projectMcpServers(projectDir) {
+  const names = /* @__PURE__ */ new Set();
+  const disabled = /* @__PURE__ */ new Set();
+  collectServers(join(projectDir, ".mcp.json"), true, names, disabled);
+  collectServers(join(projectDir, ".claude", "settings.json"), false, names, disabled);
+  collectServers(join(projectDir, ".claude", "settings.local.json"), false, names, disabled);
+  return [...names].sort().map((name) => ({ name, enabled: !disabled.has(name) }));
+}
+function collectServers(path, allowFlat, names, disabled) {
+  if (!existsSync(path)) return;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    const wrapped = parsed.mcpServers;
+    const servers = wrapped && typeof wrapped === "object" ? wrapped : allowFlat ? parsed : null;
+    if (servers) for (const k of Object.keys(servers)) names.add(k);
+    const off = parsed.disabledMcpjsonServers;
+    if (Array.isArray(off)) {
+      for (const d of off) if (typeof d === "string") disabled.add(d);
+    }
+  } catch {
+  }
+}
+
+// src/tools/help.ts
+var HelpInput = external_exports.object({
+  section: external_exports.string().optional().describe(
+    "Filter the command reference to one group: core, adr, pr, task, sec, refactor, track."
+  )
+});
+function buildHelpTool(env2, version2, packRoot2) {
+  return defineTool({
+    name: "help",
+    description: 'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/track).',
+    inputSchema: HelpInput,
+    // Bind the help `ui://` widget for MCP Apps hosts (ADR-0024). A plain object
+    // literal — no ext-apps import — so tsup never bundles the SDK into
+    // dist/server.js. The terminal ignores `_meta` and renders the text content.
+    meta: { ui: { resourceUri: HELP_WIDGET_URI } },
+    handler: (input) => {
+      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
+      return Promise.resolve(
+        renderHelp(env2, config2, version2, humanRunSkills(packRoot2), input.section)
+      );
+    }
+  });
+}
+function renderHelp(env2, config2, version2, humanRun, section) {
+  const { counts, malformed } = boardCounts(env2, config2);
+  const git2 = gitState(env2.projectDir);
+  const art = artifactCounts(env2, resolveSpecDir(env2.projectDir, config2.spec));
+  const servers = projectMcpServers(env2.projectDir);
+  const project = basename(env2.projectDir) || env2.projectDir;
+  const want = section?.trim().toLowerCase();
+  const known = !!want && GROUP_ORDER2.includes(want);
+  const lines = [
+    ...renderBanner(version2),
+    "",
+    "---",
+    "",
+    ...renderSummary(project, config2, git2, counts, malformed, art),
+    "",
+    ...renderMcpServers(servers),
+    "",
+    ...renderCommands(humanRun, want, known)
+  ];
+  const help = {
+    version: version2,
+    slogan: SLOGAN,
+    project,
+    git: {
+      branch: git2.branch,
+      base_branch: config2.base_branch,
+      has_git: git2.has_git,
+      has_gh: git2.has_gh
+    },
+    // Configured order (the project's lifecycle order — todo → … → blocked by
+    // default), not the role-grouped `orderedStatuses`, so the board reads in the
+    // order the author defined and the widget/mockup agree.
+    statuses: config2.statuses.map((s) => ({
+      key: s.key,
+      role: s.role,
+      count: counts[s.key] ?? 0
+    })),
+    artifacts: {
+      specs: art.specs,
+      handoffs: art.handoffs,
+      audits: art.audits,
+      lessons: art.lessons
+    },
+    servers,
+    groups: GROUP_ORDER2.filter((g) => PROMPTS.some((p) => groupOf(p.name) === g)).map((group) => ({
+      group,
+      blurb: GROUP_BLURBS[group] ?? ""
+    })),
+    // Full reference, registry order within each group. Names from the registry
+    // (drift-proof); blurb + description + phrases are curated (each guarded to full
+    // coverage by a test) with a `""` / `[]` fallback, so a missing entry ships an
+    // empty value the test catches rather than silent drift. `example` is genuinely
+    // optional — it is omitted entirely when absent, so the widget renders the `e.g.`
+    // line only when a command has one. `phrases` (the widget's "two ways to call"
+    // prose examples, ADR-0024) come from the shared help-content source both the
+    // tool and the widget fixture import, so the preview can never drift.
+    commands: GROUP_ORDER2.flatMap(
+      (group) => PROMPTS.filter((p) => groupOf(p.name) === group).map((p) => {
+        const example = COMMAND_EXAMPLES[p.name];
+        return {
+          group,
+          name: p.name,
+          blurb: COMMAND_BLURBS[p.name] ?? "",
+          description: COMMAND_DETAILS[p.name] ?? "",
+          ...example ? { example } : {},
+          phrases: [...COMMAND_PROMPTS[p.name] ?? []],
+          human: humanRun.has(p.name)
+        };
+      })
+    )
+  };
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: help
+  };
+}
+function renderBanner(version2) {
+  return ["# >_ MARVIN", "", SLOGAN, `_v${version2}_`];
+}
+function renderSummary(project, config2, git2, counts, malformed, art) {
+  const gitVal = git2.branch ? `\`${git2.branch}\` \xB7 base \`${config2.base_branch}\`` : "not in a git repo";
+  const board = config2.statuses.map((s) => {
+    const n = counts[s.key] ?? 0;
+    return `${s.key} ${n > 0 ? `**${n}**` : "0"}`;
+  }).join(" \xB7 ");
+  const artifacts = `specs ${art.specs} \xB7 handoffs ${art.handoffs} \xB7 audits ${art.audits} \xB7 lessons ${art.lessons}`;
+  const lines = [
+    "## Summary",
+    `- **project** \u2014 \`${project}\``,
+    `- **git** \u2014 ${gitVal}`,
+    `- **board** \u2014 ${board}`,
+    `- **artifacts** \u2014 ${artifacts}`
+  ];
+  const notes = [];
+  if (!git2.has_git) notes.push("git missing \u2014 lifecycle commands disabled");
+  if (!git2.has_gh) notes.push("gh missing \u2014 PR commands print the command instead");
+  if (notes.length > 0) lines.push(`- _${notes.join("; ")}._`);
+  if (malformed > 0) {
+    lines.push(`- \u26A0 ${malformed} malformed board file${malformed === 1 ? "" : "s"}`);
+  }
+  return lines;
+}
+function renderMcpServers(servers) {
+  return [
+    "## MCP servers",
+    servers.length ? servers.map((s) => `${s.enabled ? "\u25CF" : "\u25CB"} \`${s.name}\``).join(" \xB7 ") : "_none configured for this project_"
+  ];
+}
+function renderCommands(humanRun, want, known) {
+  if (known && want) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === want);
+    const lines2 = [`## Commands \xB7 ${want}`, "", `_${GROUP_BLURBS[want] ?? ""}_`, ""];
+    for (const p of inGroup) {
+      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
+      lines2.push(`- \`/marvin:${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+    }
+    return lines2;
+  }
+  const lines = [];
+  lines.push("## Command groups");
+  if (want) {
+    lines.push(`_Unknown group \`${want}\` \u2014 showing all. Valid: ${GROUP_ORDER2.join(", ")}._`);
+  }
+  for (const group of GROUP_ORDER2) {
+    if (PROMPTS.some((p) => groupOf(p.name) === group)) {
+      lines.push(`- \`${group}\` \u2014 ${GROUP_BLURBS[group] ?? ""}`);
+    }
+  }
+  lines.push(
+    "",
+    "## Commands",
+    "Run as `/marvin:<name>` or just ask in chat. \u{1F464} = human-run only."
+  );
+  for (const group of GROUP_ORDER2) {
+    const inGroup = PROMPTS.filter((p) => groupOf(p.name) === group);
+    if (inGroup.length === 0) continue;
+    lines.push("", `### ${group}`);
+    for (const p of inGroup) {
+      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
+      lines.push(`- \`${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+    }
+  }
+  return lines;
+}
+function blurbOf(name, description) {
+  return COMMAND_BLURBS[name] ?? shortDesc(description);
 }
 var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
 var INDEX_FILE = "MEMORY.md";
@@ -31479,10 +33367,10 @@ function findNearDuplicate(memoryDir, title) {
   }
   return best?.lesson ?? null;
 }
-var STALE_AFTER_DAYS = 180;
+var STALE_AFTER_DAYS2 = 180;
 function pruneCandidates(memoryDir, now = /* @__PURE__ */ new Date()) {
   const all = readAllLessons(memoryDir);
-  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS2 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
   const stale = all.filter((l) => l.created !== "" && l.created < cutoff);
   const duplicates = [];
   for (let i = 0; i < all.length; i += 1) {
@@ -31512,7 +33400,10 @@ function removeIndexLine(memoryDir, slug) {
 // src/tools/dashboard.ts
 var SECTION_ORDER = [
   "project",
-  "kanban",
+  "board",
+  "work",
+  "handoffs",
+  "audits",
   "artifacts",
   "adr",
   "lessons",
@@ -31525,7 +33416,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git, kanban board counters, artifact inventories with freshness (task specs + verification.md age, security reports + newest-report age, refactor registers by kind, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -31533,25 +33424,32 @@ function buildDashboardTool(env2, version2) {
     meta: { ui: { resourceUri: DASHBOARD_WIDGET_URI } },
     handler: (input) => {
       const loaded = loadConfig(env2.configPath, env2.projectDir);
-      return Promise.resolve(renderDashboard(env2, loaded.config, loaded.warning, version2, input));
+      return Promise.resolve(renderDashboard(env2, loaded, version2, input));
     }
   });
 }
-function renderDashboard(env2, config2, configWarning, version2, input) {
-  const kanban = kanbanCounts(env2, config2);
+function renderDashboard(env2, loaded, version2, input) {
+  const { config: config2, warning: configWarning, settingWarnings } = loaded;
+  const board = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const verification = verificationFreshness(env2.projectDir);
-  const artifacts = { ...artifactCounts(env2), verification };
-  const security = {
-    reports: artifacts.audits,
-    newest_age_days: newestAgeDays(join(env2.projectDir, ".marvin", "security"))
-  };
-  const refactor = refactorInventory(env2.projectDir);
+  const specDir = resolveSpecDir(env2.projectDir, config2.spec);
+  const artifacts = { ...artifactCounts(env2, specDir), verification };
   const lessons = lessonsStats(env2.memoryDir);
   const adrDir = resolveAdrDir(env2.projectDir, config2.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env2.projectDir);
   const groups = commandGroups();
+  const servers = projectMcpServers(env2.projectDir);
+  const currentTasks = {
+    board: boardDigest(env2, config2),
+    specs: specDigest(env2.projectDir, specDir)
+  };
+  const handoffs = handoffDigest(env2.handoffDir);
+  const audits = auditDigest({
+    security: env2.securityDir,
+    refactor: join(env2.projectDir, ".marvin", "refactor")
+  });
   const sections = {
     project: [
       "## Project",
@@ -31559,22 +33457,38 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       `- Config: \`${env2.configPath}\`${existsSync(env2.configPath) ? "" : " _(not created yet)_"}`,
       `- Base branch: \`${config2.base_branch}\``,
       `- git: ${git2.has_git ? "\u2713" : "\u2717"} \xB7 gh: ${git2.has_gh ? "\u2713" : "\u2717"} \xB7 branch: \`${git2.branch ?? "(not in a git repo)"}\``,
-      ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : []
+      `- MCP servers: ${servers.length > 0 ? servers.map((s) => `\`${s.name}\` ${s.enabled ? "\u2713" : "\u2717"}`).join(" \xB7 ") : "_none configured_"}`,
+      ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : [],
+      // Per-setting fallbacks, not a whole-file one: the rest of the config
+      // stands, so these carry no "using defaults" clause.
+      ...settingWarnings.map((w) => `- \u26A0 config: ${w}`)
     ],
-    kanban: [
-      "## Kanban",
+    board: [
+      "## Board",
       ...orderedStatuses(config2).map((s) => {
         const roleNote = s.key === s.role ? "" : ` (${s.role})`;
-        return `- ${s.key}${roleNote}: ${kanban.counts[s.key] ?? 0}`;
+        return `- ${s.key}${roleNote}: ${board.counts[s.key] ?? 0}`;
       }),
-      ...kanban.malformed > 0 ? [`- \u26A0 malformed files: ${kanban.malformed}`] : []
+      ...board.malformed > 0 ? [`- \u26A0 malformed files: ${board.malformed}`] : []
     ],
+    work: ["## Current work", ...renderWork(currentTasks.board, currentTasks.specs, specDir.rel)],
+    handoffs: ["## Handoffs", ...renderHandoffs(handoffs)],
+    audits: [
+      "## Audits",
+      renderAuditArea("Security", audits.security, "/marvin:sec-scan"),
+      renderAuditArea("Refactor", audits.refactor, "/marvin:refactor-audit")
+    ],
+    // Security and refactor are NOT counted here. The Audits section above
+    // reports their findings, and a document count beside a finding count
+    // measured two different things (every report versus the newest parseable
+    // one), which read as a contradiction. `artifacts.audits` still carries the
+    // security document count in the payload for the widget's Artifacts card.
     artifacts: [
       "## Artifacts",
-      `- Specs: ${artifacts.specs} \xB7 \`.marvin/task/\``,
+      // The trailing slash marks it as a directory, as the Handoffs line does;
+      // `rel` never carries one, whatever tier produced it.
+      `- Specs: ${artifacts.specs} \xB7 \`${specDir.rel}/\``,
       `- Verification: ${verification.exists ? `\`verification.md\` ${days(verification.age_days ?? 0)} old` : "none yet"}`,
-      `- Security reports: ${security.reports} \xB7 \`.marvin/security/\`${security.newest_age_days !== null ? ` (newest ${days(security.newest_age_days)} old)` : ""}`,
-      `- Refactor: ${refactor.audits} audit \xB7 ${refactor.smells} smells \xB7 ${refactor.plans} plan register(s) \xB7 \`.marvin/refactor/\``,
       `- Handoffs: ${artifacts.handoffs} \xB7 \`.marvin/handoff/\``
     ],
     adr: [
@@ -31621,23 +33535,25 @@ function renderDashboard(env2, config2, configWarning, version2, input) {
       ...config2.gates ? { gates: config2.gates } : {},
       statuses: config2.statuses
     },
-    kanban_counts: kanban.counts,
-    kanban_role_counts: kanban.roleCounts,
+    board_counts: board.counts,
+    board_role_counts: board.roleCounts,
     git: git2,
     artifacts,
     command_groups: groups,
     adr,
-    security,
-    refactor,
     lessons,
-    ...usage ? { usage } : {}
+    ...usage ? { usage } : {},
+    servers,
+    current_tasks: currentTasks,
+    handoffs,
+    audits
   };
   return {
     content: [{ type: "text", text: lines.join("\n").trimEnd() }],
     structuredContent: state
   };
 }
-var DAY_MS = 24 * 60 * 60 * 1e3;
+var DAY_MS3 = 24 * 60 * 60 * 1e3;
 function verificationFreshness(projectDir) {
   const path = join(projectDir, ".marvin", "task", "verification.md");
   const age = fileAgeDays(path);
@@ -31645,38 +33561,10 @@ function verificationFreshness(projectDir) {
 }
 function fileAgeDays(path) {
   try {
-    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS));
+    return Math.max(0, Math.floor((Date.now() - statSync(path).mtimeMs) / DAY_MS3));
   } catch {
     return null;
   }
-}
-function newestAgeDays(dir) {
-  if (!existsSync(dir)) return null;
-  let newest = null;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".md")) continue;
-      const mtime = statSync(join(dir, f)).mtimeMs;
-      if (newest === null || mtime > newest) newest = mtime;
-    }
-  } catch {
-    return null;
-  }
-  return newest === null ? null : Math.max(0, Math.floor((Date.now() - newest) / DAY_MS));
-}
-function refactorInventory(projectDir) {
-  const dir = join(projectDir, ".marvin", "refactor");
-  const inv = { audits: 0, smells: 0, plans: 0 };
-  if (!existsSync(dir)) return inv;
-  try {
-    for (const f of readdirSync(dir)) {
-      if (/^\d+-audit-.*\.md$/.test(f)) inv.audits += 1;
-      else if (/^\d+-smells-.*\.md$/.test(f)) inv.smells += 1;
-      else if (/^\d+-plan-.*\.md$/.test(f)) inv.plans += 1;
-    }
-  } catch {
-  }
-  return inv;
 }
 function adrSummary(rel, corpus) {
   const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
@@ -31726,6 +33614,44 @@ function readUsageSummary(projectDir) {
   const top = [...tally.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, TOP_COMMANDS);
   return { events, window: from !== null && to !== null ? { from, to } : null, top };
 }
+function renderWork(board, specs, specDirRel) {
+  const lines = [];
+  if (board.length === 0) {
+    lines.push("- _No active board cards \u2014 nothing in wip or review._");
+  } else {
+    lines.push("- Active cards (wip/review):");
+    for (const c of board) {
+      lines.push(
+        `  - \`${c.id}\` ${c.title} \xB7 ${c.status.key} \xB7 updated ${c.updated.slice(0, 10)}`
+      );
+    }
+  }
+  if (specs.length === 0) {
+    lines.push(`- _No pipeline specs in flight under \`${specDirRel}/\`._`);
+  } else {
+    lines.push("- Pipeline specs in flight:");
+    for (const s of specs) lines.push(`  - ${s.id ? `\`${s.id}\` ` : ""}${s.title}`);
+  }
+  return lines;
+}
+function renderHandoffs(handoffs) {
+  if (handoffs.length === 0) {
+    return ["- _No handoffs yet \u2014 `/marvin:handoff` captures the first one._"];
+  }
+  return handoffs.map(
+    (h) => `- \`${h.slug}\` ${h.objective}${h.age_days === null ? "" : ` \xB7 ${days(h.age_days)} old`}`
+  );
+}
+function renderAuditArea(label, area, command) {
+  if (area === null) return `- ${label}: _no report yet \u2014 \`${command}\` writes one._`;
+  const severities = nonZero(area.by_severity);
+  return [
+    `- ${label}: ${area.total} finding(s)`,
+    ...severities.length > 0 ? [severities.join(" \xB7 ")] : [],
+    ...area.newest_report ? [`\`${area.newest_report}\``] : [],
+    ...area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]
+  ].join(" \xB7 ");
+}
 function renderUsage(usage) {
   if (usage.events === 0) return ["- Usage log present but empty \u2014 0 event(s)."];
   const window = usage.window ? ` between ${usage.window.from.slice(0, 10)} and ${usage.window.to.slice(0, 10)}` : "";
@@ -31743,6 +33669,189 @@ function nonZero(counts) {
 function days(n) {
   return `${n} day(s)`;
 }
+
+// src/tools/verify.ts
+var import_yaml2 = __toESM(require_dist2());
+var DIGEST_EXCLUDE = [".marvin"];
+var MAX_DIGEST_PATHS = 5e3;
+function readChangedPaths(root) {
+  const diff = diffAgainstHead(root, {
+    format: "name-status",
+    exclude: DIGEST_EXCLUDE,
+    nul: true
+  });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
+  if (untracked === null) return null;
+  const paths = /* @__PURE__ */ new Map();
+  const fields = diff.split("\0").filter((s) => s.length > 0);
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    paths.set(fields[i + 1], fields[i]);
+  }
+  for (const p of untracked) if (!paths.has(p)) paths.set(p, "?");
+  return paths;
+}
+function digestFrom(paths, root) {
+  if (paths.size > MAX_DIGEST_PATHS) return null;
+  const sorted = [...paths.keys()].sort();
+  if (sorted.some((p) => p.includes("\n"))) return null;
+  const present = sorted.filter((p) => existsSync(join(root, p)));
+  const ids = hashObjects(present, root);
+  if (ids === null) return null;
+  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
+  const lines = sorted.map((p) => `${p}\0${paths.get(p)}\0${idByPath.get(p) ?? "D"}`);
+  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
+}
+function collectProvenance(cwd) {
+  const root = worktreeRoot(cwd);
+  if (!root) return null;
+  const paths = readChangedPaths(root);
+  return {
+    head_sha: headSha(root),
+    branch: currentBranch(root),
+    dirty: paths === null ? null : paths.size > 0,
+    worktree_digest: paths === null ? null : digestFrom(paths, root),
+    generated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyStaleness(recorded, current) {
+  if (!recorded || !current) return "unknown";
+  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
+  if (!recorded.head_sha || !current.head_sha) return "unknown";
+  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
+}
+var SHELL_METACHARACTERS = /[;|&`\n<>]|\$\(/;
+function splitRef(ref) {
+  const i = ref.indexOf("::");
+  return i === -1 ? { file: ref, name: "" } : { file: ref.slice(0, i).trim(), name: ref.slice(i + 2).trim() };
+}
+function packageDir(file) {
+  const i = file.lastIndexOf("/");
+  return i === -1 ? "." : `./${file.slice(0, i)}`;
+}
+var STACK_DEFAULTS = {
+  python: ({ file, name }) => `pytest ${file}::${name}`,
+  go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
+  rust: ({ name }) => `cargo test ${name}`
+};
+function resolveOracleCommand(criterion, opts) {
+  const oracle = criterion.oracle;
+  if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
+  if (oracle.run?.trim()) return { command: oracle.run.trim(), source: "oracle.run" };
+  if (oracle.kind === "prose-review") {
+    return { command: null, source: null, reason: "prose-review-oracle" };
+  }
+  const ref = oracle.ref?.trim();
+  if (!ref) return { command: null, source: null, reason: "no-ref" };
+  if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
+  const parts = splitRef(ref);
+  if (SHELL_METACHARACTERS.test(ref) || SHELL_METACHARACTERS.test(parts.file) || SHELL_METACHARACTERS.test(parts.name)) {
+    return { command: null, source: null, reason: "unsafe-ref" };
+  }
+  if (opts.testOne?.trim()) {
+    const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
+    return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
+  }
+  const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;
+  if (!row) return { command: null, source: null, reason: "no-single-test-command" };
+  if (!parts.name) return { command: null, source: null, reason: "ref-has-no-test-name" };
+  return { command: row(parts), source: "stack-default" };
+}
+function oracleTestFile(criterion) {
+  if (criterion.oracle.kind !== "test") return null;
+  const ref = criterion.oracle.ref?.trim();
+  if (!ref) return null;
+  return splitRef(ref).file || null;
+}
+var ORACLE_RUN_TAG = "oracle-run";
+var ORACLE_RUN_RE = new RegExp("```json " + ORACLE_RUN_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var OracleRunSchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** The seal this run was recorded against. Proofs never cross it. */
+  contract_sha: external_exports.string().min(1),
+  criterion: external_exports.string().min(1),
+  /** Which phase this was: the red run expects `fail`, the green one `pass`. */
+  expect: external_exports.enum(["pass", "fail"]),
+  /** What happened. `not-run` covers an unresolved command, a signal kill and a
+   * launch failure alike — none of them is evidence about the code. */
+  status: external_exports.enum(["pass", "fail", "not-run"]),
+  command: external_exports.string().nullable(),
+  source: external_exports.string().nullable(),
+  reason: external_exports.string().nullable().optional(),
+  code: external_exports.number().nullable(),
+  signal: external_exports.string().nullable(),
+  /** The referenced test file and the hash of its bytes at run time — what makes
+   * a red and a green comparable rather than merely consecutive. */
+  test_file: external_exports.string().nullable(),
+  test_sha: external_exports.string().nullable(),
+  head_sha: external_exports.string().nullable(),
+  durationMs: external_exports.number().optional(),
+  ran_at: external_exports.string()
+});
+function oracleJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.oracles.md`);
+}
+function recordOracleRun(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = oracleJournalPath(runsDir, entry.slug);
+  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+
+Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
+
+`;
+  const block = `\`\`\`json ${ORACLE_RUN_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header}${block}`, "utf8");
+}
+function readOracleRuns(runsDir, slug) {
+  const path = oracleJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m of raw.matchAll(ORACLE_RUN_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = OracleRunSchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function isRed(r) {
+  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha;
+}
+function isGreen(r) {
+  return r.expect === "pass" && r.status === "pass" && r.code === 0 && !!r.test_sha;
+}
+function redGreenProof(runs, contractSha, criterionId) {
+  if (!contractSha) return "missing";
+  const relevant = runs.filter(
+    (r) => r.contract_sha === contractSha && r.criterion === criterionId
+  );
+  for (let i = 0; i < relevant.length; i++) {
+    const red = relevant[i];
+    if (!isRed(red)) continue;
+    for (let j = i + 1; j < relevant.length; j++) {
+      const green = relevant[j];
+      if (isGreen(green) && green.test_sha === red.test_sha) return "proven";
+    }
+  }
+  return "missing";
+}
+
+// src/tools/verify.ts
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 function hasFile(root, ...names) {
   return names.some((n) => existsSync(join(root, n)));
@@ -31843,25 +33952,48 @@ var VerifyInput = external_exports.object({
   stack: external_exports.string().optional().describe("Pre-detected stack id (e.g. 'go', 'dotnet') to skip detection in a chained run."),
   gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
-  write: external_exports.boolean().default(true).describe("Write verification.md to <projectRoot>/.marvin/task/."),
+  write: external_exports.boolean().default(true).describe(
+    "Write verification.md to <projectRoot>/.marvin/task/. That location is deliberately independent of where specs live: a spec is a project document and stays host-adaptive (ADR-0005), while everything marvin generates about a run is a service file pinned under .marvin/ (ADR-0007), so this path does not follow `spec.dir` (ADR-0037)."
+  ),
   dryRun: external_exports.boolean().default(false).describe("Report the detected gate plan without executing anything."),
-  action: external_exports.enum(["run", "gate"]).default("run").describe(
-    "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver."
+  action: external_exports.enum(["run", "gate", "oracles"]).default("run").describe(
+    "run: execute the gates (default). gate: do not run anything \u2014 read the existing verification.md and decide whether delivery is allowed (verdict PASS / PASS WITH WARNINGS) or blocked (FAIL / missing). The deterministic delivery gate for /marvin:task-deliver. oracles: run a sealed spec's acceptance oracles (not gates) and append each outcome to .marvin/task/runs/<slug>.oracles.md \u2014 the red-green recorder for /marvin:task-implement."
+  ),
+  criteria: external_exports.array(external_exports.string().min(1)).optional().describe(
+    'oracles only: run just these criterion ids (e.g. ["AC2"]). Omit to run every non-prose-review criterion. Distinct from `only`, which selects GATES.'
+  ),
+  expect: external_exports.enum(["pass", "fail"]).default("pass").describe(
+    'oracles only: which phase this is. "fail" is the red phase (the test must fail before the fix); "pass" is the green phase. Recorded on every journal entry \u2014 a red and a green at the same contract_sha with the same test hash are what the delivery gate reads as a proof.'
+  ),
+  command: external_exports.string().min(1).optional().describe(
+    "oracles only: run this exact command for every selected criterion, outranking the criterion's own `run`, its `ref` and the project's `gates.test_one`."
+  ),
+  specSlug: external_exports.string().optional().describe(
+    "Spec slug (kebab-case) this run verifies. On run: also writes the identical artifact to .marvin/task/runs/<slug>.md. On gate: reads that per-spec run instead of the global verification.md, so the gate judges THIS task's proof. A non-kebab-case slug is rejected with a warning, never sanitised."
+  ),
+  allowStale: external_exports.boolean().default(false).describe(
+    "gate only: deliver even though the recorded verification no longer describes this working tree. Waives the freshness check ONLY \u2014 it never turns a FAIL verdict into an ALLOW, and never waives the no-test-evidence refusal. Requires an explicit user decision."
   )
 });
 function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
-    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver.`,
+    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.`,
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env2)
   });
 }
 async function runVerify(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  if (input.action === "gate") return deliverGate(projectRoot);
-  const configPath = input.projectRoot ? join(input.projectRoot, ".marvin", "config.json") : env2.configPath;
-  const { config: config2, warning: configWarning } = loadConfig(configPath);
+  const { config: config2, warning: configWarning } = loadConfig(projectConfigPath(env2, projectRoot));
+  if (input.action === "gate") {
+    return deliverGate(projectRoot, {
+      specSlug: input.specSlug,
+      allowStale: input.allowStale,
+      specConfig: config2.spec
+    });
+  }
+  if (input.action === "oracles") return runOracles(projectRoot, input, config2);
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
   if (detected.gates.length === 0) {
@@ -31889,13 +34021,26 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
 ${plan}${warn2}`
     );
   }
+  const planned = planGates(gates, projectRoot);
   const wallStart = performance.now();
-  const results = await executeGates(gates, input.execution, projectRoot);
+  const results = await executeGates(planned, input.execution, projectRoot);
   const wallClockMs = Math.round(performance.now() - wallStart);
   const sumOfGatesMs = results.reduce((acc, r) => acc + r.durationMs, 0);
   const warnings = modeWarnings(input.mode, projectRoot);
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`);
+  }
+  for (const r of results) {
+    if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
+  }
+  const runSlug = resolveRunSlug(input.specSlug);
+  if (runSlug.rejected) {
+    warnings.push(
+      slugRejection(
+        runSlug.rejected,
+        "wrote only `.marvin/task/verification.md`, no per-spec run."
+      )
+    );
   }
   const verdict = computeVerdict(results, warnings);
   const markdown = renderMarkdown({
@@ -31909,7 +34054,9 @@ ${plan}${warn2}`
     sumOfGatesMs
   });
   const artifactPath = input.write ? join(projectRoot, ".marvin", "task", "verification.md") : null;
-  const machine = JSON.stringify({
+  const runPath = input.write && runSlug.slug ? join(projectRoot, ".marvin", "task", "runs", `${runSlug.slug}.md`) : null;
+  const provenance = collectProvenance(projectRoot) ?? void 0;
+  const machine = formatVerifyBlock({
     verdict,
     gates: results.map((r) => ({
       name: r.name,
@@ -31921,16 +34068,19 @@ ${plan}${warn2}`
     warnings,
     wallClockMs,
     sumOfGatesMs,
-    artifactPath
+    artifactPath,
+    provenance
   });
   const fullText = `${markdown}
 
-\`\`\`json verify-result
-${machine}
-\`\`\``;
+${machine}`;
   if (input.write && artifactPath) {
     mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(artifactPath, fullText, "utf8");
+    if (runPath) {
+      mkdirSync(dirname(runPath), { recursive: true });
+      writeFileSync(runPath, fullText, "utf8");
+    }
   }
   return {
     content: [{ type: "text", text: fullText }],
@@ -32037,53 +34187,124 @@ function detectMakefile(projectRoot) {
   }
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
-async function executeGates(gates, execution, cwd) {
+async function executeGates(planned, execution, cwd) {
   if (execution === "parallel") {
-    const settled = await Promise.allSettled(gates.map((g) => runGate(g, cwd)));
+    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
     return settled.map(
-      (s, i) => s.status === "fulfilled" ? s.value : crashResult(gates[i], s.reason)
+      (s, i) => s.status === "fulfilled" ? s.value : crashResult(planned[i].gate, s.reason)
     );
   }
   const results = [];
-  for (const g of gates) {
+  for (const p of planned) {
     let r;
     try {
-      r = await runGate(g, cwd);
+      r = await runGate(p, cwd);
     } catch (err3) {
-      r = crashResult(g, err3);
+      r = crashResult(p.gate, err3);
     }
     results.push(r);
-    if (execution === "fail-fast" && r.status !== "pass") break;
+    if (execution === "fail-fast" && r.status !== "pass" && r.status !== "not-run") break;
   }
   return results;
 }
-function runGate(gate, cwd) {
+var SHELL_METACHARACTERS2 = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
+var ABSTAIN = { kind: "abstain" };
+function planGates(gates, cwd) {
+  const byToken = /* @__PURE__ */ new Map();
+  return gates.map((gate) => {
+    if (SHELL_METACHARACTERS2.test(gate.command)) return { gate, probe: ABSTAIN };
+    const token = gate.command.trim().split(/\s+/)[0];
+    if (!token) return { gate, probe: ABSTAIN };
+    let probe = byToken.get(token);
+    if (!probe) {
+      probe = probeToken(token, cwd);
+      byToken.set(token, probe);
+    }
+    return { gate, probe };
+  });
+}
+function probeToken(token, cwd) {
+  const probe = spawnSync("sh", ["-c", `command -v -- ${token}`], { cwd, encoding: "utf8" });
+  if (probe.error || probe.status === null) return ABSTAIN;
+  return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
+}
+function notRunWarning(gate, token) {
+  return `gate not run: \`${gate}\` \u2014 \`${token ?? "the gate command"}\` is not on PATH (install it, or pin a different command in \`.marvin/config.json\`)`;
+}
+var NOT_RUN_WARNING_PREFIX = "gate not run:";
+function spawnCommand(command, cwd) {
+  const start = performance.now();
+  const since = () => Math.round(performance.now() - start);
+  const asError = (err3) => err3 instanceof Error ? err3 : new Error(String(err3));
   return new Promise((resolve) => {
-    const start = performance.now();
-    const child = spawn(gate.command, { cwd, shell: true });
+    let child;
+    try {
+      child = spawn(command, { cwd, shell: true });
+    } catch (err3) {
+      resolve({
+        code: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        durationMs: since(),
+        error: asError(err3)
+      });
+      return;
+    }
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (d) => stdout += d.toString());
-    child.stderr?.on("data", (d) => stderr += d.toString());
-    child.on("error", (err3) => {
-      resolve(crashResult(gate, err3, Math.round(performance.now() - start)));
-    });
-    child.on("close", (code, signal) => {
-      const durationMs = Math.round(performance.now() - start);
-      const status = code === 0 ? "pass" : code === null ? "error" : "fail";
-      const tail = (stderr || stdout).trim().split("\n").slice(-12).join("\n");
-      const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${signal})` : `exit ${code}`;
-      resolve({
-        name: gate.name,
-        command: gate.command,
-        status,
-        code,
-        durationMs,
-        summary,
-        details: tail
-      });
-    });
+    let settled = false;
+    const settle = (o) => {
+      if (settled) return;
+      settled = true;
+      resolve(o);
+    };
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (d) => stdout += d);
+    child.stderr?.on("data", (d) => stderr += d);
+    child.on(
+      "error",
+      (err3) => settle({ code: null, signal: null, stdout, stderr, durationMs: since(), error: err3 })
+    );
+    child.on(
+      "close",
+      (code, signal) => settle({ code, signal, stdout, stderr, durationMs: since() })
+    );
   });
+}
+function classifyExit(code, signal) {
+  if (code === 0) return "pass";
+  if (code === null || signal !== null) return "error";
+  return "fail";
+}
+async function runGate({ gate, probe }, cwd) {
+  if (probe.kind === "missing") {
+    return {
+      name: gate.name,
+      command: gate.command,
+      status: "not-run",
+      code: null,
+      durationMs: 0,
+      summary: `not run \u2014 \`${probe.token}\` is not on PATH`,
+      details: "",
+      missingToken: probe.token
+    };
+  }
+  const out = await spawnCommand(gate.command, cwd);
+  if (out.error) return crashResult(gate, out.error, out.durationMs);
+  const status = classifyExit(out.code, out.signal);
+  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
+  return {
+    name: gate.name,
+    command: gate.command,
+    status,
+    code: out.code,
+    durationMs: out.durationMs,
+    summary,
+    details: tail
+  };
 }
 function crashResult(gate, reason, durationMs = 0) {
   return {
@@ -32109,24 +34330,220 @@ function modeWarnings(mode, cwd) {
   return [];
 }
 function changedFiles(cwd) {
+  const diff = diffAgainstHead(cwd, { format: "name-only" });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(cwd) ?? [];
+  return [...diff.split("\n"), ...untracked].map((s) => s.trim()).filter(Boolean);
+}
+function computeVerdict(results, warnings) {
+  if (results.some((r) => r.status !== "pass" && r.status !== "not-run")) return "FAIL";
+  if (warnings.length > 0) return "PASS WITH WARNINGS";
+  return "PASS";
+}
+var SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function resolveRunSlug(specSlug) {
+  if (specSlug === void 0) return { slug: null };
+  const slug = specSlug.trim();
+  if (SLUG_RE.test(slug)) return { slug };
+  return { slug: null, rejected: slug };
+}
+function slugRejection(rejected, consequence) {
+  return `\`specSlug\` \`${rejected}\` is not kebab-case \u2014 ${consequence}`;
+}
+function findSpec(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function runsDirOf(projectRoot) {
+  return join(projectRoot, ".marvin", "task", "runs");
+}
+function readSealedSpec(slug, projectRoot, specConfig) {
+  const path = findSpec(slug, projectRoot, specConfig);
+  if (!path) {
+    const searched = specSearchDirs(projectRoot, specConfig).map((d) => relative(projectRoot, d) || d).join(", ");
+    return { error: `No spec found for slug \`${slug}\` under ${searched}.` };
+  }
+  let raw;
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], { cwd, encoding: "utf8" });
-    if (diff.status !== 0) return null;
-    const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
-      cwd,
-      encoding: "utf8"
-    });
-    const lines = `${diff.stdout || ""}
-${untracked.status === 0 ? untracked.stdout || "" : ""}`;
-    return lines.split("\n").map((s) => s.trim()).filter(Boolean);
+    raw = readFileSync(path, "utf8");
+  } catch (err3) {
+    return { error: `could not read \`${path}\`: ${err3 instanceof Error ? err3.message : err3}` };
+  }
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const blockText = extractContractBlock(body);
+  if (!blockText) {
+    return { error: `\`${path}\` has no \`\`\`yaml spec-contract block \u2014 nothing to run.` };
+  }
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const actual = contractHash(blockText);
+  if (!stamped) {
+    return {
+      error: `spec \`${slug}\` is UNSEALED \u2014 its frontmatter carries no \`contract_sha\`, so a run has no key to be journalled against and every unsealed spec would share one proof namespace. Seal it first (/marvin:task-start's seal step, \`spec\` with \`mode: "seal"\`; the current block hash is ${actual}), then re-run.`
+    };
+  }
+  if (stamped !== actual) {
+    return {
+      error: `spec \`${slug}\` has been edited since it was sealed \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+  } catch (err3) {
+    return {
+      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
+    };
+  }
+  if (!parsed.success) {
+    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
+  }
+  return {
+    slug,
+    path,
+    type: (frontmatter.type ?? "").trim(),
+    contractSha: actual,
+    criteria: parsed.data.criteria
+  };
+}
+function testFileHash(projectRoot, file) {
+  if (!file) return null;
+  const abs = join(projectRoot, file);
+  if (!existsSync(abs)) return null;
+  try {
+    return createHash("sha256").update(readFileSync(abs)).digest("hex").slice(0, 16);
   } catch {
     return null;
   }
 }
-function computeVerdict(results, warnings) {
-  if (results.some((r) => r.status !== "pass")) return "FAIL";
-  if (warnings.length > 0) return "PASS WITH WARNINGS";
-  return "PASS";
+function unambiguousStack(input, projectRoot) {
+  if (input.stack) return input.stack;
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  return matched.length === 1 ? matched[0].id : void 0;
+}
+async function runOracles(projectRoot, input, config2) {
+  const { slug, rejected } = resolveRunSlug(input.specSlug);
+  if (!slug) {
+    return errText2(
+      `\`action: "oracles"\` needs a kebab-case \`specSlug\` naming the sealed spec to run.` + (rejected ? ` ${slugRejection(rejected, "nothing was run and nothing was journalled.")}` : "")
+    );
+  }
+  const spec = readSealedSpec(slug, projectRoot, config2.spec);
+  if ("error" in spec) return errText2(spec.error);
+  const wanted = input.criteria?.map((c) => c.trim().toLowerCase());
+  const selected = spec.criteria.filter((c) => !wanted || wanted.includes(c.id.toLowerCase()));
+  if (selected.length === 0) {
+    return errText2(
+      `No criterion in \`${slug}\` matched \`criteria\` (${input.criteria?.join(", ")}). The spec declares ${spec.criteria.map((c) => c.id).join(", ")}.`
+    );
+  }
+  const runnable = selected.filter((c) => c.oracle.kind !== "prose-review");
+  const skipped = selected.filter((c) => c.oracle.kind === "prose-review").map((c) => c.id);
+  const testOne = config2.gates?.test_one;
+  const stack = unambiguousStack(input, projectRoot);
+  const head = headSha(projectRoot);
+  const runsDir = runsDirOf(projectRoot);
+  const entries = [];
+  for (const criterion of runnable) {
+    const resolved = resolveOracleCommand(criterion, {
+      call: input.command,
+      testOne,
+      stack});
+    const file = oracleTestFile(criterion);
+    const base = {
+      slug,
+      contract_sha: spec.contractSha,
+      criterion: criterion.id,
+      expect: input.expect,
+      test_file: file,
+      test_sha: testFileHash(projectRoot, file),
+      head_sha: head,
+      ran_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (resolved.command === null) {
+      entries.push({
+        ...base,
+        status: "not-run",
+        command: null,
+        source: null,
+        reason: resolved.reason,
+        code: null,
+        signal: null
+      });
+      continue;
+    }
+    const out = await spawnCommand(resolved.command, projectRoot);
+    const shared = {
+      ...base,
+      command: resolved.command,
+      source: resolved.source,
+      durationMs: out.durationMs
+    };
+    if (out.error) {
+      entries.push({
+        ...shared,
+        status: "not-run",
+        reason: `launch-failed: ${out.error.message}`,
+        code: null,
+        signal: null
+      });
+      continue;
+    }
+    const classified = classifyExit(out.code, out.signal);
+    entries.push({
+      ...shared,
+      status: classified === "error" ? "not-run" : classified,
+      ...classified === "error" ? { reason: `signal-killed: ${out.signal ?? "unknown"}` } : {},
+      code: out.code,
+      signal: out.signal
+    });
+  }
+  for (const entry of entries) recordOracleRun(runsDir, entry);
+  const journal = oracleJournalPath(runsDir, slug);
+  const icon = (s) => s === "pass" ? "\u2705" : s === "fail" ? "\u274C" : "\u26AA";
+  const md = [
+    `# Acceptance Oracles \u2014 ${slug}`,
+    ``,
+    `**Contract:** \`${spec.contractSha}\` \xB7 **Phase:** expect ${input.expect} \xB7 **Journal:** \`${journal}\``,
+    ``,
+    ...entries.map(
+      (e) => `- ${icon(e.status)} **${e.criterion}** \u2014 ${e.status}` + (e.command ? ` \xB7 \`${e.command}\` (${e.source})` : "") + (e.reason ? ` \xB7 ${e.reason}` : "")
+    ),
+    ...entries.length ? [] : ["_no runnable criterion selected_"],
+    ...skipped.length ? ["", `Skipped (prose-review): ${skipped.join(", ")}.`] : [],
+    ``
+  ].join("\n");
+  const machine = JSON.stringify({
+    slug,
+    contract_sha: spec.contractSha,
+    expect: input.expect,
+    journal,
+    runs: entries
+  });
+  return {
+    content: [{ type: "text", text: `${md}
+\`\`\`json oracle-result
+${machine}
+\`\`\`` }]
+  };
+}
+function redGreenStatus(projectRoot, specSlug, specConfig) {
+  const none = { status: "unknown", unproven: [] };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  if ("error" in spec) return none;
+  if (spec.type !== "bugfix") return none;
+  const regression = spec.criteria.filter((c) => c.regression === true);
+  if (regression.length === 0) return none;
+  const runs = readOracleRuns(runsDirOf(projectRoot), slug);
+  const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
+  return { status: unproven.length ? "missing" : "proven", unproven };
+}
+function errText2(text) {
+  return { content: [{ type: "text", text }], isError: true };
 }
 function renderMarkdown(o) {
   const section = (title, n) => {
@@ -32168,10 +34585,18 @@ ${body}`;
     ``
   ].join("\n");
 }
-function deliverGate(projectRoot) {
-  const artifactPath = join(projectRoot, ".marvin", "task", "verification.md");
+function deliverGate(projectRoot, opts) {
+  const { allowStale } = opts;
+  const globalPath = join(projectRoot, ".marvin", "task", "verification.md");
+  const { slug, rejected } = resolveRunSlug(opts.specSlug);
+  const runPath = slug ? join(projectRoot, ".marvin", "task", "runs", `${slug}.md`) : null;
+  const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
+  const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const extras = { artifactPath, allowStale, redGreen: redGreen.status };
+  const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
+  const decide = (decision, verdict2, reason, extra = extras) => gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
   if (!existsSync(artifactPath)) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       "no verification.md found \u2014 run /marvin:task-verify before delivering"
@@ -32181,58 +34606,96 @@ function deliverGate(projectRoot) {
   try {
     text = readFileSync(artifactPath, "utf8");
   } catch (err3) {
-    return gateResult(
+    return decide(
       "BLOCK",
       null,
       `could not read verification.md: ${err3 instanceof Error ? err3.message : String(err3)}`
     );
   }
-  const m = text.match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) {
-    return gateResult(
+  const parse4 = parseVerifyBlock(text);
+  if (parse4.kind === "none") {
+    return decide(
       "BLOCK",
       null,
       "verification.md has no machine-readable verify-result block \u2014 re-run /marvin:task-verify"
     );
   }
-  let verdict;
-  try {
-    verdict = JSON.parse(m[1]).verdict;
-  } catch {
-    return gateResult(
-      "BLOCK",
-      null,
-      "verify-result block is not valid JSON \u2014 re-run /marvin:task-verify"
-    );
+  if (parse4.kind === "invalid") {
+    return decide("BLOCK", null, `${parse4.reason} \u2014 re-run /marvin:task-verify`);
   }
-  if (verdict === "PASS") return gateResult("ALLOW", "PASS", "verification passed");
-  if (verdict === "PASS WITH WARNINGS") {
-    return gateResult(
-      "ALLOW",
-      "PASS WITH WARNINGS",
-      "verification passed with warnings \u2014 review them before delivering"
-    );
-  }
+  const verdict = parse4.result.verdict;
   if (verdict === "FAIL") {
-    return gateResult(
+    return decide(
       "BLOCK",
       "FAIL",
       "verification FAILED \u2014 fix the failing gates and re-run /marvin:task-verify"
     );
   }
-  return gateResult(
-    "BLOCK",
-    typeof verdict === "string" ? verdict : null,
-    "unrecognised verdict \u2014 re-run /marvin:task-verify"
-  );
+  if (verdict !== "PASS" && verdict !== "PASS WITH WARNINGS") {
+    return decide(
+      "BLOCK",
+      typeof verdict === "string" ? verdict : null,
+      "unrecognised verdict \u2014 re-run /marvin:task-verify"
+    );
+  }
+  const noEvidence = noEvidenceRefusal(parse4.result.gates, parse4.result.warnings ?? []);
+  if (noEvidence) return decide("BLOCK", verdict, noEvidence);
+  const recorded = parse4.result.provenance;
+  const staleness = recorded ? classifyStaleness(recorded, collectProvenance(projectRoot)) : "unknown";
+  const base = verdict === "PASS" ? "verification passed" : "verification passed with warnings \u2014 review them before delivering";
+  const notRun = quoteNotRunWarnings(parse4.result.warnings ?? []);
+  if (staleness === "stale" && !allowStale) {
+    return decide(
+      "BLOCK",
+      verdict,
+      `the recorded verification no longer describes this working tree \u2014 verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`. Re-run /marvin:task-verify, or deliver with allowStale: true after an explicit decision.`,
+      { ...extras, staleness }
+    );
+  }
+  const freshness = staleness === "fresh" ? " \xB7 the evidence matches this working tree" : staleness === "stale" ? ` \xB7 STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`)` : " \xB7 freshness not checked (this run recorded no provenance)";
+  const redGreenNote = redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
+  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}`, {
+    ...extras,
+    staleness
+  });
 }
-function gateResult(decision, verdict, reason) {
-  const machine = JSON.stringify({ decision, verdict, reason });
+function noEvidenceRefusal(gates, warnings) {
+  if (gates.length === 0) return null;
+  const notRun = (g) => g.status === "not-run";
+  const testGates = gates.filter((g) => g.name === "test");
+  const quoted = quoteNotRunWarnings(warnings);
+  if (testGates.length > 0 && testGates.every(notRun)) {
+    return `no test evidence \u2014 every recorded \`test\` gate was not run${quoted}. Install the test runner (or pin one in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
+  }
+  if (gates.every(notRun)) {
+    return `no evidence \u2014 every recorded gate was not run${quoted}. Install the missing tooling (or pin gate commands in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
+  }
+  return null;
+}
+function quoteNotRunWarnings(warnings) {
+  const relevant = warnings.filter((w) => w.startsWith(NOT_RUN_WARNING_PREFIX));
+  return relevant.length ? ` \u2014 ${relevant.join("; ")}` : "";
+}
+function gateResult(decision, verdict, reason, extras) {
+  const staleness = extras.staleness ?? "unknown";
+  const redGreen = extras.redGreen ?? "unknown";
+  const machine = JSON.stringify({
+    decision,
+    verdict,
+    reason,
+    staleness,
+    red_green: redGreen,
+    artifactPath: extras.artifactPath,
+    allowStale: extras.allowStale
+  });
   const md = [
     `# Delivery Gate`,
     ``,
     `**Decision:** ${decision}`,
     `**Verdict:** ${verdict ?? "\u2014"}`,
+    `**Freshness:** ${staleness}`,
+    `**Red-green:** ${redGreen}`,
+    `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
     ``
   ].join("\n");
@@ -32249,67 +34712,97 @@ function ok3(text) {
 }
 
 // src/tools/spec.ts
-var import_yaml2 = __toESM(require_dist2());
-var ID_FILE = /^F\d+$/i;
-var ID_AC = /^AC\d+$/i;
-var RefList = external_exports.union([external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])), external_exports.string()]);
-var FileRow = external_exports.object({
-  id: external_exports.string().regex(ID_FILE, "file id must look like F1, F2, \u2026"),
-  path: external_exports.string().min(1),
-  action: external_exports.enum(["new", "edit", "delete"]),
-  intent: external_exports.string().optional(),
-  satisfies: RefList.optional(),
-  anchor: external_exports.string().optional()
+var import_yaml3 = __toESM(require_dist2());
+var PROGRESS_TAG = "spec-progress";
+var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var ProgressEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** Which skill wrote it: step ids collide across the two pipelines. */
+  source: external_exports.enum(["task-start", "task-implement"]),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
+  /** One line of position and choice. Never a credential, token or customer datum. */
+  detail: external_exports.string(),
+  /** The acceptance-criterion id, when `kind` is `criterion`. */
+  criterion: external_exports.string().nullable().optional(),
+  /** The draft/spec path, recorded once when the draft is opened. */
+  path: external_exports.string().nullable().optional(),
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601. */
+  at: external_exports.string()
 });
-var Oracle = external_exports.object({
-  kind: external_exports.enum(["test", "command", "prose-review"]),
-  ref: external_exports.string().optional()
-});
-var Criterion = external_exports.object({
-  id: external_exports.string().regex(ID_AC, "criterion id must look like AC1, AC2, \u2026"),
-  statement: external_exports.string().min(1),
-  implemented_by: RefList,
-  oracle: Oracle,
-  failure: external_exports.string().optional(),
-  regression: external_exports.boolean().optional()
-});
-var ContractObj = external_exports.object({
-  kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
-  signature: external_exports.string().optional()
-});
-var SpecContract = external_exports.object({
-  files: external_exports.array(FileRow).min(1),
-  build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
-  contract: ContractObj.optional(),
-  criteria: external_exports.array(Criterion).min(1),
-  depends_on: external_exports.array(external_exports.string()).optional()
-});
-var HostBindings = external_exports.object({
-  spec_location: external_exports.string().optional(),
-  decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
-  merge_obligations: external_exports.array(external_exports.string()).optional(),
-  gates: external_exports.record(external_exports.string()).optional()
-}).passthrough();
-function extractContractBlock(body) {
-  const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
+function progressJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.progress.md`);
 }
-function extractHostBindings(body) {
-  const m = /```[^\n`]*host-bindings[^\n`]*\n([\s\S]*?)\n```/.exec(body);
-  return m ? m[1] : null;
+function recordProgress(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = progressJournalPath(runsDir, entry.slug);
+  const header = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
+
+Append-only. One \`${PROGRESS_TAG}\` block per entry.
+
+`;
+  const block = `\`\`\`json ${PROGRESS_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
-var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
-function resolveSpecBySlug(dir, slug, projectRoot) {
-  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
-  if (!existsSync(abs)) return null;
-  const exact = `${slug}.md`;
-  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
-  let fallback = null;
-  for (const entry of readdirSync(abs).sort()) {
-    if (entry === exact) return join(abs, entry);
-    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+function readProgress(runsDir, slug) {
+  const path = progressJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
   }
-  return fallback;
+  const out = [];
+  for (const m of raw.matchAll(PROGRESS_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = ProgressEntrySchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function resumeState(entries) {
+  let archived = 0;
+  let start = 0;
+  entries.forEach((e, i) => {
+    if (e.kind === "archived") {
+      archived += 1;
+      start = i + 1;
+    }
+  });
+  const live = entries.slice(start);
+  const criteria_done = [];
+  let path = null;
+  let contract_sha = null;
+  for (const e of live) {
+    if (e.kind === "criterion") {
+      const id = e.criterion?.trim();
+      if (id && !criteria_done.includes(id)) criteria_done.push(id);
+    }
+    if (e.path) path = e.path;
+    if (e.contract_sha) contract_sha = e.contract_sha;
+  }
+  return {
+    entries: live,
+    archived,
+    last: live.length ? live[live.length - 1] : null,
+    criteria_done,
+    path,
+    contract_sha
+  };
 }
 
 // src/tools/spec.ts
@@ -32359,26 +34852,64 @@ var SpecInput = external_exports.object({
   projectRoot: external_exports.string().optional().describe(
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   ),
-  mode: external_exports.enum(["dor", "seal", "scope"]).default("dor").describe(
-    "dor: the full Definition-of-Ready gate (default). seal: verify only the spec-contract immutability hash against the frontmatter contract_sha (the deterministic tamper check for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate)."
+  action: external_exports.enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"]).optional().describe(
+    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate). next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
   ),
+  mode: external_exports.enum(["dor", "seal", "scope"]).optional().describe(
+    "Deprecated synonym for `action`, kept so shipped callers keep working. Same three values; `action` wins when both are passed and they agree, and a disagreeing pair is rejected rather than answered for."
+  ),
+  slug: external_exports.string().optional().describe(
+    "action: next \u2014 the kebab-case slug of the spec being created, so the answer carries the composed filename and any collision with an existing spec. action: progress / resume \u2014 the slug whose journal is written or read (it is also the journal's filename, so it is rejected rather than sanitised)."
+  ),
+  source: external_exports.enum(["task-start", "task-implement"]).optional().describe("action: progress \u2014 which skill is writing; step ids collide across the two."),
+  step: external_exports.string().optional().describe(`action: progress \u2014 the writer's own step id ("1.5", "4F", "5F", "2.5").`),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]).optional().describe(
+    'action: progress \u2014 what this entry records. "archived" is the boundary a resumed run appends when the user chooses to start clean; everything before it stops counting without being deleted.'
+  ),
+  detail: external_exports.string().optional().describe(
+    "action: progress \u2014 one line of position and choice. Never a credential, token or customer datum."
+  ),
+  criterion: external_exports.string().optional().describe('action: progress \u2014 the acceptance-criterion id, when kind is "criterion".'),
+  draftPath: external_exports.string().optional().describe(
+    "action: progress \u2014 the draft/spec path to record in the entry. Distinct from `specPath`, which locates the journal and is never written into it."
+  ),
+  contractSha: external_exports.string().optional().describe("action: progress \u2014 the seal in force, when the writer knows one."),
   allow: external_exports.array(external_exports.string()).optional().describe(
-    "mode: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs)."
+    "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs)."
   ),
   base: external_exports.string().optional().describe(
-    "mode: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
+    "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
   )
 });
+var SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
+var SpecInputStrict = SpecInput.strict(
+  `unknown argument for the spec tool \u2014 it accepts only: ${SPEC_INPUT_FIELDS}. The changed-file set for action: "scope" is always derived from git (use \`base\` to pick the ref, \`allow\` to permit extra paths); it cannot be supplied by the caller.`
+);
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With mode: "seal" it instead verifies only the spec-contract immutability hash against the stamped contract_sha \u2014 the deterministic tamper check for /marvin:task-implement. With mode: "scope" it checks that the working-tree diff stays within the contract files allowlist.',
-    inputSchema: SpecInput,
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
 }
 async function runSpec(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
+  if (input.action && input.mode && input.action !== input.mode) {
+    return corpusError(
+      `conflicting arguments: \`action: "${input.action}"\` and \`mode: "${input.mode}"\`. \`mode\` is the deprecated synonym for \`action\` \u2014 pass one of them (prefer \`action\`), not both with different values.`
+    );
+  }
+  const action = input.action ?? input.mode ?? "dor";
+  if (action === "next" || action === "list") {
+    return readCorpus(action, input, env2, projectRoot);
+  }
+  if (action === "audit") {
+    return runSpecAudit(env2, projectRoot);
+  }
+  if (action === "progress" || action === "resume") {
+    return runProgressAction(action, input, env2, projectRoot);
+  }
   let raw;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
@@ -32391,11 +34922,12 @@ async function runSpec(input, env2) {
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
-  if (input.mode === "seal") return verifySeal(raw);
-  if (input.mode === "scope") {
+  if (action === "seal") return verifySeal(raw);
+  if (action === "scope") {
     return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
-  const { type, checks, contractSha } = validateSpec(raw, projectRoot);
+  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  const { type, checks, contractSha } = validateSpec(raw, projectRoot, config2.spec);
   return result(computeVerdict2(checks), type, checks, contractSha);
 }
 function verifySeal(raw) {
@@ -32403,50 +34935,422 @@ function verifySeal(raw) {
   const type = frontmatter.type ?? null;
   const sealed = (frontmatter.contract_sha ?? "").trim();
   const blockText = extractContractBlock(body);
+  const statusCheck = checkStatusTransition(frontmatter.status);
   if (blockText === null) {
     return result("FAIL", type, [
       fail(
         "seal",
         "Contract seal",
         "no ```yaml spec-contract block found \u2014 cannot verify the seal"
-      )
+      ),
+      statusCheck
     ]);
   }
   const actual = contractHash(blockText);
-  if (!sealed) {
-    return result(
-      "PASS WITH WARNINGS",
-      type,
-      [
-        warn(
-          "seal",
-          "Contract seal",
-          `spec is unsealed \u2014 no contract_sha in frontmatter (current block hash is ${actual}). Re-run /marvin:task-start to stamp it and enable tamper detection.`
-        )
-      ],
-      actual
-    );
-  }
-  if (sealed === actual) {
-    return result(
-      "PASS",
-      type,
-      [pass("seal", "Contract seal", `intact \u2014 contract_sha matches (${actual})`)],
-      actual
-    );
-  }
-  return result(
-    "FAIL",
-    type,
-    [
-      fail(
-        "seal",
-        "Contract seal",
-        `TAMPERED \u2014 the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`
-      )
-    ],
-    actual
+  const sealCheck = !sealed ? warn(
+    "seal",
+    "Contract seal",
+    `spec is unsealed \u2014 no contract_sha in frontmatter (current block hash is ${actual}). Re-run /marvin:task-start to stamp it and enable tamper detection.`
+  ) : sealed === actual ? pass("seal", "Contract seal", `intact \u2014 contract_sha matches (${actual})`) : fail(
+    "seal",
+    "Contract seal",
+    `TAMPERED \u2014 the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`
   );
+  const checks = [sealCheck, statusCheck];
+  return result(computeVerdict2(checks), type, checks, actual);
+}
+var TERMINAL_STATUSES = ["shipped", "superseded"];
+function checkStatusTransition(rawStatus) {
+  const status = (rawStatus ?? "").trim();
+  if (!status) {
+    return warn(
+      "status",
+      "Lifecycle status",
+      "no `status` in frontmatter \u2014 the shipped/superseded transition check did not run"
+    );
+  }
+  if (TERMINAL_STATUSES.includes(status)) {
+    return fail(
+      "status",
+      "Lifecycle status",
+      `spec is \`${status}\` \u2014 its lifecycle is over and it must not be executed again. Write a NEW spec whose \`supersedes:\` names this one (/marvin:task-start).`
+    );
+  }
+  if (!STATUS_VALUES.includes(status)) {
+    return warn(
+      "status",
+      "Lifecycle status",
+      `status \`${status}\` is outside the vocabulary (${STATUS_VALUES.join(" | ")}) \u2014 the transition check could not classify it`
+    );
+  }
+  return pass("status", "Lifecycle status", `\`${status}\` \u2014 not a terminal state`);
+}
+var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function readCorpus(action, input, env2, projectRoot) {
+  const slug = input.slug?.trim();
+  if (action === "next" && slug !== void 0 && slug !== "" && !SLUG_RE2.test(slug)) {
+    return corpusError(
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
+    );
+  }
+  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  const dir = resolveSpecDir(projectRoot, config2.spec);
+  const corpus = readSpecCorpus(dir);
+  const payload = { action, dir: { rel: dir.rel, source: dir.source } };
+  const lines = [
+    action === "next" ? "# Next spec number" : "# Spec corpus",
+    "",
+    `**Directory:** \`${dir.rel}\` (${dir.source})`
+  ];
+  if (action === "next") {
+    const width = specIdWidth(corpus);
+    const number3 = nextSpecNumber(corpus);
+    const id = formatSpecId(number3, width);
+    const filename = slug ? `${id}-${slug}.md` : null;
+    const collision = slug ? corpus.records.find((r) => r.slug === slug) ?? null : null;
+    payload.next = {
+      number: number3,
+      id,
+      width,
+      filename,
+      collision: collision ? {
+        slug: collision.slug,
+        filename: collision.filename,
+        path: collision.path,
+        status: collision.status
+      } : null
+    };
+    lines.push(
+      `**Next number:** ${number3} \u2192 \`${id}\` (width ${width})`,
+      ...filename ? [`**Filename:** \`${dir.rel}/${filename}\``] : [],
+      ...collision ? [
+        "",
+        `\u26A0\uFE0F **Slug collision** \u2014 \`${collision.slug}\` already exists as \`${collision.path}\`${collision.status ? ` (status \`${collision.status}\`)` : ""}. Decide with the user whether this task **supersedes** that spec (new slug + \`supersedes:\`) or is a distinct task (different slug).`
+      ] : []
+    );
+  } else {
+    payload.specs = corpus.records;
+    lines.push(
+      `**Specs:** ${corpus.records.length}`,
+      "",
+      ...corpus.records.length === 0 ? ["_No specs yet \u2014 `/marvin:task-start` writes the first one._"] : corpus.records.map(
+        (r) => `- ${r.id ? `\`${r.id}\` ` : ""}**${r.slug}** \u2014 ${r.title} \xB7 status \`${r.status ?? "\u2014"}\`${r.contract_sha ? "" : " \xB7 _unsealed_"} \xB7 \`${r.path}\``
+      )
+    );
+  }
+  if (corpus.malformed.length > 0) {
+    lines.push(
+      "",
+      `\u26A0\uFE0F ${corpus.malformed.length} file(s) could not be read as specs (their numbers are still reserved):`,
+      ...corpus.malformed.map((m) => `- \`${m.filename}\` \u2014 ${m.reason}`)
+    );
+  }
+  return corpusResult(lines, payload);
+}
+function specConfigPath(env2, projectRoot) {
+  return projectRoot === env2.projectDir ? env2.configPath : join(projectRoot, ".marvin", "config.json");
+}
+function corpusResult(lines, payload, tag = "spec-corpus") {
+  const machine = JSON.stringify(payload);
+  return {
+    content: [
+      {
+        type: "text",
+        text: `${lines.join("\n")}
+
+\`\`\`json ${tag}
+${machine}
+\`\`\``
+      }
+    ]
+  };
+}
+function corpusError(detail) {
+  return {
+    content: [{ type: "text", text: `# Spec tool \u2014 invalid input
+
+${detail}` }],
+    isError: true
+  };
+}
+function progressRunsDir(input, env2, projectRoot) {
+  if (input.specPath) {
+    const abs = isAbsolute(input.specPath) ? input.specPath : join(projectRoot, input.specPath);
+    return join(dirname(abs), "runs");
+  }
+  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  return join(resolveSpecDir(projectRoot, config2.spec).abs, "runs");
+}
+function runProgressAction(action, input, env2, projectRoot) {
+  const slug = input.slug?.trim();
+  if (!slug) {
+    return corpusError(
+      `\`action: "${action}"\` needs a \`slug\` \u2014 it names the spec whose journal is ${action === "progress" ? "written" : "read"}, and it is the journal's filename.`
+    );
+  }
+  if (!SLUG_RE2.test(slug)) {
+    return corpusError(
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 nothing was written. The slug becomes the journal's filename, so it is rejected rather than rewritten.`
+    );
+  }
+  const runsDir = progressRunsDir(input, env2, projectRoot);
+  if (action === "resume") {
+    const state = resumeState(readProgress(runsDir, slug));
+    const payload = {
+      action,
+      slug,
+      journal: relFromRoot(progressJournalPath(runsDir, slug), projectRoot),
+      found: state.entries.length > 0 || state.archived > 0,
+      ...state
+    };
+    if (!payload.found) {
+      return corpusResult(
+        [
+          `# Resume \u2014 ${slug}`,
+          "",
+          `no progress journal for ${slug} \u2014 an absent journal is never evidence that nothing was done; verify every criterion from scratch.`
+        ],
+        payload,
+        "spec-progress"
+      );
+    }
+    return corpusResult(
+      [
+        `# Resume \u2014 ${slug}`,
+        "",
+        `**Entries:** ${state.entries.length}` + (state.archived > 0 ? ` (after ${state.archived} archived boundary/-ies)` : ""),
+        ...state.last ? [`**Last:** step ${state.last.step} \u2014 ${state.last.detail}`] : [],
+        ...state.path ? [`**Draft:** \`${state.path}\``] : [],
+        ...state.contract_sha ? [`**Recorded seal:** \`${state.contract_sha}\``] : [],
+        ...state.criteria_done.length ? [`**Criteria recorded complete:** ${state.criteria_done.join(", ")}`] : [],
+        "",
+        "A recorded criterion is a claim, not a proof \u2014 re-read its own oracle before skipping it.",
+        "",
+        ...state.entries.map((e) => `- \`${e.at}\` **${e.kind}** step ${e.step} \u2014 ${e.detail}`)
+      ],
+      payload,
+      "spec-progress"
+    );
+  }
+  const missing = ["source", "step", "kind", "detail"].filter(
+    (k) => input[k] === void 0 || String(input[k]).trim() === ""
+  );
+  if (missing.length > 0) {
+    return corpusError(
+      `\`action: "progress"\` needs ${missing.map((m) => `\`${m}\``).join(", ")} \u2014 an entry that cannot say who wrote it, at which step, or what happened is not a record anyone can resume from.`
+    );
+  }
+  const entry = {
+    slug,
+    source: input.source,
+    step: input.step,
+    kind: input.kind,
+    detail: input.detail,
+    criterion: input.criterion ?? null,
+    path: input.draftPath ?? null,
+    contract_sha: input.contractSha ?? null,
+    at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  recordProgress(runsDir, entry);
+  const journal = relFromRoot(progressJournalPath(runsDir, slug), projectRoot);
+  return corpusResult(
+    [
+      `# Progress \u2014 ${slug}`,
+      "",
+      `Recorded **${entry.kind}** at step ${entry.step} (${entry.source}).`,
+      `**Journal:** \`${journal}\``
+    ],
+    { action, slug, journal, entry },
+    "spec-progress"
+  );
+}
+function relFromRoot(abs, projectRoot) {
+  const rel = relative(projectRoot, abs);
+  return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
+}
+function runSpecAudit(env2, projectRoot) {
+  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  const dir = resolveSpecDir(projectRoot, config2.spec);
+  const corpus = readSpecCorpus(dir);
+  const dirs = specSearchDirs(projectRoot, config2.spec);
+  return renderSpecAudit(dir, corpus, collectSpecFindings(corpus, dir, dirs, projectRoot));
+}
+function renderSpecAudit(dir, corpus, findings) {
+  const errors = findings.filter((f) => f.severity === "error");
+  const warnings = findings.filter((f) => f.severity === "warning");
+  const checked = corpus.records.length + corpus.malformed.length;
+  const lines = [`# Spec audit \u2014 \`${dir.rel}\` \xB7 ${checked} file(s) checked`, ""];
+  if (findings.length === 0) {
+    lines.push("\u2713 Corpus clean \u2014 no findings.");
+  } else {
+    if (errors.length > 0) {
+      lines.push(`\u2717 ${errors.length} error(s):`);
+      for (const f of errors) lines.push(renderSpecFinding(f));
+      lines.push("");
+    }
+    if (warnings.length > 0) {
+      lines.push(`\u26A0 ${warnings.length} warning(s):`);
+      for (const f of warnings) lines.push(renderSpecFinding(f));
+    }
+  }
+  const payload = { dir: dir.rel, checked, findings, ok: errors.length === 0 };
+  return {
+    content: [{ type: "text", text: lines.join("\n").trimEnd() }],
+    structuredContent: payload,
+    ...errors.length > 0 ? { isError: true } : {}
+  };
+}
+function renderSpecFinding(f) {
+  const anchor = f.path ? ` \u2014 \`${f.path}\`` : "";
+  return `- **[${f.kind}]** ${f.message}${anchor}`;
+}
+var SPEC_IDENTITY_KEYS = ["slug", "type", "status", "created"];
+var MAX_LISTED_HOLE_IDS = 10;
+var SEALABLE_STATUSES = ["ready", "in-progress", "shipped"];
+function readSpecFacts(path) {
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return { missingIdentity: [...SPEC_IDENTITY_KEYS], status: null, dependsOn: [] };
+  }
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const value = (key) => (frontmatter[key] ?? "").trim();
+  return {
+    missingIdentity: SPEC_IDENTITY_KEYS.filter((key) => value(key) === ""),
+    status: value("status") || null,
+    dependsOn: dependsOnOf(body)
+  };
+}
+function dependsOnOf(body) {
+  const blockText = extractContractBlock(body);
+  if (blockText === null) return [];
+  let doc;
+  try {
+    doc = (0, import_yaml3.parse)(blockText);
+  } catch {
+    return [];
+  }
+  const deps = doc?.depends_on;
+  return Array.isArray(deps) ? deps.filter((d) => typeof d === "string") : [];
+}
+function collectSpecFindings(corpus, dir, dirs, projectRoot) {
+  const findings = [];
+  const { records, malformed } = corpus;
+  const width = specIdWidth(corpus);
+  for (const m of malformed) {
+    findings.push({
+      kind: "malformed",
+      severity: "error",
+      message: `\`${m.filename}\`: ${m.reason}`,
+      slug: null,
+      number: m.number,
+      path: `${dir.rel}/${m.filename}`
+    });
+  }
+  for (const r of records) {
+    const facts = readSpecFacts(join(dir.abs, r.filename));
+    if (facts.missingIdentity.length > 0) {
+      findings.push({
+        kind: "malformed",
+        severity: "error",
+        message: `\`${r.filename}\` does not identify itself as a spec \u2014 its frontmatter is missing ${facts.missingIdentity.map((k) => `\`${k}\``).join(", ")}`,
+        slug: r.slug,
+        number: r.number,
+        path: r.path
+      });
+    }
+    if (facts.status !== null && !STATUS_VALUES.includes(facts.status)) {
+      findings.push({
+        kind: "invalid-status",
+        severity: "error",
+        message: `\`${r.slug}\` carries status \`${facts.status}\`, which is outside the vocabulary (${STATUS_VALUES.join(" | ")})`,
+        slug: r.slug,
+        number: r.number,
+        path: r.path
+      });
+    }
+    if (r.contract_sha === null && facts.status !== null && SEALABLE_STATUSES.includes(facts.status)) {
+      findings.push({
+        kind: "missing-seal",
+        severity: "warning",
+        message: `\`${r.slug}\` is \`${facts.status}\` but carries no \`contract_sha\` \u2014 its contract is unsealed, so tampering cannot be detected`,
+        slug: r.slug,
+        number: r.number,
+        path: r.path
+      });
+    }
+    if (facts.dependsOn.length > 0) {
+      const { notFound } = resolveDependencies(facts.dependsOn, dirs, projectRoot);
+      for (const dep of notFound) {
+        findings.push({
+          kind: "dangling-depends-on",
+          severity: "error",
+          message: `\`${r.slug}\` depends on \`${dep}\`, which resolves to no spec in any searched directory`,
+          slug: r.slug,
+          number: r.number,
+          path: r.path
+        });
+      }
+    }
+  }
+  const byNumber = /* @__PURE__ */ new Map();
+  for (const r of records) if (r.number !== null) pushTo(byNumber, r.number, r.filename);
+  for (const m of malformed) if (m.number !== null) pushTo(byNumber, m.number, m.filename);
+  for (const [number3, files] of [...byNumber].sort((a, b) => a[0] - b[0])) {
+    if (files.length > 1) {
+      findings.push({
+        kind: "duplicate-number",
+        severity: "error",
+        message: `\`${formatSpecId(number3, width)}\` is claimed by ${files.length} files: ${files.map((f) => `\`${f}\``).join(", ")}`,
+        slug: null,
+        number: number3,
+        path: null
+      });
+    }
+  }
+  const numbers = [...byNumber.keys()].sort((a, b) => a - b);
+  for (let i = 1; i < numbers.length; i++) {
+    const prev = numbers[i - 1];
+    const cur = numbers[i];
+    if (cur - prev > 1) {
+      const size = cur - prev - 1;
+      const listed = Math.min(size, MAX_LISTED_HOLE_IDS);
+      const shown = Array.from({ length: listed }, (_, k) => formatSpecId(prev + 1 + k, width)).map(
+        (g) => `\`${g}\``
+      );
+      const missing = size > listed ? `${shown.join(", ")}, and ${size - listed} more` : shown.join(", ");
+      findings.push({
+        kind: "numbering-hole",
+        severity: "warning",
+        message: `numbering hole between \`${formatSpecId(prev, width)}\` and \`${formatSpecId(cur, width)}\` (missing ${missing})`,
+        slug: null,
+        number: null,
+        path: null
+      });
+    }
+  }
+  const bySlug = /* @__PURE__ */ new Map();
+  for (const r of records) pushTo(bySlug, r.slug, r);
+  for (const [slug, claimants] of [...bySlug].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (claimants.length < 2) continue;
+    const resolved = resolveSpecBySlug(dir.abs, slug, projectRoot);
+    const picked = resolved ? basename(resolved) : null;
+    findings.push({
+      kind: "slug-collision",
+      severity: "error",
+      message: `slug \`${slug}\` is claimed by ${claimants.length} files: ${claimants.map((c) => `\`${c.filename}\``).join(", ")} \u2014 ` + (picked ? `\`${picked}\` is the one every \`depends_on: [${slug}]\`, /marvin:task-implement and /marvin:task-summary resolve to today` : `no file resolves for that slug today`),
+      slug,
+      number: null,
+      path: null
+    });
+  }
+  return findings;
+}
+function pushTo(map, key, value) {
+  const bucket = map.get(key);
+  if (bucket) bucket.push(value);
+  else map.set(key, [value]);
 }
 function verifyScope(raw, projectRoot, allow, base, specPath) {
   const { frontmatter, body } = parseFrontmatter(raw);
@@ -32463,7 +35367,7 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   }
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(blockText);
+    doc = (0, import_yaml3.parse)(blockText);
   } catch (err3) {
     return result("FAIL", type, [
       fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err3)}`)
@@ -32475,7 +35379,7 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
       fail(
         "scope",
         "Scope",
-        "contract block failed schema validation \u2014 run the DoR gate (mode: dor) first"
+        'contract block failed schema validation \u2014 run the DoR gate (action: "dor") first'
       )
     ]);
   }
@@ -32528,7 +35432,7 @@ function relativeToRoot(p, root) {
   const nr = normalizePath(root).replace(/\/$/, "");
   return np.startsWith(nr + "/") ? np.slice(nr.length + 1) : np;
 }
-function validateSpec(raw, projectRoot) {
+function validateSpec(raw, projectRoot, specConfig) {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const checks = [];
@@ -32539,9 +35443,11 @@ function validateSpec(raw, projectRoot) {
     const [required2, recommended] = type === "feature" ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required2, recommended));
     checks.push(checkOpenQuestions(sections.get("open questions")));
+    checks.push(checkAssumptions(sections.get("assumptions")));
+    checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
-    checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation));
+    checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation, specConfig));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
@@ -32565,7 +35471,7 @@ function checkFrontmatter(fm, type) {
       fail("fm-status", "Frontmatter", `status "${fm.status}" is not ${STATUS_VALUES.join("|")}`)
     );
   }
-  if (fm.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fm.slug)) {
+  if (fm.slug && !SLUG_RE2.test(fm.slug)) {
     checks.push(fail("fm-slug", "Frontmatter", `slug "${fm.slug}" must be kebab-case`));
   }
   if (type === "feature") {
@@ -32589,7 +35495,7 @@ function checkFrontmatter(fm, type) {
       fail(
         "spike-required",
         "Frontmatter",
-        "spike_required: true \u2014 resolve the unknown (e.g. /marvin:kanban-spike) before DoR"
+        "spike_required: true \u2014 resolve the unknown (e.g. a spike via /marvin:track-new) before DoR"
       )
     );
   }
@@ -32639,7 +35545,7 @@ function checkSections(sections, required2, recommended) {
   }
   return checks;
 }
-function checkContractBlock(body, type, projectRoot, specLocation) {
+function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   const blockText = extractContractBlock(body);
   if (blockText === null) {
     return [
@@ -32652,7 +35558,7 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   }
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(blockText);
+    doc = (0, import_yaml3.parse)(blockText);
   } catch (err3) {
     return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err3)}`)];
   }
@@ -32673,7 +35579,7 @@ function checkContractBlock(body, type, projectRoot, specLocation) {
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
-  checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot));
+  checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot, specConfig));
   return checks;
 }
 function checkHostBindings(body) {
@@ -32681,7 +35587,7 @@ function checkHostBindings(body) {
   if (text === null) return { checks: [], specLocation: void 0 };
   let doc;
   try {
-    doc = (0, import_yaml2.parse)(text);
+    doc = (0, import_yaml3.parse)(text);
   } catch (err3) {
     return {
       checks: [
@@ -32702,30 +35608,12 @@ function checkHostBindings(body) {
     specLocation: parsed.data.spec_location
   };
 }
-function checkDependsOn(deps, specLocation, projectRoot) {
+function checkDependsOn(deps, specLocation, projectRoot, specConfig) {
   if (!deps || deps.length === 0) {
     return [pass("depends-on", "Dependencies", "no sibling dependencies")];
   }
-  const dirs = [specLocation, ...SPEC_DIRS].filter((d) => !!d);
-  const notFound = [];
-  const notShipped = [];
-  for (const slug of deps) {
-    let resolved = null;
-    for (const dir of dirs) {
-      const p = resolveSpecBySlug(dir, slug, projectRoot);
-      if (p) {
-        resolved = p;
-        break;
-      }
-    }
-    if (!resolved) {
-      notFound.push(slug);
-      continue;
-    }
-    const { frontmatter } = parseFrontmatter(readFileSync(resolved, "utf8"));
-    const status = (frontmatter.status ?? "").trim();
-    if (status !== "shipped") notShipped.push(`${slug}(${status || "?"})`);
-  }
+  const dirs = specSearchDirs(projectRoot, specConfig, specLocation);
+  const { notFound, notShipped } = resolveDependencies(deps, dirs, projectRoot);
   const checks = [];
   if (notFound.length) {
     checks.push(
@@ -32745,6 +35633,28 @@ function checkDependsOn(deps, specLocation, projectRoot) {
     checks.push(pass("depends-on", "Dependencies", `${deps.length} sibling(s) shipped`));
   }
   return checks;
+}
+function resolveDependencies(deps, dirs, projectRoot) {
+  const notFound = [];
+  const notShipped = [];
+  for (const slug of deps) {
+    let resolved = null;
+    for (const dir of dirs) {
+      const p = resolveSpecBySlug(dir, slug, projectRoot);
+      if (p) {
+        resolved = p;
+        break;
+      }
+    }
+    if (!resolved) {
+      notFound.push(slug);
+      continue;
+    }
+    const { frontmatter } = parseFrontmatter(readFileSync(resolved, "utf8"));
+    const status = (frontmatter.status ?? "").trim();
+    if (status !== "shipped") notShipped.push(`${slug}(${status || "?"})`);
+  }
+  return { notFound, notShipped };
 }
 function checkFiles(c, projectRoot) {
   const checks = [];
@@ -32913,18 +35823,78 @@ function testPath(ref) {
   if (!/\.[A-Za-z0-9]+$/.test(file)) return null;
   return file;
 }
+var NONE_VOCABULARY = ["none", "n/a", "nil", "\u2014", "-", "none."];
+function normalizeSection(section) {
+  return section.replace(/^[-*]\s*/gm, "").trim().toLowerCase();
+}
 function checkOpenQuestions(section) {
   if (section === void 0) {
     return fail("open-questions", "Open Questions", "section missing");
   }
-  const stripped = section.replace(/^[-*]\s*/gm, "").trim().toLowerCase();
-  if (stripped === "" || ["none", "n/a", "nil", "\u2014", "-", "none."].includes(stripped)) {
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
     return pass("open-questions", "Open Questions", "resolved");
   }
   return fail(
     "open-questions",
     "Open Questions",
     'unresolved open questions remain \u2014 resolve to "none" before DoR'
+  );
+}
+function checkAssumptions(section) {
+  const remedy = 'record each default the intake assumed instead of asking, as "assumed X because Y; correct now if wrong"';
+  if (section === void 0) {
+    return warn("assumptions", "Assumptions", `section missing \u2014 ${remedy}`);
+  }
+  const stripped = normalizeSection(section);
+  if (stripped === "" || NONE_VOCABULARY.includes(stripped)) {
+    return warn("assumptions", "Assumptions", `no assumptions recorded \u2014 accepted, but ${remedy}`);
+  }
+  return pass("assumptions", "Assumptions", "decisions under uncertainty are recorded");
+}
+var TERMINAL_VERDICTS = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
+var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS, "NONE"];
+function cleanVerdictLine(line) {
+  return line.replace(/[`*]/g, "").replace(/^\s*[-+]\s+/, "").trim();
+}
+function findVerdict(line) {
+  const leading = RECORDABLE_VERDICTS.find((v) => new RegExp(`^${v}\\b`, "i").test(line));
+  if (leading) return leading;
+  let best = null;
+  for (const verdict of TERMINAL_VERDICTS) {
+    const at = line.search(new RegExp(`\\b${verdict}\\b`));
+    if (at !== -1 && (best === null || at < best.at)) best = { at, verdict };
+  }
+  return best?.verdict ?? null;
+}
+function checkCriticVerdict(section) {
+  const remedy = 'record one of PASS | PASS WITH WARNINGS | BLOCK | UNABLE, or "none" if the critic step was skipped';
+  if (section === void 0) {
+    return warn("critic-verdict", "Critic verdict", `section missing \u2014 ${remedy}`);
+  }
+  const line = section.split("\n").map((l) => cleanVerdictLine(l)).find((l) => l !== "");
+  if (!line) {
+    return warn("critic-verdict", "Critic verdict", `section empty \u2014 ${remedy}`);
+  }
+  const verdict = findVerdict(line);
+  if (verdict) {
+    return pass(
+      "critic-verdict",
+      "Critic verdict",
+      verdict === "NONE" ? "no verdict recorded (critic skipped)" : `${verdict} recorded`
+    );
+  }
+  if (/\bNEEDS_CONTEXT\b/i.test(line)) {
+    return warn(
+      "critic-verdict",
+      "Critic verdict",
+      "NEEDS_CONTEXT is transient and is never recorded here \u2014 supply the input the critic named and re-dispatch it once; a second occurrence is UNABLE"
+    );
+  }
+  return warn(
+    "critic-verdict",
+    "Critic verdict",
+    `unrecognised verdict "${line.slice(0, 40)}" \u2014 ${remedy}`
   );
 }
 function checkPlaceholders(raw) {
@@ -32972,9 +35942,6 @@ function computeVerdict2(checks) {
   if (checks.some((c) => c.status === "fail")) return "FAIL";
   if (checks.some((c) => c.status === "warn")) return "PASS WITH WARNINGS";
   return "PASS";
-}
-function contractHash(blockText) {
-  return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
 }
 function result(verdict, type, checks, contractSha = null) {
   const icon = (s) => s === "pass" ? "\u2705" : s === "warn" ? "\u26A0\uFE0F" : "\u274C";
@@ -33139,12 +36106,12 @@ async function runPrune(server, env2, input) {
     const { stale, duplicates } = pruneCandidates(env2.memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok4(
-        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`
+        `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS2} days) or duplicated.`
       );
     }
     const out = [`# Prune candidates (${stale.length + duplicates.length})`, ""];
     if (stale.length > 0) {
-      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS} days ago`);
+      out.push(`## Stale \u2014 created more than ${STALE_AFTER_DAYS2} days ago`);
       for (const l of stale) out.push(`- **${l.slug}** \u2014 ${l.title} (\`${l.type}\`, ${l.created})`);
       out.push("");
     }
@@ -33203,33 +36170,6 @@ function ok4(text) {
 }
 function err2(text) {
   return { content: [{ type: "text", text }], isError: true };
-}
-function readAllHandoffs(handoffDir) {
-  if (!existsSync(handoffDir)) return { handoffs: [], malformed: [] };
-  const handoffs = [];
-  const malformed = [];
-  for (const filename of readdirSync(handoffDir).sort()) {
-    if (!filename.endsWith(".md")) continue;
-    const seq = parseSeq(filename);
-    if (!seq) continue;
-    const raw = readFileSync(join(handoffDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    const parsed = HandoffFrontmatter.safeParse(frontmatter);
-    if (!parsed.success) {
-      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
-      continue;
-    }
-    if (parsed.data.id !== seq) {
-      malformed.push({
-        filename,
-        reason: `frontmatter id=${parsed.data.id} does not match filename seq=${seq}`
-      });
-      continue;
-    }
-    handoffs.push({ frontmatter: parsed.data, body, filename });
-  }
-  handoffs.sort((a, b) => Number(b.frontmatter.id) - Number(a.frontmatter.id));
-  return { handoffs, malformed };
 }
 
 // src/tools/handoff.ts
@@ -33301,7 +36241,7 @@ function continuePromptFor(h) {
 }
 
 // src/tools/summary.ts
-var import_yaml3 = __toESM(require_dist2());
+var import_yaml4 = __toESM(require_dist2());
 var SummaryInput = external_exports.object({
   slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
@@ -33315,26 +36255,31 @@ function buildSummaryTool(env2) {
     // object literal — no ext-apps import — so tsup never bundles the SDK into
     // dist/server.js. The terminal ignores `_meta` and renders the text content.
     meta: { ui: { resourceUri: TASK_SUMMARY_WIDGET_URI } },
-    handler: (input) => {
-      const { config: config2 } = loadConfig(env2.configPath, env2.projectDir);
-      return Promise.resolve(runSummary(env2, config2, input));
-    }
+    handler: (input) => Promise.resolve(runSummary(env2, input))
   });
 }
-function runSummary(env2, config2, input) {
+function runSummary(env2, input) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot) : findLatestSpec(projectRoot);
+  const { config: config2 } = loadConfig(projectConfigPath(env2, projectRoot), projectRoot);
+  const specDir = resolveSpecDir(projectRoot, config2.spec);
+  const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot, config2.spec) : findLatestSpec(projectRoot, config2.spec);
   if (!specPath) {
+    const searched = specSearchDirs(projectRoot, config2.spec).map((d) => relative(projectRoot, d) || d).join(", ");
     return errOk3(
-      input.slug ? `No spec found for slug \`${input.slug}\` under ${SPEC_DIRS.join(", ")}.` : `No spec found under ${SPEC_DIRS.join(", ")} \u2014 run /marvin:task-start first.`
+      input.slug ? `No spec found for slug \`${input.slug}\` under ${searched}.` : `No spec found under \`${specDir.rel}\` (${specDir.source}) \u2014 run /marvin:task-start first.`
     );
   }
   const { frontmatter, body } = parseFrontmatter(readFileSync(specPath, "utf8"));
   const slug = frontmatter.slug?.trim() || basenameSlug(specPath);
   const contract = parseSpecContract(body);
   const hostBindings = parseHostBindings(body);
-  const verify = readVerifyResult(projectRoot);
-  const acceptance = (contract?.criteria ?? []).map((cr) => toAcOutcome(cr, verify));
+  const verification = readVerifyResult(projectRoot, slug);
+  const verify = verification.parse.kind === "ok" ? verification.parse.result : null;
+  const seal = contractJoinKey(body, frontmatter);
+  const proofs = latestRunsByCriterion(projectRoot, slug, seal.key);
+  const acceptance = (contract?.criteria ?? []).map(
+    (cr) => toAcOutcome(cr, proofs.get(cr.id) ?? null)
+  );
   const gates = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config2.base_branch);
   const lessons = searchLessons(env2.memoryDir, { query: slug, limit: 10 }).map(
@@ -33355,26 +36300,24 @@ function runSummary(env2, config2, input) {
     links
   };
   return {
-    content: [{ type: "text", text: render(summary, verify) }],
+    content: [{ type: "text", text: render(summary, verification, seal.note) }],
     // Widget payload for MCP Apps hosts (ADR-0024) — the task-summary view (#3).
     structuredContent: summary
   };
 }
-function findSpecBySlug(slug, projectRoot) {
-  for (const dir of SPEC_DIRS) {
+function findSpecBySlug(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
     const p = resolveSpecBySlug(dir, slug, projectRoot);
     if (p) return p;
   }
   return null;
 }
-function findLatestSpec(projectRoot) {
-  for (const dir of SPEC_DIRS) {
-    const abs = join(projectRoot, dir);
-    if (!existsSync(abs)) continue;
-    const specs = readdirSync(abs).filter((f) => f.endsWith(".md") && f !== "verification.md").sort();
-    if (specs.length) return join(abs, specs[specs.length - 1]);
-  }
-  return null;
+function findLatestSpec(projectRoot, specConfig) {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  const { records } = readSpecCorpus(dir);
+  if (records.length === 0) return null;
+  const eligible = records.find((r) => r.status !== "draft" && r.contract_sha !== null);
+  return join(dir.abs, (eligible ?? records[0]).filename);
 }
 function basenameSlug(specPath) {
   const file = specPath.split("/").pop() ?? specPath;
@@ -33384,7 +36327,7 @@ function parseSpecContract(body) {
   const block = extractContractBlock(body);
   if (!block) return null;
   try {
-    const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
+    const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -33394,41 +36337,71 @@ function parseHostBindings(body) {
   const text = extractHostBindings(body);
   if (!text) return null;
   try {
-    const parsed = HostBindings.safeParse((0, import_yaml3.parse)(text));
+    const parsed = HostBindings.safeParse((0, import_yaml4.parse)(text));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
 }
-function readVerifyResult(projectRoot) {
-  const path = join(projectRoot, ".marvin", "task", "verification.md");
-  if (!existsSync(path)) return null;
-  const m = readFileSync(path, "utf8").match(/```json verify-result\n([\s\S]*?)\n```/);
-  if (!m) return null;
-  try {
-    const parsed = JSON.parse(m[1]);
-    return { verdict: parsed.verdict, gates: parsed.gates ?? [] };
-  } catch {
-    return null;
+var SLUG_RE3 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function readVerifyResult(projectRoot, slug) {
+  const taskDir = join(projectRoot, ".marvin", "task");
+  const candidates = [];
+  if (SLUG_RE3.test(slug)) {
+    candidates.push([join(taskDir, "runs", `${slug}.md`), `.marvin/task/runs/${slug}.md`]);
   }
+  candidates.push([join(taskDir, "verification.md"), ".marvin/task/verification.md"]);
+  for (const [abs, rel] of candidates) {
+    if (!existsSync(abs)) continue;
+    return { parse: parseVerifyBlock(readFileSync(abs, "utf8")), path: rel };
+  }
+  return { parse: { kind: "none" }, path: null };
 }
-function toAcOutcome(cr, verify) {
+function contractJoinKey(body, frontmatter) {
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  const blockText = extractContractBlock(body);
+  if (!stamped || !blockText) return { key: null, note: null };
+  const actual = contractHash(blockText);
+  if (actual !== stamped) {
+    return {
+      key: null,
+      note: `\u26A0\uFE0F The spec-contract has been EDITED SINCE IT WAS SEALED \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Recorded runs prove the superseded contract, so no criterion below can claim one and every outcome reads \`unknown\`. Re-seal the spec deliberately (\`spec\` with \`mode: "seal"\`) and re-run the oracles.`
+    };
+  }
+  return { key: actual, note: null };
+}
+function latestRunsByCriterion(projectRoot, slug, contractSha) {
+  const sha = contractSha?.trim();
+  const runs = /* @__PURE__ */ new Map();
+  if (!sha || !SLUG_RE3.test(slug)) return runs;
+  for (const run3 of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
+    if (run3.contract_sha !== sha) continue;
+    runs.set(run3.criterion, run3);
+  }
+  return runs;
+}
+function toAcOutcome(cr, run3) {
   const base = {
     id: cr.id,
     statement: cr.statement,
     oracle_kind: cr.oracle.kind,
     ...cr.oracle.ref ? { oracle_ref: cr.oracle.ref } : {}
   };
-  const passed = verify?.verdict === "PASS" || verify?.verdict === "PASS WITH WARNINGS";
-  const real = cr.oracle.kind === "test" || cr.oracle.kind === "command";
-  return { ...base, outcome: passed && real ? "pass" : "unknown" };
+  return { ...base, outcome: recordedOutcome(run3) };
+}
+function recordedOutcome(run3) {
+  if (!run3 || run3.expect !== "pass") return "unknown";
+  if (run3.status === "pass") return "pass";
+  if (run3.status === "fail") return "fail";
+  return "unknown";
 }
 function toGateOutcome(g) {
-  const status = g.status === "pass" ? "pass" : "fail";
+  const status = g.status === "pass" ? "pass" : g.status === "not-run" || g.status === "skip" ? "skip" : "fail";
   return {
     name: g.name,
     status,
-    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {}
+    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {},
+    ...g.status === "not-run" ? { detail: "not run \u2014 binary not on PATH" } : {}
   };
 }
 function readCommits(projectRoot, base) {
@@ -33459,6 +36432,55 @@ function buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings)
   }
   const adr = hostBindings?.decision_record?.path;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
+  links.push(...critiqueLinks(env2, projectRoot, slug));
+  return links;
+}
+var CRITIC_LABELS = {
+  "marvin-tm-spec-critic": "spec critic",
+  "marvin-tm-diff-critic": "diff critic"
+};
+function critiqueDirFor(env2, projectRoot) {
+  return projectRoot === env2.projectDir ? env2.critiqueDir : join(projectRoot, ".marvin", "critique");
+}
+function critiqueLinks(env2, projectRoot, slug) {
+  const dir = critiqueDirFor(env2, projectRoot);
+  if (!existsSync(dir)) return [];
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  const found = [];
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    const full = join(dir, filename);
+    let raw;
+    let mtimeMs;
+    try {
+      raw = readFileSync(full, "utf8");
+      mtimeMs = statSync(full).mtimeMs;
+    } catch {
+      continue;
+    }
+    const parse4 = parseCritiqueBlock(raw);
+    if (parse4.kind !== "ok" || parse4.critique.subject !== slug) continue;
+    const { critic, compliance, quality } = parse4.critique;
+    found.push({
+      critic,
+      label: `${CRITIC_LABELS[critic] ?? critic} \u2014 compliance ${compliance.verdict} \xB7 quality ${quality.verdict}`,
+      ref: relative(projectRoot, full),
+      mtimeMs
+    });
+  }
+  found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.ref.localeCompare(b.ref));
+  const seen = /* @__PURE__ */ new Set();
+  const links = [];
+  for (const f of found) {
+    if (seen.has(f.critic)) continue;
+    seen.add(f.critic);
+    links.push({ kind: "external", label: f.label, ref: f.ref });
+  }
   return links;
 }
 function prLabel(url) {
@@ -33469,13 +36491,23 @@ function extractTitle2(body) {
   const m = body.match(/^#\s+(.+?)\s*$/m);
   return m ? m[1] : null;
 }
-function render(s, verify) {
+function verdictLabel(v) {
+  if (v.kind === "none") return "not run";
+  if (v.kind === "invalid") return "unreadable";
+  return v.result.verdict ?? "recorded, no verdict";
+}
+function render(s, verification, sealNote) {
   const acIcon = (o) => o === "pass" ? "\u2705" : o === "fail" ? "\u274C" : "\u26AA";
   const gateIcon = (st) => st === "pass" ? "\u2705" : st === "skip" ? "\u26AA" : "\u274C";
   const lines = [
     `# Task summary \u2014 ${s.title}`,
     "",
-    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status}${verify ? ` \xB7 **Verification:** ${verify.verdict}` : " \xB7 **Verification:** not run"}`,
+    // Name the artifact the gates were joined from: with a per-spec run beside a
+    // global verification.md, "PASS" alone does not say which run passed.
+    `**Spec:** \`${s.slug}\` \xB7 **Status:** ${s.status} \xB7 **Verification:** ${verdictLabel(
+      verification.parse
+    )}${verification.path ? ` (\`${verification.path}\`)` : ""}`,
+    ...sealNote ? ["", sealNote] : [],
     "",
     `## Acceptance (${s.acceptance.length})`,
     ...s.acceptance.length ? s.acceptance.map(
@@ -33509,45 +36541,6 @@ function render(s, verify) {
 function errOk3(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
-var AuditKind = external_exports.enum([
-  "scan",
-  "secrets",
-  "deps",
-  "iac",
-  "ci",
-  "threat-model",
-  "compliance",
-  "pentest"
-]);
-var LinkRef = external_exports.object({
-  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
-  label: external_exports.string().min(1),
-  url: external_exports.string().url().optional(),
-  ref: external_exports.string().optional()
-});
-var Finding = external_exports.object({
-  id: external_exports.string(),
-  severity: Severity,
-  title: external_exports.string().min(1),
-  category: external_exports.string(),
-  file: external_exports.string().optional(),
-  line: external_exports.number().int().positive().optional(),
-  evidence: external_exports.string().optional(),
-  remediation: external_exports.string().optional(),
-  links: external_exports.array(LinkRef).optional()
-});
-var AuditReport = external_exports.object({
-  kind: AuditKind,
-  scanned_at: external_exports.string().datetime(),
-  target: external_exports.string().optional(),
-  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
-  findings: external_exports.array(Finding)
-});
-function extractAuditBlock(text) {
-  const m = text.match(/```json audit-report\n([\s\S]*?)\n```/);
-  return m?.[1] ?? null;
-}
 function readAllAuditReports(securityDir) {
   if (!existsSync(securityDir)) return { reports: [], malformed: [] };
   const found = [];
@@ -33566,21 +36559,13 @@ function readAllAuditReports(securityDir) {
     } catch {
       continue;
     }
-    const block = extractAuditBlock(raw);
-    if (block === null) continue;
-    let json;
-    try {
-      json = JSON.parse(block);
-    } catch {
-      malformed.push({ filename, reason: "audit-report block is not valid JSON" });
+    const parsed = parseAuditBlock(raw);
+    if (parsed.kind === "none") continue;
+    if (parsed.kind === "invalid") {
+      malformed.push({ filename, reason: parsed.reason });
       continue;
     }
-    const parsed = AuditReport.safeParse(json);
-    if (!parsed.success) {
-      malformed.push({ filename, reason: parsed.error.issues.map((i) => i.message).join("; ") });
-      continue;
-    }
-    found.push({ report: parsed.data, filename });
+    found.push({ report: parsed.report, filename });
   }
   found.sort(
     (a, b) => b.report.scanned_at.localeCompare(a.report.scanned_at) || a.filename.localeCompare(b.filename)
@@ -33606,10 +36591,10 @@ function buildAuditTool(env2) {
     handler: () => Promise.resolve(runList4(env2))
   });
 }
-var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+var SEVERITY_ORDER2 = ["critical", "high", "medium", "low", "info"];
 function runList4(env2) {
   const { reports, malformed } = readAllAuditReports(env2.securityDir);
-  const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine).join("\n");
+  const body = reports.length === 0 ? "_No audit reports yet \u2014 run a `/marvin:sec-*` scan (e.g. `/marvin:sec-scan`)._" : reports.map(formatReportLine2).join("\n");
   const warning = malformed.length > 0 ? `
 
 _\u26A0 ${malformed.length} report(s) with an invalid audit-report block: ${malformed.map((m) => m.filename).join(", ")} (re-run the scanner)_` : "";
@@ -33623,9 +36608,9 @@ ${body}${warning}` }
     structuredContent: buildPayload(reports)
   };
 }
-function formatReportLine(r) {
+function formatReportLine2(r) {
   const total = r.findings.length;
-  const breakdown = SEVERITY_ORDER.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
+  const breakdown = SEVERITY_ORDER2.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
   const when = r.scanned_at.slice(0, 10);
   const target = r.target ? ` \`${r.target}\`` : "";
   const counts = breakdown ? ` \u2014 ${breakdown}` : "";
@@ -33636,7 +36621,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.1.0";
+var VERSION = "0.18.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -33655,7 +36640,7 @@ await runPackServer({
         buildTaskTool(server, env),
         buildTaskDetailTool(env),
         buildTrackerTool(env),
-        buildHelpTool(env, VERSION),
+        buildHelpTool(env, VERSION, packRoot),
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
@@ -33663,7 +36648,8 @@ await runPackServer({
         buildHandoffTool(env),
         buildSummaryTool(env),
         buildAdrTool(env),
-        buildAuditTool(env)
+        buildAuditTool(env),
+        buildReportTool(env)
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

@@ -23,6 +23,7 @@ import {
 import {
   loadConfig,
   parseStatusesJson,
+  trackerTemplateIssue,
   updateConfigFile,
   type ConfigPatch,
 } from "../storage/config.js";
@@ -137,7 +138,7 @@ export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "task",
     description:
-      'The marvin kanban board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/kanban/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
+      'The marvin task board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -344,7 +345,7 @@ function runList(env: ServerEnv, config: Config): ToolResult {
 }
 
 /**
- * Map kanban tasks to the TaskListPayload widget contract (ADR-0024). Statuses
+ * Map board tasks to the TaskListPayload widget contract (ADR-0024). Statuses
  * follow ADR-0026: each card carries `{ key, role }`, `counts` is an open
  * record over the configured keys, and `role_counts` is the closed roll-up.
  */
@@ -385,7 +386,7 @@ function runStatus(_server: McpServer, env: ServerEnv, config: Config): ToolResu
   lines.push("");
   lines.push(`**WIP tasks (${wip.length}):**`);
   if (wip.length === 0) {
-    lines.push("_None — use `/marvin:kanban-start` to pick one up._");
+    lines.push("_None — use `/marvin:track-start` to pick one up._");
   } else {
     for (const t of wip) lines.push(`- ${formatTaskLine(t)}`);
   }
@@ -416,7 +417,7 @@ async function runStart(
   } else {
     if (todo.length === 0) {
       return ok(
-        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:kanban-bug\` (or \`feature\` / \`chore\` / \`spike\`) to create one.`,
+        `No tasks in a todo-role status (${todoKeys.join(", ")}). Use \`/marvin:track-new\` (bug / feature / chore / spike) to create one.`,
       );
     }
     if (!canElicit(server)) {
@@ -473,7 +474,7 @@ async function runReview(
     );
   }
   updateStatus(env.tasksDir, pick.task, target.key);
-  // PR creation is prose-driven — the kanban-aware pr-create skill (ADR-0025); we just hint.
+  // PR creation is prose-driven — the board-aware pr-create skill (ADR-0025); we just hint.
   return ok(
     `Moved **${pick.task.frontmatter.id}** to **${target.key}**.\nOpen a PR with \`/marvin:pr-create\` (base branch: \`${config.base_branch}\`).`,
   );
@@ -518,7 +519,7 @@ async function runMove(
   const { tasks } = readAllTasks(env.tasksDir, config);
   if (tasks.length === 0) {
     return ok(
-      "No tasks on the board yet. Use `/marvin:kanban-bug` (or `feature` / `chore` / `spike`) to create one.",
+      "No tasks on the board yet. Use `/marvin:track-new` (bug / feature / chore / spike) to create one.",
     );
   }
 
@@ -623,7 +624,7 @@ function runLinkPr(
 }
 
 /**
- * Move finished work off the board into `.marvin/kanban/archive/` (finding 15).
+ * Move finished work off the board into `.marvin/track/archive/` (finding 15).
  * An explicit `taskId` archives that one task — role-checked to done, like the
  * other lifecycle verbs (finding 14), so the working set can't silently lose a
  * live task. With no `taskId` it archives every done-role task: confirmed via
@@ -732,11 +733,6 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
   if (input.tracker_url_template !== undefined) {
     const value = input.tracker_url_template.trim();
     patch.tracker_url_template = value === "" ? null : value;
-    if (value !== "" && !value.includes("{tracker_id}")) {
-      notes.push(
-        "the tracker_url_template has no `{tracker_id}` placeholder — every task will link to the same URL.",
-      );
-    }
   }
   if (input.branch_template !== undefined) {
     const value = input.branch_template.trim();
@@ -778,6 +774,19 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
     if (data.tracker_url_template?.trim())
       patch.tracker_url_template = data.tracker_url_template.trim();
     if (data.branch_template?.trim()) patch.branch_template = data.branch_template.trim();
+  }
+
+  // Fail closed on a template that cannot substitute, after BOTH input paths —
+  // the argument above and the elicitation form just before, which used to
+  // bypass the argument branch's check entirely. Writing such a template would
+  // persist a setting `loadConfig` discards on the very next read.
+  if (typeof patch.tracker_url_template === "string") {
+    const issue = trackerTemplateIssue(patch.tracker_url_template);
+    if (issue) {
+      return errOk(
+        `Invalid \`tracker_url_template\` — ${issue}.\nMark where a task's id goes with \`{tracker_id}\`, e.g. \`https://acme.atlassian.net/browse/{tracker_id}\`. Nothing was written.`,
+      );
+    }
   }
 
   if (Object.keys(patch).length === 0) {
@@ -831,7 +840,7 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
 
 /** The effective configuration as markdown — the `config` action's read side. */
 function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>): string {
-  const { config, warning, base_branch_source } = loaded;
+  const { config, warning, settingWarnings, base_branch_source } = loaded;
   const fileExists = existsSync(env.configPath);
   const sourceLabel =
     base_branch_source === "config"
@@ -844,6 +853,9 @@ function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>)
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`⚠ ${warning} — showing defaults.`, "");
+  // Per-setting fallbacks: the file holds a value, the effective setting below
+  // reads "not set", and this is the only place that explains the gap.
+  for (const w of settingWarnings) lines.push(`⚠ ${w}`, "");
   lines.push(`- **Project:** \`${env.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
   lines.push(

@@ -24,7 +24,7 @@ import { withSession } from "./_driver.mjs";
 function envFor(dir, extra = {}) {
   return {
     CLAUDE_PROJECT_DIR: dir,
-    MARVIN_TASKS_DIR: join(dir, ".marvin", "kanban"),
+    MARVIN_TASKS_DIR: join(dir, ".marvin", "track"),
     MARVIN_TASKS_CONFIG: join(dir, ".marvin", "config.json"),
     MARVIN_MEMORY_DIR: join(dir, ".marvin", "memory"),
     MARVIN_HANDOFF_DIR: join(dir, ".marvin", "handoff"),

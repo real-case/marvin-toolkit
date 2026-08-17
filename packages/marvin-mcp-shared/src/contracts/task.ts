@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Kanban-task data contract (ADR-0024) — feeds the task-list (#1), task-detail
- * (#2) and tracker-link-out (#6) widgets, and the text fallback of the kanban
+ * Board-task data contract (ADR-0024) — feeds the task-list (#1), task-detail
+ * (#2) and tracker-link-out (#6) widgets, and the text fallback of the track
  * `task` tool. The vocabulary mirrors the server's `storage/schema.ts`
  * (`TaskType` / `StatusRole` / `TrackerId`); Stage-1 reconciliation will make
  * `schema.ts` import these so there is a single source of truth.
