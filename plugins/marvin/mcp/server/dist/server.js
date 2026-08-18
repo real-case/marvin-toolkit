@@ -28452,6 +28452,38 @@ function withPluginResourceContext(text, ctx) {
 
 ${text}`;
 }
+function widgetDigest(server, def, result2) {
+  const uri = def.meta?.ui?.resourceUri;
+  if (typeof uri !== "string" || uri.length === 0)
+    return result2;
+  if (server.server.getClientCapabilities()?.extensions?.["io.modelcontextprotocol/ui"] == null) {
+    return result2;
+  }
+  const payload = result2.structuredContent;
+  if (payload == null)
+    return result2;
+  if (result2.isError === true)
+    return result2;
+  if ("_rendered" in payload)
+    return result2;
+  return {
+    ...result2,
+    content: [
+      {
+        type: "text",
+        text: `Rendered as the ${def.name} widget (${uri}). The user can see it; do not reproduce it here.`
+      }
+    ],
+    structuredContent: {
+      _rendered: {
+        widget: def.name,
+        uri,
+        note: "The user is already seeing this rendered as a widget. Do not reproduce it."
+      },
+      ...payload
+    }
+  };
+}
 function registerTool(server, def, onInvoke) {
   const inputSchema = def.inputSchema instanceof external_exports.ZodObject ? def.inputSchema : void 0;
   server.registerTool(def.name, {
@@ -28474,7 +28506,8 @@ function registerTool(server, def, onInvoke) {
         ]
       };
     }
-    const result2 = await def.handler(parsed.data);
+    const widened = def;
+    const result2 = widgetDigest(server, widened, await def.handler(parsed.data));
     return {
       isError: result2.isError,
       content: result2.content.map((c) => ({ type: "text", text: c.text })),
@@ -28592,7 +28625,7 @@ var PROMPTS = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim \u2014 reproduce the fenced banner block exactly, do not summarise or add preamble."
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned \u2014 do not summarise it, reformat it, or add a preamble."
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -36621,7 +36654,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.18.0";
+var VERSION = "0.18.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

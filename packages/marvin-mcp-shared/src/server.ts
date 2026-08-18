@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { resolvePromptBody, interpolateArgs } from "./prompts.js";
-import type { InvocationEvent, PromptDef, ResourceDef, ToolDef } from "./types.js";
+import type { InvocationEvent, PromptDef, ResourceDef, ToolDef, ToolResult } from "./types.js";
 
 export interface PackBundle {
   prompts: PromptDef[];
@@ -177,6 +177,84 @@ function withPluginResourceContext(text: string, ctx: { packRoot?: string }): st
   );
 }
 
+/**
+ * Capability gate for a widget-bound tool result (ADR-0041).
+ *
+ * On a client that advertises the MCP Apps UI extension the payload is already
+ * drawn as a widget, so the markdown panel in `content` is a second rendering of
+ * the same thing — the user sees one dashboard twice. This narrows ADR-0024's
+ * progressive-enhancement rule from "the terminal fallback is unchanged" to
+ * "unchanged for a client that does not advertise the UI extension".
+ *
+ * Returns `result` untouched unless **all five** facts hold:
+ *
+ *   1. the tool binds a widget (`meta.ui.resourceUri`, a non-empty string);
+ *   2. the client advertises `extensions["io.modelcontextprotocol/ui"]`;
+ *   3. the handler produced a `structuredContent`;
+ *   4. the result is not an error;
+ *   5. that payload has no own `_rendered` key.
+ *
+ * The rule is taken or declined **as a unit**. Yielding on the payload while
+ * still rewriting `content` would leave a third state — the panel gone and no
+ * instruction in its place — so a collision declines both halves. Condition 5
+ * tests presence with `in` rather than against `undefined`: an own key holding
+ * `undefined` passes a value test, and the payload spread below would then copy
+ * that `undefined` straight over the injected object, producing exactly that
+ * third state. The injected key is written **first** and the handler's payload
+ * spread after it, so a caller's value wins even if condition 5 were relaxed.
+ *
+ * `isError` is never altered on any path, and the rule names no tool: it keys on
+ * the MCP capability and the tool's own `_meta`, so the library stays
+ * project-agnostic and a tenth widget-bound tool inherits it by construction.
+ *
+ * The capability read must happen **here**, inside the dispatch closure, not at
+ * registration: `registerTool` runs from `buildServer`, which is before
+ * `server.connect`, and `getClientCapabilities()` returns undefined until
+ * initialize completes.
+ */
+function widgetDigest(
+  server: McpServer,
+  def: ToolDef<z.ZodTypeAny>,
+  result: ToolResult,
+): ToolResult {
+  const uri = (def.meta?.ui as { resourceUri?: unknown } | undefined)?.resourceUri;
+  if (typeof uri !== "string" || uri.length === 0) return result;
+
+  // A client object without `extensions` yields false rather than throwing.
+  if (server.server.getClientCapabilities()?.extensions?.["io.modelcontextprotocol/ui"] == null) {
+    return result;
+  }
+
+  const payload = result.structuredContent;
+  // Nothing for a widget to render: replacing the text would destroy the only
+  // information the result carries (the `task` tool's create / move / link-pr).
+  if (payload == null) return result;
+  // An error must always reach the model in full.
+  if (result.isError === true) return result;
+  // Presence, not value — see above.
+  if ("_rendered" in payload) return result;
+
+  return {
+    ...result,
+    content: [
+      {
+        type: "text" as const,
+        text:
+          `Rendered as the ${def.name} widget (${uri}). ` +
+          `The user can see it; do not reproduce it here.`,
+      },
+    ],
+    structuredContent: {
+      _rendered: {
+        widget: def.name,
+        uri,
+        note: "The user is already seeing this rendered as a widget. Do not reproduce it.",
+      },
+      ...payload,
+    },
+  };
+}
+
 function registerTool<TInput extends z.ZodTypeAny>(
   server: McpServer,
   def: ToolDef<TInput>,
@@ -219,7 +297,12 @@ function registerTool<TInput extends z.ZodTypeAny>(
           ],
         };
       }
-      const result = await def.handler(parsed.data);
+      // `buildServer` iterates `Array<ToolDef<z.ZodTypeAny>>`, so that is the
+      // static type at every real call site; only `registerTool`'s own generic
+      // parameter narrows it here, and TInput is contravariant through
+      // `handler`. Same widening `defineTool` performs, by the same route.
+      const widened = def as unknown as ToolDef<z.ZodTypeAny>;
+      const result = widgetDigest(server, widened, await def.handler(parsed.data));
       return {
         isError: result.isError,
         content: result.content.map((c) => ({ type: "text" as const, text: c.text })),

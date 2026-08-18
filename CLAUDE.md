@@ -146,8 +146,15 @@ into the server bundle:
   `registerResource` (NOT ext-apps' `registerAppResource`); its `read` loads the committed HTML from
   `packRoot` at request time (ADR-0008). The `task` tool binds its widget with a plain
   `meta.ui.resourceUri` object literal — so `tsup` never bundles ext-apps/React into `dist/server.js`.
-- **The terminal fallback is unchanged.** `_meta` is additive; a text-only host ignores it and renders
-  the tool's `content` exactly as before.
+- **The terminal fallback is unchanged for a client that does not advertise the extension.** `_meta`
+  is additive; such a client ignores it and receives byte-identical `content`, exactly as before. A
+  client that *does* advertise `extensions["io.modelcontextprotocol/ui"]` receives a one-line digest
+  in place of the markdown panel, plus a `_rendered` key injected into `structuredContent` telling
+  the model the payload is already on screen — otherwise the host draws the widget and the model
+  rebuilds the same panel from the payload, and the user sees it twice. The rule is decided once in
+  the shared `registerTool` rather than per tool, so a tenth widget-bound tool inherits it; it is
+  declined whole if the tool binds no widget, the result carries no `structuredContent`, the result
+  is an error, or the payload already owns a `_rendered` key (ADR-0041).
 - **No host in the Claude Code loop renders these.** Measured 2026-07-31: the CLI that spawns the
   plugin server contains no MCP Apps implementation (`resourceUri` / `profile=mcp-app` / `ui://` all
   absent), so every widget-bound tool shows its markdown fallback there. The desktop app does

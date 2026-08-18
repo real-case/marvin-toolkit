@@ -4,6 +4,24 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.18.1] — 2026-08-18
+
+### Changed
+
+- **A host that renders widgets no longer also prints the panel as markdown.** Nine of marvin's
+  tools bind a `ui://` widget. On a client that advertises the MCP Apps UI extension the host drew
+  the widget *and* the model rebuilt the same panel in text, so the user saw one dashboard twice.
+  A widget-bound tool's result is now gated on the calling client's advertised capabilities: such a
+  client receives a one-line digest naming the widget, plus a `_rendered` key in the payload telling
+  the model the content is already on screen. A client that advertises nothing — every terminal,
+  `widget-preview`, the test driver, `mcp-call.mjs` — receives byte-identical output, exactly as
+  before.
+- The decision is taken once, in the shared `registerTool`, rather than in each of the nine tools,
+  so a tenth widget-bound tool inherits it. It is declined whole when the tool binds no widget, the
+  result carries no payload, the result is an error, or the payload already owns a `_rendered` key,
+  and it never alters `isError`. Recorded as ADR-0041 (`proposed`), which narrows ADR-0024's
+  progressive-enhancement decision rather than superseding it.
+
 ## [0.18.0] — 2026-08-16
 
 WP4.1, and the last work package of the workflow-hardening plan
