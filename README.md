@@ -291,6 +291,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
 | [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
 | [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
+| [0041](./docs/adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Proposed |
 
 ## Contributing
 

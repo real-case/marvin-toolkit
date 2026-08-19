@@ -224,7 +224,7 @@ flowchart LR
 
 Three properties keep this layer from leaking complexity into the rest of the project:
 
-- **The terminal fallback is always intact.** The widget binding is additive metadata, so a text-only host ignores it and renders the tool's text content exactly as before. No command depends on a rich host.
+- **The terminal fallback is always intact.** A text-only host ignores the widget binding and renders the tool's text content exactly as before. No command depends on a rich host. A host that advertises the MCP Apps UI extension gets the rule's other side: a one-line digest in place of the panel, and a `_rendered` key added to `structuredContent` telling the model the payload is already on screen. Both halves are decided together in the shared `registerTool`, so the panel a host already draws as a widget is not printed a second time as markdown (ADR-0041).
 - **The server stays free of any browser SDK.** The widgets live in `packages/marvin-widgets/` and build to committed HTML; the server only registers the `ui://` documents and loads each file at request time, so `dist/server.js` never bundles React or the widget toolkit.
 - **Widgets share two primitives.** A master-detail `<ListDetail>` and a dependency-free `<Markdown>` renderer back every widget, over a small set of shared data contracts that the tools already emit.
 

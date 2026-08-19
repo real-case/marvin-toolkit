@@ -141,7 +141,7 @@ export const PROMPTS: PromptDef[] = [
     name: "help",
     description:
       "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim — reproduce the fenced banner block exactly, do not summarise or add preamble.",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
