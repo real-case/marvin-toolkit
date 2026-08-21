@@ -14,7 +14,7 @@
       "name": "marvin",
       "source": "./plugins/marvin",
       "description": "The complete Marvin toolkit as one MCP server under a single /marvin: slash prefix — core dev tools, the pr-* pull-request lifecycle, the task-* spec pipeline, sec-* security scanners, and a track-* task tracker. Ships two blocking commit and push guards that can block a shell command; both can be disabled via hooks.enabled in .marvin/config.json or MARVIN_HOOKS_DISABLED=1.",
-      "version": "0.18.1",
+      "version": "0.18.2",
       "category": "productivity",
       "keywords": [
         "marvin",

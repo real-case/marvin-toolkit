@@ -457,11 +457,21 @@ function detectBase(
   input: VerifyInput,
   projectRoot: string,
 ): { stacks: string[]; gates: GateSpec[] } {
-  // A `stack` hint names a detector id and skips filesystem detection; an
-  // unrecognised hint is ignored and normal detection runs.
+  // A `stack` hint names a detector id and skips filesystem detection, but it is
+  // honoured only when the project actually looks like that stack. The hint
+  // exists to skip RE-detection in a chained call, not to assert a stack the
+  // filesystem contradicts. A detector's gate table encodes its own
+  // precondition: the TypeScript table runs `npx tsc --noEmit`, which needs
+  // exactly the root `tsconfig.json` that detector's `detect` tests for. So a
+  // hint whose detector does not match yields a gate that cannot run — tsc
+  // prints its usage text and exits 1 — and fails the whole verification for a
+  // reason unrelated to the change under test. That is not hypothetical: a
+  // workspace repo keeping its tsconfigs per package, with a spec whose
+  // frontmatter says `stack: typescript`, hits it on every run. An unrecognised
+  // hint and a mismatched one are both ignored, and normal detection runs.
   if (input.stack) {
     const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
-    if (hinted) return gatesFromStacks([hinted]);
+    if (hinted?.detect(projectRoot)) return gatesFromStacks([hinted]);
   }
 
   const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));

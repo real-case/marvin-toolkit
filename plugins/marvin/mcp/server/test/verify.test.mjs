@@ -287,6 +287,56 @@ for (const c of STACK_DETECTION_CASES) {
   });
 }
 
+// ── the `stack` hint is an optimisation, not an assertion ──
+
+test("a stack hint whose detector does not match the project is ignored", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-hint-miss-"));
+  try {
+    // A workspace repo: TypeScript by nature, but its tsconfigs live per package,
+    // so the root has none. This is the shape that made every run fail — the hint
+    // forced `npx tsc --noEmit`, which without a root tsconfig.json prints its
+    // usage text and exits 1.
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "node --test", typecheck: "tsc -p sub --noEmit" } }),
+    );
+    const res = await callVerifyRaw({
+      dryRun: true,
+      stack: "typescript",
+      projectRoot: dir,
+      write: false,
+    });
+    // Falls back to what the project declares about itself...
+    assert.match(res, /package\.json scripts/);
+    assert.match(res, /npm run typecheck/);
+    // ...and never emits the table gate whose precondition is false here.
+    assert.doesNotMatch(res, /npx tsc --noEmit/);
+    assert.doesNotMatch(res, /\*\*Stacks:\*\* TypeScript/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a stack hint that matches the project still skips detection", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-hint-hit-"));
+  try {
+    // The hint's real purpose — a chained call that already knows the stack.
+    // A root tsconfig.json makes the detector's own precondition true, so the
+    // canonical table is correct and must still be used.
+    writeFileSync(join(dir, "tsconfig.json"), "{}");
+    const res = await callVerifyRaw({
+      dryRun: true,
+      stack: "typescript",
+      projectRoot: dir,
+      write: false,
+    });
+    assert.match(res, /\*\*Stacks:\*\* TypeScript/);
+    assert.match(res, /npx tsc --noEmit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ── delivery gate (action: "gate") — reads the verification.md verdict, ADR-0012 ──
 
 function writeVerification(dir, verdict) {

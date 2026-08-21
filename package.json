@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -17,6 +17,7 @@
     "dev:watch": "node scripts/dev-watch.mjs",
     "test": "npm run test --workspaces --if-present && node --test test/*.test.mjs",
     "lint": "eslint .",
+    "typecheck": "tsc -p packages/marvin-mcp-shared/tsconfig.json --noEmit && tsc -p packages/marvin-widgets/tsconfig.json --noEmit && tsc -p plugins/marvin/mcp/server/tsconfig.json --noEmit && npm run check:catalog -w @marvin-toolkit/site",
     "lint:manifests": "node scripts/lint-manifests.mjs",
     "lint:skills": "node scripts/lint-skills.mjs",
     "format": "prettier --write .",

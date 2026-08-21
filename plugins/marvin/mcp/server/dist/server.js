@@ -34131,7 +34131,7 @@ function resolvePlan(input, projectRoot, configGates) {
 function detectBase(input, projectRoot) {
   if (input.stack) {
     const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
-    if (hinted) return gatesFromStacks([hinted]);
+    if (hinted?.detect(projectRoot)) return gatesFromStacks([hinted]);
   }
   const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
   if (matched.length === 0) {
@@ -36654,7 +36654,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.18.1";
+var VERSION = "0.18.2";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
