@@ -132,7 +132,7 @@ The pipeline runs in a worktree. The spec is authored there, the implementation 
 the pull request is opened from there, and the worktree is removed once the branch merges. A
 metrics file written into that worktree disappears with it.
 
-The proposal is therefore to add a second negation:
+**Decided, and already applied in this branch.** `.gitignore` now carries a second negation:
 
 ```gitignore
 .marvin/*
@@ -145,9 +145,13 @@ accumulating, so it has to reach a clone. Committing also produces a useful side
 metrics record for a task arrives on `dev` in the same pull request as the task itself, so the
 series grows precisely when work is accepted.
 
-Keeping metrics local is a defensible alternative, but it narrows what they can answer. The
-series would then describe one machine and whichever worktrees remain open, and the outcome
-metrics in particular would lose their meaning.
+The alternative was to keep the series local, which is defensible but narrows what it can answer.
+It would then describe one machine and whichever worktrees remain open, and the outcome metrics
+would lose their meaning entirely.
+
+The negation is inert until a writer exists, since git records files rather than directories.
+It lands ahead of that writer deliberately, so that the first record WP2 produces is committable
+on the day it is written rather than after a follow-up change.
 
 ### File layout
 
@@ -309,9 +313,10 @@ Follow the standing ground rules for this repository. Branch off `dev`, open eve
 into `dev`, rebuild `dist/server.js` in a checkout with its own installed `node_modules`, bump the
 version with `npm run sync-version`, and add a `CHANGELOG.md` entry for each bump.
 
-**WP1 — Commit the location.** Add the `.marvin/metrics/` negation to `.gitignore` and add the row
-to the working-directory table in `CLAUDE.md`. Size XS. This lands first because every later
-package writes records that would otherwise be discarded.
+**WP1 — Commit the location. Done in this branch.** The `.marvin/metrics/` negation is in
+`.gitignore`. It lands first because every later package writes records that would otherwise be
+discarded. The row in the working-directory table in `CLAUDE.md` waits for WP2: that table names
+the writer of each path, and until one exists the row would document a fiction.
 
 **WP2 — Storage and the live journal.** Add `storage/metrics.ts` with an append that never reads
 the file back and a read that drops an unparseable block rather than the file, following
@@ -339,10 +344,10 @@ new row either way.
 
 ## Open questions
 
-1. Should the metrics directory be committed, as proposed, or kept local? The rest of the design
-   holds either way, but the outcome metrics Q11 and Q12 lose most of their value if the series
-   does not reach a clone.
-2. Should a verification run without a `specSlug` warn, so that the coverage gap is visible at the
+1. Should a verification run without a `specSlug` warn, so that the coverage gap is visible at the
    moment it happens rather than only in the roll-up?
-3. Should WP4 land before WP2, so that T3 and R4 are present from the first recorded task rather
+2. Should WP4 land before WP2, so that T3 and R4 are present from the first recorded task rather
    than being permanently absent for the earliest entries in the series?
+
+A third question, whether to commit the metrics directory or keep it local, was answered on
+2026-09-03 in favour of committing. See **Version control** above.
