@@ -4,6 +4,55 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.21.0] — 2026-09-03
+
+Phase 2 of the task-metrics plan: WP2 and WP3 together, as the proposal requires. The pipeline
+gains a place to record what compaction otherwise destroys, the prose sites that lose it now write
+it, and delivery derives the terminal block from the artifacts already on disk. The tool count
+moves from 13 to 14.
+
+### Added
+
+- **The `metrics` tool**, the fourteenth, and the one writer of `.marvin/metrics/` (ADR-0043). Its
+  input is `.strict()`, like `spec` and `report`, so a mistyped key is an error rather than an event
+  recorded without a field. `action: "record"` appends one live ` ```json metric-event ` block — six
+  kinds: `fix-round` (loop + round), `spec-gap` (detail), `open-item` (classification + detail),
+  `critic-dispatch` (critic + pass), `critic-verdict` (critic + pass + verdict + blockers +
+  warnings) and `gate-call` (gate + call + verdict) — each validated fail-closed on its own required
+  fields, so a half-written event is refused rather than counted. `action: "rollup"` derives the
+  terminal ` ```json task-metrics ` block from the spec, the progress, oracle and verification-run
+  journals, the `verify-result` block, the critique receipts and git, and appends it; every metric
+  is nullable, null means the source was absent and never zero, and a `sources` map names which of
+  the eight inputs was on disk. A second delivery appends a second block and readers take the last.
+  The answer also says whether git ignores the record, so a host project with a blanket `.marvin/`
+  exclusion learns at the first roll-up that its series is not being committed.
+- **The record is named after the spec's own file** — `.marvin/metrics/<NNN>-<slug>.md`, or
+  `<slug>.md` for a spec that lives unnumbered in a host directory or for an event `task-start`
+  records against a draft. Nothing is allocated, two parallel branches cannot mint the same number,
+  and both directions of the join are a filename lookup.
+- **The `TaskMetrics` and `MetricEvent` contracts** in `packages/marvin-mcp-shared/src/contracts/metrics.ts`,
+  with the plain field names of the plan's derivation table (`intake_ms`, `scope_drift`, `reseals`,
+  …). The server keeps a runtime mirror of the event vocabulary in `storage/metrics.ts`, and a test
+  compiles both and asserts they agree.
+- **`MARVIN_METRICS_DIR`** repoints the directory, chiefly for test isolation. No self-written
+  `.gitignore`: this is a shared record, and ignoring it is a project's choice.
+
+### Changed
+
+- **The pipeline prose records the live events.** `task-start` records every DoR gate call (7F/7B,
+  and each re-run the sweep prescribes) and every spec-critic dispatch and terminal verdict (8F/8B)
+  with its pass number; `task-implement` records the diff-critic dispatch and verdict (6F/9B), every
+  fix-cycle round with its loop, every item deferred or blocked at a limit, and every SPEC GAP,
+  including Step 6B's regression test that passes on unfixed code; `marvin-tm-executor` records the
+  same events under its own `source`. Each site says why: compaction destroys the in-session count,
+  and the call costs one tool round-trip.
+- **`task-deliver` rolls the metrics up in a new step 1.5**, after the delivery gate allows and
+  before the commit, so the record ships in the same commit and pull request as the work; step 2
+  stages it, and step 6 lists it among the artifacts to preserve. The executor does the same in a
+  new §5.0. The roll-up is a record, never a gate — an unavailable tool is reported and skipped.
+- **`changedFilesForScope` moved from `tools/spec.ts` into `lib/git.ts`** so the scope gate and the
+  metrics roll-up's scope-drift metric judge the same file set; the gate's behaviour is unchanged.
+
 ## [0.20.0] — 2026-09-03
 
 Phase 1 of the task-metrics plan (`docs/proposals/task-metrics-implementation-plan.md`). The

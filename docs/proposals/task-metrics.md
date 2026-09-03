@@ -319,12 +319,16 @@ version with `npm run sync-version`, and add a `CHANGELOG.md` entry for each bum
 discarded. The row in the working-directory table in `CLAUDE.md` waits for WP2: that table names
 the writer of each path, and until one exists the row would document a fiction.
 
-**WP2 — Storage and the live journal.** Add `storage/metrics.ts` with an append that never reads
+**WP2 — Storage and the live journal.** *Landed in 0.21.0 together with WP3 (Phase 2 of the plan).
+The live-event vocabulary is the plan's six kinds (D4), the block tags are `metric-event` and
+`task-metrics` (D5), and the record is named after the spec's file (D2).* Add `storage/metrics.ts` with an append that never reads
 the file back and a read that drops an unparseable block rather than the file, following
 `storage/progress.ts`. Add `MARVIN_METRICS_DIR` to `lib/env.ts` and the `TaskMetrics` contract to
 the shared contracts package. Wire the five live events into the `task-implement` prose. Size M.
 
-**WP3 — The roll-up at delivery.** Compute the derived fields from the spec, the progress journal,
+**WP3 — The roll-up at delivery.** *Landed in 0.21.0 together with WP2: the `metrics` tool's
+`rollup` action, called from `task-deliver` step 1.5 after the gate allows and before the commit
+(D8).* Compute the derived fields from the spec, the progress journal,
 the oracle journal, the `verify-result` block and the critique receipt, and write the terminal
 block from `task-deliver`. Record which sources were available. Size M.
 

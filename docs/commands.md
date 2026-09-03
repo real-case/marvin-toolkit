@@ -228,7 +228,7 @@ The panel is additive, so a text-only host shows the same information as text.
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to thirteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to fourteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -241,6 +241,7 @@ but they are not typed as slash commands.
 | `dashboard` | The whole-toolbox state report. |
 | `verify` | The concurrent quality-gate runner that writes `verification.md`. |
 | `spec` | The Definition-of-Ready gate that validates the spec contract, plus the corpus reads and the consistency lint over the whole spec directory. |
+| `metrics` | The task-metrics record under `.marvin/metrics/` — `record` appends a live event, `rollup` derives the terminal block at delivery. |
 | `lessons` | The lessons-learned store — add with a duplicate guard, search, count, and prune. |
 | `summary` | The task-delivery summary aggregator. |
 | `handoff` | The session-continuation handoff documents. |

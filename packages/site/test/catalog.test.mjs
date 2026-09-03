@@ -103,7 +103,7 @@ test("counts equal an independent recount of the plugin sources", async () => {
   // grows: the site's advertised counts are a deliberate, guarded number.
   assert.deepEqual(catalog.counts, {
     prompts: PROMPTS.length,
-    tools: 13,
+    tools: 14,
     agents: 10,
     widgets: 9,
     version: plugin.version,

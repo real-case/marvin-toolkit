@@ -30,11 +30,16 @@ Three cases the reason will name, each needing a different answer:
 
 **If the `verify` tool is unavailable, refuse — do not read the artifact by hand.** A hand-read `verification.md` gives you a verdict and no freshness check, which is a strictly weaker gate presented as the real one. Tell the user the delivery gate cannot run and stop.
 
+### 1.5 Roll up the task's metrics (ADR-0043)
+
+Once the gate has ALLOWed and before anything is committed, call the `metrics` tool with `action: "rollup"` and the spec's `slug` (resolved as in step 1). It derives the terminal `task-metrics` block for this task from the artifacts already on disk — the spec, the progress, oracle and verification-run journals, the `verify-result` block, the critique receipts and git — and appends it to `.marvin/metrics/<NNN>-<slug>.md`, so the record ships in the same commit and pull request as the work. Relay its digest briefly: the three groups and the `Sources` line, where a source marked absent is a coverage gap worth naming, not an error. If the answer reports the record as **IGNORED** by `.gitignore`, tell the user the series is not being committed and name the negation to add (`!.marvin/metrics/` after `.marvin/*`). A second delivery of the same spec appends a second block; readers take the last. Skip silently only when no spec slug is known — a standalone delivery has nothing to measure. If the `metrics` tool is unavailable, say so and continue: the roll-up is a record, never a gate.
+
 ### 2. Commit
 
 Follow the `/marvin:commit` workflow.
 
 When composing the commit:
+- Stage the metrics record step 1.5 wrote (`.marvin/metrics/<NNN>-<slug>.md`) with the change — it is part of the delivery, and it is the one `.marvin/` artifact this repository commits besides the lessons
 - Use the spec title as the commit scope/subject
 - Reference the spec for the "why" in the commit body — what problem this solves or what feature this delivers
 - Spec context: in a **chained** session (invoked straight after `/marvin:task-implement`), reuse the spec already read in the conversation — do not re-read it, and do no lookup at all. Only when invoked **standalone** read from disk: call the `spec` MCP tool with `action: "list"` and match the slug from conversation against the records it returns, then fall back to `.marvin/task/spec.md`
@@ -114,6 +119,7 @@ Do NOT delete `.marvin/task/` artifacts. They serve as documentation:
 - `spec.md` — what was intended
 - `plan.md` — how it was implemented
 - `verification.md` — that it was verified
+- `.marvin/metrics/<NNN>-<slug>.md` — what it cost and what it produced (committed with the work, ADR-0043)
 
 ## Guidelines
 

@@ -31,7 +31,11 @@ import {
   type ProgressEntry,
 } from "../storage/progress.js";
 import { loadConfig } from "../storage/config.js";
-import { git, inGitRepo } from "../lib/git.js";
+import {
+  changedFilesForScope,
+  inGitRepo,
+  normalizeScopePath as normalizePath,
+} from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
@@ -1092,22 +1096,10 @@ function verifyScope(
   ]);
 }
 
-/** git diff (vs `base`, default HEAD) + untracked, normalised and de-duped. */
-function changedFilesForScope(projectRoot: string, base: string | undefined): string[] {
-  const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
-  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
-  const lines = [
-    ...(diff.ok ? diff.value.split("\n") : []),
-    ...(untracked.ok ? untracked.value.split("\n") : []),
-  ];
-  return [...new Set(lines.map(normalizePath).filter(Boolean))];
-}
-
-/** Normalise a path for comparison: posix separators, no leading `./`. */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-}
+// `changedFilesForScope` and `normalizePath` moved to `lib/git.ts` (ADR-0043):
+// the metrics roll-up computes scope drift over the same file set this gate
+// judges, and two copies of "what changed" would drift the first time either
+// was touched.
 
 /** Make `p` relative to `root` when it is an absolute path under it. */
 function relativeToRoot(p: string, root: string): string {
