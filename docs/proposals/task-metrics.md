@@ -7,6 +7,7 @@
 | Applies to | the `task-*` pipeline skills, the `verify` and `spec` tools, a new `.marvin/metrics/` location, and `.gitignore` |
 | Principle  | Record only what is otherwise lost, and derive everything else from the artifacts already on disk               |
 | Scope      | Quality of the delivered work and the active time the pipeline spends. Cost and token consumption are out of scope |
+| Plan       | [task-metrics-implementation-plan.md](./task-metrics-implementation-plan.md), the phase-by-phase implementation plan |
 
 ## Motivation
 
