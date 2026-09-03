@@ -1567,10 +1567,17 @@ export function checkGraph(c: SpecContract): Check[] {
   //     edges whose endpoints both exist are compared — a dangling ref is
   //     already check 1's or check 2's finding, and reporting it twice would
   //     send the author to the wrong side of the graph.
+  //     Two rows may carry the same id — the schema does not forbid it, and no
+  //     check reports it — so the backward index is UNIONED rather than
+  //     overwritten. Overwriting would drop the first row's declarations and
+  //     report its edges as asymmetric, describing a duplicate id as the wrong
+  //     defect.
   const declaredSatisfies = new Map<string, string[]>();
   for (const f of c.files) {
     const named = refs(f.satisfies);
-    if (named.length) declaredSatisfies.set(f.id.toUpperCase(), named);
+    if (!named.length) continue;
+    const id = f.id.toUpperCase();
+    declaredSatisfies.set(id, [...(declaredSatisfies.get(id) ?? []), ...named]);
   }
   const asymmetric: string[] = [];
   for (const cr of c.criteria) {

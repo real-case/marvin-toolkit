@@ -1234,9 +1234,52 @@ test("a failing gate's excerpt shows the error lines, not the warning tail", asy
   });
   const body = details(text);
   assert.ok(body, "a failing gate rendered no Details block");
-  assert.match(body, /1 error line\(s\):/);
-  assert.match(body, /src\/new\.ts:1:1 {2}error {2}boom/);
-  assert.doesNotMatch(body, /pre-existing/, "the warning tail displaced the error");
+  assert.match(
+    body,
+    /^1 error line\(s\):\nsrc\/new\.ts:1:1 {2}error {2}boom/,
+    "the error does not lead the excerpt",
+  );
+  // The retained tail is three lines and no more: without a bound the fourteen
+  // warnings would be back, which is the defect this excerpt exists to fix.
+  assert.equal(
+    (body.match(/pre-existing/g) ?? []).length,
+    3,
+    "the warning tail is not bounded to the retained lines",
+  );
+});
+
+/**
+ * The counter-case, and the reason the tail is retained unconditionally. A test
+ * runner names its passing tests, and a name may contain the word "error"; the
+ * assertion that actually failed carries `Error` mid-token (`AssertionError
+ * [ERR_ASSERTION]`) and matches no pattern at all. Leading with matched lines
+ * alone put twelve passing tests in the excerpt and dropped the assertion —
+ * exactly the defect the excerpt was written to prevent, in the gate that fails
+ * most often.
+ */
+test("a passing test's name never displaces the assertion that failed", async () => {
+  const command = [
+    'for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do echo "  ✓ returns an error when the token is missing ($i)"; done',
+    "echo '  1) auth handler:'",
+    "echo 'AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:'",
+    "echo '  actual:   401'",
+    "echo '  expected: 403'",
+    "exit 1",
+  ].join("; ");
+  const { text } = await callVerify({
+    gates: [{ name: "test", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(body, /AssertionError \[ERR_ASSERTION\]/, "the assertion was dropped");
+  assert.match(body, /expected: 403/, "the expected value was dropped");
+  // The pass marker emptied the error set, so this is the plain tail — which is
+  // the right answer here and names no count. Passing tests appearing IN that
+  // tail is the tail being the tail; what must not happen is the excerpt leading
+  // with them as though they were the failure.
+  assert.doesNotMatch(body, /error line\(s\)/, "the excerpt led with passing test names");
 });
 
 /** With no error line to find, the tail is still the right answer — it is where

@@ -158,8 +158,12 @@ detection; `marvin-tm-diff-critic` below is the *semantic* half.
      the fix (`/marvin:task-verify` with `only: ["<gate>"]`) under the **Fix-cycle protocol** below.
      This is the verify-gate loop and it carries its own budget. Once the targeted gate is green,
      run **one final full `verify` pass** as the pre-delivery confirmation. If the loop reaches its
-     limit unresolved, stop and hand back to the user with a summary. Do not deliver — and do not
-     dispatch the critic, which has nothing stable to review.
+     limit unresolved, stop and hand back to the user with a summary, and do not deliver.
+     **Dispatch the critic once even so**, saying in the prompt that the tree is red and which gate
+     fails: it is read-only, delivery is blocked either way, and a hand-back carrying a review is
+     worth more than one carrying none. This is the single place the critic sees a tree that is not
+     green, and the reason is that the alternative is no semantic review at all, exactly when the
+     change is in its worst shape.
 2. **Record the acceptance oracles.** With the gates green, call the `verify` tool with
    `action: "oracles"` and this spec's `specSlug` (`expect` defaults to `"pass"`, which is the only
    phase a feature has). It runs each criterion's own typed oracle and appends the outcome to

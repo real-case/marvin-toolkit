@@ -92,8 +92,11 @@ critic asks next.
 **7. A failing gate's excerpt leads with the errors.** `verify` showed the last twelve lines of
 output, which for any linter that prints warnings after errors is the wrong twelve: the run's lint
 failure rendered a pre-existing warning in an untouched file while all five real errors scrolled
-past. The excerpt now shows the matched error lines and their count, falling back to the tail when
-the output names none.
+past. The excerpt now shows the matched error lines and their count. Two rules keep it from
+inverting the defect on a test runner, which the first draft did: a line carrying a success marker
+is removed before matching, since a test *named* "returns an error…" prints that name on success;
+and the last three lines are retained whatever matched, since a runner's verdict lives there and
+matches no pattern here (`AssertionError [ERR_ASSERTION]` carries `Error` mid-token).
 
 ## Consequences
 

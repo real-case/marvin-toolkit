@@ -63,8 +63,11 @@ release attacks the cost without changing what is checked. Recorded as ADR-0042.
 - **A failing gate's excerpt names the file that failed.** `verify` showed the last twelve lines of
   output; for any linter that prints warnings after errors those are the wrong twelve — the measured
   run's lint failure rendered a pre-existing warning in an untouched file while all five real errors
-  scrolled past. The excerpt now leads with the matched error lines and their count, and falls back
-  to the tail when the output names none.
+  scrolled past. The excerpt now leads with the matched error lines and their count. Lines carrying a
+  success marker are removed before matching, and the last three lines are kept whatever matched: a
+  runner states its verdict in its final lines, and those carry no error token at all
+  (`AssertionError [ERR_ASSERTION]` matches none of the patterns), so leading with matches alone
+  reproduced the same defect in the test gate.
 
 ## [0.18.1] — 2026-08-18
 

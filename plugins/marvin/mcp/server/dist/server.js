@@ -34341,13 +34341,17 @@ async function runGate({ gate, probe }, cwd) {
 }
 var ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
 var FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+var PASS_MARKER = /(^|\s)[\u2713\u2714\u221a]|^\s*ok\s/;
 function failureExcerpt(text) {
   const lines = text.trim().split("\n");
-  const errors = lines.filter((l) => ERROR_TOKEN.test(l) || FAIL_MARKER.test(l));
+  const errors = lines.filter(
+    (l) => !PASS_MARKER.test(l) && (ERROR_TOKEN.test(l) || FAIL_MARKER.test(l))
+  );
   if (errors.length === 0) return lines.slice(-12).join("\n");
-  const shown = errors.slice(0, 12);
+  const shown = errors.slice(0, 9);
   const head = shown.length === errors.length ? `${errors.length} error line(s):` : `${errors.length} error line(s), first ${shown.length}:`;
-  return [head, ...shown].join("\n");
+  const tail = lines.slice(-3).filter((l) => !shown.includes(l));
+  return [head, ...shown, ...tail.length ? ["\u2026", ...tail] : []].join("\n");
 }
 function crashResult(gate, reason, durationMs = 0) {
   return {
@@ -35805,7 +35809,9 @@ function checkGraph(c) {
   const declaredSatisfies = /* @__PURE__ */ new Map();
   for (const f of c.files) {
     const named = refs(f.satisfies);
-    if (named.length) declaredSatisfies.set(f.id.toUpperCase(), named);
+    if (!named.length) continue;
+    const id = f.id.toUpperCase();
+    declaredSatisfies.set(id, [...declaredSatisfies.get(id) ?? [], ...named]);
   }
   const asymmetric = [];
   for (const cr of c.criteria) {
