@@ -1207,3 +1207,50 @@ test("test_one is a config key and never a schedulable gate", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** The `Details` body a failing gate rendered, or null when it rendered none. */
+function details(text) {
+  const m = text.match(/- \*\*Details:\*\*\n\n```\n([\s\S]*?)\n```/);
+  return m ? m[1] : null;
+}
+
+/**
+ * A failing gate's excerpt must show what FAILED. ESLint prints its errors
+ * before a longer tail of pre-existing warnings, so a naive tail of stdout
+ * reliably renders the wrong file: one measured run pointed the reader at a
+ * warning in a file the task had never touched while all five real errors
+ * scrolled past above it.
+ */
+test("a failing gate's excerpt shows the error lines, not the warning tail", async () => {
+  const command = [
+    "echo 'src/new.ts:1:1  error  boom  no-undef'",
+    'for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do echo "src/old$i.tsx:9:9  warning  pre-existing  react-hooks"; done',
+    "exit 1",
+  ].join("; ");
+  const { text } = await callVerify({
+    gates: [{ name: "lint", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(body, /1 error line\(s\):/);
+  assert.match(body, /src\/new\.ts:1:1 {2}error {2}boom/);
+  assert.doesNotMatch(body, /pre-existing/, "the warning tail displaced the error");
+});
+
+/** With no error line to find, the tail is still the right answer — it is where
+ * a test runner puts its summary. */
+test("a failing gate with no error line keeps the tail", async () => {
+  const command = 'for i in $(seq 1 20); do echo "line$i"; done; exit 1';
+  const { text } = await callVerify({
+    gates: [{ name: "test", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(body, /line20$/);
+  assert.match(body, /^line9$/m);
+  assert.doesNotMatch(body, /^line8$/m, "the tail is not the last twelve lines");
+});

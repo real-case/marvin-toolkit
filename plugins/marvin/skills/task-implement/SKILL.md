@@ -86,6 +86,15 @@ In parallel, read:
 - The spec in full
 - `CLAUDE.md` if it exists (project conventions)
 - **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the spec's slug, title, and the areas it touches) to recall what past tasks in this repo learned (`.marvin/memory`, ADR-0021/0028). A relevant `gotcha` or `bug-pattern` is a constraint to respect while implementing — note it next to the criterion it affects. If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
+- **The host project's own skills.** If `.claude/skills/` exists at the project root, list it
+  (`ls -d .claude/skills/*/`) and read the `SKILL.md` of those whose domain covers the contract's
+  `files` paths — matching on each skill's frontmatter `metadata.filePattern` where it has one, on the
+  directory name otherwise, and reading at most the three closest matches. A project that ships
+  skills usually states in `CLAUDE.md` that they are binding, and their rules are exactly the ones a
+  diff critic blocks on: one measured run lost a 393-second review round to two `aria-label`
+  attributes that the project's own `ui-styling` skill forbids, and reading the two matching skills
+  would have cost about two seconds. Treat what they say as a constraint on the code you are about
+  to write, not as background.
 
 Summarize back to the user in 2–4 lines: the goal, the chosen approach (or fix approach for bugs), and the acceptance criteria count. This is a handshake — the user confirms the skill parsed the spec correctly.
 
@@ -119,11 +128,20 @@ destroys it with no trace**, while the journal is what survives compaction and i
 on the next run. Keep `detail` to one line of position and choice — never a pasted credential, token
 or customer datum.
 
-### Step 6F: Self-review ‖ Verify (concurrent)
+### Step 6F: Verify, then self-review
 
-Self-review (`marvin-tm-diff-critic`) and verification are both slow and **independent** — the
-critic is read-only; the `verify` tool writes only `verification.md`. Run them **concurrently**
-so wall-clock collapses to the slower of the two instead of their sum.
+The deterministic half of this step — the scope gate, the project's gates, the acceptance oracles —
+is fast and is not a matter of opinion. The critic is a model and runs roughly seven times slower.
+Run the deterministic half first and dispatch the critic **once**, against a tree that is already
+green.
+
+This reverses the concurrency the step used to prescribe (P2 of
+`docs/proposals/task-workflow-latency-optimization.md`), and measurement is the reason. A critic
+dispatched beside a verify that then fails is reading a tree the fix changes underneath it — the
+case the stale-review rule this step used to carry existed for, and that rule mandated a second pass
+in full.
+One instrumented run saved 76 seconds on the overlap and paid 393 seconds for the re-review it
+forced.
 
 **First, the scope gate (deterministic, fast).** Call the `spec` tool with `action: "scope"` (pass the
 resolved `specPath`). It checks `git diff` ⊆ the contract `files` allowlist and **FAILs** listing any
@@ -132,23 +150,33 @@ legitimate discovery — record it as a **SPEC GAP** and re-run with `allow: [<p
 contract is immutable; do not silently edit it). This is the *mechanical* half of scope-creep
 detection; `marvin-tm-diff-critic` below is the *semantic* half.
 
-1. **Launch the critic in the background.** If Task-tool is available, dispatch
-   `marvin-tm-diff-critic` (with `run_in_background`) passing the spec path and the current diff
-   (`git diff`). If Task-tool is unavailable, skip the critic — verify still runs, and the skip
-   travels to `/marvin:task-deliver` as `⚠️ critic skipped`.
-2. **Run verify concurrently.** While the critic runs, invoke `/marvin:task-verify feature`. In
-   this chained call, pass `mode: feature` (and the `stack` if already known) forward so the tool
-   skips re-detection (it calls the `verify` tool, `execution: parallel`).
-3. **Merge point.** Collect **both** results before any delivery decision — never decide on one
-   alone.
-
-**Verify result:**
-- **PASS / PASS WITH WARNINGS** — proceed (collect warnings for the PR).
-- **FAIL** — read the failing output, fix it, then re-run **only the failed gate** to confirm the
-  fix (`/marvin:task-verify` with `only: ["<gate>"]`) under the **Fix-cycle protocol** below. This
-  is the verify-gate loop and it carries its own budget. Once the targeted gate is green, run
-  **one final full `verify` pass** as the pre-delivery confirmation. If the loop reaches its limit
-  unresolved, stop and hand back to the user with a summary. Do not deliver.
+1. **Verify.** Invoke `/marvin:task-verify feature`. In this chained call, pass `mode: feature`
+   (and the `stack` if already known) forward so the tool skips re-detection (it calls the `verify`
+   tool, `execution: parallel`).
+   - **PASS / PASS WITH WARNINGS** — proceed (collect warnings for the PR).
+   - **FAIL** — read the failing output, fix it, then re-run **only the failed gate** to confirm
+     the fix (`/marvin:task-verify` with `only: ["<gate>"]`) under the **Fix-cycle protocol** below.
+     This is the verify-gate loop and it carries its own budget. Once the targeted gate is green,
+     run **one final full `verify` pass** as the pre-delivery confirmation. If the loop reaches its
+     limit unresolved, stop and hand back to the user with a summary. Do not deliver — and do not
+     dispatch the critic, which has nothing stable to review.
+2. **Record the acceptance oracles.** With the gates green, call the `verify` tool with
+   `action: "oracles"` and this spec's `specSlug` (`expect` defaults to `"pass"`, which is the only
+   phase a feature has). It runs each criterion's own typed oracle and appends the outcome to
+   `.marvin/task/runs/<slug>.oracles.md`. The gates prove the suite is green; the oracles prove
+   **this spec's criteria** are, one at a time, which is the question the critic asks next and the
+   only one the whole-suite verdict cannot answer. It is cheap: one measured run executed nine
+   oracles in 16 seconds against 343 seconds for the gates. A criterion whose oracle fails is a
+   verify-gate-loop failure like any other — fix it before the critic sees the diff. The tool refuses
+   an **unsealed** spec before spawning anything: that is Step 2's seal warning coming due, so record
+   it and move on rather than sealing a spec mid-execution.
+3. **Dispatch the critic — once.** If Task-tool is available, dispatch `marvin-tm-diff-critic`
+   against the now-green tree, passing the spec path, `git diff`, **and**
+   `git status --porcelain --untracked-files=all`. The status listing is not a nicety: a new file is
+   untracked, so `git diff` cannot show it, and a feature spec is mostly `action: new` rows — one
+   measured run passed a diff that held 4 of the 17 contract files and hid every file the feature
+   actually consisted of. If Task-tool is unavailable, skip the critic — the gates and oracles still
+   ran, and the skip travels to `/marvin:task-deliver` as `⚠️ critic skipped`.
 
 **Critic result:** before acting on any finding, open the file it cites at the cited lines and read
 enough around them to judge the claim — a finding whose premise the current code contradicts is not
@@ -175,8 +203,12 @@ the receipt. One surviving blocker keeps the `BLOCK` and the draft PR.
   line exactly as it renders a skipped critic. Tell the user the semantic half of the review did
   not run.
 
-**Stale-review guard.** If a verify FAIL triggered a code fix, the critic's report is now stale —
-**re-run `marvin-tm-diff-critic` against the final diff** before delivery.
+**Stale-verify guard.** The order above makes a stale *review* impossible — the critic never reads a
+tree that a verify fix is about to change. It moves the staleness to the other side: any code change
+made after the green run, **including one made to satisfy a critic blocker**, invalidates that run.
+Re-run the affected gate (`only: ["<gate>"]`), then one final full `verify` before delivery. This is
+not bookkeeping — the delivery gate compares the recorded run against the working tree (ADR-0035) and
+refuses one that no longer describes it.
 
 **Write the receipt** (ADR-0039). Once the critic has returned and its verdict is terminal, save the
 critic's report **verbatim** followed by its ` ```json critic-verdict ` block to
@@ -185,10 +217,9 @@ critic's report **verbatim** followed by its ` ```json critic-verdict ` block to
 `skills/handoff/SKILL.md` states for its own sequence) and `<slug>` is the spec slug, which is also
 the block's `subject`. Then:
 
-- **Write it after the merge point, never at dispatch.** The critic runs `run_in_background` in
-  step 1 above and step 3 is where its result arrives; a receipt written at dispatch records a
-  verdict that does not exist yet.
-- **The receipt records the FINAL run.** Where the stale-review guard forced a re-run, replace the
+- **Write it after the verdict arrives, never at dispatch.** The receipt records what the critic
+  said, and at dispatch that verdict does not exist yet.
+- **The receipt records the FINAL run.** Where a critic-loop round forced a re-dispatch, replace the
   receipt already written for the superseded run rather than leaving it beside its successor — two
   receipts for one diff make the newest ambiguous.
 - **Terminal verdicts only, and only with a block.** A `NEEDS_CONTEXT` gets its receipt after the
@@ -259,19 +290,21 @@ one unchanged test file are the pair `/marvin:task-deliver`'s gate reads as `red
   red-green loop and its budget is its own. If it is still failing at the limit, stop and hand back
   to the user.
 
-### Step 9B: Self-review ‖ Verify (concurrent)
+### Step 9B: Verify, then self-review
 
-Same as Step 6F, with `mode: bug`: launch `marvin-tm-diff-critic` in the background (if Task-tool
-is available) and run `/marvin:task-verify bug` concurrently; merge both before any delivery
-decision. On a verify FAIL, retry only the failed gate (`only: ["<gate>"]`) under the **Fix-cycle
-protocol** then a final full pass; re-run the critic against the final diff if a fix changed it. A
+Same as Step 6F, with `mode: bug` and in the same order: run `/marvin:task-verify bug` first and
+dispatch `marvin-tm-diff-critic` **once** afterwards (if Task-tool is available), against the green
+tree, passing the spec path, `git diff` **and** `git status --porcelain --untracked-files=all`. On a
+verify FAIL, retry only the failed gate (`only: ["<gate>"]`) under the **Fix-cycle protocol** then a
+final full pass, and dispatch the critic only once that is green. The red and green oracle runs of
+Steps 6B and 8B are this pipeline's per-criterion proof, so Step 6F's oracle step is already done. A
 critic `BLOCK` still gates delivery and runs its own fix-cycle budget; a `NEEDS_CONTEXT` earns
 exactly one re-dispatch carrying the input the critic named and stating that it is the re-dispatch
 (not a fix-cycle round), and a second one is treated as `UNABLE`; an `UNABLE` is never a pass — it
 travels verbatim to `/marvin:task-deliver` and onto the PR's **Diff critic** line. Findings refuted
 by the code are recorded, not fixed, exactly as in Step 6F.
 
-**Write the receipt** on the same terms as Step 6F: after the merge point and never at dispatch,
+**Write the receipt** on the same terms as Step 6F: after the verdict arrives and never at dispatch,
 for the final run when a re-run superseded an earlier one, and only for a terminal verdict carrying
 a ` ```json critic-verdict ` block — the critic's report verbatim plus that block, saved to
 `.marvin/critique/<NNN>-<slug>.md` with `subject` set to this spec's slug. It is evidence for the
@@ -312,6 +345,13 @@ of a failed attempt, and it has its own one-shot allowance (Step 6F / Step 9B).
 the failed gate with `only: ["<gate>"]`, the critic against the new diff, the regression test on its
 own. Carry the feedback **verbatim** into the fix — the gate's output, the critic's blocker text,
 the test's assertion message. A paraphrased error is a new guess.
+
+**Re-run the narrowest thing that can prove the fix, and never a full `verify` inside a round.** For
+a failing test that is the single file or case, through the project's `gates.test_one`
+(`.marvin/config.json`) or the `verify` tool's `action: "oracles"` with `criteria: ["AC<n>"]` — one
+measured run took 1.8–3.6 seconds that way against 52–75 seconds for the whole `test` gate and 343
+seconds for the full plan. The full pass is the pre-delivery confirmation, run once at the end of the
+loop, not the loop's feedback channel.
 
 **Round 3 — change the conditions, not the attempt.** A fix that has stalled twice does not need a
 third attempt of the same kind. For the **verify-gate** and **red-green** loops — a failure with a

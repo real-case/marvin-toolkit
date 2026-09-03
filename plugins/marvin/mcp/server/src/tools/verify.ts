@@ -821,7 +821,7 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
   if (out.error) return crashResult(gate, out.error, out.durationMs);
 
   const status: GateStatus = classifyExit(out.code, out.signal);
-  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const tail = failureExcerpt(out.stderr || out.stdout);
   const summary =
     status === "pass"
       ? "passed"
@@ -837,6 +837,37 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
     summary,
     details: tail,
   };
+}
+
+/**
+ * A line that reports an error rather than merely mentioning one. `error` and
+ * `fatal` must be whole tokens (`(?![\w-])` keeps `error-handler.ts` out), the
+ * npm and compiler prefixes are matched literally, and the FAIL marker is
+ * case-sensitive so a test *named* "…should fail…" does not qualify.
+ */
+const ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
+const FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+
+/**
+ * The excerpt a failing gate shows. The naive tail this replaced is the wrong
+ * twelve lines for any linter that prints warnings after errors: one measured
+ * run rendered a pre-existing warning in a file the task never touched, while
+ * all five real errors — in files it had just written — scrolled past above it,
+ * and the excerpt is what the reader debugs from. So when the output names
+ * errors, show the FIRST error lines (the ones that caused the non-zero exit)
+ * and state how many there were; otherwise keep the tail, which is the right
+ * answer for a test runner whose summary is its last lines.
+ */
+function failureExcerpt(text: string): string {
+  const lines = text.trim().split("\n");
+  const errors = lines.filter((l) => ERROR_TOKEN.test(l) || FAIL_MARKER.test(l));
+  if (errors.length === 0) return lines.slice(-12).join("\n");
+  const shown = errors.slice(0, 12);
+  const head =
+    shown.length === errors.length
+      ? `${errors.length} error line(s):`
+      : `${errors.length} error line(s), first ${shown.length}:`;
+  return [head, ...shown].join("\n");
 }
 
 function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResult {

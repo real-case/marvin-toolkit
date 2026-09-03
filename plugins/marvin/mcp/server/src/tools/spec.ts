@@ -217,7 +217,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
@@ -1511,7 +1511,7 @@ function checkContractField(c: SpecContract): Check {
  * criterion carries a non-prose-review proof. Shape only — the critic still
  * judges whether a proof is genuine.
  */
-function checkGraph(c: SpecContract): Check[] {
+export function checkGraph(c: SpecContract): Check[] {
   const checks: Check[] = [];
   const fileIds = new Set(c.files.map((f) => f.id.toUpperCase()));
   const acIds = new Set(c.criteria.map((cr) => cr.id.toUpperCase()));
@@ -1553,6 +1553,55 @@ function checkGraph(c: SpecContract): Check[] {
       ),
     );
   }
+
+  // 2b. The two directions must AGREE. `criteria[].implemented_by` and
+  //     `files[].satisfies` are one graph stored twice, and checks 1 and 2
+  //     validate each side alone: a criterion could name a file that denies it
+  //     and both would pass. Transposing one side and comparing is the whole
+  //     check, and it removes a finding class the semantic critic was paying
+  //     minutes to catch by hand.
+  //
+  //     A file row that declares NO `satisfies` (absent, or "none"/"—", which
+  //     `refs` erases alike) declares no index and is exempt: an absent index is
+  //     not a contradicting one, and infra rows legitimately carry none. Only
+  //     edges whose endpoints both exist are compared — a dangling ref is
+  //     already check 1's or check 2's finding, and reporting it twice would
+  //     send the author to the wrong side of the graph.
+  const declaredSatisfies = new Map<string, string[]>();
+  for (const f of c.files) {
+    const named = refs(f.satisfies);
+    if (named.length) declaredSatisfies.set(f.id.toUpperCase(), named);
+  }
+  const asymmetric: string[] = [];
+  for (const cr of c.criteria) {
+    const acId = cr.id.toUpperCase();
+    for (const fid of refs(cr.implemented_by)) {
+      const back = declaredSatisfies.get(fid);
+      if (back && !back.includes(acId)) {
+        asymmetric.push(`${acId}→${fid}, but ${fid} satisfies ${back.join("/")}`);
+      }
+    }
+  }
+  for (const f of c.files) {
+    const fid = f.id.toUpperCase();
+    for (const acId of refs(f.satisfies)) {
+      const cr = c.criteria.find((x) => x.id.toUpperCase() === acId);
+      if (!cr) continue;
+      const forward = refs(cr.implemented_by);
+      if (!forward.includes(fid)) {
+        asymmetric.push(`${fid}→${acId}, but ${acId} is implemented_by ${forward.join("/")}`);
+      }
+    }
+  }
+  checks.push(
+    asymmetric.length
+      ? fail(
+          "graph-symmetry",
+          "Traceability",
+          `implemented_by and satisfies disagree: ${asymmetric.join("; ")}`,
+        )
+      : pass("graph-symmetry", "Traceability", "the two directions of the graph agree"),
+  );
 
   // 3. build_order references real file IDs.
   if (c.build_order) {

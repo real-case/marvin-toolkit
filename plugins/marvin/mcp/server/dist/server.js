@@ -34327,7 +34327,7 @@ async function runGate({ gate, probe }, cwd) {
   const out = await spawnCommand(gate.command, cwd);
   if (out.error) return crashResult(gate, out.error, out.durationMs);
   const status = classifyExit(out.code, out.signal);
-  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const tail = failureExcerpt(out.stderr || out.stdout);
   const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
   return {
     name: gate.name,
@@ -34338,6 +34338,16 @@ async function runGate({ gate, probe }, cwd) {
     summary,
     details: tail
   };
+}
+var ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
+var FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+function failureExcerpt(text) {
+  const lines = text.trim().split("\n");
+  const errors = lines.filter((l) => ERROR_TOKEN.test(l) || FAIL_MARKER.test(l));
+  if (errors.length === 0) return lines.slice(-12).join("\n");
+  const shown = errors.slice(0, 12);
+  const head = shown.length === errors.length ? `${errors.length} error line(s):` : `${errors.length} error line(s), first ${shown.length}:`;
+  return [head, ...shown].join("\n");
 }
 function crashResult(gate, reason, durationMs = 0) {
   return {
@@ -34921,7 +34931,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -35792,6 +35802,39 @@ function checkGraph(c) {
       )
     );
   }
+  const declaredSatisfies = /* @__PURE__ */ new Map();
+  for (const f of c.files) {
+    const named = refs(f.satisfies);
+    if (named.length) declaredSatisfies.set(f.id.toUpperCase(), named);
+  }
+  const asymmetric = [];
+  for (const cr of c.criteria) {
+    const acId = cr.id.toUpperCase();
+    for (const fid of refs(cr.implemented_by)) {
+      const back = declaredSatisfies.get(fid);
+      if (back && !back.includes(acId)) {
+        asymmetric.push(`${acId}\u2192${fid}, but ${fid} satisfies ${back.join("/")}`);
+      }
+    }
+  }
+  for (const f of c.files) {
+    const fid = f.id.toUpperCase();
+    for (const acId of refs(f.satisfies)) {
+      const cr = c.criteria.find((x) => x.id.toUpperCase() === acId);
+      if (!cr) continue;
+      const forward = refs(cr.implemented_by);
+      if (!forward.includes(fid)) {
+        asymmetric.push(`${fid}\u2192${acId}, but ${acId} is implemented_by ${forward.join("/")}`);
+      }
+    }
+  }
+  checks.push(
+    asymmetric.length ? fail(
+      "graph-symmetry",
+      "Traceability",
+      `implemented_by and satisfies disagree: ${asymmetric.join("; ")}`
+    ) : pass("graph-symmetry", "Traceability", "the two directions of the graph agree")
+  );
   if (c.build_order) {
     const dangling = c.build_order.map((x) => String(x).toUpperCase()).filter((x) => !fileIds.has(x));
     if (dangling.length) {
@@ -36654,7 +36697,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.18.1";
+var VERSION = "0.19.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
