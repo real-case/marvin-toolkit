@@ -28,13 +28,15 @@ Read the spec's `type` field in the frontmatter:
 ## Feature Pipeline
 
 ```
-READ SPEC → IMPLEMENT → ( SELF-TEST ‖ SELF-REVIEW ) → merge → CREATE PR
+READ SPEC → IMPLEMENT → SELF-TEST → SELF-REVIEW → CREATE PR
                 ↑            |
                 └─ fix cycle ┘
 ```
 
-Self-test (quality gates) and self-review (diff-critic) are independent and slow — run them
-**concurrently** and merge both results before creating the PR.
+Self-test (quality gates) is deterministic and fast; self-review (diff-critic) is a model and about
+seven times slower. Run the gates **first** and dispatch the critic **once**, against a tree that is
+already green: a critic dispatched beside a verify that then fails reviews a tree the fix changes
+underneath it, and the mandatory re-review costs several times what the overlap saves.
 
 ### 1. Read Spec
 
@@ -61,20 +63,13 @@ If something is ambiguous:
 - Make the simplest reasonable choice
 - Record it as a SPEC GAP (you'll include it in the PR description)
 
-### 3. Self-Test ‖ Self-Review (concurrent)
-
-Self-test (quality gates) and self-review (diff-critic, §4) are independent and slow. **Start the
-diff-critic first (in the background), then run the gates** so the two overlap; merge both before
-the PR step.
+### 3. Self-Test, then Self-Review
 
 **Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
-`action: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
+`action: "scope"` (pass the spec path) first — it FAILs if any changed file is outside
 the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
 re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
 unavailable.)
-
-**Launch the critic (background).** If Task-tool is available, dispatch `marvin-tm-diff-critic`
-(with `run_in_background`) with the spec path and diff range — see §4 for how to use its verdict.
 
 **Run the gates.**
 - **Preferred — the `verify` tool.** If the `marvin` MCP `verify` tool is available, call it
@@ -106,13 +101,20 @@ unavailable.)
 (`only: ["<gate>"]` with the tool, or that single command in fallback). This is the gate loop of the
 Fix-cycle Protocol (below) and it carries its own budget; after it, one final full pass. If the loop
 reaches its limit unresolved, proceed to PR as **draft** and record each surviving failure as a
-deferred or blocked item in Self-Review Notes. If a fix changed the diff, **re-run the critic
-against the final diff** — its earlier report is stale.
+deferred or blocked item in Self-Review Notes — and do not dispatch the critic, which has nothing
+stable to review. Any code change made after the green run — including one made to satisfy a critic
+blocker in §4 — invalidates it: re-run the affected gate, then one final full pass before the PR.
 
-### 4. Self-Review (merge point)
+**Then dispatch the critic — once.** With the gates green, if Task-tool is available, dispatch
+`marvin-tm-diff-critic` with the spec path, the diff range, **and**
+`git status --porcelain --untracked-files=all`. That last input is not optional: a new file is
+untracked, so no diff shows it, and a feature spec is mostly `action: new` rows — a diff alone can
+hide most of the change. See §4 for how to use its verdict.
 
-Collect the `marvin-tm-diff-critic` result that was launched in the background in §3, together with
-the gate results, **before** creating the PR — never decide on one alone.
+### 4. Self-Review
+
+Collect the `marvin-tm-diff-critic` result dispatched at the end of §3, together with the gate
+results, **before** creating the PR — never decide on one alone.
 
 **Preferred path — the `marvin-tm-diff-critic` report:**
 
@@ -282,11 +284,13 @@ Run the regression test again. It **MUST pass** now.
 
 ### 6–8. Self-Test, Self-Review, Create PR
 
-Same as Feature Pipeline steps 3–5, with `mode: bug`: launch `marvin-tm-diff-critic` in the
-background and run the gates (via the `verify` tool, or inline-Bash fallback) **concurrently**;
-merge both before the PR. On a gate failure, retry only the failed gate under the Fix-cycle Protocol
-then a final full pass; if a fix changed the diff, **re-run the critic against the final diff** (its
-earlier report is stale); a critic `BLOCK` still gates delivery (PR opens as draft) and runs its own
+Same as Feature Pipeline steps 3–5, with `mode: bug` and in the same order: run the gates first
+(via the `verify` tool, or inline-Bash fallback), then dispatch `marvin-tm-diff-critic` **once**
+against the green tree, with the spec path, the diff range and
+`git status --porcelain --untracked-files=all`. On a gate failure, retry only the failed gate under
+the Fix-cycle Protocol then a final full pass, and dispatch the critic only once that is green; any
+later change — including one made for a critic blocker — invalidates the run and needs the affected
+gate re-run before the PR; a critic `BLOCK` still gates delivery (PR opens as draft) and runs its own
 fix-cycle budget; a `NEEDS_CONTEXT` earns exactly one re-dispatch carrying the input the critic
 named and stating that it is the re-dispatch (not a fix-cycle round), and a second one counts as
 `UNABLE`; an `UNABLE` is copied verbatim into Self-Review Notes, recorded on their `**Diff critic:**`

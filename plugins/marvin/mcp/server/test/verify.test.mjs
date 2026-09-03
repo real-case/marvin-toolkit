@@ -1207,3 +1207,93 @@ test("test_one is a config key and never a schedulable gate", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** The `Details` body a failing gate rendered, or null when it rendered none. */
+function details(text) {
+  const m = text.match(/- \*\*Details:\*\*\n\n```\n([\s\S]*?)\n```/);
+  return m ? m[1] : null;
+}
+
+/**
+ * A failing gate's excerpt must show what FAILED. ESLint prints its errors
+ * before a longer tail of pre-existing warnings, so a naive tail of stdout
+ * reliably renders the wrong file: one measured run pointed the reader at a
+ * warning in a file the task had never touched while all five real errors
+ * scrolled past above it.
+ */
+test("a failing gate's excerpt shows the error lines, not the warning tail", async () => {
+  const command = [
+    "echo 'src/new.ts:1:1  error  boom  no-undef'",
+    'for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do echo "src/old$i.tsx:9:9  warning  pre-existing  react-hooks"; done',
+    "exit 1",
+  ].join("; ");
+  const { text } = await callVerify({
+    gates: [{ name: "lint", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(
+    body,
+    /^1 error line\(s\):\nsrc\/new\.ts:1:1 {2}error {2}boom/,
+    "the error does not lead the excerpt",
+  );
+  // The retained tail is three lines and no more: without a bound the fourteen
+  // warnings would be back, which is the defect this excerpt exists to fix.
+  assert.equal(
+    (body.match(/pre-existing/g) ?? []).length,
+    3,
+    "the warning tail is not bounded to the retained lines",
+  );
+});
+
+/**
+ * The counter-case, and the reason the tail is retained unconditionally. A test
+ * runner names its passing tests, and a name may contain the word "error"; the
+ * assertion that actually failed carries `Error` mid-token (`AssertionError
+ * [ERR_ASSERTION]`) and matches no pattern at all. Leading with matched lines
+ * alone put twelve passing tests in the excerpt and dropped the assertion —
+ * exactly the defect the excerpt was written to prevent, in the gate that fails
+ * most often.
+ */
+test("a passing test's name never displaces the assertion that failed", async () => {
+  const command = [
+    'for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do echo "  ✓ returns an error when the token is missing ($i)"; done',
+    "echo '  1) auth handler:'",
+    "echo 'AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:'",
+    "echo '  actual:   401'",
+    "echo '  expected: 403'",
+    "exit 1",
+  ].join("; ");
+  const { text } = await callVerify({
+    gates: [{ name: "test", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(body, /AssertionError \[ERR_ASSERTION\]/, "the assertion was dropped");
+  assert.match(body, /expected: 403/, "the expected value was dropped");
+  // The pass marker emptied the error set, so this is the plain tail — which is
+  // the right answer here and names no count. Passing tests appearing IN that
+  // tail is the tail being the tail; what must not happen is the excerpt leading
+  // with them as though they were the failure.
+  assert.doesNotMatch(body, /error line\(s\)/, "the excerpt led with passing test names");
+});
+
+/** With no error line to find, the tail is still the right answer — it is where
+ * a test runner puts its summary. */
+test("a failing gate with no error line keeps the tail", async () => {
+  const command = 'for i in $(seq 1 20); do echo "line$i"; done; exit 1';
+  const { text } = await callVerify({
+    gates: [{ name: "test", command }],
+    execution: "sequential",
+    write: false,
+  });
+  const body = details(text);
+  assert.ok(body, "a failing gate rendered no Details block");
+  assert.match(body, /line20$/);
+  assert.match(body, /^line9$/m);
+  assert.doesNotMatch(body, /^line8$/m, "the tail is not the last twelve lines");
+});

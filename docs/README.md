@@ -63,6 +63,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0039](./adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
 | [0040](./adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
 | [0041](./adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Proposed |
+| [0042](./adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Proposed |
 
 ## Work in progress
 

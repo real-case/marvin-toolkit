@@ -4,6 +4,71 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.19.0] — 2026-09-03
+
+An instrumented end-to-end run of the pipeline (one feature task, 74.8 minutes) put **67% of the
+wall clock inside the two critic agents**, and 97% of *that* into generating their reports rather
+than investigating: 211 tool calls, 79.6 seconds of execution, 3,026 seconds of wall clock. This
+release attacks the cost without changing what is checked. Recorded as ADR-0042.
+
+### Changed
+
+- **Both critics carry a countable output budget.** Blockers and per-criterion coverage are never
+  truncated; warnings cap at 5, out-of-scope lines at 10, confirmations at 3, one line each, with
+  overflow stated as a count. One line per finding, `file:line` instead of pasted code, nothing
+  outside the template, a 400-word target, and tighter caps on a stated re-dispatch. The spec
+  critic's "Questions for the author" section is gone — a question that would change the verdict is
+  a blocker, one that would not is a warning.
+- **`/marvin:task-start`'s critic loop is bounded to two dispatches** — it had no limit at all,
+  while `/marvin:task-implement` has had a three-round fix-cycle budget for months. The measured run
+  spent four dispatches and 34.8 minutes there, and half the blockers of the third and fourth were
+  introduced by the previous round's own fix. A second `BLOCK` now stops
+  dispatching and hands the survivors to the user as a revision or a recorded override. A
+  deterministic sweep — re-run the gate, cross-check the spec's declared gates against the project's
+  real CI jobs, re-read each shell snippet for its exit code, re-check the repaired defect class
+  elsewhere in the contract — runs before every dispatch.
+- **Verification runs before review, not beside it** (`task-implement` Step 6F / Step 9B,
+  `marvin-tm-executor` §3). The critic is dispatched once, against a green tree. This reverses P2 of
+  `docs/proposals/task-workflow-latency-optimization.md`: the overlap saved 76 seconds and cost the
+  393-second re-review that the stale-review guard mandates when a verify fix moves the tree under
+  the critic. The guard becomes a stale-*verify* guard — any change after the green run, including
+  one made for a critic blocker, needs the affected gate re-run and a final full pass.
+- **The diff critic is no longer dispatched blind to new files.** It now receives
+  `git status --porcelain --untracked-files=all` beside `git diff`, and its own workflow enumerates
+  and reads untracked paths. A feature spec is mostly `action: new` rows: in the measured run the
+  prescribed diff carried 4 of the 17 contract files.
+- **`/marvin:task-implement` reads the host project's own skills.** Step 3 now globs
+  `.claude/skills/*/SKILL.md` and reads the (at most three) closest matches for the contract's file
+  paths. The measured run lost a 393-second review round to two `aria-label` attributes the
+  project's own skill forbids; reading it would have cost two seconds.
+- **The feature pipeline records its acceptance oracles.** `verify action: "oracles"` was reachable
+  only from the bugfix red/green steps, so a feature shipped with no per-criterion proof beyond a
+  green suite. Nine oracles ran in 16 seconds against 343 for the gates.
+- **A fix-cycle round re-runs the narrowest thing that proves the fix** — `gates.test_one` or a
+  single criterion's oracle — and never a full `verify`, which is the pre-delivery confirmation
+  rather than the loop's feedback channel.
+
+### Added
+
+- **The DoR gate transposes the traceability graph.** A new `graph-symmetry` check in `spec`
+  `action: "dor"` compares `criteria[].implemented_by` against `files[].satisfies` in both
+  directions and FAILs on disagreement — one relation stored twice, previously validated one side
+  at a time, so a criterion could name a file that denied it and both checks passed. A row that
+  declares no `satisfies` is exempt: an absent index is not a contradicting one. The shipped
+  feature template was itself asymmetric and is corrected, with a fence that runs the shipped
+  checker over both templates.
+
+### Fixed
+
+- **A failing gate's excerpt names the file that failed.** `verify` showed the last twelve lines of
+  output; for any linter that prints warnings after errors those are the wrong twelve — the measured
+  run's lint failure rendered a pre-existing warning in an untouched file while all five real errors
+  scrolled past. The excerpt now leads with the matched error lines and their count. Lines carrying a
+  success marker are removed before matching, and the last three lines are kept whatever matched: a
+  runner states its verdict in its final lines, and those carry no error token at all
+  (`AssertionError [ERR_ASSERTION]` matches none of the patterns), so leading with matches alone
+  reproduced the same defect in the test gate.
+
 ## [0.18.1] — 2026-08-18
 
 ### Changed

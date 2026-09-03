@@ -28,3 +28,4 @@ in the linked file. Recalled at task intake.
 - [A worktree with its own node_modules builds a committable dist/server.js](a-worktree-with-its-own-node-modules.md) — gotcha · 2026-08-09 · worktree, dist, verify-dist, build, delivery, node_modules, tsup
 - [test-storybook -u never rewrites a PASSING baseline, so a sub-threshold visual change silently keeps the old image](test-storybook-u-never-rewrites-a.md) — gotcha · 2026-08-09 · widgets, storybook, visual-regression, jest-image-snapshot, baselines, threshold, darwin
 - [A widget-bound tool's `content` never reaches the model — `structuredContent` replaces it](a-widget-bound-tool-s-content-never.md) — gotcha · 2026-08-18 · mcp-apps, widgets, structuredContent, tool-result, host, measurement, help, duplication
+- [A heuristic that picks the important lines can hide the verdict](a-heuristic-that-picks-the-important.md) — pitfall · 2026-09-03 · verify, output, regex, heuristics, review

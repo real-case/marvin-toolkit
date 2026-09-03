@@ -821,7 +821,7 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
   if (out.error) return crashResult(gate, out.error, out.durationMs);
 
   const status: GateStatus = classifyExit(out.code, out.signal);
-  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const tail = failureExcerpt(out.stderr || out.stdout);
   const summary =
     status === "pass"
       ? "passed"
@@ -837,6 +837,52 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
     summary,
     details: tail,
   };
+}
+
+/**
+ * A line that reports an error rather than merely mentioning one. `error` and
+ * `fatal` must be whole tokens (`(?![\w-])` keeps `error-handler.ts` out), the
+ * npm and compiler prefixes are matched literally, and the FAIL marker is
+ * case-sensitive so a test *named* "…should fail…" does not qualify.
+ */
+const ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
+const FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+/**
+ * A line whose own marker says the thing PASSED, removed before error matching.
+ * A test *named* "returns an error when the token is missing" prints that name
+ * on success, and twelve of those crowd out the assertion that actually failed.
+ * The tick characters match anywhere in the line; `ok` must open it, so TAP's
+ * `not ok 1 - …` stays a failure.
+ */
+const PASS_MARKER = /(^|\s)[\u2713\u2714\u221a]|^\s*ok\s/;
+
+/**
+ * The excerpt a failing gate shows. A naive tail is the wrong twelve lines for
+ * any linter that prints warnings after errors: one measured run rendered a
+ * pre-existing warning in a file the task never touched, while all five real
+ * errors — in files it had just written — scrolled past above it, and the
+ * excerpt is what the reader debugs from. So the matched error lines lead.
+ *
+ * The tail is kept regardless of what matched, and that is not belt-and-braces.
+ * A runner states its verdict in its LAST lines, and those lines routinely match
+ * no pattern here at all: `AssertionError [ERR_ASSERTION]: …` carries `Error`
+ * mid-token, so every alternative above misses it. Leading with matches alone
+ * reproduced the very defect this function exists to fix — twelve passing test
+ * names, the assertion gone.
+ */
+function failureExcerpt(text: string): string {
+  const lines = text.trim().split("\n");
+  const errors = lines.filter(
+    (l) => !PASS_MARKER.test(l) && (ERROR_TOKEN.test(l) || FAIL_MARKER.test(l)),
+  );
+  if (errors.length === 0) return lines.slice(-12).join("\n");
+  const shown = errors.slice(0, 9);
+  const head =
+    shown.length === errors.length
+      ? `${errors.length} error line(s):`
+      : `${errors.length} error line(s), first ${shown.length}:`;
+  const tail = lines.slice(-3).filter((l) => !shown.includes(l));
+  return [head, ...shown, ...(tail.length ? ["…", ...tail] : [])].join("\n");
 }
 
 function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResult {

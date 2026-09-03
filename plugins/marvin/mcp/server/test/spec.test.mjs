@@ -61,7 +61,7 @@ files:
     path: CLAUDE.md
     action: edit
     intent: document the sample
-    satisfies: [AC2]
+    satisfies: [AC2, AC3]
   - id: F2
     path: docs/sample-new.md
     action: new
@@ -329,6 +329,37 @@ test("a criterion implemented by an unknown file ID blocks", async () => {
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "ac-traceability").status, "fail");
+});
+
+// The transpose: `implemented_by` and `satisfies` are one graph stored twice,
+// and each one-directional check above passes while the two disagree.
+test("a criterion whose implementing file denies it blocks", async () => {
+  const content = VALID_FEATURE.replace("satisfies: [AC2, AC3]", "satisfies: [AC2]");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "graph-symmetry").status, "fail");
+  assert.match(find(parsed, "graph-symmetry").detail, /AC3→F1/);
+  // The one-directional checks still pass: they are what this one covers for.
+  assert.equal(find(parsed, "ac-traceability").status, "pass");
+  assert.equal(find(parsed, "fcp-traceability"), undefined);
+});
+
+test("a file the criteria deny blocks from the other direction", async () => {
+  const content = VALID_FEATURE.replace("implemented_by: [F1, F3]", "implemented_by: [F3]");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "graph-symmetry").status, "fail");
+  assert.match(find(parsed, "graph-symmetry").detail, /F1→AC2/);
+});
+
+// A row that declares no backward index declares nothing to contradict — infra
+// rows legitimately carry none, and requiring one would fail specs that are
+// entirely consistent.
+test("a file row with no satisfies is exempt from the symmetry check", async () => {
+  const content = VALID_FEATURE.replace("    satisfies: [AC2, AC3]\n", "");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(find(parsed, "graph-symmetry").status, "pass");
+  assert.notEqual(parsed.verdict, "FAIL");
 });
 
 test("a file satisfying an unknown criterion blocks", async () => {

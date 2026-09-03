@@ -38,7 +38,9 @@ files:
     path: path/to/existing/file.ts
     action: edit          # new | edit | delete
     intent: what changes and why
-    satisfies: [AC1]      # the criteria this file implements, or "—" for infra rows
+    satisfies: [AC1, AC3] # the criteria this file implements, or "—" for infra rows.
+                          # Mirrors implemented_by exactly: a declared list that
+                          # disagrees with a criterion's own is a DoR failure.
     anchor: path/to/existing/file.ts:42
   - id: F2
     path: path/to/new/file.ts
