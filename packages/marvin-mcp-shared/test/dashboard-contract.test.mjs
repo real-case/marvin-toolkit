@@ -215,3 +215,50 @@ test("rejects malformed v2 sections", () => {
   });
   assert.equal(badCard.success, false);
 });
+
+test("DashboardState accepts the metrics summary (ADR-0043 §5) and rejects a malformed one", () => {
+  const withMetrics = DashboardState.safeParse({
+    ...BASE,
+    metrics: {
+      records: 3,
+      rolled_up: 2,
+      newest: { slug: "add-pagination", rolled_up_at: "2026-09-03T12:00:00.000Z" },
+      median_active_ms: 900000,
+      median_spec_gaps: 1,
+    },
+  });
+  assert.equal(withMetrics.success, true, JSON.stringify(withMetrics.error?.issues));
+  // the zero state is a valid summary, not an absent section
+  assert.equal(
+    DashboardState.safeParse({
+      ...BASE,
+      metrics: {
+        records: 0,
+        rolled_up: 0,
+        newest: null,
+        median_active_ms: null,
+        median_spec_gaps: null,
+      },
+    }).success,
+    true,
+  );
+  // …and a newest record without its slug does not validate
+  assert.equal(
+    DashboardState.safeParse({
+      ...BASE,
+      metrics: {
+        records: 1,
+        rolled_up: 1,
+        newest: { rolled_up_at: "x" },
+        median_active_ms: null,
+        median_spec_gaps: null,
+      },
+    }).success,
+    false,
+  );
+  assert.equal(
+    DashboardState.safeParse(BASE).success,
+    true,
+    "still optional for the help tool's payload",
+  );
+});

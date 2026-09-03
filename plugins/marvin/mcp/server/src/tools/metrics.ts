@@ -1,10 +1,24 @@
+import { join } from "node:path";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
-import type { MetricEvent, TaskMetrics } from "@marvin-toolkit/mcp-shared/contracts";
+import type { MetricEvent, MetricsSeries, TaskMetrics } from "@marvin-toolkit/mcp-shared/contracts";
 import { projectConfigPath, projectScopedDir, type ServerEnv } from "../lib/env.js";
 import { inGitRepo, isIgnored } from "../lib/git.js";
-import { collectRollupInputs, findSpecBySlug, relFromRoot } from "../lib/metrics-collect.js";
+import {
+  collectRollupInputs,
+  collectSeriesRecords,
+  findSpecBySlug,
+  readShippedSpecs,
+  relFromRoot,
+} from "../lib/metrics-collect.js";
 import { rollUpMetrics } from "../lib/metrics-rollup.js";
+import {
+  SERIES_METRICS,
+  aggregateSeries,
+  fmtMs,
+  fmtUnit,
+  type SeriesFilters,
+} from "../lib/metrics-series.js";
 import { loadConfig } from "../storage/config.js";
 import type { Config, SpecConfig } from "../storage/schema.js";
 import {
@@ -29,7 +43,7 @@ import {
 
 /**
  * The `metrics` tool (ADR-0043) — the one writer of `.marvin/metrics/`, the
- * fourteenth tool. Two actions today:
+ * fourteenth tool. Three actions:
  *
  * - `record` appends one live ` ```json metric-event ` block for exactly the
  *   information that context compaction would otherwise destroy — a fix-cycle
@@ -40,6 +54,10 @@ import {
  *   delivery gate allows and before the commit, so the record ships in the same
  *   commit as the work. A second delivery appends a second block; readers take
  *   the last.
+ * - `series` reads every record back and aggregates the three groups — count,
+ *   median, mean and maximum per metric, over the records where the field is
+ *   present — with a coverage line, `type` and `since` filters, and a `slug`
+ *   mode that renders one record in full. `/marvin:task-metrics` is its door.
  *
  * The input is `.strict()`, like `spec` and `report`: a caller who mistypes a
  * key gets an error, not a successful-looking call that recorded nothing.
@@ -50,14 +68,15 @@ import {
 
 const MetricsInput = z.object({
   action: z
-    .enum(["record", "rollup"])
+    .enum(["record", "rollup", "series"])
     .describe(
-      "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it — called by /marvin:task-deliver after the gate allows and before the commit.",
+      "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it — called by /marvin:task-deliver after the gate allows and before the commit. series: aggregate every record — count, median, mean and maximum per metric over the records where it is present — with a coverage line; narrow with type / since, or pass slug to render one record in full.",
     ),
   slug: z
     .string()
+    .optional()
     .describe(
-      "The spec's kebab-case slug. It names the record (`.marvin/metrics/<NNN>-<slug>.md`, sharing the spec's basename), so it is rejected rather than sanitised.",
+      "The spec's kebab-case slug. Required for record and rollup — it names the record (`.marvin/metrics/<NNN>-<slug>.md`, sharing the spec's basename), so it is rejected rather than sanitised. Optional for series: renders that one record in full instead of the aggregate.",
     ),
   projectRoot: z
     .string()
@@ -149,6 +168,14 @@ const MetricsInput = z.object({
     .describe(
       "rollup: the git ref scope drift is measured against. Defaults to the config's base_branch.",
     ),
+  type: z
+    .enum(["feature", "bugfix"])
+    .optional()
+    .describe("series: aggregate only the records of this spec type."),
+  since: z
+    .string()
+    .optional()
+    .describe("series: aggregate only the records rolled up on or after this date (YYYY-MM-DD)."),
 });
 type MetricsInput = z.infer<typeof MetricsInput>;
 
@@ -162,7 +189,7 @@ export function buildMetricsTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "metrics",
     description:
-      'The task-metrics record under .marvin/metrics/ (ADR-0043), one committed file per spec. action: "record" appends one live metric-event — a fix-cycle round, a SPEC GAP, an item deferred or blocked at a loop\'s limit, a critic dispatch or verdict with its pass number, a DoR gate call with its verdict — the counters that context compaction otherwise destroys. action: "rollup" derives the terminal task-metrics block at delivery from the spec, the progress / oracle / verification-run journals, the verify-result block, the critique receipts and git: time (intake, implementation, time to first green, gate efficiency, oracle and gate and critic durations), quality (scope drift, oracle strength, red-green completeness, not-run gates, freshness waivers, critic axes, spec gaps, open items, DoR first-call, oracle resolution) and rework (reseals, critic passes, fix rounds, runs before green), each null when its source was absent, plus the sources map that says so. Strict input: an unknown key is an error.',
+      'The task-metrics record under .marvin/metrics/ (ADR-0043), one committed file per spec. action: "record" appends one live metric-event — a fix-cycle round, a SPEC GAP, an item deferred or blocked at a loop\'s limit, a critic dispatch or verdict with its pass number, a DoR gate call with its verdict — the counters that context compaction otherwise destroys. action: "rollup" derives the terminal task-metrics block at delivery from the spec, the progress / oracle / verification-run journals, the verify-result block, the critique receipts and git: time (intake, implementation, time to first green, gate efficiency, oracle and gate and critic durations), quality (scope drift, oracle strength, red-green completeness, not-run gates, freshness waivers, critic axes, spec gaps, open items, DoR first-call, oracle resolution) and rework (reseals, critic passes, fix rounds, runs before green), each null when its source was absent, plus the sources map that says so. action: "series" aggregates every record — count, median, mean and maximum per metric over the records where it is present, coverage against the shipped corpus, review-fix commits and escaped defects computed at query time — narrowed by type / since, or one record in full with slug; the door is /marvin:task-metrics. Strict input: an unknown key is an error.',
     inputSchema: MetricsInputStrict,
     handler: (input) => Promise.resolve(runMetrics(input, env)),
   });
@@ -170,9 +197,9 @@ export function buildMetricsTool(env: ServerEnv): AnyToolDef {
 
 function runMetrics(input: MetricsInput, env: ServerEnv): ToolResult {
   const projectRoot = input.projectRoot ?? env.projectDir;
-  const slug = input.slug.trim();
+  const slug = input.slug?.trim();
   // Fail closed BEFORE any path is joined: the slug becomes a filename.
-  if (!SLUG_RE.test(slug)) {
+  if (slug !== undefined && !SLUG_RE.test(slug)) {
     return errText(
       `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE.source}) — nothing was written. ` +
         `The slug names the record, so it is rejected rather than rewritten.`,
@@ -181,6 +208,12 @@ function runMetrics(input: MetricsInput, env: ServerEnv): ToolResult {
   // Fresh config per call, from the config that governs THIS root.
   const { config } = loadConfig(projectConfigPath(env, projectRoot), projectRoot);
   const dir = projectScopedDir(env, projectRoot, env.metricsDir, "metrics");
+  if (input.action === "series") return series(input, slug, projectRoot, dir, config);
+  if (!slug) {
+    return errText(
+      `\`action: "${input.action}"\` needs a \`slug\` — it names the spec whose record is written.`,
+    );
+  }
   return input.action === "record"
     ? recordEvent(input, slug, projectRoot, dir, config.spec)
     : rollup(input, env, slug, projectRoot, dir, config);
@@ -327,20 +360,144 @@ function rollup(
   };
 }
 
-// ── rendering ────────────────────────────────────────────────────────────────
+// ── the series ───────────────────────────────────────────────────────────────
 
-/** `12m 3s`, `42s`, `850ms`, `—` for null. */
-export function fmtMs(ms: number | null): string {
-  if (ms === null) return "—";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function series(
+  input: MetricsInput,
+  slug: string | undefined,
+  projectRoot: string,
+  dir: string,
+  config: Config,
+): ToolResult {
+  const since = input.since?.trim();
+  if (since && !DATE_RE.test(since)) {
+    return errText(`\`since\` \`${since}\` is not a date (YYYY-MM-DD) — nothing was aggregated.`);
+  }
+  const filters: SeriesFilters = {
+    ...(input.type ? { type: input.type } : {}),
+    ...(since ? { since } : {}),
+    ...(slug ? { slug } : {}),
+  };
+  // Q11 costs a `gh` round-trip per rolled-up record with a delivered PR, and is
+  // computed at query time and never stored (plan D7).
+  const records = collectSeriesRecords(projectRoot, dir, config.spec, {
+    withReviewFixCommits: true,
+  });
+  const shipped = readShippedSpecs(projectRoot, config.spec);
+  const answer = aggregateSeries({
+    dir: relFromRoot(dir, projectRoot),
+    now: new Date().toISOString(),
+    records,
+    shipped,
+    filters,
+  });
+  const text = slug ? renderSingle(answer, slug, dir, projectRoot) : renderSeries(answer);
+  return {
+    content: [
+      {
+        type: "text",
+        text: text + "\n\n```json metrics-series\n" + JSON.stringify(answer) + "\n```",
+      },
+    ],
+    structuredContent: answer,
+  };
 }
+
+/** `slug` mode: the one record's terminal block in full, through the roll-up digest. */
+function renderSingle(
+  answer: MetricsSeries,
+  slug: string,
+  dir: string,
+  projectRoot: string,
+): string {
+  const row = answer.records[0];
+  if (!row) {
+    return `# Task metrics — ${slug}\n\nNo metrics record for \`${slug}\` under \`${answer.dir}/\`.`;
+  }
+  if (!answer.record) {
+    return (
+      `# Task metrics — ${slug}\n\n` +
+      `\`${answer.dir}/${row.filename}\` holds ${row.events} live event(s) and no terminal block — ` +
+      `recorded, not yet rolled up. \`/marvin:task-deliver\` rolls it up after the delivery gate allows.`
+    );
+  }
+  const recordPath = join(dir, row.filename);
+  const terminal = readRecord(recordPath).terminal.length;
+  const ignored = inGitRepo(projectRoot)
+    ? isIgnored(relFromRoot(recordPath, projectRoot), projectRoot)
+    : null;
+  return renderDigest(answer.record, `${answer.dir}/${row.filename}`, terminal, ignored);
+}
+
+function renderSeries(a: MetricsSeries): string {
+  const c = a.coverage;
+  const filters = [
+    a.filters.type ? `type ${a.filters.type}` : null,
+    a.filters.since ? `since ${a.filters.since}` : null,
+  ].filter((f): f is string => f !== null);
+  const lines = [
+    "# Task metrics — series",
+    "",
+    `**Directory:** \`${a.dir}/\` · **Filters:** ${filters.length ? filters.join(" · ") : "none"}`,
+  ];
+  if (c.records === 0) {
+    lines.push(
+      "",
+      filters.length
+        ? "_No rolled-up record matches the filters._"
+        : "_No metrics records yet — the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._",
+    );
+    return lines.join("\n");
+  }
+  const coverage =
+    c.shipped_specs === null
+      ? "no spec corpus to compare against"
+      : `the series covers ${c.shipped_with_record} of ${c.shipped_specs} shipped spec(s)`;
+  lines.push(
+    `**Coverage:** ${c.records} record(s) · ${c.rolled_up} rolled up · ${c.events_only} recorded but not rolled up · ${coverage}`,
+    "",
+    "Each metric is computed over the records where it is present (`n`); an absent source is never counted as zero.",
+  );
+  for (const group of ["time", "quality", "rework"] as const) {
+    lines.push(
+      "",
+      `## ${group[0]!.toUpperCase()}${group.slice(1)}`,
+      "",
+      "| Id | Metric | n | median | mean | max |",
+      "|----|--------|---|--------|------|-----|",
+    );
+    for (const m of SERIES_METRICS.filter((m) => m.group === group)) {
+      const s = a[group][m.key];
+      if (!s) continue;
+      lines.push(
+        `| ${m.id} | ${m.label} | ${s.count} | ${fmtUnit(s.median, m.unit)} | ${fmtUnit(s.mean, m.unit)} | ${fmtUnit(s.max, m.unit)} |`,
+      );
+    }
+  }
+  lines.push("", "## Escaped defects (Q12)");
+  if (a.escaped_defects === null) lines.push("- _no spec corpus to join_");
+  else if (a.escaped_defects.pairs.length === 0) lines.push("- none credited");
+  else {
+    for (const p of a.escaped_defects.pairs) {
+      lines.push(
+        `- bugfix \`${p.bugfix}\` → credited to ${p.credited.map((s) => `\`${s}\``).join(", ")}`,
+      );
+    }
+  }
+  lines.push("", `## Records (${a.records.length})`);
+  for (const r of a.records) {
+    lines.push(
+      `- \`${r.filename}\`${r.type ? ` ${r.type}` : ""} · ${
+        r.rolled_up_at ? `rolled up ${r.rolled_up_at.slice(0, 10)}` : "not rolled up"
+      } · active ${fmtMs(r.active_ms)} · ${r.events} event(s)`,
+    );
+  }
+  return lines.join("\n");
+}
+
+// ── rendering ────────────────────────────────────────────────────────────────
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 

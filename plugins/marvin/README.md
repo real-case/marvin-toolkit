@@ -5,7 +5,7 @@
 The complete Marvin toolkit as **one plugin, one MCP server, and one slash prefix** —
 `/marvin:`. It covers the whole development lifecycle: core developer tools, the ADR
 decision-record lifecycle, a spec-driven task pipeline, security scanners, a code-health
-refactoring family, and a lightweight task tracker. Under the hood it ships **55 prompts,
+refactoring family, and a lightweight task tracker. Under the hood it ships **56 prompts,
 14 MCP tools, 10 agents, and 9 interactive widgets**.
 
 ## Install

@@ -8741,7 +8741,7 @@ ${indent}${line}` : "\n";
           str += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum2, line) => sum2 + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
             str += ",";
@@ -8757,7 +8757,7 @@ ${indent}${line}` : "\n";
         return start + end;
       } else {
         if (!reqNewline) {
-          const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
+          const len = lines.reduce((sum2, line) => sum2 + line.length + 2, 2);
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
@@ -28718,6 +28718,11 @@ var PROMPTS = [
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble \u2014 call the tool and present its result."
   },
   {
+    name: "task-metrics",
+    description: "Aggregate the task-metrics series under .marvin/metrics \u2014 time, quality and rework per delivered task, with a coverage line \u2014 or show one task's record in full.",
+    body: 'Invoke the `metrics` MCP tool from the `marvin` server with `action: "series"`. If the user named a spec slug, pass it as `slug` to render that task\'s record in full; if they named a task type (feature or bugfix) pass it as `type`; if they named a date pass it as `since` (YYYY-MM-DD). Otherwise call it with `action: "series"` alone. Do not add preamble \u2014 call the tool and present its result, leading with the coverage line, which says how much of the shipped corpus the series covers.'
+  },
+  {
     name: "task-audit",
     description: "Read-only consistency lint of the whole spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, unidentified files \u2014 with remediation guidance per finding.",
     skill: "task-audit"
@@ -29068,6 +29073,9 @@ function run(cmd, args, cwd, opts) {
 }
 function git(args, cwd, opts) {
   return run("git", args, cwd, opts);
+}
+function gh(args, cwd, opts) {
+  return run("gh", args, cwd, opts);
 }
 function inGitRepo(cwd) {
   return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
@@ -32417,8 +32425,8 @@ function readSpecCorpus(dir) {
     const path = join(dir.abs, filename);
     let raw;
     try {
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink() || !stat.isFile()) continue;
+      const stat2 = lstatSync(path);
+      if (stat2.isSymbolicLink() || !stat2.isFile()) continue;
       raw = readFileSync(path, "utf8");
     } catch (err3) {
       malformed.push({ filename, number: number3, reason: `could not read the file: ${errText(err3)}` });
@@ -32672,6 +32680,7 @@ var COMMAND_BLURBS = {
   "task-verify": "Run the project quality gates",
   "task-deliver": "Commit and open a PR",
   "task-summary": "Delivery digest for a task",
+  "task-metrics": "Time, quality and rework across tasks",
   "task-audit": "Lint the whole spec corpus",
   // sec
   "sec-scan": "Full OWASP Top-10 audit",
@@ -32736,6 +32745,7 @@ var COMMAND_DETAILS = {
   "task-verify": "Run the project quality gates \u2014 tests, lint, type-check, build \u2014 with automatic stack detection, and write verification.md.",
   "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
   "task-summary": "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons, and links.",
+  "task-metrics": "Aggregate the task-metrics series under .marvin/metrics/ \u2014 intake, implementation and time-to-green, scope drift, oracle strength, critic verdicts, spec gaps and fix rounds per delivered task, with a coverage line \u2014 or show one task's record in full.",
   "task-audit": "Read-only consistency lint of the spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
   // sec
   "sec-scan": "Comprehensive security audit aligned with OWASP Top 10:2025 \u2014 orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
@@ -32787,6 +32797,7 @@ var COMMAND_EXAMPLES = {
   // task
   "task-start": "/marvin:task-start add pagination",
   "task-summary": "/marvin:task-summary add-pagination",
+  "task-metrics": "/marvin:task-metrics since 2026-09-01",
   "task-audit": "/marvin:task-audit errors only",
   // sec
   "sec-threat-model": "/marvin:sec-threat-model upload flow",
@@ -32960,6 +32971,12 @@ var COMMAND_PROMPTS = {
     "marvin, summarize what this task delivered",
     "marvin, give me the delivery digest",
     "marvin, recap the task's acceptance criteria"
+  ],
+  "task-metrics": [
+    "marvin, show the task metrics",
+    "marvin, how long do tasks take through the pipeline?",
+    "marvin, where does the time go in a task?",
+    "marvin, how many spec gaps per task?"
   ],
   "task-audit": [
     "marvin, audit the specs",
@@ -33455,6 +33472,598 @@ function removeIndexLine(memoryDir, slug) {
   const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
   writeFileSync(indexPath, kept.join("\n"));
 }
+var METRIC_EVENT_TAG = "metric-event";
+var TASK_METRICS_TAG = "task-metrics";
+var fence = (tag) => new RegExp("```json " + tag + "\\n([\\s\\S]*?)\\n```", "g");
+var EVENT_RE = fence(METRIC_EVENT_TAG);
+var TERMINAL_RE = fence(TASK_METRICS_TAG);
+var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var METRIC_EVENT_KINDS = [
+  "fix-round",
+  "spec-gap",
+  "open-item",
+  "critic-dispatch",
+  "critic-verdict",
+  "gate-call"
+];
+var METRIC_EVENT_SOURCES = [
+  "task-start",
+  "task-implement",
+  "task-deliver",
+  "marvin-tm-executor"
+];
+var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
+var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
+var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
+var METRIC_GATES = ["dor"];
+var TERMINAL_VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
+var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
+var REQUIRED_EVENT_FIELDS = {
+  "fix-round": ["loop", "round"],
+  "spec-gap": ["detail"],
+  "open-item": ["classification", "detail"],
+  "critic-dispatch": ["critic", "pass"],
+  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
+  "gate-call": ["gate", "call", "verdict"]
+};
+var MetricEventShape = external_exports.object({
+  slug: external_exports.string().min(1).regex(SLUG_RE, "slug must be kebab-case"),
+  source: external_exports.enum(METRIC_EVENT_SOURCES),
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(METRIC_EVENT_KINDS),
+  contract_sha: external_exports.string().nullable().optional(),
+  at: external_exports.string().datetime(),
+  detail: external_exports.string().min(1).optional(),
+  loop: external_exports.enum(FIX_LOOPS).optional(),
+  round: external_exports.number().int().positive().optional(),
+  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
+  critic: external_exports.enum(METRIC_CRITICS).optional(),
+  pass: external_exports.number().int().positive().optional(),
+  verdict: external_exports.string().min(1).optional(),
+  blockers: external_exports.number().int().nonnegative().optional(),
+  warnings: external_exports.number().int().nonnegative().optional(),
+  gate: external_exports.enum(METRIC_GATES).optional(),
+  call: external_exports.number().int().positive().optional()
+});
+var MetricEventSchema = MetricEventShape.superRefine((value, ctx) => {
+  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
+    const v = value[field];
+    if (v === void 0 || v === null) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [field],
+        message: `a ${value.kind} event requires ${field}`
+      });
+    }
+  }
+  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
+    if (!TERMINAL_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+  if (value.kind === "gate-call" && value.verdict !== void 0) {
+    if (!DOR_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+});
+var TaskMetricsEnvelope = external_exports.object({
+  slug: external_exports.string().min(1),
+  rolled_up_at: external_exports.string().min(1),
+  base_branch: external_exports.string().min(1),
+  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
+  time: external_exports.object({}).passthrough(),
+  quality: external_exports.object({}).passthrough(),
+  rework: external_exports.object({}).passthrough(),
+  notes: external_exports.array(external_exports.string())
+}).passthrough();
+function metricsRecordPath(dir, specBasename) {
+  return join(dir, `${specBasename}.md`);
+}
+function recordBasenameForSpec(specPath) {
+  return basename(specPath).replace(/\.md$/, "");
+}
+function slugOfRecord(filename) {
+  return basename(filename).replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findRecord2(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of entries) {
+    if (entry === exact) return join(dir, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
+  }
+  return fallback;
+}
+function header(slug) {
+  return `# Metrics \u2014 ${slug}
+
+Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
+
+`;
+}
+function append(path, slug, tag, payload) {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const head = existsSync(path) ? "" : header(slug);
+  appendFileSync(path, `${head}\`\`\`json ${tag}
+${JSON.stringify(payload)}
+\`\`\`
+
+`, "utf8");
+}
+function appendMetricEvent(path, event) {
+  append(path, event.slug, METRIC_EVENT_TAG, event);
+}
+function appendTaskMetrics(path, block) {
+  append(path, block.slug, TASK_METRICS_TAG, block);
+}
+function readRecord(path) {
+  const empty = { events: [], terminal: [] };
+  if (!existsSync(path)) return empty;
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return empty;
+  }
+  const events = [];
+  for (const m of raw.matchAll(EVENT_RE)) {
+    const json = parseJson(m[1]);
+    if (json === void 0) continue;
+    const parsed = MetricEventSchema.safeParse(json);
+    if (parsed.success) events.push(parsed.data);
+  }
+  const terminal = [];
+  for (const m of raw.matchAll(TERMINAL_RE)) {
+    const json = parseJson(m[1]);
+    if (json === void 0) continue;
+    const parsed = TaskMetricsEnvelope.safeParse(json);
+    if (parsed.success) terminal.push(parsed.data);
+  }
+  return { events, terminal };
+}
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function readMetricEvents(dir, slug) {
+  const path = findRecord2(dir, slug);
+  return path ? readRecord(path).events : [];
+}
+function listRecords(dir) {
+  if (!existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  return entries.filter((f) => f.endsWith(".md")).map((filename) => {
+    const path = join(dir, filename);
+    return { path, filename, slug: slugOfRecord(filename), ...readRecord(path) };
+  });
+}
+
+// src/lib/metrics-series.ts
+function toSeriesRecords(listed) {
+  return listed.map((r) => ({
+    slug: r.slug,
+    filename: r.filename,
+    events: r.events.length,
+    block: r.terminal.length ? r.terminal[r.terminal.length - 1] : null,
+    review_fix_commits: null
+  }));
+}
+var sum = (xs) => xs.reduce((a, b) => a + b, 0);
+var listTotal = (xs) => xs.length ? sum(xs.map((x) => x.ms)) : null;
+var axesTotal = (axes, field) => axes ? axes.compliance[field] + axes.quality[field] : null;
+var SERIES_METRICS = [
+  {
+    group: "time",
+    key: "intake_ms",
+    id: "T1",
+    label: "intake",
+    unit: "ms",
+    pick: (r) => r.block?.time.intake_ms ?? null
+  },
+  {
+    group: "time",
+    key: "implement_ms",
+    id: "T2",
+    label: "implementation",
+    unit: "ms",
+    pick: (r) => r.block?.time.implement_ms ?? null
+  },
+  {
+    group: "time",
+    key: "first_green_ms",
+    id: "T3",
+    label: "to first green full run",
+    unit: "ms",
+    pick: (r) => r.block?.time.first_green_ms ?? null
+  },
+  {
+    group: "time",
+    key: "active_ms",
+    id: "T4",
+    label: "active pipeline time",
+    unit: "ms",
+    pick: (r) => r.block?.time.active_ms ?? null
+  },
+  {
+    group: "time",
+    key: "gate_efficiency",
+    id: "T5",
+    label: "gate efficiency (wall / sum)",
+    unit: "ratio",
+    pick: (r) => r.block?.time.gate_efficiency ?? null
+  },
+  {
+    group: "time",
+    key: "oracle_ms_total",
+    id: "T6",
+    label: "oracles, total per task",
+    unit: "ms",
+    pick: (r) => r.block ? listTotal(r.block.time.oracle_ms) : null
+  },
+  {
+    group: "time",
+    key: "gate_ms_total",
+    id: "T7",
+    label: "gates, total per task",
+    unit: "ms",
+    pick: (r) => r.block ? listTotal(r.block.time.gate_ms) : null
+  },
+  {
+    group: "time",
+    key: "critic_ms_total",
+    id: "T8",
+    label: "inside critic dispatches",
+    unit: "ms",
+    pick: (r) => r.block?.time.critic_ms.total ?? null
+  },
+  {
+    group: "quality",
+    key: "scope_drift_undeclared",
+    id: "Q1",
+    label: "undeclared files changed",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null
+  },
+  {
+    group: "quality",
+    key: "oracle_strength_share",
+    id: "Q2",
+    label: "criteria with an executable oracle",
+    unit: "share",
+    pick: (r) => r.block?.quality.oracle_strength?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "red_green_share",
+    id: "Q3",
+    label: "bugfix criteria proven red\u2192green",
+    unit: "share",
+    pick: (r) => r.block?.quality.red_green?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "not_run_share",
+    id: "Q4",
+    label: "gates not run",
+    unit: "share",
+    pick: (r) => r.block?.quality.not_run?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "freshness_waivers",
+    id: "Q5",
+    label: "freshness waivers",
+    unit: "count",
+    pick: (r) => r.block?.quality.freshness_waivers ?? null
+  },
+  {
+    group: "quality",
+    key: "critic_spec_blockers",
+    id: "Q6",
+    label: "spec-critic blockers (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.spec ?? null, "blockers")
+  },
+  {
+    group: "quality",
+    key: "critic_spec_warnings",
+    id: "Q6",
+    label: "spec-critic warnings (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.spec ?? null, "warnings")
+  },
+  {
+    group: "quality",
+    key: "critic_diff_blockers",
+    id: "Q6",
+    label: "diff-critic blockers (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.diff ?? null, "blockers")
+  },
+  {
+    group: "quality",
+    key: "critic_diff_warnings",
+    id: "Q6",
+    label: "diff-critic warnings (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.diff ?? null, "warnings")
+  },
+  {
+    group: "quality",
+    key: "spec_gaps",
+    id: "Q7",
+    label: "spec gaps",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_gaps ?? null
+  },
+  {
+    group: "quality",
+    key: "open_items_deferred",
+    id: "Q8",
+    label: "items deferred at a limit",
+    unit: "count",
+    pick: (r) => r.block?.quality.open_items?.deferred ?? null
+  },
+  {
+    group: "quality",
+    key: "open_items_blocked",
+    id: "Q8",
+    label: "items blocked at a limit",
+    unit: "count",
+    pick: (r) => r.block?.quality.open_items?.blocked ?? null
+  },
+  {
+    group: "quality",
+    key: "dor_first_call",
+    id: "Q9",
+    label: "DoR passed on first call (rate)",
+    unit: "share",
+    pick: (r) => r.block?.quality.dor_first_call === null || r.block?.quality.dor_first_call === void 0 ? null : r.block.quality.dor_first_call ? 1 : 0
+  },
+  {
+    group: "quality",
+    key: "oracle_unresolved",
+    id: "Q10",
+    label: "criteria whose oracle resolved to nothing",
+    unit: "count",
+    pick: (r) => r.block?.quality.oracle_resolution?.unresolved ?? null
+  },
+  {
+    group: "quality",
+    key: "review_fix_commits",
+    id: "Q11",
+    label: "review-fix commits after the PR opened",
+    unit: "count",
+    pick: (r) => r.review_fix_commits
+  },
+  {
+    group: "quality",
+    key: "escaped_defects",
+    id: "Q12",
+    label: "escaped defects credited to the task",
+    unit: "count",
+    pick: (_r, extra) => extra.escaped
+  },
+  {
+    group: "rework",
+    key: "seals",
+    id: "R1",
+    label: "seals",
+    unit: "count",
+    pick: (r) => r.block?.rework.seals ?? null
+  },
+  {
+    group: "rework",
+    key: "reseals",
+    id: "R1",
+    label: "reseals",
+    unit: "count",
+    pick: (r) => r.block?.rework.reseals ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_passes_spec",
+    id: "R2",
+    label: "spec-critic passes",
+    unit: "count",
+    pick: (r) => r.block?.rework.critic_passes.spec ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_passes_diff",
+    id: "R2",
+    label: "diff-critic passes",
+    unit: "count",
+    pick: (r) => r.block?.rework.critic_passes.diff ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_verify_gate",
+    id: "R3",
+    label: "fix rounds, verify-gate loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.verify_gate ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_critic",
+    id: "R3",
+    label: "fix rounds, critic loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.critic ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_red_green",
+    id: "R3",
+    label: "fix rounds, red-green loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.red_green ?? null
+  },
+  {
+    group: "rework",
+    key: "runs_before_green",
+    id: "R4",
+    label: "verification runs before the first green",
+    unit: "count",
+    pick: (r) => r.block?.rework.runs_before_green ?? null
+  }
+];
+function stat(values) {
+  const present = values.filter((v) => typeof v === "number" && Number.isFinite(v));
+  if (present.length === 0) return { count: 0, mean: null, median: null, max: null };
+  const sorted = [...present].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return {
+    count: present.length,
+    mean: round3(sum(present) / present.length),
+    median: round3(median),
+    max: sorted[sorted.length - 1]
+  };
+}
+function round3(x) {
+  return Math.round(x * 1e3) / 1e3;
+}
+function escapedDefects(shipped) {
+  const ordered = [...shipped].sort(
+    (a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) || (a.created ?? "").localeCompare(b.created ?? "") || a.slug.localeCompare(b.slug)
+  );
+  const by_spec = {};
+  const pairs = [];
+  ordered.forEach((spec, i) => {
+    if (spec.type !== "bugfix") return;
+    const own = new Set(spec.files);
+    const credited = ordered.slice(0, i).filter((earlier) => earlier.slug !== spec.slug && earlier.files.some((f) => own.has(f))).map((earlier) => earlier.slug);
+    if (credited.length === 0) return;
+    pairs.push({ bugfix: spec.slug, credited });
+    for (const slug of credited) by_spec[slug] = (by_spec[slug] ?? 0) + 1;
+  });
+  return { by_spec, pairs };
+}
+function filterRecords(records, filters) {
+  let out = records;
+  if (filters.slug) out = out.filter((r) => r.slug === filters.slug);
+  if (filters.type) out = out.filter((r) => r.block?.type === filters.type);
+  if (filters.since) {
+    const since = filters.since;
+    out = out.filter((r) => !!r.block && r.block.rolled_up_at.slice(0, since.length) >= since);
+  }
+  return out;
+}
+function aggregateSeries(input) {
+  const records = filterRecords(input.records, input.filters);
+  const escaped = input.shipped ? escapedDefects(input.shipped) : null;
+  const shippedSlugs = new Set((input.shipped ?? []).map((s) => s.slug));
+  const rolledUp = records.filter((r) => r.block !== null);
+  const groups = {
+    time: {},
+    quality: {},
+    rework: {}
+  };
+  for (const metric of SERIES_METRICS) {
+    groups[metric.group][metric.key] = stat(
+      rolledUp.map(
+        (r) => metric.pick(r, {
+          // Q12 is defined for a record whose spec is shipped: 0 credits is a
+          // measured zero there, and null everywhere else.
+          escaped: escaped && shippedSlugs.has(r.slug) ? escaped.by_spec[r.slug] ?? 0 : null
+        })
+      )
+    );
+  }
+  const rows = records.map((r) => ({
+    slug: r.slug,
+    filename: r.filename,
+    type: r.block?.type ?? null,
+    rolled_up_at: r.block?.rolled_up_at ?? null,
+    active_ms: r.block?.time.active_ms ?? null,
+    events: r.events
+  }));
+  const single = input.filters.slug ? records[0]?.block ?? null : null;
+  return {
+    generated_at: input.now,
+    dir: input.dir,
+    filters: {
+      type: input.filters.type ?? null,
+      since: input.filters.since ?? null,
+      slug: input.filters.slug ?? null
+    },
+    coverage: {
+      records: records.length,
+      rolled_up: rolledUp.length,
+      events_only: records.filter((r) => r.block === null && r.events > 0).length,
+      shipped_specs: input.shipped ? input.shipped.length : null,
+      shipped_with_record: input.shipped ? input.shipped.filter((s) => rolledUp.some((r) => r.slug === s.slug)).length : null
+    },
+    time: groups.time,
+    quality: groups.quality,
+    rework: groups.rework,
+    escaped_defects: escaped,
+    records: rows,
+    record: single
+  };
+}
+function summarizeSeries(records) {
+  const rolledUp = records.filter((r) => r.block !== null);
+  const newest = rolledUp.map((r) => ({ slug: r.slug, rolled_up_at: r.block.rolled_up_at })).sort((a, b) => b.rolled_up_at.localeCompare(a.rolled_up_at))[0];
+  return {
+    records: records.length,
+    rolled_up: rolledUp.length,
+    newest: newest ?? null,
+    median_active_ms: stat(rolledUp.map((r) => r.block.time.active_ms)).median,
+    median_spec_gaps: stat(rolledUp.map((r) => r.block.quality.spec_gaps)).median
+  };
+}
+function fmtMs(ms) {
+  if (ms === null) return "\u2014";
+  if (ms < 1e3) return `${Math.round(ms)}ms`;
+  const s = Math.round(ms / 1e3);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+function fmtUnit(value, unit) {
+  if (value === null) return "\u2014";
+  switch (unit) {
+    case "ms":
+      return fmtMs(value);
+    case "share":
+      return `${Math.round(value * 100)}%`;
+    case "ratio":
+      return String(round3(value));
+    case "count":
+      return String(round3(value));
+  }
+}
 
 // src/tools/dashboard.ts
 var SECTION_ORDER = [
@@ -33466,6 +34075,7 @@ var SECTION_ORDER = [
   "artifacts",
   "adr",
   "lessons",
+  "metrics",
   "usage",
   "commands"
 ];
@@ -33475,7 +34085,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, the task-metrics series in one line (ADR-0043), and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -33495,6 +34105,7 @@ function renderDashboard(env2, loaded, version2, input) {
   const specDir = resolveSpecDir(env2.projectDir, config2.spec);
   const artifacts = { ...artifactCounts(env2, specDir), verification };
   const lessons = lessonsStats(env2.memoryDir);
+  const metrics = summarizeSeries(toSeriesRecords(listRecords(env2.metricsDir)));
   const adrDir = resolveAdrDir(env2.projectDir, config2.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env2.projectDir);
@@ -33560,6 +34171,7 @@ function renderDashboard(env2, loaded, version2, input) {
       "## Lessons",
       lessons.total > 0 ? `- ${lessons.total} lesson(s) \u2014 ${nonZero(lessons.by_type).join(" \xB7 ")}` : "- _No lessons captured yet in `.marvin/memory`._"
     ],
+    metrics: ["## Metrics", ...renderMetrics(metrics)],
     usage: [
       "## Usage",
       ...usage === null ? [
@@ -33601,6 +34213,7 @@ function renderDashboard(env2, loaded, version2, input) {
     command_groups: groups,
     adr,
     lessons,
+    metrics,
     ...usage ? { usage } : {},
     servers,
     current_tasks: currentTasks,
@@ -33710,6 +34323,18 @@ function renderAuditArea(label, area, command) {
     ...area.newest_report ? [`\`${area.newest_report}\``] : [],
     ...area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]
   ].join(" \xB7 ");
+}
+function renderMetrics(m) {
+  if (m.records === 0) {
+    return [
+      "- _No metrics records yet \u2014 the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._"
+    ];
+  }
+  const parts = [`${m.records} record(s)`, `${m.rolled_up} rolled up`];
+  if (m.newest) parts.push(`newest \`${m.newest.slug}\` (${m.newest.rolled_up_at.slice(0, 10)})`);
+  if (m.median_active_ms !== null) parts.push(`median active time ${fmtMs(m.median_active_ms)}`);
+  if (m.median_spec_gaps !== null) parts.push(`spec gaps per task ${m.median_spec_gaps}`);
+  return [`- ${parts.join(" \xB7 ")}`, "- Full series: `/marvin:task-metrics`"];
 }
 function renderUsage(usage) {
   if (usage.events === 0) return ["- Usage log present but empty \u2014 0 event(s)."];
@@ -34514,11 +35139,11 @@ function computeVerdict(results, warnings) {
   if (warnings.length > 0) return "PASS WITH WARNINGS";
   return "PASS";
 }
-var SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function resolveRunSlug(specSlug) {
   if (specSlug === void 0) return { slug: null };
   const slug = specSlug.trim();
-  if (SLUG_RE.test(slug)) return { slug };
+  if (SLUG_RE2.test(slug)) return { slug };
   return { slug: null, rejected: slug };
 }
 function slugRejection(rejected, consequence) {
@@ -35181,12 +35806,12 @@ function checkStatusTransition(rawStatus) {
   }
   return pass("status", "Lifecycle status", `\`${status}\` \u2014 not a terminal state`);
 }
-var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SLUG_RE3 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function readCorpus(action, input, env2, projectRoot) {
   const slug = input.slug?.trim();
-  if (action === "next" && slug !== void 0 && slug !== "" && !SLUG_RE2.test(slug)) {
+  if (action === "next" && slug !== void 0 && slug !== "" && !SLUG_RE3.test(slug)) {
     return corpusError(
-      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
     );
   }
   const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
@@ -35284,9 +35909,9 @@ function runProgressAction(action, input, env2, projectRoot) {
       `\`action: "${action}"\` needs a \`slug\` \u2014 it names the spec whose journal is ${action === "progress" ? "written" : "read"}, and it is the journal's filename.`
     );
   }
-  if (!SLUG_RE2.test(slug)) {
+  if (!SLUG_RE3.test(slug)) {
     return corpusError(
-      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 nothing was written. The slug becomes the journal's filename, so it is rejected rather than rewritten.`
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 nothing was written. The slug becomes the journal's filename, so it is rejected rather than rewritten.`
     );
   }
   const runsDir = progressRunsDir(input, env2, projectRoot);
@@ -35654,7 +36279,7 @@ function checkFrontmatter(fm, type) {
       fail("fm-status", "Frontmatter", `status "${fm.status}" is not ${STATUS_VALUES.join("|")}`)
     );
   }
-  if (fm.slug && !SLUG_RE2.test(fm.slug)) {
+  if (fm.slug && !SLUG_RE3.test(fm.slug)) {
     checks.push(fail("fm-slug", "Frontmatter", `slug "${fm.slug}" must be kebab-case`));
   }
   if (type === "feature") {
@@ -36070,8 +36695,8 @@ function checkAssumptions(section) {
   }
   return pass("assumptions", "Assumptions", "decisions under uncertainty are recorded");
 }
-var TERMINAL_VERDICTS = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
-var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS, "NONE"];
+var TERMINAL_VERDICTS2 = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
+var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS2, "NONE"];
 function cleanVerdictLine(line) {
   return line.replace(/[`*]/g, "").replace(/^\s*[-+]\s+/, "").trim();
 }
@@ -36079,7 +36704,7 @@ function findVerdict(line) {
   const leading = RECORDABLE_VERDICTS.find((v) => new RegExp(`^${v}\\b`, "i").test(line));
   if (leading) return leading;
   let best = null;
-  for (const verdict of TERMINAL_VERDICTS) {
+  for (const verdict of TERMINAL_VERDICTS2) {
     const at = line.search(new RegExp(`\\b${verdict}\\b`));
     if (at !== -1 && (best === null || at < best.at)) best = { at, verdict };
   }
@@ -36209,182 +36834,6 @@ function warn(id, label, detail) {
 
 // src/lib/metrics-collect.ts
 var import_yaml4 = __toESM(require_dist2());
-var METRIC_EVENT_TAG = "metric-event";
-var TASK_METRICS_TAG = "task-metrics";
-var fence = (tag) => new RegExp("```json " + tag + "\\n([\\s\\S]*?)\\n```", "g");
-var EVENT_RE = fence(METRIC_EVENT_TAG);
-var TERMINAL_RE = fence(TASK_METRICS_TAG);
-var SLUG_RE3 = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-var METRIC_EVENT_KINDS = [
-  "fix-round",
-  "spec-gap",
-  "open-item",
-  "critic-dispatch",
-  "critic-verdict",
-  "gate-call"
-];
-var METRIC_EVENT_SOURCES = [
-  "task-start",
-  "task-implement",
-  "task-deliver",
-  "marvin-tm-executor"
-];
-var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
-var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
-var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
-var METRIC_GATES = ["dor"];
-var TERMINAL_VERDICTS2 = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
-var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
-var REQUIRED_EVENT_FIELDS = {
-  "fix-round": ["loop", "round"],
-  "spec-gap": ["detail"],
-  "open-item": ["classification", "detail"],
-  "critic-dispatch": ["critic", "pass"],
-  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
-  "gate-call": ["gate", "call", "verdict"]
-};
-var MetricEventShape = external_exports.object({
-  slug: external_exports.string().min(1).regex(SLUG_RE3, "slug must be kebab-case"),
-  source: external_exports.enum(METRIC_EVENT_SOURCES),
-  step: external_exports.string().min(1),
-  kind: external_exports.enum(METRIC_EVENT_KINDS),
-  contract_sha: external_exports.string().nullable().optional(),
-  at: external_exports.string().datetime(),
-  detail: external_exports.string().min(1).optional(),
-  loop: external_exports.enum(FIX_LOOPS).optional(),
-  round: external_exports.number().int().positive().optional(),
-  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
-  critic: external_exports.enum(METRIC_CRITICS).optional(),
-  pass: external_exports.number().int().positive().optional(),
-  verdict: external_exports.string().min(1).optional(),
-  blockers: external_exports.number().int().nonnegative().optional(),
-  warnings: external_exports.number().int().nonnegative().optional(),
-  gate: external_exports.enum(METRIC_GATES).optional(),
-  call: external_exports.number().int().positive().optional()
-});
-var MetricEventSchema = MetricEventShape.superRefine((value, ctx) => {
-  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
-    const v = value[field];
-    if (v === void 0 || v === null) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: [field],
-        message: `a ${value.kind} event requires ${field}`
-      });
-    }
-  }
-  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
-    if (!TERMINAL_VERDICTS2.includes(value.verdict)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["verdict"],
-        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS2.join(" | ")}`
-      });
-    }
-  }
-  if (value.kind === "gate-call" && value.verdict !== void 0) {
-    if (!DOR_VERDICTS.includes(value.verdict)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["verdict"],
-        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
-      });
-    }
-  }
-});
-var TaskMetricsEnvelope = external_exports.object({
-  slug: external_exports.string().min(1),
-  rolled_up_at: external_exports.string().min(1),
-  base_branch: external_exports.string().min(1),
-  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
-  time: external_exports.object({}).passthrough(),
-  quality: external_exports.object({}).passthrough(),
-  rework: external_exports.object({}).passthrough(),
-  notes: external_exports.array(external_exports.string())
-}).passthrough();
-function metricsRecordPath(dir, specBasename) {
-  return join(dir, `${specBasename}.md`);
-}
-function recordBasenameForSpec(specPath) {
-  return basename(specPath).replace(/\.md$/, "");
-}
-function findRecord2(dir, slug) {
-  if (!existsSync(dir)) return null;
-  let entries;
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return null;
-  }
-  const exact = `${slug}.md`;
-  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
-  let fallback = null;
-  for (const entry of entries) {
-    if (entry === exact) return join(dir, entry);
-    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
-  }
-  return fallback;
-}
-function header(slug) {
-  return `# Metrics \u2014 ${slug}
-
-Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
-
-`;
-}
-function append(path, slug, tag, payload) {
-  mkdirSync(join(path, ".."), { recursive: true });
-  const head = existsSync(path) ? "" : header(slug);
-  appendFileSync(path, `${head}\`\`\`json ${tag}
-${JSON.stringify(payload)}
-\`\`\`
-
-`, "utf8");
-}
-function appendMetricEvent(path, event) {
-  append(path, event.slug, METRIC_EVENT_TAG, event);
-}
-function appendTaskMetrics(path, block) {
-  append(path, block.slug, TASK_METRICS_TAG, block);
-}
-function readRecord(path) {
-  const empty = { events: [], terminal: [] };
-  if (!existsSync(path)) return empty;
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return empty;
-  }
-  const events = [];
-  for (const m of raw.matchAll(EVENT_RE)) {
-    const json = parseJson(m[1]);
-    if (json === void 0) continue;
-    const parsed = MetricEventSchema.safeParse(json);
-    if (parsed.success) events.push(parsed.data);
-  }
-  const terminal = [];
-  for (const m of raw.matchAll(TERMINAL_RE)) {
-    const json = parseJson(m[1]);
-    if (json === void 0) continue;
-    const parsed = TaskMetricsEnvelope.safeParse(json);
-    if (parsed.success) terminal.push(parsed.data);
-  }
-  return { events, terminal };
-}
-function parseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return void 0;
-  }
-}
-function readMetricEvents(dir, slug) {
-  const path = findRecord2(dir, slug);
-  return path ? readRecord(path).events : [];
-}
-
-// src/lib/metrics-collect.ts
 function findSpecBySlug(slug, projectRoot, specConfig) {
   for (const dir of specSearchDirs(projectRoot, specConfig)) {
     const p = resolveSpecBySlug(dir, slug, projectRoot);
@@ -36512,6 +36961,90 @@ function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
     notes
   };
 }
+function readShippedSpecs(projectRoot, specConfig) {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  if (!existsSync(dir.abs)) return null;
+  const out = [];
+  for (const record2 of readSpecCorpus(dir).records) {
+    if (record2.status !== "shipped") continue;
+    let raw;
+    try {
+      raw = readFileSync(join(dir.abs, record2.filename), "utf8");
+    } catch {
+      continue;
+    }
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const block = extractContractBlock(body);
+    let files = [];
+    if (block !== null) {
+      try {
+        const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
+        if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
+      } catch {
+      }
+    }
+    out.push({
+      slug: record2.slug,
+      number: record2.number,
+      type: frontmatter.type?.trim() || null,
+      created: frontmatter.created?.trim() || null,
+      files
+    });
+  }
+  return out;
+}
+function deliveryPrUrl(specRaw) {
+  const at = specRaw.indexOf("## Delivery");
+  if (at === -1) return null;
+  const m = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/.exec(specRaw.slice(at));
+  return m ? m[0] : null;
+}
+function reviewFixCommits(specPath, cwd) {
+  if (!specPath || !hasGh()) return null;
+  let raw;
+  try {
+    raw = readFileSync(specPath, "utf8");
+  } catch {
+    return null;
+  }
+  const url = deliveryPrUrl(raw);
+  const m = url ? /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url) : null;
+  if (!m) return null;
+  const [, owner, repo, number3] = m;
+  try {
+    const opened = gh(
+      ["api", `repos/${owner}/${repo}/pulls/${number3}`, "--jq", ".created_at"],
+      cwd
+    );
+    if (!opened.ok || !opened.value) return null;
+    const dates = gh(
+      [
+        "api",
+        `repos/${owner}/${repo}/pulls/${number3}/commits`,
+        "--paginate",
+        "--jq",
+        ".[].commit.committer.date"
+      ],
+      cwd
+    );
+    if (!dates.ok) return null;
+    return dates.value.split("\n").map((d) => d.trim()).filter(Boolean).filter((d) => d > opened.value).length;
+  } catch {
+    return null;
+  }
+}
+function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
+  const records = toSeriesRecords(listRecords(metricsDir));
+  return records.map(
+    (r) => r.block ? {
+      ...r,
+      review_fix_commits: reviewFixCommits(
+        findSpecBySlug(r.slug, projectRoot, specConfig),
+        projectRoot
+      )
+    } : r
+  );
+}
 
 // src/lib/metrics-rollup.ts
 function epoch(iso) {
@@ -36540,7 +37073,7 @@ function flag(value) {
 function presence(input) {
   return input === null || input === void 0 ? "absent" : "present";
 }
-function round3(x) {
+function round32(x) {
   return Math.round(x * 1e3) / 1e3;
 }
 function sealJoinKey(spec, notes) {
@@ -36589,7 +37122,7 @@ function criticTime(events, notes) {
     notes.push(`T8: ${strayVerdicts} critic verdict(s) without a recorded dispatch \u2014 excluded`);
   }
   return {
-    total: dispatches.length ? dispatches.reduce((sum, d) => sum + d.ms, 0) : null,
+    total: dispatches.length ? dispatches.reduce((sum2, d) => sum2 + d.ms, 0) : null,
     dispatches
   };
 }
@@ -36631,7 +37164,7 @@ function rollUpMetrics(input) {
     }
   }
   const active_ms = intake_ms !== null && implement_ms !== null && first_green_ms !== null ? intake_ms + implement_ms + first_green_ms : null;
-  const gate_efficiency = verify_result && typeof verify_result.wallClockMs === "number" && typeof verify_result.sumOfGatesMs === "number" && verify_result.sumOfGatesMs > 0 ? round3(verify_result.wallClockMs / verify_result.sumOfGatesMs) : null;
+  const gate_efficiency = verify_result && typeof verify_result.wallClockMs === "number" && typeof verify_result.sumOfGatesMs === "number" && verify_result.sumOfGatesMs > 0 ? round32(verify_result.wallClockMs / verify_result.sumOfGatesMs) : null;
   const latestOracle = latestOraclesAtSeal(oracles, seal);
   const oracle_ms = [...latestOracle.values()].filter((r) => typeof r.durationMs === "number").map((r) => ({ criterion: r.criterion, ms: r.durationMs })).sort((a, b) => a.criterion.localeCompare(b.criterion, void 0, { numeric: true }));
   const gate_ms = (verify_result?.gates ?? []).filter((g) => typeof g.durationMs === "number").map((g) => ({ gate: g.name, ms: g.durationMs }));
@@ -36662,7 +37195,7 @@ function rollUpMetrics(input) {
     const executable = contract.criteria.filter(
       (c) => c.oracle.kind === "test" || c.oracle.kind === "command"
     ).length;
-    oracle_strength = { criteria, executable, share: criteria ? round3(executable / criteria) : 0 };
+    oracle_strength = { criteria, executable, share: criteria ? round32(executable / criteria) : 0 };
   }
   let red_green = null;
   if (type === "bugfix" && contract && oracles && seal) {
@@ -36670,13 +37203,13 @@ function rollUpMetrics(input) {
     const proven = contract.criteria.filter(
       (c) => redGreenProof(oracles, seal, c.id) === "proven"
     ).length;
-    red_green = { criteria, proven, share: criteria ? round3(proven / criteria) : 0 };
+    red_green = { criteria, proven, share: criteria ? round32(proven / criteria) : 0 };
   }
   let not_run = null;
   if (verify_result && verify_result.gates.length > 0) {
     const gates = verify_result.gates.length;
     const notRun = verify_result.gates.filter((g) => g.status === "not-run").length;
-    not_run = { gates, not_run: notRun, share: round3(notRun / gates) };
+    not_run = { gates, not_run: notRun, share: round32(notRun / gates) };
   }
   const freshness_waivers = verify_journal ? verify_journal.filter(
     (e) => e.kind === "gate" && e.decision === "ALLOW" && e.staleness === "stale" && e.allowStale === true
@@ -36774,11 +37307,11 @@ function rollUpMetrics(input) {
 
 // src/tools/metrics.ts
 var MetricsInput = external_exports.object({
-  action: external_exports.enum(["record", "rollup"]).describe(
-    "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it \u2014 called by /marvin:task-deliver after the gate allows and before the commit."
+  action: external_exports.enum(["record", "rollup", "series"]).describe(
+    "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it \u2014 called by /marvin:task-deliver after the gate allows and before the commit. series: aggregate every record \u2014 count, median, mean and maximum per metric over the records where it is present \u2014 with a coverage line; narrow with type / since, or pass slug to render one record in full."
   ),
-  slug: external_exports.string().describe(
-    "The spec's kebab-case slug. It names the record (`.marvin/metrics/<NNN>-<slug>.md`, sharing the spec's basename), so it is rejected rather than sanitised."
+  slug: external_exports.string().optional().describe(
+    "The spec's kebab-case slug. Required for record and rollup \u2014 it names the record (`.marvin/metrics/<NNN>-<slug>.md`, sharing the spec's basename), so it is rejected rather than sanitised. Optional for series: renders that one record in full instead of the aggregate."
   ),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
   source: external_exports.enum(METRIC_EVENT_SOURCES).optional().describe("record: which prose site is writing \u2014 step ids collide across the pipelines."),
@@ -36797,7 +37330,7 @@ var MetricsInput = external_exports.object({
     "record (critic-dispatch / critic-verdict): the dispatch number for this critic on this task; a NEEDS_CONTEXT re-dispatch reuses it."
   ),
   verdict: external_exports.string().optional().describe(
-    `record: the verdict. critic-verdict: ${TERMINAL_VERDICTS2.join(" | ")}. gate-call: ${DOR_VERDICTS.join(" | ")}.`
+    `record: the verdict. critic-verdict: ${TERMINAL_VERDICTS.join(" | ")}. gate-call: ${DOR_VERDICTS.join(" | ")}.`
   ),
   blockers: external_exports.number().int().nonnegative().optional().describe("record (critic-verdict): the critic's blocker count."),
   warnings: external_exports.number().int().nonnegative().optional().describe("record (critic-verdict): the critic's warning count."),
@@ -36808,7 +37341,9 @@ var MetricsInput = external_exports.object({
   contractSha: external_exports.string().optional().describe("record: the seal in force, when the writer knows one."),
   base: external_exports.string().optional().describe(
     "rollup: the git ref scope drift is measured against. Defaults to the config's base_branch."
-  )
+  ),
+  type: external_exports.enum(["feature", "bugfix"]).optional().describe("series: aggregate only the records of this spec type."),
+  since: external_exports.string().optional().describe("series: aggregate only the records rolled up on or after this date (YYYY-MM-DD).")
 });
 var METRICS_INPUT_FIELDS = Object.keys(MetricsInput.shape).join(", ");
 var MetricsInputStrict = MetricsInput.strict(
@@ -36817,21 +37352,27 @@ var MetricsInputStrict = MetricsInput.strict(
 function buildMetricsTool(env2) {
   return defineTool({
     name: "metrics",
-    description: `The task-metrics record under .marvin/metrics/ (ADR-0043), one committed file per spec. action: "record" appends one live metric-event \u2014 a fix-cycle round, a SPEC GAP, an item deferred or blocked at a loop's limit, a critic dispatch or verdict with its pass number, a DoR gate call with its verdict \u2014 the counters that context compaction otherwise destroys. action: "rollup" derives the terminal task-metrics block at delivery from the spec, the progress / oracle / verification-run journals, the verify-result block, the critique receipts and git: time (intake, implementation, time to first green, gate efficiency, oracle and gate and critic durations), quality (scope drift, oracle strength, red-green completeness, not-run gates, freshness waivers, critic axes, spec gaps, open items, DoR first-call, oracle resolution) and rework (reseals, critic passes, fix rounds, runs before green), each null when its source was absent, plus the sources map that says so. Strict input: an unknown key is an error.`,
+    description: `The task-metrics record under .marvin/metrics/ (ADR-0043), one committed file per spec. action: "record" appends one live metric-event \u2014 a fix-cycle round, a SPEC GAP, an item deferred or blocked at a loop's limit, a critic dispatch or verdict with its pass number, a DoR gate call with its verdict \u2014 the counters that context compaction otherwise destroys. action: "rollup" derives the terminal task-metrics block at delivery from the spec, the progress / oracle / verification-run journals, the verify-result block, the critique receipts and git: time (intake, implementation, time to first green, gate efficiency, oracle and gate and critic durations), quality (scope drift, oracle strength, red-green completeness, not-run gates, freshness waivers, critic axes, spec gaps, open items, DoR first-call, oracle resolution) and rework (reseals, critic passes, fix rounds, runs before green), each null when its source was absent, plus the sources map that says so. action: "series" aggregates every record \u2014 count, median, mean and maximum per metric over the records where it is present, coverage against the shipped corpus, review-fix commits and escaped defects computed at query time \u2014 narrowed by type / since, or one record in full with slug; the door is /marvin:task-metrics. Strict input: an unknown key is an error.`,
     inputSchema: MetricsInputStrict,
     handler: (input) => Promise.resolve(runMetrics(input, env2))
   });
 }
 function runMetrics(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  const slug = input.slug.trim();
-  if (!SLUG_RE3.test(slug)) {
+  const slug = input.slug?.trim();
+  if (slug !== void 0 && !SLUG_RE.test(slug)) {
     return errText3(
-      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 nothing was written. The slug names the record, so it is rejected rather than rewritten.`
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE.source}) \u2014 nothing was written. The slug names the record, so it is rejected rather than rewritten.`
     );
   }
   const { config: config2 } = loadConfig(projectConfigPath(env2, projectRoot), projectRoot);
   const dir = projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
+  if (input.action === "series") return series(input, slug, projectRoot, dir, config2);
+  if (!slug) {
+    return errText3(
+      `\`action: "${input.action}"\` needs a \`slug\` \u2014 it names the spec whose record is written.`
+    );
+  }
   return input.action === "record" ? recordEvent(input, slug, projectRoot, dir, config2.spec) : rollup(input, env2, slug, projectRoot, dir, config2);
 }
 function recordPathFor(dir, slug, projectRoot, specConfig) {
@@ -36933,16 +37474,111 @@ function rollup(input, env2, slug, projectRoot, dir, config2) {
     structuredContent: payload
   };
 }
-function fmtMs(ms) {
-  if (ms === null) return "\u2014";
-  if (ms < 1e3) return `${Math.round(ms)}ms`;
-  const s = Math.round(ms / 1e3);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function series(input, slug, projectRoot, dir, config2) {
+  const since = input.since?.trim();
+  if (since && !DATE_RE.test(since)) {
+    return errText3(`\`since\` \`${since}\` is not a date (YYYY-MM-DD) \u2014 nothing was aggregated.`);
+  }
+  const filters = {
+    ...input.type ? { type: input.type } : {},
+    ...since ? { since } : {},
+    ...slug ? { slug } : {}
+  };
+  const records = collectSeriesRecords(projectRoot, dir, config2.spec);
+  const shipped = readShippedSpecs(projectRoot, config2.spec);
+  const answer = aggregateSeries({
+    dir: relFromRoot2(dir, projectRoot),
+    now: (/* @__PURE__ */ new Date()).toISOString(),
+    records,
+    shipped,
+    filters
+  });
+  const text = slug ? renderSingle(answer, slug, dir, projectRoot) : renderSeries(answer);
+  return {
+    content: [
+      {
+        type: "text",
+        text: text + "\n\n```json metrics-series\n" + JSON.stringify(answer) + "\n```"
+      }
+    ],
+    structuredContent: answer
+  };
+}
+function renderSingle(answer, slug, dir, projectRoot) {
+  const row = answer.records[0];
+  if (!row) {
+    return `# Task metrics \u2014 ${slug}
+
+No metrics record for \`${slug}\` under \`${answer.dir}/\`.`;
+  }
+  if (!answer.record) {
+    return `# Task metrics \u2014 ${slug}
+
+\`${answer.dir}/${row.filename}\` holds ${row.events} live event(s) and no terminal block \u2014 recorded, not yet rolled up. \`/marvin:task-deliver\` rolls it up after the delivery gate allows.`;
+  }
+  const recordPath = join(dir, row.filename);
+  const terminal = readRecord(recordPath).terminal.length;
+  const ignored = inGitRepo(projectRoot) ? isIgnored(relFromRoot2(recordPath, projectRoot), projectRoot) : null;
+  return renderDigest(answer.record, `${answer.dir}/${row.filename}`, terminal, ignored);
+}
+function renderSeries(a) {
+  const c = a.coverage;
+  const filters = [
+    a.filters.type ? `type ${a.filters.type}` : null,
+    a.filters.since ? `since ${a.filters.since}` : null
+  ].filter((f) => f !== null);
+  const lines = [
+    "# Task metrics \u2014 series",
+    "",
+    `**Directory:** \`${a.dir}/\` \xB7 **Filters:** ${filters.length ? filters.join(" \xB7 ") : "none"}`
+  ];
+  if (c.records === 0) {
+    lines.push(
+      "",
+      filters.length ? "_No rolled-up record matches the filters._" : "_No metrics records yet \u2014 the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._"
+    );
+    return lines.join("\n");
+  }
+  const coverage = c.shipped_specs === null ? "no spec corpus to compare against" : `the series covers ${c.shipped_with_record} of ${c.shipped_specs} shipped spec(s)`;
+  lines.push(
+    `**Coverage:** ${c.records} record(s) \xB7 ${c.rolled_up} rolled up \xB7 ${c.events_only} recorded but not rolled up \xB7 ${coverage}`,
+    "",
+    "Each metric is computed over the records where it is present (`n`); an absent source is never counted as zero."
+  );
+  for (const group of ["time", "quality", "rework"]) {
+    lines.push(
+      "",
+      `## ${group[0].toUpperCase()}${group.slice(1)}`,
+      "",
+      "| Id | Metric | n | median | mean | max |",
+      "|----|--------|---|--------|------|-----|"
+    );
+    for (const m of SERIES_METRICS.filter((m2) => m2.group === group)) {
+      const s = a[group][m.key];
+      if (!s) continue;
+      lines.push(
+        `| ${m.id} | ${m.label} | ${s.count} | ${fmtUnit(s.median, m.unit)} | ${fmtUnit(s.mean, m.unit)} | ${fmtUnit(s.max, m.unit)} |`
+      );
+    }
+  }
+  lines.push("", "## Escaped defects (Q12)");
+  if (a.escaped_defects === null) lines.push("- _no spec corpus to join_");
+  else if (a.escaped_defects.pairs.length === 0) lines.push("- none credited");
+  else {
+    for (const p of a.escaped_defects.pairs) {
+      lines.push(
+        `- bugfix \`${p.bugfix}\` \u2192 credited to ${p.credited.map((s) => `\`${s}\``).join(", ")}`
+      );
+    }
+  }
+  lines.push("", `## Records (${a.records.length})`);
+  for (const r of a.records) {
+    lines.push(
+      `- \`${r.filename}\`${r.type ? ` ${r.type}` : ""} \xB7 ${r.rolled_up_at ? `rolled up ${r.rolled_up_at.slice(0, 10)}` : "not rolled up"} \xB7 active ${fmtMs(r.active_ms)} \xB7 ${r.events} event(s)`
+    );
+  }
+  return lines.join("\n");
 }
 var pct = (share) => `${Math.round(share * 100)}%`;
 function renderDigest(b, record2, terminalBlocks, ignored) {
@@ -37631,7 +38267,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.21.0";
+var VERSION = "0.22.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

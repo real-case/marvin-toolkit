@@ -3,11 +3,20 @@ import { dirname, join, posix, relative, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { Critique } from "@marvin-toolkit/mcp-shared/contracts";
 import { projectScopedDir, type ServerEnv } from "./env.js";
-import { changedFilesForScope, headSha, inGitRepo, refExists } from "./git.js";
+import {
+  changedFilesForScope,
+  gh,
+  hasGh,
+  headSha,
+  inGitRepo,
+  normalizeScopePath,
+  refExists,
+} from "./git.js";
+import { toSeriesRecords, type SeriesRecord, type ShippedSpec } from "./metrics-series.js";
 import { parseCritiqueBlock, parseVerifyBlock } from "./reports.js";
 import type { RollupGit, RollupInputs, RollupSpec } from "./metrics-rollup.js";
 import { parseFrontmatter } from "../storage/frontmatter.js";
-import { readMetricEvents } from "../storage/metrics.js";
+import { listRecords, readMetricEvents } from "../storage/metrics.js";
 import { oracleJournalPath, readOracleRuns } from "../storage/oracles.js";
 import { progressJournalPath, readProgress } from "../storage/progress.js";
 import type { SpecConfig } from "../storage/schema.js";
@@ -15,6 +24,7 @@ import {
   SpecContract,
   contractHash,
   extractContractBlock,
+  readSpecCorpus,
   resolveSpecBySlug,
   resolveSpecDir,
   specSearchDirs,
@@ -214,4 +224,124 @@ export function collectRollupInputs(
     git,
     notes,
   };
+}
+
+// ── the series (WP5): what `metrics action: "series"` reads ──────────────────
+
+/**
+ * The shipped specs of the corpus with their contract paths, for the Q12 join —
+ * or null when the resolved spec directory does not exist, which is "no corpus"
+ * rather than "a corpus with nothing shipped".
+ */
+export function readShippedSpecs(
+  projectRoot: string,
+  specConfig: SpecConfig | undefined,
+): ShippedSpec[] | null {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  if (!existsSync(dir.abs)) return null;
+  const out: ShippedSpec[] = [];
+  for (const record of readSpecCorpus(dir).records) {
+    if (record.status !== "shipped") continue;
+    let raw: string;
+    try {
+      raw = readFileSync(join(dir.abs, record.filename), "utf8");
+    } catch {
+      continue;
+    }
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const block = extractContractBlock(body);
+    let files: string[] = [];
+    if (block !== null) {
+      try {
+        const parsed = SpecContract.safeParse(parseYaml(block));
+        if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
+      } catch {
+        // an unparseable contract contributes no paths; the spec still counts as shipped
+      }
+    }
+    out.push({
+      slug: record.slug,
+      number: record.number,
+      type: frontmatter.type?.trim() || null,
+      created: frontmatter.created?.trim() || null,
+      files,
+    });
+  }
+  return out;
+}
+
+/** The first GitHub pull-request URL after the spec's `## Delivery` heading, or null. */
+export function deliveryPrUrl(specRaw: string): string | null {
+  const at = specRaw.indexOf("## Delivery");
+  if (at === -1) return null;
+  const m = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/.exec(specRaw.slice(at));
+  return m ? m[0] : null;
+}
+
+/**
+ * Q11 — review-fix commits: commits on the pull request dated after it was
+ * opened, read through `gh api`. A squash merge keeps them only on GitHub, so
+ * there is no local source. Null without `gh`, without a `## Delivery` URL, or
+ * on any error — and it never blocks the rest of the report (plan D7).
+ */
+export function reviewFixCommits(specPath: string | null, cwd: string): number | null {
+  if (!specPath || !hasGh()) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(specPath, "utf8");
+  } catch {
+    return null;
+  }
+  const url = deliveryPrUrl(raw);
+  const m = url ? /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url) : null;
+  if (!m) return null;
+  const [, owner, repo, number] = m;
+  try {
+    const opened = gh(
+      ["api", `repos/${owner}/${repo}/pulls/${number}`, "--jq", ".created_at"],
+      cwd,
+    );
+    if (!opened.ok || !opened.value) return null;
+    const dates = gh(
+      [
+        "api",
+        `repos/${owner}/${repo}/pulls/${number}/commits`,
+        "--paginate",
+        "--jq",
+        ".[].commit.committer.date",
+      ],
+      cwd,
+    );
+    if (!dates.ok) return null;
+    // ISO timestamps compare correctly as strings.
+    return dates.value
+      .split("\n")
+      .map((d) => d.trim())
+      .filter(Boolean)
+      .filter((d) => d > opened.value).length;
+  } catch {
+    return null;
+  }
+}
+
+/** Every record in the metrics directory, with Q11 filled where a shipped PR can be read. */
+export function collectSeriesRecords(
+  projectRoot: string,
+  metricsDir: string,
+  specConfig: SpecConfig | undefined,
+  opts: { withReviewFixCommits: boolean },
+): SeriesRecord[] {
+  const records = toSeriesRecords(listRecords(metricsDir));
+  if (!opts.withReviewFixCommits) return records;
+  return records.map((r) =>
+    r.block
+      ? {
+          ...r,
+          review_fix_commits: reviewFixCommits(
+            findSpecBySlug(r.slug, projectRoot, specConfig),
+            projectRoot,
+          ),
+        }
+      : r,
+  );
 }

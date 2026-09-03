@@ -2,8 +2,8 @@
 
 | Field      | Value                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
-| Status     | Draft 1, 2026-09-03                                                                                        |
-| Companion  | [task-metrics.md](./task-metrics.md), the proposal this plan implements (Status: Proposed)                 |
+| Status     | Implemented, 2026-09-03 — Phase 1 landed as 0.20.0, Phase 2 as 0.21.0, Phase 3 as 0.22.0              |
+| Companion  | [task-metrics.md](./task-metrics.md), the proposal this plan implements (Status: Implemented)                 |
 | Base       | `dev` at `44707ed` (marvin 0.19.0), the commit that landed WP1                                              |
 | Landings   | Three pull requests into `dev`, serial version targets 0.20.0, 0.21.0 and 0.22.0                           |
 | Owner gate | The decisions table below lists every point where this plan goes beyond the proposal; each is reversible before Phase 1 starts |

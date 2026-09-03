@@ -316,3 +316,97 @@ export const TaskMetrics = z.object({
   notes: z.array(z.string()),
 });
 export type TaskMetrics = z.infer<typeof TaskMetrics>;
+
+// ── the series (WP5) ────────────────────────────────────────────────────────
+
+/**
+ * One metric aggregated over the records where it is PRESENT: absent (null)
+ * values are excluded from the denominator rather than counted as zero, so a
+ * series in which half the tasks never journalled their verification reports
+ * the half that did, and `count` says how many that was.
+ */
+export const SeriesStat = z.object({
+  count: z.number().int().nonnegative(),
+  mean: z.number().nullable(),
+  median: z.number().nullable(),
+  max: z.number().nullable(),
+});
+export type SeriesStat = z.infer<typeof SeriesStat>;
+
+/**
+ * How much of the corpus the series covers — the number that says whether the
+ * series can be trusted yet. `shipped_specs` and `shipped_with_record` are null
+ * when there is no spec corpus to compare against.
+ */
+export const MetricsSeriesCoverage = z.object({
+  /** Record files considered after the filters. */
+  records: z.number().int().nonnegative(),
+  /** Records with at least one terminal block. */
+  rolled_up: z.number().int().nonnegative(),
+  /** Records with live events and no terminal block — recorded, not rolled up. */
+  events_only: z.number().int().nonnegative(),
+  shipped_specs: z.number().int().nonnegative().nullable(),
+  shipped_with_record: z.number().int().nonnegative().nullable(),
+});
+export type MetricsSeriesCoverage = z.infer<typeof MetricsSeriesCoverage>;
+
+/** One record's row in the series listing. */
+export const SeriesRecordRow = z.object({
+  slug: Slug,
+  filename: z.string().min(1),
+  type: z.string().nullable(),
+  rolled_up_at: z.string().nullable(),
+  active_ms: z.number().nullable(),
+  events: z.number().int().nonnegative(),
+});
+export type SeriesRecordRow = z.infer<typeof SeriesRecordRow>;
+
+/**
+ * Q12 — escaped defects, a join over the spec corpus computed at query time and
+ * never stored: for each shipped bugfix spec, the EARLIER shipped specs whose
+ * contract `files[].path` intersect its own are credited with one escaped
+ * defect. `by_spec` counts the credits per earlier spec; `pairs` shows the join.
+ */
+export const EscapedDefects = z.object({
+  by_spec: z.record(z.string(), z.number().int().nonnegative()),
+  pairs: z.array(z.object({ bugfix: Slug, credited: z.array(Slug) })),
+});
+export type EscapedDefects = z.infer<typeof EscapedDefects>;
+
+/**
+ * The ` ```json metrics-series ` block `metrics action: "series"` answers with:
+ * the three groups as `metric key → stat`, computed over the records where
+ * each field is present, plus coverage and the record listing. In `slug` mode
+ * the aggregate is over that one record and `record` carries its last terminal
+ * block in full.
+ */
+export const MetricsSeries = z.object({
+  generated_at: z.string().datetime(),
+  /** Project-relative metrics directory. */
+  dir: z.string().min(1),
+  filters: z.object({
+    type: z.string().nullable(),
+    since: z.string().nullable(),
+    slug: z.string().nullable(),
+  }),
+  coverage: MetricsSeriesCoverage,
+  time: z.record(z.string(), SeriesStat),
+  quality: z.record(z.string(), SeriesStat),
+  rework: z.record(z.string(), SeriesStat),
+  /** Null when there is no spec corpus to join. */
+  escaped_defects: EscapedDefects.nullable(),
+  records: z.array(SeriesRecordRow),
+  /** `slug` mode only: the one record's last terminal block. */
+  record: TaskMetrics.nullable(),
+});
+export type MetricsSeries = z.infer<typeof MetricsSeries>;
+
+/** The dashboard's one-line summary of the series (ADR-0043 §5). */
+export const MetricsSummary = z.object({
+  records: z.number().int().nonnegative(),
+  rolled_up: z.number().int().nonnegative(),
+  newest: z.object({ slug: Slug, rolled_up_at: z.string().min(1) }).nullable(),
+  median_active_ms: z.number().nullable(),
+  median_spec_gaps: z.number().nullable(),
+});
+export type MetricsSummary = z.infer<typeof MetricsSummary>;

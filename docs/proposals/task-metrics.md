@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------------ |
-| Status     | Proposed                                                                                                       |
+| Status     | Implemented — WP1 in 0.19.0 (#199), WP4 with ADR-0043 in 0.20.0, WP2+WP3 in 0.21.0, WP5 in 0.22.0 |
 | Date       | 2026-09-03                                                                                                     |
 | Applies to | the `task-*` pipeline skills, the `verify` and `spec` tools, a new `.marvin/metrics/` location, and `.gitignore` |
 | Principle  | Record only what is otherwise lost, and derive everything else from the artifacts already on disk               |
@@ -339,7 +339,9 @@ which is where Q5 comes from (plan D3).* Append one entry per run to
 `task/runs/<slug>.md` stays the latest run, so the delivery gate is unchanged. This unlocks T3
 and R4. Size S.
 
-**WP5 — The aggregation surface.** Add a `metrics` action that reads the series and reports the
+**WP5 — The aggregation surface.** *Landed in 0.22.0 as Phase 3 of the plan: `metrics action:
+"series"` behind `/marvin:task-metrics`, with Q11 and Q12 computed at query time (plan D7), and a
+`metrics` section on the dashboard.* Add a `metrics` action that reads the series and reports the
 three groups, and add a line to `dashboard`. Size M.
 
 Land WP1 first, then WP2 and WP3 together, since they capture the volatile counters and everything

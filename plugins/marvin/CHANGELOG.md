@@ -4,6 +4,32 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.22.0] — 2026-09-03
+
+Phase 3 of the task-metrics plan, WP5: the series becomes readable. The prompt count moves from
+55 to 56. With this landing every package of `docs/proposals/task-metrics.md` is implemented.
+
+### Added
+
+- **`metrics action: "series"`** reads every record under `.marvin/metrics/`, takes each record's
+  last terminal block, and aggregates the three groups — count, median, mean and maximum per
+  metric — computed only over the records where the field is present, so an absent source is never
+  counted as zero and `n` says how many tasks contributed. It reports coverage — how many shipped
+  specs have a record — which is the number that says whether the series can be trusted yet.
+  `type` (`feature` or `bugfix`) and `since` (a date) narrow it; `slug` renders one record in full.
+  The answer carries a ` ```json metrics-series ` block (`MetricsSeries` in `contracts/metrics.ts`).
+- **Q11 and Q12 are computed there, at query time, and never stored** (plan D7). Q11 resolves the
+  pull-request URL from the spec's `## Delivery` section and counts the PR's commits dated after it
+  opened through `gh api`; it is null without `gh`, without a URL, or on any error, and never
+  blocks the rest of the report. Q12 joins the shipped corpus: each shipped bugfix credits the
+  earlier shipped specs whose contract `files[].path` intersect its own with one escaped defect.
+- **`/marvin:task-metrics`**, an inline-body prompt in the shape of `task-summary`, with a
+  `commands/task-metrics.md` wrapper and its four help-content records.
+- **The dashboard's `metrics` section**, after `lessons`: record and roll-up counts, the newest
+  record, the median active time and spec gaps per task, or a zero-state line naming the command
+  that writes the first record. `DashboardState` gains `metrics` as an optional, additive field;
+  the widget and the site's embeds are untouched until a later pass renders it.
+
 ## [0.21.0] — 2026-09-03
 
 Phase 2 of the task-metrics plan: WP2 and WP3 together, as the proposal requires. The pipeline

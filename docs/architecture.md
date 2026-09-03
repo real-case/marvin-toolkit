@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-task tracker, and it ships **55 prompts, 14 MCP tools, 10 agents, and 9 interactive
+task tracker, and it ships **56 prompts, 14 MCP tools, 10 agents, and 9 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -65,7 +65,7 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-55 prompts divide into seven groups. The [command reference](./commands.md) lists every
+56 prompts divide into seven groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
@@ -73,7 +73,7 @@ entry with a synopsis and the phrases that invoke it from chat.
 | _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 6 |
+| `task-*` | Spec-driven task pipeline | 7 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
 | `track-*` | Lightweight task tracker | 7 |

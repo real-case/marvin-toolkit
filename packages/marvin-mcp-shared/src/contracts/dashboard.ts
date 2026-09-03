@@ -4,6 +4,7 @@ import { AdrStatus } from "./adr.js";
 import { LessonsStats } from "./lessons.js";
 import { HelpServer } from "./help.js";
 import { Severity } from "./audit.js";
+import { MetricsSummary } from "./metrics.js";
 
 /**
  * Marvin infrastructure dashboard contract (ADR-0024 → ADR-0030) — feeds the
@@ -189,5 +190,12 @@ export const DashboardState = z.object({
   handoffs: z.array(DashboardHandoff).optional(),
   /** Audit findings by severity per area (security / refactor). */
   audits: DashboardAudits.optional(),
+  /**
+   * The task-metrics series in one line (ADR-0043 §5): record and roll-up
+   * counts, the newest record, the median active time and spec gaps per task.
+   * Optional and additive — the widget and the site's embeds are untouched
+   * until a later pass renders it.
+   */
+  metrics: MetricsSummary.optional(),
 });
 export type DashboardState = z.infer<typeof DashboardState>;

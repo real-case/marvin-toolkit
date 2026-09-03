@@ -1,11 +1,11 @@
 {
-  "version": "0.21.0",
+  "version": "0.22.0",
   "counts": {
-    "prompts": 55,
+    "prompts": 56,
     "tools": 14,
     "agents": 10,
     "widgets": 9,
-    "version": "0.21.0",
+    "version": "0.22.0",
     "license": "MIT"
   },
   "groups": [
@@ -27,7 +27,7 @@
     {
       "key": "task",
       "blurb": "Spec-driven pipeline — start, implement, verify, deliver",
-      "count": 6
+      "count": 7
     },
     {
       "key": "sec",
@@ -447,6 +447,20 @@
         "marvin, recap the task's acceptance criteria"
       ],
       "example": "/marvin:task-summary add-pagination",
+      "human": false
+    },
+    {
+      "name": "task-metrics",
+      "group": "task",
+      "blurb": "Time, quality and rework across tasks",
+      "description": "Aggregate the task-metrics series under .marvin/metrics/ — intake, implementation and time-to-green, scope drift, oracle strength, critic verdicts, spec gaps and fix rounds per delivered task, with a coverage line — or show one task's record in full.",
+      "phrases": [
+        "marvin, show the task metrics",
+        "marvin, how long do tasks take through the pipeline?",
+        "marvin, where does the time go in a task?",
+        "marvin, how many spec gaps per task?"
+      ],
+      "example": "/marvin:task-metrics since 2026-09-01",
       "human": false
     },
     {
