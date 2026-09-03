@@ -260,7 +260,7 @@ together and easy to include in or exclude from version control.
 | Path | Written by | Contents |
 |------|-----------|----------|
 | `.marvin/task/` | `task-*` | Immutable specs and the current `verification.md`. |
-| `.marvin/task/runs/` | `verify`, `spec` | The three per-spec artifacts: the verification run `<slug>.md` ([ADR-0035](./adr/0035-evidence-provenance.md)), the oracle journal `<slug>.oracles.md` ([ADR-0036](./adr/0036-oracle-execution-and-red-green.md)), and the progress journal `<slug>.progress.md`. A subdirectory on purpose — the enumerators over the spec directory are non-recursive, so nothing here is ever mistaken for a spec. |
+| `.marvin/task/runs/` | `verify`, `spec` | The four per-spec artifacts: the verification run `<slug>.md` ([ADR-0035](./adr/0035-evidence-provenance.md)), the oracle journal `<slug>.oracles.md` ([ADR-0036](./adr/0036-oracle-execution-and-red-green.md)), the progress journal `<slug>.progress.md`, and the verification-run journal `<slug>.verify.md` ([ADR-0043](./adr/0043-task-workflow-metrics.md)) — append-only, one entry per verification run and per delivery-gate decision, the record the overwritten run file cannot keep. A subdirectory on purpose — the enumerators over the spec directory are non-recursive, so nothing here is ever mistaken for a spec. |
 | `.marvin/security/` | `sec-*` | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | `refactor-*` | Numbered findings registers and sequenced step plans. |
 | `.marvin/track/` | `track-*` | The task board as markdown files. |

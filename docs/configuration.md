@@ -15,7 +15,7 @@ makes them easy to include in or exclude from version control as a unit.
 | Path | Written by | Contents |
 | ---- | ---------- | -------- |
 | `.marvin/task/` | The `task-*` pipeline | Immutable specs and the current `verification.md`. |
-| `.marvin/task/runs/` | The `verify` and `spec` tools | What each spec's own runs recorded: whether the gates passed, whether its acceptance oracles went red then green, and how far an interrupted intake or implementation run got before it stopped. That last one is what a resumed session recovers instead of starting the dialogue over. Nothing here is edited by hand. |
+| `.marvin/task/runs/` | The `verify` and `spec` tools | What each spec's own runs recorded: whether the gates passed, whether its acceptance oracles went red then green, and how far an interrupted intake or implementation run got before it stopped, and how many verification runs and delivery-gate decisions it took to get there (`<slug>.verify.md`, append-only, because the run file itself is overwritten by every run). The progress record is what a resumed session recovers instead of starting the dialogue over; the run journal is what the metrics roll-up reads. Nothing here is edited by hand. |
 | `.marvin/track/` | The `track-*` tracker | The task board as markdown files. |
 | `.marvin/security/` | The `sec-*` scanners | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |

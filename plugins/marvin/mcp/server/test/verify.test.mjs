@@ -1297,3 +1297,208 @@ test("a failing gate with no error line keeps the tail", async () => {
   assert.match(body, /^line9$/m);
   assert.doesNotMatch(body, /^line8$/m, "the tail is not the last twelve lines");
 });
+
+// ── the verification-run journal (ADR-0043 §3, §6) ──────────────────────────
+
+/** Every `verify-run` block in a spec's journal, oldest first; `[]` when the file is absent. */
+function readJournal(dir, slug) {
+  const path = join(dir, ".marvin", "task", "runs", `${slug}.verify.md`);
+  if (!existsSync(path)) return [];
+  return [...readFileSync(path, "utf8").matchAll(/```json verify-run\n([\s\S]*?)\n```/g)].map((m) =>
+    JSON.parse(m[1]),
+  );
+}
+
+test("verify-run journal — a slugged run appends one `run` entry; a slugless or unwritten run appends nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-journal-"));
+  try {
+    const full = await callVerify({
+      projectRoot: dir,
+      specSlug: "demo-slug",
+      gates: [
+        { name: "test", command: "true" },
+        { name: "lint", command: "true" },
+      ],
+      write: true,
+    });
+    assert.equal(full.parsed.verdict, "PASS");
+    let entries = readJournal(dir, "demo-slug");
+    assert.equal(entries.length, 1, "one entry per run");
+    assert.equal(entries[0].kind, "run");
+    assert.equal(entries[0].slug, "demo-slug");
+    assert.equal(entries[0].verdict, "PASS");
+    assert.equal(entries[0].mode, "standalone");
+    assert.equal(entries[0].only, null, "a full run records no gate subset");
+    assert.deepEqual(entries[0].gates.map((g) => g.name).sort(), ["lint", "test"]);
+    assert.ok(
+      entries[0].gates.every((g) => g.status === "pass" && typeof g.durationMs === "number"),
+    );
+    assert.equal(typeof entries[0].wallClockMs, "number");
+    assert.equal(typeof entries[0].sumOfGatesMs, "number");
+    assert.equal(entries[0].head_sha, null, "no provenance outside a git repository");
+    assert.match(entries[0].at, /^\d{4}-\d{2}-\d{2}T/, "stamped by the tool");
+
+    // A targeted retry that FAILs is a SECOND entry, and it stays distinguishable
+    // from the full pass through `only` — the distinction R4 is defined on.
+    const retry = await callVerify({
+      projectRoot: dir,
+      specSlug: "demo-slug",
+      only: ["test"],
+      gates: [
+        { name: "test", command: "exit 1" },
+        { name: "lint", command: "true" },
+      ],
+      write: true,
+    });
+    assert.equal(retry.parsed.verdict, "FAIL");
+    entries = readJournal(dir, "demo-slug");
+    assert.equal(entries.length, 2, "append-only: the first entry survives the second run");
+    assert.deepEqual(entries[1].only, ["test"]);
+    assert.equal(entries[1].verdict, "FAIL");
+    assert.deepEqual(
+      entries[1].gates.map((g) => [g.name, g.status]),
+      [["test", "fail"]],
+    );
+
+    // No slug → no per-spec run, and no journal entry either; nothing else lands under runs/.
+    await callVerify({ projectRoot: dir, gates: [{ name: "test", command: "true" }], write: true });
+    assert.equal(readJournal(dir, "demo-slug").length, 2);
+    assert.deepEqual(
+      readdirSync(join(dir, ".marvin", "task", "runs")).sort(),
+      ["demo-slug.md", "demo-slug.verify.md"],
+      "only the per-spec run and its journal live under runs/",
+    );
+
+    // `write: false` writes no per-spec run, so it writes no journal entry.
+    await callVerify({
+      projectRoot: dir,
+      specSlug: "demo-slug",
+      gates: [{ name: "test", command: "true" }],
+      write: false,
+    });
+    assert.equal(readJournal(dir, "demo-slug").length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a feature or bug run with no specSlug warns and degrades to PASS WITH WARNINGS; standalone and slugged runs do not", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-slugless-"));
+  const gates = [{ name: "test", command: "true" }];
+  const slugless = (w) => /No `specSlug` was passed to a pipeline run/.test(w);
+  try {
+    for (const mode of ["feature", "bug"]) {
+      const { parsed } = await callVerify({ projectRoot: dir, mode, gates, write: false });
+      assert.equal(parsed.verdict, "PASS WITH WARNINGS", `${mode} run without a slug warns`);
+      assert.equal(parsed.warnings.filter(slugless).length, 1, `${mode}: exactly one warning`);
+      assert.match(parsed.warnings.find(slugless), /metrics series will not see this run/);
+    }
+    // A standalone run legitimately has no spec and keeps a clean PASS.
+    const standalone = await callVerify({
+      projectRoot: dir,
+      mode: "standalone",
+      gates,
+      write: false,
+    });
+    assert.equal(standalone.parsed.verdict, "PASS");
+    assert.ok(!standalone.parsed.warnings.some(slugless));
+    // …and so does the default mode, which IS standalone.
+    const dflt = await callVerify({ projectRoot: dir, gates, write: false });
+    assert.equal(dflt.parsed.verdict, "PASS");
+    // A pipeline run that names its spec is what the warning asks for: clean PASS.
+    const slugged = await callVerify({
+      projectRoot: dir,
+      mode: "feature",
+      specSlug: "demo-slug",
+      gates,
+      write: false,
+    });
+    assert.equal(slugged.parsed.verdict, "PASS");
+    assert.ok(!slugged.parsed.warnings.some(slugless));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("verify-run journal — every delivery-gate decision for a slug appends a `gate` entry, and the decision itself is unchanged", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-gate-journal-"));
+  try {
+    // A BLOCK for a missing artifact is a decision worth counting too.
+    const missing = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: "demo-slug", write: false },
+      "deliver-gate",
+    );
+    assert.equal(missing.parsed.decision, "BLOCK");
+    let entries = readJournal(dir, "demo-slug");
+    assert.equal(entries.length, 1);
+    assert.deepEqual(
+      (({ kind, decision, verdict, staleness, allowStale, red_green, artifact }) => ({
+        kind,
+        decision,
+        verdict,
+        staleness,
+        allowStale,
+        red_green,
+        artifact,
+      }))(entries[0]),
+      {
+        kind: "gate",
+        decision: "BLOCK",
+        verdict: null,
+        staleness: "unknown",
+        allowStale: false,
+        red_green: "unknown",
+        // project-relative: the global artifact, since no per-spec run exists yet
+        artifact: ".marvin/task/verification.md",
+      },
+    );
+
+    // A real per-spec run, then an ALLOW taken with allowStale: the waiver is on the record.
+    await callVerify({
+      projectRoot: dir,
+      specSlug: "demo-slug",
+      gates: [{ name: "test", command: "true" }],
+      write: true,
+    });
+    const allow = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: "demo-slug", allowStale: true, write: false },
+      "deliver-gate",
+    );
+    assert.equal(allow.parsed.decision, "ALLOW");
+    entries = readJournal(dir, "demo-slug");
+    assert.deepEqual(
+      entries.map((e) => e.kind),
+      ["gate", "run", "gate"],
+      "one journal, both kinds, in the order they happened",
+    );
+    const last = entries[2];
+    assert.equal(last.decision, "ALLOW");
+    assert.equal(last.verdict, "PASS");
+    assert.equal(last.allowStale, true, "the waiver is recorded even when nothing was stale");
+    assert.equal(last.staleness, allow.parsed.staleness, "the staleness the gate answered with");
+    assert.equal(last.red_green, allow.parsed.red_green);
+    assert.equal(last.artifact, ".marvin/task/runs/demo-slug.md", "the per-spec run it judged");
+
+    // The deliver-gate block itself carries exactly the fields it always did —
+    // the journal is written beside the answer, never into it.
+    assert.deepEqual(Object.keys(allow.parsed).sort(), [
+      "allowStale",
+      "artifactPath",
+      "decision",
+      "reason",
+      "red_green",
+      "staleness",
+      "verdict",
+    ]);
+
+    // A gate call that names no slug appends nothing and creates nothing.
+    await callVerify({ action: "gate", projectRoot: dir, write: false }, "deliver-gate");
+    assert.equal(readJournal(dir, "demo-slug").length, 3);
+    assert.deepEqual(readdirSync(join(dir, ".marvin", "task", "runs")).sort(), [
+      "demo-slug.md",
+      "demo-slug.verify.md",
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

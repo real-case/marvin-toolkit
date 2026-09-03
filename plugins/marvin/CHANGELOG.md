@@ -4,6 +4,41 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.20.0] — 2026-09-03
+
+Phase 1 of the task-metrics plan (`docs/proposals/task-metrics-implementation-plan.md`). The
+design of the whole series is stated in ADR-0043 before any metrics record exists, and the one
+record the pipeline destroyed by design — the verification run — is journalled, so the two metrics
+that need it are present from the first record in the series rather than absent for its head.
+
+### Added
+
+- **The verification-run journal** `.marvin/task/runs/<slug>.verify.md`, the third `runs/` sibling
+  beside the oracle and progress journals. Every verification run overwrites `runs/<slug>.md`, so
+  how many attempts preceded the surviving one was unrecoverable, and the delivery gate persisted
+  nothing at all. The journal is append-only, one ` ```json verify-run ` block per entry, with two
+  entry kinds under one tag: `run` — appended after every per-spec run `verify` writes, carrying the
+  verdict, mode, execution, the `only` subset or null (so a targeted retry is distinguishable from a
+  full pass), every gate's status and duration, the wall-clock and summed-gate durations and the
+  `head_sha` proved — and `gate`, appended on every delivery-gate decision for a resolved slug
+  (decision, verdict, staleness, `allowStale`, `red_green`, the artifact judged), a BLOCK for a
+  missing artifact included. Both writes are fail-open: a throw is swallowed and never changes a
+  verdict or a decision, and `runs/<slug>.md` stays the latest run so the delivery gate is unchanged.
+- **ADR-0043** (`proposed`): `.marvin/metrics/` is a committed per-task series named after the spec
+  file, holding live `metric-event` blocks and a terminal `task-metrics` block derived at delivery;
+  the verification-run journal above; the boundary with the progress journal; metrics are not a
+  report group; and the warning below. Amends ADR-0007 through its Related row, as ADR-0039 did.
+
+### Changed
+
+- **A pipeline `verify` run that names no spec warns.** A run in `feature` or `bug` mode with no
+  `specSlug` records a warning saying that no per-spec run was written, that the delivery gate will
+  judge the global artifact, and that the metrics series will not see this run. Warnings already
+  degrade PASS to PASS WITH WARNINGS, and `/marvin:task-deliver` already surfaces that verdict for
+  confirmation, so the coverage gap reaches the user when it happens and no other surface changes.
+  A `standalone` run — the default when no `mode` is passed — keeps no warning, because it
+  legitimately has no spec. This answers the proposal's first open question.
+
 ## [0.19.0] — 2026-09-03
 
 An instrumented end-to-end run of the pipeline (one feature task, 74.8 minutes) put **67% of the

@@ -328,7 +328,9 @@ the shared contracts package. Wire the five live events into the `task-implement
 the oracle journal, the `verify-result` block and the critique receipt, and write the terminal
 block from `task-deliver`. Record which sources were available. Size M.
 
-**WP4 — The verification-run journal.** Append one entry per run to
+**WP4 — The verification-run journal.** *Landed in 0.20.0 with ADR-0043, as Phase 1 of the plan and
+ahead of WP2 (open question 2, answered yes). The journal also records every delivery-gate decision,
+which is where Q5 comes from (plan D3).* Append one entry per run to
 `task/runs/<slug>.verify.md`, following the oracle journal. The full artifact
 `task/runs/<slug>.md` stays the latest run, so the delivery gate is unchanged. This unlocks T3
 and R4. Size S.
@@ -341,14 +343,20 @@ else can be derived later from the same files. WP4 and WP5 follow in either orde
 
 An ADR should accompany WP1 and WP2, since the change adds a `.marvin/` location and a record
 type. It would take the next free number, 0043, and ADR-0007's working-directory table needs the
-new row either way.
+new row either way. *ADR-0043 landed in 0.20.0 as Proposed. Per plan D9 it declares itself an
+amendment of ADR-0007 through its Related row rather than editing an accepted record's table, the
+convention ADR-0039 established.*
 
 ## Open questions
 
 1. Should a verification run without a `specSlug` warn, so that the coverage gap is visible at the
    moment it happens rather than only in the roll-up?
+   **Answered yes, narrowly, in 0.20.0** (plan D10, ADR-0043 §6): a `feature` or `bug` run without a
+   slug records a warning and reports PASS WITH WARNINGS; a standalone run keeps no warning, because
+   it legitimately has no spec.
 2. Should WP4 land before WP2, so that T3 and R4 are present from the first recorded task rather
    than being permanently absent for the earliest entries in the series?
+   **Answered yes, in 0.20.0** (plan D11): WP4 landed first, in the same pull request as ADR-0043.
 
 A third question, whether to commit the metrics directory or keep it local, was answered on
 2026-09-03 in favour of committing. See **Version control** above.

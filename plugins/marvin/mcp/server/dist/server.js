@@ -33883,6 +33883,62 @@ function redGreenProof(runs, contractSha, criterionId) {
   }
   return "missing";
 }
+var VERIFY_RUN_TAG = "verify-run";
+var JournalGate = external_exports.object({
+  name: external_exports.string().min(1),
+  status: external_exports.string().min(1),
+  durationMs: external_exports.number()
+});
+var RunEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("run"),
+  /** ISO 8601, stamped by the tool. */
+  at: external_exports.string(),
+  /** `PASS` | `PASS WITH WARNINGS` | `FAIL`, as the run computed it. */
+  verdict: external_exports.string().min(1),
+  mode: external_exports.string().min(1),
+  execution: external_exports.string().min(1),
+  /** The gate subset a targeted retry asked for, or null for a full run. */
+  only: external_exports.array(external_exports.string()).nullable(),
+  gates: external_exports.array(JournalGate),
+  wallClockMs: external_exports.number(),
+  sumOfGatesMs: external_exports.number(),
+  /** The commit the run proved, from the run's own provenance; null outside git. */
+  head_sha: external_exports.string().nullable()
+});
+var GateEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("gate"),
+  at: external_exports.string(),
+  decision: external_exports.enum(["ALLOW", "BLOCK"]),
+  /** The verdict the gate read off the artifact, null when it found none. */
+  verdict: external_exports.string().nullable(),
+  staleness: external_exports.enum(["fresh", "stale", "unknown"]),
+  allowStale: external_exports.boolean(),
+  red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /** The artifact the gate judged, project-relative. */
+  artifact: external_exports.string().min(1)
+});
+external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
+function verifyJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.verify.md`);
+}
+function recordVerifyRun(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = verifyJournalPath(runsDir, entry.slug);
+  const header = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
+
+Append-only. One \`${VERIFY_RUN_TAG}\` block per run or delivery-gate decision.
+
+`;
+  const block = `\`\`\`json ${VERIFY_RUN_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header}${block}`, "utf8");
+}
 
 // src/tools/verify.ts
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
@@ -34066,6 +34122,9 @@ ${plan}${warn2}`
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
   }
+  if (input.mode !== "standalone" && input.specSlug === void 0) {
+    warnings.push(SLUGLESS_PIPELINE_WARNING);
+  }
   const runSlug = resolveRunSlug(input.specSlug);
   if (runSlug.rejected) {
     warnings.push(
@@ -34113,6 +34172,21 @@ ${machine}`;
     if (runPath) {
       mkdirSync(dirname(runPath), { recursive: true });
       writeFileSync(runPath, fullText, "utf8");
+    }
+    if (runPath && runSlug.slug) {
+      journalVerifyEntry(projectRoot, {
+        slug: runSlug.slug,
+        kind: "run",
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        verdict,
+        mode: input.mode,
+        execution: input.execution,
+        only: input.only ?? null,
+        gates: results.map((r) => ({ name: r.name, status: r.status, durationMs: r.durationMs })),
+        wallClockMs,
+        sumOfGatesMs,
+        head_sha: provenance?.head_sha ?? null
+      });
     }
   }
   return {
@@ -34364,6 +34438,7 @@ function crashResult(gate, reason, durationMs = 0) {
     details: reason instanceof Error ? reason.message : String(reason)
   };
 }
+var SLUGLESS_PIPELINE_WARNING = "No `specSlug` was passed to a pipeline run \u2014 no per-spec run was written under `.marvin/task/runs/`, the delivery gate will judge the global `verification.md`, and the metrics series will not see this run. Pass the spec's slug (its frontmatter `slug`, else its filename slug) on every chained run.";
 function modeWarnings(mode, cwd) {
   if (mode === "standalone") return [];
   const changed = changedFiles(cwd);
@@ -34406,6 +34481,12 @@ function findSpec(slug, projectRoot, specConfig) {
 }
 function runsDirOf(projectRoot) {
   return join(projectRoot, ".marvin", "task", "runs");
+}
+function journalVerifyEntry(projectRoot, entry) {
+  try {
+    recordVerifyRun(runsDirOf(projectRoot), entry);
+  } catch {
+  }
 }
 function readSealedSpec(slug, projectRoot, specConfig) {
   const path = findSpec(slug, projectRoot, specConfig);
@@ -34641,7 +34722,23 @@ function deliverGate(projectRoot, opts) {
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const extras = { artifactPath, allowStale, redGreen: redGreen.status };
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
-  const decide = (decision, verdict2, reason, extra = extras) => gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+  const decide = (decision, verdict2, reason, extra = extras) => {
+    const answer = gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+    if (slug) {
+      journalVerifyEntry(projectRoot, {
+        slug,
+        kind: "gate",
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        decision,
+        verdict: verdict2,
+        staleness: extra.staleness ?? "unknown",
+        allowStale: extra.allowStale,
+        red_green: extra.redGreen ?? "unknown",
+        artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
+      });
+    }
+    return answer;
+  };
   if (!existsSync(artifactPath)) {
     return decide(
       "BLOCK",
@@ -36703,7 +36800,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.19.0";
+var VERSION = "0.20.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

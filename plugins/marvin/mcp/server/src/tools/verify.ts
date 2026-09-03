@@ -22,6 +22,7 @@ import {
   resolveOracleCommand,
   type OracleRun,
 } from "../storage/oracles.js";
+import { recordVerifyRun, type VerifyRunEntry } from "../storage/verify-runs.js";
 import {
   SpecContract,
   contractHash,
@@ -348,6 +349,14 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
   }
+  // A pipeline run that names no spec leaves no per-spec run and no journal
+  // entry, so the delivery gate judges the global artifact and the metrics series
+  // never sees the run (ADR-0043 §6). One warning — which degrades PASS to PASS
+  // WITH WARNINGS, the verdict `task-deliver` already surfaces for confirmation —
+  // and no other surface changes. A standalone run legitimately has no spec.
+  if (input.mode !== "standalone" && input.specSlug === undefined) {
+    warnings.push(SLUGLESS_PIPELINE_WARNING);
+  }
   const runSlug = resolveRunSlug(input.specSlug);
   if (runSlug.rejected) {
     warnings.push(
@@ -417,6 +426,26 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     if (runPath) {
       mkdirSync(dirname(runPath), { recursive: true });
       writeFileSync(runPath, fullText, "utf8");
+    }
+    // The verification-run journal (ADR-0043 §3). The run file above is
+    // OVERWRITTEN by every run, so this append is the only record of how many
+    // attempts preceded the surviving one. Written for exactly the runs that
+    // wrote a per-spec file — a slugless run writes no journal entry, as it
+    // writes no per-spec run — and fail-open, so it can never change the verdict.
+    if (runPath && runSlug.slug) {
+      journalVerifyEntry(projectRoot, {
+        slug: runSlug.slug,
+        kind: "run",
+        at: new Date().toISOString(),
+        verdict,
+        mode: input.mode,
+        execution: input.execution,
+        only: input.only ?? null,
+        gates: results.map((r) => ({ name: r.name, status: r.status, durationMs: r.durationMs })),
+        wallClockMs,
+        sumOfGatesMs,
+        head_sha: provenance?.head_sha ?? null,
+      });
     }
   }
 
@@ -897,6 +926,17 @@ function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResul
   };
 }
 
+/**
+ * The ADR-0043 §6 warning for a `feature`/`bug` run that passed no `specSlug`.
+ * It names what the omission costs, because the run itself still passes: the
+ * gap is meant to reach the user, not to block them.
+ */
+const SLUGLESS_PIPELINE_WARNING =
+  "No `specSlug` was passed to a pipeline run — no per-spec run was written under " +
+  "`.marvin/task/runs/`, the delivery gate will judge the global `verification.md`, and the " +
+  "metrics series will not see this run. Pass the spec's slug (its frontmatter `slug`, else its " +
+  "filename slug) on every chained run.";
+
 /** Feature/bug mode checks. Best-effort; skipped when not a git repo. */
 function modeWarnings(mode: VerifyInput["mode"], cwd: string): string[] {
   if (mode === "standalone") return [];
@@ -992,6 +1032,20 @@ function findSpec(slug: string, projectRoot: string, specConfig?: SpecConfig): s
  * the run reports there, never at the top level of the spec directory. */
 function runsDirOf(projectRoot: string): string {
   return join(projectRoot, ".marvin", "task", "runs");
+}
+
+/**
+ * Append one entry to the verification-run journal, FAIL-OPEN (ADR-0043 §3). A
+ * write that throws — a read-only directory, a full disk — is swallowed here, so
+ * the journal can never change a verdict or a delivery decision: it is evidence
+ * for the metrics roll-up, never an input to a gate.
+ */
+function journalVerifyEntry(projectRoot: string, entry: VerifyRunEntry): void {
+  try {
+    recordVerifyRun(runsDirOf(projectRoot), entry);
+  } catch {
+    // fail-open by design — see above
+  }
 }
 
 interface SealedSpec {
@@ -1362,7 +1416,28 @@ function deliverGate(
     verdict: string | null,
     reason: string,
     extra: GateExtras = extras,
-  ) => gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+  ) => {
+    const answer = gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+    // Every decision for a resolved slug is journalled (ADR-0043 §3), a BLOCK for
+    // a missing artifact included: `verify-result` never carries `allowStale`, so
+    // this entry is the only source for a freshness waiver. Fail-open, and written
+    // BESIDE the answer rather than into it — the decision above is already made,
+    // and the answer's bytes are what `critique-protocol.test.mjs` pins.
+    if (slug) {
+      journalVerifyEntry(projectRoot, {
+        slug,
+        kind: "gate",
+        at: new Date().toISOString(),
+        decision,
+        verdict,
+        staleness: extra.staleness ?? "unknown",
+        allowStale: extra.allowStale,
+        red_green: extra.redGreen ?? "unknown",
+        artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/"),
+      });
+    }
+    return answer;
+  };
 
   if (!existsSync(artifactPath)) {
     return decide(
