@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-09-03 |
+| Status        | **Accepted** |
+| Date          | 2026-09-04 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` service-file convention this amends with a seventh committed-or-not directory, `.marvin/metrics/`), [ADR-0021](0021-lessons-feedback-loop.md) (the committed-record argument reused here), [ADR-0035](0035-evidence-provenance.md) and [ADR-0036](0036-oracle-execution-and-red-green.md) (the two `runs/` siblings the new journal joins), [ADR-0037](0037-spec-corpus-mechanics.md) (the corpus mechanics and the progress journal this draws a boundary with), [ADR-0039](0039-critique-receipts.md) (the receipts the roll-up reads, and the amendment convention this record follows), [ADR-0042](0042-bounded-critique-and-serialised-review.md) (the one-off measurement this turns into a series), `docs/proposals/task-metrics.md` (the proposal), `docs/proposals/task-metrics-implementation-plan.md` (the plan) |
