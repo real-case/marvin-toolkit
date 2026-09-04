@@ -251,6 +251,12 @@ export const PROMPTS: PromptDef[] = [
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble — call the tool and present its result.",
   },
   {
+    name: "task-metrics",
+    description:
+      "Aggregate the task-metrics series under .marvin/metrics — time, quality and rework per delivered task, with a coverage line — or show one task's record in full.",
+    body: 'Invoke the `metrics` MCP tool from the `marvin` server with `action: "series"`. If the user named a spec slug, pass it as `slug` to render that task\'s record in full; if they named a task type (feature or bugfix) pass it as `type`; if they named a date pass it as `since` (YYYY-MM-DD). Otherwise call it with `action: "series"` alone. Do not add preamble — call the tool and present its result, leading with the coverage line, which says how much of the shipped corpus the series covers.',
+  },
+  {
     name: "task-audit",
     description:
       "Read-only consistency lint of the whole spec corpus — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, unidentified files — with remediation guidance per finding.",

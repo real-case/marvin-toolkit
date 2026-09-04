@@ -80,7 +80,11 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   has none, its filename slug (the `<NNN>-` prefix stripped) — because that is the rule the readers
   apply, and a second rule would silently point writer and reader at different files. Omit it
   entirely in standalone mode; a slug that is not kebab-case is rejected with a warning, never
-  sanitised.
+  sanitised. A `feature` or `bug` run that passes no `specSlug` **warns** (ADR-0043): no per-spec
+  run and no `runs/<slug>.verify.md` entry is written for it, the delivery gate will judge the
+  global artifact, and the metrics series will not see the run — so the verdict degrades to PASS
+  WITH WARNINGS, which `/marvin:task-deliver` surfaces for confirmation. Every run that names a
+  slug also appends one entry to that journal, and so does every delivery-gate decision.
 
 If `verify` is unavailable, fall back to running the gates yourself: detect the stack from the
 config files above (plus `package.json` scripts, `Makefile` targets, or CI config), run each gate,

@@ -15,6 +15,7 @@ import { buildHelpTool } from "./tools/help.js";
 import { buildDashboardTool } from "./tools/dashboard.js";
 import { buildVerifyTool } from "./tools/verify.js";
 import { buildSpecTool } from "./tools/spec.js";
+import { buildMetricsTool } from "./tools/metrics.js";
 import { buildLessonsTool } from "./tools/lessons.js";
 import { buildHandoffTool } from "./tools/handoff.js";
 import { buildSummaryTool } from "./tools/summary.js";
@@ -62,6 +63,7 @@ await runPackServer({
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
+        buildMetricsTool(env),
         buildLessonsTool(server, env),
         buildHandoffTool(env),
         buildSummaryTool(env),

@@ -109,12 +109,17 @@ blocker in §4 — invalidates it: re-run the affected gate, then one final full
 `marvin-tm-diff-critic` with the spec path, the diff range, **and**
 `git status --porcelain --untracked-files=all`. That last input is not optional: a new file is
 untracked, so no diff shows it, and a feature spec is mostly `action: new` rows — a diff alone can
-hide most of the change. See §4 for how to use its verdict.
+hide most of the change. See §4 for how to use its verdict. Record the dispatch first (ADR-0043), if
+the `marvin` MCP `metrics` tool is available: `action: "record"`, `kind: "critic-dispatch"`,
+`critic: "marvin-tm-diff-critic"`, `source: "marvin-tm-executor"`, `step: "§3"`, the spec's `slug`
+and `pass: 1` — incremented on a critic-loop re-dispatch, reused on a `NEEDS_CONTEXT` re-dispatch.
 
 ### 4. Self-Review
 
 Collect the `marvin-tm-diff-critic` result dispatched at the end of §3, together with the gate
-results, **before** creating the PR — never decide on one alone.
+results, **before** creating the PR — never decide on one alone. When the verdict is terminal,
+record it (ADR-0043): `metrics` tool, `kind: "critic-verdict"`, the same `critic` and `pass` as the
+dispatch, the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report.
 
 **Preferred path — the `marvin-tm-diff-critic` report:**
 
@@ -149,6 +154,15 @@ produced no critic verdict, so the Self-Review Notes' **Diff critic** line must 
 run is never silent in the PR.
 
 ### 5. Create PR
+
+#### 5.0 Roll up the metrics
+
+Before the commit, if the `metrics` tool is available, call it with `action: "rollup"` and the spec's
+`slug` (ADR-0043). It derives the task's terminal `task-metrics` block from the spec, the journals,
+the `verify-result` block, the receipts and git, and appends it to `.marvin/metrics/<NNN>-<slug>.md`;
+stage that file with the change in 5.1 so the record ships in the same commit and PR as the work. If
+the answer reports the record as IGNORED by `.gitignore`, say so in Self-Review Notes. The roll-up is
+a record, never a gate: if the tool is unavailable, skip it and continue.
 
 #### 5.1 Commit
 
@@ -309,6 +323,11 @@ budget, and the reverse holds too. A `NEEDS_CONTEXT` re-dispatch is **not** a ro
 re-dispatch for missing input, not a retry of a failed attempt, and it has its own one-shot
 allowance.
 
+**Record every round** (ADR-0043). At the start of each round, before the fix, call the `metrics`
+tool (when available) with `action: "record"`, `kind: "fix-round"`, `source: "marvin-tm-executor"`,
+`step: "fix-cycle"`, the spec's `slug`, the `loop` (`verify-gate`, `critic` or `red-green`) and the
+`round` number. The count of rounds per loop exists nowhere else once the run ends.
+
 **Rounds 1–2 — retry the same path.** Read the failure, fix it, re-run only the thing that failed.
 Carry the feedback **verbatim** into the fix: the gate output, the critic's blocker text, the test's
 assertion message. A paraphrased error is a new guess.
@@ -338,7 +357,9 @@ Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 ```
 
 Silently dropping an open item is banned: a draft PR whose Self-Review Notes list nothing is an
-unreported failure, not a clean run.
+unreported failure, not a clean run. Record each classified item as well — `metrics` tool,
+`kind: "open-item"`, `classification: "deferred"` or `"blocked"`, and the item as a one-line
+`detail`.
 
 ---
 
@@ -355,7 +376,8 @@ Decision: {what you decided to do}
 Rationale: {why this was the minimal reasonable choice}
 ```
 
-3. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
+3. **Record it durably** (ADR-0043), when the `metrics` tool is available: `action: "record"`, `kind: "spec-gap"`, `source: "marvin-tm-executor"`, the current section as `step`, the spec's `slug`, and the situation as a one-line `detail` — never a credential, token or customer datum.
+4. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
 
 ---
 

@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-task tracker, and it ships **55 prompts, 13 MCP tools, 10 agents, and 9 interactive
+task tracker, and it ships **56 prompts, 14 MCP tools, 10 agents, and 9 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -65,7 +65,7 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-55 prompts divide into seven groups. The [command reference](./commands.md) lists every
+56 prompts divide into seven groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
@@ -73,7 +73,7 @@ entry with a synopsis and the phrases that invoke it from chat.
 | _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 6 |
+| `task-*` | Spec-driven task pipeline | 7 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
 | `track-*` | Lightweight task tracker | 7 |
@@ -132,7 +132,7 @@ all tools precisely because their behavior must not vary with phrasing.
 
 ## Deterministic tools
 
-Thirteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
+Fourteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
 the job they do.
 
 | Tool | Group | Role |
@@ -144,6 +144,7 @@ the job they do.
 | `dashboard` | Toolbox state | The whole-toolbox status report. |
 | `verify` | Task pipeline | The concurrent quality-gate runner that writes `verification.md`. |
 | `spec` | Task pipeline | The Definition-of-Ready gate that validates a spec contract, the seal and scope gates around it, the corpus reads that resolve the spec directory, enumerate it, allocate the next ordering number and lint the corpus as a whole, and the progress journal that lets an interrupted intake resume. Eight actions: `dor \| seal \| scope \| next \| list \| audit \| progress \| resume`. |
+| `metrics` | Task pipeline | The task-metrics record: `record` appends a live event the session would otherwise lose, `rollup` derives the terminal block at delivery from the artifacts already on disk ([ADR-0043](./adr/0043-task-workflow-metrics.md)). |
 | `summary` | Read-side | A finished task's delivery digest. |
 | `handoff` | Read-side | The session-continuation handoff documents. |
 | `audit` | Read-side | The structured findings the `sec-*` scanners wrote. |
@@ -204,7 +205,7 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
 Marvin ships nine such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Nine of the thirteen tools bind a widget, so on a capable host the same command that prints
+Nine of the fourteen tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid
@@ -260,7 +261,8 @@ together and easy to include in or exclude from version control.
 | Path | Written by | Contents |
 |------|-----------|----------|
 | `.marvin/task/` | `task-*` | Immutable specs and the current `verification.md`. |
-| `.marvin/task/runs/` | `verify`, `spec` | The three per-spec artifacts: the verification run `<slug>.md` ([ADR-0035](./adr/0035-evidence-provenance.md)), the oracle journal `<slug>.oracles.md` ([ADR-0036](./adr/0036-oracle-execution-and-red-green.md)), and the progress journal `<slug>.progress.md`. A subdirectory on purpose — the enumerators over the spec directory are non-recursive, so nothing here is ever mistaken for a spec. |
+| `.marvin/task/runs/` | `verify`, `spec` | The four per-spec artifacts: the verification run `<slug>.md` ([ADR-0035](./adr/0035-evidence-provenance.md)), the oracle journal `<slug>.oracles.md` ([ADR-0036](./adr/0036-oracle-execution-and-red-green.md)), the progress journal `<slug>.progress.md`, and the verification-run journal `<slug>.verify.md` ([ADR-0043](./adr/0043-task-workflow-metrics.md)) — append-only, one entry per verification run and per delivery-gate decision, the record the overwritten run file cannot keep. A subdirectory on purpose — the enumerators over the spec directory are non-recursive, so nothing here is ever mistaken for a spec. |
+| `.marvin/metrics/` | `metrics` | One committed task-metrics record per spec, named after the spec file: live `metric-event` blocks appended during the run and a terminal `task-metrics` block derived at delivery, the last authoritative ([ADR-0043](./adr/0043-task-workflow-metrics.md)). Not a report group; read through the `series` action and one dashboard line. |
 | `.marvin/security/` | `sec-*` | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | `refactor-*` | Numbered findings registers and sequenced step plans. |
 | `.marvin/track/` | `track-*` | The task board as markdown files. |

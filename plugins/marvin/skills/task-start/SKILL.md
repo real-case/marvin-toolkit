@@ -404,6 +404,8 @@ Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `sp
 - **PASS / PASS WITH WARNINGS** — proceed to the critic; address or consciously accept warnings.
 - If the `spec` tool is unavailable, self-check the same list manually and note the degradation in Design Notes.
 
+**Record the call** (ADR-0043). After the gate answers — every time it answers, including each re-run the Step 8F sweep prescribes — call the `metrics` tool on the `marvin` server with `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7F"`, the spec's `slug`, its `verdict`, and `call` incremented per run (`1` for the first). Whether the gate passed on its first call is a metric that lives nowhere else once the session is compacted, and the call costs one tool round-trip.
+
 ### Step 8F: Critic Review (semantic)
 
 On a shape-valid spec, invoke the `marvin-tm-spec-critic` agent via Task-tool, passing the drafted spec content. The critic judges what the tool cannot: that the contract's `files` name the *real* integration points, that each `oracle` is *genuine* (not a restatement of the criterion), and that rejected variants are not strawmen.
@@ -424,6 +426,8 @@ again before any re-dispatch:
 4. **The defect class you just repaired, re-checked everywhere else in the contract.** Half the
    blockers of rounds 2 and 3 in that run were created by the fix for round 1 and round 2 — the
    loop fed itself. When you correct one back-reference, transpose the whole graph.
+
+**Record each dispatch and its verdict** (ADR-0043). Immediately before the dispatch, call the `metrics` tool with `action: "record"`, `kind: "critic-dispatch"`, `critic: "marvin-tm-spec-critic"`, `source: "task-start"`, `step: "8F"`, the spec's `slug` and the `pass` number — `1` for the first dispatch, `2` for the second; a `NEEDS_CONTEXT` re-dispatch reuses its pass number. When a terminal verdict arrives, record `kind: "critic-verdict"` with the same `critic` and `pass`, the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report. The pair is what makes the time inside a critic dispatch and the passes before a terminal verdict measurable without a clock in the model; compaction destroys the in-session count, and each call costs one round-trip.
 
 - **Verdict `BLOCK`** — present blockers, loop back to the relevant step (usually 2F, 3F, or 5F), then **re-run Step 7F** before returning here. Do not write the spec. This is a **loop with a budget** — see below.
 - **Verdict `PASS WITH WARNINGS`** — show warnings; the user decides whether to revise or proceed. If proceeding, record the override in **Critic Verdict & Overrides**.
@@ -569,9 +573,11 @@ Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass the 
 - **PASS / PASS WITH WARNINGS** → proceed to the critic.
 - Tool unavailable → self-check manually, note in Design Notes.
 
+Record the call as Step 7F does: `metrics` tool, `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7B"`, the `slug`, the `verdict`, and `call` incremented per run.
+
 ### Step 8B: Critic Review (semantic)
 
-On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the drafted bugfix spec. Run the same **deterministic sweep** before every dispatch, apply the same **two-dispatch budget**, the same verdict rules as Step 8F, and record the verdict in **Critic Verdict & Overrides**:
+On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the drafted bugfix spec. Run the same **deterministic sweep** before every dispatch, apply the same **two-dispatch budget**, the same verdict rules as Step 8F, record each dispatch and its terminal verdict through the `metrics` tool exactly as Step 8F does (`critic-dispatch` before, `critic-verdict` after, `step: "8B"`), and record the verdict in **Critic Verdict & Overrides**:
 
 - `BLOCK` → loop back (usually 3B root-cause or 5B fix-approach), then **re-run Step 7B** before returning.
 - `PASS WITH WARNINGS` → user decides; record override if proceeding.

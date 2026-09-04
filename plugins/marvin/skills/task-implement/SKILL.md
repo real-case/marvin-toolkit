@@ -180,7 +180,11 @@ detection; `marvin-tm-diff-critic` below is the *semantic* half.
    untracked, so `git diff` cannot show it, and a feature spec is mostly `action: new` rows — one
    measured run passed a diff that held 4 of the 17 contract files and hid every file the feature
    actually consisted of. If Task-tool is unavailable, skip the critic — the gates and oracles still
-   ran, and the skip travels to `/marvin:task-deliver` as `⚠️ critic skipped`.
+   ran, and the skip travels to `/marvin:task-deliver` as `⚠️ critic skipped`. Immediately before
+   the dispatch, record it (ADR-0043): `metrics` tool, `action: "record"`, `kind: "critic-dispatch"`,
+   `critic: "marvin-tm-diff-critic"`, `source: "task-implement"`, `step: "6F"`, the spec's `slug`
+   and `pass: 1` — a critic-loop re-dispatch after a fix increments the pass, a `NEEDS_CONTEXT`
+   re-dispatch reuses it. Compaction destroys the in-session count; the call costs one round-trip.
 
 **Critic result:** before acting on any finding, open the file it cites at the cited lines and read
 enough around them to judge the claim — a finding whose premise the current code contradicts is not
@@ -188,7 +192,9 @@ fixed but recorded as refuted, one line for the PR's `## Self-Review Notes`:
 `Refuted: {finding} — {file}:{line} shows {what}`. Pass those lines to `/marvin:task-deliver` with
 the rest. A refuted blocker is resolved, not deferred: a `BLOCK` whose every blocker was refuted with
 file-and-line evidence no longer gates delivery — the PR opens normally and the `Refuted:` lines are
-the receipt. One surviving blocker keeps the `BLOCK` and the draft PR.
+the receipt. One surviving blocker keeps the `BLOCK` and the draft PR. When the verdict is terminal,
+record it: `metrics` tool, `kind: "critic-verdict"`, the same `critic` and `pass` as the dispatch,
+the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report (ADR-0043).
 
 - `BLOCK` — attempt fixes under the **Fix-cycle protocol** below; this is the critic loop and its
   budget is counted separately from the verify-gate loop's. If still blocked at the limit, this
@@ -269,7 +275,7 @@ project's own single-test command needs declaring, that is `gates.test_one` in `
 (see `skills/task-verify/SKILL.md` for the stack → command mapping the gates use).
 
 - **`status: "fail"`** → expected, this is the red. Continue.
-- **`status: "pass"`** → the bug may already be fixed or the test is wrong. Record as `⚠️ SPEC GAP: regression test passes on unfixed code` and proceed cautiously — confirm with the user before continuing.
+- **`status: "pass"`** → the bug may already be fixed or the test is wrong. Record as `⚠️ SPEC GAP: regression test passes on unfixed code` — and as a `spec-gap` event through the `metrics` tool (`step: "6B"`), as the SPEC GAP protocol states — and proceed cautiously — confirm with the user before continuing.
 - **`status: "not-run"`** → **neither a red nor a green.** The command could not be resolved, could
   not be launched, or died on a signal; the `reason` field says which. Report it as `not-run` —
   never as "the test failed" — and fix the cause (usually a missing `gates.test_one` or an `oracle.run`
@@ -306,7 +312,8 @@ critic `BLOCK` still gates delivery and runs its own fix-cycle budget; a `NEEDS_
 exactly one re-dispatch carrying the input the critic named and stating that it is the re-dispatch
 (not a fix-cycle round), and a second one is treated as `UNABLE`; an `UNABLE` is never a pass — it
 travels verbatim to `/marvin:task-deliver` and onto the PR's **Diff critic** line. Findings refuted
-by the code are recorded, not fixed, exactly as in Step 6F.
+by the code are recorded, not fixed, exactly as in Step 6F. Record the dispatch and the terminal
+verdict through the `metrics` tool as Step 6F does, with `step: "9B"`.
 
 **Write the receipt** on the same terms as Step 6F: after the verdict arrives and never at dispatch,
 for the final run when a re-run superseded an earlier one, and only for a terminal verdict carrying
@@ -344,6 +351,12 @@ following a failure. The budget is **three rounds per loop**, and each loop coun
 Two spent verify-gate rounds do not shorten the critic's budget, and the reverse holds too. A
 `NEEDS_CONTEXT` re-dispatch is **not** a round: it is a re-dispatch for missing input, not a retry
 of a failed attempt, and it has its own one-shot allowance (Step 6F / Step 9B).
+
+**Record every round** (ADR-0043). At the start of each round, before the fix, call the `metrics`
+tool with `action: "record"`, `kind: "fix-round"`, `source: "task-implement"`, `step: "fix-cycle"`,
+the spec's `slug`, the `loop` (`verify-gate`, `critic` or `red-green`) and the `round` number. The
+count of rounds per loop exists nowhere else once the session is compacted, and the call costs one
+round-trip.
 
 **Rounds 1–2 — retry the same path.** Read the failure, fix it, re-run only the thing that failed:
 the failed gate with `only: ["<gate>"]`, the critic against the new diff, the regression test on its
@@ -388,6 +401,8 @@ Deferred: {item} — Rationale: {why the change is safe to ship without it}
 Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 ```
 
+Record each classified item as well — `metrics` tool, `kind: "open-item"`, `classification:
+"deferred"` or `"blocked"`, and the item as a one-line `detail` — so the count survives the session.
 Pass every such line to `/marvin:task-deliver`, which reproduces them in the PR's
 `## Self-Review Notes`. Silently dropping an open item is banned. A verify-gate loop that reaches its
 limit does not deliver at all (Step 6F) — classify the open items the same way in the summary you
@@ -406,7 +421,11 @@ Decision: {what you decided to do}
 Rationale: {why this was the minimal reasonable choice}
 ```
 
-3. Never expand scope to fill a gap.
+3. Record it durably (ADR-0043): `metrics` tool, `action: "record"`, `kind: "spec-gap"`,
+   `source: "task-implement"`, the current step id, the spec's `slug`, and the situation as a
+   one-line `detail` — never a credential, token or customer datum. Spec gaps per task are the direct
+   feedback from implementation to intake, and the PR body is the only other place they survive.
+4. Never expand scope to fill a gap.
 
 ## Blocker protocol
 

@@ -2,11 +2,12 @@
 
 | Field      | Value                                                                                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------------ |
-| Status     | Proposed                                                                                                       |
+| Status     | Implemented — WP1 in 0.19.0 (#199), WP4 with ADR-0043 in 0.20.0, WP2+WP3 in 0.21.0, WP5 in 0.22.0 |
 | Date       | 2026-09-03                                                                                                     |
 | Applies to | the `task-*` pipeline skills, the `verify` and `spec` tools, a new `.marvin/metrics/` location, and `.gitignore` |
 | Principle  | Record only what is otherwise lost, and derive everything else from the artifacts already on disk               |
 | Scope      | Quality of the delivered work and the active time the pipeline spends. Cost and token consumption are out of scope |
+| Plan       | [task-metrics-implementation-plan.md](./task-metrics-implementation-plan.md), the phase-by-phase implementation plan |
 
 ## Motivation
 
@@ -318,21 +319,29 @@ version with `npm run sync-version`, and add a `CHANGELOG.md` entry for each bum
 discarded. The row in the working-directory table in `CLAUDE.md` waits for WP2: that table names
 the writer of each path, and until one exists the row would document a fiction.
 
-**WP2 — Storage and the live journal.** Add `storage/metrics.ts` with an append that never reads
+**WP2 — Storage and the live journal.** *Landed in 0.21.0 together with WP3 (Phase 2 of the plan).
+The live-event vocabulary is the plan's six kinds (D4), the block tags are `metric-event` and
+`task-metrics` (D5), and the record is named after the spec's file (D2).* Add `storage/metrics.ts` with an append that never reads
 the file back and a read that drops an unparseable block rather than the file, following
 `storage/progress.ts`. Add `MARVIN_METRICS_DIR` to `lib/env.ts` and the `TaskMetrics` contract to
 the shared contracts package. Wire the five live events into the `task-implement` prose. Size M.
 
-**WP3 — The roll-up at delivery.** Compute the derived fields from the spec, the progress journal,
+**WP3 — The roll-up at delivery.** *Landed in 0.21.0 together with WP2: the `metrics` tool's
+`rollup` action, called from `task-deliver` step 1.5 after the gate allows and before the commit
+(D8).* Compute the derived fields from the spec, the progress journal,
 the oracle journal, the `verify-result` block and the critique receipt, and write the terminal
 block from `task-deliver`. Record which sources were available. Size M.
 
-**WP4 — The verification-run journal.** Append one entry per run to
+**WP4 — The verification-run journal.** *Landed in 0.20.0 with ADR-0043, as Phase 1 of the plan and
+ahead of WP2 (open question 2, answered yes). The journal also records every delivery-gate decision,
+which is where Q5 comes from (plan D3).* Append one entry per run to
 `task/runs/<slug>.verify.md`, following the oracle journal. The full artifact
 `task/runs/<slug>.md` stays the latest run, so the delivery gate is unchanged. This unlocks T3
 and R4. Size S.
 
-**WP5 — The aggregation surface.** Add a `metrics` action that reads the series and reports the
+**WP5 — The aggregation surface.** *Landed in 0.22.0 as Phase 3 of the plan: `metrics action:
+"series"` behind `/marvin:task-metrics`, with Q11 and Q12 computed at query time (plan D7), and a
+`metrics` section on the dashboard.* Add a `metrics` action that reads the series and reports the
 three groups, and add a line to `dashboard`. Size M.
 
 Land WP1 first, then WP2 and WP3 together, since they capture the volatile counters and everything
@@ -340,14 +349,20 @@ else can be derived later from the same files. WP4 and WP5 follow in either orde
 
 An ADR should accompany WP1 and WP2, since the change adds a `.marvin/` location and a record
 type. It would take the next free number, 0043, and ADR-0007's working-directory table needs the
-new row either way.
+new row either way. *ADR-0043 landed in 0.20.0 as Proposed. Per plan D9 it declares itself an
+amendment of ADR-0007 through its Related row rather than editing an accepted record's table, the
+convention ADR-0039 established.*
 
 ## Open questions
 
 1. Should a verification run without a `specSlug` warn, so that the coverage gap is visible at the
    moment it happens rather than only in the roll-up?
+   **Answered yes, narrowly, in 0.20.0** (plan D10, ADR-0043 §6): a `feature` or `bug` run without a
+   slug records a warning and reports PASS WITH WARNINGS; a standalone run keeps no warning, because
+   it legitimately has no spec.
 2. Should WP4 land before WP2, so that T3 and R4 are present from the first recorded task rather
    than being permanently absent for the earliest entries in the series?
+   **Answered yes, in 0.20.0** (plan D11): WP4 landed first, in the same pull request as ADR-0043.
 
 A third question, whether to commit the metrics directory or keep it local, was answered on
 2026-09-03 in favour of committing. See **Version control** above.
