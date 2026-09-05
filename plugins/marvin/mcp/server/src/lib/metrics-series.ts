@@ -481,6 +481,10 @@ export function aggregateSeries(input: SeriesInputs): MetricsSeries {
       records: records.length,
       rolled_up: rolledUp.length,
       events_only: records.filter((r) => r.block === null && r.events > 0).length,
+      // The seal anchor's records (ADR-0044). Without this bucket a file created
+      // for a run that then recorded nothing counts in `records` and in neither
+      // of the two above, so the coverage line loses it silently.
+      empty: records.filter((r) => r.block === null && r.events === 0).length,
       shipped_specs: input.shipped ? input.shipped.length : null,
       shipped_with_record: input.shipped
         ? input.shipped.filter((s) => rolledUp.some((r) => r.slug === s.slug)).length
@@ -504,6 +508,7 @@ export function summarizeSeries(records: SeriesRecord[]): MetricsSummary {
   return {
     records: records.length,
     rolled_up: rolledUp.length,
+    empty: records.filter((r) => r.block === null && r.events === 0).length,
     newest: newest ?? null,
     median_active_ms: stat(rolledUp.map((r) => r.block!.time.active_ms)).median,
     median_spec_gaps: stat(rolledUp.map((r) => r.block!.quality.spec_gaps)).median,

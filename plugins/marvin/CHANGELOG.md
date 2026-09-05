@@ -4,6 +4,58 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.23.0] — 2026-09-04
+
+A metrics record stopped depending on a session issuing a prose-instructed call. The two gates the
+pipeline must call now write it, so the coverage number the series reports says something about the
+pipeline rather than about whether a skill's instruction was followed. Recorded as ADR-0044.
+
+### Changed
+
+- **The seal gate creates the task's metrics record.** `spec action: "seal"` — the mandatory
+  pre-execution gate of `/marvin:task-implement` — creates `.marvin/metrics/<NNN>-<slug>.md` with
+  its header and nothing else, so a run that reaches execution has a record before it has anything
+  to put in it and a run abandoned afterwards is visible in the series rather than absent from it.
+  Four conditions, each a defect it would otherwise have: the spec was READ FROM DISK (both input
+  keys may legally arrive together, and the inline fragment then wins while `specPath` stays truthy);
+  a slug resolves, frontmatter first, else the filename; that slug is kebab-case, which also makes
+  the step-1.5 skeleton unreachable rather than merely forbidden, since an unfilled template still
+  carries `{kebab-case-slug}`; and the verdict is not FAIL, so a `shipped` or `superseded` spec mints
+  nothing. The write is fail-open and cannot reach the verdict.
+- **The delivery gate writes the terminal block, on ALLOW only.** `verify action: "gate"` derives the
+  ` ```json task-metrics ` block and appends it beside its answer, under the same `if (slug)` that
+  already writes the verification-run journal. A BLOCK writes nothing: `rolled_up` is what coverage
+  reads as tasks shipped, so a block for a refused attempt would overstate what was delivered, and
+  refusals stay visible in the verification-run journal. The answer's markdown gains one
+  deterministic line naming the record — a path and a boolean, no count and no timestamp — which is
+  what keeps the `.gitignore` warning reachable for host projects. It never travels through `reason`,
+  which `gateResult` serialises into the `deliver-gate` block that `critique-protocol.test.mjs` pins.
+- **`/marvin:task-deliver` step 1.5 is now a relay.** It reads the record back with the `metrics`
+  tool's `series` action and reports the digest instead of writing one; a second append would put two
+  terminal blocks in the record for one delivery. Step 1 also stops passing `specSlug` "when a spec
+  slug is known" and passes it whenever a spec exists, since the slug now decides whether the task is
+  measured at all.
+- **`marvin-tm-executor` §5.0 keeps its own roll-up, and says why.** That agent never calls the
+  delivery gate — it runs `verify` in `mode: feature` and opens its own pull request — so it is the
+  only writer of a headless run's terminal block. The asymmetry is deliberate and asserted, so an
+  edit that tidies the two into agreement goes red instead of silently leaving headless tasks
+  unmeasured.
+- **The one-writer invariant moved from the tool to the storage module.** `recordPathFor` left
+  `tools/metrics.ts` for a new `lib/metrics-record.ts`, which owns the rule that decides a record's
+  filename and is now reached by all three callers; two copies of that rule would give one task two
+  record files that no reader joins. The module deliberately does not own fail-open behaviour — each
+  caller keeps its own `try/catch`, as `journalVerifyEntry` does, so one anchor's failure cannot
+  decide another's.
+
+### Added
+
+- **`empty` in `MetricsSeriesCoverage` and `MetricsSummary`** — records holding neither a terminal
+  block nor an event. The seal anchor makes that state expressible, and without the bucket such a
+  record counted in `records` and vanished from the breakdown. On the dashboard it sits beside the
+  record total, because a bare count would otherwise read as "tasks measured" while counting files
+  nothing has written to. The difference between `records` and `rolled_up` is now the count of runs
+  that started and did not deliver — a number the series could not previously express.
+
 ## [0.22.0] — 2026-09-03
 
 Phase 3 of the task-metrics plan, WP5: the series becomes readable. The prompt count moves from

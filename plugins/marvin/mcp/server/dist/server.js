@@ -33607,6 +33607,11 @@ ${JSON.stringify(payload)}
 
 `, "utf8");
 }
+function ensureRecord(path, slug) {
+  if (existsSync(path)) return;
+  mkdirSync(join(path, ".."), { recursive: true });
+  appendFileSync(path, header(slug), "utf8");
+}
 function appendMetricEvent(path, event) {
   append(path, event.slug, METRIC_EVENT_TAG, event);
 }
@@ -34018,6 +34023,10 @@ function aggregateSeries(input) {
       records: records.length,
       rolled_up: rolledUp.length,
       events_only: records.filter((r) => r.block === null && r.events > 0).length,
+      // The seal anchor's records (ADR-0044). Without this bucket a file created
+      // for a run that then recorded nothing counts in `records` and in neither
+      // of the two above, so the coverage line loses it silently.
+      empty: records.filter((r) => r.block === null && r.events === 0).length,
       shipped_specs: input.shipped ? input.shipped.length : null,
       shipped_with_record: input.shipped ? input.shipped.filter((s) => rolledUp.some((r) => r.slug === s.slug)).length : null
     },
@@ -34035,6 +34044,7 @@ function summarizeSeries(records) {
   return {
     records: records.length,
     rolled_up: rolledUp.length,
+    empty: records.filter((r) => r.block === null && r.events === 0).length,
     newest: newest ?? null,
     median_active_ms: stat(rolledUp.map((r) => r.block.time.active_ms)).median,
     median_spec_gaps: stat(rolledUp.map((r) => r.block.quality.spec_gaps)).median
@@ -34327,10 +34337,11 @@ function renderAuditArea(label, area, command) {
 function renderMetrics(m) {
   if (m.records === 0) {
     return [
-      "- _No metrics records yet \u2014 the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._"
+      "- _No metrics records yet \u2014 the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._"
     ];
   }
   const parts = [`${m.records} record(s)`, `${m.rolled_up} rolled up`];
+  if (m.empty > 0) parts.push(`${m.empty} started but empty`);
   if (m.newest) parts.push(`newest \`${m.newest.slug}\` (${m.newest.rolled_up_at.slice(0, 10)})`);
   if (m.median_active_ms !== null) parts.push(`median active time ${fmtMs(m.median_active_ms)}`);
   if (m.median_spec_gaps !== null) parts.push(`spec gaps per task ${m.median_spec_gaps}`);
@@ -34355,7 +34366,7 @@ function days(n) {
 }
 
 // src/tools/verify.ts
-var import_yaml2 = __toESM(require_dist2());
+var import_yaml3 = __toESM(require_dist2());
 var DIGEST_EXCLUDE = [".marvin"];
 var MAX_DIGEST_PATHS = 5e3;
 function readChangedPaths(root) {
@@ -34534,6 +34545,100 @@ function redGreenProof(runs, contractSha, criterionId) {
   }
   return "missing";
 }
+
+// src/lib/metrics-collect.ts
+var import_yaml2 = __toESM(require_dist2());
+var PROGRESS_TAG = "spec-progress";
+var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var ProgressEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** Which skill wrote it: step ids collide across the two pipelines. */
+  source: external_exports.enum(["task-start", "task-implement"]),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
+  /** One line of position and choice. Never a credential, token or customer datum. */
+  detail: external_exports.string(),
+  /** The acceptance-criterion id, when `kind` is `criterion`. */
+  criterion: external_exports.string().nullable().optional(),
+  /** The draft/spec path, recorded once when the draft is opened. */
+  path: external_exports.string().nullable().optional(),
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601. */
+  at: external_exports.string()
+});
+function progressJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.progress.md`);
+}
+function recordProgress(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = progressJournalPath(runsDir, entry.slug);
+  const header2 = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
+
+Append-only. One \`${PROGRESS_TAG}\` block per entry.
+
+`;
+  const block = `\`\`\`json ${PROGRESS_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header2}${block}`, "utf8");
+}
+function readProgress(runsDir, slug) {
+  const path = progressJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m of raw.matchAll(PROGRESS_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = ProgressEntrySchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function resumeState(entries) {
+  let archived = 0;
+  let start = 0;
+  entries.forEach((e, i) => {
+    if (e.kind === "archived") {
+      archived += 1;
+      start = i + 1;
+    }
+  });
+  const live = entries.slice(start);
+  const criteria_done = [];
+  let path = null;
+  let contract_sha = null;
+  for (const e of live) {
+    if (e.kind === "criterion") {
+      const id = e.criterion?.trim();
+      if (id && !criteria_done.includes(id)) criteria_done.push(id);
+    }
+    if (e.path) path = e.path;
+    if (e.contract_sha) contract_sha = e.contract_sha;
+  }
+  return {
+    entries: live,
+    archived,
+    last: live.length ? live[live.length - 1] : null,
+    criteria_done,
+    path,
+    contract_sha
+  };
+}
 var VERIFY_RUN_TAG = "verify-run";
 var VERIFY_RUN_RE = new RegExp("```json " + VERIFY_RUN_TAG + "\\n([\\s\\S]*?)\\n```", "g");
 var JournalGate = external_exports.object({
@@ -34615,6 +34720,519 @@ function readVerifyRuns(runsDir, slug) {
 }
 function isGreenFullRun(entry) {
   return entry.kind === "run" && entry.only === null && (entry.verdict === "PASS" || entry.verdict === "PASS WITH WARNINGS");
+}
+
+// src/lib/metrics-collect.ts
+function findSpecBySlug(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function relFromRoot(abs, projectRoot) {
+  const rel = relative(projectRoot, abs);
+  return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
+}
+function latestReceipts(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const newest = /* @__PURE__ */ new Map();
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    let raw;
+    try {
+      raw = readFileSync(join(dir, filename), "utf8");
+    } catch {
+      continue;
+    }
+    const parse4 = parseCritiqueBlock(raw);
+    if (parse4.kind !== "ok" || parse4.critique.subject !== slug) continue;
+    const current = newest.get(parse4.critique.critic);
+    const later = !current || parse4.critique.judged_at > current.critique.judged_at || parse4.critique.judged_at === current.critique.judged_at && filename > current.filename;
+    if (later) newest.set(parse4.critique.critic, { critique: parse4.critique, filename });
+  }
+  if (newest.size === 0) return null;
+  return {
+    spec: newest.get("marvin-tm-spec-critic")?.critique ?? null,
+    diff: newest.get("marvin-tm-diff-critic")?.critique ?? null
+  };
+}
+function readRollupSpec(specPath, projectRoot, notes) {
+  const raw = readFileSync(specPath, "utf8");
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const block = extractContractBlock(body);
+  let contract = null;
+  if (block !== null) {
+    try {
+      const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+      if (parsed.success) contract = parsed.data;
+      else
+        notes.push(
+          "the spec-contract block failed schema validation \u2014 contract-sourced rows are null"
+        );
+    } catch {
+      notes.push("the spec-contract block is not valid YAML \u2014 contract-sourced rows are null");
+    }
+  } else {
+    notes.push("the spec carries no spec-contract block \u2014 contract-sourced rows are null");
+  }
+  return {
+    path: relFromRoot(specPath, projectRoot),
+    frontmatter,
+    contract,
+    stamped_sha: frontmatter.contract_sha?.trim() || null,
+    actual_sha: block !== null ? contractHash(block) : null
+  };
+}
+function readRunResult(path, slug, notes) {
+  if (!existsSync(path)) return null;
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  const parse4 = parseVerifyBlock(raw);
+  if (parse4.kind === "ok") return parse4.result;
+  notes.push(
+    parse4.kind === "none" ? `runs/${slug}.md carries no verify-result block \u2014 treated as absent` : `runs/${slug}.md: ${parse4.reason} \u2014 treated as absent`
+  );
+  return null;
+}
+function collectGit(projectRoot, base, notes) {
+  if (!inGitRepo(projectRoot)) return null;
+  const head_sha = headSha(projectRoot);
+  if (!refExists(base, projectRoot)) {
+    notes.push(
+      `base ref \`${base}\` does not resolve in this repository \u2014 scope drift (Q1) not computed`
+    );
+    return { head_sha, changed_files: null };
+  }
+  return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
+}
+function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
+  const notes = [];
+  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
+  const spec = specPath ? readRollupSpec(specPath, projectRoot, notes) : null;
+  const progressRuns = specPath ? join(dirname(specPath), "runs") : join(resolveSpecDir(projectRoot, specConfig).abs, "runs");
+  const progress = existsSync(progressJournalPath(progressRuns, slug)) ? readProgress(progressRuns, slug) : null;
+  const pinned = join(projectRoot, ".marvin", "task", "runs");
+  const oracles = existsSync(oracleJournalPath(pinned, slug)) ? readOracleRuns(pinned, slug) : null;
+  const verify_journal = existsSync(verifyJournalPath(pinned, slug)) ? readVerifyRuns(pinned, slug) : null;
+  const verify_result = readRunResult(join(pinned, `${slug}.md`), slug, notes);
+  const critique = latestReceipts(
+    projectScopedDir(env2, projectRoot, env2.critiqueDir, "critique"),
+    slug
+  );
+  const events = readMetricEvents(
+    projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics"),
+    slug
+  );
+  const git2 = collectGit(projectRoot, base, notes);
+  return {
+    slug,
+    base_branch: base,
+    now,
+    spec,
+    progress,
+    oracles,
+    verify_journal,
+    verify_result,
+    critique,
+    events: events.length ? events : null,
+    git: git2,
+    notes
+  };
+}
+function readShippedSpecs(projectRoot, specConfig) {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  if (!existsSync(dir.abs)) return null;
+  const out = [];
+  for (const record2 of readSpecCorpus(dir).records) {
+    if (record2.status !== "shipped") continue;
+    let raw;
+    try {
+      raw = readFileSync(join(dir.abs, record2.filename), "utf8");
+    } catch {
+      continue;
+    }
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const block = extractContractBlock(body);
+    let files = [];
+    if (block !== null) {
+      try {
+        const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+        if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
+      } catch {
+      }
+    }
+    out.push({
+      slug: record2.slug,
+      number: record2.number,
+      type: frontmatter.type?.trim() || null,
+      created: frontmatter.created?.trim() || null,
+      files
+    });
+  }
+  return out;
+}
+function deliveryPrUrl(specRaw) {
+  const at = specRaw.indexOf("## Delivery");
+  if (at === -1) return null;
+  const m = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/.exec(specRaw.slice(at));
+  return m ? m[0] : null;
+}
+function reviewFixCommits(specPath, cwd) {
+  if (!specPath || !hasGh()) return null;
+  let raw;
+  try {
+    raw = readFileSync(specPath, "utf8");
+  } catch {
+    return null;
+  }
+  const url = deliveryPrUrl(raw);
+  const m = url ? /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url) : null;
+  if (!m) return null;
+  const [, owner, repo, number3] = m;
+  try {
+    const opened = gh(
+      ["api", `repos/${owner}/${repo}/pulls/${number3}`, "--jq", ".created_at"],
+      cwd
+    );
+    if (!opened.ok || !opened.value) return null;
+    const dates = gh(
+      [
+        "api",
+        `repos/${owner}/${repo}/pulls/${number3}/commits`,
+        "--paginate",
+        "--jq",
+        ".[].commit.committer.date"
+      ],
+      cwd
+    );
+    if (!dates.ok) return null;
+    return dates.value.split("\n").map((d) => d.trim()).filter(Boolean).filter((d) => d > opened.value).length;
+  } catch {
+    return null;
+  }
+}
+function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
+  const records = toSeriesRecords(listRecords(metricsDir));
+  return records.map(
+    (r) => r.block ? {
+      ...r,
+      review_fix_commits: reviewFixCommits(
+        findSpecBySlug(r.slug, projectRoot, specConfig),
+        projectRoot
+      )
+    } : r
+  );
+}
+
+// src/lib/metrics-rollup.ts
+function epoch(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+function interval(label, from, to, notes) {
+  const a = epoch(from);
+  const b = epoch(to);
+  if (a === null || b === null) return null;
+  const d = b - a;
+  if (d < 0) {
+    notes.push(`${label}: negative interval (${to} precedes ${from}) \u2014 reported as null`);
+    return null;
+  }
+  return d;
+}
+function last(items) {
+  return items.length ? items[items.length - 1] : void 0;
+}
+function flag(value) {
+  const v = value?.trim().toLowerCase();
+  return v === "true" ? true : v === "false" ? false : null;
+}
+function presence(input) {
+  return input === null || input === void 0 ? "absent" : "present";
+}
+function round32(x) {
+  return Math.round(x * 1e3) / 1e3;
+}
+function sealJoinKey(spec, notes) {
+  if (!spec || !spec.stamped_sha || !spec.actual_sha) return null;
+  if (spec.stamped_sha !== spec.actual_sha) {
+    notes.push(
+      `the spec-contract has been edited since it was sealed (stamped ${spec.stamped_sha}, the block hashes to ${spec.actual_sha}) \u2014 oracle-journal rows prove the superseded contract and are joined against nothing`
+    );
+    return null;
+  }
+  return spec.actual_sha;
+}
+function latestOraclesAtSeal(oracles, seal) {
+  const latest = /* @__PURE__ */ new Map();
+  if (!oracles || !seal) return latest;
+  for (const run3 of oracles) if (run3.contract_sha === seal) latest.set(run3.criterion, run3);
+  return latest;
+}
+function criticTime(events, notes) {
+  if (!events) return { total: null, dispatches: [] };
+  const key = (e) => `${e.critic}#${e.pass}`;
+  const firstDispatch = /* @__PURE__ */ new Map();
+  for (const e of events) {
+    if (e.kind !== "critic-dispatch") continue;
+    const k = key(e);
+    if (!firstDispatch.has(k)) firstDispatch.set(k, e);
+  }
+  const closed = /* @__PURE__ */ new Set();
+  const dispatches = [];
+  let strayVerdicts = 0;
+  for (const v of events) {
+    if (v.kind !== "critic-verdict") continue;
+    const k = key(v);
+    const d = firstDispatch.get(k);
+    if (!d || closed.has(k)) {
+      strayVerdicts += 1;
+      continue;
+    }
+    closed.add(k);
+    const ms = interval(`T8 ${v.critic} pass ${v.pass}`, d.at, v.at, notes);
+    if (ms !== null) dispatches.push({ critic: v.critic, pass: v.pass, ms });
+  }
+  const open = [...firstDispatch.keys()].filter((k) => !closed.has(k)).length;
+  if (open > 0) notes.push(`T8: ${open} critic dispatch(es) without a recorded verdict \u2014 excluded`);
+  if (strayVerdicts > 0) {
+    notes.push(`T8: ${strayVerdicts} critic verdict(s) without a recorded dispatch \u2014 excluded`);
+  }
+  return {
+    total: dispatches.length ? dispatches.reduce((sum2, d) => sum2 + d.ms, 0) : null,
+    dispatches
+  };
+}
+function rollUpMetrics(input) {
+  const notes = [...input.notes ?? []];
+  const fm = input.spec?.frontmatter ?? {};
+  const contract = input.spec?.contract ?? null;
+  const seal = sealJoinKey(input.spec, notes);
+  const type = fm.type?.trim() || null;
+  const { progress, oracles, verify_journal, verify_result, events } = input;
+  const lastCriterion = progress ? last(progress.filter((e) => e.kind === "criterion")) : void 0;
+  let intake_ms = null;
+  if (progress) {
+    const start = progress.find((e) => e.source === "task-start" && e.step === "1.5");
+    const end = last(progress.filter((e) => e.source === "task-start" && e.kind === "step"));
+    if (!start) notes.push("T1: the progress journal has no task-start step 1.5 entry");
+    else if (!end || end === start) {
+      notes.push(
+        "T1: no task-start step entry after 1.5 \u2014 the intake was never finalised in the journal"
+      );
+    } else intake_ms = interval("T1", start.at, end.at, notes);
+  }
+  let implement_ms = null;
+  if (progress) {
+    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
+    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
+    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
+  }
+  let first_green_ms = null;
+  const runs = verify_journal ? verify_journal.filter((e) => e.kind === "run") : null;
+  const firstGreenIndex = runs ? runs.findIndex(isGreenFullRun) : -1;
+  if (runs) {
+    if (firstGreenIndex === -1) notes.push("T3/R4: no green full verification run recorded");
+    else if (lastCriterion) {
+      first_green_ms = interval("T3", lastCriterion.at, runs[firstGreenIndex].at, notes);
+    } else if (!progress) {
+      notes.push("T3: no progress journal to anchor the last recorded criterion");
+    }
+  }
+  const active_ms = intake_ms !== null && implement_ms !== null && first_green_ms !== null ? intake_ms + implement_ms + first_green_ms : null;
+  const gate_efficiency = verify_result && typeof verify_result.wallClockMs === "number" && typeof verify_result.sumOfGatesMs === "number" && verify_result.sumOfGatesMs > 0 ? round32(verify_result.wallClockMs / verify_result.sumOfGatesMs) : null;
+  const latestOracle = latestOraclesAtSeal(oracles, seal);
+  const oracle_ms = [...latestOracle.values()].filter((r) => typeof r.durationMs === "number").map((r) => ({ criterion: r.criterion, ms: r.durationMs })).sort((a, b) => a.criterion.localeCompare(b.criterion, void 0, { numeric: true }));
+  const gate_ms = (verify_result?.gates ?? []).filter((g) => typeof g.durationMs === "number").map((g) => ({ gate: g.name, ms: g.durationMs }));
+  const time3 = {
+    intake_ms,
+    implement_ms,
+    first_green_ms,
+    active_ms,
+    gate_efficiency,
+    oracle_ms,
+    gate_ms,
+    critic_ms: criticTime(events, notes)
+  };
+  let scope_drift = null;
+  if (input.git?.changed_files && contract) {
+    const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
+    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
+    const changed = input.git.changed_files.map(normalizeScopePath).filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    scope_drift = {
+      declared: declared.size,
+      changed: changed.length,
+      undeclared: changed.filter((p) => !declared.has(p)).sort()
+    };
+  }
+  let oracle_strength = null;
+  if (contract) {
+    const criteria = contract.criteria.length;
+    const executable = contract.criteria.filter(
+      (c) => c.oracle.kind === "test" || c.oracle.kind === "command"
+    ).length;
+    oracle_strength = { criteria, executable, share: criteria ? round32(executable / criteria) : 0 };
+  }
+  let red_green = null;
+  if (type === "bugfix" && contract && oracles && seal) {
+    const criteria = contract.criteria.length;
+    const proven = contract.criteria.filter(
+      (c) => redGreenProof(oracles, seal, c.id) === "proven"
+    ).length;
+    red_green = { criteria, proven, share: criteria ? round32(proven / criteria) : 0 };
+  }
+  let not_run = null;
+  if (verify_result && verify_result.gates.length > 0) {
+    const gates = verify_result.gates.length;
+    const notRun = verify_result.gates.filter((g) => g.status === "not-run").length;
+    not_run = { gates, not_run: notRun, share: round32(notRun / gates) };
+  }
+  const freshness_waivers = verify_journal ? verify_journal.filter(
+    (e) => e.kind === "gate" && e.decision === "ALLOW" && e.staleness === "stale" && e.allowStale === true
+  ).length : null;
+  const axes = (c) => c ? { compliance: c.compliance, quality: c.quality } : null;
+  const critics = { spec: axes(input.critique?.spec), diff: axes(input.critique?.diff) };
+  const spec_gaps = events ? events.filter((e) => e.kind === "spec-gap").length : null;
+  const open_items = events ? {
+    deferred: events.filter((e) => e.kind === "open-item" && e.classification === "deferred").length,
+    blocked: events.filter((e) => e.kind === "open-item" && e.classification === "blocked").length
+  } : null;
+  let dor_first_call = null;
+  if (events) {
+    const first = events.filter((e) => e.kind === "gate-call" && e.gate === "dor").sort((a, b) => (epoch(a.at) ?? 0) - (epoch(b.at) ?? 0) || (a.call ?? 0) - (b.call ?? 0))[0];
+    if (first) dor_first_call = first.verdict === "PASS" || first.verdict === "PASS WITH WARNINGS";
+  }
+  let oracle_resolution = null;
+  if (oracles && seal) {
+    const by_source = {};
+    let unresolved = 0;
+    for (const run3 of latestOracle.values()) {
+      if (run3.source === null) unresolved += 1;
+      else by_source[run3.source] = (by_source[run3.source] ?? 0) + 1;
+    }
+    oracle_resolution = { by_source, unresolved };
+  }
+  const quality = {
+    scope_drift,
+    oracle_strength,
+    red_green,
+    not_run,
+    freshness_waivers,
+    critics,
+    spec_gaps,
+    open_items,
+    dor_first_call,
+    oracle_resolution
+  };
+  let seals = null;
+  let reseals = null;
+  if (progress) {
+    seals = new Set(progress.map((e) => e.contract_sha).filter((s) => !!s)).size;
+    reseals = Math.max(0, seals - 1);
+  }
+  const highestPass = (critic) => {
+    if (!events) return null;
+    const passes = events.filter((e) => e.kind === "critic-verdict" && e.critic === critic).map((e) => e.pass ?? 0);
+    return passes.length ? Math.max(...passes) : null;
+  };
+  const critic_passes = {
+    spec: highestPass("marvin-tm-spec-critic"),
+    diff: highestPass("marvin-tm-diff-critic")
+  };
+  const fix_rounds = events ? {
+    verify_gate: events.filter((e) => e.kind === "fix-round" && e.loop === "verify-gate").length,
+    critic: events.filter((e) => e.kind === "fix-round" && e.loop === "critic").length,
+    red_green: events.filter((e) => e.kind === "fix-round" && e.loop === "red-green").length
+  } : null;
+  const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
+  const rework = {
+    seals,
+    reseals,
+    critic_passes,
+    fix_rounds,
+    runs_before_green
+  };
+  const sources = {
+    spec: presence(input.spec),
+    progress: presence(progress),
+    oracles: presence(oracles),
+    verify_journal: presence(verify_journal),
+    verify_result: presence(verify_result),
+    critique: presence(input.critique),
+    events: presence(events),
+    git: presence(input.git)
+  };
+  return {
+    slug: input.slug,
+    contract_sha: input.spec?.stamped_sha ?? null,
+    type,
+    risk: fm.risk?.trim() || null,
+    breaking: flag(fm.breaking),
+    spike_required: flag(fm.spike_required),
+    created: fm.created?.trim() || null,
+    rolled_up_at: input.now,
+    head_sha: input.git?.head_sha ?? null,
+    base_branch: input.base_branch,
+    sources,
+    time: time3,
+    quality,
+    rework,
+    notes
+  };
+}
+
+// src/lib/metrics-record.ts
+function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
+  const existing = findRecord2(dir, slug);
+  if (existing) return existing;
+  const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
+  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+}
+function metricsDirFor(env2, projectRoot) {
+  return projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
+}
+function ensureRecordForSpec(env2, projectRoot, slug, specPath) {
+  const path = recordPathFor(
+    metricsDirFor(env2, projectRoot),
+    slug,
+    projectRoot,
+    void 0,
+    specPath
+  );
+  ensureRecord(path, slug);
+  return path;
+}
+function performRollup(req) {
+  const { env: env2, projectRoot, config: config2, slug } = req;
+  const base = req.base?.trim() || config2.base_branch;
+  const now = req.now ?? (/* @__PURE__ */ new Date()).toISOString();
+  const block = rollUpMetrics(collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now));
+  const dir = metricsDirFor(env2, projectRoot);
+  const path = recordPathFor(dir, slug, projectRoot, config2.spec);
+  appendTaskMetrics(path, block);
+  const record2 = relFromRoot(path, projectRoot);
+  return {
+    path,
+    record: record2,
+    block,
+    terminalBlocks: readRecord(path).terminal.length,
+    // A host project with a blanket `.marvin/` exclusion learns at the FIRST
+    // roll-up that its series is not being committed, rather than never.
+    ignored: inGitRepo(projectRoot) ? isIgnored(record2, projectRoot) : null
+  };
 }
 
 // src/tools/verify.ts
@@ -34756,7 +35374,9 @@ async function runVerify(input, env2) {
     return deliverGate(projectRoot, {
       specSlug: input.specSlug,
       allowStale: input.allowStale,
-      specConfig: config2.spec
+      specConfig: config2.spec,
+      env: env2,
+      config: config2
     });
   }
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
@@ -35159,6 +35779,26 @@ function findSpec(slug, projectRoot, specConfig) {
 function runsDirOf(projectRoot) {
   return join(projectRoot, ".marvin", "task", "runs");
 }
+function rollUpForDelivery(projectRoot, slug, env2, config2) {
+  try {
+    const { record: record2, ignored } = performRollup({ env: env2, projectRoot, config: config2, slug });
+    return ignored ? `**Metrics:** \`${record2}\` \u2014 \u26A0\uFE0F git IGNORES this record, so the series is not being committed. Add \`!.marvin/metrics/\` after \`.marvin/*\` in \`.gitignore\`.` : `**Metrics:** \`${record2}\``;
+  } catch {
+    return null;
+  }
+}
+function withNote(answer, note) {
+  const first = answer.content[0];
+  if (first?.type === "text") {
+    return {
+      ...answer,
+      content: [{ ...first, text: `${first.text}
+
+${note}` }, ...answer.content.slice(1)]
+    };
+  }
+  return { ...answer, content: [...answer.content, { type: "text", text: note }] };
+}
 function journalVerifyEntry(projectRoot, entry) {
   try {
     recordVerifyRun(runsDirOf(projectRoot), entry);
@@ -35196,7 +35836,7 @@ function readSealedSpec(slug, projectRoot, specConfig) {
   }
   let parsed;
   try {
-    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+    parsed = SpecContract.safeParse((0, import_yaml3.parse)(blockText));
   } catch (err3) {
     return {
       error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
@@ -35414,6 +36054,10 @@ function deliverGate(projectRoot, opts) {
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
       });
     }
+    if (slug && decision === "ALLOW") {
+      const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
+      if (note) return withNote(answer, note);
+    }
     return answer;
   };
   if (!existsSync(artifactPath)) {
@@ -35533,100 +36177,7 @@ function ok3(text) {
 }
 
 // src/tools/spec.ts
-var import_yaml3 = __toESM(require_dist2());
-var PROGRESS_TAG = "spec-progress";
-var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
-var ProgressEntrySchema = external_exports.object({
-  /** The spec's validated kebab-case slug — also this journal's filename. */
-  slug: external_exports.string().min(1),
-  /** Which skill wrote it: step ids collide across the two pipelines. */
-  source: external_exports.enum(["task-start", "task-implement"]),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
-  step: external_exports.string().min(1),
-  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
-  /** One line of position and choice. Never a credential, token or customer datum. */
-  detail: external_exports.string(),
-  /** The acceptance-criterion id, when `kind` is `criterion`. */
-  criterion: external_exports.string().nullable().optional(),
-  /** The draft/spec path, recorded once when the draft is opened. */
-  path: external_exports.string().nullable().optional(),
-  /** The seal in force, when the writer knows one. */
-  contract_sha: external_exports.string().nullable().optional(),
-  /** ISO 8601. */
-  at: external_exports.string()
-});
-function progressJournalPath(runsDir, slug) {
-  return join(runsDir, `${slug}.progress.md`);
-}
-function recordProgress(runsDir, entry) {
-  mkdirSync(runsDir, { recursive: true });
-  const path = progressJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
-
-Append-only. One \`${PROGRESS_TAG}\` block per entry.
-
-`;
-  const block = `\`\`\`json ${PROGRESS_TAG}
-${JSON.stringify(entry)}
-\`\`\`
-
-`;
-  appendFileSync(path, `${header2}${block}`, "utf8");
-}
-function readProgress(runsDir, slug) {
-  const path = progressJournalPath(runsDir, slug);
-  if (!existsSync(path)) return [];
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return [];
-  }
-  const out = [];
-  for (const m of raw.matchAll(PROGRESS_RE)) {
-    let json;
-    try {
-      json = JSON.parse(m[1]);
-    } catch {
-      continue;
-    }
-    const parsed = ProgressEntrySchema.safeParse(json);
-    if (parsed.success) out.push(parsed.data);
-  }
-  return out;
-}
-function resumeState(entries) {
-  let archived = 0;
-  let start = 0;
-  entries.forEach((e, i) => {
-    if (e.kind === "archived") {
-      archived += 1;
-      start = i + 1;
-    }
-  });
-  const live = entries.slice(start);
-  const criteria_done = [];
-  let path = null;
-  let contract_sha = null;
-  for (const e of live) {
-    if (e.kind === "criterion") {
-      const id = e.criterion?.trim();
-      if (id && !criteria_done.includes(id)) criteria_done.push(id);
-    }
-    if (e.path) path = e.path;
-    if (e.contract_sha) contract_sha = e.contract_sha;
-  }
-  return {
-    entries: live,
-    archived,
-    last: live.length ? live[live.length - 1] : null,
-    criteria_done,
-    path,
-    contract_sha
-  };
-}
-
-// src/tools/spec.ts
+var import_yaml4 = __toESM(require_dist2());
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
@@ -35732,6 +36283,7 @@ async function runSpec(input, env2) {
     return runProgressAction(action, input, env2, projectRoot);
   }
   let raw;
+  let diskPath = null;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
   } else if (input.specPath) {
@@ -35740,10 +36292,11 @@ async function runSpec(input, env2) {
       return result("FAIL", null, [fail("input", "Input", `spec file not found: ${path}`)]);
     }
     raw = readFileSync(path, "utf8");
+    diskPath = path;
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
-  if (action === "seal") return verifySeal(raw);
+  if (action === "seal") return verifySeal(raw, env2, projectRoot, diskPath);
   if (action === "scope") {
     return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
@@ -35751,7 +36304,7 @@ async function runSpec(input, env2) {
   const { type, checks, contractSha } = validateSpec(raw, projectRoot, config2.spec);
   return result(computeVerdict2(checks), type, checks, contractSha);
 }
-function verifySeal(raw) {
+function verifySeal(raw, env2, projectRoot, diskPath) {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const sealed = (frontmatter.contract_sha ?? "").trim();
@@ -35778,7 +36331,20 @@ function verifySeal(raw) {
     `TAMPERED \u2014 the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`
   );
   const checks = [sealCheck, statusCheck];
-  return result(computeVerdict2(checks), type, checks, actual);
+  const verdict = computeVerdict2(checks);
+  ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict);
+  return result(verdict, type, checks, actual);
+}
+function ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict) {
+  if (!diskPath || verdict === "FAIL") return;
+  const declared = (frontmatter.slug ?? "").trim();
+  const slug = declared || slugOfRecord(diskPath);
+  if (!SLUG_RE3.test(slug)) return;
+  if (!declared && /^\d+-/.test(slug)) return;
+  try {
+    ensureRecordForSpec(env2, projectRoot, slug, diskPath);
+  } catch {
+  }
 }
 var TERMINAL_STATUSES = ["shipped", "superseded"];
 function checkStatusTransition(rawStatus) {
@@ -35920,7 +36486,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     const payload = {
       action,
       slug,
-      journal: relFromRoot(progressJournalPath(runsDir, slug), projectRoot),
+      journal: relFromRoot2(progressJournalPath(runsDir, slug), projectRoot),
       found: state.entries.length > 0 || state.archived > 0,
       ...state
     };
@@ -35973,7 +36539,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     at: (/* @__PURE__ */ new Date()).toISOString()
   };
   recordProgress(runsDir, entry);
-  const journal = relFromRoot(progressJournalPath(runsDir, slug), projectRoot);
+  const journal = relFromRoot2(progressJournalPath(runsDir, slug), projectRoot);
   return corpusResult(
     [
       `# Progress \u2014 ${slug}`,
@@ -35985,7 +36551,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     "spec-progress"
   );
 }
-function relFromRoot(abs, projectRoot) {
+function relFromRoot2(abs, projectRoot) {
   const rel = relative(projectRoot, abs);
   return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
 }
@@ -36048,7 +36614,7 @@ function dependsOnOf(body) {
   if (blockText === null) return [];
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch {
     return [];
   }
@@ -36188,7 +36754,7 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   }
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch (err3) {
     return result("FAIL", type, [
       fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err3)}`)
@@ -36366,7 +36932,7 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   }
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch (err3) {
     return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err3)}`)];
   }
@@ -36395,7 +36961,7 @@ function checkHostBindings(body) {
   if (text === null) return { checks: [], specLocation: void 0 };
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(text);
+    doc = (0, import_yaml4.parse)(text);
   } catch (err3) {
     return {
       checks: [
@@ -36831,481 +37397,6 @@ function fail(id, label, detail) {
 function warn(id, label, detail) {
   return { id, label, status: "warn", detail };
 }
-
-// src/lib/metrics-collect.ts
-var import_yaml4 = __toESM(require_dist2());
-function findSpecBySlug(slug, projectRoot, specConfig) {
-  for (const dir of specSearchDirs(projectRoot, specConfig)) {
-    const p = resolveSpecBySlug(dir, slug, projectRoot);
-    if (p) return p;
-  }
-  return null;
-}
-function relFromRoot2(abs, projectRoot) {
-  const rel = relative(projectRoot, abs);
-  return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
-}
-function latestReceipts(dir, slug) {
-  if (!existsSync(dir)) return null;
-  let filenames;
-  try {
-    filenames = readdirSync(dir).sort();
-  } catch {
-    return null;
-  }
-  const newest = /* @__PURE__ */ new Map();
-  for (const filename of filenames) {
-    if (!filename.endsWith(".md")) continue;
-    let raw;
-    try {
-      raw = readFileSync(join(dir, filename), "utf8");
-    } catch {
-      continue;
-    }
-    const parse4 = parseCritiqueBlock(raw);
-    if (parse4.kind !== "ok" || parse4.critique.subject !== slug) continue;
-    const current = newest.get(parse4.critique.critic);
-    const later = !current || parse4.critique.judged_at > current.critique.judged_at || parse4.critique.judged_at === current.critique.judged_at && filename > current.filename;
-    if (later) newest.set(parse4.critique.critic, { critique: parse4.critique, filename });
-  }
-  if (newest.size === 0) return null;
-  return {
-    spec: newest.get("marvin-tm-spec-critic")?.critique ?? null,
-    diff: newest.get("marvin-tm-diff-critic")?.critique ?? null
-  };
-}
-function readRollupSpec(specPath, projectRoot, notes) {
-  const raw = readFileSync(specPath, "utf8");
-  const { frontmatter, body } = parseFrontmatter(raw);
-  const block = extractContractBlock(body);
-  let contract = null;
-  if (block !== null) {
-    try {
-      const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
-      if (parsed.success) contract = parsed.data;
-      else
-        notes.push(
-          "the spec-contract block failed schema validation \u2014 contract-sourced rows are null"
-        );
-    } catch {
-      notes.push("the spec-contract block is not valid YAML \u2014 contract-sourced rows are null");
-    }
-  } else {
-    notes.push("the spec carries no spec-contract block \u2014 contract-sourced rows are null");
-  }
-  return {
-    path: relFromRoot2(specPath, projectRoot),
-    frontmatter,
-    contract,
-    stamped_sha: frontmatter.contract_sha?.trim() || null,
-    actual_sha: block !== null ? contractHash(block) : null
-  };
-}
-function readRunResult(path, slug, notes) {
-  if (!existsSync(path)) return null;
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
-  const parse4 = parseVerifyBlock(raw);
-  if (parse4.kind === "ok") return parse4.result;
-  notes.push(
-    parse4.kind === "none" ? `runs/${slug}.md carries no verify-result block \u2014 treated as absent` : `runs/${slug}.md: ${parse4.reason} \u2014 treated as absent`
-  );
-  return null;
-}
-function collectGit(projectRoot, base, notes) {
-  if (!inGitRepo(projectRoot)) return null;
-  const head_sha = headSha(projectRoot);
-  if (!refExists(base, projectRoot)) {
-    notes.push(
-      `base ref \`${base}\` does not resolve in this repository \u2014 scope drift (Q1) not computed`
-    );
-    return { head_sha, changed_files: null };
-  }
-  return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
-}
-function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
-  const notes = [];
-  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
-  const spec = specPath ? readRollupSpec(specPath, projectRoot, notes) : null;
-  const progressRuns = specPath ? join(dirname(specPath), "runs") : join(resolveSpecDir(projectRoot, specConfig).abs, "runs");
-  const progress = existsSync(progressJournalPath(progressRuns, slug)) ? readProgress(progressRuns, slug) : null;
-  const pinned = join(projectRoot, ".marvin", "task", "runs");
-  const oracles = existsSync(oracleJournalPath(pinned, slug)) ? readOracleRuns(pinned, slug) : null;
-  const verify_journal = existsSync(verifyJournalPath(pinned, slug)) ? readVerifyRuns(pinned, slug) : null;
-  const verify_result = readRunResult(join(pinned, `${slug}.md`), slug, notes);
-  const critique = latestReceipts(
-    projectScopedDir(env2, projectRoot, env2.critiqueDir, "critique"),
-    slug
-  );
-  const events = readMetricEvents(
-    projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics"),
-    slug
-  );
-  const git2 = collectGit(projectRoot, base, notes);
-  return {
-    slug,
-    base_branch: base,
-    now,
-    spec,
-    progress,
-    oracles,
-    verify_journal,
-    verify_result,
-    critique,
-    events: events.length ? events : null,
-    git: git2,
-    notes
-  };
-}
-function readShippedSpecs(projectRoot, specConfig) {
-  const dir = resolveSpecDir(projectRoot, specConfig);
-  if (!existsSync(dir.abs)) return null;
-  const out = [];
-  for (const record2 of readSpecCorpus(dir).records) {
-    if (record2.status !== "shipped") continue;
-    let raw;
-    try {
-      raw = readFileSync(join(dir.abs, record2.filename), "utf8");
-    } catch {
-      continue;
-    }
-    const { frontmatter, body } = parseFrontmatter(raw);
-    const block = extractContractBlock(body);
-    let files = [];
-    if (block !== null) {
-      try {
-        const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
-        if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
-      } catch {
-      }
-    }
-    out.push({
-      slug: record2.slug,
-      number: record2.number,
-      type: frontmatter.type?.trim() || null,
-      created: frontmatter.created?.trim() || null,
-      files
-    });
-  }
-  return out;
-}
-function deliveryPrUrl(specRaw) {
-  const at = specRaw.indexOf("## Delivery");
-  if (at === -1) return null;
-  const m = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/.exec(specRaw.slice(at));
-  return m ? m[0] : null;
-}
-function reviewFixCommits(specPath, cwd) {
-  if (!specPath || !hasGh()) return null;
-  let raw;
-  try {
-    raw = readFileSync(specPath, "utf8");
-  } catch {
-    return null;
-  }
-  const url = deliveryPrUrl(raw);
-  const m = url ? /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url) : null;
-  if (!m) return null;
-  const [, owner, repo, number3] = m;
-  try {
-    const opened = gh(
-      ["api", `repos/${owner}/${repo}/pulls/${number3}`, "--jq", ".created_at"],
-      cwd
-    );
-    if (!opened.ok || !opened.value) return null;
-    const dates = gh(
-      [
-        "api",
-        `repos/${owner}/${repo}/pulls/${number3}/commits`,
-        "--paginate",
-        "--jq",
-        ".[].commit.committer.date"
-      ],
-      cwd
-    );
-    if (!dates.ok) return null;
-    return dates.value.split("\n").map((d) => d.trim()).filter(Boolean).filter((d) => d > opened.value).length;
-  } catch {
-    return null;
-  }
-}
-function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
-  const records = toSeriesRecords(listRecords(metricsDir));
-  return records.map(
-    (r) => r.block ? {
-      ...r,
-      review_fix_commits: reviewFixCommits(
-        findSpecBySlug(r.slug, projectRoot, specConfig),
-        projectRoot
-      )
-    } : r
-  );
-}
-
-// src/lib/metrics-rollup.ts
-function epoch(iso) {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  return Number.isFinite(t) ? t : null;
-}
-function interval(label, from, to, notes) {
-  const a = epoch(from);
-  const b = epoch(to);
-  if (a === null || b === null) return null;
-  const d = b - a;
-  if (d < 0) {
-    notes.push(`${label}: negative interval (${to} precedes ${from}) \u2014 reported as null`);
-    return null;
-  }
-  return d;
-}
-function last(items) {
-  return items.length ? items[items.length - 1] : void 0;
-}
-function flag(value) {
-  const v = value?.trim().toLowerCase();
-  return v === "true" ? true : v === "false" ? false : null;
-}
-function presence(input) {
-  return input === null || input === void 0 ? "absent" : "present";
-}
-function round32(x) {
-  return Math.round(x * 1e3) / 1e3;
-}
-function sealJoinKey(spec, notes) {
-  if (!spec || !spec.stamped_sha || !spec.actual_sha) return null;
-  if (spec.stamped_sha !== spec.actual_sha) {
-    notes.push(
-      `the spec-contract has been edited since it was sealed (stamped ${spec.stamped_sha}, the block hashes to ${spec.actual_sha}) \u2014 oracle-journal rows prove the superseded contract and are joined against nothing`
-    );
-    return null;
-  }
-  return spec.actual_sha;
-}
-function latestOraclesAtSeal(oracles, seal) {
-  const latest = /* @__PURE__ */ new Map();
-  if (!oracles || !seal) return latest;
-  for (const run3 of oracles) if (run3.contract_sha === seal) latest.set(run3.criterion, run3);
-  return latest;
-}
-function criticTime(events, notes) {
-  if (!events) return { total: null, dispatches: [] };
-  const key = (e) => `${e.critic}#${e.pass}`;
-  const firstDispatch = /* @__PURE__ */ new Map();
-  for (const e of events) {
-    if (e.kind !== "critic-dispatch") continue;
-    const k = key(e);
-    if (!firstDispatch.has(k)) firstDispatch.set(k, e);
-  }
-  const closed = /* @__PURE__ */ new Set();
-  const dispatches = [];
-  let strayVerdicts = 0;
-  for (const v of events) {
-    if (v.kind !== "critic-verdict") continue;
-    const k = key(v);
-    const d = firstDispatch.get(k);
-    if (!d || closed.has(k)) {
-      strayVerdicts += 1;
-      continue;
-    }
-    closed.add(k);
-    const ms = interval(`T8 ${v.critic} pass ${v.pass}`, d.at, v.at, notes);
-    if (ms !== null) dispatches.push({ critic: v.critic, pass: v.pass, ms });
-  }
-  const open = [...firstDispatch.keys()].filter((k) => !closed.has(k)).length;
-  if (open > 0) notes.push(`T8: ${open} critic dispatch(es) without a recorded verdict \u2014 excluded`);
-  if (strayVerdicts > 0) {
-    notes.push(`T8: ${strayVerdicts} critic verdict(s) without a recorded dispatch \u2014 excluded`);
-  }
-  return {
-    total: dispatches.length ? dispatches.reduce((sum2, d) => sum2 + d.ms, 0) : null,
-    dispatches
-  };
-}
-function rollUpMetrics(input) {
-  const notes = [...input.notes ?? []];
-  const fm = input.spec?.frontmatter ?? {};
-  const contract = input.spec?.contract ?? null;
-  const seal = sealJoinKey(input.spec, notes);
-  const type = fm.type?.trim() || null;
-  const { progress, oracles, verify_journal, verify_result, events } = input;
-  const lastCriterion = progress ? last(progress.filter((e) => e.kind === "criterion")) : void 0;
-  let intake_ms = null;
-  if (progress) {
-    const start = progress.find((e) => e.source === "task-start" && e.step === "1.5");
-    const end = last(progress.filter((e) => e.source === "task-start" && e.kind === "step"));
-    if (!start) notes.push("T1: the progress journal has no task-start step 1.5 entry");
-    else if (!end || end === start) {
-      notes.push(
-        "T1: no task-start step entry after 1.5 \u2014 the intake was never finalised in the journal"
-      );
-    } else intake_ms = interval("T1", start.at, end.at, notes);
-  }
-  let implement_ms = null;
-  if (progress) {
-    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
-    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
-    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
-    else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
-  }
-  let first_green_ms = null;
-  const runs = verify_journal ? verify_journal.filter((e) => e.kind === "run") : null;
-  const firstGreenIndex = runs ? runs.findIndex(isGreenFullRun) : -1;
-  if (runs) {
-    if (firstGreenIndex === -1) notes.push("T3/R4: no green full verification run recorded");
-    else if (lastCriterion) {
-      first_green_ms = interval("T3", lastCriterion.at, runs[firstGreenIndex].at, notes);
-    } else if (!progress) {
-      notes.push("T3: no progress journal to anchor the last recorded criterion");
-    }
-  }
-  const active_ms = intake_ms !== null && implement_ms !== null && first_green_ms !== null ? intake_ms + implement_ms + first_green_ms : null;
-  const gate_efficiency = verify_result && typeof verify_result.wallClockMs === "number" && typeof verify_result.sumOfGatesMs === "number" && verify_result.sumOfGatesMs > 0 ? round32(verify_result.wallClockMs / verify_result.sumOfGatesMs) : null;
-  const latestOracle = latestOraclesAtSeal(oracles, seal);
-  const oracle_ms = [...latestOracle.values()].filter((r) => typeof r.durationMs === "number").map((r) => ({ criterion: r.criterion, ms: r.durationMs })).sort((a, b) => a.criterion.localeCompare(b.criterion, void 0, { numeric: true }));
-  const gate_ms = (verify_result?.gates ?? []).filter((g) => typeof g.durationMs === "number").map((g) => ({ gate: g.name, ms: g.durationMs }));
-  const time3 = {
-    intake_ms,
-    implement_ms,
-    first_green_ms,
-    active_ms,
-    gate_efficiency,
-    oracle_ms,
-    gate_ms,
-    critic_ms: criticTime(events, notes)
-  };
-  let scope_drift = null;
-  if (input.git?.changed_files && contract) {
-    const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
-    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
-    const changed = input.git.changed_files.map(normalizeScopePath).filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
-    scope_drift = {
-      declared: declared.size,
-      changed: changed.length,
-      undeclared: changed.filter((p) => !declared.has(p)).sort()
-    };
-  }
-  let oracle_strength = null;
-  if (contract) {
-    const criteria = contract.criteria.length;
-    const executable = contract.criteria.filter(
-      (c) => c.oracle.kind === "test" || c.oracle.kind === "command"
-    ).length;
-    oracle_strength = { criteria, executable, share: criteria ? round32(executable / criteria) : 0 };
-  }
-  let red_green = null;
-  if (type === "bugfix" && contract && oracles && seal) {
-    const criteria = contract.criteria.length;
-    const proven = contract.criteria.filter(
-      (c) => redGreenProof(oracles, seal, c.id) === "proven"
-    ).length;
-    red_green = { criteria, proven, share: criteria ? round32(proven / criteria) : 0 };
-  }
-  let not_run = null;
-  if (verify_result && verify_result.gates.length > 0) {
-    const gates = verify_result.gates.length;
-    const notRun = verify_result.gates.filter((g) => g.status === "not-run").length;
-    not_run = { gates, not_run: notRun, share: round32(notRun / gates) };
-  }
-  const freshness_waivers = verify_journal ? verify_journal.filter(
-    (e) => e.kind === "gate" && e.decision === "ALLOW" && e.staleness === "stale" && e.allowStale === true
-  ).length : null;
-  const axes = (c) => c ? { compliance: c.compliance, quality: c.quality } : null;
-  const critics = { spec: axes(input.critique?.spec), diff: axes(input.critique?.diff) };
-  const spec_gaps = events ? events.filter((e) => e.kind === "spec-gap").length : null;
-  const open_items = events ? {
-    deferred: events.filter((e) => e.kind === "open-item" && e.classification === "deferred").length,
-    blocked: events.filter((e) => e.kind === "open-item" && e.classification === "blocked").length
-  } : null;
-  let dor_first_call = null;
-  if (events) {
-    const first = events.filter((e) => e.kind === "gate-call" && e.gate === "dor").sort((a, b) => (epoch(a.at) ?? 0) - (epoch(b.at) ?? 0) || (a.call ?? 0) - (b.call ?? 0))[0];
-    if (first) dor_first_call = first.verdict === "PASS" || first.verdict === "PASS WITH WARNINGS";
-  }
-  let oracle_resolution = null;
-  if (oracles && seal) {
-    const by_source = {};
-    let unresolved = 0;
-    for (const run3 of latestOracle.values()) {
-      if (run3.source === null) unresolved += 1;
-      else by_source[run3.source] = (by_source[run3.source] ?? 0) + 1;
-    }
-    oracle_resolution = { by_source, unresolved };
-  }
-  const quality = {
-    scope_drift,
-    oracle_strength,
-    red_green,
-    not_run,
-    freshness_waivers,
-    critics,
-    spec_gaps,
-    open_items,
-    dor_first_call,
-    oracle_resolution
-  };
-  let seals = null;
-  let reseals = null;
-  if (progress) {
-    seals = new Set(progress.map((e) => e.contract_sha).filter((s) => !!s)).size;
-    reseals = Math.max(0, seals - 1);
-  }
-  const highestPass = (critic) => {
-    if (!events) return null;
-    const passes = events.filter((e) => e.kind === "critic-verdict" && e.critic === critic).map((e) => e.pass ?? 0);
-    return passes.length ? Math.max(...passes) : null;
-  };
-  const critic_passes = {
-    spec: highestPass("marvin-tm-spec-critic"),
-    diff: highestPass("marvin-tm-diff-critic")
-  };
-  const fix_rounds = events ? {
-    verify_gate: events.filter((e) => e.kind === "fix-round" && e.loop === "verify-gate").length,
-    critic: events.filter((e) => e.kind === "fix-round" && e.loop === "critic").length,
-    red_green: events.filter((e) => e.kind === "fix-round" && e.loop === "red-green").length
-  } : null;
-  const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
-  const rework = {
-    seals,
-    reseals,
-    critic_passes,
-    fix_rounds,
-    runs_before_green
-  };
-  const sources = {
-    spec: presence(input.spec),
-    progress: presence(progress),
-    oracles: presence(oracles),
-    verify_journal: presence(verify_journal),
-    verify_result: presence(verify_result),
-    critique: presence(input.critique),
-    events: presence(events),
-    git: presence(input.git)
-  };
-  return {
-    slug: input.slug,
-    contract_sha: input.spec?.stamped_sha ?? null,
-    type,
-    risk: fm.risk?.trim() || null,
-    breaking: flag(fm.breaking),
-    spike_required: flag(fm.spike_required),
-    created: fm.created?.trim() || null,
-    rolled_up_at: input.now,
-    head_sha: input.git?.head_sha ?? null,
-    base_branch: input.base_branch,
-    sources,
-    time: time3,
-    quality,
-    rework,
-    notes
-  };
-}
-
-// src/tools/metrics.ts
 var MetricsInput = external_exports.object({
   action: external_exports.enum(["record", "rollup", "series"]).describe(
     "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it \u2014 called by /marvin:task-deliver after the gate allows and before the commit. series: aggregate every record \u2014 count, median, mean and maximum per metric over the records where it is present \u2014 with a coverage line; narrow with type / since, or pass slug to render one record in full."
@@ -37373,13 +37464,7 @@ function runMetrics(input, env2) {
       `\`action: "${input.action}"\` needs a \`slug\` \u2014 it names the spec whose record is written.`
     );
   }
-  return input.action === "record" ? recordEvent(input, slug, projectRoot, dir, config2.spec) : rollup(input, env2, slug, projectRoot, dir, config2);
-}
-function recordPathFor(dir, slug, projectRoot, specConfig) {
-  const existing = findRecord2(dir, slug);
-  if (existing) return existing;
-  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
-  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+  return input.action === "record" ? recordEvent(input, slug, projectRoot, dir, config2.spec) : rollup(input, env2, slug, projectRoot, config2);
 }
 var EVENT_FIELDS = [
   "detail",
@@ -37422,7 +37507,7 @@ function recordEvent(input, slug, projectRoot, dir, specConfig) {
   const event = parsed.data;
   const path = recordPathFor(dir, slug, projectRoot, specConfig);
   appendMetricEvent(path, event);
-  const record2 = relFromRoot2(path, projectRoot);
+  const record2 = relFromRoot(path, projectRoot);
   const payload = { action: "record", slug, record: record2, event };
   return {
     content: [
@@ -37440,22 +37525,14 @@ Recorded **${event.kind}** (${event.source}, step ${event.step}).
     structuredContent: payload
   };
 }
-function rollup(input, env2, slug, projectRoot, dir, config2) {
-  const base = input.base?.trim() || config2.base_branch;
-  const inputs = collectRollupInputs(
-    env2,
+function rollup(input, env2, slug, projectRoot, config2) {
+  const { block, record: record2, terminalBlocks, ignored } = performRollup({
+    env: env2,
     projectRoot,
-    config2.spec,
+    config: config2,
     slug,
-    base,
-    (/* @__PURE__ */ new Date()).toISOString()
-  );
-  const block = rollUpMetrics(inputs);
-  const path = recordPathFor(dir, slug, projectRoot, config2.spec);
-  appendTaskMetrics(path, block);
-  const record2 = relFromRoot2(path, projectRoot);
-  const terminalBlocks = readRecord(path).terminal.length;
-  const ignored = inGitRepo(projectRoot) ? isIgnored(record2, projectRoot) : null;
+    base: input.base
+  });
   const payload = {
     action: "rollup",
     slug,
@@ -37488,7 +37565,7 @@ function series(input, slug, projectRoot, dir, config2) {
   const records = collectSeriesRecords(projectRoot, dir, config2.spec);
   const shipped = readShippedSpecs(projectRoot, config2.spec);
   const answer = aggregateSeries({
-    dir: relFromRoot2(dir, projectRoot),
+    dir: relFromRoot(dir, projectRoot),
     now: (/* @__PURE__ */ new Date()).toISOString(),
     records,
     shipped,
@@ -37519,7 +37596,7 @@ No metrics record for \`${slug}\` under \`${answer.dir}/\`.`;
   }
   const recordPath = join(dir, row.filename);
   const terminal = readRecord(recordPath).terminal.length;
-  const ignored = inGitRepo(projectRoot) ? isIgnored(relFromRoot2(recordPath, projectRoot), projectRoot) : null;
+  const ignored = inGitRepo(projectRoot) ? isIgnored(relFromRoot(recordPath, projectRoot), projectRoot) : null;
   return renderDigest(answer.record, `${answer.dir}/${row.filename}`, terminal, ignored);
 }
 function renderSeries(a) {
@@ -37536,13 +37613,13 @@ function renderSeries(a) {
   if (c.records === 0) {
     lines.push(
       "",
-      filters.length ? "_No rolled-up record matches the filters._" : "_No metrics records yet \u2014 the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._"
+      filters.length ? "_No rolled-up record matches the filters._" : "_No metrics records yet \u2014 the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._"
     );
     return lines.join("\n");
   }
   const coverage = c.shipped_specs === null ? "no spec corpus to compare against" : `the series covers ${c.shipped_with_record} of ${c.shipped_specs} shipped spec(s)`;
   lines.push(
-    `**Coverage:** ${c.records} record(s) \xB7 ${c.rolled_up} rolled up \xB7 ${c.events_only} recorded but not rolled up \xB7 ${coverage}`,
+    `**Coverage:** ${c.records} record(s) \xB7 ${c.rolled_up} rolled up \xB7 ${c.events_only} recorded but not rolled up \xB7 ${c.empty} started but empty \xB7 ${coverage}`,
     "",
     "Each metric is computed over the records where it is present (`n`); an absent source is never counted as zero."
   );
@@ -38267,7 +38344,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.22.0";
+var VERSION = "0.23.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

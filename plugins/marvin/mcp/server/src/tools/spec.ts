@@ -30,6 +30,8 @@ import {
   resumeState,
   type ProgressEntry,
 } from "../storage/progress.js";
+import { ensureRecordForSpec } from "../lib/metrics-record.js";
+import { slugOfRecord } from "../storage/metrics.js";
 import { loadConfig } from "../storage/config.js";
 import {
   changedFilesForScope,
@@ -267,6 +269,11 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
   }
 
   let raw: string;
+  // The path this call actually READ, not the one it was given. Both keys may
+  // legally arrive together, and inline content then wins — so a guard written
+  // as `if (input.specPath)` would name a record after a file it never opened.
+  // Null keeps the seal anchor below out of every inline case by construction.
+  let diskPath: string | null = null;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
   } else if (input.specPath) {
@@ -275,11 +282,12 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
       return result("FAIL", null, [fail("input", "Input", `spec file not found: ${path}`)]);
     }
     raw = readFileSync(path, "utf8");
+    diskPath = path;
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
 
-  if (action === "seal") return verifySeal(raw);
+  if (action === "seal") return verifySeal(raw, env, projectRoot, diskPath);
   if (action === "scope") {
     return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
@@ -314,7 +322,12 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
  * lets the two coexist: the previous shape could not express "tampered AND
  * shipped", and `computeVerdict` reduces every single-check case identically.
  */
-function verifySeal(raw: string): ToolResult {
+function verifySeal(
+  raw: string,
+  env: ServerEnv,
+  projectRoot: string,
+  diskPath: string | null,
+): ToolResult {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const sealed = (frontmatter.contract_sha ?? "").trim();
@@ -348,7 +361,59 @@ function verifySeal(raw: string): ToolResult {
         );
 
   const checks = [sealCheck, statusCheck];
-  return result(computeVerdict(checks), type, checks, actual);
+  const verdict = computeVerdict(checks);
+  ensureMetricsRecord(env, projectRoot, diskPath, frontmatter, verdict);
+  return result(verdict, type, checks, actual);
+}
+
+/**
+ * The seal anchor (ADR-0044): a task that reaches execution gets its metrics
+ * record here, so a run abandoned before delivery is still visible in the
+ * series instead of leaving nothing behind.
+ *
+ * Four conditions, and each one is a defect this would otherwise have:
+ *
+ * 1. The spec was READ FROM DISK. An inline `specContent` names no spec, and a
+ *    call carrying both keys reads the fragment while `specPath` stays truthy.
+ * 2. A slug is resolvable — frontmatter first, else the filename with `.md` and
+ *    any `NNN-` prefix stripped, which is `slugOfRecord`'s rule.
+ * 3. That slug is kebab-case. The slug becomes a FILENAME, so this fails closed
+ *    exactly as the `metrics` tool does before joining a path. It also makes the
+ *    step-1.5 skeleton unreachable rather than merely forbidden: an unfilled
+ *    template still carries `{kebab-case-slug}`, which the pattern rejects.
+ * 4. The verdict is not FAIL. A `shipped` or `superseded` spec, or a tampered
+ *    contract, is work that is over; minting a record for one fills the series'
+ *    `empty` bucket with the opposite of what it measures.
+ *
+ * Fail-open, and the catch stays HERE rather than inside the shared module: the
+ * verdict above is already computed, nothing below can reach it, and that is a
+ * property a reader can check by reading these lines alone.
+ */
+function ensureMetricsRecord(
+  env: ServerEnv,
+  projectRoot: string,
+  diskPath: string | null,
+  frontmatter: Record<string, string>,
+  verdict: string,
+): void {
+  if (!diskPath || verdict === "FAIL") return;
+  // Frontmatter first; the filename is the fallback. `slugOfRecord` strips one
+  // leading `<digits>-` group, which is the spec-number convention — but a
+  // date-named file (`2026-09-04-thing.md`) loses only its year and yields
+  // `09-04-thing`, a slug that is kebab-case and WRONG. A record under it would
+  // be joined by nothing, and the roll-up would later mint a second file under
+  // the real slug. So a fallback that still leads with a numeric group is
+  // refused: writing nothing here costs an `empty` row, writing the wrong name
+  // costs the join.
+  const declared = (frontmatter.slug ?? "").trim();
+  const slug = declared || slugOfRecord(diskPath);
+  if (!SLUG_RE.test(slug)) return;
+  if (!declared && /^\d+-/.test(slug)) return;
+  try {
+    ensureRecordForSpec(env, projectRoot, slug, diskPath);
+  } catch {
+    // fail-open by design — see above
+  }
 }
 
 /** The two terminal states: the work is done, and re-executing it is a mistake. */

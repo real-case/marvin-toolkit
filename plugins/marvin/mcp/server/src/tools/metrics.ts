@@ -4,14 +4,8 @@ import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mc
 import type { MetricEvent, MetricsSeries, TaskMetrics } from "@marvin-toolkit/mcp-shared/contracts";
 import { projectConfigPath, projectScopedDir, type ServerEnv } from "../lib/env.js";
 import { inGitRepo, isIgnored } from "../lib/git.js";
-import {
-  collectRollupInputs,
-  collectSeriesRecords,
-  findSpecBySlug,
-  readShippedSpecs,
-  relFromRoot,
-} from "../lib/metrics-collect.js";
-import { rollUpMetrics } from "../lib/metrics-rollup.js";
+import { collectSeriesRecords, readShippedSpecs, relFromRoot } from "../lib/metrics-collect.js";
+import { performRollup, recordPathFor } from "../lib/metrics-record.js";
 import {
   SERIES_METRICS,
   aggregateSeries,
@@ -34,16 +28,15 @@ import {
   SLUG_RE,
   TERMINAL_VERDICTS,
   appendMetricEvent,
-  appendTaskMetrics,
-  findRecord,
-  metricsRecordPath,
   readRecord,
-  recordBasenameForSpec,
 } from "../storage/metrics.js";
 
 /**
- * The `metrics` tool (ADR-0043) — the one writer of `.marvin/metrics/`, the
- * fourteenth tool. Three actions:
+ * The `metrics` tool (ADR-0043) — the fourteenth tool, and one of three callers
+ * of the `.marvin/metrics/` writer. Since ADR-0044 the `spec` seal gate creates
+ * the record and the `verify` delivery gate appends the terminal block on ALLOW;
+ * all three go through `lib/metrics-record.ts`, which owns the filename rule.
+ * Three actions:
  *
  * - `record` appends one live ` ```json metric-event ` block for exactly the
  *   information that context compaction would otherwise destroy — a fix-cycle
@@ -216,24 +209,7 @@ function runMetrics(input: MetricsInput, env: ServerEnv): ToolResult {
   }
   return input.action === "record"
     ? recordEvent(input, slug, projectRoot, dir, config.spec)
-    : rollup(input, env, slug, projectRoot, dir, config);
-}
-
-/**
- * The record's path for a slug: an existing record first (so a slug never gets
- * two files), else the spec's own basename (ADR-0043 §1), else `<slug>.md` for
- * a record written against a draft the corpus cannot yet see.
- */
-function recordPathFor(
-  dir: string,
-  slug: string,
-  projectRoot: string,
-  specConfig: SpecConfig | undefined,
-): string {
-  const existing = findRecord(dir, slug);
-  if (existing) return existing;
-  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
-  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+    : rollup(input, env, slug, projectRoot, config);
 }
 
 const EVENT_FIELDS = [
@@ -315,27 +291,17 @@ function rollup(
   env: ServerEnv,
   slug: string,
   projectRoot: string,
-  dir: string,
   config: Config,
 ): ToolResult {
-  const base = input.base?.trim() || config.base_branch;
-  const inputs = collectRollupInputs(
+  // One writer for all three anchors (ADR-0044): this action, the seal gate and
+  // the delivery gate go through the same path rule and the same append.
+  const { block, record, terminalBlocks, ignored } = performRollup({
     env,
     projectRoot,
-    config.spec,
+    config,
     slug,
-    base,
-    new Date().toISOString(),
-  );
-  const block = rollUpMetrics(inputs);
-
-  const path = recordPathFor(dir, slug, projectRoot, config.spec);
-  appendTaskMetrics(path, block);
-  const record = relFromRoot(path, projectRoot);
-  const terminalBlocks = readRecord(path).terminal.length;
-  // A host project with a blanket `.marvin/` exclusion learns at the FIRST
-  // roll-up that its series is not being committed, rather than never.
-  const ignored = inGitRepo(projectRoot) ? isIgnored(record, projectRoot) : null;
+    base: input.base,
+  });
 
   const payload = {
     action: "rollup",
@@ -447,7 +413,7 @@ function renderSeries(a: MetricsSeries): string {
       "",
       filters.length
         ? "_No rolled-up record matches the filters._"
-        : "_No metrics records yet — the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._",
+        : "_No metrics records yet — the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._",
     );
     return lines.join("\n");
   }
@@ -456,7 +422,7 @@ function renderSeries(a: MetricsSeries): string {
       ? "no spec corpus to compare against"
       : `the series covers ${c.shipped_with_record} of ${c.shipped_specs} shipped spec(s)`;
   lines.push(
-    `**Coverage:** ${c.records} record(s) · ${c.rolled_up} rolled up · ${c.events_only} recorded but not rolled up · ${coverage}`,
+    `**Coverage:** ${c.records} record(s) · ${c.rolled_up} rolled up · ${c.events_only} recorded but not rolled up · ${c.empty} started but empty · ${coverage}`,
     "",
     "Each metric is computed over the records where it is present (`n`); an absent source is never counted as zero.",
   );

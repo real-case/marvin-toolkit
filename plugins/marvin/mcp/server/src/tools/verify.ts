@@ -22,6 +22,7 @@ import {
   resolveOracleCommand,
   type OracleRun,
 } from "../storage/oracles.js";
+import { performRollup } from "../lib/metrics-record.js";
 import { recordVerifyRun, type VerifyRunEntry } from "../storage/verify-runs.js";
 import {
   SpecContract,
@@ -290,6 +291,8 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
       specSlug: input.specSlug,
       allowStale: input.allowStale,
       specConfig: config.spec,
+      env,
+      config,
     });
   }
 
@@ -1035,6 +1038,54 @@ function runsDirOf(projectRoot: string): string {
 }
 
 /**
+ * Roll the task's metrics up at delivery, FAIL-OPEN (ADR-0044).
+ *
+ * Returns the line to add to the answer, or null when nothing was written. The
+ * catch stays here rather than in the shared module for the reason
+ * `journalVerifyEntry` gives: the decision is already made above, and a write
+ * that throws — an unwritable directory, a full disk — must not reach it.
+ *
+ * The line is deterministic for a given tree: a path, and a boolean. It carries
+ * no count and no timestamp, so two consecutive calls produce identical text
+ * even though the second one appended a second terminal block.
+ */
+function rollUpForDelivery(
+  projectRoot: string,
+  slug: string,
+  env: ServerEnv,
+  config: Config,
+): string | null {
+  try {
+    const { record, ignored } = performRollup({ env, projectRoot, config, slug });
+    return ignored
+      ? `**Metrics:** \`${record}\` — ⚠️ git IGNORES this record, so the series is not being ` +
+          "committed. Add `!.marvin/metrics/` after `.marvin/*` in `.gitignore`."
+      : `**Metrics:** \`${record}\``;
+  } catch {
+    return null; // fail-open by design — see above
+  }
+}
+
+/**
+ * Add one line after the machine-readable block, leaving that block untouched.
+ *
+ * `gateResult` returns exactly one text part, so the first branch is the only
+ * one taken today. The fallback APPENDS a part rather than dropping the note:
+ * this line is the only place a host project is told its series is ignored, and
+ * losing it silently is the failure this whole change exists to remove.
+ */
+function withNote(answer: ToolResult, note: string): ToolResult {
+  const first = answer.content[0];
+  if (first?.type === "text") {
+    return {
+      ...answer,
+      content: [{ ...first, text: `${first.text}\n\n${note}` }, ...answer.content.slice(1)],
+    };
+  }
+  return { ...answer, content: [...answer.content, { type: "text", text: note }] };
+}
+
+/**
  * Append one entry to the verification-run journal, FAIL-OPEN (ADR-0043 §3). A
  * write that throws — a read-only directory, a full disk — is swallowed here, so
  * the journal can never change a verdict or a delivery decision: it is evidence
@@ -1385,7 +1436,14 @@ function renderMarkdown(o: {
  */
 function deliverGate(
   projectRoot: string,
-  opts: { specSlug?: string; allowStale: boolean; specConfig?: SpecConfig },
+  opts: {
+    specSlug?: string;
+    allowStale: boolean;
+    specConfig?: SpecConfig;
+    /** ADR-0044: the delivery gate is the terminal block's writer. */
+    env: ServerEnv;
+    config: Config;
+  },
 ): ToolResult {
   const { allowStale } = opts;
   // The gate must judge THIS task's proof: prefer the per-spec run when a valid
@@ -1435,6 +1493,19 @@ function deliverGate(
         red_green: extra.redGreen ?? "unknown",
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/"),
       });
+    }
+    // The terminal metrics block (ADR-0044). ALLOW only: `rolled_up` is what the
+    // series counts as tasks DELIVERED, so writing one for a refused delivery
+    // would make coverage overstate what shipped. A refusal is not lost — the
+    // journal entry above records every decision, including this one.
+    //
+    // Written BESIDE the answer, exactly as the journal is. The note goes into
+    // the markdown and never through `reason`, which `gateResult` serialises
+    // into the `deliver-gate` block: routing it there would look like the
+    // obvious implementation and would break the block's byte-stability.
+    if (slug && decision === "ALLOW") {
+      const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
+      if (note) return withNote(answer, note);
     }
     return answer;
   };

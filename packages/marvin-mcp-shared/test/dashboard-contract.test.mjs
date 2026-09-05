@@ -222,6 +222,7 @@ test("DashboardState accepts the metrics summary (ADR-0043 §5) and rejects a ma
     metrics: {
       records: 3,
       rolled_up: 2,
+      empty: 0,
       newest: { slug: "add-pagination", rolled_up_at: "2026-09-03T12:00:00.000Z" },
       median_active_ms: 900000,
       median_spec_gaps: 1,
@@ -235,6 +236,7 @@ test("DashboardState accepts the metrics summary (ADR-0043 §5) and rejects a ma
       metrics: {
         records: 0,
         rolled_up: 0,
+        empty: 0,
         newest: null,
         median_active_ms: null,
         median_spec_gaps: null,
@@ -249,6 +251,7 @@ test("DashboardState accepts the metrics summary (ADR-0043 §5) and rejects a ma
       metrics: {
         records: 1,
         rolled_up: 1,
+        empty: 0,
         newest: { rolled_up_at: "x" },
         median_active_ms: null,
         median_spec_gaps: null,
