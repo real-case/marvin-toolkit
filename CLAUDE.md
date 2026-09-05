@@ -345,7 +345,14 @@ node scripts/mcp-call.mjs --list                              # enumerate regist
 node scripts/mcp-call.mjs handoff '{"action":"list"}'         # call a tool; prints text + structuredContent
 MARVIN_HANDOFF_DIR=/tmp/fix node scripts/mcp-call.mjs handoff '{"action":"list"}'   # point storage at a fixture
 node scripts/mcp-call.mjs task '{"action":"create","type":"bug"}' --accept '{"title":"demo"}'  # drive an elicitation
+node scripts/mcp-call.mjs verify '{"action":"run"}' --timeout 1800000   # widen the budget for a slow tool
 ```
+
+The whole exchange is bounded by one budget: `--timeout <ms>` beats
+`MARVIN_MCP_CALL_TIMEOUT_MS` beats a default of 900000 (15 minutes). The default is
+generous because `verify` shells out to the project's real gates and takes minutes;
+nothing is lost by it, because a server that crashes on startup is reported the moment
+it exits rather than at the end of the budget.
 
 ## Adding a new prompt
 
