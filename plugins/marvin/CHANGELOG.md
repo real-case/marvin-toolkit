@@ -4,6 +4,20 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.23.1] — 2026-09-05
+
+### Fixed
+
+- **A `stack` hint no longer forces gates the project cannot run.** `verify` accepts a `stack` id to
+  skip re-detection in a chained call, and `/marvin:task-implement` passes one straight from the
+  spec's frontmatter. The hint bypassed the named detector's own precondition, so a workspace repo
+  that keeps its `tsconfig.json` files per package — with no root one — was handed the TypeScript
+  table and ran `npx tsc --noEmit` from the root. tsc printed its usage text and exited 1, failing
+  the whole verification on a clean tree for a reason unrelated to the change under test, and
+  blocking `/marvin:task-deliver`. A hint is now honoured only when its detector actually matches
+  the project; a mismatched hint is ignored and normal detection runs, exactly as an unrecognised
+  one already was. A project whose detector does match is unaffected.
+
 ## [0.23.0] — 2026-09-04
 
 A metrics record stopped depending on a session issuing a prose-instructed call. The two gates the
