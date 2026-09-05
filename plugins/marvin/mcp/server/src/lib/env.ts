@@ -53,6 +53,16 @@ export interface ServerEnv {
    * isolation.
    */
   reportDir: string;
+  /**
+   * Directory where the task-metrics records live (default `.marvin/metrics`,
+   * ADR-0043) — one `<NNN>-<slug>.md` per spec, named after the spec's own
+   * file, written by the `metrics` tool. COMMITTED by design: the repository's
+   * `.gitignore` negates it, and a host project is asked to do the same. No
+   * self-written `.gitignore`, for the reason `critiqueDir` gives: this is a
+   * shared record, and ignoring it is a project's choice, not a property of the
+   * directory. `MARVIN_METRICS_DIR` overrides it, chiefly for test isolation.
+   */
+  metricsDir: string;
 }
 
 /**
@@ -76,6 +86,22 @@ export function projectConfigPath(env: ServerEnv, projectRoot: string): string {
     : join(projectRoot, ".marvin", "config.json");
 }
 
+/**
+ * The same rule as {@link projectConfigPath}, for any startup-resolved directory:
+ * the startup value while the root is unchanged — which keeps the `MARVIN_*_DIR`
+ * overrides authoritative for the normal case and for the test isolation they
+ * exist for — and the target tree's own `.marvin/<name>` otherwise. `summary`
+ * applies it to receipts; the `metrics` tool applies it to receipts and records.
+ */
+export function projectScopedDir(
+  env: ServerEnv,
+  projectRoot: string,
+  startupDir: string,
+  name: string,
+): string {
+  return projectRoot === env.projectDir ? startupDir : join(projectRoot, ".marvin", name);
+}
+
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const tasksDir = env.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "track");
@@ -86,6 +112,7 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const critiqueDir = env.MARVIN_CRITIQUE_DIR ?? join(projectDir, ".marvin", "critique");
   const usageDir = env.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
   const reportDir = env.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
+  const metricsDir = env.MARVIN_METRICS_DIR ?? join(projectDir, ".marvin", "metrics");
   return {
     projectDir,
     tasksDir,
@@ -96,5 +123,6 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
     critiqueDir,
     usageDir,
     reportDir,
+    metricsDir,
   };
 }

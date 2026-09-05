@@ -8,6 +8,7 @@ import type {
   DashboardHandoff,
   DashboardSpec,
   DashboardState,
+  MetricsSummary,
   TaskCard,
   UsageSummary,
   UsageTopEntry,
@@ -16,6 +17,8 @@ import type {
 import type { ServerEnv } from "../lib/env.js";
 import { loadConfig, type LoadedConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
+import { listRecords } from "../storage/metrics.js";
+import { fmtMs, summarizeSeries, toSeriesRecords } from "../lib/metrics-series.js";
 import { ADR_STATUSES, readAdrCorpus, resolveAdrDir, type AdrStatus } from "../storage/adr.js";
 import { resolveSpecDir } from "../storage/spec.js";
 import { orderedStatuses } from "../storage/schema.js";
@@ -52,6 +55,7 @@ const SECTION_ORDER = [
   "artifacts",
   "adr",
   "lessons",
+  "metrics",
   "usage",
   "commands",
 ] as const;
@@ -72,7 +76,7 @@ export function buildDashboardTool(env: ServerEnv, version: string): AnyToolDef 
       "handoffs with their age, audit findings by severity for the newest security and refactor " +
       "report, artifact inventories with freshness (task specs + verification.md age, handoffs), " +
       "lessons statistics, the " +
-      "ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. " +
+      "ADR corpus by status, the task-metrics series in one line (ADR-0043), and the local usage summary when .marvin/usage/events.jsonl exists. " +
       'Answers "what state is the toolbox in?" — the command index stays on the `help` tool. Pass ' +
       `\`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always ` +
       "carries the full DashboardState. Works on a fresh project — missing directories render as " +
@@ -110,6 +114,11 @@ function renderDashboard(
   const specDir = resolveSpecDir(env.projectDir, config.spec);
   const artifacts = { ...artifactCounts(env, specDir), verification };
   const lessons = lessonsStats(env.memoryDir);
+  // The task-metrics series in one line (ADR-0043 §5) — every record under the
+  // metrics directory, the roll-ups among them, the newest, and two medians.
+  // Q11 is not read here: it costs a `gh` round-trip per record and belongs to
+  // `/marvin:task-metrics`, not to a dashboard render.
+  const metrics: MetricsSummary = summarizeSeries(toSeriesRecords(listRecords(env.metricsDir)));
   const adrDir = resolveAdrDir(env.projectDir, config.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env.projectDir);
@@ -189,6 +198,7 @@ function renderDashboard(
         ? `- ${lessons.total} lesson(s) — ${nonZero(lessons.by_type).join(" · ")}`
         : "- _No lessons captured yet in `.marvin/memory`._",
     ],
+    metrics: ["## Metrics", ...renderMetrics(metrics)],
     usage: [
       "## Usage",
       ...(usage === null
@@ -236,6 +246,7 @@ function renderDashboard(
     command_groups: groups,
     adr,
     lessons,
+    metrics,
     ...(usage ? { usage } : {}),
     servers,
     current_tasks: currentTasks,
@@ -391,6 +402,28 @@ function renderAuditArea(
     ...(area.newest_report ? [`\`${area.newest_report}\``] : []),
     ...(area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]),
   ].join(" · ");
+}
+
+/**
+ * The task-metrics series in one line (ADR-0043 §5). The zero state names the
+ * command that writes the first record, because a fresh project has none and
+ * that is not a defect.
+ */
+function renderMetrics(m: MetricsSummary): string[] {
+  if (m.records === 0) {
+    return [
+      "- _No metrics records yet — the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._",
+    ];
+  }
+  // `empty` sits beside the total on purpose (ADR-0044): the seal anchor creates
+  // a record per started run, so a bare record count reads as "tasks measured"
+  // while counting files nothing has written to.
+  const parts = [`${m.records} record(s)`, `${m.rolled_up} rolled up`];
+  if (m.empty > 0) parts.push(`${m.empty} started but empty`);
+  if (m.newest) parts.push(`newest \`${m.newest.slug}\` (${m.newest.rolled_up_at.slice(0, 10)})`);
+  if (m.median_active_ms !== null) parts.push(`median active time ${fmtMs(m.median_active_ms)}`);
+  if (m.median_spec_gaps !== null) parts.push(`spec gaps per task ${m.median_spec_gaps}`);
+  return [`- ${parts.join(" · ")}`, "- Full series: `/marvin:task-metrics`"];
 }
 
 function renderUsage(usage: UsageSummary): string[] {

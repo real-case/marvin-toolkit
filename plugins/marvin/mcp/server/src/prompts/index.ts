@@ -141,7 +141,7 @@ export const PROMPTS: PromptDef[] = [
     name: "help",
     description:
       "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the dashboard verbatim — reproduce the fenced banner block exactly, do not summarise or add preamble.",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -249,6 +249,12 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons and links.",
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble — call the tool and present its result.",
+  },
+  {
+    name: "task-metrics",
+    description:
+      "Aggregate the task-metrics series under .marvin/metrics — time, quality and rework per delivered task, with a coverage line — or show one task's record in full.",
+    body: 'Invoke the `metrics` MCP tool from the `marvin` server with `action: "series"`. If the user named a spec slug, pass it as `slug` to render that task\'s record in full; if they named a task type (feature or bugfix) pass it as `type`; if they named a date pass it as `since` (YYYY-MM-DD). Otherwise call it with `action: "series"` alone. Do not add preamble — call the tool and present its result, leading with the coverage line, which says how much of the shipped corpus the series covers.',
   },
   {
     name: "task-audit",

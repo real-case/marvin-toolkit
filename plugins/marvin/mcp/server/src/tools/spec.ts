@@ -30,8 +30,14 @@ import {
   resumeState,
   type ProgressEntry,
 } from "../storage/progress.js";
+import { ensureRecordForSpec } from "../lib/metrics-record.js";
+import { slugOfRecord } from "../storage/metrics.js";
 import { loadConfig } from "../storage/config.js";
-import { git, inGitRepo } from "../lib/git.js";
+import {
+  changedFilesForScope,
+  inGitRepo,
+  normalizeScopePath as normalizePath,
+} from "../lib/git.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
@@ -217,7 +223,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
@@ -263,6 +269,11 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
   }
 
   let raw: string;
+  // The path this call actually READ, not the one it was given. Both keys may
+  // legally arrive together, and inline content then wins — so a guard written
+  // as `if (input.specPath)` would name a record after a file it never opened.
+  // Null keeps the seal anchor below out of every inline case by construction.
+  let diskPath: string | null = null;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
   } else if (input.specPath) {
@@ -271,11 +282,12 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
       return result("FAIL", null, [fail("input", "Input", `spec file not found: ${path}`)]);
     }
     raw = readFileSync(path, "utf8");
+    diskPath = path;
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
 
-  if (action === "seal") return verifySeal(raw);
+  if (action === "seal") return verifySeal(raw, env, projectRoot, diskPath);
   if (action === "scope") {
     return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
@@ -310,7 +322,12 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
  * lets the two coexist: the previous shape could not express "tampered AND
  * shipped", and `computeVerdict` reduces every single-check case identically.
  */
-function verifySeal(raw: string): ToolResult {
+function verifySeal(
+  raw: string,
+  env: ServerEnv,
+  projectRoot: string,
+  diskPath: string | null,
+): ToolResult {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const sealed = (frontmatter.contract_sha ?? "").trim();
@@ -344,7 +361,59 @@ function verifySeal(raw: string): ToolResult {
         );
 
   const checks = [sealCheck, statusCheck];
-  return result(computeVerdict(checks), type, checks, actual);
+  const verdict = computeVerdict(checks);
+  ensureMetricsRecord(env, projectRoot, diskPath, frontmatter, verdict);
+  return result(verdict, type, checks, actual);
+}
+
+/**
+ * The seal anchor (ADR-0044): a task that reaches execution gets its metrics
+ * record here, so a run abandoned before delivery is still visible in the
+ * series instead of leaving nothing behind.
+ *
+ * Four conditions, and each one is a defect this would otherwise have:
+ *
+ * 1. The spec was READ FROM DISK. An inline `specContent` names no spec, and a
+ *    call carrying both keys reads the fragment while `specPath` stays truthy.
+ * 2. A slug is resolvable — frontmatter first, else the filename with `.md` and
+ *    any `NNN-` prefix stripped, which is `slugOfRecord`'s rule.
+ * 3. That slug is kebab-case. The slug becomes a FILENAME, so this fails closed
+ *    exactly as the `metrics` tool does before joining a path. It also makes the
+ *    step-1.5 skeleton unreachable rather than merely forbidden: an unfilled
+ *    template still carries `{kebab-case-slug}`, which the pattern rejects.
+ * 4. The verdict is not FAIL. A `shipped` or `superseded` spec, or a tampered
+ *    contract, is work that is over; minting a record for one fills the series'
+ *    `empty` bucket with the opposite of what it measures.
+ *
+ * Fail-open, and the catch stays HERE rather than inside the shared module: the
+ * verdict above is already computed, nothing below can reach it, and that is a
+ * property a reader can check by reading these lines alone.
+ */
+function ensureMetricsRecord(
+  env: ServerEnv,
+  projectRoot: string,
+  diskPath: string | null,
+  frontmatter: Record<string, string>,
+  verdict: string,
+): void {
+  if (!diskPath || verdict === "FAIL") return;
+  // Frontmatter first; the filename is the fallback. `slugOfRecord` strips one
+  // leading `<digits>-` group, which is the spec-number convention — but a
+  // date-named file (`2026-09-04-thing.md`) loses only its year and yields
+  // `09-04-thing`, a slug that is kebab-case and WRONG. A record under it would
+  // be joined by nothing, and the roll-up would later mint a second file under
+  // the real slug. So a fallback that still leads with a numeric group is
+  // refused: writing nothing here costs an `empty` row, writing the wrong name
+  // costs the join.
+  const declared = (frontmatter.slug ?? "").trim();
+  const slug = declared || slugOfRecord(diskPath);
+  if (!SLUG_RE.test(slug)) return;
+  if (!declared && /^\d+-/.test(slug)) return;
+  try {
+    ensureRecordForSpec(env, projectRoot, slug, diskPath);
+  } catch {
+    // fail-open by design — see above
+  }
 }
 
 /** The two terminal states: the work is done, and re-executing it is a mistake. */
@@ -1092,22 +1161,10 @@ function verifyScope(
   ]);
 }
 
-/** git diff (vs `base`, default HEAD) + untracked, normalised and de-duped. */
-function changedFilesForScope(projectRoot: string, base: string | undefined): string[] {
-  const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
-  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
-  const lines = [
-    ...(diff.ok ? diff.value.split("\n") : []),
-    ...(untracked.ok ? untracked.value.split("\n") : []),
-  ];
-  return [...new Set(lines.map(normalizePath).filter(Boolean))];
-}
-
-/** Normalise a path for comparison: posix separators, no leading `./`. */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-}
+// `changedFilesForScope` and `normalizePath` moved to `lib/git.ts` (ADR-0043):
+// the metrics roll-up computes scope drift over the same file set this gate
+// judges, and two copies of "what changed" would drift the first time either
+// was touched.
 
 /** Make `p` relative to `root` when it is an absolute path under it. */
 function relativeToRoot(p: string, root: string): string {
@@ -1511,7 +1568,7 @@ function checkContractField(c: SpecContract): Check {
  * criterion carries a non-prose-review proof. Shape only — the critic still
  * judges whether a proof is genuine.
  */
-function checkGraph(c: SpecContract): Check[] {
+export function checkGraph(c: SpecContract): Check[] {
   const checks: Check[] = [];
   const fileIds = new Set(c.files.map((f) => f.id.toUpperCase()));
   const acIds = new Set(c.criteria.map((cr) => cr.id.toUpperCase()));
@@ -1553,6 +1610,62 @@ function checkGraph(c: SpecContract): Check[] {
       ),
     );
   }
+
+  // 2b. The two directions must AGREE. `criteria[].implemented_by` and
+  //     `files[].satisfies` are one graph stored twice, and checks 1 and 2
+  //     validate each side alone: a criterion could name a file that denies it
+  //     and both would pass. Transposing one side and comparing is the whole
+  //     check, and it removes a finding class the semantic critic was paying
+  //     minutes to catch by hand.
+  //
+  //     A file row that declares NO `satisfies` (absent, or "none"/"—", which
+  //     `refs` erases alike) declares no index and is exempt: an absent index is
+  //     not a contradicting one, and infra rows legitimately carry none. Only
+  //     edges whose endpoints both exist are compared — a dangling ref is
+  //     already check 1's or check 2's finding, and reporting it twice would
+  //     send the author to the wrong side of the graph.
+  //     Two rows may carry the same id — the schema does not forbid it, and no
+  //     check reports it — so the backward index is UNIONED rather than
+  //     overwritten. Overwriting would drop the first row's declarations and
+  //     report its edges as asymmetric, describing a duplicate id as the wrong
+  //     defect.
+  const declaredSatisfies = new Map<string, string[]>();
+  for (const f of c.files) {
+    const named = refs(f.satisfies);
+    if (!named.length) continue;
+    const id = f.id.toUpperCase();
+    declaredSatisfies.set(id, [...(declaredSatisfies.get(id) ?? []), ...named]);
+  }
+  const asymmetric: string[] = [];
+  for (const cr of c.criteria) {
+    const acId = cr.id.toUpperCase();
+    for (const fid of refs(cr.implemented_by)) {
+      const back = declaredSatisfies.get(fid);
+      if (back && !back.includes(acId)) {
+        asymmetric.push(`${acId}→${fid}, but ${fid} satisfies ${back.join("/")}`);
+      }
+    }
+  }
+  for (const f of c.files) {
+    const fid = f.id.toUpperCase();
+    for (const acId of refs(f.satisfies)) {
+      const cr = c.criteria.find((x) => x.id.toUpperCase() === acId);
+      if (!cr) continue;
+      const forward = refs(cr.implemented_by);
+      if (!forward.includes(fid)) {
+        asymmetric.push(`${fid}→${acId}, but ${acId} is implemented_by ${forward.join("/")}`);
+      }
+    }
+  }
+  checks.push(
+    asymmetric.length
+      ? fail(
+          "graph-symmetry",
+          "Traceability",
+          `implemented_by and satisfies disagree: ${asymmetric.join("; ")}`,
+        )
+      : pass("graph-symmetry", "Traceability", "the two directions of the graph agree"),
+  );
 
   // 3. build_order references real file IDs.
   if (c.build_order) {

@@ -19,12 +19,12 @@ import { importTs } from "./_tsload.mjs";
  * every copy of which is invalid.
  *
  * **The call-site ordering check is a line-ordering PROXY, and is stated as
- * one.** In `task-implement` the diff critic runs `run_in_background`, so a
- * receipt written at dispatch records a verdict that does not exist yet. This
- * file cannot execute the skill; it asserts instead that the first
- * `.marvin/critique/` instruction appears below both the dispatch line and the
- * merge-point line. That is weaker than proving the ordering and it catches the
- * one error that produces a receipt recording nothing.
+ * one.** In `task-implement` a receipt written at dispatch records a verdict
+ * that does not exist yet. This file cannot execute the skill; it asserts
+ * instead that the first `.marvin/critique/` instruction appears below both the
+ * dispatch line and the line where the verdict is read back. That is weaker
+ * than proving the ordering and it catches the one error that produces a
+ * receipt recording nothing.
  *
  * The second half is behavioural: the delivery gate must not move when a
  * BLOCK receipt is present. **The fixture is chosen so the gate would otherwise
@@ -120,16 +120,19 @@ test("the four call sites write the receipt, and task-implement writes it after 
   }
 
   // The ordering proxy (see the file header): the first receipt instruction in
-  // task-implement sits below the background dispatch AND below the merge point.
-  const dispatch = taskImplement.indexOf("run_in_background");
-  const mergePoint = taskImplement.indexOf("**Merge point.**");
+  // task-implement sits below the dispatch AND below the verdict it records.
+  const dispatch = taskImplement.indexOf("**Dispatch the critic — once.**");
+  const criticResult = taskImplement.indexOf("**Critic result:**");
   const firstReceipt = taskImplement.indexOf(".marvin/critique/");
-  assert.ok(dispatch > 0 && mergePoint > 0, "the 6F dispatch/merge-point anchors moved");
+  assert.ok(dispatch > 0 && criticResult > 0, "the 6F dispatch/critic-result anchors moved");
   assert.ok(
     firstReceipt > dispatch,
     "task-implement instructs the receipt at or before dispatch, where no verdict exists yet",
   );
-  assert.ok(firstReceipt > mergePoint, "task-implement instructs the receipt before the join");
+  assert.ok(
+    firstReceipt > criticResult,
+    "task-implement instructs the receipt before the verdict is read back",
+  );
 });
 
 // ── the no-veto property, asserted where a receipt could have changed it ─────

@@ -72,6 +72,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
   "task-verify": "Run the project quality gates",
   "task-deliver": "Commit and open a PR",
   "task-summary": "Delivery digest for a task",
+  "task-metrics": "Time, quality and rework across tasks",
   "task-audit": "Lint the whole spec corpus",
   // sec
   "sec-scan": "Full OWASP Top-10 audit",
@@ -173,6 +174,8 @@ export const COMMAND_DETAILS: Record<string, string> = {
   "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
   "task-summary":
     "Summarise what a task delivered — acceptance criteria vs verification, commits, lessons, and links.",
+  "task-metrics":
+    "Aggregate the task-metrics series under .marvin/metrics/ — intake, implementation and time-to-green, scope drift, oracle strength, critic verdicts, spec gaps and fix rounds per delivered task, with a coverage line — or show one task's record in full.",
   "task-audit":
     "Read-only consistency lint of the spec corpus — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
   // sec
@@ -246,6 +249,7 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   // task
   "task-start": "/marvin:task-start add pagination",
   "task-summary": "/marvin:task-summary add-pagination",
+  "task-metrics": "/marvin:task-metrics since 2026-09-01",
   "task-audit": "/marvin:task-audit errors only",
   // sec
   "sec-threat-model": "/marvin:sec-threat-model upload flow",
@@ -429,6 +433,12 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, summarize what this task delivered",
     "marvin, give me the delivery digest",
     "marvin, recap the task's acceptance criteria",
+  ],
+  "task-metrics": [
+    "marvin, show the task metrics",
+    "marvin, how long do tasks take through the pipeline?",
+    "marvin, where does the time go in a task?",
+    "marvin, how many spec gaps per task?",
   ],
   "task-audit": [
     "marvin, audit the specs",

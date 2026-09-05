@@ -185,6 +185,50 @@ export function hashObjects(paths: string[], cwd?: string): string[] | null {
   return ids.length === paths.length ? ids : null;
 }
 
+/**
+ * The files a task changed: `git diff --name-only <base>` (default `HEAD`, i.e.
+ * uncommitted changes) plus untracked non-ignored paths, normalised to POSIX
+ * separators without a leading `./`, de-duplicated. A failed read contributes
+ * nothing rather than failing the caller — the scope gate treats a repository
+ * with no readable diff as one with no changes to judge.
+ *
+ * Two callers share it and must see the same set (ADR-0043): the scope gate in
+ * `tools/spec.ts` (is the change inside the contract allowlist?) and the metrics
+ * roll-up (which changed files did the contract not declare? — Q1). Declared
+ * here so the two can never drift.
+ */
+export function changedFilesForScope(projectRoot: string, base: string | undefined): string[] {
+  const ref = base && base.trim() ? base.trim() : "HEAD";
+  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
+  const lines = [
+    ...(diff.ok ? diff.value.split("\n") : []),
+    ...(untracked.ok ? untracked.value.split("\n") : []),
+  ];
+  return [...new Set(lines.map(normalizeScopePath).filter(Boolean))];
+}
+
+/** Normalise a path for scope comparison: POSIX separators, no leading `./`, trimmed. */
+export function normalizeScopePath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+
+/** Does `ref` resolve to a commit in this repository? Null outside a repository. */
+export function refExists(ref: string, cwd?: string): boolean {
+  return git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], cwd).ok;
+}
+
+/**
+ * Is `path` excluded by the repository's ignore rules? `git check-ignore` exits 0
+ * when it is, 1 when it is not, and 128 outside a repository or on a bad path —
+ * the last is null, so a caller can say "unknown" instead of guessing.
+ */
+export function isIgnored(path: string, cwd?: string): boolean | null {
+  const r = git(["check-ignore", "-q", "--", path], cwd);
+  if (r.ok) return true;
+  return r.code === 1 ? false : null;
+}
+
 export function hasUncommittedChanges(cwd?: string): boolean {
   const r = git(["status", "--porcelain"], cwd);
   return r.ok && r.value.length > 0;

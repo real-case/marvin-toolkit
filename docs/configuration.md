@@ -15,7 +15,8 @@ makes them easy to include in or exclude from version control as a unit.
 | Path | Written by | Contents |
 | ---- | ---------- | -------- |
 | `.marvin/task/` | The `task-*` pipeline | Immutable specs and the current `verification.md`. |
-| `.marvin/task/runs/` | The `verify` and `spec` tools | What each spec's own runs recorded: whether the gates passed, whether its acceptance oracles went red then green, and how far an interrupted intake or implementation run got before it stopped. That last one is what a resumed session recovers instead of starting the dialogue over. Nothing here is edited by hand. |
+| `.marvin/task/runs/` | The `verify` and `spec` tools | What each spec's own runs recorded: whether the gates passed, whether its acceptance oracles went red then green, and how far an interrupted intake or implementation run got before it stopped, and how many verification runs and delivery-gate decisions it took to get there (`<slug>.verify.md`, append-only, because the run file itself is overwritten by every run). The progress record is what a resumed session recovers instead of starting the dialogue over; the run journal is what the metrics roll-up reads. Nothing here is edited by hand. |
+| `.marvin/metrics/` | The `metrics` tool | One task-metrics record per spec, named after the spec file: live events appended during the run and a terminal block derived at delivery. Read back by `/marvin:task-metrics` and the dashboard's Metrics section. Meant to be committed — see [Committing `.marvin/` or ignoring it](#committing-marvin-or-ignoring-it). |
 | `.marvin/track/` | The `track-*` tracker | The task board as markdown files. |
 | `.marvin/security/` | The `sec-*` scanners | Scan, threat-model, compliance, and pentest reports. |
 | `.marvin/refactor/` | The `refactor-*` family | Findings registers and step plans. |
@@ -237,6 +238,7 @@ the rest exist mainly for test isolation, and each defaults to a subdirectory of
 | `MARVIN_CRITIQUE_DIR` | `.marvin/critique` | The critic receipts. |
 | `MARVIN_USAGE_DIR` | `.marvin/usage` | The local usage log. |
 | `MARVIN_REPORT_DIR` | `.marvin/report` | The triage baseline — local and self-ignoring, written only on a `snapshot`. |
+| `MARVIN_METRICS_DIR` | `.marvin/metrics` | The task-metrics records, one per spec. |
 | `MARVIN_HOOKS_DISABLED` | unset | Set to exactly `1` to disable both blocking hooks. Read by the hooks, not by the server. |
 
 `MARVIN_HOOKS_DISABLED` is the one variable in this table whose scope is a **session**
@@ -407,6 +409,7 @@ Whether to version the `.marvin/` directory depends on how you use each part of 
 - **Commit it for a team.** For a shared board, commit `.marvin/track/` and `.marvin/config.json` together so the tasks and their status vocabulary travel with the repository. Specs in `.marvin/task/` and lessons in `.marvin/memory/` are likewise team assets worth committing.
 - **Ignore the point-in-time artifacts.** Security reports in `.marvin/security/` and session handoffs in `.marvin/handoff/` are moments in time that most teams gitignore.
 - **Leave the usage log alone.** `.marvin/usage/` ignores itself, so it stays local regardless.
+- **Commit the metrics series.** `.marvin/metrics/` holds one record per delivered task and earns its value by accumulating, so it has to reach a clone; the pipeline runs in a worktree that is removed once the branch merges, and an ignored record disappears with it. Negate it after the blanket exclusion, and mind the pattern: `.marvin/*` followed by `!.marvin/metrics/`. A blanket `.marvin/` does not work — git does not descend into an excluded directory, so a negation beneath it is unreachable and silently does nothing. Keep Markdown out of your formatter as well (`**/*.md` in `.prettierignore`): a reflowed record is a rewritten record. The `rollup` answer reports the record as ignored until the negation is in place.
 
 Keep the board and its configuration together. Whichever location holds `.marvin/track/`
 should also hold `.marvin/config.json`, because task files store status keys that only

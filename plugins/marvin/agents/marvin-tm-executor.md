@@ -28,13 +28,15 @@ Read the spec's `type` field in the frontmatter:
 ## Feature Pipeline
 
 ```
-READ SPEC → IMPLEMENT → ( SELF-TEST ‖ SELF-REVIEW ) → merge → CREATE PR
+READ SPEC → IMPLEMENT → SELF-TEST → SELF-REVIEW → CREATE PR
                 ↑            |
                 └─ fix cycle ┘
 ```
 
-Self-test (quality gates) and self-review (diff-critic) are independent and slow — run them
-**concurrently** and merge both results before creating the PR.
+Self-test (quality gates) is deterministic and fast; self-review (diff-critic) is a model and about
+seven times slower. Run the gates **first** and dispatch the critic **once**, against a tree that is
+already green: a critic dispatched beside a verify that then fails reviews a tree the fix changes
+underneath it, and the mandatory re-review costs several times what the overlap saves.
 
 ### 1. Read Spec
 
@@ -61,20 +63,13 @@ If something is ambiguous:
 - Make the simplest reasonable choice
 - Record it as a SPEC GAP (you'll include it in the PR description)
 
-### 3. Self-Test ‖ Self-Review (concurrent)
-
-Self-test (quality gates) and self-review (diff-critic, §4) are independent and slow. **Start the
-diff-critic first (in the background), then run the gates** so the two overlap; merge both before
-the PR step.
+### 3. Self-Test, then Self-Review
 
 **Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
-`action: "scope"` (pass the spec path) before the merge point — it FAILs if any changed file is outside
+`action: "scope"` (pass the spec path) first — it FAILs if any changed file is outside
 the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
 re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
 unavailable.)
-
-**Launch the critic (background).** If Task-tool is available, dispatch `marvin-tm-diff-critic`
-(with `run_in_background`) with the spec path and diff range — see §4 for how to use its verdict.
 
 **Run the gates.**
 - **Preferred — the `verify` tool.** If the `marvin` MCP `verify` tool is available, call it
@@ -106,13 +101,25 @@ unavailable.)
 (`only: ["<gate>"]` with the tool, or that single command in fallback). This is the gate loop of the
 Fix-cycle Protocol (below) and it carries its own budget; after it, one final full pass. If the loop
 reaches its limit unresolved, proceed to PR as **draft** and record each surviving failure as a
-deferred or blocked item in Self-Review Notes. If a fix changed the diff, **re-run the critic
-against the final diff** — its earlier report is stale.
+deferred or blocked item in Self-Review Notes — and do not dispatch the critic, which has nothing
+stable to review. Any code change made after the green run — including one made to satisfy a critic
+blocker in §4 — invalidates it: re-run the affected gate, then one final full pass before the PR.
 
-### 4. Self-Review (merge point)
+**Then dispatch the critic — once.** With the gates green, if Task-tool is available, dispatch
+`marvin-tm-diff-critic` with the spec path, the diff range, **and**
+`git status --porcelain --untracked-files=all`. That last input is not optional: a new file is
+untracked, so no diff shows it, and a feature spec is mostly `action: new` rows — a diff alone can
+hide most of the change. See §4 for how to use its verdict. Record the dispatch first (ADR-0043), if
+the `marvin` MCP `metrics` tool is available: `action: "record"`, `kind: "critic-dispatch"`,
+`critic: "marvin-tm-diff-critic"`, `source: "marvin-tm-executor"`, `step: "§3"`, the spec's `slug`
+and `pass: 1` — incremented on a critic-loop re-dispatch, reused on a `NEEDS_CONTEXT` re-dispatch.
 
-Collect the `marvin-tm-diff-critic` result that was launched in the background in §3, together with
-the gate results, **before** creating the PR — never decide on one alone.
+### 4. Self-Review
+
+Collect the `marvin-tm-diff-critic` result dispatched at the end of §3, together with the gate
+results, **before** creating the PR — never decide on one alone. When the verdict is terminal,
+record it (ADR-0043): `metrics` tool, `kind: "critic-verdict"`, the same `critic` and `pass` as the
+dispatch, the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report.
 
 **Preferred path — the `marvin-tm-diff-critic` report:**
 
@@ -147,6 +154,22 @@ produced no critic verdict, so the Self-Review Notes' **Diff critic** line must 
 run is never silent in the PR.
 
 ### 5. Create PR
+
+#### 5.0 Roll up the metrics
+
+Before the commit, if the `metrics` tool is available, call it with `action: "rollup"` and the spec's
+`slug` (ADR-0043). It derives the task's terminal `task-metrics` block from the spec, the journals,
+the `verify-result` block, the receipts and git, and appends it to `.marvin/metrics/<NNN>-<slug>.md`;
+stage that file with the change in 5.1 so the record ships in the same commit and PR as the work. If
+the answer reports the record as IGNORED by `.gitignore`, say so in Self-Review Notes. The roll-up is
+a record, never a gate: if the tool is unavailable, skip it and continue.
+
+**This call stays here even though `/marvin:task-deliver` no longer makes it.** Since ADR-0044 the
+delivery gate writes the terminal block itself, and the interactive path only relays what it wrote —
+but **this agent never calls the delivery gate**: §3 runs `verify` in `mode: feature` and §5 commits
+and opens the pull request directly. So this is the only writer of a headless run's terminal block,
+and removing it to match `task-deliver` would leave every headless task unmeasured. The asymmetry is
+deliberate and `test/metrics-record.test.mjs` asserts both halves of it.
 
 #### 5.1 Commit
 
@@ -282,11 +305,13 @@ Run the regression test again. It **MUST pass** now.
 
 ### 6–8. Self-Test, Self-Review, Create PR
 
-Same as Feature Pipeline steps 3–5, with `mode: bug`: launch `marvin-tm-diff-critic` in the
-background and run the gates (via the `verify` tool, or inline-Bash fallback) **concurrently**;
-merge both before the PR. On a gate failure, retry only the failed gate under the Fix-cycle Protocol
-then a final full pass; if a fix changed the diff, **re-run the critic against the final diff** (its
-earlier report is stale); a critic `BLOCK` still gates delivery (PR opens as draft) and runs its own
+Same as Feature Pipeline steps 3–5, with `mode: bug` and in the same order: run the gates first
+(via the `verify` tool, or inline-Bash fallback), then dispatch `marvin-tm-diff-critic` **once**
+against the green tree, with the spec path, the diff range and
+`git status --porcelain --untracked-files=all`. On a gate failure, retry only the failed gate under
+the Fix-cycle Protocol then a final full pass, and dispatch the critic only once that is green; any
+later change — including one made for a critic blocker — invalidates the run and needs the affected
+gate re-run before the PR; a critic `BLOCK` still gates delivery (PR opens as draft) and runs its own
 fix-cycle budget; a `NEEDS_CONTEXT` earns exactly one re-dispatch carrying the input the critic
 named and stating that it is the re-dispatch (not a fix-cycle round), and a second one counts as
 `UNABLE`; an `UNABLE` is copied verbatim into Self-Review Notes, recorded on their `**Diff critic:**`
@@ -304,6 +329,11 @@ loop (§4), and the red-green loop (bugfix step 5). Two spent gate rounds do not
 budget, and the reverse holds too. A `NEEDS_CONTEXT` re-dispatch is **not** a round — it is a
 re-dispatch for missing input, not a retry of a failed attempt, and it has its own one-shot
 allowance.
+
+**Record every round** (ADR-0043). At the start of each round, before the fix, call the `metrics`
+tool (when available) with `action: "record"`, `kind: "fix-round"`, `source: "marvin-tm-executor"`,
+`step: "fix-cycle"`, the spec's `slug`, the `loop` (`verify-gate`, `critic` or `red-green`) and the
+`round` number. The count of rounds per loop exists nowhere else once the run ends.
 
 **Rounds 1–2 — retry the same path.** Read the failure, fix it, re-run only the thing that failed.
 Carry the feedback **verbatim** into the fix: the gate output, the critic's blocker text, the test's
@@ -334,7 +364,9 @@ Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 ```
 
 Silently dropping an open item is banned: a draft PR whose Self-Review Notes list nothing is an
-unreported failure, not a clean run.
+unreported failure, not a clean run. Record each classified item as well — `metrics` tool,
+`kind: "open-item"`, `classification: "deferred"` or `"blocked"`, and the item as a one-line
+`detail`.
 
 ---
 
@@ -351,7 +383,8 @@ Decision: {what you decided to do}
 Rationale: {why this was the minimal reasonable choice}
 ```
 
-3. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
+3. **Record it durably** (ADR-0043), when the `metrics` tool is available: `action: "record"`, `kind: "spec-gap"`, `source: "marvin-tm-executor"`, the current section as `step`, the spec's `slug`, and the situation as a one-line `detail` — never a credential, token or customer datum.
+4. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
 
 ---
 

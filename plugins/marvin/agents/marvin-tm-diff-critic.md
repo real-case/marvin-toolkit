@@ -42,6 +42,18 @@ The critic replaces neither Self-Test (tests/lint/build) nor the human reviewer 
   - `branch` (against merge-base with main: `git diff $(git merge-base HEAD main)...HEAD`)
   - Explicit range: `<base>..<head>`
 
+**A new file is untracked, and `git diff` does not show it.** A feature spec is mostly `action:
+new` rows, so the prescribed diff alone can hide the larger part of the change — one measured run
+showed 4 of the 17 contract files. Always enumerate the whole change set first:
+
+```
+git status --porcelain --untracked-files=all
+```
+
+Every `??` line is a file no diff will show you. Read those files directly (they are new, so the
+file *is* the diff), and judge them exactly as you judge a hunk. A review that silently skipped
+them is not a pass — say so, and name them.
+
 If no spec is provided, operate in "standalone mode" — skip coverage checks, keep quality checks.
 
 ## Workflow
@@ -50,9 +62,12 @@ If no spec is provided, operate in "standalone mode" — skip coverage checks, k
 
 In parallel:
 - Read the spec (Goal, the `spec-contract` block — `files` + `criteria`, Chosen Approach, Non-goals)
-- `git diff` to get the change set
-- `git diff --stat` to see the change surface at a glance
-- `CLAUDE.md` for project conventions
+- `git status --porcelain --untracked-files=all` — the **whole** change set, tracked and new
+- `git diff` for the tracked hunks; read every `??` path from the status listing as a whole file
+- `git diff --stat` to see the tracked change surface at a glance
+- `CLAUDE.md` for project conventions, and any entry under the host's own `.claude/skills/`
+  directory that the changed paths fall under — a project that ships skills states its binding
+  rules there, not only in `CLAUDE.md`
 
 ### 2. Build the change inventory
 
@@ -106,6 +121,9 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 
 ### 4. Emit structured report
 
+Read **Output budget** below before you write it: the budget is part of this contract, not a
+style note.
+
 ````markdown
 # Diff Critique: <branch or range>
 
@@ -116,24 +134,26 @@ Each finding is a warning unless the spec explicitly forbids the smell pattern.
 **Files changed:** <N> (<spec-aligned>/<spec-adjacent>/<out-of-scope>/<test>/<generated>)
 
 ## Coverage
-<per Acceptance Criterion: ✅ covered by <file:line> | ❌ no implementing change | ⚠️ test-only>
+<one line per Acceptance Criterion: ✅ covered by <file:line> | ❌ no implementing change | ⚠️ test-only>
 
 ## Blockers
-- **[category]** <finding>
-  - Evidence: <file:line, diff hunk>
-  - Suggested action: <remove | fix | move to separate PR>
+<every one of them, never truncated; or "none">
+
+- **[category]** <finding, one sentence> — <file:line>
+  Action: <remove | fix | move to separate PR>
 
 ## Warnings
-- **[category]** <finding>
-  - Evidence: <...>
+<one line each, at most 5; or "none">
+
+- **[category]** <finding, one sentence> — <file:line>
 
 ## Out-of-scope inventory
-<every out-of-scope change, so the author can decide keep-or-split>
+<one line per out-of-scope file, at most 10; or "none">
 
-- <file>: <one-line summary of change> — <why it's out of scope per spec>
+- <file>: <what changed> — <why it is out of scope per spec>
 
 ## Confirmations
-<non-obvious good choices worth noting — list or "none">
+<at most 3 lines; or "none">
 
 ## Inability
 <only for NEEDS_CONTEXT or UNABLE — omit this section entirely otherwise>
@@ -192,6 +212,33 @@ to say why.
 **Routing.** `NEEDS_CONTEXT` earns exactly **one** re-dispatch, carrying the input you named and marked as the re-dispatch; a second occurrence is treated as `UNABLE`. `UNABLE` is never treated as success — the caller records it verbatim in the PR's Self-Review Notes, on their **Diff critic** line, exactly as it records a critic that could not be dispatched at all.
 
 Note that "standalone mode" (no spec supplied, per **Input**) is not `NEEDS_CONTEXT`: it is a supported mode in which you drop coverage checks and keep the quality checks. Standalone mode has no spec, so `subject` would have nothing to hold: emit the two axes in the report as usual and **no receipt is written for the run**. Receipts come from the four spec-backed pipeline call sites (`/marvin:task-start` 8F/8B, `/marvin:task-implement` 6F/9B), never from a standalone dispatch.
+
+## Output budget
+
+**Your report is the latency.** An instrumented run measured six critic dispatches at 3,026
+seconds of wall clock against 79.6 seconds of tool execution: 97% of what a critique costs is
+writing the report, not reading the diff. So investigate as widely as the checklist asks — reads
+are nearly free — and then write the shortest report that carries the same decision.
+
+- **Blockers are never truncated**, and neither is **Coverage**: they are what the author acts on.
+- **At most 5 warnings** and **at most 10 out-of-scope lines**, one line each. If more survive,
+  keep the ones with the largest consequence and close the section with `+<n> further not listed`.
+- **At most 3 confirmations**, one line each.
+- **One line per finding**, plus one `Action:` line for a blocker. No paragraph, no pasted hunk:
+  cite `file:line` and let the author open it.
+- **Nothing outside the template.** No preamble, no account of your method, no file-by-file
+  narration of the diff, no closing summary.
+- **Target 400 words** for the whole report, excluding the ` ```json critic-verdict ` block.
+
+**On a re-dispatch** — the caller says so, and says what it changed — the caps tighten: report what
+still blocks, at most 2 warnings, and no confirmations.
+
+**Reasoning is not proof.** Where a finding turns on runtime behaviour you can only argue about —
+an ordering, a failure path, a state machine — say so in one clause and ask for the test rather
+than certifying the branch. The same instrumented run has the case: this critic reasoned through a
+write-failure sequence, concluded it was correct, and asked for the test as a warning; the test
+failed on its first run and exposed a data-loss bug. Nine lines of test settled in under a second
+what six minutes of reasoning got wrong.
 
 ## Guidelines
 

@@ -19,8 +19,8 @@ whichever suits the moment.
 - **`/<command>`.** Type the terse markdown slash command, such as `/commit` or `/sec-scan`.
 - **`/marvin:<command>`.** Type the namespaced MCP prompt, such as `/marvin:commit`, which the bundled server serves.
 
-The `track-*` group and seven read-side commands — `help`, `dashboard`, `reports`,
-`handoff-list`, `lessons`, `task-summary`, and `sec-report` — have no skill. For those, a chat
+The `track-*` group and eight read-side commands — `help`, `dashboard`, `reports`,
+`handoff-list`, `lessons`, `task-summary`, `task-metrics`, and `sec-report` — have no skill. For those, a chat
 phrase is served by Claude calling the underlying tool rather than by skill auto-discovery, but
 the effect is the same.
 
@@ -132,6 +132,7 @@ follows, with artifacts landing under `.marvin/task/`.
 | `/marvin:task-verify` | Run the quality gates concurrently with stack auto-detection and write `verification.md`. | `marvin verify`, `run the gates`, `is this green?` |
 | `/marvin:task-deliver` | Commit and open a PR, refusing if verification did not pass. | `marvin deliver`, `ship it`, `commit and PR the task` |
 | `/marvin:task-summary` | Aggregate a finished task — spec criteria, gate outcomes, git log, lessons, and links — into one summary. | `marvin summarize the task`, `what was done?`, `task summary` |
+| `/marvin:task-metrics` | Aggregate the task-metrics series under `.marvin/metrics/` — time, quality and rework per delivered task, with a coverage line against the shipped corpus — or show one task's record in full ([ADR-0043](./adr/0043-task-workflow-metrics.md)). | `marvin show the task metrics`, `how long do tasks take through the pipeline?`, `where does the time go in a task?` |
 | `/marvin:task-audit` | Lint the whole spec corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling `depends_on` references, unsealed specs, invalid statuses, unidentified files — with a remediation note per class. Read-only. | `marvin audit the specs`, `lint the spec corpus`, `which specs are unsealed?` |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
@@ -228,7 +229,7 @@ The panel is additive, so a text-only host shows the same information as text.
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to thirteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to fourteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -241,6 +242,7 @@ but they are not typed as slash commands.
 | `dashboard` | The whole-toolbox state report. |
 | `verify` | The concurrent quality-gate runner that writes `verification.md`. |
 | `spec` | The Definition-of-Ready gate that validates the spec contract, plus the corpus reads and the consistency lint over the whole spec directory. |
+| `metrics` | The task-metrics record under `.marvin/metrics/` — `record` appends a live event, `rollup` derives the terminal block at delivery. |
 | `lessons` | The lessons-learned store — add with a duplicate guard, search, count, and prune. |
 | `summary` | The task-delivery summary aggregator. |
 | `handoff` | The session-continuation handoff documents. |

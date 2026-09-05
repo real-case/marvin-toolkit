@@ -114,7 +114,8 @@ Apply every category below. For each finding, emit one entry.
 
 ### 4. Emit structured report
 
-Return this exact structure to stdout:
+Return this exact structure to stdout. Read **Output budget** below before you write it: the
+budget is part of this contract, not a style note.
 
 ````markdown
 # Spec Critique: <slug>
@@ -124,23 +125,20 @@ Return this exact structure to stdout:
 **Verdict:** PASS | PASS WITH WARNINGS | BLOCK | NEEDS_CONTEXT | UNABLE
 
 ## Blockers
-<each blocker prevents DoR — list or "none">
+<each blocker prevents DoR — every one of them, never truncated; or "none">
 
-- **[category]** <finding>
-  - Evidence: <file:line or spec section reference>
-  - Suggested minimal fix: <one sentence>
+- **[category]** <finding, one sentence> — <file:line or spec section>
+  Fix: <one sentence>
 
 ## Warnings
-<each warning is advisory — list or "none">
+<one line each, at most 5; or "none">
 
-- **[category]** <finding>
-  - Evidence: <...>
+- **[category]** <finding, one sentence> — <file:line or spec section>
 
 ## Confirmations
-<things the spec got right that are worth noting, especially non-obvious good choices — list or "none">
+<at most 3 lines; or "none">
 
-## Questions for the author
-<open questions the author should answer before DoR — list or "none">
+- <a non-obvious choice the spec got right, one line>
 
 ## Inability
 <only for NEEDS_CONTEXT or UNABLE — omit this section entirely otherwise>
@@ -197,10 +195,35 @@ to say why.
 
 **Escalation licence.** Never emit `PASS` or `PASS WITH WARNINGS` on an axis in place of an inability — an empty critique that reads as approval is worse than no critique, because the caller ships on it. When either axis is `NEEDS_CONTEXT` or `UNABLE`, fill the **Inability** section with Blocker / Attempted / Recommendation. Do not silently fail, and do not manufacture findings to look productive.
 
+## Output budget
+
+**Your report is the latency.** An instrumented run measured six critic dispatches at 3,026
+seconds of wall clock against 79.6 seconds of tool execution: 97% of what a critique costs is
+writing the report, not reading the spec. So investigate as widely as the checklist asks — reads
+are nearly free — and then write the shortest report that carries the same decision.
+
+- **Blockers are never truncated.** They are what the author acts on, and a blocker you drop to
+  save room costs a whole extra round.
+- **At most 5 warnings**, one line each. If more survive, keep the five with the largest
+  consequence and close the section with `+<n> further warnings not listed`.
+- **At most 3 confirmations**, one line each. They exist to stop a later round re-litigating a
+  choice you already checked — not to show that you read the file.
+- **One line per finding**, plus one `Fix:` line for a blocker. No paragraph, no quoted code
+  block: cite `file:line` and let the author open it.
+- **Nothing outside the template.** No preamble, no account of your method, no restatement of the
+  spec or of what you read, no closing summary. The verdict lines and the sections are the report.
+- **No questions section.** An open question that would change the verdict is a blocker; one that
+  would not is a warning tagged `[question]`.
+- **Target 400 words** for the whole report, excluding the ` ```json critic-verdict ` block.
+
+**On a re-dispatch** — the caller says so, and says what it changed — the caps tighten: report
+what still blocks, at most 2 warnings, and no confirmations. The author has already read the
+first report; repeating its agreed parts is the most expensive thing you can do.
+
 ## Guidelines
 
 - **Specific beats stylistic.** "Acceptance criterion #3 can't be tested because the function returns `void` and has no observable side effect in [file:line]" beats "criteria are vague".
 - **One finding per issue.** Don't bundle three problems into one bullet.
 - **No new requirements.** If the spec is silent on something, you can flag it as a question, not add it as a blocker unless it is genuinely undefined behavior.
-- **Length discipline.** If you have nothing to say in a category, say "none" and move on. Don't pad.
+- **Length discipline.** See **Output budget** above — it is countable, and it binds. If you have nothing to say in a category, say "none" and move on.
 - **You are not the decider.** Your report goes back to the spec author, who decides whether to revise or override. `BLOCK` is a recommendation, not a veto.

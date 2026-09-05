@@ -301,3 +301,33 @@ test("nextSeq counts malformed files too — no duplicate ids (regression)", asy
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("metrics rejects an undeclared argument instead of stripping it (the strict-input set: spec, report, metrics)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-input-"));
+  try {
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      // the dangerous direction: a caller who INTENDS to record an event's field
+      {
+        name: "metrics",
+        arguments: {
+          action: "record",
+          slug: "demo-slug",
+          source: "task-implement",
+          step: "6F",
+          kind: "spec-gap",
+          detial: "a typo where `detail` was meant",
+        },
+      },
+    ]);
+    const [rejected] = results;
+    assert.equal(rejected.isError, true, "an undeclared key is not silently stripped");
+    assert.match(textOf(rejected), /detial/, "the error names the argument");
+    assert.throws(
+      () => readdirSync(join(dir, ".marvin", "metrics")),
+      /ENOENT/,
+      "nothing was written on the rejected path",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

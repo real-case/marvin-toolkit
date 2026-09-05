@@ -4,6 +4,251 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.23.0] — 2026-09-04
+
+A metrics record stopped depending on a session issuing a prose-instructed call. The two gates the
+pipeline must call now write it, so the coverage number the series reports says something about the
+pipeline rather than about whether a skill's instruction was followed. Recorded as ADR-0044.
+
+### Changed
+
+- **The seal gate creates the task's metrics record.** `spec action: "seal"` — the mandatory
+  pre-execution gate of `/marvin:task-implement` — creates `.marvin/metrics/<NNN>-<slug>.md` with
+  its header and nothing else, so a run that reaches execution has a record before it has anything
+  to put in it and a run abandoned afterwards is visible in the series rather than absent from it.
+  Four conditions, each a defect it would otherwise have: the spec was READ FROM DISK (both input
+  keys may legally arrive together, and the inline fragment then wins while `specPath` stays truthy);
+  a slug resolves, frontmatter first, else the filename; that slug is kebab-case, which also makes
+  the step-1.5 skeleton unreachable rather than merely forbidden, since an unfilled template still
+  carries `{kebab-case-slug}`; and the verdict is not FAIL, so a `shipped` or `superseded` spec mints
+  nothing. The write is fail-open and cannot reach the verdict.
+- **The delivery gate writes the terminal block, on ALLOW only.** `verify action: "gate"` derives the
+  ` ```json task-metrics ` block and appends it beside its answer, under the same `if (slug)` that
+  already writes the verification-run journal. A BLOCK writes nothing: `rolled_up` is what coverage
+  reads as tasks shipped, so a block for a refused attempt would overstate what was delivered, and
+  refusals stay visible in the verification-run journal. The answer's markdown gains one
+  deterministic line naming the record — a path and a boolean, no count and no timestamp — which is
+  what keeps the `.gitignore` warning reachable for host projects. It never travels through `reason`,
+  which `gateResult` serialises into the `deliver-gate` block that `critique-protocol.test.mjs` pins.
+- **`/marvin:task-deliver` step 1.5 is now a relay.** It reads the record back with the `metrics`
+  tool's `series` action and reports the digest instead of writing one; a second append would put two
+  terminal blocks in the record for one delivery. Step 1 also stops passing `specSlug` "when a spec
+  slug is known" and passes it whenever a spec exists, since the slug now decides whether the task is
+  measured at all.
+- **`marvin-tm-executor` §5.0 keeps its own roll-up, and says why.** That agent never calls the
+  delivery gate — it runs `verify` in `mode: feature` and opens its own pull request — so it is the
+  only writer of a headless run's terminal block. The asymmetry is deliberate and asserted, so an
+  edit that tidies the two into agreement goes red instead of silently leaving headless tasks
+  unmeasured.
+- **The one-writer invariant moved from the tool to the storage module.** `recordPathFor` left
+  `tools/metrics.ts` for a new `lib/metrics-record.ts`, which owns the rule that decides a record's
+  filename and is now reached by all three callers; two copies of that rule would give one task two
+  record files that no reader joins. The module deliberately does not own fail-open behaviour — each
+  caller keeps its own `try/catch`, as `journalVerifyEntry` does, so one anchor's failure cannot
+  decide another's.
+
+### Added
+
+- **`empty` in `MetricsSeriesCoverage` and `MetricsSummary`** — records holding neither a terminal
+  block nor an event. The seal anchor makes that state expressible, and without the bucket such a
+  record counted in `records` and vanished from the breakdown. On the dashboard it sits beside the
+  record total, because a bare count would otherwise read as "tasks measured" while counting files
+  nothing has written to. The difference between `records` and `rolled_up` is now the count of runs
+  that started and did not deliver — a number the series could not previously express.
+
+## [0.22.0] — 2026-09-03
+
+Phase 3 of the task-metrics plan, WP5: the series becomes readable. The prompt count moves from
+55 to 56. With this landing every package of `docs/proposals/task-metrics.md` is implemented.
+
+### Added
+
+- **`metrics action: "series"`** reads every record under `.marvin/metrics/`, takes each record's
+  last terminal block, and aggregates the three groups — count, median, mean and maximum per
+  metric — computed only over the records where the field is present, so an absent source is never
+  counted as zero and `n` says how many tasks contributed. It reports coverage — how many shipped
+  specs have a record — which is the number that says whether the series can be trusted yet.
+  `type` (`feature` or `bugfix`) and `since` (a date) narrow it; `slug` renders one record in full.
+  The answer carries a ` ```json metrics-series ` block (`MetricsSeries` in `contracts/metrics.ts`).
+- **Q11 and Q12 are computed there, at query time, and never stored** (plan D7). Q11 resolves the
+  pull-request URL from the spec's `## Delivery` section and counts the PR's commits dated after it
+  opened through `gh api`; it is null without `gh`, without a URL, or on any error, and never
+  blocks the rest of the report. Q12 joins the shipped corpus: each shipped bugfix credits the
+  earlier shipped specs whose contract `files[].path` intersect its own with one escaped defect.
+- **`/marvin:task-metrics`**, an inline-body prompt in the shape of `task-summary`, with a
+  `commands/task-metrics.md` wrapper and its four help-content records.
+- **The dashboard's `metrics` section**, after `lessons`: record and roll-up counts, the newest
+  record, the median active time and spec gaps per task, or a zero-state line naming the command
+  that writes the first record. `DashboardState` gains `metrics` as an optional, additive field;
+  the widget and the site's embeds are untouched until a later pass renders it.
+
+## [0.21.0] — 2026-09-03
+
+Phase 2 of the task-metrics plan: WP2 and WP3 together, as the proposal requires. The pipeline
+gains a place to record what compaction otherwise destroys, the prose sites that lose it now write
+it, and delivery derives the terminal block from the artifacts already on disk. The tool count
+moves from 13 to 14.
+
+### Added
+
+- **The `metrics` tool**, the fourteenth, and the one writer of `.marvin/metrics/` (ADR-0043). Its
+  input is `.strict()`, like `spec` and `report`, so a mistyped key is an error rather than an event
+  recorded without a field. `action: "record"` appends one live ` ```json metric-event ` block — six
+  kinds: `fix-round` (loop + round), `spec-gap` (detail), `open-item` (classification + detail),
+  `critic-dispatch` (critic + pass), `critic-verdict` (critic + pass + verdict + blockers +
+  warnings) and `gate-call` (gate + call + verdict) — each validated fail-closed on its own required
+  fields, so a half-written event is refused rather than counted. `action: "rollup"` derives the
+  terminal ` ```json task-metrics ` block from the spec, the progress, oracle and verification-run
+  journals, the `verify-result` block, the critique receipts and git, and appends it; every metric
+  is nullable, null means the source was absent and never zero, and a `sources` map names which of
+  the eight inputs was on disk. A second delivery appends a second block and readers take the last.
+  The answer also says whether git ignores the record, so a host project with a blanket `.marvin/`
+  exclusion learns at the first roll-up that its series is not being committed.
+- **The record is named after the spec's own file** — `.marvin/metrics/<NNN>-<slug>.md`, or
+  `<slug>.md` for a spec that lives unnumbered in a host directory or for an event `task-start`
+  records against a draft. Nothing is allocated, two parallel branches cannot mint the same number,
+  and both directions of the join are a filename lookup.
+- **The `TaskMetrics` and `MetricEvent` contracts** in `packages/marvin-mcp-shared/src/contracts/metrics.ts`,
+  with the plain field names of the plan's derivation table (`intake_ms`, `scope_drift`, `reseals`,
+  …). The server keeps a runtime mirror of the event vocabulary in `storage/metrics.ts`, and a test
+  compiles both and asserts they agree.
+- **`MARVIN_METRICS_DIR`** repoints the directory, chiefly for test isolation. No self-written
+  `.gitignore`: this is a shared record, and ignoring it is a project's choice.
+
+### Changed
+
+- **The pipeline prose records the live events.** `task-start` records every DoR gate call (7F/7B,
+  and each re-run the sweep prescribes) and every spec-critic dispatch and terminal verdict (8F/8B)
+  with its pass number; `task-implement` records the diff-critic dispatch and verdict (6F/9B), every
+  fix-cycle round with its loop, every item deferred or blocked at a limit, and every SPEC GAP,
+  including Step 6B's regression test that passes on unfixed code; `marvin-tm-executor` records the
+  same events under its own `source`. Each site says why: compaction destroys the in-session count,
+  and the call costs one tool round-trip.
+- **`task-deliver` rolls the metrics up in a new step 1.5**, after the delivery gate allows and
+  before the commit, so the record ships in the same commit and pull request as the work; step 2
+  stages it, and step 6 lists it among the artifacts to preserve. The executor does the same in a
+  new §5.0. The roll-up is a record, never a gate — an unavailable tool is reported and skipped.
+- **`changedFilesForScope` moved from `tools/spec.ts` into `lib/git.ts`** so the scope gate and the
+  metrics roll-up's scope-drift metric judge the same file set; the gate's behaviour is unchanged.
+
+## [0.20.0] — 2026-09-03
+
+Phase 1 of the task-metrics plan (`docs/proposals/task-metrics-implementation-plan.md`). The
+design of the whole series is stated in ADR-0043 before any metrics record exists, and the one
+record the pipeline destroyed by design — the verification run — is journalled, so the two metrics
+that need it are present from the first record in the series rather than absent for its head.
+
+### Added
+
+- **The verification-run journal** `.marvin/task/runs/<slug>.verify.md`, the third `runs/` sibling
+  beside the oracle and progress journals. Every verification run overwrites `runs/<slug>.md`, so
+  how many attempts preceded the surviving one was unrecoverable, and the delivery gate persisted
+  nothing at all. The journal is append-only, one ` ```json verify-run ` block per entry, with two
+  entry kinds under one tag: `run` — appended after every per-spec run `verify` writes, carrying the
+  verdict, mode, execution, the `only` subset or null (so a targeted retry is distinguishable from a
+  full pass), every gate's status and duration, the wall-clock and summed-gate durations and the
+  `head_sha` proved — and `gate`, appended on every delivery-gate decision for a resolved slug
+  (decision, verdict, staleness, `allowStale`, `red_green`, the artifact judged), a BLOCK for a
+  missing artifact included. Both writes are fail-open: a throw is swallowed and never changes a
+  verdict or a decision, and `runs/<slug>.md` stays the latest run so the delivery gate is unchanged.
+- **ADR-0043** (`proposed`): `.marvin/metrics/` is a committed per-task series named after the spec
+  file, holding live `metric-event` blocks and a terminal `task-metrics` block derived at delivery;
+  the verification-run journal above; the boundary with the progress journal; metrics are not a
+  report group; and the warning below. Amends ADR-0007 through its Related row, as ADR-0039 did.
+
+### Changed
+
+- **A pipeline `verify` run that names no spec warns.** A run in `feature` or `bug` mode with no
+  `specSlug` records a warning saying that no per-spec run was written, that the delivery gate will
+  judge the global artifact, and that the metrics series will not see this run. Warnings already
+  degrade PASS to PASS WITH WARNINGS, and `/marvin:task-deliver` already surfaces that verdict for
+  confirmation, so the coverage gap reaches the user when it happens and no other surface changes.
+  A `standalone` run — the default when no `mode` is passed — keeps no warning, because it
+  legitimately has no spec. This answers the proposal's first open question.
+
+## [0.19.0] — 2026-09-03
+
+An instrumented end-to-end run of the pipeline (one feature task, 74.8 minutes) put **67% of the
+wall clock inside the two critic agents**, and 97% of *that* into generating their reports rather
+than investigating: 211 tool calls, 79.6 seconds of execution, 3,026 seconds of wall clock. This
+release attacks the cost without changing what is checked. Recorded as ADR-0042.
+
+### Changed
+
+- **Both critics carry a countable output budget.** Blockers and per-criterion coverage are never
+  truncated; warnings cap at 5, out-of-scope lines at 10, confirmations at 3, one line each, with
+  overflow stated as a count. One line per finding, `file:line` instead of pasted code, nothing
+  outside the template, a 400-word target, and tighter caps on a stated re-dispatch. The spec
+  critic's "Questions for the author" section is gone — a question that would change the verdict is
+  a blocker, one that would not is a warning.
+- **`/marvin:task-start`'s critic loop is bounded to two dispatches** — it had no limit at all,
+  while `/marvin:task-implement` has had a three-round fix-cycle budget for months. The measured run
+  spent four dispatches and 34.8 minutes there, and half the blockers of the third and fourth were
+  introduced by the previous round's own fix. A second `BLOCK` now stops
+  dispatching and hands the survivors to the user as a revision or a recorded override. A
+  deterministic sweep — re-run the gate, cross-check the spec's declared gates against the project's
+  real CI jobs, re-read each shell snippet for its exit code, re-check the repaired defect class
+  elsewhere in the contract — runs before every dispatch.
+- **Verification runs before review, not beside it** (`task-implement` Step 6F / Step 9B,
+  `marvin-tm-executor` §3). The critic is dispatched once, against a green tree. This reverses P2 of
+  `docs/proposals/task-workflow-latency-optimization.md`: the overlap saved 76 seconds and cost the
+  393-second re-review that the stale-review guard mandates when a verify fix moves the tree under
+  the critic. The guard becomes a stale-*verify* guard — any change after the green run, including
+  one made for a critic blocker, needs the affected gate re-run and a final full pass.
+- **The diff critic is no longer dispatched blind to new files.** It now receives
+  `git status --porcelain --untracked-files=all` beside `git diff`, and its own workflow enumerates
+  and reads untracked paths. A feature spec is mostly `action: new` rows: in the measured run the
+  prescribed diff carried 4 of the 17 contract files.
+- **`/marvin:task-implement` reads the host project's own skills.** Step 3 now globs
+  `.claude/skills/*/SKILL.md` and reads the (at most three) closest matches for the contract's file
+  paths. The measured run lost a 393-second review round to two `aria-label` attributes the
+  project's own skill forbids; reading it would have cost two seconds.
+- **The feature pipeline records its acceptance oracles.** `verify action: "oracles"` was reachable
+  only from the bugfix red/green steps, so a feature shipped with no per-criterion proof beyond a
+  green suite. Nine oracles ran in 16 seconds against 343 for the gates.
+- **A fix-cycle round re-runs the narrowest thing that proves the fix** — `gates.test_one` or a
+  single criterion's oracle — and never a full `verify`, which is the pre-delivery confirmation
+  rather than the loop's feedback channel.
+
+### Added
+
+- **The DoR gate transposes the traceability graph.** A new `graph-symmetry` check in `spec`
+  `action: "dor"` compares `criteria[].implemented_by` against `files[].satisfies` in both
+  directions and FAILs on disagreement — one relation stored twice, previously validated one side
+  at a time, so a criterion could name a file that denied it and both checks passed. A row that
+  declares no `satisfies` is exempt: an absent index is not a contradicting one. The shipped
+  feature template was itself asymmetric and is corrected, with a fence that runs the shipped
+  checker over both templates.
+
+### Fixed
+
+- **A failing gate's excerpt names the file that failed.** `verify` showed the last twelve lines of
+  output; for any linter that prints warnings after errors those are the wrong twelve — the measured
+  run's lint failure rendered a pre-existing warning in an untouched file while all five real errors
+  scrolled past. The excerpt now leads with the matched error lines and their count. Lines carrying a
+  success marker are removed before matching, and the last three lines are kept whatever matched: a
+  runner states its verdict in its final lines, and those carry no error token at all
+  (`AssertionError [ERR_ASSERTION]` matches none of the patterns), so leading with matches alone
+  reproduced the same defect in the test gate.
+
+## [0.18.1] — 2026-08-18
+
+### Changed
+
+- **A host that renders widgets no longer also prints the panel as markdown.** Nine of marvin's
+  tools bind a `ui://` widget. On a client that advertises the MCP Apps UI extension the host drew
+  the widget *and* the model rebuilt the same panel in text, so the user saw one dashboard twice.
+  A widget-bound tool's result is now gated on the calling client's advertised capabilities: such a
+  client receives a one-line digest naming the widget, plus a `_rendered` key in the payload telling
+  the model the content is already on screen. A client that advertises nothing — every terminal,
+  `widget-preview`, the test driver, `mcp-call.mjs` — receives byte-identical output, exactly as
+  before.
+- The decision is taken once, in the shared `registerTool`, rather than in each of the nine tools,
+  so a tenth widget-bound tool inherits it. It is declined whole when the tool binds no widget, the
+  result carries no payload, the result is an error, or the payload already owns a `_rendered` key,
+  and it never alters `isError`. Recorded as ADR-0041 (`proposed`), which narrows ADR-0024's
+  progressive-enhancement decision rather than superseding it.
+
 ## [0.18.0] — 2026-08-16
 
 WP4.1, and the last work package of the workflow-hardening plan
