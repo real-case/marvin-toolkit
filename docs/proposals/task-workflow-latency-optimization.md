@@ -62,6 +62,12 @@ critic is read-only; verify runs tools and writes only `verification.md`).
 - **Quality impact: none** — both still run; the ordering of their *results* at the delivery
   gate is unchanged.
 
+**Reversed 2026-09-03** by ADR-0042, on measurement. The re-run in the second bullet above is not
+an edge case — it is what happens whenever verify fails, which is the case the overlap was supposed
+to help. An instrumented run measured the overlap saving 76 seconds and costing the 393-second
+re-review it forced. `task-implement` Step 6F / Step 9B and `marvin-tm-executor` §3 now run the
+gates first and dispatch the critic once, against a green tree.
+
 ### P4 — Stop re-deriving context across chained phases *(Tier 2)*
 
 **Today:** in the interactive chain each phase re-derives what the previous one already knows —
@@ -118,11 +124,14 @@ bugfix, batched up to three per turn when independent — and the rejection abov
 
 Out of scope for any latency change — these are the source of quality:
 
-- `marvin-tm-spec-critic` and `marvin-tm-diff-critic` gates (already on the fast `sonnet` model).
+- `marvin-tm-spec-critic` and `marvin-tm-diff-critic` gates. (The parenthetical here read "already
+  on the fast `sonnet` model"; **corrected 2026-09-03** — every shipped agent carries `model: opus`,
+  and the critics are two thirds of the pipeline's wall clock. ADR-0042 bounds their *output*
+  rather than their model, and leaves the model assignment to be measured rather than assumed.)
 - The Definition-of-Ready gate; regression-test-first for bugfixes; "verification gates delivery."
 - Context mapping (2F) and root-cause analysis (3B).
-- Model assignments: `sonnet` for critics, `opus` for `writer` / `executor` / `review-fixer` —
-  already correct.
+- Model assignments — but see the correction above: the shipped assignment is `opus` everywhere,
+  not the split this line assumed.
 - Existing parallel reads (`task-start` 1.3, `task-implement` Step 3) — already optimal.
 
 ## Quality-safety summary
@@ -134,7 +143,7 @@ substantive lever and is opt-out. No gate is removed; no dialogue is shortened.
 | Change | Lever                         | Speed gain   | Quality impact            |
 | ------ | ----------------------------- | ------------ | ------------------------- |
 | P1     | parallel verify gates         | large        | none                      |
-| P2     | `diff-critic` ‖ `verify`      | large        | none                      |
+| ~~P2~~ | ~~`diff-critic` ‖ `verify`~~  | ~~large~~    | ❌ reversed 2026-09-03 (ADR-0042) |
 | P4     | no re-derivation in chain     | medium       | none                      |
 | P5     | targeted verify retries       | medium       | none                      |
 | P6     | 3 variants by default         | small        | minor, opt-out            |

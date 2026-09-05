@@ -23,7 +23,9 @@ import { importTs } from "./_tsload.mjs";
  * section**, never once per file: a whole-file call truncates its detail to
  * eight unique stubs while each template carries about twenty-six.
  */
-const { checkPlaceholders } = await importTs("src/tools/spec.ts");
+const { checkPlaceholders, checkGraph } = await importTs("src/tools/spec.ts");
+const { extractContractBlock, SpecContract } = await importTs("src/storage/spec.ts");
+const { parse: parseYaml } = await import("yaml");
 
 const here = dirname(fileURLToPath(import.meta.url));
 // test → server → mcp → marvin
@@ -148,3 +150,25 @@ test("both templates state that none is recorded as an advisory warning", () => 
     );
   }
 });
+
+/**
+ * The second fence: the contract graph each template teaches must pass the
+ * gate's own transpose check. `implemented_by` and `satisfies` are one graph
+ * written twice, and the feature template shipped for months with AC3 naming F1
+ * while F1 satisfied only AC1 — so every spec copied from it started with the
+ * asymmetry, and the semantic critic was paid minutes per task to find it by
+ * hand. The assertion runs the SHIPPED `checkGraph`, not a copy of its rule.
+ *
+ * It cannot be driven through the tool: the gate short-circuits on the
+ * templates' placeholder frontmatter and never reaches the contract.
+ */
+for (const file of ["feature-spec-template.md", "bugfix-spec-template.md"]) {
+  test(`${file}: the contract graph agrees in both directions`, () => {
+    const block = extractContractBlock(readFileSync(join(templatesDir, file), "utf8"));
+    assert.ok(block, `${file}: no spec-contract block`);
+    const contract = SpecContract.parse(parseYaml(block));
+    const symmetry = checkGraph(contract).find((c) => c.id === "graph-symmetry");
+    assert.ok(symmetry, `${file}: the symmetry check did not run`);
+    assert.equal(symmetry.status, "pass", `${file}: ${symmetry.detail}`);
+  });
+}

@@ -20,3 +20,4 @@ export * from "./dashboard.js";
 export * from "./help.js";
 export * from "./provenance.js";
 export * from "./critique.js";
+export * from "./metrics.js";

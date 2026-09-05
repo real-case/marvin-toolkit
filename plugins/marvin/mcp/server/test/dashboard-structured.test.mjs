@@ -212,6 +212,7 @@ test("dashboard aggregates a populated project into text + a valid extended Dash
       "## Artifacts",
       "## Decisions (ADR)",
       "## Lessons",
+      "## Metrics",
       "## Usage",
       "## Commands",
     ]) {
@@ -441,10 +442,24 @@ test("dashboard zero-state: a fresh project renders every section and validates"
     assert.match(text, /- Corpus: `docs\/adr` \(default\) · 0 record\(s\)/);
     assert.match(text, /_No records yet/);
     assert.match(text, /_No lessons captured yet/);
+    assert.match(
+      text,
+      /_No metrics records yet — the next `\/marvin:task-implement` on a sealed spec creates one/,
+      "the zero state must name the seal anchor, which now writes before task-deliver",
+    );
     assert.match(text, /_No usage log yet/);
 
     const sc = result.structuredContent;
     assert.ok(DashboardState.safeParse(sc).success, "zero-state payload conforms");
+    // ADR-0043 §5: the section is present in its zero state, never absent.
+    assert.deepEqual(sc.metrics, {
+      records: 0,
+      rolled_up: 0,
+      empty: 0,
+      newest: null,
+      median_active_ms: null,
+      median_spec_gaps: null,
+    });
     assert.deepEqual(sc.artifacts, {
       specs: 0,
       handoffs: 0,
@@ -515,6 +530,167 @@ test("dashboard unknown `section` falls back to the full report with a hint", as
     assert.match(text, /Unknown section `zzz`/);
     assert.ok(text.includes("## Board"), "still renders all sections");
     assert.ok(text.includes("## Commands"), "still renders all sections");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** One rolled-up terminal block, shared by the two metrics tests below. */
+const TERMINAL = {
+  slug: "demo",
+  contract_sha: null,
+  type: "feature",
+  risk: null,
+  breaking: null,
+  spike_required: null,
+  created: null,
+  rolled_up_at: "2026-09-03T12:00:00.000Z",
+  head_sha: null,
+  base_branch: "dev",
+  sources: {
+    spec: "absent",
+    progress: "absent",
+    oracles: "absent",
+    verify_journal: "absent",
+    verify_result: "absent",
+    critique: "absent",
+    events: "present",
+    git: "absent",
+  },
+  time: {
+    intake_ms: null,
+    implement_ms: null,
+    first_green_ms: null,
+    active_ms: 900000,
+    gate_efficiency: null,
+    oracle_ms: [],
+    gate_ms: [],
+    critic_ms: { total: null, dispatches: [] },
+  },
+  quality: {
+    scope_drift: null,
+    oracle_strength: null,
+    red_green: null,
+    not_run: null,
+    freshness_waivers: null,
+    critics: { spec: null, diff: null },
+    spec_gaps: 2,
+    open_items: null,
+    dor_first_call: null,
+    oracle_resolution: null,
+  },
+  rework: {
+    seals: null,
+    reseals: null,
+    critic_passes: { spec: null, diff: null },
+    fix_rounds: null,
+    runs_before_green: null,
+  },
+  notes: [],
+};
+
+test("the metrics summary counts and renders the header-only records", async () => {
+  // AC9 (ADR-0044). The seal anchor creates a record for every started run, so a
+  // bare record total would read as "tasks measured" while counting files nothing
+  // has written to. This fixture holds one of each of the three states; the
+  // header-only record is what makes `empty` non-zero, so an implementation that
+  // always returns 0 renders no "started but empty" and goes red here.
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-empty-"));
+  try {
+    const metrics = join(dir, ".marvin", "metrics");
+    mkdirSync(metrics, { recursive: true });
+    writeFileSync(
+      join(metrics, "004-demo.md"),
+      "# Metrics — demo\n\n```json task-metrics\n" + JSON.stringify(TERMINAL) + "\n```\n",
+    );
+    writeFileSync(
+      join(metrics, "005-other.md"),
+      "# Metrics — other\n\n```json metric-event\n" +
+        JSON.stringify({
+          slug: "other",
+          source: "task-start",
+          step: "7F",
+          kind: "gate-call",
+          gate: "dor",
+          call: 1,
+          verdict: "PASS",
+          at: "2026-09-03T10:00:00.000Z",
+        }) +
+        "\n```\n",
+    );
+    // Exactly what the seal anchor writes: a header and nothing else.
+    writeFileSync(join(metrics, "006-started.md"), "# Metrics — started\n\n");
+
+    const result = await callDashboard(dir);
+    const sc = result.structuredContent;
+    assert.ok(DashboardState.safeParse(sc).success, JSON.stringify(sc.metrics));
+    assert.deepEqual(sc.metrics, {
+      records: 3,
+      rolled_up: 1,
+      empty: 1,
+      newest: { slug: "demo", rolled_up_at: "2026-09-03T12:00:00.000Z" },
+      median_active_ms: 900000,
+      median_spec_gaps: 2,
+    });
+    assert.match(
+      textOf(result),
+      /- 3 record\(s\) · 1 rolled up · 1 started but empty · newest `demo`/,
+      "the empty count must reach the rendered line, not only the payload",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard renders the metrics line from the records under .marvin/metrics (ADR-0043 §5)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-dash-metrics-"));
+  try {
+    const metrics = join(dir, ".marvin", "metrics");
+    mkdirSync(metrics, { recursive: true });
+    // Two records: one rolled up (a terminal block with every section), one with
+    // a live event and no terminal block — recorded, not rolled up.
+    const terminal = TERMINAL;
+    writeFileSync(
+      join(metrics, "004-demo.md"),
+      "# Metrics — demo\n\n```json task-metrics\n" + JSON.stringify(terminal) + "\n```\n",
+    );
+    writeFileSync(
+      join(metrics, "005-other.md"),
+      "# Metrics — other\n\n```json metric-event\n" +
+        JSON.stringify({
+          slug: "other",
+          source: "task-start",
+          step: "7F",
+          kind: "gate-call",
+          gate: "dor",
+          call: 1,
+          verdict: "PASS",
+          at: "2026-09-03T10:00:00.000Z",
+        }) +
+        "\n```\n",
+    );
+
+    const result = await callDashboard(dir);
+    const text = textOf(result);
+    assert.match(
+      text,
+      /## Metrics\n- 2 record\(s\) · 1 rolled up · newest `demo` \(2026-09-03\) · median active time 15m · spec gaps per task 2\n- Full series: `\/marvin:task-metrics`/,
+    );
+    const sc = result.structuredContent;
+    assert.ok(DashboardState.safeParse(sc).success, JSON.stringify(sc.metrics));
+    assert.deepEqual(sc.metrics, {
+      records: 2,
+      rolled_up: 1,
+      empty: 0,
+      newest: { slug: "demo", rolled_up_at: "2026-09-03T12:00:00.000Z" },
+      median_active_ms: 900000,
+      median_spec_gaps: 2,
+    });
+
+    // the section filter reaches it
+    const narrowed = textOf(await callDashboard(dir, { section: "metrics" }));
+    assert.ok(narrowed.includes("## Metrics"));
+    assert.ok(!narrowed.includes("## Lessons"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

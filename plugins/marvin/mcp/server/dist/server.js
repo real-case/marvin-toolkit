@@ -2666,17 +2666,17 @@ var require_validate = __commonJS({
         const { schemaCode } = this;
         this.fail((0, codegen_1._)`${schemaCode} !== undefined && (${(0, codegen_1.or)(this.invalid$data(), condition)})`);
       }
-      error(append, errorParams, errorPaths) {
+      error(append2, errorParams, errorPaths) {
         if (errorParams) {
           this.setParams(errorParams);
-          this._error(append, errorPaths);
+          this._error(append2, errorPaths);
           this.setParams({});
           return;
         }
-        this._error(append, errorPaths);
+        this._error(append2, errorPaths);
       }
-      _error(append, errorPaths) {
-        (append ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
+      _error(append2, errorPaths) {
+        (append2 ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
       }
       $dataError() {
         (0, errors_1.reportError)(this, this.def.$dataError || errors_1.keyword$DataError);
@@ -3638,49 +3638,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative6, options, skipNormalization) {
+    function resolveComponent(base, relative7, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative6 = parse4(serialize(relative6, options), options);
+        relative7 = parse4(serialize(relative7, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative6.scheme) {
-        target.scheme = relative6.scheme;
-        target.userinfo = relative6.userinfo;
-        target.host = relative6.host;
-        target.port = relative6.port;
-        target.path = removeDotSegments(relative6.path || "");
-        target.query = relative6.query;
+      if (!options.tolerant && relative7.scheme) {
+        target.scheme = relative7.scheme;
+        target.userinfo = relative7.userinfo;
+        target.host = relative7.host;
+        target.port = relative7.port;
+        target.path = removeDotSegments(relative7.path || "");
+        target.query = relative7.query;
       } else {
-        if (relative6.userinfo !== void 0 || relative6.host !== void 0 || relative6.port !== void 0) {
-          target.userinfo = relative6.userinfo;
-          target.host = relative6.host;
-          target.port = relative6.port;
-          target.path = removeDotSegments(relative6.path || "");
-          target.query = relative6.query;
+        if (relative7.userinfo !== void 0 || relative7.host !== void 0 || relative7.port !== void 0) {
+          target.userinfo = relative7.userinfo;
+          target.host = relative7.host;
+          target.port = relative7.port;
+          target.path = removeDotSegments(relative7.path || "");
+          target.query = relative7.query;
         } else {
-          if (!relative6.path) {
+          if (!relative7.path) {
             target.path = base.path;
-            if (relative6.query !== void 0) {
-              target.query = relative6.query;
+            if (relative7.query !== void 0) {
+              target.query = relative7.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative6.path[0] === "/") {
-              target.path = removeDotSegments(relative6.path);
+            if (relative7.path[0] === "/") {
+              target.path = removeDotSegments(relative7.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative6.path;
+                target.path = "/" + relative7.path;
               } else if (!base.path) {
-                target.path = relative6.path;
+                target.path = relative7.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative6.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative7.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative6.query;
+            target.query = relative7.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3688,7 +3688,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative6.fragment;
+      target.fragment = relative7.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8106,9 +8106,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header = (startWithSpace ? indentSize : "") + chomp;
+      let header2 = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -8123,11 +8123,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header}
+          return `>${header2}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header}
+      return `|${header2}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -8741,7 +8741,7 @@ ${indent}${line}` : "\n";
           str += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum2, line) => sum2 + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
             str += ",";
@@ -8757,7 +8757,7 @@ ${indent}${line}` : "\n";
         return start + end;
       } else {
         if (!reqNewline) {
-          const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
+          const len = lines.reduce((sum2, line) => sum2 + line.length + 2, 2);
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
@@ -10628,8 +10628,8 @@ var require_resolve_props = __commonJS({
             hasSpace = false;
         }
       }
-      const last = tokens[tokens.length - 1];
-      const end = last ? last.offset + last.source.length : offset;
+      const last2 = tokens[tokens.length - 1];
+      const end = last2 ? last2.offset + last2.source.length : offset;
       if (reqSpace && next && next.type !== "space" && next.type !== "newline" && next.type !== "comma" && (next.type !== "scalar" || next.source !== "")) {
         onError(next.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
       }
@@ -10743,10 +10743,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep4, value } = collItem;
+        const { start, key, sep: sep5, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep4?.[0],
+          next: key ?? sep5?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -10760,7 +10760,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep4) {
+          if (!keyProps.anchor && !keyProps.tag && !sep5) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -10784,7 +10784,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep4 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep5 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -10800,7 +10800,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep4, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep5, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -10889,7 +10889,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep4 = "";
+        let sep5 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -10903,13 +10903,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep4 + cb;
-              sep4 = "";
+                comment += sep5 + cb;
+              sep5 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep4 += source;
+                sep5 += source;
               hasSpace = true;
               break;
             default:
@@ -10951,18 +10951,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep4, value } = collItem;
+        const { start, key, sep: sep5, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep4?.[0],
+          next: key ?? sep5?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep4 && !value) {
+          if (!props.anchor && !props.tag && !sep5 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11016,8 +11016,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep4 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep4, null, props, onError);
+        if (!isMap && !sep5 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep5, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11029,7 +11029,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep4 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep5 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11040,8 +11040,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep4)
-                for (const st of sep4) {
+              if (sep5)
+                for (const st of sep5) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11058,7 +11058,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -11187,10 +11187,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header)
+      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header2)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -11201,26 +11201,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header.length;
+        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header2.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header.indent;
-      let offset = scalar.offset + header.length;
+      let trimIndent = scalar.indent + header2.indent;
+      let offset = scalar.offset + header2.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header.indent === 0 && indent.length > trimIndent)
+          if (header2.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header.indent === 0)
+          if (header2.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -11236,7 +11236,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep4 = "";
+      let sep5 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -11247,34 +11247,34 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header.indent ? "explicit indentation indicator" : "first line";
+          const src = header2.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep4 + indent.slice(trimIndent) + content;
-          sep4 = "\n";
+          value += sep5 + indent.slice(trimIndent) + content;
+          sep5 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep4 === " ")
-            sep4 = "\n";
-          else if (!prevMoreIndented && sep4 === "\n")
-            sep4 = "\n\n";
-          value += sep4 + indent.slice(trimIndent) + content;
-          sep4 = "\n";
+          if (sep5 === " ")
+            sep5 = "\n";
+          else if (!prevMoreIndented && sep5 === "\n")
+            sep5 = "\n\n";
+          value += sep5 + indent.slice(trimIndent) + content;
+          sep5 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep4 === "\n")
+          if (sep5 === "\n")
             value += "\n";
           else
-            sep4 = "\n";
+            sep5 = "\n";
         } else {
-          value += sep4 + content;
-          sep4 = " ";
+          value += sep5 + content;
+          sep5 = " ";
           prevMoreIndented = false;
         }
       }
-      switch (header.chomp) {
+      switch (header2.chomp) {
         case "-":
           break;
         case "+":
@@ -11286,8 +11286,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start, end, end] };
+      const end = start + header2.length + scalar.source.length;
+      return { value, type, comment: header2.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -11451,25 +11451,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep4 = " ";
+      let sep5 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep4 === "\n")
-            res += sep4;
+          if (sep5 === "\n")
+            res += sep5;
           else
-            sep4 = "\n";
+            sep5 = "\n";
         } else {
-          res += sep4 + match[1];
-          sep4 = " ";
+          res += sep5 + match[1];
+          sep5 = " ";
         }
         pos = line.lastIndex;
       }
-      const last = /[ \t]*(.*)/sy;
-      last.lastIndex = pos;
-      match = last.exec(source);
-      return res + sep4 + (match?.[1] ?? "");
+      const last2 = /[ \t]*(.*)/sy;
+      last2.lastIndex = pos;
+      match = last2.exec(source);
+      return res + sep5 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -12118,10 +12118,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header = token.props[0];
-            if (header.type !== "block-scalar-header")
+            const header2 = token.props[0];
+            if (header2.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -12153,10 +12153,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header = token.props[0];
-        if (header.type !== "block-scalar-header")
+        const header2 = token.props[0];
+        if (header2.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header2.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -12272,14 +12272,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep4, value }) {
+    function stringifyItem({ start, key, sep: sep5, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep4)
-        for (const st of sep4)
+      if (sep5)
+        for (const st of sep5)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -13363,12 +13363,12 @@ var require_parser = __commonJS({
               yield* this.pop(token);
           }
           if ((top.type === "document" || top.type === "block-map" || top.type === "block-seq") && (token.type === "block-map" || token.type === "block-seq")) {
-            const last = token.items[token.items.length - 1];
-            if (last && !last.sep && !last.value && last.start.length > 0 && findNonEmptyIndex(last.start) === -1 && (token.indent === 0 || last.start.every((st) => st.type !== "comment" || st.indent < token.indent))) {
+            const last2 = token.items[token.items.length - 1];
+            if (last2 && !last2.sep && !last2.value && last2.start.length > 0 && findNonEmptyIndex(last2.start) === -1 && (token.indent === 0 || last2.start.every((st) => st.type !== "comment" || st.indent < token.indent))) {
               if (top.type === "document")
-                top.end = last.start;
+                top.end = last2.start;
               else
-                top.items.push({ start: last.start });
+                top.items.push({ start: last2.start });
               token.items.splice(-1, 1);
             }
           }
@@ -13441,18 +13441,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep4;
+          let sep5;
           if (scalar.end) {
-            sep4 = scalar.end;
-            sep4.push(this.sourceToken);
+            sep5 = scalar.end;
+            sep5.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep4 = [this.sourceToken];
+            sep5 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep4 }]
+            items: [{ start, key: scalar, sep: sep5 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -13492,8 +13492,8 @@ var require_parser = __commonJS({
             this.onKeyLine = false;
             if (it.value) {
               const end = "end" in it.value ? it.value.end : void 0;
-              const last = Array.isArray(end) ? end[end.length - 1] : void 0;
-              if (last?.type === "comment")
+              const last2 = Array.isArray(end) ? end[end.length - 1] : void 0;
+              if (last2?.type === "comment")
                 end?.push(this.sourceToken);
               else
                 map.items.push({ start: [this.sourceToken] });
@@ -13605,15 +13605,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep4 = it.sep;
-                  sep4.push(this.sourceToken);
+                  const sep5 = it.sep;
+                  sep5.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep4 }]
+                    items: [{ start: start2, key, sep: sep5 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -13685,8 +13685,8 @@ var require_parser = __commonJS({
           case "newline":
             if (it.value) {
               const end = "end" in it.value ? it.value.end : void 0;
-              const last = Array.isArray(end) ? end[end.length - 1] : void 0;
-              if (last?.type === "comment")
+              const last2 = Array.isArray(end) ? end[end.length - 1] : void 0;
+              if (last2?.type === "comment")
                 end?.push(this.sourceToken);
               else
                 seq.items.push({ start: [this.sourceToken] });
@@ -13807,13 +13807,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep4 = fc.end.splice(1, fc.end.length);
-            sep4.push(this.sourceToken);
+            const sep5 = fc.end.splice(1, fc.end.length);
+            sep5.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep4 }]
+              items: [{ start, key: fc, sep: sep5 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -15138,10 +15138,10 @@ function isValidJWT(jwt, alg) {
   if (!jwtRegex.test(jwt))
     return false;
   try {
-    const [header] = jwt.split(".");
-    if (!header)
+    const [header2] = jwt.split(".");
+    if (!header2)
       return false;
-    const base642 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
+    const base642 = header2.replace(/-/g, "+").replace(/_/g, "/").padEnd(header2.length + (4 - header2.length % 4) % 4, "=");
     const decoded = JSON.parse(atob(base642));
     if (typeof decoded !== "object" || decoded === null)
       return false;
@@ -19794,10 +19794,10 @@ function isValidJWT2(token, algorithm = null) {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
       return false;
-    const [header] = tokensParts;
-    if (!header)
+    const [header2] = tokensParts;
+    if (!header2)
       return false;
-    const parsedHeader = JSON.parse(atob(header));
+    const parsedHeader = JSON.parse(atob(header2));
     if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT")
       return false;
     if (!parsedHeader.alg)
@@ -26626,11 +26626,11 @@ var Protocol = class {
    * @returns Promise that resolves when an update occurs or rejects if aborted
    */
   async _waitForTaskUpdate(taskId, signal) {
-    let interval = this._options?.defaultTaskPollInterval ?? 1e3;
+    let interval2 = this._options?.defaultTaskPollInterval ?? 1e3;
     try {
       const task = await this._taskStore?.getTask(taskId);
       if (task?.pollInterval) {
-        interval = task.pollInterval;
+        interval2 = task.pollInterval;
       }
     } catch {
     }
@@ -26639,7 +26639,7 @@ var Protocol = class {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve, interval);
+      const timeoutId = setTimeout(resolve, interval2);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -28718,6 +28718,11 @@ var PROMPTS = [
     body: "Invoke the `summary` MCP tool from the `marvin` server. If the user named a spec slug in their message, pass it as `slug`; otherwise call it with no arguments to summarise the most recent spec. Do not add preamble \u2014 call the tool and present its result."
   },
   {
+    name: "task-metrics",
+    description: "Aggregate the task-metrics series under .marvin/metrics \u2014 time, quality and rework per delivered task, with a coverage line \u2014 or show one task's record in full.",
+    body: 'Invoke the `metrics` MCP tool from the `marvin` server with `action: "series"`. If the user named a spec slug, pass it as `slug` to render that task\'s record in full; if they named a task type (feature or bugfix) pass it as `type`; if they named a date pass it as `since` (YYYY-MM-DD). Otherwise call it with `action: "series"` alone. Do not add preamble \u2014 call the tool and present its result, leading with the coverage line, which says how much of the shipped corpus the series covers.'
+  },
+  {
     name: "task-audit",
     description: "Read-only consistency lint of the whole spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, unidentified files \u2014 with remediation guidance per finding.",
     skill: "task-audit"
@@ -28870,6 +28875,9 @@ var PROMPTS = [
 function projectConfigPath(env2, projectRoot) {
   return projectRoot === env2.projectDir ? env2.configPath : join(projectRoot, ".marvin", "config.json");
 }
+function projectScopedDir(env2, projectRoot, startupDir, name) {
+  return projectRoot === env2.projectDir ? startupDir : join(projectRoot, ".marvin", name);
+}
 function loadEnv(env2 = process.env) {
   const projectDir = env2.CLAUDE_PROJECT_DIR ?? process.cwd();
   const tasksDir = env2.MARVIN_TASKS_DIR ?? join(projectDir, ".marvin", "track");
@@ -28880,6 +28888,7 @@ function loadEnv(env2 = process.env) {
   const critiqueDir = env2.MARVIN_CRITIQUE_DIR ?? join(projectDir, ".marvin", "critique");
   const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
   const reportDir = env2.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
+  const metricsDir = env2.MARVIN_METRICS_DIR ?? join(projectDir, ".marvin", "metrics");
   return {
     projectDir,
     tasksDir,
@@ -28889,7 +28898,8 @@ function loadEnv(env2 = process.env) {
     securityDir,
     critiqueDir,
     usageDir,
-    reportDir
+    reportDir,
+    metricsDir
   };
 }
 
@@ -29064,6 +29074,9 @@ function run(cmd, args, cwd, opts) {
 function git(args, cwd, opts) {
   return run("git", args, cwd, opts);
 }
+function gh(args, cwd, opts) {
+  return run("gh", args, cwd, opts);
+}
 function inGitRepo(cwd) {
   return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
 }
@@ -29128,6 +29141,27 @@ function hashObjects(paths, cwd) {
   if (!r.ok) return null;
   const ids = r.value.split("\n").map((s) => s.trim());
   return ids.length === paths.length ? ids : null;
+}
+function changedFilesForScope(projectRoot, base) {
+  const ref = base && base.trim() ? base.trim() : "HEAD";
+  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
+  const lines = [
+    ...diff.ok ? diff.value.split("\n") : [],
+    ...untracked.ok ? untracked.value.split("\n") : []
+  ];
+  return [...new Set(lines.map(normalizeScopePath).filter(Boolean))];
+}
+function normalizeScopePath(p) {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+function refExists(ref, cwd) {
+  return git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], cwd).ok;
+}
+function isIgnored(path, cwd) {
+  const r = git(["check-ignore", "-q", "--", path], cwd);
+  if (r.ok) return true;
+  return r.code === 1 ? false : null;
 }
 function hasUncommittedChanges(cwd) {
   const r = git(["status", "--porcelain"], cwd);
@@ -32391,8 +32425,8 @@ function readSpecCorpus(dir) {
     const path = join(dir.abs, filename);
     let raw;
     try {
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink() || !stat.isFile()) continue;
+      const stat2 = lstatSync(path);
+      if (stat2.isSymbolicLink() || !stat2.isFile()) continue;
       raw = readFileSync(path, "utf8");
     } catch (err3) {
       malformed.push({ filename, number: number3, reason: `could not read the file: ${errText(err3)}` });
@@ -32646,6 +32680,7 @@ var COMMAND_BLURBS = {
   "task-verify": "Run the project quality gates",
   "task-deliver": "Commit and open a PR",
   "task-summary": "Delivery digest for a task",
+  "task-metrics": "Time, quality and rework across tasks",
   "task-audit": "Lint the whole spec corpus",
   // sec
   "sec-scan": "Full OWASP Top-10 audit",
@@ -32710,6 +32745,7 @@ var COMMAND_DETAILS = {
   "task-verify": "Run the project quality gates \u2014 tests, lint, type-check, build \u2014 with automatic stack detection, and write verification.md.",
   "task-deliver": "Commit changes and open a pull request; refuses if verification failed.",
   "task-summary": "Summarise what a task delivered \u2014 acceptance criteria vs verification, commits, lessons, and links.",
+  "task-metrics": "Aggregate the task-metrics series under .marvin/metrics/ \u2014 intake, implementation and time-to-green, scope drift, oracle strength, critic verdicts, spec gaps and fix rounds per delivered task, with a coverage line \u2014 or show one task's record in full.",
   "task-audit": "Read-only consistency lint of the spec corpus \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, invalid statuses, and files that do not identify themselves as specs. Reports with a remediation note per class; changes nothing.",
   // sec
   "sec-scan": "Comprehensive security audit aligned with OWASP Top 10:2025 \u2014 orchestrates secrets, dependency, and IaC scans plus deep static analysis.",
@@ -32761,6 +32797,7 @@ var COMMAND_EXAMPLES = {
   // task
   "task-start": "/marvin:task-start add pagination",
   "task-summary": "/marvin:task-summary add-pagination",
+  "task-metrics": "/marvin:task-metrics since 2026-09-01",
   "task-audit": "/marvin:task-audit errors only",
   // sec
   "sec-threat-model": "/marvin:sec-threat-model upload flow",
@@ -32934,6 +32971,12 @@ var COMMAND_PROMPTS = {
     "marvin, summarize what this task delivered",
     "marvin, give me the delivery digest",
     "marvin, recap the task's acceptance criteria"
+  ],
+  "task-metrics": [
+    "marvin, show the task metrics",
+    "marvin, how long do tasks take through the pipeline?",
+    "marvin, where does the time go in a task?",
+    "marvin, how many spec gaps per task?"
   ],
   "task-audit": [
     "marvin, audit the specs",
@@ -33251,8 +33294,8 @@ function renderCommands(humanRun, want, known) {
     const inGroup = PROMPTS.filter((p) => groupOf(p.name) === want);
     const lines2 = [`## Commands \xB7 ${want}`, "", `_${GROUP_BLURBS[want] ?? ""}_`, ""];
     for (const p of inGroup) {
-      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
-      lines2.push(`- \`/marvin:${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+      const flag2 = humanRun.has(p.name) ? " \u{1F464}" : "";
+      lines2.push(`- \`/marvin:${p.name}\`${flag2} \u2014 ${blurbOf(p.name, p.description)}`);
     }
     return lines2;
   }
@@ -33276,8 +33319,8 @@ function renderCommands(humanRun, want, known) {
     if (inGroup.length === 0) continue;
     lines.push("", `### ${group}`);
     for (const p of inGroup) {
-      const flag = humanRun.has(p.name) ? " \u{1F464}" : "";
-      lines.push(`- \`${p.name}\`${flag} \u2014 ${blurbOf(p.name, p.description)}`);
+      const flag2 = humanRun.has(p.name) ? " \u{1F464}" : "";
+      lines.push(`- \`${p.name}\`${flag2} \u2014 ${blurbOf(p.name, p.description)}`);
     }
   }
   return lines;
@@ -33429,6 +33472,608 @@ function removeIndexLine(memoryDir, slug) {
   const kept = readFileSync(indexPath, "utf8").split("\n").filter((line) => !line.includes(`](${slug}.md)`));
   writeFileSync(indexPath, kept.join("\n"));
 }
+var METRIC_EVENT_TAG = "metric-event";
+var TASK_METRICS_TAG = "task-metrics";
+var fence = (tag) => new RegExp("```json " + tag + "\\n([\\s\\S]*?)\\n```", "g");
+var EVENT_RE = fence(METRIC_EVENT_TAG);
+var TERMINAL_RE = fence(TASK_METRICS_TAG);
+var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var METRIC_EVENT_KINDS = [
+  "fix-round",
+  "spec-gap",
+  "open-item",
+  "critic-dispatch",
+  "critic-verdict",
+  "gate-call"
+];
+var METRIC_EVENT_SOURCES = [
+  "task-start",
+  "task-implement",
+  "task-deliver",
+  "marvin-tm-executor"
+];
+var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
+var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
+var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
+var METRIC_GATES = ["dor"];
+var TERMINAL_VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
+var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
+var REQUIRED_EVENT_FIELDS = {
+  "fix-round": ["loop", "round"],
+  "spec-gap": ["detail"],
+  "open-item": ["classification", "detail"],
+  "critic-dispatch": ["critic", "pass"],
+  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
+  "gate-call": ["gate", "call", "verdict"]
+};
+var MetricEventShape = external_exports.object({
+  slug: external_exports.string().min(1).regex(SLUG_RE, "slug must be kebab-case"),
+  source: external_exports.enum(METRIC_EVENT_SOURCES),
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(METRIC_EVENT_KINDS),
+  contract_sha: external_exports.string().nullable().optional(),
+  at: external_exports.string().datetime(),
+  detail: external_exports.string().min(1).optional(),
+  loop: external_exports.enum(FIX_LOOPS).optional(),
+  round: external_exports.number().int().positive().optional(),
+  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
+  critic: external_exports.enum(METRIC_CRITICS).optional(),
+  pass: external_exports.number().int().positive().optional(),
+  verdict: external_exports.string().min(1).optional(),
+  blockers: external_exports.number().int().nonnegative().optional(),
+  warnings: external_exports.number().int().nonnegative().optional(),
+  gate: external_exports.enum(METRIC_GATES).optional(),
+  call: external_exports.number().int().positive().optional()
+});
+var MetricEventSchema = MetricEventShape.superRefine((value, ctx) => {
+  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
+    const v = value[field];
+    if (v === void 0 || v === null) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [field],
+        message: `a ${value.kind} event requires ${field}`
+      });
+    }
+  }
+  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
+    if (!TERMINAL_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+  if (value.kind === "gate-call" && value.verdict !== void 0) {
+    if (!DOR_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+});
+var TaskMetricsEnvelope = external_exports.object({
+  slug: external_exports.string().min(1),
+  rolled_up_at: external_exports.string().min(1),
+  base_branch: external_exports.string().min(1),
+  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
+  time: external_exports.object({}).passthrough(),
+  quality: external_exports.object({}).passthrough(),
+  rework: external_exports.object({}).passthrough(),
+  notes: external_exports.array(external_exports.string())
+}).passthrough();
+function metricsRecordPath(dir, specBasename) {
+  return join(dir, `${specBasename}.md`);
+}
+function recordBasenameForSpec(specPath) {
+  return basename(specPath).replace(/\.md$/, "");
+}
+function slugOfRecord(filename) {
+  return basename(filename).replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findRecord2(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of entries) {
+    if (entry === exact) return join(dir, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
+  }
+  return fallback;
+}
+function header(slug) {
+  return `# Metrics \u2014 ${slug}
+
+Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
+
+`;
+}
+function append(path, slug, tag, payload) {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const head = existsSync(path) ? "" : header(slug);
+  appendFileSync(path, `${head}\`\`\`json ${tag}
+${JSON.stringify(payload)}
+\`\`\`
+
+`, "utf8");
+}
+function ensureRecord(path, slug) {
+  if (existsSync(path)) return;
+  mkdirSync(join(path, ".."), { recursive: true });
+  appendFileSync(path, header(slug), "utf8");
+}
+function appendMetricEvent(path, event) {
+  append(path, event.slug, METRIC_EVENT_TAG, event);
+}
+function appendTaskMetrics(path, block) {
+  append(path, block.slug, TASK_METRICS_TAG, block);
+}
+function readRecord(path) {
+  const empty = { events: [], terminal: [] };
+  if (!existsSync(path)) return empty;
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return empty;
+  }
+  const events = [];
+  for (const m of raw.matchAll(EVENT_RE)) {
+    const json = parseJson(m[1]);
+    if (json === void 0) continue;
+    const parsed = MetricEventSchema.safeParse(json);
+    if (parsed.success) events.push(parsed.data);
+  }
+  const terminal = [];
+  for (const m of raw.matchAll(TERMINAL_RE)) {
+    const json = parseJson(m[1]);
+    if (json === void 0) continue;
+    const parsed = TaskMetricsEnvelope.safeParse(json);
+    if (parsed.success) terminal.push(parsed.data);
+  }
+  return { events, terminal };
+}
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function readMetricEvents(dir, slug) {
+  const path = findRecord2(dir, slug);
+  return path ? readRecord(path).events : [];
+}
+function listRecords(dir) {
+  if (!existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  return entries.filter((f) => f.endsWith(".md")).map((filename) => {
+    const path = join(dir, filename);
+    return { path, filename, slug: slugOfRecord(filename), ...readRecord(path) };
+  });
+}
+
+// src/lib/metrics-series.ts
+function toSeriesRecords(listed) {
+  return listed.map((r) => ({
+    slug: r.slug,
+    filename: r.filename,
+    events: r.events.length,
+    block: r.terminal.length ? r.terminal[r.terminal.length - 1] : null,
+    review_fix_commits: null
+  }));
+}
+var sum = (xs) => xs.reduce((a, b) => a + b, 0);
+var listTotal = (xs) => xs.length ? sum(xs.map((x) => x.ms)) : null;
+var axesTotal = (axes, field) => axes ? axes.compliance[field] + axes.quality[field] : null;
+var SERIES_METRICS = [
+  {
+    group: "time",
+    key: "intake_ms",
+    id: "T1",
+    label: "intake",
+    unit: "ms",
+    pick: (r) => r.block?.time.intake_ms ?? null
+  },
+  {
+    group: "time",
+    key: "implement_ms",
+    id: "T2",
+    label: "implementation",
+    unit: "ms",
+    pick: (r) => r.block?.time.implement_ms ?? null
+  },
+  {
+    group: "time",
+    key: "first_green_ms",
+    id: "T3",
+    label: "to first green full run",
+    unit: "ms",
+    pick: (r) => r.block?.time.first_green_ms ?? null
+  },
+  {
+    group: "time",
+    key: "active_ms",
+    id: "T4",
+    label: "active pipeline time",
+    unit: "ms",
+    pick: (r) => r.block?.time.active_ms ?? null
+  },
+  {
+    group: "time",
+    key: "gate_efficiency",
+    id: "T5",
+    label: "gate efficiency (wall / sum)",
+    unit: "ratio",
+    pick: (r) => r.block?.time.gate_efficiency ?? null
+  },
+  {
+    group: "time",
+    key: "oracle_ms_total",
+    id: "T6",
+    label: "oracles, total per task",
+    unit: "ms",
+    pick: (r) => r.block ? listTotal(r.block.time.oracle_ms) : null
+  },
+  {
+    group: "time",
+    key: "gate_ms_total",
+    id: "T7",
+    label: "gates, total per task",
+    unit: "ms",
+    pick: (r) => r.block ? listTotal(r.block.time.gate_ms) : null
+  },
+  {
+    group: "time",
+    key: "critic_ms_total",
+    id: "T8",
+    label: "inside critic dispatches",
+    unit: "ms",
+    pick: (r) => r.block?.time.critic_ms.total ?? null
+  },
+  {
+    group: "quality",
+    key: "scope_drift_undeclared",
+    id: "Q1",
+    label: "undeclared files changed",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null
+  },
+  {
+    group: "quality",
+    key: "oracle_strength_share",
+    id: "Q2",
+    label: "criteria with an executable oracle",
+    unit: "share",
+    pick: (r) => r.block?.quality.oracle_strength?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "red_green_share",
+    id: "Q3",
+    label: "bugfix criteria proven red\u2192green",
+    unit: "share",
+    pick: (r) => r.block?.quality.red_green?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "not_run_share",
+    id: "Q4",
+    label: "gates not run",
+    unit: "share",
+    pick: (r) => r.block?.quality.not_run?.share ?? null
+  },
+  {
+    group: "quality",
+    key: "freshness_waivers",
+    id: "Q5",
+    label: "freshness waivers",
+    unit: "count",
+    pick: (r) => r.block?.quality.freshness_waivers ?? null
+  },
+  {
+    group: "quality",
+    key: "critic_spec_blockers",
+    id: "Q6",
+    label: "spec-critic blockers (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.spec ?? null, "blockers")
+  },
+  {
+    group: "quality",
+    key: "critic_spec_warnings",
+    id: "Q6",
+    label: "spec-critic warnings (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.spec ?? null, "warnings")
+  },
+  {
+    group: "quality",
+    key: "critic_diff_blockers",
+    id: "Q6",
+    label: "diff-critic blockers (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.diff ?? null, "blockers")
+  },
+  {
+    group: "quality",
+    key: "critic_diff_warnings",
+    id: "Q6",
+    label: "diff-critic warnings (both axes)",
+    unit: "count",
+    pick: (r) => axesTotal(r.block?.quality.critics.diff ?? null, "warnings")
+  },
+  {
+    group: "quality",
+    key: "spec_gaps",
+    id: "Q7",
+    label: "spec gaps",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_gaps ?? null
+  },
+  {
+    group: "quality",
+    key: "open_items_deferred",
+    id: "Q8",
+    label: "items deferred at a limit",
+    unit: "count",
+    pick: (r) => r.block?.quality.open_items?.deferred ?? null
+  },
+  {
+    group: "quality",
+    key: "open_items_blocked",
+    id: "Q8",
+    label: "items blocked at a limit",
+    unit: "count",
+    pick: (r) => r.block?.quality.open_items?.blocked ?? null
+  },
+  {
+    group: "quality",
+    key: "dor_first_call",
+    id: "Q9",
+    label: "DoR passed on first call (rate)",
+    unit: "share",
+    pick: (r) => r.block?.quality.dor_first_call === null || r.block?.quality.dor_first_call === void 0 ? null : r.block.quality.dor_first_call ? 1 : 0
+  },
+  {
+    group: "quality",
+    key: "oracle_unresolved",
+    id: "Q10",
+    label: "criteria whose oracle resolved to nothing",
+    unit: "count",
+    pick: (r) => r.block?.quality.oracle_resolution?.unresolved ?? null
+  },
+  {
+    group: "quality",
+    key: "review_fix_commits",
+    id: "Q11",
+    label: "review-fix commits after the PR opened",
+    unit: "count",
+    pick: (r) => r.review_fix_commits
+  },
+  {
+    group: "quality",
+    key: "escaped_defects",
+    id: "Q12",
+    label: "escaped defects credited to the task",
+    unit: "count",
+    pick: (_r, extra) => extra.escaped
+  },
+  {
+    group: "rework",
+    key: "seals",
+    id: "R1",
+    label: "seals",
+    unit: "count",
+    pick: (r) => r.block?.rework.seals ?? null
+  },
+  {
+    group: "rework",
+    key: "reseals",
+    id: "R1",
+    label: "reseals",
+    unit: "count",
+    pick: (r) => r.block?.rework.reseals ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_passes_spec",
+    id: "R2",
+    label: "spec-critic passes",
+    unit: "count",
+    pick: (r) => r.block?.rework.critic_passes.spec ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_passes_diff",
+    id: "R2",
+    label: "diff-critic passes",
+    unit: "count",
+    pick: (r) => r.block?.rework.critic_passes.diff ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_verify_gate",
+    id: "R3",
+    label: "fix rounds, verify-gate loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.verify_gate ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_critic",
+    id: "R3",
+    label: "fix rounds, critic loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.critic ?? null
+  },
+  {
+    group: "rework",
+    key: "fix_rounds_red_green",
+    id: "R3",
+    label: "fix rounds, red-green loop",
+    unit: "count",
+    pick: (r) => r.block?.rework.fix_rounds?.red_green ?? null
+  },
+  {
+    group: "rework",
+    key: "runs_before_green",
+    id: "R4",
+    label: "verification runs before the first green",
+    unit: "count",
+    pick: (r) => r.block?.rework.runs_before_green ?? null
+  }
+];
+function stat(values) {
+  const present = values.filter((v) => typeof v === "number" && Number.isFinite(v));
+  if (present.length === 0) return { count: 0, mean: null, median: null, max: null };
+  const sorted = [...present].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return {
+    count: present.length,
+    mean: round3(sum(present) / present.length),
+    median: round3(median),
+    max: sorted[sorted.length - 1]
+  };
+}
+function round3(x) {
+  return Math.round(x * 1e3) / 1e3;
+}
+function escapedDefects(shipped) {
+  const ordered = [...shipped].sort(
+    (a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) || (a.created ?? "").localeCompare(b.created ?? "") || a.slug.localeCompare(b.slug)
+  );
+  const by_spec = {};
+  const pairs = [];
+  ordered.forEach((spec, i) => {
+    if (spec.type !== "bugfix") return;
+    const own = new Set(spec.files);
+    const credited = ordered.slice(0, i).filter((earlier) => earlier.slug !== spec.slug && earlier.files.some((f) => own.has(f))).map((earlier) => earlier.slug);
+    if (credited.length === 0) return;
+    pairs.push({ bugfix: spec.slug, credited });
+    for (const slug of credited) by_spec[slug] = (by_spec[slug] ?? 0) + 1;
+  });
+  return { by_spec, pairs };
+}
+function filterRecords(records, filters) {
+  let out = records;
+  if (filters.slug) out = out.filter((r) => r.slug === filters.slug);
+  if (filters.type) out = out.filter((r) => r.block?.type === filters.type);
+  if (filters.since) {
+    const since = filters.since;
+    out = out.filter((r) => !!r.block && r.block.rolled_up_at.slice(0, since.length) >= since);
+  }
+  return out;
+}
+function aggregateSeries(input) {
+  const records = filterRecords(input.records, input.filters);
+  const escaped = input.shipped ? escapedDefects(input.shipped) : null;
+  const shippedSlugs = new Set((input.shipped ?? []).map((s) => s.slug));
+  const rolledUp = records.filter((r) => r.block !== null);
+  const groups = {
+    time: {},
+    quality: {},
+    rework: {}
+  };
+  for (const metric of SERIES_METRICS) {
+    groups[metric.group][metric.key] = stat(
+      rolledUp.map(
+        (r) => metric.pick(r, {
+          // Q12 is defined for a record whose spec is shipped: 0 credits is a
+          // measured zero there, and null everywhere else.
+          escaped: escaped && shippedSlugs.has(r.slug) ? escaped.by_spec[r.slug] ?? 0 : null
+        })
+      )
+    );
+  }
+  const rows = records.map((r) => ({
+    slug: r.slug,
+    filename: r.filename,
+    type: r.block?.type ?? null,
+    rolled_up_at: r.block?.rolled_up_at ?? null,
+    active_ms: r.block?.time.active_ms ?? null,
+    events: r.events
+  }));
+  const single = input.filters.slug ? records[0]?.block ?? null : null;
+  return {
+    generated_at: input.now,
+    dir: input.dir,
+    filters: {
+      type: input.filters.type ?? null,
+      since: input.filters.since ?? null,
+      slug: input.filters.slug ?? null
+    },
+    coverage: {
+      records: records.length,
+      rolled_up: rolledUp.length,
+      events_only: records.filter((r) => r.block === null && r.events > 0).length,
+      // The seal anchor's records (ADR-0044). Without this bucket a file created
+      // for a run that then recorded nothing counts in `records` and in neither
+      // of the two above, so the coverage line loses it silently.
+      empty: records.filter((r) => r.block === null && r.events === 0).length,
+      shipped_specs: input.shipped ? input.shipped.length : null,
+      shipped_with_record: input.shipped ? input.shipped.filter((s) => rolledUp.some((r) => r.slug === s.slug)).length : null
+    },
+    time: groups.time,
+    quality: groups.quality,
+    rework: groups.rework,
+    escaped_defects: escaped,
+    records: rows,
+    record: single
+  };
+}
+function summarizeSeries(records) {
+  const rolledUp = records.filter((r) => r.block !== null);
+  const newest = rolledUp.map((r) => ({ slug: r.slug, rolled_up_at: r.block.rolled_up_at })).sort((a, b) => b.rolled_up_at.localeCompare(a.rolled_up_at))[0];
+  return {
+    records: records.length,
+    rolled_up: rolledUp.length,
+    empty: records.filter((r) => r.block === null && r.events === 0).length,
+    newest: newest ?? null,
+    median_active_ms: stat(rolledUp.map((r) => r.block.time.active_ms)).median,
+    median_spec_gaps: stat(rolledUp.map((r) => r.block.quality.spec_gaps)).median
+  };
+}
+function fmtMs(ms) {
+  if (ms === null) return "\u2014";
+  if (ms < 1e3) return `${Math.round(ms)}ms`;
+  const s = Math.round(ms / 1e3);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+function fmtUnit(value, unit) {
+  if (value === null) return "\u2014";
+  switch (unit) {
+    case "ms":
+      return fmtMs(value);
+    case "share":
+      return `${Math.round(value * 100)}%`;
+    case "ratio":
+      return String(round3(value));
+    case "count":
+      return String(round3(value));
+  }
+}
 
 // src/tools/dashboard.ts
 var SECTION_ORDER = [
@@ -33440,6 +34085,7 @@ var SECTION_ORDER = [
   "artifacts",
   "adr",
   "lessons",
+  "metrics",
   "usage",
   "commands"
 ];
@@ -33449,7 +34095,7 @@ var DashboardInput = external_exports.object({
 function buildDashboardTool(env2, version2) {
   return defineTool({
     name: "dashboard",
-    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
+    description: `Whole-toolbox state report (ADR-0030): project paths/config/git/MCP servers, task-board counters, the current-work digest (active board cards + pipeline specs in flight), recent handoffs with their age, audit findings by severity for the newest security and refactor report, artifact inventories with freshness (task specs + verification.md age, handoffs), lessons statistics, the ADR corpus by status, the task-metrics series in one line (ADR-0043), and the local usage summary when .marvin/usage/events.jsonl exists. Answers "what state is the toolbox in?" \u2014 the command index stays on the \`help\` tool. Pass \`section\` (${SECTION_ORDER.join("/")}) to narrow the text; structuredContent always carries the full DashboardState. Works on a fresh project \u2014 missing directories render as zeros.`,
     inputSchema: DashboardInput,
     // Bind the dashboard `ui://` widget for MCP Apps hosts (ADR-0024 #8). A plain
     // object literal — no ext-apps import — so tsup never bundles the SDK into
@@ -33469,6 +34115,7 @@ function renderDashboard(env2, loaded, version2, input) {
   const specDir = resolveSpecDir(env2.projectDir, config2.spec);
   const artifacts = { ...artifactCounts(env2, specDir), verification };
   const lessons = lessonsStats(env2.memoryDir);
+  const metrics = summarizeSeries(toSeriesRecords(listRecords(env2.metricsDir)));
   const adrDir = resolveAdrDir(env2.projectDir, config2.adr);
   const adr = adrSummary(adrDir.rel, readAdrCorpus(adrDir));
   const usage = readUsageSummary(env2.projectDir);
@@ -33534,6 +34181,7 @@ function renderDashboard(env2, loaded, version2, input) {
       "## Lessons",
       lessons.total > 0 ? `- ${lessons.total} lesson(s) \u2014 ${nonZero(lessons.by_type).join(" \xB7 ")}` : "- _No lessons captured yet in `.marvin/memory`._"
     ],
+    metrics: ["## Metrics", ...renderMetrics(metrics)],
     usage: [
       "## Usage",
       ...usage === null ? [
@@ -33575,6 +34223,7 @@ function renderDashboard(env2, loaded, version2, input) {
     command_groups: groups,
     adr,
     lessons,
+    metrics,
     ...usage ? { usage } : {},
     servers,
     current_tasks: currentTasks,
@@ -33685,6 +34334,19 @@ function renderAuditArea(label, area, command) {
     ...area.scanned_age_days === null ? [] : [`${days(area.scanned_age_days)} old`]
   ].join(" \xB7 ");
 }
+function renderMetrics(m) {
+  if (m.records === 0) {
+    return [
+      "- _No metrics records yet \u2014 the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._"
+    ];
+  }
+  const parts = [`${m.records} record(s)`, `${m.rolled_up} rolled up`];
+  if (m.empty > 0) parts.push(`${m.empty} started but empty`);
+  if (m.newest) parts.push(`newest \`${m.newest.slug}\` (${m.newest.rolled_up_at.slice(0, 10)})`);
+  if (m.median_active_ms !== null) parts.push(`median active time ${fmtMs(m.median_active_ms)}`);
+  if (m.median_spec_gaps !== null) parts.push(`spec gaps per task ${m.median_spec_gaps}`);
+  return [`- ${parts.join(" \xB7 ")}`, "- Full series: `/marvin:task-metrics`"];
+}
 function renderUsage(usage) {
   if (usage.events === 0) return ["- Usage log present but empty \u2014 0 event(s)."];
   const window = usage.window ? ` between ${usage.window.from.slice(0, 10)} and ${usage.window.to.slice(0, 10)}` : "";
@@ -33704,7 +34366,7 @@ function days(n) {
 }
 
 // src/tools/verify.ts
-var import_yaml2 = __toESM(require_dist2());
+var import_yaml3 = __toESM(require_dist2());
 var DIGEST_EXCLUDE = [".marvin"];
 var MAX_DIGEST_PATHS = 5e3;
 function readChangedPaths(root) {
@@ -33828,7 +34490,7 @@ function oracleJournalPath(runsDir, slug) {
 function recordOracleRun(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = oracleJournalPath(runsDir, entry.slug);
-  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+  const header2 = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
 
 Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
 
@@ -33838,7 +34500,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header}${block}`, "utf8");
+  appendFileSync(path, `${header2}${block}`, "utf8");
 }
 function readOracleRuns(runsDir, slug) {
   const path = oracleJournalPath(runsDir, slug);
@@ -33882,6 +34544,695 @@ function redGreenProof(runs, contractSha, criterionId) {
     }
   }
   return "missing";
+}
+
+// src/lib/metrics-collect.ts
+var import_yaml2 = __toESM(require_dist2());
+var PROGRESS_TAG = "spec-progress";
+var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var ProgressEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** Which skill wrote it: step ids collide across the two pipelines. */
+  source: external_exports.enum(["task-start", "task-implement"]),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
+  /** One line of position and choice. Never a credential, token or customer datum. */
+  detail: external_exports.string(),
+  /** The acceptance-criterion id, when `kind` is `criterion`. */
+  criterion: external_exports.string().nullable().optional(),
+  /** The draft/spec path, recorded once when the draft is opened. */
+  path: external_exports.string().nullable().optional(),
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601. */
+  at: external_exports.string()
+});
+function progressJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.progress.md`);
+}
+function recordProgress(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = progressJournalPath(runsDir, entry.slug);
+  const header2 = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
+
+Append-only. One \`${PROGRESS_TAG}\` block per entry.
+
+`;
+  const block = `\`\`\`json ${PROGRESS_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header2}${block}`, "utf8");
+}
+function readProgress(runsDir, slug) {
+  const path = progressJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m of raw.matchAll(PROGRESS_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = ProgressEntrySchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function resumeState(entries) {
+  let archived = 0;
+  let start = 0;
+  entries.forEach((e, i) => {
+    if (e.kind === "archived") {
+      archived += 1;
+      start = i + 1;
+    }
+  });
+  const live = entries.slice(start);
+  const criteria_done = [];
+  let path = null;
+  let contract_sha = null;
+  for (const e of live) {
+    if (e.kind === "criterion") {
+      const id = e.criterion?.trim();
+      if (id && !criteria_done.includes(id)) criteria_done.push(id);
+    }
+    if (e.path) path = e.path;
+    if (e.contract_sha) contract_sha = e.contract_sha;
+  }
+  return {
+    entries: live,
+    archived,
+    last: live.length ? live[live.length - 1] : null,
+    criteria_done,
+    path,
+    contract_sha
+  };
+}
+var VERIFY_RUN_TAG = "verify-run";
+var VERIFY_RUN_RE = new RegExp("```json " + VERIFY_RUN_TAG + "\\n([\\s\\S]*?)\\n```", "g");
+var JournalGate = external_exports.object({
+  name: external_exports.string().min(1),
+  status: external_exports.string().min(1),
+  durationMs: external_exports.number()
+});
+var RunEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("run"),
+  /** ISO 8601, stamped by the tool. */
+  at: external_exports.string(),
+  /** `PASS` | `PASS WITH WARNINGS` | `FAIL`, as the run computed it. */
+  verdict: external_exports.string().min(1),
+  mode: external_exports.string().min(1),
+  execution: external_exports.string().min(1),
+  /** The gate subset a targeted retry asked for, or null for a full run. */
+  only: external_exports.array(external_exports.string()).nullable(),
+  gates: external_exports.array(JournalGate),
+  wallClockMs: external_exports.number(),
+  sumOfGatesMs: external_exports.number(),
+  /** The commit the run proved, from the run's own provenance; null outside git. */
+  head_sha: external_exports.string().nullable()
+});
+var GateEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("gate"),
+  at: external_exports.string(),
+  decision: external_exports.enum(["ALLOW", "BLOCK"]),
+  /** The verdict the gate read off the artifact, null when it found none. */
+  verdict: external_exports.string().nullable(),
+  staleness: external_exports.enum(["fresh", "stale", "unknown"]),
+  allowStale: external_exports.boolean(),
+  red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /** The artifact the gate judged, project-relative. */
+  artifact: external_exports.string().min(1)
+});
+var VerifyRunEntrySchema = external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
+function verifyJournalPath(runsDir, slug) {
+  return join(runsDir, `${slug}.verify.md`);
+}
+function recordVerifyRun(runsDir, entry) {
+  mkdirSync(runsDir, { recursive: true });
+  const path = verifyJournalPath(runsDir, entry.slug);
+  const header2 = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
+
+Append-only. One \`${VERIFY_RUN_TAG}\` block per run or delivery-gate decision.
+
+`;
+  const block = `\`\`\`json ${VERIFY_RUN_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header2}${block}`, "utf8");
+}
+function readVerifyRuns(runsDir, slug) {
+  const path = verifyJournalPath(runsDir, slug);
+  if (!existsSync(path)) return [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m of raw.matchAll(VERIFY_RUN_RE)) {
+    let json;
+    try {
+      json = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const parsed = VerifyRunEntrySchema.safeParse(json);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+function isGreenFullRun(entry) {
+  return entry.kind === "run" && entry.only === null && (entry.verdict === "PASS" || entry.verdict === "PASS WITH WARNINGS");
+}
+
+// src/lib/metrics-collect.ts
+function findSpecBySlug(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+function relFromRoot(abs, projectRoot) {
+  const rel = relative(projectRoot, abs);
+  return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
+}
+function latestReceipts(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let filenames;
+  try {
+    filenames = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const newest = /* @__PURE__ */ new Map();
+  for (const filename of filenames) {
+    if (!filename.endsWith(".md")) continue;
+    let raw;
+    try {
+      raw = readFileSync(join(dir, filename), "utf8");
+    } catch {
+      continue;
+    }
+    const parse4 = parseCritiqueBlock(raw);
+    if (parse4.kind !== "ok" || parse4.critique.subject !== slug) continue;
+    const current = newest.get(parse4.critique.critic);
+    const later = !current || parse4.critique.judged_at > current.critique.judged_at || parse4.critique.judged_at === current.critique.judged_at && filename > current.filename;
+    if (later) newest.set(parse4.critique.critic, { critique: parse4.critique, filename });
+  }
+  if (newest.size === 0) return null;
+  return {
+    spec: newest.get("marvin-tm-spec-critic")?.critique ?? null,
+    diff: newest.get("marvin-tm-diff-critic")?.critique ?? null
+  };
+}
+function readRollupSpec(specPath, projectRoot, notes) {
+  const raw = readFileSync(specPath, "utf8");
+  const { frontmatter, body } = parseFrontmatter(raw);
+  const block = extractContractBlock(body);
+  let contract = null;
+  if (block !== null) {
+    try {
+      const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+      if (parsed.success) contract = parsed.data;
+      else
+        notes.push(
+          "the spec-contract block failed schema validation \u2014 contract-sourced rows are null"
+        );
+    } catch {
+      notes.push("the spec-contract block is not valid YAML \u2014 contract-sourced rows are null");
+    }
+  } else {
+    notes.push("the spec carries no spec-contract block \u2014 contract-sourced rows are null");
+  }
+  return {
+    path: relFromRoot(specPath, projectRoot),
+    frontmatter,
+    contract,
+    stamped_sha: frontmatter.contract_sha?.trim() || null,
+    actual_sha: block !== null ? contractHash(block) : null
+  };
+}
+function readRunResult(path, slug, notes) {
+  if (!existsSync(path)) return null;
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  const parse4 = parseVerifyBlock(raw);
+  if (parse4.kind === "ok") return parse4.result;
+  notes.push(
+    parse4.kind === "none" ? `runs/${slug}.md carries no verify-result block \u2014 treated as absent` : `runs/${slug}.md: ${parse4.reason} \u2014 treated as absent`
+  );
+  return null;
+}
+function collectGit(projectRoot, base, notes) {
+  if (!inGitRepo(projectRoot)) return null;
+  const head_sha = headSha(projectRoot);
+  if (!refExists(base, projectRoot)) {
+    notes.push(
+      `base ref \`${base}\` does not resolve in this repository \u2014 scope drift (Q1) not computed`
+    );
+    return { head_sha, changed_files: null };
+  }
+  return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
+}
+function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
+  const notes = [];
+  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
+  const spec = specPath ? readRollupSpec(specPath, projectRoot, notes) : null;
+  const progressRuns = specPath ? join(dirname(specPath), "runs") : join(resolveSpecDir(projectRoot, specConfig).abs, "runs");
+  const progress = existsSync(progressJournalPath(progressRuns, slug)) ? readProgress(progressRuns, slug) : null;
+  const pinned = join(projectRoot, ".marvin", "task", "runs");
+  const oracles = existsSync(oracleJournalPath(pinned, slug)) ? readOracleRuns(pinned, slug) : null;
+  const verify_journal = existsSync(verifyJournalPath(pinned, slug)) ? readVerifyRuns(pinned, slug) : null;
+  const verify_result = readRunResult(join(pinned, `${slug}.md`), slug, notes);
+  const critique = latestReceipts(
+    projectScopedDir(env2, projectRoot, env2.critiqueDir, "critique"),
+    slug
+  );
+  const events = readMetricEvents(
+    projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics"),
+    slug
+  );
+  const git2 = collectGit(projectRoot, base, notes);
+  return {
+    slug,
+    base_branch: base,
+    now,
+    spec,
+    progress,
+    oracles,
+    verify_journal,
+    verify_result,
+    critique,
+    events: events.length ? events : null,
+    git: git2,
+    notes
+  };
+}
+function readShippedSpecs(projectRoot, specConfig) {
+  const dir = resolveSpecDir(projectRoot, specConfig);
+  if (!existsSync(dir.abs)) return null;
+  const out = [];
+  for (const record2 of readSpecCorpus(dir).records) {
+    if (record2.status !== "shipped") continue;
+    let raw;
+    try {
+      raw = readFileSync(join(dir.abs, record2.filename), "utf8");
+    } catch {
+      continue;
+    }
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const block = extractContractBlock(body);
+    let files = [];
+    if (block !== null) {
+      try {
+        const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+        if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
+      } catch {
+      }
+    }
+    out.push({
+      slug: record2.slug,
+      number: record2.number,
+      type: frontmatter.type?.trim() || null,
+      created: frontmatter.created?.trim() || null,
+      files
+    });
+  }
+  return out;
+}
+function deliveryPrUrl(specRaw) {
+  const at = specRaw.indexOf("## Delivery");
+  if (at === -1) return null;
+  const m = /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/.exec(specRaw.slice(at));
+  return m ? m[0] : null;
+}
+function reviewFixCommits(specPath, cwd) {
+  if (!specPath || !hasGh()) return null;
+  let raw;
+  try {
+    raw = readFileSync(specPath, "utf8");
+  } catch {
+    return null;
+  }
+  const url = deliveryPrUrl(raw);
+  const m = url ? /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url) : null;
+  if (!m) return null;
+  const [, owner, repo, number3] = m;
+  try {
+    const opened = gh(
+      ["api", `repos/${owner}/${repo}/pulls/${number3}`, "--jq", ".created_at"],
+      cwd
+    );
+    if (!opened.ok || !opened.value) return null;
+    const dates = gh(
+      [
+        "api",
+        `repos/${owner}/${repo}/pulls/${number3}/commits`,
+        "--paginate",
+        "--jq",
+        ".[].commit.committer.date"
+      ],
+      cwd
+    );
+    if (!dates.ok) return null;
+    return dates.value.split("\n").map((d) => d.trim()).filter(Boolean).filter((d) => d > opened.value).length;
+  } catch {
+    return null;
+  }
+}
+function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
+  const records = toSeriesRecords(listRecords(metricsDir));
+  return records.map(
+    (r) => r.block ? {
+      ...r,
+      review_fix_commits: reviewFixCommits(
+        findSpecBySlug(r.slug, projectRoot, specConfig),
+        projectRoot
+      )
+    } : r
+  );
+}
+
+// src/lib/metrics-rollup.ts
+function epoch(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+function interval(label, from, to, notes) {
+  const a = epoch(from);
+  const b = epoch(to);
+  if (a === null || b === null) return null;
+  const d = b - a;
+  if (d < 0) {
+    notes.push(`${label}: negative interval (${to} precedes ${from}) \u2014 reported as null`);
+    return null;
+  }
+  return d;
+}
+function last(items) {
+  return items.length ? items[items.length - 1] : void 0;
+}
+function flag(value) {
+  const v = value?.trim().toLowerCase();
+  return v === "true" ? true : v === "false" ? false : null;
+}
+function presence(input) {
+  return input === null || input === void 0 ? "absent" : "present";
+}
+function round32(x) {
+  return Math.round(x * 1e3) / 1e3;
+}
+function sealJoinKey(spec, notes) {
+  if (!spec || !spec.stamped_sha || !spec.actual_sha) return null;
+  if (spec.stamped_sha !== spec.actual_sha) {
+    notes.push(
+      `the spec-contract has been edited since it was sealed (stamped ${spec.stamped_sha}, the block hashes to ${spec.actual_sha}) \u2014 oracle-journal rows prove the superseded contract and are joined against nothing`
+    );
+    return null;
+  }
+  return spec.actual_sha;
+}
+function latestOraclesAtSeal(oracles, seal) {
+  const latest = /* @__PURE__ */ new Map();
+  if (!oracles || !seal) return latest;
+  for (const run3 of oracles) if (run3.contract_sha === seal) latest.set(run3.criterion, run3);
+  return latest;
+}
+function criticTime(events, notes) {
+  if (!events) return { total: null, dispatches: [] };
+  const key = (e) => `${e.critic}#${e.pass}`;
+  const firstDispatch = /* @__PURE__ */ new Map();
+  for (const e of events) {
+    if (e.kind !== "critic-dispatch") continue;
+    const k = key(e);
+    if (!firstDispatch.has(k)) firstDispatch.set(k, e);
+  }
+  const closed = /* @__PURE__ */ new Set();
+  const dispatches = [];
+  let strayVerdicts = 0;
+  for (const v of events) {
+    if (v.kind !== "critic-verdict") continue;
+    const k = key(v);
+    const d = firstDispatch.get(k);
+    if (!d || closed.has(k)) {
+      strayVerdicts += 1;
+      continue;
+    }
+    closed.add(k);
+    const ms = interval(`T8 ${v.critic} pass ${v.pass}`, d.at, v.at, notes);
+    if (ms !== null) dispatches.push({ critic: v.critic, pass: v.pass, ms });
+  }
+  const open = [...firstDispatch.keys()].filter((k) => !closed.has(k)).length;
+  if (open > 0) notes.push(`T8: ${open} critic dispatch(es) without a recorded verdict \u2014 excluded`);
+  if (strayVerdicts > 0) {
+    notes.push(`T8: ${strayVerdicts} critic verdict(s) without a recorded dispatch \u2014 excluded`);
+  }
+  return {
+    total: dispatches.length ? dispatches.reduce((sum2, d) => sum2 + d.ms, 0) : null,
+    dispatches
+  };
+}
+function rollUpMetrics(input) {
+  const notes = [...input.notes ?? []];
+  const fm = input.spec?.frontmatter ?? {};
+  const contract = input.spec?.contract ?? null;
+  const seal = sealJoinKey(input.spec, notes);
+  const type = fm.type?.trim() || null;
+  const { progress, oracles, verify_journal, verify_result, events } = input;
+  const lastCriterion = progress ? last(progress.filter((e) => e.kind === "criterion")) : void 0;
+  let intake_ms = null;
+  if (progress) {
+    const start = progress.find((e) => e.source === "task-start" && e.step === "1.5");
+    const end = last(progress.filter((e) => e.source === "task-start" && e.kind === "step"));
+    if (!start) notes.push("T1: the progress journal has no task-start step 1.5 entry");
+    else if (!end || end === start) {
+      notes.push(
+        "T1: no task-start step entry after 1.5 \u2014 the intake was never finalised in the journal"
+      );
+    } else intake_ms = interval("T1", start.at, end.at, notes);
+  }
+  let implement_ms = null;
+  if (progress) {
+    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
+    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
+    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
+  }
+  let first_green_ms = null;
+  const runs = verify_journal ? verify_journal.filter((e) => e.kind === "run") : null;
+  const firstGreenIndex = runs ? runs.findIndex(isGreenFullRun) : -1;
+  if (runs) {
+    if (firstGreenIndex === -1) notes.push("T3/R4: no green full verification run recorded");
+    else if (lastCriterion) {
+      first_green_ms = interval("T3", lastCriterion.at, runs[firstGreenIndex].at, notes);
+    } else if (!progress) {
+      notes.push("T3: no progress journal to anchor the last recorded criterion");
+    }
+  }
+  const active_ms = intake_ms !== null && implement_ms !== null && first_green_ms !== null ? intake_ms + implement_ms + first_green_ms : null;
+  const gate_efficiency = verify_result && typeof verify_result.wallClockMs === "number" && typeof verify_result.sumOfGatesMs === "number" && verify_result.sumOfGatesMs > 0 ? round32(verify_result.wallClockMs / verify_result.sumOfGatesMs) : null;
+  const latestOracle = latestOraclesAtSeal(oracles, seal);
+  const oracle_ms = [...latestOracle.values()].filter((r) => typeof r.durationMs === "number").map((r) => ({ criterion: r.criterion, ms: r.durationMs })).sort((a, b) => a.criterion.localeCompare(b.criterion, void 0, { numeric: true }));
+  const gate_ms = (verify_result?.gates ?? []).filter((g) => typeof g.durationMs === "number").map((g) => ({ gate: g.name, ms: g.durationMs }));
+  const time3 = {
+    intake_ms,
+    implement_ms,
+    first_green_ms,
+    active_ms,
+    gate_efficiency,
+    oracle_ms,
+    gate_ms,
+    critic_ms: criticTime(events, notes)
+  };
+  let scope_drift = null;
+  if (input.git?.changed_files && contract) {
+    const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
+    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
+    const changed = input.git.changed_files.map(normalizeScopePath).filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    scope_drift = {
+      declared: declared.size,
+      changed: changed.length,
+      undeclared: changed.filter((p) => !declared.has(p)).sort()
+    };
+  }
+  let oracle_strength = null;
+  if (contract) {
+    const criteria = contract.criteria.length;
+    const executable = contract.criteria.filter(
+      (c) => c.oracle.kind === "test" || c.oracle.kind === "command"
+    ).length;
+    oracle_strength = { criteria, executable, share: criteria ? round32(executable / criteria) : 0 };
+  }
+  let red_green = null;
+  if (type === "bugfix" && contract && oracles && seal) {
+    const criteria = contract.criteria.length;
+    const proven = contract.criteria.filter(
+      (c) => redGreenProof(oracles, seal, c.id) === "proven"
+    ).length;
+    red_green = { criteria, proven, share: criteria ? round32(proven / criteria) : 0 };
+  }
+  let not_run = null;
+  if (verify_result && verify_result.gates.length > 0) {
+    const gates = verify_result.gates.length;
+    const notRun = verify_result.gates.filter((g) => g.status === "not-run").length;
+    not_run = { gates, not_run: notRun, share: round32(notRun / gates) };
+  }
+  const freshness_waivers = verify_journal ? verify_journal.filter(
+    (e) => e.kind === "gate" && e.decision === "ALLOW" && e.staleness === "stale" && e.allowStale === true
+  ).length : null;
+  const axes = (c) => c ? { compliance: c.compliance, quality: c.quality } : null;
+  const critics = { spec: axes(input.critique?.spec), diff: axes(input.critique?.diff) };
+  const spec_gaps = events ? events.filter((e) => e.kind === "spec-gap").length : null;
+  const open_items = events ? {
+    deferred: events.filter((e) => e.kind === "open-item" && e.classification === "deferred").length,
+    blocked: events.filter((e) => e.kind === "open-item" && e.classification === "blocked").length
+  } : null;
+  let dor_first_call = null;
+  if (events) {
+    const first = events.filter((e) => e.kind === "gate-call" && e.gate === "dor").sort((a, b) => (epoch(a.at) ?? 0) - (epoch(b.at) ?? 0) || (a.call ?? 0) - (b.call ?? 0))[0];
+    if (first) dor_first_call = first.verdict === "PASS" || first.verdict === "PASS WITH WARNINGS";
+  }
+  let oracle_resolution = null;
+  if (oracles && seal) {
+    const by_source = {};
+    let unresolved = 0;
+    for (const run3 of latestOracle.values()) {
+      if (run3.source === null) unresolved += 1;
+      else by_source[run3.source] = (by_source[run3.source] ?? 0) + 1;
+    }
+    oracle_resolution = { by_source, unresolved };
+  }
+  const quality = {
+    scope_drift,
+    oracle_strength,
+    red_green,
+    not_run,
+    freshness_waivers,
+    critics,
+    spec_gaps,
+    open_items,
+    dor_first_call,
+    oracle_resolution
+  };
+  let seals = null;
+  let reseals = null;
+  if (progress) {
+    seals = new Set(progress.map((e) => e.contract_sha).filter((s) => !!s)).size;
+    reseals = Math.max(0, seals - 1);
+  }
+  const highestPass = (critic) => {
+    if (!events) return null;
+    const passes = events.filter((e) => e.kind === "critic-verdict" && e.critic === critic).map((e) => e.pass ?? 0);
+    return passes.length ? Math.max(...passes) : null;
+  };
+  const critic_passes = {
+    spec: highestPass("marvin-tm-spec-critic"),
+    diff: highestPass("marvin-tm-diff-critic")
+  };
+  const fix_rounds = events ? {
+    verify_gate: events.filter((e) => e.kind === "fix-round" && e.loop === "verify-gate").length,
+    critic: events.filter((e) => e.kind === "fix-round" && e.loop === "critic").length,
+    red_green: events.filter((e) => e.kind === "fix-round" && e.loop === "red-green").length
+  } : null;
+  const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
+  const rework = {
+    seals,
+    reseals,
+    critic_passes,
+    fix_rounds,
+    runs_before_green
+  };
+  const sources = {
+    spec: presence(input.spec),
+    progress: presence(progress),
+    oracles: presence(oracles),
+    verify_journal: presence(verify_journal),
+    verify_result: presence(verify_result),
+    critique: presence(input.critique),
+    events: presence(events),
+    git: presence(input.git)
+  };
+  return {
+    slug: input.slug,
+    contract_sha: input.spec?.stamped_sha ?? null,
+    type,
+    risk: fm.risk?.trim() || null,
+    breaking: flag(fm.breaking),
+    spike_required: flag(fm.spike_required),
+    created: fm.created?.trim() || null,
+    rolled_up_at: input.now,
+    head_sha: input.git?.head_sha ?? null,
+    base_branch: input.base_branch,
+    sources,
+    time: time3,
+    quality,
+    rework,
+    notes
+  };
+}
+
+// src/lib/metrics-record.ts
+function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
+  const existing = findRecord2(dir, slug);
+  if (existing) return existing;
+  const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
+  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+}
+function metricsDirFor(env2, projectRoot) {
+  return projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
+}
+function ensureRecordForSpec(env2, projectRoot, slug, specPath) {
+  const path = recordPathFor(
+    metricsDirFor(env2, projectRoot),
+    slug,
+    projectRoot,
+    void 0,
+    specPath
+  );
+  ensureRecord(path, slug);
+  return path;
+}
+function performRollup(req) {
+  const { env: env2, projectRoot, config: config2, slug } = req;
+  const base = req.base?.trim() || config2.base_branch;
+  const now = req.now ?? (/* @__PURE__ */ new Date()).toISOString();
+  const block = rollUpMetrics(collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now));
+  const dir = metricsDirFor(env2, projectRoot);
+  const path = recordPathFor(dir, slug, projectRoot, config2.spec);
+  appendTaskMetrics(path, block);
+  const record2 = relFromRoot(path, projectRoot);
+  return {
+    path,
+    record: record2,
+    block,
+    terminalBlocks: readRecord(path).terminal.length,
+    // A host project with a blanket `.marvin/` exclusion learns at the FIRST
+    // roll-up that its series is not being committed, rather than never.
+    ignored: inGitRepo(projectRoot) ? isIgnored(record2, projectRoot) : null
+  };
 }
 
 // src/tools/verify.ts
@@ -34023,7 +35374,9 @@ async function runVerify(input, env2) {
     return deliverGate(projectRoot, {
       specSlug: input.specSlug,
       allowStale: input.allowStale,
-      specConfig: config2.spec
+      specConfig: config2.spec,
+      env: env2,
+      config: config2
     });
   }
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
@@ -34065,6 +35418,9 @@ ${plan}${warn2}`
   }
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
+  }
+  if (input.mode !== "standalone" && input.specSlug === void 0) {
+    warnings.push(SLUGLESS_PIPELINE_WARNING);
   }
   const runSlug = resolveRunSlug(input.specSlug);
   if (runSlug.rejected) {
@@ -34113,6 +35469,21 @@ ${machine}`;
     if (runPath) {
       mkdirSync(dirname(runPath), { recursive: true });
       writeFileSync(runPath, fullText, "utf8");
+    }
+    if (runPath && runSlug.slug) {
+      journalVerifyEntry(projectRoot, {
+        slug: runSlug.slug,
+        kind: "run",
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        verdict,
+        mode: input.mode,
+        execution: input.execution,
+        only: input.only ?? null,
+        gates: results.map((r) => ({ name: r.name, status: r.status, durationMs: r.durationMs })),
+        wallClockMs,
+        sumOfGatesMs,
+        head_sha: provenance?.head_sha ?? null
+      });
     }
   }
   return {
@@ -34327,7 +35698,7 @@ async function runGate({ gate, probe }, cwd) {
   const out = await spawnCommand(gate.command, cwd);
   if (out.error) return crashResult(gate, out.error, out.durationMs);
   const status = classifyExit(out.code, out.signal);
-  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const tail = failureExcerpt(out.stderr || out.stdout);
   const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
   return {
     name: gate.name,
@@ -34338,6 +35709,20 @@ async function runGate({ gate, probe }, cwd) {
     summary,
     details: tail
   };
+}
+var ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
+var FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+var PASS_MARKER = /(^|\s)[\u2713\u2714\u221a]|^\s*ok\s/;
+function failureExcerpt(text) {
+  const lines = text.trim().split("\n");
+  const errors = lines.filter(
+    (l) => !PASS_MARKER.test(l) && (ERROR_TOKEN.test(l) || FAIL_MARKER.test(l))
+  );
+  if (errors.length === 0) return lines.slice(-12).join("\n");
+  const shown = errors.slice(0, 9);
+  const head = shown.length === errors.length ? `${errors.length} error line(s):` : `${errors.length} error line(s), first ${shown.length}:`;
+  const tail = lines.slice(-3).filter((l) => !shown.includes(l));
+  return [head, ...shown, ...tail.length ? ["\u2026", ...tail] : []].join("\n");
 }
 function crashResult(gate, reason, durationMs = 0) {
   return {
@@ -34350,6 +35735,7 @@ function crashResult(gate, reason, durationMs = 0) {
     details: reason instanceof Error ? reason.message : String(reason)
   };
 }
+var SLUGLESS_PIPELINE_WARNING = "No `specSlug` was passed to a pipeline run \u2014 no per-spec run was written under `.marvin/task/runs/`, the delivery gate will judge the global `verification.md`, and the metrics series will not see this run. Pass the spec's slug (its frontmatter `slug`, else its filename slug) on every chained run.";
 function modeWarnings(mode, cwd) {
   if (mode === "standalone") return [];
   const changed = changedFiles(cwd);
@@ -34373,11 +35759,11 @@ function computeVerdict(results, warnings) {
   if (warnings.length > 0) return "PASS WITH WARNINGS";
   return "PASS";
 }
-var SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function resolveRunSlug(specSlug) {
   if (specSlug === void 0) return { slug: null };
   const slug = specSlug.trim();
-  if (SLUG_RE.test(slug)) return { slug };
+  if (SLUG_RE2.test(slug)) return { slug };
   return { slug: null, rejected: slug };
 }
 function slugRejection(rejected, consequence) {
@@ -34392,6 +35778,32 @@ function findSpec(slug, projectRoot, specConfig) {
 }
 function runsDirOf(projectRoot) {
   return join(projectRoot, ".marvin", "task", "runs");
+}
+function rollUpForDelivery(projectRoot, slug, env2, config2) {
+  try {
+    const { record: record2, ignored } = performRollup({ env: env2, projectRoot, config: config2, slug });
+    return ignored ? `**Metrics:** \`${record2}\` \u2014 \u26A0\uFE0F git IGNORES this record, so the series is not being committed. Add \`!.marvin/metrics/\` after \`.marvin/*\` in \`.gitignore\`.` : `**Metrics:** \`${record2}\``;
+  } catch {
+    return null;
+  }
+}
+function withNote(answer, note) {
+  const first = answer.content[0];
+  if (first?.type === "text") {
+    return {
+      ...answer,
+      content: [{ ...first, text: `${first.text}
+
+${note}` }, ...answer.content.slice(1)]
+    };
+  }
+  return { ...answer, content: [...answer.content, { type: "text", text: note }] };
+}
+function journalVerifyEntry(projectRoot, entry) {
+  try {
+    recordVerifyRun(runsDirOf(projectRoot), entry);
+  } catch {
+  }
 }
 function readSealedSpec(slug, projectRoot, specConfig) {
   const path = findSpec(slug, projectRoot, specConfig);
@@ -34424,7 +35836,7 @@ function readSealedSpec(slug, projectRoot, specConfig) {
   }
   let parsed;
   try {
-    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+    parsed = SpecContract.safeParse((0, import_yaml3.parse)(blockText));
   } catch (err3) {
     return {
       error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
@@ -34627,7 +36039,27 @@ function deliverGate(projectRoot, opts) {
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const extras = { artifactPath, allowStale, redGreen: redGreen.status };
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
-  const decide = (decision, verdict2, reason, extra = extras) => gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+  const decide = (decision, verdict2, reason, extra = extras) => {
+    const answer = gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+    if (slug) {
+      journalVerifyEntry(projectRoot, {
+        slug,
+        kind: "gate",
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        decision,
+        verdict: verdict2,
+        staleness: extra.staleness ?? "unknown",
+        allowStale: extra.allowStale,
+        red_green: extra.redGreen ?? "unknown",
+        artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
+      });
+    }
+    if (slug && decision === "ALLOW") {
+      const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
+      if (note) return withNote(answer, note);
+    }
+    return answer;
+  };
   if (!existsSync(artifactPath)) {
     return decide(
       "BLOCK",
@@ -34745,100 +36177,7 @@ function ok3(text) {
 }
 
 // src/tools/spec.ts
-var import_yaml3 = __toESM(require_dist2());
-var PROGRESS_TAG = "spec-progress";
-var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
-var ProgressEntrySchema = external_exports.object({
-  /** The spec's validated kebab-case slug — also this journal's filename. */
-  slug: external_exports.string().min(1),
-  /** Which skill wrote it: step ids collide across the two pipelines. */
-  source: external_exports.enum(["task-start", "task-implement"]),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
-  step: external_exports.string().min(1),
-  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
-  /** One line of position and choice. Never a credential, token or customer datum. */
-  detail: external_exports.string(),
-  /** The acceptance-criterion id, when `kind` is `criterion`. */
-  criterion: external_exports.string().nullable().optional(),
-  /** The draft/spec path, recorded once when the draft is opened. */
-  path: external_exports.string().nullable().optional(),
-  /** The seal in force, when the writer knows one. */
-  contract_sha: external_exports.string().nullable().optional(),
-  /** ISO 8601. */
-  at: external_exports.string()
-});
-function progressJournalPath(runsDir, slug) {
-  return join(runsDir, `${slug}.progress.md`);
-}
-function recordProgress(runsDir, entry) {
-  mkdirSync(runsDir, { recursive: true });
-  const path = progressJournalPath(runsDir, entry.slug);
-  const header = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
-
-Append-only. One \`${PROGRESS_TAG}\` block per entry.
-
-`;
-  const block = `\`\`\`json ${PROGRESS_TAG}
-${JSON.stringify(entry)}
-\`\`\`
-
-`;
-  appendFileSync(path, `${header}${block}`, "utf8");
-}
-function readProgress(runsDir, slug) {
-  const path = progressJournalPath(runsDir, slug);
-  if (!existsSync(path)) return [];
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    return [];
-  }
-  const out = [];
-  for (const m of raw.matchAll(PROGRESS_RE)) {
-    let json;
-    try {
-      json = JSON.parse(m[1]);
-    } catch {
-      continue;
-    }
-    const parsed = ProgressEntrySchema.safeParse(json);
-    if (parsed.success) out.push(parsed.data);
-  }
-  return out;
-}
-function resumeState(entries) {
-  let archived = 0;
-  let start = 0;
-  entries.forEach((e, i) => {
-    if (e.kind === "archived") {
-      archived += 1;
-      start = i + 1;
-    }
-  });
-  const live = entries.slice(start);
-  const criteria_done = [];
-  let path = null;
-  let contract_sha = null;
-  for (const e of live) {
-    if (e.kind === "criterion") {
-      const id = e.criterion?.trim();
-      if (id && !criteria_done.includes(id)) criteria_done.push(id);
-    }
-    if (e.path) path = e.path;
-    if (e.contract_sha) contract_sha = e.contract_sha;
-  }
-  return {
-    entries: live,
-    archived,
-    last: live.length ? live[live.length - 1] : null,
-    criteria_done,
-    path,
-    contract_sha
-  };
-}
-
-// src/tools/spec.ts
+var import_yaml4 = __toESM(require_dist2());
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
@@ -34921,7 +36260,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -34944,6 +36283,7 @@ async function runSpec(input, env2) {
     return runProgressAction(action, input, env2, projectRoot);
   }
   let raw;
+  let diskPath = null;
   if (input.specContent != null && input.specContent.trim() !== "") {
     raw = input.specContent;
   } else if (input.specPath) {
@@ -34952,10 +36292,11 @@ async function runSpec(input, env2) {
       return result("FAIL", null, [fail("input", "Input", `spec file not found: ${path}`)]);
     }
     raw = readFileSync(path, "utf8");
+    diskPath = path;
   } else {
     return result("FAIL", null, [fail("input", "Input", "provide specContent or specPath")]);
   }
-  if (action === "seal") return verifySeal(raw);
+  if (action === "seal") return verifySeal(raw, env2, projectRoot, diskPath);
   if (action === "scope") {
     return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
@@ -34963,7 +36304,7 @@ async function runSpec(input, env2) {
   const { type, checks, contractSha } = validateSpec(raw, projectRoot, config2.spec);
   return result(computeVerdict2(checks), type, checks, contractSha);
 }
-function verifySeal(raw) {
+function verifySeal(raw, env2, projectRoot, diskPath) {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const sealed = (frontmatter.contract_sha ?? "").trim();
@@ -34990,7 +36331,20 @@ function verifySeal(raw) {
     `TAMPERED \u2014 the spec-contract block was edited after DoR sealed it (stamped ${sealed}, current ${actual}). Do not execute a tampered spec; re-run /marvin:task-start to re-seal.`
   );
   const checks = [sealCheck, statusCheck];
-  return result(computeVerdict2(checks), type, checks, actual);
+  const verdict = computeVerdict2(checks);
+  ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict);
+  return result(verdict, type, checks, actual);
+}
+function ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict) {
+  if (!diskPath || verdict === "FAIL") return;
+  const declared = (frontmatter.slug ?? "").trim();
+  const slug = declared || slugOfRecord(diskPath);
+  if (!SLUG_RE3.test(slug)) return;
+  if (!declared && /^\d+-/.test(slug)) return;
+  try {
+    ensureRecordForSpec(env2, projectRoot, slug, diskPath);
+  } catch {
+  }
 }
 var TERMINAL_STATUSES = ["shipped", "superseded"];
 function checkStatusTransition(rawStatus) {
@@ -35018,12 +36372,12 @@ function checkStatusTransition(rawStatus) {
   }
   return pass("status", "Lifecycle status", `\`${status}\` \u2014 not a terminal state`);
 }
-var SLUG_RE2 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SLUG_RE3 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function readCorpus(action, input, env2, projectRoot) {
   const slug = input.slug?.trim();
-  if (action === "next" && slug !== void 0 && slug !== "" && !SLUG_RE2.test(slug)) {
+  if (action === "next" && slug !== void 0 && slug !== "" && !SLUG_RE3.test(slug)) {
     return corpusError(
-      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
     );
   }
   const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
@@ -35121,9 +36475,9 @@ function runProgressAction(action, input, env2, projectRoot) {
       `\`action: "${action}"\` needs a \`slug\` \u2014 it names the spec whose journal is ${action === "progress" ? "written" : "read"}, and it is the journal's filename.`
     );
   }
-  if (!SLUG_RE2.test(slug)) {
+  if (!SLUG_RE3.test(slug)) {
     return corpusError(
-      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE2.source}) \u2014 nothing was written. The slug becomes the journal's filename, so it is rejected rather than rewritten.`
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 nothing was written. The slug becomes the journal's filename, so it is rejected rather than rewritten.`
     );
   }
   const runsDir = progressRunsDir(input, env2, projectRoot);
@@ -35132,7 +36486,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     const payload = {
       action,
       slug,
-      journal: relFromRoot(progressJournalPath(runsDir, slug), projectRoot),
+      journal: relFromRoot2(progressJournalPath(runsDir, slug), projectRoot),
       found: state.entries.length > 0 || state.archived > 0,
       ...state
     };
@@ -35185,7 +36539,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     at: (/* @__PURE__ */ new Date()).toISOString()
   };
   recordProgress(runsDir, entry);
-  const journal = relFromRoot(progressJournalPath(runsDir, slug), projectRoot);
+  const journal = relFromRoot2(progressJournalPath(runsDir, slug), projectRoot);
   return corpusResult(
     [
       `# Progress \u2014 ${slug}`,
@@ -35197,7 +36551,7 @@ function runProgressAction(action, input, env2, projectRoot) {
     "spec-progress"
   );
 }
-function relFromRoot(abs, projectRoot) {
+function relFromRoot2(abs, projectRoot) {
   const rel = relative(projectRoot, abs);
   return rel && !rel.startsWith("..") ? rel.split(sep).join(posix.sep) : abs;
 }
@@ -35260,7 +36614,7 @@ function dependsOnOf(body) {
   if (blockText === null) return [];
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch {
     return [];
   }
@@ -35400,7 +36754,7 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
   }
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch (err3) {
     return result("FAIL", type, [
       fail("scope", "Scope", `contract block is not valid YAML: ${errMessage(err3)}`)
@@ -35425,8 +36779,8 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
       )
     ]);
   }
-  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizePath));
-  const specRel = specPath ? normalizePath(relativeToRoot(specPath, projectRoot)) : null;
+  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizeScopePath));
+  const specRel = specPath ? normalizeScopePath(relativeToRoot(specPath, projectRoot)) : null;
   const ignored = (p) => p.startsWith(".marvin/") || p === specRel;
   const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
   const violations = changed.filter((p) => !allowed.has(p));
@@ -35447,22 +36801,9 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
     )
   ]);
 }
-function changedFilesForScope(projectRoot, base) {
-  const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
-  const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
-  const lines = [
-    ...diff.ok ? diff.value.split("\n") : [],
-    ...untracked.ok ? untracked.value.split("\n") : []
-  ];
-  return [...new Set(lines.map(normalizePath).filter(Boolean))];
-}
-function normalizePath(p) {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-}
 function relativeToRoot(p, root) {
-  const np = normalizePath(p);
-  const nr = normalizePath(root).replace(/\/$/, "");
+  const np = normalizeScopePath(p);
+  const nr = normalizeScopePath(root).replace(/\/$/, "");
   return np.startsWith(nr + "/") ? np.slice(nr.length + 1) : np;
 }
 function validateSpec(raw, projectRoot, specConfig) {
@@ -35504,7 +36845,7 @@ function checkFrontmatter(fm, type) {
       fail("fm-status", "Frontmatter", `status "${fm.status}" is not ${STATUS_VALUES.join("|")}`)
     );
   }
-  if (fm.slug && !SLUG_RE2.test(fm.slug)) {
+  if (fm.slug && !SLUG_RE3.test(fm.slug)) {
     checks.push(fail("fm-slug", "Frontmatter", `slug "${fm.slug}" must be kebab-case`));
   }
   if (type === "feature") {
@@ -35591,7 +36932,7 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   }
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(blockText);
+    doc = (0, import_yaml4.parse)(blockText);
   } catch (err3) {
     return [fail("spec-contract", "Spec contract", `block is not valid YAML: ${errMessage(err3)}`)];
   }
@@ -35620,7 +36961,7 @@ function checkHostBindings(body) {
   if (text === null) return { checks: [], specLocation: void 0 };
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(text);
+    doc = (0, import_yaml4.parse)(text);
   } catch (err3) {
     return {
       checks: [
@@ -35792,6 +37133,41 @@ function checkGraph(c) {
       )
     );
   }
+  const declaredSatisfies = /* @__PURE__ */ new Map();
+  for (const f of c.files) {
+    const named = refs(f.satisfies);
+    if (!named.length) continue;
+    const id = f.id.toUpperCase();
+    declaredSatisfies.set(id, [...declaredSatisfies.get(id) ?? [], ...named]);
+  }
+  const asymmetric = [];
+  for (const cr of c.criteria) {
+    const acId = cr.id.toUpperCase();
+    for (const fid of refs(cr.implemented_by)) {
+      const back = declaredSatisfies.get(fid);
+      if (back && !back.includes(acId)) {
+        asymmetric.push(`${acId}\u2192${fid}, but ${fid} satisfies ${back.join("/")}`);
+      }
+    }
+  }
+  for (const f of c.files) {
+    const fid = f.id.toUpperCase();
+    for (const acId of refs(f.satisfies)) {
+      const cr = c.criteria.find((x) => x.id.toUpperCase() === acId);
+      if (!cr) continue;
+      const forward = refs(cr.implemented_by);
+      if (!forward.includes(fid)) {
+        asymmetric.push(`${fid}\u2192${acId}, but ${acId} is implemented_by ${forward.join("/")}`);
+      }
+    }
+  }
+  checks.push(
+    asymmetric.length ? fail(
+      "graph-symmetry",
+      "Traceability",
+      `implemented_by and satisfies disagree: ${asymmetric.join("; ")}`
+    ) : pass("graph-symmetry", "Traceability", "the two directions of the graph agree")
+  );
   if (c.build_order) {
     const dangling = c.build_order.map((x) => String(x).toUpperCase()).filter((x) => !fileIds.has(x));
     if (dangling.length) {
@@ -35885,8 +37261,8 @@ function checkAssumptions(section) {
   }
   return pass("assumptions", "Assumptions", "decisions under uncertainty are recorded");
 }
-var TERMINAL_VERDICTS = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
-var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS, "NONE"];
+var TERMINAL_VERDICTS2 = ["PASS WITH WARNINGS", "PASS", "BLOCK", "UNABLE"];
+var RECORDABLE_VERDICTS = [...TERMINAL_VERDICTS2, "NONE"];
 function cleanVerdictLine(line) {
   return line.replace(/[`*]/g, "").replace(/^\s*[-+]\s+/, "").trim();
 }
@@ -35894,7 +37270,7 @@ function findVerdict(line) {
   const leading = RECORDABLE_VERDICTS.find((v) => new RegExp(`^${v}\\b`, "i").test(line));
   if (leading) return leading;
   let best = null;
-  for (const verdict of TERMINAL_VERDICTS) {
+  for (const verdict of TERMINAL_VERDICTS2) {
     const at = line.search(new RegExp(`\\b${verdict}\\b`));
     if (at !== -1 && (best === null || at < best.at)) best = { at, verdict };
   }
@@ -36020,6 +37396,320 @@ function fail(id, label, detail) {
 }
 function warn(id, label, detail) {
   return { id, label, status: "warn", detail };
+}
+var MetricsInput = external_exports.object({
+  action: external_exports.enum(["record", "rollup", "series"]).describe(
+    "record: append one live event to the spec's metrics record (a fix-cycle round, a SPEC GAP, an open item, a critic dispatch or verdict, a DoR gate call). rollup: derive the terminal task-metrics block from the spec, the journals, the verify-result block, the receipts and git, and append it \u2014 called by /marvin:task-deliver after the gate allows and before the commit. series: aggregate every record \u2014 count, median, mean and maximum per metric over the records where it is present \u2014 with a coverage line; narrow with type / since, or pass slug to render one record in full."
+  ),
+  slug: external_exports.string().optional().describe(
+    "The spec's kebab-case slug. Required for record and rollup \u2014 it names the record (`.marvin/metrics/<NNN>-<slug>.md`, sharing the spec's basename), so it is rejected rather than sanitised. Optional for series: renders that one record in full instead of the aggregate."
+  ),
+  projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
+  source: external_exports.enum(METRIC_EVENT_SOURCES).optional().describe("record: which prose site is writing \u2014 step ids collide across the pipelines."),
+  step: external_exports.string().optional().describe(`record: the writer's own step id ("7F", "8B", "6F", "fix-cycle", "\xA73").`),
+  kind: external_exports.enum(METRIC_EVENT_KINDS).optional().describe(
+    "record: what happened. fix-round needs loop + round; spec-gap needs detail; open-item needs classification + detail; critic-dispatch needs critic + pass; critic-verdict needs critic + pass + verdict + blockers + warnings; gate-call needs gate + call + verdict."
+  ),
+  detail: external_exports.string().optional().describe(
+    "record: one line, for spec-gap and open-item. Never a credential, token or customer datum."
+  ),
+  loop: external_exports.enum(FIX_LOOPS).optional().describe("record (fix-round): which fix-cycle loop spent the round."),
+  round: external_exports.number().int().positive().optional().describe("record (fix-round): the round number within that loop, 1-based."),
+  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional().describe("record (open-item): how the item left open at the limit was classified."),
+  critic: external_exports.enum(METRIC_CRITICS).optional().describe("record (critic-dispatch / critic-verdict): which critic."),
+  pass: external_exports.number().int().positive().optional().describe(
+    "record (critic-dispatch / critic-verdict): the dispatch number for this critic on this task; a NEEDS_CONTEXT re-dispatch reuses it."
+  ),
+  verdict: external_exports.string().optional().describe(
+    `record: the verdict. critic-verdict: ${TERMINAL_VERDICTS.join(" | ")}. gate-call: ${DOR_VERDICTS.join(" | ")}.`
+  ),
+  blockers: external_exports.number().int().nonnegative().optional().describe("record (critic-verdict): the critic's blocker count."),
+  warnings: external_exports.number().int().nonnegative().optional().describe("record (critic-verdict): the critic's warning count."),
+  gate: external_exports.enum(METRIC_GATES).optional().describe("record (gate-call): which deterministic gate was called."),
+  call: external_exports.number().int().positive().optional().describe(
+    "record (gate-call): the call number for this gate on this task, incremented per re-run."
+  ),
+  contractSha: external_exports.string().optional().describe("record: the seal in force, when the writer knows one."),
+  base: external_exports.string().optional().describe(
+    "rollup: the git ref scope drift is measured against. Defaults to the config's base_branch."
+  ),
+  type: external_exports.enum(["feature", "bugfix"]).optional().describe("series: aggregate only the records of this spec type."),
+  since: external_exports.string().optional().describe("series: aggregate only the records rolled up on or after this date (YYYY-MM-DD).")
+});
+var METRICS_INPUT_FIELDS = Object.keys(MetricsInput.shape).join(", ");
+var MetricsInputStrict = MetricsInput.strict(
+  `unknown argument for the metrics tool \u2014 it accepts only: ${METRICS_INPUT_FIELDS}. An event's fields are named by its kind (see the kind description); a misspelt key would otherwise be dropped and the event recorded without it.`
+);
+function buildMetricsTool(env2) {
+  return defineTool({
+    name: "metrics",
+    description: `The task-metrics record under .marvin/metrics/ (ADR-0043), one committed file per spec. action: "record" appends one live metric-event \u2014 a fix-cycle round, a SPEC GAP, an item deferred or blocked at a loop's limit, a critic dispatch or verdict with its pass number, a DoR gate call with its verdict \u2014 the counters that context compaction otherwise destroys. action: "rollup" derives the terminal task-metrics block at delivery from the spec, the progress / oracle / verification-run journals, the verify-result block, the critique receipts and git: time (intake, implementation, time to first green, gate efficiency, oracle and gate and critic durations), quality (scope drift, oracle strength, red-green completeness, not-run gates, freshness waivers, critic axes, spec gaps, open items, DoR first-call, oracle resolution) and rework (reseals, critic passes, fix rounds, runs before green), each null when its source was absent, plus the sources map that says so. action: "series" aggregates every record \u2014 count, median, mean and maximum per metric over the records where it is present, coverage against the shipped corpus, review-fix commits and escaped defects computed at query time \u2014 narrowed by type / since, or one record in full with slug; the door is /marvin:task-metrics. Strict input: an unknown key is an error.`,
+    inputSchema: MetricsInputStrict,
+    handler: (input) => Promise.resolve(runMetrics(input, env2))
+  });
+}
+function runMetrics(input, env2) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
+  const slug = input.slug?.trim();
+  if (slug !== void 0 && !SLUG_RE.test(slug)) {
+    return errText3(
+      `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE.source}) \u2014 nothing was written. The slug names the record, so it is rejected rather than rewritten.`
+    );
+  }
+  const { config: config2 } = loadConfig(projectConfigPath(env2, projectRoot), projectRoot);
+  const dir = projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
+  if (input.action === "series") return series(input, slug, projectRoot, dir, config2);
+  if (!slug) {
+    return errText3(
+      `\`action: "${input.action}"\` needs a \`slug\` \u2014 it names the spec whose record is written.`
+    );
+  }
+  return input.action === "record" ? recordEvent(input, slug, projectRoot, dir, config2.spec) : rollup(input, env2, slug, projectRoot, config2);
+}
+var EVENT_FIELDS = [
+  "detail",
+  "loop",
+  "round",
+  "classification",
+  "critic",
+  "pass",
+  "verdict",
+  "blockers",
+  "warnings",
+  "gate",
+  "call"
+];
+function recordEvent(input, slug, projectRoot, dir, specConfig) {
+  const missing = ["source", "step", "kind"].filter(
+    (k) => input[k] === void 0 || String(input[k]).trim() === ""
+  );
+  if (missing.length > 0) {
+    return errText3(
+      `\`action: "record"\` needs ${missing.map((m) => `\`${m}\``).join(", ")} \u2014 an event that cannot say who wrote it, at which step, or what happened is not one the roll-up can count.`
+    );
+  }
+  const candidate = {
+    slug,
+    source: input.source,
+    step: input.step,
+    kind: input.kind,
+    contract_sha: input.contractSha ?? null,
+    at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  for (const field of EVENT_FIELDS) if (input[field] !== void 0) candidate[field] = input[field];
+  const parsed = MetricEventSchema.safeParse(candidate);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
+    return errText3(
+      `\`action: "record"\` refused \u2014 ${issues}. A \`${input.kind}\` event carries: ${REQUIRED_EVENT_FIELDS[input.kind].join(", ")}. Nothing was written.`
+    );
+  }
+  const event = parsed.data;
+  const path = recordPathFor(dir, slug, projectRoot, specConfig);
+  appendMetricEvent(path, event);
+  const record2 = relFromRoot(path, projectRoot);
+  const payload = { action: "record", slug, record: record2, event };
+  return {
+    content: [
+      {
+        type: "text",
+        text: `# Metrics \u2014 ${slug}
+
+Recorded **${event.kind}** (${event.source}, step ${event.step}).
+**Record:** \`${record2}\`
+
+\`\`\`json metric-event
+` + JSON.stringify(payload) + "\n```"
+      }
+    ],
+    structuredContent: payload
+  };
+}
+function rollup(input, env2, slug, projectRoot, config2) {
+  const { block, record: record2, terminalBlocks, ignored } = performRollup({
+    env: env2,
+    projectRoot,
+    config: config2,
+    slug,
+    base: input.base
+  });
+  const payload = {
+    action: "rollup",
+    slug,
+    record: record2,
+    terminal_blocks: terminalBlocks,
+    ignored,
+    metrics: block
+  };
+  return {
+    content: [
+      {
+        type: "text",
+        text: renderDigest(block, record2, terminalBlocks, ignored) + "\n\n```json task-metrics\n" + JSON.stringify(block) + "\n```"
+      }
+    ],
+    structuredContent: payload
+  };
+}
+var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function series(input, slug, projectRoot, dir, config2) {
+  const since = input.since?.trim();
+  if (since && !DATE_RE.test(since)) {
+    return errText3(`\`since\` \`${since}\` is not a date (YYYY-MM-DD) \u2014 nothing was aggregated.`);
+  }
+  const filters = {
+    ...input.type ? { type: input.type } : {},
+    ...since ? { since } : {},
+    ...slug ? { slug } : {}
+  };
+  const records = collectSeriesRecords(projectRoot, dir, config2.spec);
+  const shipped = readShippedSpecs(projectRoot, config2.spec);
+  const answer = aggregateSeries({
+    dir: relFromRoot(dir, projectRoot),
+    now: (/* @__PURE__ */ new Date()).toISOString(),
+    records,
+    shipped,
+    filters
+  });
+  const text = slug ? renderSingle(answer, slug, dir, projectRoot) : renderSeries(answer);
+  return {
+    content: [
+      {
+        type: "text",
+        text: text + "\n\n```json metrics-series\n" + JSON.stringify(answer) + "\n```"
+      }
+    ],
+    structuredContent: answer
+  };
+}
+function renderSingle(answer, slug, dir, projectRoot) {
+  const row = answer.records[0];
+  if (!row) {
+    return `# Task metrics \u2014 ${slug}
+
+No metrics record for \`${slug}\` under \`${answer.dir}/\`.`;
+  }
+  if (!answer.record) {
+    return `# Task metrics \u2014 ${slug}
+
+\`${answer.dir}/${row.filename}\` holds ${row.events} live event(s) and no terminal block \u2014 recorded, not yet rolled up. \`/marvin:task-deliver\` rolls it up after the delivery gate allows.`;
+  }
+  const recordPath = join(dir, row.filename);
+  const terminal = readRecord(recordPath).terminal.length;
+  const ignored = inGitRepo(projectRoot) ? isIgnored(relFromRoot(recordPath, projectRoot), projectRoot) : null;
+  return renderDigest(answer.record, `${answer.dir}/${row.filename}`, terminal, ignored);
+}
+function renderSeries(a) {
+  const c = a.coverage;
+  const filters = [
+    a.filters.type ? `type ${a.filters.type}` : null,
+    a.filters.since ? `since ${a.filters.since}` : null
+  ].filter((f) => f !== null);
+  const lines = [
+    "# Task metrics \u2014 series",
+    "",
+    `**Directory:** \`${a.dir}/\` \xB7 **Filters:** ${filters.length ? filters.join(" \xB7 ") : "none"}`
+  ];
+  if (c.records === 0) {
+    lines.push(
+      "",
+      filters.length ? "_No rolled-up record matches the filters._" : "_No metrics records yet \u2014 the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._"
+    );
+    return lines.join("\n");
+  }
+  const coverage = c.shipped_specs === null ? "no spec corpus to compare against" : `the series covers ${c.shipped_with_record} of ${c.shipped_specs} shipped spec(s)`;
+  lines.push(
+    `**Coverage:** ${c.records} record(s) \xB7 ${c.rolled_up} rolled up \xB7 ${c.events_only} recorded but not rolled up \xB7 ${c.empty} started but empty \xB7 ${coverage}`,
+    "",
+    "Each metric is computed over the records where it is present (`n`); an absent source is never counted as zero."
+  );
+  for (const group of ["time", "quality", "rework"]) {
+    lines.push(
+      "",
+      `## ${group[0].toUpperCase()}${group.slice(1)}`,
+      "",
+      "| Id | Metric | n | median | mean | max |",
+      "|----|--------|---|--------|------|-----|"
+    );
+    for (const m of SERIES_METRICS.filter((m2) => m2.group === group)) {
+      const s = a[group][m.key];
+      if (!s) continue;
+      lines.push(
+        `| ${m.id} | ${m.label} | ${s.count} | ${fmtUnit(s.median, m.unit)} | ${fmtUnit(s.mean, m.unit)} | ${fmtUnit(s.max, m.unit)} |`
+      );
+    }
+  }
+  lines.push("", "## Escaped defects (Q12)");
+  if (a.escaped_defects === null) lines.push("- _no spec corpus to join_");
+  else if (a.escaped_defects.pairs.length === 0) lines.push("- none credited");
+  else {
+    for (const p of a.escaped_defects.pairs) {
+      lines.push(
+        `- bugfix \`${p.bugfix}\` \u2192 credited to ${p.credited.map((s) => `\`${s}\``).join(", ")}`
+      );
+    }
+  }
+  lines.push("", `## Records (${a.records.length})`);
+  for (const r of a.records) {
+    lines.push(
+      `- \`${r.filename}\`${r.type ? ` ${r.type}` : ""} \xB7 ${r.rolled_up_at ? `rolled up ${r.rolled_up_at.slice(0, 10)}` : "not rolled up"} \xB7 active ${fmtMs(r.active_ms)} \xB7 ${r.events} event(s)`
+    );
+  }
+  return lines.join("\n");
+}
+var pct = (share) => `${Math.round(share * 100)}%`;
+function renderDigest(b, record2, terminalBlocks, ignored) {
+  const gitLine = ignored === null ? "not a git repository" : ignored ? "**IGNORED** \u2014 `.gitignore` excludes this record, so the series never reaches a clone; add `!.marvin/metrics/` after the `.marvin/*` exclusion" : "tracked";
+  const src = Object.entries(b.sources).map(([k, v]) => `${k} ${v === "present" ? "\u2713" : "\u2717"}`).join(" \xB7 ");
+  const t = b.time;
+  const q = b.quality;
+  const r = b.rework;
+  const axesLine = (label, a) => a ? `${label} \u2014 compliance ${a.compliance.verdict} (${a.compliance.blockers}/${a.compliance.warnings}) \xB7 quality ${a.quality.verdict} (${a.quality.blockers}/${a.quality.warnings})` : `${label} \u2014 no receipt`;
+  const lines = [
+    `# Task metrics \u2014 ${b.slug}`,
+    "",
+    `**Record:** \`${record2}\` \xB7 terminal blocks: ${terminalBlocks}${terminalBlocks > 1 ? " (the last is authoritative)" : ""} \xB7 git: ${gitLine}`,
+    `**Spec:** type ${b.type ?? "\u2014"} \xB7 risk ${b.risk ?? "\u2014"} \xB7 seal \`${b.contract_sha ?? "\u2014"}\` \xB7 base \`${b.base_branch}\` \xB7 head \`${b.head_sha?.slice(0, 7) ?? "\u2014"}\``,
+    `**Sources:** ${src}`,
+    "",
+    "## Time",
+    `- T1 intake: ${fmtMs(t.intake_ms)}`,
+    `- T2 implementation: ${fmtMs(t.implement_ms)}`,
+    `- T3 to first green full run: ${fmtMs(t.first_green_ms)}`,
+    `- T4 active pipeline time: ${fmtMs(t.active_ms)}`,
+    `- T5 gate efficiency (wall / sum): ${t.gate_efficiency ?? "\u2014"}`,
+    `- T6 oracles: ${t.oracle_ms.length ? t.oracle_ms.map((o) => `${o.criterion} ${fmtMs(o.ms)}`).join(" \xB7 ") : "\u2014"}`,
+    `- T7 gates: ${t.gate_ms.length ? t.gate_ms.map((g) => `${g.gate} ${fmtMs(g.ms)}`).join(" \xB7 ") : "\u2014"}`,
+    `- T8 critics: ${t.critic_ms.total === null ? "\u2014" : `${fmtMs(t.critic_ms.total)} (${t.critic_ms.dispatches.map((d) => `${d.critic.replace("marvin-tm-", "").replace("-critic", "")} #${d.pass} ${fmtMs(d.ms)}`).join(", ")})`}`,
+    "",
+    "## Quality",
+    `- Q1 scope drift: ${q.scope_drift ? `${q.scope_drift.undeclared.length} undeclared of ${q.scope_drift.changed} changed (declared ${q.scope_drift.declared})${q.scope_drift.undeclared.length ? `: ${q.scope_drift.undeclared.join(", ")}` : ""}` : "\u2014"}`,
+    `- Q2 oracle strength: ${q.oracle_strength ? `${q.oracle_strength.executable}/${q.oracle_strength.criteria} executable (${pct(q.oracle_strength.share)})` : "\u2014"}`,
+    `- Q3 red-green (bugfix): ${q.red_green ? `${q.red_green.proven}/${q.red_green.criteria} proven (${pct(q.red_green.share)})` : "\u2014"}`,
+    `- Q4 not-run gates: ${q.not_run ? `${q.not_run.not_run}/${q.not_run.gates} (${pct(q.not_run.share)})` : "\u2014"}`,
+    `- Q5 freshness waivers: ${q.freshness_waivers ?? "\u2014"}`,
+    `- Q6 critics: ${axesLine("spec", q.critics.spec)}; ${axesLine("diff", q.critics.diff)}`,
+    `- Q7 spec gaps: ${q.spec_gaps ?? "\u2014"}`,
+    `- Q8 open items: ${q.open_items ? `deferred ${q.open_items.deferred} \xB7 blocked ${q.open_items.blocked}` : "\u2014"}`,
+    `- Q9 DoR passed on first call: ${q.dor_first_call === null ? "\u2014" : q.dor_first_call ? "yes" : "no"}`,
+    `- Q10 oracle resolution: ${q.oracle_resolution ? `${Object.entries(q.oracle_resolution.by_source).map(([s, n]) => `${s} ${n}`).join(" \xB7 ") || "no runs at this seal"} \xB7 unresolved ${q.oracle_resolution.unresolved}` : "\u2014"}`,
+    "",
+    "## Rework",
+    `- R1 seals: ${r.seals ?? "\u2014"}${r.reseals !== null ? ` (reseals ${r.reseals})` : ""}`,
+    `- R2 critic passes: spec ${r.critic_passes.spec ?? "\u2014"} \xB7 diff ${r.critic_passes.diff ?? "\u2014"}`,
+    `- R3 fix rounds: ${r.fix_rounds ? `verify-gate ${r.fix_rounds.verify_gate} \xB7 critic ${r.fix_rounds.critic} \xB7 red-green ${r.fix_rounds.red_green}` : "\u2014"}`,
+    `- R4 runs before first green: ${r.runs_before_green ?? "\u2014"}`
+  ];
+  if (b.notes.length) lines.push("", "## Notes", ...b.notes.map((n) => `- ${n}`));
+  return lines.join("\n");
+}
+function errText3(text) {
+  return {
+    content: [{ type: "text", text: `# Metrics tool \u2014 invalid input
+
+${text}` }],
+    isError: true
+  };
 }
 
 // src/tools/lessons.ts
@@ -36274,7 +37964,7 @@ function continuePromptFor(h) {
 }
 
 // src/tools/summary.ts
-var import_yaml4 = __toESM(require_dist2());
+var import_yaml5 = __toESM(require_dist2());
 var SummaryInput = external_exports.object({
   slug: external_exports.string().optional().describe("Spec slug to summarise. Defaults to the most recent spec under the spec dir."),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd.")
@@ -36295,7 +37985,7 @@ function runSummary(env2, input) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
   const { config: config2 } = loadConfig(projectConfigPath(env2, projectRoot), projectRoot);
   const specDir = resolveSpecDir(projectRoot, config2.spec);
-  const specPath = input.slug ? findSpecBySlug(input.slug, projectRoot, config2.spec) : findLatestSpec(projectRoot, config2.spec);
+  const specPath = input.slug ? findSpecBySlug2(input.slug, projectRoot, config2.spec) : findLatestSpec(projectRoot, config2.spec);
   if (!specPath) {
     const searched = specSearchDirs(projectRoot, config2.spec).map((d) => relative(projectRoot, d) || d).join(", ");
     return errOk3(
@@ -36338,7 +38028,7 @@ function runSummary(env2, input) {
     structuredContent: summary
   };
 }
-function findSpecBySlug(slug, projectRoot, specConfig) {
+function findSpecBySlug2(slug, projectRoot, specConfig) {
   for (const dir of specSearchDirs(projectRoot, specConfig)) {
     const p = resolveSpecBySlug(dir, slug, projectRoot);
     if (p) return p;
@@ -36360,7 +38050,7 @@ function parseSpecContract(body) {
   const block = extractContractBlock(body);
   if (!block) return null;
   try {
-    const parsed = SpecContract.safeParse((0, import_yaml4.parse)(block));
+    const parsed = SpecContract.safeParse((0, import_yaml5.parse)(block));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -36370,17 +38060,17 @@ function parseHostBindings(body) {
   const text = extractHostBindings(body);
   if (!text) return null;
   try {
-    const parsed = HostBindings.safeParse((0, import_yaml4.parse)(text));
+    const parsed = HostBindings.safeParse((0, import_yaml5.parse)(text));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
 }
-var SLUG_RE3 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+var SLUG_RE4 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function readVerifyResult(projectRoot, slug) {
   const taskDir = join(projectRoot, ".marvin", "task");
   const candidates = [];
-  if (SLUG_RE3.test(slug)) {
+  if (SLUG_RE4.test(slug)) {
     candidates.push([join(taskDir, "runs", `${slug}.md`), `.marvin/task/runs/${slug}.md`]);
   }
   candidates.push([join(taskDir, "verification.md"), ".marvin/task/verification.md"]);
@@ -36406,7 +38096,7 @@ function contractJoinKey(body, frontmatter) {
 function latestRunsByCriterion(projectRoot, slug, contractSha) {
   const sha = contractSha?.trim();
   const runs = /* @__PURE__ */ new Map();
-  if (!sha || !SLUG_RE3.test(slug)) return runs;
+  if (!sha || !SLUG_RE4.test(slug)) return runs;
   for (const run3 of readOracleRuns(join(projectRoot, ".marvin", "task", "runs"), slug)) {
     if (run3.contract_sha !== sha) continue;
     runs.set(run3.criterion, run3);
@@ -36654,7 +38344,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.18.2";
+var VERSION = "0.23.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -36677,6 +38367,7 @@ await runPackServer({
         buildDashboardTool(env, VERSION),
         buildVerifyTool(env),
         buildSpecTool(env),
+        buildMetricsTool(env),
         buildLessonsTool(server, env),
         buildHandoffTool(env),
         buildSummaryTool(env),

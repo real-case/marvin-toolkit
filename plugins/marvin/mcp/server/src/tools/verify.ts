@@ -22,6 +22,8 @@ import {
   resolveOracleCommand,
   type OracleRun,
 } from "../storage/oracles.js";
+import { performRollup } from "../lib/metrics-record.js";
+import { recordVerifyRun, type VerifyRunEntry } from "../storage/verify-runs.js";
 import {
   SpecContract,
   contractHash,
@@ -289,6 +291,8 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
       specSlug: input.specSlug,
       allowStale: input.allowStale,
       specConfig: config.spec,
+      env,
+      config,
     });
   }
 
@@ -347,6 +351,14 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   // bypass lives in deliverGate (ADR-0035).
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
+  }
+  // A pipeline run that names no spec leaves no per-spec run and no journal
+  // entry, so the delivery gate judges the global artifact and the metrics series
+  // never sees the run (ADR-0043 §6). One warning — which degrades PASS to PASS
+  // WITH WARNINGS, the verdict `task-deliver` already surfaces for confirmation —
+  // and no other surface changes. A standalone run legitimately has no spec.
+  if (input.mode !== "standalone" && input.specSlug === undefined) {
+    warnings.push(SLUGLESS_PIPELINE_WARNING);
   }
   const runSlug = resolveRunSlug(input.specSlug);
   if (runSlug.rejected) {
@@ -417,6 +429,26 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     if (runPath) {
       mkdirSync(dirname(runPath), { recursive: true });
       writeFileSync(runPath, fullText, "utf8");
+    }
+    // The verification-run journal (ADR-0043 §3). The run file above is
+    // OVERWRITTEN by every run, so this append is the only record of how many
+    // attempts preceded the surviving one. Written for exactly the runs that
+    // wrote a per-spec file — a slugless run writes no journal entry, as it
+    // writes no per-spec run — and fail-open, so it can never change the verdict.
+    if (runPath && runSlug.slug) {
+      journalVerifyEntry(projectRoot, {
+        slug: runSlug.slug,
+        kind: "run",
+        at: new Date().toISOString(),
+        verdict,
+        mode: input.mode,
+        execution: input.execution,
+        only: input.only ?? null,
+        gates: results.map((r) => ({ name: r.name, status: r.status, durationMs: r.durationMs })),
+        wallClockMs,
+        sumOfGatesMs,
+        head_sha: provenance?.head_sha ?? null,
+      });
     }
   }
 
@@ -831,7 +863,7 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
   if (out.error) return crashResult(gate, out.error, out.durationMs);
 
   const status: GateStatus = classifyExit(out.code, out.signal);
-  const tail = (out.stderr || out.stdout).trim().split("\n").slice(-12).join("\n");
+  const tail = failureExcerpt(out.stderr || out.stdout);
   const summary =
     status === "pass"
       ? "passed"
@@ -849,6 +881,52 @@ async function runGate({ gate, probe }: PlannedGate, cwd: string): Promise<GateR
   };
 }
 
+/**
+ * A line that reports an error rather than merely mentioning one. `error` and
+ * `fatal` must be whole tokens (`(?![\w-])` keeps `error-handler.ts` out), the
+ * npm and compiler prefixes are matched literally, and the FAIL marker is
+ * case-sensitive so a test *named* "…should fail…" does not qualify.
+ */
+const ERROR_TOKEN = /(^|[\s:[(])(?:errors?|fatal)(?![\w-])|\bERR!|[\u2716\u2717\u2715\u00d7]/i;
+const FAIL_MARKER = /(^|\s)(?:FAIL|FAILED|FAILURES?)(?![\w-])/;
+/**
+ * A line whose own marker says the thing PASSED, removed before error matching.
+ * A test *named* "returns an error when the token is missing" prints that name
+ * on success, and twelve of those crowd out the assertion that actually failed.
+ * The tick characters match anywhere in the line; `ok` must open it, so TAP's
+ * `not ok 1 - …` stays a failure.
+ */
+const PASS_MARKER = /(^|\s)[\u2713\u2714\u221a]|^\s*ok\s/;
+
+/**
+ * The excerpt a failing gate shows. A naive tail is the wrong twelve lines for
+ * any linter that prints warnings after errors: one measured run rendered a
+ * pre-existing warning in a file the task never touched, while all five real
+ * errors — in files it had just written — scrolled past above it, and the
+ * excerpt is what the reader debugs from. So the matched error lines lead.
+ *
+ * The tail is kept regardless of what matched, and that is not belt-and-braces.
+ * A runner states its verdict in its LAST lines, and those lines routinely match
+ * no pattern here at all: `AssertionError [ERR_ASSERTION]: …` carries `Error`
+ * mid-token, so every alternative above misses it. Leading with matches alone
+ * reproduced the very defect this function exists to fix — twelve passing test
+ * names, the assertion gone.
+ */
+function failureExcerpt(text: string): string {
+  const lines = text.trim().split("\n");
+  const errors = lines.filter(
+    (l) => !PASS_MARKER.test(l) && (ERROR_TOKEN.test(l) || FAIL_MARKER.test(l)),
+  );
+  if (errors.length === 0) return lines.slice(-12).join("\n");
+  const shown = errors.slice(0, 9);
+  const head =
+    shown.length === errors.length
+      ? `${errors.length} error line(s):`
+      : `${errors.length} error line(s), first ${shown.length}:`;
+  const tail = lines.slice(-3).filter((l) => !shown.includes(l));
+  return [head, ...shown, ...(tail.length ? ["…", ...tail] : [])].join("\n");
+}
+
 function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResult {
   return {
     name: gate.name,
@@ -860,6 +938,17 @@ function crashResult(gate: GateSpec, reason: unknown, durationMs = 0): GateResul
     details: reason instanceof Error ? reason.message : String(reason),
   };
 }
+
+/**
+ * The ADR-0043 §6 warning for a `feature`/`bug` run that passed no `specSlug`.
+ * It names what the omission costs, because the run itself still passes: the
+ * gap is meant to reach the user, not to block them.
+ */
+const SLUGLESS_PIPELINE_WARNING =
+  "No `specSlug` was passed to a pipeline run — no per-spec run was written under " +
+  "`.marvin/task/runs/`, the delivery gate will judge the global `verification.md`, and the " +
+  "metrics series will not see this run. Pass the spec's slug (its frontmatter `slug`, else its " +
+  "filename slug) on every chained run.";
 
 /** Feature/bug mode checks. Best-effort; skipped when not a git repo. */
 function modeWarnings(mode: VerifyInput["mode"], cwd: string): string[] {
@@ -956,6 +1045,68 @@ function findSpec(slug: string, projectRoot: string, specConfig?: SpecConfig): s
  * the run reports there, never at the top level of the spec directory. */
 function runsDirOf(projectRoot: string): string {
   return join(projectRoot, ".marvin", "task", "runs");
+}
+
+/**
+ * Roll the task's metrics up at delivery, FAIL-OPEN (ADR-0044).
+ *
+ * Returns the line to add to the answer, or null when nothing was written. The
+ * catch stays here rather than in the shared module for the reason
+ * `journalVerifyEntry` gives: the decision is already made above, and a write
+ * that throws — an unwritable directory, a full disk — must not reach it.
+ *
+ * The line is deterministic for a given tree: a path, and a boolean. It carries
+ * no count and no timestamp, so two consecutive calls produce identical text
+ * even though the second one appended a second terminal block.
+ */
+function rollUpForDelivery(
+  projectRoot: string,
+  slug: string,
+  env: ServerEnv,
+  config: Config,
+): string | null {
+  try {
+    const { record, ignored } = performRollup({ env, projectRoot, config, slug });
+    return ignored
+      ? `**Metrics:** \`${record}\` — ⚠️ git IGNORES this record, so the series is not being ` +
+          "committed. Add `!.marvin/metrics/` after `.marvin/*` in `.gitignore`."
+      : `**Metrics:** \`${record}\``;
+  } catch {
+    return null; // fail-open by design — see above
+  }
+}
+
+/**
+ * Add one line after the machine-readable block, leaving that block untouched.
+ *
+ * `gateResult` returns exactly one text part, so the first branch is the only
+ * one taken today. The fallback APPENDS a part rather than dropping the note:
+ * this line is the only place a host project is told its series is ignored, and
+ * losing it silently is the failure this whole change exists to remove.
+ */
+function withNote(answer: ToolResult, note: string): ToolResult {
+  const first = answer.content[0];
+  if (first?.type === "text") {
+    return {
+      ...answer,
+      content: [{ ...first, text: `${first.text}\n\n${note}` }, ...answer.content.slice(1)],
+    };
+  }
+  return { ...answer, content: [...answer.content, { type: "text", text: note }] };
+}
+
+/**
+ * Append one entry to the verification-run journal, FAIL-OPEN (ADR-0043 §3). A
+ * write that throws — a read-only directory, a full disk — is swallowed here, so
+ * the journal can never change a verdict or a delivery decision: it is evidence
+ * for the metrics roll-up, never an input to a gate.
+ */
+function journalVerifyEntry(projectRoot: string, entry: VerifyRunEntry): void {
+  try {
+    recordVerifyRun(runsDirOf(projectRoot), entry);
+  } catch {
+    // fail-open by design — see above
+  }
 }
 
 interface SealedSpec {
@@ -1295,7 +1446,14 @@ function renderMarkdown(o: {
  */
 function deliverGate(
   projectRoot: string,
-  opts: { specSlug?: string; allowStale: boolean; specConfig?: SpecConfig },
+  opts: {
+    specSlug?: string;
+    allowStale: boolean;
+    specConfig?: SpecConfig;
+    /** ADR-0044: the delivery gate is the terminal block's writer. */
+    env: ServerEnv;
+    config: Config;
+  },
 ): ToolResult {
   const { allowStale } = opts;
   // The gate must judge THIS task's proof: prefer the per-spec run when a valid
@@ -1326,7 +1484,41 @@ function deliverGate(
     verdict: string | null,
     reason: string,
     extra: GateExtras = extras,
-  ) => gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+  ) => {
+    const answer = gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+    // Every decision for a resolved slug is journalled (ADR-0043 §3), a BLOCK for
+    // a missing artifact included: `verify-result` never carries `allowStale`, so
+    // this entry is the only source for a freshness waiver. Fail-open, and written
+    // BESIDE the answer rather than into it — the decision above is already made,
+    // and the answer's bytes are what `critique-protocol.test.mjs` pins.
+    if (slug) {
+      journalVerifyEntry(projectRoot, {
+        slug,
+        kind: "gate",
+        at: new Date().toISOString(),
+        decision,
+        verdict,
+        staleness: extra.staleness ?? "unknown",
+        allowStale: extra.allowStale,
+        red_green: extra.redGreen ?? "unknown",
+        artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/"),
+      });
+    }
+    // The terminal metrics block (ADR-0044). ALLOW only: `rolled_up` is what the
+    // series counts as tasks DELIVERED, so writing one for a refused delivery
+    // would make coverage overstate what shipped. A refusal is not lost — the
+    // journal entry above records every decision, including this one.
+    //
+    // Written BESIDE the answer, exactly as the journal is. The note goes into
+    // the markdown and never through `reason`, which `gateResult` serialises
+    // into the `deliver-gate` block: routing it there would look like the
+    // obvious implementation and would break the block's byte-stability.
+    if (slug && decision === "ALLOW") {
+      const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
+      if (note) return withNote(answer, note);
+    }
+    return answer;
+  };
 
   if (!existsSync(artifactPath)) {
     return decide(

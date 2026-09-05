@@ -11,6 +11,8 @@
 //   --accept '<json>'   reply to every elicitation/create with this content
 //                       (drives interactive tools, e.g. `task` create / `git` commit).
 //                       Without it, elicitations are cancelled.
+//   --timeout <ms>      budget for the whole exchange. Beats
+//                       MARVIN_MCP_CALL_TIMEOUT_MS; default 900000 (15 minutes).
 //
 // Point storage at fixtures with the server's env vars, e.g.
 //   MARVIN_HANDOFF_DIR=/tmp/h node scripts/mcp-call.mjs handoff '{"action":"list"}'
@@ -36,10 +38,14 @@ if (!existsSync(SERVER)) {
 // ── parse argv ───────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 let accept = null;
+let timeoutArg;
 const positional = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--accept") {
     accept = argv[++i];
+  } else if (argv[i] === "--timeout") {
+    timeoutArg = argv[++i];
+    if (timeoutArg === undefined) die("--timeout requires a value in milliseconds.");
   } else {
     positional.push(argv[i]);
   }
@@ -61,14 +67,60 @@ try {
   die(`invalid JSON: ${err.message}`);
 }
 
+// ── timeout budget ───────────────────────────────────────────────────
+/**
+ * The default is 15 MINUTES, not the 15 seconds this driver shipped with, because
+ * the tool it most needs to drive is `verify`: `action: "run"` shells out to the
+ * project's real quality gates — the whole test suite, lint, type-check, build —
+ * and takes minutes. A 15s budget made the documented way to exercise a freshly
+ * built bundle (CLAUDE.md, "Manually driving a tool") unable to call that tool at
+ * all, which matters because a connected plugin server holds the bundle from
+ * session start, so this driver is the only way to test a server change in-session.
+ *
+ * A budget that generous is only safe because a crashed server no longer waits it
+ * out: the `exit` handler below reports that immediately. What is left for the
+ * timeout to catch is a server that starts and then never answers.
+ */
+const DEFAULT_TIMEOUT_MS = 900_000;
+
+/**
+ * `--timeout` beats `MARVIN_MCP_CALL_TIMEOUT_MS` beats the default — the same
+ * one-knob shape as `test/_driver.mjs`'s `MARVIN_TEST_TIMEOUT_MS`, with the flag
+ * added because a value chosen per invocation is what an ad-hoc driver wants.
+ *
+ * Unlike that driver's `Number(env) || DEFAULT`, a malformed value is fatal rather
+ * than silently the default: someone who asks for a short budget and gets 15
+ * minutes learns about it by waiting 15 minutes.
+ */
+function positiveMs(raw, source) {
+  if (raw == null || raw === "") return null;
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    die(`${source} must be a positive number of milliseconds — got "${raw}".`);
+  }
+  return ms;
+}
+
+const timeoutMs =
+  positiveMs(timeoutArg, "--timeout") ??
+  positiveMs(process.env.MARVIN_MCP_CALL_TIMEOUT_MS, "MARVIN_MCP_CALL_TIMEOUT_MS") ??
+  DEFAULT_TIMEOUT_MS;
+
 // ── drive the server ─────────────────────────────────────────────────────
 const child = spawn("node", [SERVER], { stdio: ["pipe", "pipe", "inherit"] });
 const send = (obj) => child.stdin.write(JSON.stringify(obj) + "\n");
 
+// This driver answers every `elicitation/create` itself (accept, or cancel), so an
+// unanswered elicitation cannot be what a timeout means here — which is what the
+// message used to assert. A slow tool and a stuck server are the real causes.
 const timer = setTimeout(() => {
   child.kill();
-  die("timeout waiting for the server (tool may be awaiting elicitation — try --accept).");
-}, 15000);
+  die(
+    `timed out after ${timeoutMs}ms waiting for the server. If the tool is simply slow — ` +
+      `\`verify\` runs the project's real gates — raise the budget with ` +
+      `--timeout <ms> or MARVIN_MCP_CALL_TIMEOUT_MS.`,
+  );
+}, timeoutMs);
 
 let buf = "";
 // Decode through the stream's own StringDecoder, never per chunk: this driver prints
@@ -92,6 +144,17 @@ child.stdout.on("data", (d) => {
   }
 });
 child.on("error", (err) => die(err.message));
+
+// A server that crashes on startup (a broken bundle, an unresolved import) used to
+// be indistinguishable from a slow one: nothing observed the exit, so the driver sat
+// on the whole budget and then blamed a timeout. `answered` keeps this quiet on the
+// normal path, where `handle` kills the child once the result is printed.
+let answered = false;
+child.on("exit", (code, signal) => {
+  if (answered) return;
+  clearTimeout(timer);
+  die(`server exited before answering (code ${code}, signal ${signal}) — see its stderr above.`);
+});
 
 function handle(msg) {
   // Server-initiated elicitation: accept with the provided content, else cancel.
@@ -120,6 +183,7 @@ function handle(msg) {
   }
 
   if (msg.id === 2) {
+    answered = true;
     clearTimeout(timer);
     child.kill();
     if (msg.error) die(`server error: ${JSON.stringify(msg.error)}`);
