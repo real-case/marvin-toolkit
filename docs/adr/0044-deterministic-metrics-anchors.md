@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-09-04 |
+| Status        | **Accepted** |
+| Date          | 2026-09-05 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0043](0043-task-workflow-metrics.md) (the series this narrows — its writer invariant and its "events are only as reliable as the prose" consequence), [ADR-0035](0035-evidence-provenance.md) (the delivery gate whose decision now carries the write), [ADR-0039](0039-critique-receipts.md) (the amendment convention this record follows, as ADR-0041 followed it for ADR-0024), [ADR-0003](0003-tool-backed-dor.md) (the seal gate this attaches to) |
