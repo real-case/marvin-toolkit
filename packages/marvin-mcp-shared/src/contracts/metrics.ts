@@ -345,6 +345,13 @@ export const MetricsSeriesCoverage = z.object({
   rolled_up: z.number().int().nonnegative(),
   /** Records with live events and no terminal block — recorded, not rolled up. */
   events_only: z.number().int().nonnegative(),
+  /**
+   * Records holding neither a terminal block nor a live event — a file the seal
+   * anchor created for a run that then recorded nothing (ADR-0044). Without this
+   * bucket such a record is counted in `records` and in neither of the two above,
+   * so the coverage line silently loses it.
+   */
+  empty: z.number().int().nonnegative(),
   shipped_specs: z.number().int().nonnegative().nullable(),
   shipped_with_record: z.number().int().nonnegative().nullable(),
 });
@@ -405,6 +412,12 @@ export type MetricsSeries = z.infer<typeof MetricsSeries>;
 export const MetricsSummary = z.object({
   records: z.number().int().nonnegative(),
   rolled_up: z.number().int().nonnegative(),
+  /**
+   * Records the seal anchor created that nothing has written to (ADR-0044). It
+   * sits beside `records` for one reason: without it the dashboard's record
+   * total reads as "tasks measured" while counting empty files.
+   */
+  empty: z.number().int().nonnegative(),
   newest: z.object({ slug: Slug, rolled_up_at: z.string().min(1) }).nullable(),
   median_active_ms: z.number().nullable(),
   median_spec_gaps: z.number().nullable(),

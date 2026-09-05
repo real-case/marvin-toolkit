@@ -412,10 +412,14 @@ function renderAuditArea(
 function renderMetrics(m: MetricsSummary): string[] {
   if (m.records === 0) {
     return [
-      "- _No metrics records yet — the first `/marvin:task-deliver` on a spec writes one under `.marvin/metrics/` (ADR-0043)._",
+      "- _No metrics records yet — the next `/marvin:task-implement` on a sealed spec creates one under `.marvin/metrics/`, and `/marvin:task-deliver` fills it in (ADR-0043/0044)._",
     ];
   }
+  // `empty` sits beside the total on purpose (ADR-0044): the seal anchor creates
+  // a record per started run, so a bare record count reads as "tasks measured"
+  // while counting files nothing has written to.
   const parts = [`${m.records} record(s)`, `${m.rolled_up} rolled up`];
+  if (m.empty > 0) parts.push(`${m.empty} started but empty`);
   if (m.newest) parts.push(`newest \`${m.newest.slug}\` (${m.newest.rolled_up_at.slice(0, 10)})`);
   if (m.median_active_ms !== null) parts.push(`median active time ${fmtMs(m.median_active_ms)}`);
   if (m.median_spec_gaps !== null) parts.push(`spec gaps per task ${m.median_spec_gaps}`);

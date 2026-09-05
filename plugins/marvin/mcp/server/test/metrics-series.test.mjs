@@ -21,7 +21,7 @@ const { aggregateSeries, escapedDefects, filterRecords, stat, summarizeSeries } 
   "src/lib/metrics-series.ts",
 );
 const { rollUpMetrics } = await importTs("src/lib/metrics-rollup.ts");
-const { appendMetricEvent, appendTaskMetrics, metricsRecordPath } =
+const { appendMetricEvent, appendTaskMetrics, ensureRecord, metricsRecordPath } =
   await importTs("src/storage/metrics.ts");
 
 const T = (hhmmss, day = "03") => `2026-09-${day}T${hhmmss}.000Z`;
@@ -166,6 +166,39 @@ test("escaped defects: each shipped bugfix credits the EARLIER shipped specs who
   ]);
 });
 
+test("coverage names the header-only records the seal anchor creates", () => {
+  // AC7 (ADR-0044). A record created at seal and never written to carries no
+  // terminal block and no event, so it belongs to neither of the two buckets
+  // that existed before: it counted in `records` and vanished from the
+  // breakdown. One record of each state, so an `empty` that is hard-wired to 0
+  // — or computed as "records minus rolled_up" — produces a different object.
+  const s = aggregateSeries({
+    dir: ".marvin/metrics",
+    now: T("13:00:00"),
+    records: [
+      {
+        slug: "alpha",
+        filename: "001-alpha.md",
+        events: 1,
+        block: block("alpha", { day: "01" }),
+        review_fix_commits: null,
+      },
+      { slug: "gamma", filename: "003-gamma.md", events: 2, block: null, review_fix_commits: null },
+      { slug: "delta", filename: "004-delta.md", events: 0, block: null, review_fix_commits: null },
+    ],
+    shipped: null,
+    filters: {},
+  });
+  assert.deepEqual(s.coverage, {
+    records: 3,
+    rolled_up: 1,
+    events_only: 1,
+    empty: 1,
+    shipped_specs: null,
+    shipped_with_record: null,
+  });
+});
+
 test("aggregateSeries: coverage, per-metric stats over present values, Q12 credit, and the filters", () => {
   const records = [
     {
@@ -183,6 +216,10 @@ test("aggregateSeries: coverage, per-metric stats over present values, Q12 credi
       review_fix_commits: null,
     },
     { slug: "gamma", filename: "003-gamma.md", events: 2, block: null, review_fix_commits: null },
+    // The seal anchor's shape (ADR-0044): a record created for a started run
+    // that then recorded nothing. It belongs to neither bucket above, so a
+    // coverage that omits `empty` loses it entirely.
+    { slug: "delta", filename: "004-delta.md", events: 0, block: null, review_fix_commits: null },
   ];
   const shipped = [
     { slug: "alpha", number: 1, type: "feature", created: "2026-09-01", files: ["src/alpha.ts"] },
@@ -204,9 +241,10 @@ test("aggregateSeries: coverage, per-metric stats over present values, Q12 credi
   });
 
   assert.deepEqual(s.coverage, {
-    records: 3,
+    records: 4,
     rolled_up: 2,
     events_only: 1,
+    empty: 1,
     shipped_specs: 3,
     shipped_with_record: 2,
   });
@@ -240,6 +278,7 @@ test("aggregateSeries: coverage, per-metric stats over present values, Q12 credi
       ["alpha", "feature", "2026-09-01", 1],
       ["fix-alpha", "bugfix", "2026-09-03", 3],
       ["gamma", null, null, 2],
+      ["delta", null, null, 0],
     ],
   );
 
@@ -255,6 +294,7 @@ test("aggregateSeries: coverage, per-metric stats over present values, Q12 credi
     records: 1,
     rolled_up: 1,
     events_only: 0,
+    empty: 0,
     shipped_specs: 3,
     shipped_with_record: 1,
   });
@@ -299,6 +339,7 @@ test("summarizeSeries: counts, the newest roll-up, two medians; a fresh project 
   assert.deepEqual(summarizeSeries([]), {
     records: 0,
     rolled_up: 0,
+    empty: 0,
     newest: null,
     median_active_ms: null,
     median_spec_gaps: null,
@@ -319,10 +360,12 @@ test("summarizeSeries: counts, the newest roll-up, two medians; a fresh project 
       review_fix_commits: null,
     },
     { slug: "gamma", filename: "003-gamma.md", events: 2, block: null, review_fix_commits: null },
+    { slug: "delta", filename: "004-delta.md", events: 0, block: null, review_fix_commits: null },
   ]);
   assert.deepEqual(s, {
-    records: 3,
+    records: 4,
     rolled_up: 2,
+    empty: 1,
     newest: { slug: "beta", rolled_up_at: T("12:00:00", "03") },
     median_active_ms: 900000,
     median_spec_gaps: 2,
@@ -385,6 +428,8 @@ function fixture() {
     contract_sha: null,
     at: T("10:00:00"),
   });
+  // The seal anchor's record: created, never written to (ADR-0044).
+  ensureRecord(metricsRecordPath(metrics, "004-delta"), "delta");
   return dir;
 }
 
@@ -396,16 +441,17 @@ test("series over stdio: the aggregate, the coverage line, the filters, one reco
     const text = textOf(all);
     const s = blockOf(text, "metrics-series");
     assert.deepEqual(s.coverage, {
-      records: 3,
+      records: 4,
       rolled_up: 2,
       events_only: 1,
+      empty: 1,
       shipped_specs: 2,
       shipped_with_record: 2,
     });
     assert.equal(s.dir, ".marvin/metrics");
     assert.match(
       text,
-      /\*\*Coverage:\*\* 3 record\(s\) · 2 rolled up · 1 recorded but not rolled up · the series covers 2 of 2 shipped spec\(s\)/,
+      /\*\*Coverage:\*\* 4 record\(s\) · 2 rolled up · 1 recorded but not rolled up · 1 started but empty · the series covers 2 of 2 shipped spec\(s\)/,
     );
     assert.match(text, /## Time[\s\S]*\| T4 \| active pipeline time \| 2 \| 15m \| 15m \| 15m \|/);
     assert.match(text, /## Quality[\s\S]*\| Q7 \| spec gaps \| 2 \| 2 \| 2 \| 3 \|/);
@@ -414,7 +460,7 @@ test("series over stdio: the aggregate, the coverage line, the filters, one reco
       /## Rework[\s\S]*\| R4 \| verification runs before the first green \| 2 \| 0 \| 0 \| 0 \|/,
     );
     assert.match(text, /## Escaped defects \(Q12\)\n- bugfix `fix-alpha` → credited to `alpha`/);
-    assert.match(text, /## Records \(3\)/);
+    assert.match(text, /## Records \(4\)/);
     assert.equal(s.quality.review_fix_commits.count, 0, "Q11: no `## Delivery` URL on either spec");
     assert.deepEqual(all.structuredContent.coverage, s.coverage);
 
@@ -480,12 +526,17 @@ test("series on a fresh project is the zero state, and a filter that matches not
   try {
     const r = await callTool("metrics", { action: "series", projectRoot: dir });
     assert.notEqual(r.isError, true);
-    assert.match(textOf(r), /_No metrics records yet/);
+    assert.match(
+      textOf(r),
+      /_No metrics records yet — the next `\/marvin:task-implement` on a sealed spec creates one/,
+      "the zero state must name the seal anchor, which now writes before task-deliver",
+    );
     const s = blockOf(textOf(r), "metrics-series");
     assert.deepEqual(s.coverage, {
       records: 0,
       rolled_up: 0,
       events_only: 0,
+      empty: 0,
       shipped_specs: null,
       shipped_with_record: null,
     });

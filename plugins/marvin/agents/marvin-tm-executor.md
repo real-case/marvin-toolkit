@@ -164,6 +164,13 @@ stage that file with the change in 5.1 so the record ships in the same commit an
 the answer reports the record as IGNORED by `.gitignore`, say so in Self-Review Notes. The roll-up is
 a record, never a gate: if the tool is unavailable, skip it and continue.
 
+**This call stays here even though `/marvin:task-deliver` no longer makes it.** Since ADR-0044 the
+delivery gate writes the terminal block itself, and the interactive path only relays what it wrote —
+but **this agent never calls the delivery gate**: §3 runs `verify` in `mode: feature` and §5 commits
+and opens the pull request directly. So this is the only writer of a headless run's terminal block,
+and removing it to match `task-deliver` would leave every headless task unmeasured. The asymmetry is
+deliberate and `test/metrics-record.test.mjs` asserts both halves of it.
+
 #### 5.1 Commit
 
 Stage and commit with conventional format:

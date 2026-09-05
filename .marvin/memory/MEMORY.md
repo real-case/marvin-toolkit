@@ -29,3 +29,4 @@ in the linked file. Recalled at task intake.
 - [test-storybook -u never rewrites a PASSING baseline, so a sub-threshold visual change silently keeps the old image](test-storybook-u-never-rewrites-a.md) — gotcha · 2026-08-09 · widgets, storybook, visual-regression, jest-image-snapshot, baselines, threshold, darwin
 - [A widget-bound tool's `content` never reaches the model — `structuredContent` replaces it](a-widget-bound-tool-s-content-never.md) — gotcha · 2026-08-18 · mcp-apps, widgets, structuredContent, tool-result, host, measurement, help, duplication
 - [A heuristic that picks the important lines can hide the verdict](a-heuristic-that-picks-the-important.md) — pitfall · 2026-09-03 · verify, output, regex, heuristics, review
+- [Don't let a feature PR be the first to track a tooling directory in a shared repo](don-t-let-a-feature-pr-be-the-first-to.md) — process · 2026-09-03 · pr-review, merge-conflicts, repo-hygiene, artefacts, naming

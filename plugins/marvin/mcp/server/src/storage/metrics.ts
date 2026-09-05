@@ -212,6 +212,21 @@ function append(path: string, slug: string, tag: string, payload: unknown): void
   appendFileSync(path, `${head}\`\`\`json ${tag}\n${JSON.stringify(payload)}\n\`\`\`\n\n`, "utf8");
 }
 
+/**
+ * Create the record with its header and nothing else, when it does not exist
+ * (ADR-0044). This is the seal anchor's whole write: a started run gets a file
+ * before it has anything to put in it, so a run abandoned before delivery is
+ * still visible in the series as the `empty` bucket.
+ *
+ * Deliberately NOT an event: `events_only` means "recorded something real", and
+ * a synthetic placeholder event would move an abandoned run into it.
+ */
+export function ensureRecord(path: string, slug: string): void {
+  if (existsSync(path)) return;
+  mkdirSync(join(path, ".."), { recursive: true });
+  appendFileSync(path, header(slug), "utf8");
+}
+
 /** Append one live event. Never reads the file back to write it. */
 export function appendMetricEvent(path: string, event: MetricEvent): void {
   append(path, event.slug, METRIC_EVENT_TAG, event);
