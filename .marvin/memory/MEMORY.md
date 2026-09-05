@@ -30,3 +30,4 @@ in the linked file. Recalled at task intake.
 - [A widget-bound tool's `content` never reaches the model — `structuredContent` replaces it](a-widget-bound-tool-s-content-never.md) — gotcha · 2026-08-18 · mcp-apps, widgets, structuredContent, tool-result, host, measurement, help, duplication
 - [A heuristic that picks the important lines can hide the verdict](a-heuristic-that-picks-the-important.md) — pitfall · 2026-09-03 · verify, output, regex, heuristics, review
 - [Don't let a feature PR be the first to track a tooling directory in a shared repo](don-t-let-a-feature-pr-be-the-first-to.md) — process · 2026-09-03 · pr-review, merge-conflicts, repo-hygiene, artefacts, naming
+- [The red phase of an oracle cannot be reconstructed after the code is green](the-red-phase-of-an-oracle-cannot-be.md) — process · 2026-09-05 · oracles, red-green, task-implement, verify, metrics, proof
