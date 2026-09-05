@@ -291,10 +291,10 @@ rationale is folded into 0001, 0013, and 0018.
 | [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
 | [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
 | [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
-| [0041](./docs/adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Proposed |
-| [0042](./docs/adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Proposed |
+| [0041](./docs/adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Accepted |
+| [0042](./docs/adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Accepted |
 | [0043](./docs/adr/0043-task-workflow-metrics.md) | Task workflow metrics are a committed per-task series, derived at delivery | Accepted |
-| [0044](./docs/adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Proposed |
+| [0044](./docs/adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Accepted |
 
 ## Contributing
 
