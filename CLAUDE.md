@@ -38,7 +38,7 @@ plugins/marvin/
     ├── src/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
-    │   │   └── index.ts              # 56 prompt entries (skill-backed + inline track)
+    │   │   └── index.ts              # 59 prompt entries (skill-backed + inline track)
     │   ├── tools/                    # 14 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, metrics (task pipeline; one of three callers of the .marvin/metrics/ writer, ADR-0043/0044), lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # board persistence + helpers
@@ -57,6 +57,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/metrics/` | three callers of one writer (ADR-0044): the **`spec` seal gate** CREATES the record for every started run, the **`verify` delivery gate** appends the terminal block on ALLOW, and the `metrics` tool's `action: "record"` adds the live events from the pipeline prose sites (`task-start` 7F/7B and 8F/8B, `task-implement` 6F/9B, its Fix-cycle and SPEC GAP protocols, the executor's §3–§5) with `action: "rollup"` left for `marvin-tm-executor` §5.0, which never reaches the delivery gate | the **task-metrics series** (ADR-0043): one **committed** record per spec, `<NNN>-<slug>.md`, named after the spec's own file so nothing is allocated, two parallel branches cannot mint the same number, and both directions of the join are a filename lookup (`<slug>.md` for a spec that lives unnumbered in a host directory, and for an event `task-start` records against a draft the corpus cannot yet see). Append-only, two block tags chosen to differ by more than one letter: live ` ```json metric-event ` blocks during the run — six kinds, `fix-round`, `spec-gap`, `open-item`, `critic-dispatch`, `critic-verdict`, `gate-call`, each fail-closed on its own required fields, so a half-written event is refused rather than counted — and one ` ```json task-metrics ` block per delivery, derived by the pure `rollUpMetrics` in `lib/metrics-rollup.ts` from the spec, the three `runs/` journals, the `verify-result` block, the receipts and git, of which the LAST is authoritative. Every metric is nullable and **null means the source was absent, never zero**; the block's `sources` map says which of the eight inputs was on disk, and a record with no events reports every event-sourced counter as null. `.gitignore` negates the directory (`!.marvin/metrics/` after `.marvin/*`) so the record reaches `dev` in the delivery PR; a host project must do the same, and the `rollup` answer reports `ignored` when it has not. Not a report group (ADR-0043 §5): the reading surface is `metrics action: "series"` behind the inline-body prompt `/marvin:task-metrics` — count, median, mean and maximum per metric over the records where the field is present, a coverage line against the shipped corpus, `type`/`since` filters, a `slug` mode that renders one record in full, and Q11 (review-fix commits, through `gh`) and Q12 (escaped defects, a join over the shipped specs' contract paths) computed there at query time and never stored — plus the dashboard's `metrics` section (`MetricsSummary`, an optional additive field of `DashboardState`). `MARVIN_METRICS_DIR` repoints it; no self-written `.gitignore`, for the reason `critiqueDir` gives |
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/refactor/` | `refactor-*` family | numbered findings-register reports `NNN-audit-<slug>.md` / `NNN-smells-<slug>.md` (`F<n>` id, severity, effort, evidence, direction — ADR-0029) + sequenced step plans `NNN-plan-<slug>.md` (one shared number sequence) |
+| `.marvin/audit/` | the `audit-*` family (`audit-plan`, `audit-run`, `audit-summary`) | the formal project-audit programme: the plan `A-00-plan-<slug>.md`, one report per audit `A-XX-<slug>.md` **plus its rendered `A-XX-<slug>.pdf`**, and the consolidation `A-99-summary-<slug>.md`. Each report carries a fixed frontmatter (commit, tool versions, `coverage`, `confidence`), the seven-section skeleton and one ` ```json findings ` block whose vocabulary is ASCII regardless of the report's `LANG` — that block is the ONLY interface `audit-summary` reads, which is what lets audits run in isolated sessions and still be joined. Not a report group of the `report` tool, and not written by any tool: the three commands are skill-backed prompts and every byte under `.marvin/audit/` is written by the calling session |
 | `.marvin/track/` | `track-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
@@ -92,10 +93,40 @@ Commands are `/marvin:<group>-<command>`; singletons stay bare. Groups:
 | `task-*` | spec pipeline (taskmaster) | `/marvin:task-start`, `/marvin:task-implement`, `/marvin:task-verify`, `/marvin:task-deliver`, `/marvin:task-summary`, `/marvin:task-metrics`, `/marvin:task-audit` |
 | `sec-*` | security scanners | `/marvin:sec-scan`, `/marvin:sec-secrets`, `/marvin:sec-deps`, `/marvin:sec-gate`, `/marvin:sec-threat-model`, `/marvin:sec-iac`, `/marvin:sec-ci`, `/marvin:sec-fix`, `/marvin:sec-compliance`, `/marvin:sec-pentest`, `/marvin:sec-report` |
 | `refactor-*` | code-health family, read → plan → apply (ADR-0029) | `/marvin:refactor-audit`, `/marvin:refactor-smells`, `/marvin:refactor-plan`, `/marvin:refactor-apply` |
+| `audit-*` | the formal A-01…A-22 project-audit programme — plan, run one, consolidate | `/marvin:audit-plan`, `/marvin:audit-run`, `/marvin:audit-summary` |
 | `track-*` | lightweight task tracker (board-only, ADR-0025; seven-command surface, ADR-0032) | `/marvin:track-menu`, `/marvin:track-new`, `/marvin:track-list`, `/marvin:track-show`, `/marvin:track-start`, `/marvin:track-move`, `/marvin:track-config` |
 
 `task-*` (heavyweight spec pipeline) and `track-*` (quick tracker) are intentionally
 distinct domains — keep them separate.
+
+### The audit family is three commands over twenty-three data files
+
+`audit-plan`, `audit-run` and `audit-summary` are the whole command surface of the `A-01…A-22`
+programme, and a twenty-third audit is a **file**, not a fourth command. `audit-run` carries the
+programme under `skills/audit-run/references/`: one shared `report-contract.md` (parameters,
+report skeleton, finding schema, S0–S4 severity with its mapping onto the `sec-scan` rubric,
+evidence rules, sampling budget, prohibitions, and the canonical machine forms of the path
+exclusion set — `RG_EXCLUDE` is `**/`-prefixed and `GIT_EXCLUDE` carries `:(exclude,glob)` because
+the naive forms of both leave part of the tree IN, measured rather than assumed); `pdf-release.md`
+with two committed generators under `references/tools/` (`audit-pdf.py` refuses to render rather
+than emit empty boxes when no TTF with verified Cyrillic coverage is found; `audit-verify.py`
+fails the release when the finding ids in the prose, the register and the PDF disagree);
+`audit-index.md` (catalogue, waves, and a dependency matrix whose two columns are ONE relation —
+"Hands to" is derived from "Needs on input", never edited alone); `spec-authoring.md` (template
+plus the acceptance checklist a new audit is reviewed against); and one `audits/A-XX-<slug>.md`
+per audit holding only the half that differs.
+
+`test/audit-family.test.mjs` pins what no other gate reaches: the catalogue and the spec files as
+one set in both directions, the thirteen-section template, the S0–S4 vocabulary, the `Origin`
+column's two values, the 150–250-line budget, that every `skills/…` path in the family resolves
+(`scripts/lib/skill-datasets.mjs` deliberately does not walk reference files, and this family is
+mostly reference files pointing at one another), that every `report-contract.md §N` reference
+names a section the contract has, and that the register schema in the contract and the
+required-field tuple in `audit-verify.py` are the same set — two statements of one contract, the
+prose a report is written to and the check that fails its release.
+
+**Adding an audit** means the spec file, the `audit-index.md` row in both the catalogue and the
+matrix, and nothing else — no new skill, no new prompt, no new dataset.
 
 ### Call it your way
 
@@ -416,7 +447,7 @@ A release is a `dev → main` promotion PR followed by a `vX.Y.Z` tag on `main`,
 - `.claude-plugin/marketplace.json` — marketplace manifest (single `marvin` plugin)
 - `plugins/marvin/.claude-plugin/plugin.json` — plugin manifest
 - `plugins/marvin/.mcp.json` — MCP server registration (the slash prefix lives here)
-- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 56 prompt registrations
+- `plugins/marvin/mcp/server/src/prompts/index.ts` — the 59 prompt registrations
 - `packages/marvin-mcp-shared/` — shared TypeScript library consumed by the server
 - `docs/adr/0001-single-plugin-consolidation.md` — current architecture decision
 - `docs/adr/0002-tool-backed-verification.md` — `verify` gate moved from prose to a tool

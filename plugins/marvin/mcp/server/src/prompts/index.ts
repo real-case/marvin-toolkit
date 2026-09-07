@@ -3,7 +3,7 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
 /**
  * Prompts for the unified `marvin` server. Two body sources:
  *
- *  - **skill-backed** (core / adr / task / sec / refactor groups): `skill` points to a
+ *  - **skill-backed** (core / adr / task / sec / refactor / audit groups): `skill` points to a
  *    directory under `plugins/marvin/skills/<name>/SKILL.md`. The skill
  *    file is the single source of truth — Claude Code auto-discovers it
  *    through its own frontmatter `description`, while this server exposes
@@ -140,8 +140,8 @@ export const PROMPTS: PromptDef[] = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
+      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -357,6 +357,29 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, coverage refusal with a pin-down-test offer, lessons recall/capture, rollback on red.",
     skill: "refactor-apply",
+  },
+
+  // ── audit (the formal A-01…A-22 project-audit programme) ────────────
+  // Three commands over twenty-three data files: the two harness commands and
+  // the consolidation. A twenty-third audit is a file under
+  // skills/audit-run/references/audits/, never a fourth prompt.
+  {
+    name: "audit-plan",
+    description:
+      "Plan a project audit programme — choose which of the twenty-two audits (A-01…A-22) this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run. Read-only; writes one plan under .marvin/audit/.",
+    skill: "audit-plan",
+  },
+  {
+    name: "audit-run",
+    description:
+      "Run one audit of the A-01…A-22 programme — inventory, onboarding, dependencies, repository history, static analysis, type safety, tests, development process, module boundaries, data model, API contracts, integrations, frontend, security, performance, observability, CI/CD, reliability, cost, documentation, accessibility, privacy — and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
+    skill: "audit-run",
+  },
+  {
+    name: "audit-summary",
+    description:
+      "A-99 — consolidate finished audit reports into one prioritised register: deduplicate findings several audits reached, resolve severity conflicts with a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce the top five for management. Reads reports and never re-analyses code.",
+    skill: "audit-summary",
   },
 
   // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─

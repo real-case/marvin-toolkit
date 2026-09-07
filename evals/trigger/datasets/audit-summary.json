@@ -1,0 +1,217 @@
+{
+  "skill": "audit-summary",
+  "target": "audit-summary",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. audit-summary is A-99: it reads finished audit reports and their findings registers and produces one prioritised register plus a top five for management. It never re-analyses code. The discriminators are input (finished audit reports, not the codebase) and output (a merged, deduplicated, dependency-ordered register), against reports (listing), report-export (reformatting one report) and task-summary (one delivered task).",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "сведи результаты аудитов в один отчёт",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "собери итоговый отчёт по программе аудита",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "consolidate the audit reports and tell me what to fix first",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "A-99 — сводный реестр находок по всем аудитам",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "у нас девять отчётов аудита, нужен топ-5 для правления",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "объедини находки из всех аудитов, убери дубли и разреши конфликты severity",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "сделай сводку по .marvin/audit с приоритизацией и порядком работ",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "аудиты закончены — что делать первым и в каком порядке",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "merge the findings registers from every audit into one prioritised list",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "нужен единый реестр находок со стоимостью исправления и стоимостью бездействия",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "проведи аудит безопасности",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "one audit to execute → audit-run"
+    },
+    {
+      "id": "neg-2",
+      "text": "спланируй программу аудита проекта",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "choosing and ordering audits → audit-plan"
+    },
+    {
+      "id": "neg-3",
+      "text": "покажи все отчёты, которые marvin сгенерировал",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "listing reports → reports"
+    },
+    {
+      "id": "neg-4",
+      "text": "экспортируй сводный отчёт в pdf для отправки наружу",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reformatting one existing report → report-export"
+    },
+    {
+      "id": "neg-5",
+      "text": "суммируй, что сделала задача, которую мы только что доставили",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "one delivered task → task-summary"
+    },
+    {
+      "id": "neg-6",
+      "text": "сделай changelog между двумя тегами",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "release notes from git history → changelog"
+    },
+    {
+      "id": "neg-7",
+      "text": "покажи метрики по задачам за квартал",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "task pipeline metrics → task-metrics"
+    },
+    {
+      "id": "neg-8",
+      "text": "перечисли находки последних security-сканов",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "security report listing → sec-report"
+    },
+    {
+      "id": "neg-9",
+      "text": "составь план рефакторинга по реестру находок",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediation plan from a refactor register → refactor-plan"
+    },
+    {
+      "id": "neg-10",
+      "text": "напиши ADR по принятому решению",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "recording a decision → adr"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "сведи результаты и покажи, что чинить первым",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "audit-summary",
+      "mock_rate": 1,
+      "note": "consolidation plus prioritisation of existing audit findings → audit-summary"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "оформи готовый отчёт по аудиту в один pdf-документ для рассылки",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "report-export",
+      "mock_rate": 0,
+      "note": "one existing report reformatted for sharing, no merging across audits → report-export"
+    },
+    {
+      "id": "cmp-lose-3",
+      "text": "разложи найденные проблемы в план работ по шагам с оценкой риска",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "shares 'порядок работ' with A-99, but the input is a refactor findings register and the output is a remediation plan → refactor-plan"
+    },
+    {
+      "id": "cmp-win-4",
+      "text": "объедини находки нескольких аудитов в один приоритизированный реестр и дай топ-5 для руководства",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "audit-summary",
+      "mock_rate": 1,
+      "note": "merging registers across audits with a management top five is A-99 → audit-summary"
+    }
+  ]
+}

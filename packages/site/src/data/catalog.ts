@@ -3,7 +3,7 @@
 // scripts/gen-catalog.mjs emits catalog.json from the plugin sources at build time (FR-20);
 // this module declares its shape and re-exports it typed. Phase-3 pages import from here
 // (`import { catalog } from "../data/catalog"`) for the counts strip (FR-5), the command
-// catalog grouped by the seven groups (FR-12), and the search corpus (FR-13). The generated
+// catalog grouped by the catalog groups (FR-12), and the search corpus (FR-13). The generated
 // JSON is the single source of the site's command list, counts, and version — no number is
 // hand-maintained. A byte-exact drift guard (test/catalog.test.mjs) keeps the JSON fresh and
 // the `check:catalog` tsc pass keeps this type and the JSON in lockstep.
@@ -30,7 +30,7 @@ export interface CatalogGroup {
 export interface CatalogCommand {
   /** Bare command name, e.g. "task-start" (invoked as `/marvin:task-start`). */
   name: string;
-  /** One of the seven groups: core, adr, pr, task, sec, refactor, track. */
+  /** One of the catalog groups: core, adr, pr, task, sec, refactor, audit, track. */
   group: string;
   /** One-line synopsis (COMMAND_BLURBS). */
   blurb: string;
