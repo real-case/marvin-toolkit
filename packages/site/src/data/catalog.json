@@ -1,11 +1,11 @@
 {
-  "version": "0.23.0",
+  "version": "0.24.0",
   "counts": {
-    "prompts": 56,
+    "prompts": 59,
     "tools": 14,
     "agents": 10,
     "widgets": 9,
-    "version": "0.23.0",
+    "version": "0.24.0",
     "license": "MIT"
   },
   "groups": [
@@ -38,6 +38,11 @@
       "key": "refactor",
       "blurb": "Code-health — audit, smells, plan, apply",
       "count": 4
+    },
+    {
+      "key": "audit",
+      "blurb": "Formal project audit — plan the programme, run one audit, consolidate",
+      "count": 3
     },
     {
       "key": "track",
@@ -658,6 +663,44 @@
         "marvin, apply the next refactor step",
         "marvin, execute step 2 of the plan",
         "marvin, do the refactoring under the gates"
+      ],
+      "human": false
+    },
+    {
+      "name": "audit-plan",
+      "group": "audit",
+      "blurb": "Plan the audit programme",
+      "description": "Choose which of the twenty-two audits this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run.",
+      "phrases": [
+        "marvin, проведи аудит проекта",
+        "marvin, plan the audit programme",
+        "marvin, which audits does this project need?"
+      ],
+      "example": "/marvin:audit-plan due diligence, code + CI only",
+      "human": false
+    },
+    {
+      "name": "audit-run",
+      "group": "audit",
+      "blurb": "Run one audit, A-01…A-22",
+      "description": "Execute ONE audit of the A-01…A-22 programme end to end and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
+      "phrases": [
+        "marvin, аудит зависимостей",
+        "marvin, run audit A-14",
+        "marvin, audit the data model and give me a findings register"
+      ],
+      "example": "/marvin:audit-run A-14",
+      "human": false
+    },
+    {
+      "name": "audit-summary",
+      "group": "audit",
+      "blurb": "Consolidate audit reports",
+      "description": "A-99 — consolidate finished audit reports into one prioritised register: deduplicate, resolve severity conflicts, order by finding dependencies, and produce the top five. Reads reports, never code.",
+      "phrases": [
+        "marvin, сведи результаты аудитов",
+        "marvin, consolidate the audit reports",
+        "marvin, what do we fix first?"
       ],
       "human": false
     },

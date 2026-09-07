@@ -58,7 +58,7 @@ export function buildHelpTool(env: ServerEnv, version: string, packRoot: string)
   return defineTool({
     name: "help",
     description:
-      'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/track).',
+      'Marvin welcome banner + dashboard: project summary (project, git branch, task board, artifacts), the configured MCP servers, the command groups, and the full per-command reference. Answers "what\'s on the board?" / "marvin help". Pass `section` to focus the reference on one group (core/adr/pr/task/sec/refactor/audit/track).',
     inputSchema: HelpInput,
     // Bind the help `ui://` widget for MCP Apps hosts (ADR-0024). A plain object
     // literal — no ext-apps import — so tsup never bundles the SDK into

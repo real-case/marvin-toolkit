@@ -2,8 +2,8 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **55** in total,
-divided into seven groups.
+`/marvin:<group>-<command>`, and singletons stay bare. There are **58** in total,
+divided into eight groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
 [usage guide](./usage.md); to understand how the commands are built, read the
@@ -176,6 +176,25 @@ one behavior-preserving step at a time behind the verify gate.
 | `/marvin:refactor-apply` | Execute exactly one behavior-preserving step under hard rails — verify green before and after, a coverage refusal that offers a pin-down test first, lessons recall and capture, and rollback on red. | `marvin apply the refactoring`, `execute step 2 of the plan`, `do the next refactor step` |
 
 The `marvin-refactor-auditor` agent supports these commands.
+
+## Project audit — `audit-*`
+
+A formal audit programme of twenty-two audits (`A-01`…`A-22`) plus a consolidation, distinct
+from the `sec-*` and `refactor-*` families: those are working scans, while an audit produces a
+reproducible report — commit SHA, real tool versions, declared coverage and confidence, a
+seven-section skeleton, and a machine-readable findings register — released as `.md` **and**
+`.pdf` under `.marvin/audit/`. Each audit runs in its own session and receives a predecessor's
+output as a parameter, never as remembered context, which is what lets a programme be split
+across days and people. Every audit is strictly read-only on the repository under audit.
+
+The command surface is three; the twenty-two audits are data files under
+`skills/audit-run/references/audits/`, so a twenty-third audit adds no command.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:audit-plan` | Choose which of the twenty-two audits this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run — naming every excluded audit and what it leaves unchecked. | `marvin проведи аудит проекта`, `plan the audit programme`, `which audits does this project need?` |
+| `/marvin:audit-run` | Run one audit end to end — resolve which was asked for, collect evidence under a declared sampling budget, rank findings on the S0–S4 scale, and release the report as `.md` plus `.pdf` with the ids verified identical across prose, register and PDF. | `marvin аудит зависимостей`, `run audit A-14`, `audit the data model` |
+| `/marvin:audit-summary` | Consolidate the finished reports (A-99): deduplicate findings several audits reached, resolve severity conflicts by a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce a top five with numbers. Reads reports, never code. | `marvin сведи результаты аудитов`, `consolidate the audit reports`, `what do we fix first?` |
 
 ## Task tracker — `track-*`
 
