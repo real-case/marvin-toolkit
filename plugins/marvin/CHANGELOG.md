@@ -4,6 +4,56 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.24.0] — 2026-09-08
+
+The eighth command group, `audit`: a project-audit programme of twenty-two audits reachable through
+three commands rather than twenty-three. The prompt count moves from 56 to 59; tools, agents and
+widgets are unchanged.
+
+### Added
+
+- **`/marvin:audit-run` executes one audit end to end** and releases it as `.md` plus `.pdf` with a
+  machine-readable findings register. The half every audit shares — the parameter set, the
+  seven-section report skeleton, the finding schema, the S0–S4 severity scale and its mapping onto
+  the `sec-scan` rubric, the evidence rules, the sampling budget and the prohibitions — is written
+  once in `skills/audit-run/references/report-contract.md`. Each audit is a file under
+  `references/audits/` carrying only what differs, so a twenty-third audit is a new file and one row
+  in `references/audit-index.md`, not a new command. Reports land in `.marvin/audit/` by default;
+  the run is strictly read-only on the audited repository.
+- **`/marvin:audit-plan` chooses the programme** — which of A-01…A-22 a given project needs, ordered
+  into waves by data dependency, with a paste-ready invocation per run. Read-only.
+- **`/marvin:audit-summary` consolidates the finished reports (A-99)** into one prioritised
+  register: duplicates merged, severity conflicts resolved with a stated rationale, work ordered by
+  finding dependency, and a top five with an estimate. It reads reports and never re-reads code.
+- **Sessions are isolated by construction.** A predecessor's output reaches a later run as a
+  parameter value, never as remembered context, so an audit run in a fresh session behaves the same
+  as one run in a long-lived conversation.
+- **Both release artefacts are verified rather than asserted.** `references/tools/audit-pdf.py`
+  registers a TTF whose Cyrillic coverage it has probed and exits 2 instead of emitting empty
+  boxes; `references/tools/audit-verify.py` fails the release when the finding identifiers in the
+  prose, in the machine register and in the rendered PDF disagree, holding prose and register to
+  equality while allowing the PDF the cross-references a report legitimately makes to other audits.
+- **Two exclusion conventions are measured, and the contract records the measurement beside each.**
+  A ripgrep exclusion glob containing `/` is matched from the search root, so `-g '!node_modules/**'`
+  leaves `packages/x/node_modules/` in scope; every glob in `RG_EXCLUDE` is `**/`-prefixed. A git
+  pathspec without the `glob` magic prunes a nested `node_modules` and leaves the root-level one, so
+  every entry in `GIT_EXCLUDE` is `:(exclude,glob)`.
+- **`test/audit-family.test.mjs`** pins what no other gate reaches: the catalogue and the spec files
+  as one set in both directions, the thirteen-section spec template of `spec-authoring.md`, the
+  S0–S4 vocabulary, the Origin column's two values, the length budget, that every `skills/…` path in the family resolves
+  (`skill-datasets.mjs` deliberately does not walk reference files), that every `report-contract.md`
+  §N reference names a section the contract has, and that the register schema and `audit-verify.py`'s
+  required tuple are the same field set.
+
+### Changed
+
+- **The registry grew by one group, not just by three prompts.** `audit` sits between `refactor` and
+  `track` in `GROUP_PREFIXES` and `GROUP_ORDER` in `lib/state.ts` and in its mirror in the site's
+  `gen-catalog.mjs`; the three commands are carried by three `commands/` wrappers, three
+  `prompts/index.ts` entries, five `help-content.ts` maps, three trigger-eval datasets, and the
+  counts in `README.md`, `plugins/marvin/README.md`, `docs/architecture.md`, `docs/commands.md` and
+  `CLAUDE.md`.
+
 ## [0.23.0] — 2026-09-04
 
 A metrics record stopped depending on a session issuing a prose-instructed call. The two gates the
