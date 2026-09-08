@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **56 prompts, 14 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **59 prompts, 14 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -60,17 +60,18 @@ them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or expor
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 55
-prompts divide into seven groups:
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 59
+prompts divide into eight groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
 | _(bare)_ | Core developer tools | 17 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 6 |
+| `task-*` | Spec-driven task pipeline | 7 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
+| `audit-*` | Formal project audit (plan, run one, consolidate) | 3 |
 | `track-*` | Lightweight task tracker | 7 |
 
 The tables below give a one-line synopsis per command. The
