@@ -171,7 +171,12 @@ function collectGit(projectRoot: string, base: string, notes: string[]): RollupG
   return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
 }
 
-/** Read every roll-up input for a slug from where it lives. */
+/**
+ * Read every roll-up input for a slug from where it lives. `scopeExempt` is the
+ * project's `scope.exempt` list, passed through untouched: which entries are
+ * usable is decided inside the roll-up by the same `partitionScope` the scope
+ * gate calls (ADR-0045).
+ */
 export function collectRollupInputs(
   env: ServerEnv,
   projectRoot: string,
@@ -179,6 +184,7 @@ export function collectRollupInputs(
   slug: string,
   base: string,
   now: string,
+  scopeExempt?: string[],
 ): RollupInputs {
   const notes: string[] = [];
 
@@ -222,6 +228,7 @@ export function collectRollupInputs(
     critique,
     events: events.length ? events : null,
     git,
+    scope_exempt: scopeExempt ?? null,
     notes,
   };
 }

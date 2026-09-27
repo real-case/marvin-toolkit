@@ -508,6 +508,12 @@ function renderDigest(
     "",
     "## Quality",
     `- Q1 scope drift: ${q.scope_drift ? `${q.scope_drift.undeclared.length} undeclared of ${q.scope_drift.changed} changed (declared ${q.scope_drift.declared})${q.scope_drift.undeclared.length ? `: ${q.scope_drift.undeclared.join(", ")}` : ""}` : "—"}`,
+    // Only when the project configures `scope.exempt`; null and a pre-0.26 record print nothing.
+    ...(q.scope_drift?.exempt
+      ? [
+          `- Q1 exempted by scope.exempt: ${q.scope_drift.exempt.length}${q.scope_drift.exempt.length ? ` — ${q.scope_drift.exempt.join(", ")}` : ""}`,
+        ]
+      : []),
     `- Q2 oracle strength: ${q.oracle_strength ? `${q.oracle_strength.executable}/${q.oracle_strength.criteria} executable (${pct(q.oracle_strength.share)})` : "—"}`,
     `- Q3 red-green (bugfix): ${q.red_green ? `${q.red_green.proven}/${q.red_green.criteria} proven (${pct(q.red_green.share)})` : "—"}`,
     `- Q4 not-run gates: ${q.not_run ? `${q.not_run.not_run}/${q.not_run.gates} (${pct(q.not_run.share)})` : "—"}`,

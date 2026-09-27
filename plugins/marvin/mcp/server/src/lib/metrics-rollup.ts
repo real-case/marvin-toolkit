@@ -15,6 +15,7 @@ import { isGreenFullRun, type VerifyRunEntry } from "../storage/verify-runs.js";
 import type { SpecContract } from "../storage/spec.js";
 import type { VerifyResult } from "./reports.js";
 import { normalizeScopePath } from "./git.js";
+import { partitionScope } from "./scope.js";
 
 /**
  * The metrics roll-up (ADR-0043 §2) — the **pure half** of the `metrics` tool's
@@ -74,6 +75,12 @@ export interface RollupInputs {
   critique: { spec: Critique | null; diff: Critique | null } | null;
   events: MetricEvent[] | null;
   git: RollupGit | null;
+  /**
+   * The project's `scope.exempt` patterns as configured (ADR-0045), or
+   * null/absent when it configures none — which Q1 reports as `exempt: null`,
+   * not as an empty list.
+   */
+  scope_exempt?: string[] | null;
   /** Anomalies the collector met before the roll-up ran; prepended to `notes`. */
   notes?: string[];
 }
@@ -284,19 +291,30 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
   // ── quality ───────────────────────────────────────────────────────────────
 
   // Q1 — changed files against the base minus the contract's declared paths.
-  // marvin's own `.marvin/` artifacts and the spec file are excluded, as the
-  // scope gate excludes them: they change on every task by construction.
+  // The judgement is the scope gate's own `partitionScope`: marvin's `.marvin/`
+  // artifacts and the spec file are excluded (they change on every task by
+  // construction), and by-products matching `scope.exempt` leave `undeclared`
+  // for `exempt` (ADR-0045). `changed` still counts them, so it does not move
+  // when a project adopts an exemption; only `undeclared` does.
   let scope_drift: TaskMetricsQuality["scope_drift"] = null;
   if (input.git?.changed_files && contract) {
     const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
-    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
-    const changed = input.git.changed_files
-      .map(normalizeScopePath)
-      .filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    const exemptPatterns = input.scope_exempt ?? null;
+    const part = partitionScope(input.git.changed_files, {
+      allowlist: declared,
+      specPath: input.spec ? input.spec.path : null,
+      exempt: exemptPatterns,
+    });
+    for (const r of part.rejected) {
+      notes.push(
+        `scope.exempt pattern ${JSON.stringify(r.pattern)} ignored — ${r.issue}; the files it names stay in Q1's undeclared list`,
+      );
+    }
     scope_drift = {
       declared: declared.size,
-      changed: changed.length,
-      undeclared: changed.filter((p) => !declared.has(p)).sort(),
+      changed: part.judged.length,
+      undeclared: part.outside.sort(),
+      exempt: exemptPatterns ? part.exempt.map((e) => e.path).sort() : null,
     };
   }
 

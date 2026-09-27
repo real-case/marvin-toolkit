@@ -983,6 +983,178 @@ test("scope: marvin's own .marvin/ artifacts are never scope violations", async 
   }
 });
 
+// ── scope.exempt: by-product files the gate does not count (ADR-0045) ──────
+//
+// The two texts below were captured from the committed server BEFORE
+// exemptions existed, on the scenario `noConfigScenario` rebuilds. Without a
+// `scope.exempt` key the gate must still produce them byte for byte — the
+// no-config path is not allowed to move at all.
+const SCOPE_BASELINE_PASS =
+  '# Spec Readiness Report\n\n**Type:** feature\n**Verdict:** PASS\n\n## Checks\n- ✅ **Scope** — all 1 in-scope changed file(s) are within the contract allowlist\n\n```json spec-result\n{"verdict":"PASS","type":"feature","contractSha":null,"checks":[{"id":"scope","status":"pass","detail":"all 1 in-scope changed file(s) are within the contract allowlist"}]}\n```';
+const SCOPE_BASELINE_FAIL =
+  '# Spec Readiness Report\n\n**Type:** feature\n**Verdict:** FAIL\n\n## Checks\n- ❌ **Scope** — 1 changed file(s) outside the contract allowlist (scope creep): .claude/agent-memory/critic/MEMORY.md. Either add them to the spec\'s files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP.\n\n## Definition of Ready: BLOCKED\n\nResolve the ❌ checks above, then re-run the gate. Do not write the spec until this passes.\n\n```json spec-result\n{"verdict":"FAIL","type":"feature","contractSha":null,"checks":[{"id":"scope","status":"fail","detail":"1 changed file(s) outside the contract allowlist (scope creep): .claude/agent-memory/critic/MEMORY.md. Either add them to the spec\'s files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP."}]}\n```';
+
+const AGENT_MEMORY = join(".claude", "agent-memory", "critic", "MEMORY.md");
+
+function writeScopeConfig(dir, config) {
+  mkdirSync(join(dir, ".marvin"), { recursive: true });
+  writeFileSync(
+    join(dir, ".marvin", "config.json"),
+    typeof config === "string" ? config : JSON.stringify(config),
+  );
+}
+
+function writeAgentMemory(dir) {
+  mkdirSync(join(dir, ".claude", "agent-memory", "critic"), { recursive: true });
+  writeFileSync(join(dir, AGENT_MEMORY), "# notes\n");
+}
+
+test("scope: with no config the answer is byte-identical to the gate before exemptions", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    const clean = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(clean.text, SCOPE_BASELINE_PASS);
+
+    // An agent-memory by-product with nothing configured is the scope creep it always was.
+    writeAgentMemory(dir);
+    const creep = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(creep.text, SCOPE_BASELINE_FAIL);
+    assert.equal(creep.isError, true);
+
+    // A config file that sets other keys but no `scope` changes nothing either.
+    writeScopeConfig(dir, { base_branch: "main", spec: { dir: "specs" } });
+    const other = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(other.text, SCOPE_BASELINE_FAIL);
+
+    // Nor does an exemption list that matches nothing in this change set.
+    writeScopeConfig(dir, { scope: { exempt: ["bun.lock"] } });
+    rmSync(join(dir, ".claude"), { recursive: true, force: true });
+    const unmatched = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(unmatched.text, SCOPE_BASELINE_PASS);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a changed file matching scope.exempt passes, and the answer names it and its pattern", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeAgentMemory(dir);
+    writeFileSync(join(dir, "bun.lock"), "lock\n");
+    writeScopeConfig(dir, {
+      scope: { exempt: [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"] },
+    });
+    const { parsed, isError, text } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(isError, false);
+    const detail = find(parsed, "scope").detail;
+    assert.equal(
+      detail,
+      "all 1 in-scope changed file(s) are within the contract allowlist; 2 by-product file(s) exempted by scope.exempt — " +
+        "`.claude/agent-memory/**` (1): .claude/agent-memory/critic/MEMORY.md; `bun.lock` (1): bun.lock",
+    );
+    assert.match(
+      text,
+      /exempted by scope\.exempt/,
+      "the exemption is in the human-readable text too",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a file matching no scope.exempt pattern still fails, and the exemptions are still named", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeAgentMemory(dir);
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n"); // real scope creep
+    writeScopeConfig(dir, { scope: { exempt: [".claude/agent-memory/**"] } });
+    const { parsed, isError } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true);
+    const detail = find(parsed, "scope").detail;
+    assert.match(
+      detail,
+      /^1 changed file\(s\) outside the contract allowlist \(scope creep\): src\/b\.ts\./,
+    );
+    assert.doesNotMatch(detail.split(";")[0], /agent-memory/, "the exempt file is not a violation");
+    assert.match(
+      detail,
+      /1 by-product file\(s\) exempted by scope\.exempt — `\.claude\/agent-memory\/\*\*` \(1\)/,
+    );
+
+    // `allow` still works beside an exemption: the SPEC GAP path is unchanged.
+    const allowed = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+      allow: ["src/b.ts"],
+    });
+    assert.equal(allowed.parsed.verdict, "PASS", JSON.stringify(allowed.parsed.checks, null, 2));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: an unusable scope.exempt pattern exempts nothing and is named as a warning", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, "bun.lock"), "lock\n");
+    writeScopeConfig(dir, { scope: { exempt: ["/bun.lock", "**"] } });
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL", "bun.lock is still outside the allowlist");
+    assert.match(find(parsed, "scope").detail, /bun\.lock/);
+    const w = find(parsed, "scope-exempt");
+    assert.equal(w.status, "warn");
+    assert.match(w.detail, /2 scope\.exempt pattern\(s\) ignored/);
+    assert.match(w.detail, /"\/bun\.lock" \(it starts with `\/`/);
+    assert.match(w.detail, /"\*\*" \(it is only wildcards/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a config file that cannot be applied is a warning, not a silent loss of exemptions", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeScopeConfig(dir, "{ not json");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(find(parsed, "scope").status, "pass");
+    const w = find(parsed, "scope-config");
+    assert.equal(w.status, "warn");
+    assert.match(w.detail, /not valid JSON/);
+    assert.match(w.detail, /no scope\.exempt pattern is in force/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ── the action vocabulary and the corpus reads (ADR-0037) ──────────────────
 //
 // `callSpec` above cannot carry these: it asserts a ```json spec-result``` block

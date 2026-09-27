@@ -4,6 +4,48 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.26.0] — 2026-09-27
+
+Files a task writes as a by-product, rather than as part of the change, stop counting as scope
+creep once the project says which they are. In one host project a third of all recorded SPEC GAPs
+were such files: reviewer agent-memory notes, `.d.mts` sidecars, a lock file, and a harness under
+`.marvin/` that was already exempt ([ADR-0045](../../docs/adr/0045-scope-byproduct-exemptions.md)).
+
+### Added
+
+- **`scope.exempt` in `.marvin/config.json`: path patterns for by-product files.** A changed file
+  the spec's `files` list does not name and that matches a pattern is not a violation for the scope
+  gate (`spec action: "scope"`) and not `undeclared` in a task's metrics. It is never silent: the
+  gate's detail names each exempted path with the pattern that matched it. A file the contract
+  declares is always counted as declared. Patterns are project-relative and anchored at the root:
+  `**` for any depth, `*` within one segment, `?` for one character, a trailing `/` for a whole
+  directory. There are no character classes, braces or negation. marvin ships **no defaults**, so a
+  project without the key gets the gate's previous answer byte for byte.
+- **Q1 `scope_drift.exempt`.** The terminal `task-metrics` block lists the exempted paths, or `null`
+  when the project configures no list: the source is absent, so no zero is claimed. `changed` still
+  counts them; only `undeclared` shrinks. `metrics action: "series"` gains a
+  `scope_drift_exempt` row, and a single record's view prints the exempted paths.
+- **`/marvin:track-config` shows and sets the list.** `scope_exempt` takes a JSON array that
+  replaces the list, and an empty string removes it. The view gains a "Scope exemptions" section.
+  A pattern the matcher cannot honour (absolute, only wildcards, a `..` segment, a leading `!`) is
+  refused with the reason, and nothing is written.
+
+### Changed
+
+- **The scope gate and the metrics roll-up share one judgement.** `partitionScope` in the new
+  `lib/scope.ts` removes marvin's own files, then the allowlist, then the exemptions, and both
+  callers use it, so the gate's violations and Q1's `undeclared` cannot disagree. The
+  `.marvin/`-and-spec exclusion that each of them wrote out separately now lives only there.
+- **The scope gate reads the project config**, and reports what it could not apply: a
+  `.marvin/config.json` that fails to load adds a `scope-config` warning, and a pattern it ignores
+  adds a `scope-exempt` warning naming the pattern and the reason. A hand-edited bad pattern also
+  appears in `/marvin:track-config` and `/marvin:dashboard`. It is never removed from the list,
+  since the gate would then have nothing to name.
+- **`task-implement`, `marvin-tm-executor` and `marvin-tm-diff-critic` know about exemptions.** A
+  file the gate reports as exempted, or anything under `.marvin/`, needs no SPEC GAP. A recurring
+  by-product that is not exempted is still one, and the session suggests its pattern for the list.
+  The diff critic classifies an exempt path as `generated`.
+
 ## [0.25.0] — 2026-09-27
 
 The Definition-of-Ready gate takes over the decidable half of two finding classes the spec critic

@@ -432,3 +432,102 @@ test("setting branch_template previews the rendered branch; a bad one warns at s
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── scope.exempt (ADR-0045) ──────────────────────────────────────────────
+
+test("scope_exempt round-trips into scope.exempt, keeps foreign keys under scope, and shows in the view", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    const configPath = join(dir, ".marvin", "config.json");
+    const seeded = {
+      base_branch: "main",
+      gates: { test: "npm test" },
+      scope: { x_future: true },
+    };
+    writeFileSync(configPath, JSON.stringify(seeded, null, 2));
+
+    const patterns = [".claude/agent-memory/**", " **/*.d.mts ", "bun.lock", "bun.lock"];
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config" } },
+      { name: "task", arguments: { action: "config", scope_exempt: JSON.stringify(patterns) } },
+    ]);
+
+    const [before, set] = results;
+    assert.match(textOf(before), /## Scope exemptions/);
+    assert.match(textOf(before), /None configured/);
+
+    assert.notEqual(set.isError, true, textOf(set));
+    assert.match(textOf(set), /set `scope_exempt`/);
+    assert.match(textOf(set), /- `\.claude\/agent-memory\/\*\*`/);
+    assert.match(textOf(set), /- `\*\*\/\*\.d\.mts`/);
+
+    const onDisk = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.deepEqual(
+      onDisk.scope,
+      { x_future: true, exempt: [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"] },
+      "trimmed, de-duplicated, and merged beside the foreign key",
+    );
+    assert.deepEqual(onDisk.gates, seeded.gates);
+    assert.equal(onDisk.base_branch, "main");
+
+    // An empty string clears the list; an emptied `scope` object is dropped, a non-empty one kept.
+    const { results: cleared } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", scope_exempt: "" } },
+    ]);
+    assert.notEqual(cleared[0].isError, true, textOf(cleared[0]));
+    assert.deepEqual(JSON.parse(readFileSync(configPath, "utf8")).scope, { x_future: true });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope_exempt is fail-closed: bad JSON or an unusable pattern writes nothing and names the entry", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    const configPath = join(dir, ".marvin", "config.json");
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", scope_exempt: "not json" } },
+      { name: "task", arguments: { action: "config", scope_exempt: '["bun.lock", 7]' } },
+      { name: "task", arguments: { action: "config", scope_exempt: '["bun.lock","/abs","**"]' } },
+    ]);
+    const [notJson, notStrings, unusable] = results;
+    for (const r of results) assert.equal(r.isError, true, textOf(r));
+    assert.match(textOf(notJson), /not valid JSON/);
+    assert.match(textOf(notStrings), /array of strings/);
+    assert.match(textOf(unusable), /"\/abs": it starts with `\/`/);
+    assert.match(textOf(unusable), /"\*\*": it is only wildcards/);
+    assert.match(textOf(unusable), /Nothing was written/);
+    assert.equal(existsSync(configPath), false, "no file was created");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a hand-edited unusable scope.exempt pattern is reported by the view, not by the tracker list", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    writeFileSync(
+      join(dir, ".marvin", "config.json"),
+      JSON.stringify({ scope: { exempt: ["bun.lock", "/abs"] } }),
+    );
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config" } },
+      { name: "tracker", arguments: {} },
+    ]);
+    const [view, tracker] = results;
+    assert.match(
+      textOf(view),
+      /⚠ `scope\.exempt` pattern "\/abs" is ignored — it starts with `\/`/,
+    );
+    assert.match(textOf(view), /- `bun\.lock`/, "the usable entry is still listed");
+    assert.doesNotMatch(
+      textOf(tracker),
+      /scope\.exempt/,
+      "the tracker only explains missing links",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

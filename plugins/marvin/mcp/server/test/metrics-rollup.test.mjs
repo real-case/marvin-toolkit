@@ -337,7 +337,12 @@ test("with every source present, every metric of the derivation table is derived
   });
 
   // quality
-  assert.deepEqual(b.quality.scope_drift, { declared: 3, changed: 3, undeclared: ["README.md"] });
+  assert.deepEqual(b.quality.scope_drift, {
+    declared: 3,
+    changed: 3,
+    undeclared: ["README.md"],
+    exempt: null, // no scope.exempt configured: the source is absent, not zero
+  });
   assert.deepEqual(b.quality.oracle_strength, { criteria: 3, executable: 2, share: 0.667 });
   assert.equal(b.quality.red_green, null, "Q3 is a bugfix metric; a feature reports null");
   assert.deepEqual(b.quality.not_run, { gates: 3, not_run: 1, share: 0.333 });
@@ -561,6 +566,64 @@ test("Q1 lists the undeclared paths, excluding marvin's own artifacts and the sp
   assert.equal(nb.quality.scope_drift, null);
   assert.equal(nb.head_sha, "abc", "the head is still known");
   assert.equal(nb.sources.git, "present");
+});
+
+test("Q1 moves by-products matching scope.exempt from undeclared to exempt, and leaves changed alone (ADR-0045)", () => {
+  const withExempt = fullInputs();
+  withExempt.git.changed_files.push(
+    ".claude/agent-memory/contract-test-critic/MEMORY.md",
+    ".claude/agent-memory/refactor-safety/MEMORY.md",
+    "scripts/commit-attribution.d.mts",
+    "src/b.ts", // declared (F3) — matches no pattern, stays declared
+  );
+  withExempt.scope_exempt = [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"];
+  const b = rollUpMetrics(withExempt);
+  assert.deepEqual(b.quality.scope_drift, {
+    declared: 3,
+    changed: 7,
+    undeclared: ["README.md"],
+    exempt: [
+      ".claude/agent-memory/contract-test-critic/MEMORY.md",
+      ".claude/agent-memory/refactor-safety/MEMORY.md",
+      "scripts/commit-attribution.d.mts",
+    ],
+  });
+  assert.equal(
+    b.notes.some((n) => n.includes("scope.exempt")),
+    false,
+    "valid patterns leave no note",
+  );
+
+  // The same change set without the config: the by-products are undeclared, and
+  // `changed` does not move — only the split between undeclared and exempt does.
+  const without = { ...withExempt, scope_exempt: undefined };
+  const nb = rollUpMetrics(without);
+  assert.equal(nb.quality.scope_drift.changed, 7);
+  assert.equal(nb.quality.scope_drift.exempt, null);
+  assert.deepEqual(nb.quality.scope_drift.undeclared, [
+    ".claude/agent-memory/contract-test-critic/MEMORY.md",
+    ".claude/agent-memory/refactor-safety/MEMORY.md",
+    "README.md",
+    "scripts/commit-attribution.d.mts",
+  ]);
+
+  // Configured, nothing matched: an empty list, not null — the source is present.
+  const none = fullInputs();
+  none.scope_exempt = ["bun.lock"];
+  assert.deepEqual(rollUpMetrics(none).quality.scope_drift.exempt, []);
+});
+
+test("Q1: a scope.exempt pattern the matcher refuses leaves a note and exempts nothing", () => {
+  const bad = fullInputs();
+  bad.git.changed_files.push("bun.lock");
+  bad.scope_exempt = ["/bun.lock"];
+  const b = rollUpMetrics(bad);
+  assert.deepEqual(b.quality.scope_drift.exempt, []);
+  assert.deepEqual(b.quality.scope_drift.undeclared, ["README.md", "bun.lock"]);
+  assert.ok(
+    b.notes.some((n) => n.includes('scope.exempt pattern "/bun.lock" ignored')),
+    JSON.stringify(b.notes),
+  );
 });
 
 test("a stamp that disagrees with its block joins the oracle journal against nothing, and says so", () => {

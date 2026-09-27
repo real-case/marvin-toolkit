@@ -227,12 +227,24 @@ export type CriticAxes = z.infer<typeof CriticAxes>;
 
 /** Quality: what the work produced (Q1–Q10; Q11 and Q12 are computed by `series` and never stored). */
 export const TaskMetricsQuality = z.object({
-  /** Q1 — changed files against the base minus the contract's declared paths. */
+  /**
+   * Q1 — changed files against the base minus the contract's declared paths.
+   * `changed` counts every judged file, exempt ones included; `undeclared` is
+   * what remains after the declared and the exempt are removed.
+   */
   scope_drift: z
     .object({
       declared: z.number().int().nonnegative(),
       changed: z.number().int().nonnegative(),
       undeclared: z.array(z.string().min(1)),
+      /**
+       * Changed files the contract did not declare that matched a
+       * `scope.exempt` pattern — by-products, removed from `undeclared`
+       * (ADR-0045). Null when the project configures no `scope.exempt`: the
+       * source is absent, so no count of zero is claimed. Missing on records
+       * rolled up before the field existed; a reader treats that as null.
+       */
+      exempt: z.array(z.string().min(1)).nullable().optional(),
     })
     .nullable(),
   /** Q2 — criteria with an executable (test or command) oracle. */

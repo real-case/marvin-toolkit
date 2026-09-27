@@ -116,7 +116,9 @@ export function performRollup(req: RollupRequest): RollupWrite {
   const base = req.base?.trim() || config.base_branch;
   const now = req.now ?? new Date().toISOString();
 
-  const block = rollUpMetrics(collectRollupInputs(env, projectRoot, config.spec, slug, base, now));
+  const block = rollUpMetrics(
+    collectRollupInputs(env, projectRoot, config.spec, slug, base, now, config.scope?.exempt),
+  );
 
   const dir = metricsDirFor(env, projectRoot);
   const path = recordPathFor(dir, slug, projectRoot, config.spec);
