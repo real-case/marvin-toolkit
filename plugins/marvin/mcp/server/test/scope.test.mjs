@@ -89,6 +89,10 @@ test("unusable patterns are refused with a reason, and never match", () => {
     "*",
     "**/*",
     "*/?",
+    // only wildcards once the leading `./` is stripped
+    "./**",
+    "./*",
+    "./**/*",
   ];
   for (const p of refused) {
     assert.ok(exemptPatternIssue(p), `${JSON.stringify(p)} should be refused`);

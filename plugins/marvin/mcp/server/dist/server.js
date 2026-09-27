@@ -29269,7 +29269,7 @@ function exemptPatternIssue(pattern) {
   if (segments.some((s) => s === ".." || s === "." || s === "")) {
     return "it contains an empty, `.` or `..` segment \u2014 name paths inside the project, one `/` between segments";
   }
-  if (!/[^*?/]/.test(p)) {
+  if (!/[^*?/]/.test(canonicalPattern(p))) {
     return "it is only wildcards \u2014 it would exempt every changed file and switch the scope gate off";
   }
   return null;

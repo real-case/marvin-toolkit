@@ -89,7 +89,8 @@ export function partitionScope(changed: readonly string[], opts: PartitionOption
 }
 
 /**
- * The exemptions grouped by pattern, in configuration order of first match —
+ * The exemptions grouped by pattern, each group placed where its first path
+ * appears in the changed set (git's diff order, not configuration order) —
  * the one rendering both callers use, so a gate detail and a metrics note name
  * the same patterns the same way.
  */
@@ -167,7 +168,7 @@ export function exemptPatternIssue(pattern: string): string | null {
   if (segments.some((s) => s === ".." || s === "." || s === "")) {
     return "it contains an empty, `.` or `..` segment — name paths inside the project, one `/` between segments";
   }
-  if (!/[^*?/]/.test(p)) {
+  if (!/[^*?/]/.test(canonicalPattern(p))) {
     return "it is only wildcards — it would exempt every changed file and switch the scope gate off";
   }
   return null;
