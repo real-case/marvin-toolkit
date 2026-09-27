@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -19,6 +19,7 @@ import {
   resolveSpecDir,
   specIdWidth,
   specSearchDirs,
+  type Criterion,
   type SpecCorpus,
   type SpecDirResolution,
   type SpecRecord,
@@ -35,6 +36,7 @@ import { slugOfRecord } from "../storage/metrics.js";
 import { loadConfig } from "../storage/config.js";
 import {
   changedFilesForScope,
+  git,
   inGitRepo,
   normalizeScopePath as normalizePath,
 } from "../lib/git.js";
@@ -223,7 +225,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
@@ -1199,6 +1201,7 @@ function validateSpec(
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
     checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation, specConfig));
+    checks.push(...checkCitations(body, plannedFiles(body), projectRoot));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)"),
@@ -1370,6 +1373,7 @@ function checkContractBlock(
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
+  checks.push(...checkOracles(c, projectRoot));
   checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot, specConfig));
   return checks;
 }
@@ -1752,6 +1756,402 @@ function testPath(ref: string): string | null {
   if (!file.includes("/")) return null; // bare word, not a path
   if (!/\.[A-Za-z0-9]+$/.test(file)) return null; // needs a file extension
   return file;
+}
+
+// ── grounding and oracle runnability ─────────────────────────────────────────
+//
+// Two finding classes the semantic critic kept spending its passes on, read off
+// one host's receipts: a `path:line` citation that no longer points into the
+// file it names, and an oracle command that cannot run at all. Both are
+// decidable without judgement, so they are checked here, before the critic is
+// dispatched. What stays with the critic is the part that is not decidable from
+// text: whether an oracle that runs can also FAIL on a wrong implementation.
+
+/** A file path as spec prose writes it — `/`-separated segments ending in an
+ * extension that starts with a letter — optionally followed by a line citation
+ * (`:12`, `:12-40`, `:175,272`). The look-behind stops a path that is the tail
+ * of a URL or of a longer path from matching on its own. A match with no `/`
+ * (`CLAUDE.md:40`, but also `e.g`) counts only when it names a real file at the
+ * project root. */
+const CITED_PATH =
+  /(?<![\w./:@~-])((?:\.{1,2}\/)?\.?[\w@+-][\w@.+-]*(?:\/\.?[\w@+-][\w@.+-]*)*\.[A-Za-z][A-Za-z0-9]*)(:\d+(?:\s?[-–]\s?\d+)?(?:,\s?\d+(?:\s?[-–]\s?\d+)?)*)?/g;
+
+/** The same path shape as a whole shell word, with at least one `/`. */
+const PATHISH =
+  /^(?:\.{1,2}\/)?(?:\.?[\w@+-][\w@.+-]*\/)+\.?[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]*$/;
+
+/** Larger files are not line-counted: a citation into one is not checked. */
+const MAX_CITED_BYTES = 8 * 1024 * 1024;
+
+/** How many items a finding lists before it summarises the rest. */
+const MAX_LISTED = 8;
+
+/** The contract's `files`, read leniently: the citation check needs to know
+ * what is planned `new`, and it must still run when the block fails the schema
+ * (that failure is `spec-contract`'s to report, not this check's). */
+function plannedFiles(body: string): { path: string; action: string }[] {
+  const text = extractContractBlock(body);
+  if (text === null) return [];
+  try {
+    const parsed = SpecContract.safeParse(parseYaml(text));
+    return parsed.success ? parsed.data.files : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The body with every fenced block removed — the contract block has its own
+ * checks, and a code sample's paths are illustrations, not citations. Inline
+ * code spans are kept: that is where citations live. */
+function stripFences(body: string): string {
+  const out: string[] = [];
+  let fence: string | null = null;
+  for (const line of body.split("\n")) {
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const marker = m[1]![0]!;
+      if (fence === null) fence = marker;
+      else if (fence === marker) fence = null;
+      continue;
+    }
+    if (fence === null) out.push(line);
+  }
+  return out.join("\n");
+}
+
+function listed(items: string[]): string {
+  const head = items.slice(0, MAX_LISTED).join(", ");
+  return items.length > MAX_LISTED ? `${head} and ${items.length - MAX_LISTED} more` : head;
+}
+
+/** Line count of a file, or null when it is not a readable regular file of a
+ * size worth counting. Cached per call: a spec cites the same file many times. */
+function lineCount(abs: string, cache: Map<string, number | null>): number | null {
+  if (cache.has(abs)) return cache.get(abs)!;
+  let n: number | null = null;
+  try {
+    const st = statSync(abs);
+    if (st.isFile() && st.size <= MAX_CITED_BYTES) {
+      const text = readFileSync(abs, "utf8");
+      n = text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+    }
+  } catch {
+    n = null;
+  }
+  cache.set(abs, n);
+  return n;
+}
+
+/**
+ * Resolve a cited path to a file on disk: as written from the project root,
+ * else as the unique tracked file whose path ends with it (`Pages.tsx`,
+ * `src/tools/spec.ts` written relative to a package). Two or more tracked
+ * candidates, or none, resolve to nothing — the gate does not guess which file
+ * was meant. The tracked list is read once per call and only when needed.
+ */
+function citedFile(path: string, projectRoot: string, tracked: () => string[]): string | null {
+  const direct = join(projectRoot, path);
+  if (existsSync(direct)) return direct;
+  const suffix = `/${path}`;
+  const hits = tracked().filter((f) => f.endsWith(suffix));
+  return hits.length === 1 ? join(projectRoot, hits[0]!) : null;
+}
+
+/**
+ * Grounding: every `path:line` the prose cites points inside the file.
+ *
+ * A line past the end of the file is a FAIL: the citation is provably stale,
+ * and the claim built on it was made against a file that has since changed. A
+ * citation that resolves to no file, or to several, is skipped rather than
+ * reported. Measured over three host corpora, a "named path does not exist"
+ * finding was wrong four times in five — a path relative to another repository,
+ * an import alias, a MIME type, an illustrative `src/components/Foo.tsx` — so
+ * that judgement stays with the critic. Paths planned `new` are exempt, and so
+ * is `.marvin/`, whose run artifacts appear only once the run writes them.
+ */
+function checkCitations(
+  body: string,
+  planned: { path: string; action: string }[],
+  projectRoot: string,
+): Check[] {
+  const plannedNew = new Set(
+    planned.filter((f) => f.action === "new").map((f) => normalizePath(f.path)),
+  );
+  let trackedList: string[] | null = null;
+  const tracked = (): string[] => {
+    if (trackedList === null) {
+      const r = git(["ls-files"], projectRoot, { maxBuffer: 64 * 1024 * 1024 });
+      trackedList = r.ok ? r.value.split("\n").filter(Boolean) : [];
+    }
+    return trackedList;
+  };
+  const cache = new Map<string, number | null>();
+  const stale = new Set<string>();
+  let citations = 0;
+
+  for (const m of stripFences(body).matchAll(CITED_PATH)) {
+    const tail = m[2];
+    if (!tail) continue;
+    const path = normalizePath(m[1]!);
+    if (isAbsolute(path) || path.startsWith(".marvin/") || path.includes("..")) continue;
+    if (plannedNew.has(path)) continue;
+    const abs = citedFile(path, projectRoot, tracked);
+    const lines = abs ? lineCount(abs, cache) : null;
+    if (lines === null) continue;
+    citations += 1;
+    const cited = (tail.match(/\d+/g) ?? []).map(Number);
+    if (cited.some((n) => n < 1 || n > lines)) {
+      stale.add(`${path}${tail.replace(/\s/g, "")} (${lines} lines)`);
+    }
+  }
+
+  return [
+    stale.size
+      ? fail(
+          "cite-lines",
+          "Grounding",
+          `line citation(s) past the end of the file: ${listed([...stale])} — re-read the file and cite the current lines`,
+        )
+      : pass("cite-lines", "Grounding", `${citations} line citation(s) resolve`),
+  ];
+}
+
+/** One shell word, and whether any part of it was quoted. */
+interface Word {
+  text: string;
+  quoted: boolean;
+}
+
+/** Split a command line into words the way a POSIX shell would for the
+ * purposes of this gate: quotes group and are removed, `;`, `|` and `&` are
+ * words of their own. No expansion, no escapes — a word carrying `$` or a glob
+ * is skipped by the callers rather than interpreted. */
+function shellWords(cmd: string): Word[] {
+  const out: Word[] = [];
+  let cur = "";
+  let quoted = false;
+  let open = false;
+  let quote: string | null = null;
+  const flush = () => {
+    if (open) out.push({ text: cur, quoted });
+    cur = "";
+    quoted = false;
+    open = false;
+  };
+  for (const ch of cmd) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      quoted = true;
+      open = true;
+    } else if (/\s/.test(ch)) {
+      flush();
+    } else if (ch === ";" || ch === "|" || ch === "&") {
+      flush();
+      out.push({ text: ch, quoted: false });
+    } else {
+      cur += ch;
+      open = true;
+    }
+  }
+  flush();
+  return out;
+}
+
+/** The executable string a criterion's oracle names, if any: `run` (the
+ * criterion's own exact command), else a `command` ref, else a `test` ref that
+ * is itself a command rather than a `path::name`. */
+function oracleCommand(cr: Criterion): string | null {
+  const run = (cr.oracle.run ?? "").trim();
+  if (run) return run;
+  const ref = (cr.oracle.ref ?? "").trim();
+  if (!ref) return null;
+  if (cr.oracle.kind === "command") return ref;
+  if (cr.oracle.kind === "test" && /\s/.test(ref.split("::")[0] ?? "")) return ref;
+  return null;
+}
+
+/** Flags that take a test-name filter as their next word. */
+const FILTER_FLAGS = new Set([
+  "-t",
+  "--testNamePattern",
+  "--test-name-pattern",
+  "-g",
+  "--grep",
+  "-k",
+]);
+/** Flags whose next word is a directory the rest of the command runs in. */
+const CWD_FLAGS = new Set(["-C", "--cwd", "--dir", "--prefix", "--root"]);
+/** Flags that select a workspace by NAME: paths after them are relative to a
+ * directory this gate cannot resolve, so a missing path only warns. */
+const WORKSPACE_FLAGS = new Set(["-w", "--workspace", "--filter"]);
+/** Words whose next word is written, not read. */
+const OUTPUT_WORDS = new Set([">", ">>", "2>", "&>", "tee", "-o", "--output", "--outfile"]);
+/** Words that make a command a whole-project gate when nothing narrows it.
+ * `bun run metrics --negative-check` names a bespoke script and is not one. */
+const GENERIC_GATES =
+  /^(?:(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest|tsc|eslint)|(?:test|tests|build|lint|typecheck|type-check|check|e2e|ci|verify)(?::[\w-]+)?)$/;
+/** A command names a test runner when one of its words is one of these. */
+const RUNNERS = /^(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest)$|^test$|^--test$/;
+
+interface OracleShape {
+  /** Path-like words that neither exist nor are planned. */
+  missing: string[];
+  /** A workspace flag makes those paths unresolvable here. */
+  workspaceRelative: boolean;
+  /** A test-name filter whose value the runner will parse as a flag. */
+  flagFilter: string | null;
+  /** Anything that makes the command specific to this criterion. */
+  narrowed: boolean;
+  /** The command is a project-wide gate or a bare runner (`npm test`, `bun
+   * run build`, `npx vitest run`) rather than a bespoke script. */
+  generic: boolean;
+}
+
+function readOracle(cmd: string, projectRoot: string, plannedPaths: string[]): OracleShape {
+  const words = shellWords(cmd);
+  const bases = [projectRoot];
+  for (let i = 0; i < words.length - 1; i++) {
+    const w = words[i]!.text;
+    if (w === "cd" || CWD_FLAGS.has(w)) bases.push(join(projectRoot, words[i + 1]!.text));
+  }
+  const runner = words.some((w) => RUNNERS.test(w.text));
+  const shape: OracleShape = {
+    missing: [],
+    workspaceRelative: words.some(
+      (w) => WORKSPACE_FLAGS.has(w.text) || /^--(workspace|filter)=/.test(w.text),
+    ),
+    flagFilter: null,
+    narrowed: false,
+    generic: words.some((w) => GENERIC_GATES.test(w.text)),
+  };
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    const prev = i > 0 ? words[i - 1]!.text : "";
+    if (FILTER_FLAGS.has(word.text) && i + 1 < words.length) {
+      const value = words[i + 1]!.text;
+      if (runner && value.startsWith("-")) shape.flagFilter = `${word.text} "${value}"`;
+      if (runner) shape.narrowed = true;
+      continue;
+    }
+    if (word.quoted && word.text.trim() !== "") shape.narrowed = true;
+    if (word.text.includes("://")) shape.narrowed = true;
+    if (OUTPUT_WORDS.has(prev) || word.text.startsWith("-")) continue;
+    if (/[*?$<>{}[\]=`~]/.test(word.text)) continue;
+    const path = normalizePath(
+      word.text
+        .split("::")[0]!
+        .replace(/(?::\d+)+$/, "")
+        .replace(/,$/, ""),
+    );
+    const pathish = PATHISH.test(path);
+    const found = bases.some((b) => existsSync(join(b, path)));
+    const planned = plannedPaths.some((p) => p === path || p.endsWith(`/${path}`));
+    // A real directory narrows too (`vitest run src/feature`); a bare word
+    // that happens to exist does not unless it looks like a file.
+    if (pathish || (found && (path.includes("/") || /\.[A-Za-z]/.test(path)))) {
+      shape.narrowed = true;
+    }
+    if (pathish && !found && !planned && !isAbsolute(path)) shape.missing.push(path);
+  }
+  return shape;
+}
+
+/**
+ * Oracle runnability — what can be known about a proof without running it.
+ *
+ *  - `oracle-paths` (FAIL): a file the command names neither exists nor is
+ *    planned, so the oracle cannot run. Downgraded to a WARN when the command
+ *    selects a workspace by name, which moves the paths somewhere this gate
+ *    cannot resolve.
+ *  - `oracle-filter` (FAIL): a test runner's name filter whose value starts
+ *    with `-` is parsed as a flag — the filter runs nothing, or errors.
+ *  - `oracle-narrow` (WARN): a project-wide gate or bare runner that names no
+ *    file, directory, quoted pattern, URL or test filter — `npm test`, `bun run
+ *    build`, `npm run e2e`. It proves the suite is green, not that this
+ *    criterion holds.
+ *  - `oracle-failure` (WARN): a non-prose criterion that does not say, in
+ *    `failure:`, what the oracle shows when the criterion is unmet. Stating it
+ *    is what lets anyone check that the oracle can fail at all.
+ */
+function checkOracles(c: SpecContract, projectRoot: string): Check[] {
+  const plannedPaths = c.files.map((f) => normalizePath(f.path));
+  const missing: string[] = [];
+  const missingInWorkspace: string[] = [];
+  const flagFilters: string[] = [];
+  const broad: string[] = [];
+  const noFailure: string[] = [];
+  let commands = 0;
+
+  for (const cr of c.criteria) {
+    if (cr.oracle.kind === "prose-review") continue;
+    if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    const cmd = oracleCommand(cr);
+    if (!cmd) continue;
+    commands += 1;
+    const shape = readOracle(cmd, projectRoot, plannedPaths);
+    for (const p of shape.missing) {
+      (shape.workspaceRelative ? missingInWorkspace : missing).push(`${cr.id}→${p}`);
+    }
+    if (shape.flagFilter) flagFilters.push(`${cr.id}: ${shape.flagFilter}`);
+    if (!shape.narrowed && shape.generic) broad.push(`${cr.id}: ${cmd}`);
+  }
+
+  const checks: Check[] = [
+    missing.length
+      ? fail(
+          "oracle-paths",
+          "Oracles",
+          `oracle command(s) name files that neither exist nor are planned, so they cannot run: ${listed(missing)}`,
+        )
+      : pass(
+          "oracle-paths",
+          "Oracles",
+          `${commands} oracle command(s) name only real or planned files`,
+        ),
+  ];
+  if (missingInWorkspace.length) {
+    checks.push(
+      warn(
+        "oracle-paths",
+        "Oracles",
+        `workspace-relative oracle path(s) not found from the project root — confirm they exist in the workspace: ${listed(missingInWorkspace)}`,
+      ),
+    );
+  }
+  if (flagFilters.length) {
+    checks.push(
+      fail(
+        "oracle-filter",
+        "Oracles",
+        `test-name filter(s) starting with "-" are parsed as flags, so the filter selects nothing: ${listed(flagFilters)} — drop the leading dashes from the pattern`,
+      ),
+    );
+  }
+  if (broad.length) {
+    checks.push(
+      warn(
+        "oracle-narrow",
+        "Oracles",
+        `whole-suite oracle(s) that name no file, pattern or test filter prove the suite, not the criterion: ${listed(broad)}`,
+      ),
+    );
+  }
+  if (noFailure.length) {
+    checks.push(
+      warn(
+        "oracle-failure",
+        "Oracles",
+        `criteria with a real oracle but no \`failure:\` — state what the oracle shows when the criterion is unmet: ${listed(noFailure)}`,
+      ),
+    );
+  }
+  return checks;
 }
 
 /** The "resolved to nothing" vocabulary, shared by the two section-emptiness

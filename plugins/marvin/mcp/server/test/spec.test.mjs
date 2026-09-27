@@ -88,7 +88,7 @@ criteria:
     implemented_by: [F1, F3]
     oracle:
       kind: command
-      ref: npm run build
+      ref: grep -q sample docs/sample-new.md
     failure: no link
   - id: AC3
     statement: Given the change, when reviewed, then it reads cleanly
@@ -373,10 +373,140 @@ test("all-prose-review oracles block", async () => {
   const content = VALID_FEATURE.replace(
     "      kind: test\n      ref: test/sample.test.mjs::exists",
     "      kind: prose-review",
-  ).replace("      kind: command\n      ref: npm run build", "      kind: prose-review");
+  ).replace(
+    "      kind: command\n      ref: grep -q sample docs/sample-new.md",
+    "      kind: prose-review",
+  );
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "ac-verified-real").status, "fail");
+});
+
+// ── grounding and oracle runnability ─────────────────────────────────────────
+
+/** VALID_FEATURE with AC2's command oracle replaced by `cmd`. */
+const withAc2Oracle = (cmd) =>
+  VALID_FEATURE.replace("ref: grep -q sample docs/sample-new.md", `ref: ${JSON.stringify(cmd)}`);
+
+/** VALID_FEATURE with one more line of Context prose. */
+const withContext = (line) =>
+  VALID_FEATURE.replace("- Sibling specs: none", `- Sibling specs: none\n- ${line}`);
+
+test("a line citation past the end of the file blocks", async () => {
+  const { parsed } = await callSpec({
+    specContent: withContext("The rule lives at `CLAUDE.md:999999`."),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "cite-lines");
+  assert.equal(check.status, "fail");
+  assert.match(check.detail, /CLAUDE\.md:999999 \(\d+ lines\)/);
+});
+
+test("a citation written relative to a package resolves through the tracked files", async () => {
+  // `tools/spec.ts` is not a path from the root; exactly one tracked file ends with it.
+  const past = await callSpec({
+    specContent: withContext("See tools/spec.ts:999999 and tools/spec.ts:1-3."),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(past.parsed, "cite-lines").status, "fail");
+  assert.match(find(past.parsed, "cite-lines").detail, /tools\/spec\.ts:999999/);
+  assert.doesNotMatch(find(past.parsed, "cite-lines").detail, /tools\/spec\.ts:1-3/);
+
+  const within = await callSpec({
+    specContent: withContext("See tools/spec.ts:1-3."),
+    projectRoot: repoRoot,
+  });
+  const check = find(within.parsed, "cite-lines");
+  assert.equal(check.status, "pass");
+  assert.match(check.detail, /^1 line citation/);
+});
+
+test("citations the gate cannot or need not check are skipped, not reported", async () => {
+  const content = withContext(
+    "Unchecked: `docs/sample-new.md:50` (planned new), `index.ts:40` (ambiguous), " +
+      "`other-repo/src/x.ts:9` (resolves to nothing), `.marvin/task/runs/x.md:3`.",
+  ).replace("## Chosen Approach\n", "## Chosen Approach\n```\nCLAUDE.md:999999\n```\n");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  assert.equal(find(parsed, "cite-lines").status, "pass");
+});
+
+test("a test-name filter starting with a dash blocks, only for a test runner", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle('npx vitest run test/sample.test.mjs -t "--staged refuses"'),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.match(find(parsed, "oracle-filter").detail, /AC2: -t "--staged refuses"/);
+
+  // `-t` followed by a flag is ordinary outside a test runner.
+  const docker = await callSpec({
+    specContent: withAc2Oracle("docker run -t --rm scripts/image.Dockerfile"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(docker.parsed, "oracle-filter"), undefined);
+});
+
+test("an oracle naming a file that neither exists nor is planned blocks", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("node scripts/does-not-exist.mjs --check"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "oracle-paths");
+  assert.equal(check.status, "fail");
+  assert.match(check.detail, /AC2→scripts\/does-not-exist\.mjs/);
+
+  // A planned file, a file under a `cd` target and an output path all resolve.
+  const ok = await callSpec({
+    specContent: withAc2Oracle(
+      "node --test test/sample.test.mjs && cd plugins/marvin && node mcp/server/bin/widget-preview.mjs > out/report.txt",
+    ),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(ok.parsed, "oracle-paths").status, "pass");
+});
+
+test("a workspace-relative oracle path only warns", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("npm test -w @marvin-toolkit/server -- test/not-at-root.test.mjs"),
+    projectRoot: repoRoot,
+  });
+  const checks = parsed.checks.filter((c) => c.id === "oracle-paths");
+  assert.deepEqual(
+    checks.map((c) => c.status),
+    ["pass", "warn"],
+  );
+  assert.notEqual(parsed.verdict, "FAIL");
+});
+
+test("a whole-suite oracle warns; a narrowed or bespoke command does not", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("npm run build"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(parsed, "oracle-narrow").detail, /AC2: npm run build/);
+
+  for (const cmd of [
+    "npx vitest run plugins/marvin/mcp/server/test",
+    "npm test -- -t 'links the sample'",
+    "grep -q sample CLAUDE.md",
+    "bun run metrics --negative-check",
+  ]) {
+    const r = await callSpec({ specContent: withAc2Oracle(cmd), projectRoot: repoRoot });
+    assert.equal(find(r.parsed, "oracle-narrow"), undefined, cmd);
+  }
+});
+
+test("a real oracle with no failure line warns", async () => {
+  const { parsed } = await callSpec({
+    specContent: VALID_FEATURE.replace("    failure: no link\n", ""),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(parsed, "oracle-failure").detail, /AC2/);
 });
 
 test("an empty contract signature blocks", async () => {

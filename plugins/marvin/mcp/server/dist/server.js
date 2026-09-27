@@ -32214,8 +32214,8 @@ function buildTaskDetailTool(env2) {
 }
 function tasksHint(tasks) {
   if (tasks.length === 0) return "";
-  const listed = tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ");
-  return ` Tasks: ${listed}.`;
+  const listed2 = tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ");
+  return ` Tasks: ${listed2}.`;
 }
 function renderDetailText(d) {
   const lines = [];
@@ -33716,8 +33716,8 @@ function listRecords(dir) {
 }
 
 // src/lib/metrics-series.ts
-function toSeriesRecords(listed) {
-  return listed.map((r) => ({
+function toSeriesRecords(listed2) {
+  return listed2.map((r) => ({
     slug: r.slug,
     filename: r.filename,
     events: r.events.length,
@@ -36307,7 +36307,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -36749,11 +36749,11 @@ function collectSpecFindings(corpus, dir, dirs, projectRoot) {
     const cur = numbers[i];
     if (cur - prev > 1) {
       const size = cur - prev - 1;
-      const listed = Math.min(size, MAX_LISTED_HOLE_IDS);
-      const shown = Array.from({ length: listed }, (_, k) => formatSpecId(prev + 1 + k, width)).map(
+      const listed2 = Math.min(size, MAX_LISTED_HOLE_IDS);
+      const shown = Array.from({ length: listed2 }, (_, k) => formatSpecId(prev + 1 + k, width)).map(
         (g) => `\`${g}\``
       );
-      const missing = size > listed ? `${shown.join(", ")}, and ${size - listed} more` : shown.join(", ");
+      const missing = size > listed2 ? `${shown.join(", ")}, and ${size - listed2} more` : shown.join(", ");
       findings.push({
         kind: "numbering-hole",
         severity: "warning",
@@ -36869,6 +36869,7 @@ function validateSpec(raw, projectRoot, specConfig) {
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
     checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation, specConfig));
+    checks.push(...checkCitations(body, plannedFiles(body), projectRoot));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
@@ -37000,6 +37001,7 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
+  checks.push(...checkOracles(c, projectRoot));
   checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot, specConfig));
   return checks;
 }
@@ -37278,6 +37280,269 @@ function testPath(ref) {
   if (!file.includes("/")) return null;
   if (!/\.[A-Za-z0-9]+$/.test(file)) return null;
   return file;
+}
+var CITED_PATH = /(?<![\w./:@~-])((?:\.{1,2}\/)?\.?[\w@+-][\w@.+-]*(?:\/\.?[\w@+-][\w@.+-]*)*\.[A-Za-z][A-Za-z0-9]*)(:\d+(?:\s?[-–]\s?\d+)?(?:,\s?\d+(?:\s?[-–]\s?\d+)?)*)?/g;
+var PATHISH = /^(?:\.{1,2}\/)?(?:\.?[\w@+-][\w@.+-]*\/)+\.?[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]*$/;
+var MAX_CITED_BYTES = 8 * 1024 * 1024;
+var MAX_LISTED = 8;
+function plannedFiles(body) {
+  const text = extractContractBlock(body);
+  if (text === null) return [];
+  try {
+    const parsed = SpecContract.safeParse((0, import_yaml4.parse)(text));
+    return parsed.success ? parsed.data.files : [];
+  } catch {
+    return [];
+  }
+}
+function stripFences(body) {
+  const out = [];
+  let fence2 = null;
+  for (const line of body.split("\n")) {
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const marker = m[1][0];
+      if (fence2 === null) fence2 = marker;
+      else if (fence2 === marker) fence2 = null;
+      continue;
+    }
+    if (fence2 === null) out.push(line);
+  }
+  return out.join("\n");
+}
+function listed(items) {
+  const head = items.slice(0, MAX_LISTED).join(", ");
+  return items.length > MAX_LISTED ? `${head} and ${items.length - MAX_LISTED} more` : head;
+}
+function lineCount(abs, cache) {
+  if (cache.has(abs)) return cache.get(abs);
+  let n = null;
+  try {
+    const st = statSync(abs);
+    if (st.isFile() && st.size <= MAX_CITED_BYTES) {
+      const text = readFileSync(abs, "utf8");
+      n = text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+    }
+  } catch {
+    n = null;
+  }
+  cache.set(abs, n);
+  return n;
+}
+function citedFile(path, projectRoot, tracked) {
+  const direct = join(projectRoot, path);
+  if (existsSync(direct)) return direct;
+  const suffix = `/${path}`;
+  const hits = tracked().filter((f) => f.endsWith(suffix));
+  return hits.length === 1 ? join(projectRoot, hits[0]) : null;
+}
+function checkCitations(body, planned, projectRoot) {
+  const plannedNew = new Set(
+    planned.filter((f) => f.action === "new").map((f) => normalizeScopePath(f.path))
+  );
+  let trackedList = null;
+  const tracked = () => {
+    if (trackedList === null) {
+      const r = git(["ls-files"], projectRoot, { maxBuffer: 64 * 1024 * 1024 });
+      trackedList = r.ok ? r.value.split("\n").filter(Boolean) : [];
+    }
+    return trackedList;
+  };
+  const cache = /* @__PURE__ */ new Map();
+  const stale = /* @__PURE__ */ new Set();
+  let citations = 0;
+  for (const m of stripFences(body).matchAll(CITED_PATH)) {
+    const tail = m[2];
+    if (!tail) continue;
+    const path = normalizeScopePath(m[1]);
+    if (isAbsolute(path) || path.startsWith(".marvin/") || path.includes("..")) continue;
+    if (plannedNew.has(path)) continue;
+    const abs = citedFile(path, projectRoot, tracked);
+    const lines = abs ? lineCount(abs, cache) : null;
+    if (lines === null) continue;
+    citations += 1;
+    const cited = (tail.match(/\d+/g) ?? []).map(Number);
+    if (cited.some((n) => n < 1 || n > lines)) {
+      stale.add(`${path}${tail.replace(/\s/g, "")} (${lines} lines)`);
+    }
+  }
+  return [
+    stale.size ? fail(
+      "cite-lines",
+      "Grounding",
+      `line citation(s) past the end of the file: ${listed([...stale])} \u2014 re-read the file and cite the current lines`
+    ) : pass("cite-lines", "Grounding", `${citations} line citation(s) resolve`)
+  ];
+}
+function shellWords(cmd) {
+  const out = [];
+  let cur = "";
+  let quoted = false;
+  let open = false;
+  let quote = null;
+  const flush = () => {
+    if (open) out.push({ text: cur, quoted });
+    cur = "";
+    quoted = false;
+    open = false;
+  };
+  for (const ch of cmd) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      quoted = true;
+      open = true;
+    } else if (/\s/.test(ch)) {
+      flush();
+    } else if (ch === ";" || ch === "|" || ch === "&") {
+      flush();
+      out.push({ text: ch, quoted: false });
+    } else {
+      cur += ch;
+      open = true;
+    }
+  }
+  flush();
+  return out;
+}
+function oracleCommand(cr) {
+  const run3 = (cr.oracle.run ?? "").trim();
+  if (run3) return run3;
+  const ref = (cr.oracle.ref ?? "").trim();
+  if (!ref) return null;
+  if (cr.oracle.kind === "command") return ref;
+  if (cr.oracle.kind === "test" && /\s/.test(ref.split("::")[0] ?? "")) return ref;
+  return null;
+}
+var FILTER_FLAGS = /* @__PURE__ */ new Set([
+  "-t",
+  "--testNamePattern",
+  "--test-name-pattern",
+  "-g",
+  "--grep",
+  "-k"
+]);
+var CWD_FLAGS = /* @__PURE__ */ new Set(["-C", "--cwd", "--dir", "--prefix", "--root"]);
+var WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["-w", "--workspace", "--filter"]);
+var OUTPUT_WORDS = /* @__PURE__ */ new Set([">", ">>", "2>", "&>", "tee", "-o", "--output", "--outfile"]);
+var GENERIC_GATES = /^(?:(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest|tsc|eslint)|(?:test|tests|build|lint|typecheck|type-check|check|e2e|ci|verify)(?::[\w-]+)?)$/;
+var RUNNERS = /^(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest)$|^test$|^--test$/;
+function readOracle(cmd, projectRoot, plannedPaths) {
+  const words = shellWords(cmd);
+  const bases = [projectRoot];
+  for (let i = 0; i < words.length - 1; i++) {
+    const w = words[i].text;
+    if (w === "cd" || CWD_FLAGS.has(w)) bases.push(join(projectRoot, words[i + 1].text));
+  }
+  const runner = words.some((w) => RUNNERS.test(w.text));
+  const shape = {
+    missing: [],
+    workspaceRelative: words.some(
+      (w) => WORKSPACE_FLAGS.has(w.text) || /^--(workspace|filter)=/.test(w.text)
+    ),
+    flagFilter: null,
+    narrowed: false,
+    generic: words.some((w) => GENERIC_GATES.test(w.text))
+  };
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const prev = i > 0 ? words[i - 1].text : "";
+    if (FILTER_FLAGS.has(word.text) && i + 1 < words.length) {
+      const value = words[i + 1].text;
+      if (runner && value.startsWith("-")) shape.flagFilter = `${word.text} "${value}"`;
+      if (runner) shape.narrowed = true;
+      continue;
+    }
+    if (word.quoted && word.text.trim() !== "") shape.narrowed = true;
+    if (word.text.includes("://")) shape.narrowed = true;
+    if (OUTPUT_WORDS.has(prev) || word.text.startsWith("-")) continue;
+    if (/[*?$<>{}[\]=`~]/.test(word.text)) continue;
+    const path = normalizeScopePath(
+      word.text.split("::")[0].replace(/(?::\d+)+$/, "").replace(/,$/, "")
+    );
+    const pathish = PATHISH.test(path);
+    const found = bases.some((b) => existsSync(join(b, path)));
+    const planned = plannedPaths.some((p) => p === path || p.endsWith(`/${path}`));
+    if (pathish || found && (path.includes("/") || /\.[A-Za-z]/.test(path))) {
+      shape.narrowed = true;
+    }
+    if (pathish && !found && !planned && !isAbsolute(path)) shape.missing.push(path);
+  }
+  return shape;
+}
+function checkOracles(c, projectRoot) {
+  const plannedPaths = c.files.map((f) => normalizeScopePath(f.path));
+  const missing = [];
+  const missingInWorkspace = [];
+  const flagFilters = [];
+  const broad = [];
+  const noFailure = [];
+  let commands = 0;
+  for (const cr of c.criteria) {
+    if (cr.oracle.kind === "prose-review") continue;
+    if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    const cmd = oracleCommand(cr);
+    if (!cmd) continue;
+    commands += 1;
+    const shape = readOracle(cmd, projectRoot, plannedPaths);
+    for (const p of shape.missing) {
+      (shape.workspaceRelative ? missingInWorkspace : missing).push(`${cr.id}\u2192${p}`);
+    }
+    if (shape.flagFilter) flagFilters.push(`${cr.id}: ${shape.flagFilter}`);
+    if (!shape.narrowed && shape.generic) broad.push(`${cr.id}: ${cmd}`);
+  }
+  const checks = [
+    missing.length ? fail(
+      "oracle-paths",
+      "Oracles",
+      `oracle command(s) name files that neither exist nor are planned, so they cannot run: ${listed(missing)}`
+    ) : pass(
+      "oracle-paths",
+      "Oracles",
+      `${commands} oracle command(s) name only real or planned files`
+    )
+  ];
+  if (missingInWorkspace.length) {
+    checks.push(
+      warn(
+        "oracle-paths",
+        "Oracles",
+        `workspace-relative oracle path(s) not found from the project root \u2014 confirm they exist in the workspace: ${listed(missingInWorkspace)}`
+      )
+    );
+  }
+  if (flagFilters.length) {
+    checks.push(
+      fail(
+        "oracle-filter",
+        "Oracles",
+        `test-name filter(s) starting with "-" are parsed as flags, so the filter selects nothing: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
+      )
+    );
+  }
+  if (broad.length) {
+    checks.push(
+      warn(
+        "oracle-narrow",
+        "Oracles",
+        `whole-suite oracle(s) that name no file, pattern or test filter prove the suite, not the criterion: ${listed(broad)}`
+      )
+    );
+  }
+  if (noFailure.length) {
+    checks.push(
+      warn(
+        "oracle-failure",
+        "Oracles",
+        `criteria with a real oracle but no \`failure:\` \u2014 state what the oracle shows when the criterion is unmet: ${listed(noFailure)}`
+      )
+    );
+  }
+  return checks;
 }
 var NONE_VOCABULARY = ["none", "n/a", "nil", "\u2014", "-", "none."];
 function normalizeSection(section) {
@@ -38391,7 +38656,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.24.0";
+var VERSION = "0.25.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

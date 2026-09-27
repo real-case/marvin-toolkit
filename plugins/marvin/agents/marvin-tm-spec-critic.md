@@ -85,9 +85,10 @@ Apply every category below. For each finding, emit one entry.
 - Is each criterion testable from the outside? "Feels intuitive" and "is performant" without a threshold are **blockers**.
 - Is there a failure path for each criterion? "X should return 200" is incomplete without "X returns 4xx when Y".
 - Can a reviewer read the criteria and know, without running the code, what test proves each one?
-- Does each criterion's `oracle` name a *genuine* proof (a real test path/command, or a justified `prose-review`)? An `oracle` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate checks the oracle is typed, its `kind: test` ref is allowlisted, and that ≥1 criterion is non-prose-review; you check each one is *real*.
+- Does each criterion's `oracle` name a *genuine* proof (a real test path/command, or a justified `prose-review`)? An `oracle` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate checks the oracle is typed, its `kind: test` ref is allowlisted, that ≥1 criterion is non-prose-review, that every file an oracle command names exists or is planned (`oracle-paths`), that no test-name filter starts with `-` (`oracle-filter`), and it warns on a whole-suite command (`oracle-narrow`) and on a missing `failure:` line (`oracle-failure`). Do not re-report those; you check each oracle is *real* — above all, whether it can FAIL on the wrong implementation its `failure:` line describes.
 
 #### 3.3 Codebase grounding
+- The gate FAILs a `path:line` citation past the end of the file it names (`cite-lines`); a citation that points inside the file but at the wrong code is still yours to catch.
 - Does the Chosen Approach match existing patterns, or silently diverge? Divergence is acceptable — unexplained divergence is a **blocker**.
 - Does the `spec-contract` block's `files` name the real integration points, or just the obvious file? A plan that misses the true integration point — or omits a caller that must change — is a **blocker**.
 - Are there sibling patterns (the same logic elsewhere) the spec ignores?
