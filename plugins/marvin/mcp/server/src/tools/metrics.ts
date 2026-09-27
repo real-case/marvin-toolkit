@@ -4,7 +4,19 @@ import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mc
 import type { MetricEvent, MetricsSeries, TaskMetrics } from "@marvin-toolkit/mcp-shared/contracts";
 import { projectConfigPath, projectScopedDir, type ServerEnv } from "../lib/env.js";
 import { inGitRepo, isIgnored } from "../lib/git.js";
-import { collectSeriesRecords, readShippedSpecs, relFromRoot } from "../lib/metrics-collect.js";
+import {
+  budgetStatus,
+  criticBudget,
+  type BudgetStatus,
+  type CriticTier,
+} from "../lib/critic-budget.js";
+import {
+  collectSeriesRecords,
+  findSpecBySlug,
+  readRollupSpec,
+  readShippedSpecs,
+  relFromRoot,
+} from "../lib/metrics-collect.js";
 import { performRollup, recordPathFor } from "../lib/metrics-record.js";
 import {
   SERIES_METRICS,
@@ -268,7 +280,11 @@ function recordEvent(
   const path = recordPathFor(dir, slug, projectRoot, specConfig);
   appendMetricEvent(path, event);
   const record = relFromRoot(path, projectRoot);
-  const payload = { action: "record", slug, record, event };
+  // The event is recorded whatever the budget says: refusing it would only lose
+  // the measurement. The answer is what tells the session the budget is spent.
+  const budget =
+    event.kind === "critic-dispatch" ? dispatchBudget(event, slug, projectRoot, specConfig) : null;
+  const payload = { action: "record", slug, record, event, ...(budget ? { budget } : {}) };
   return {
     content: [
       {
@@ -277,6 +293,7 @@ function recordEvent(
           `# Metrics — ${slug}\n\n` +
           `Recorded **${event.kind}** (${event.source}, step ${event.step}).\n` +
           `**Record:** \`${record}\`\n\n` +
+          (budget ? `${budgetLine(budget)}\n\n` : "") +
           "```json metric-event\n" +
           JSON.stringify(payload) +
           "\n```",
@@ -284,6 +301,57 @@ function recordEvent(
     ],
     structuredContent: payload,
   };
+}
+
+interface DispatchBudget {
+  critic: string;
+  pass: number;
+  limit: number;
+  tier: CriticTier | null;
+  status: BudgetStatus;
+}
+
+/**
+ * The critic budget a dispatch is judged by (`lib/critic-budget.ts`). The spec
+ * is read only to tell the spec critic's light tier from the standard one; a
+ * spec that cannot be found or read gets the standard allowance, because
+ * claiming a budget is spent on a guess would stop a session that is not over.
+ */
+function dispatchBudget(
+  event: MetricEvent,
+  slug: string,
+  projectRoot: string,
+  specConfig: SpecConfig | undefined,
+): DispatchBudget {
+  let spec = null;
+  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
+  if (specPath) {
+    try {
+      spec = readRollupSpec(specPath, projectRoot, []);
+    } catch {
+      spec = null;
+    }
+  }
+  const critic = event.critic!;
+  const pass = event.pass!;
+  const { limit, tier } = criticBudget(critic, spec);
+  return { critic, pass, limit, tier, status: budgetStatus(pass, limit) };
+}
+
+function budgetLine(b: DispatchBudget): string {
+  const of = `pass ${b.pass} of ${b.limit} for \`${b.critic}\`${b.tier ? ` (${b.tier} tier)` : ""}`;
+  if (b.status === "within") return `**Budget:** within — ${of}.`;
+  if (b.status === "final") {
+    return `**Budget:** final — ${of}. This is the last dispatch the budget allows; say so in the dispatch prompt.`;
+  }
+  const next =
+    b.critic === "marvin-tm-spec-critic"
+      ? "present the surviving blockers to the user and let them choose: revise once more without a critic, or record the survivors as an override"
+      : "classify each surviving blocker as deferred or blocked, and let the draft PR carry them";
+  return (
+    `**Budget: exceeded** — ${of}. Stop: do not dispatch this critic again for this task; ${next}. ` +
+    `The event was recorded, so the overrun is counted.`
+  );
 }
 
 function rollup(
@@ -546,9 +614,14 @@ function renderDigest(
     `- R2 critic passes: spec ${r.critic_passes.spec ?? "—"} · diff ${r.critic_passes.diff ?? "—"}`,
     `- R3 fix rounds: ${r.fix_rounds ? `verify-gate ${r.fix_rounds.verify_gate} · critic ${r.fix_rounds.critic} · red-green ${r.fix_rounds.red_green}` : "—"}`,
     `- R4 runs before first green: ${r.runs_before_green ?? "—"}`,
+    `- R5 critic budget exceeded: spec ${yesNo(r.critic_budget_exceeded?.spec)} · diff ${yesNo(r.critic_budget_exceeded?.diff)}`,
   ];
   if (b.notes.length) lines.push("", "## Notes", ...b.notes.map((n) => `- ${n}`));
   return lines.join("\n");
+}
+
+function yesNo(v: boolean | null | undefined): string {
+  return v === true ? "yes" : v === false ? "no" : "—";
 }
 
 function errText(text: string): ToolResult {

@@ -47,6 +47,15 @@ The spec is provided inline below (injected by the batch-dispatch caller). Read 
 - Non-goals (what NOT to do)
 - The `## Critic Verdict & Overrides` section — the spec critic's recorded verdict, which you render on the PR's **Spec critic** line together with any recorded author override. Render the recorded value when it holds one of the four terminal verdicts (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE`), an `UNABLE` as `⚠️ critic UNABLE — <reason>` with the reason verbatim, and `⚠️ critic skipped` in every other case: "none", "none — critic skipped", an empty section, or an absent section. A semantic gate that did not run is never silent in the PR
 
+**Start the progress journal.** If the `marvin` MCP `spec` tool is available, call it with
+`action: "progress"`, `source: "marvin-tm-executor"`, `step: "§1"`, `kind: "step"`, the spec's
+`slug`, its `specPath` and a one-line `detail`. This entry is where the metrics roll-up starts this
+run's implementation time; without it a headless task reports no time at all. Record further
+entries at the boundaries below the same way — `kind: "criterion"` with the criterion id as each one
+is done (`step: "§2"`), `kind: "step"` when the gates go green (`step: "§3"`) and when the PR opens
+(`step: "§5"`). Keep `detail` to one line of position and choice, never a credential, token or
+customer datum.
+
 **Search lessons before writing code.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the spec's slug and touched areas — a prior lesson from this repo is a constraint on your implementation, same rank as a trap in Chosen Approach. If the tool is unavailable in this headless run, skip silently.
 
 ### 2. Implement
@@ -62,6 +71,15 @@ If something is ambiguous:
 - Make the simplest reasonable choice
 - Record it as a SPEC GAP (you'll include it in the PR description)
 
+**Red phase — one criterion per task** (ADR-0047). Before implementing anything, take the **first**
+criterion whose oracle is `kind: test`, write its test, and record one run of it with the `verify`
+tool: `action: "oracles"`, the spec's `specSlug`, `criteria: ["<that id>"]`, `expect: "fail"`. Then
+implement, and do not edit that test file again: §3's oracle run is its green, and a red and a green
+over one unchanged test file at one `contract_sha` are the proof. A `pass` means the test cannot
+fail yet — tighten it, or record a SPEC GAP and go on without a red; a `not-run` is neither phase,
+so fix the `reason` it names and record the red again. A spec with no `kind: test` criterion has no
+red phase, and without the `verify` tool this step is skipped.
+
 ### 3. Self-Test, then Self-Review
 
 **Scope gate (deterministic).** If the `marvin` MCP `spec` tool is available, call it with
@@ -73,8 +91,12 @@ unavailable.) Files under `.marvin/` and by-product files matching a `scope.exem
 gate lists them as exempted with the matching pattern, and they need no SPEC GAP.
 
 **Run the gates.**
+- **Lint first.** With the `verify` tool, run `only: ["lint"]` (`mode: feature`, the spec's
+  `specSlug`) and fix what it reports before the full run: lint is the most common first-run
+  failure, the pass costs seconds, and the full run it saves costs minutes. An answer that no gate
+  matched means there is no lint gate. This pass is not a fix-cycle round.
 - **Preferred — the `verify` tool.** If the `marvin` MCP `verify` tool is available, call it
-  (`mode: feature`, `execution: parallel`). It runs the independent gates concurrently, records
+  (`mode: feature`, `execution: parallel`, the spec's `specSlug`). It runs the independent gates concurrently, records
   every result at one merge point, computes the verdict, and writes `verification.md`.
 - **Fallback — inline Bash.** If the tool is **not** available in this headless run, run the gates
   yourself, detecting commands from project config (never silently skip):
@@ -106,6 +128,12 @@ deferred or blocked item in Self-Review Notes — and do not dispatch the critic
 stable to review. Any code change made after the green run — including one made to satisfy a critic
 blocker in §4 — invalidates it: re-run the affected gate, then one final full pass before the PR.
 
+**Record the acceptance oracles.** With the gates green and the `verify` tool available, call it
+with `action: "oracles"` and the spec's `specSlug` (`expect` defaults to `"pass"`). It runs each
+criterion's own oracle and appends the outcome to `.marvin/task/runs/<slug>.oracles.md`; for the
+red-phase criterion this is the green. A criterion whose oracle fails is a gate-loop failure like
+any other.
+
 **Then dispatch the critic — once.** With the gates green, if Task-tool is available, dispatch
 `marvin-tm-diff-critic` with the spec path, the diff range, **and**
 `git status --porcelain --untracked-files=all`. That last input is not optional: a new file is
@@ -114,6 +142,8 @@ hide most of the change. See §4 for how to use its verdict. Record the dispatch
 the `marvin` MCP `metrics` tool is available: `action: "record"`, `kind: "critic-dispatch"`,
 `critic: "marvin-tm-diff-critic"`, `source: "marvin-tm-executor"`, `step: "§3"`, the spec's `slug`
 and `pass: 1` — incremented on a critic-loop re-dispatch, reused on a `NEEDS_CONTEXT` re-dispatch.
+The answer carries a **Budget** line: at `exceeded`, do not dispatch again, and classify each
+surviving blocker as deferred or blocked for the draft PR.
 
 ### 4. Self-Review
 
@@ -248,6 +278,17 @@ gh pr create --draft --title "..." --body "..."
 ```
 Include the failure details in the Self-Review Notes section.
 
+#### 5.3 Record delivery on the spec
+
+Once `gh pr create` has succeeded, record the delivery exactly as `/marvin:task-deliver` Step 4
+does, because this path never reaches that skill: set the spec's frontmatter `status: shipped` and
+append a `## Delivery` section with the PR URL and today's date. That is the lifecycle carve-out,
+the only mutable part of an otherwise immutable spec, and it leaves the `spec-contract` block and
+its seal untouched. When git tracks the spec file, commit and push the change to the same branch so
+the PR carries it; an ignored spec is updated in place. For a draft
+PR the status stays as it is: the work has not been delivered. Then append the `§5` progress entry.
+A spec left `ready` after its PR opened reads as undelivered to every later run.
+
 **PR rules:**
 - Title under 72 chars, imperative mood
 - Never include AI/Claude/automated references
@@ -279,7 +320,9 @@ Same as Feature Pipeline step 1. Additionally identify:
 
 ### 3. Verify Test Fails
 
-Run **only** the regression test:
+Record the red with the `verify` tool when it is available: `action: "oracles"`, the spec's
+`specSlug`, `criteria: ["<the regression criterion's id>"]`, `expect: "fail"` — an unrecorded red is
+no proof to the roll-up. Without the tool, run **only** the regression test:
 ```bash
 # Run just the new test — command varies by stack
 # Example for pytest: pytest path/to/test.py::test_name -x
@@ -299,7 +342,8 @@ Apply the fix approach from the spec:
 
 ### 5. Verify Test Passes
 
-Run the regression test again. It **MUST pass** now.
+Run the regression test again — through the `verify` tool with the same `criteria` and
+`expect: "pass"` when it is available. It **MUST pass** now.
 
 - If it **passes** → proceed to step 6
 - If it **fails** → re-read the fix approach, adjust, retry under the Fix-cycle Protocol (below). This is the red-green loop and its budget is its own.
@@ -387,7 +431,7 @@ Rationale: {why this was the minimal reasonable choice}
 3. **Record it durably** (ADR-0043), when the `metrics` tool is available: `action: "record"`, `kind: "spec-gap"`, `source: "marvin-tm-executor"`, the current section as `step`, the spec's `slug`, and the situation as a one-line `detail` — never a credential, token or customer datum.
 4. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
 
-A file the scope gate reports as **exempted** (it matched the project's `scope.exempt` by-product patterns) is not a gap, and neither is anything under `.marvin/`; do not record either. A recurring by-product the project has not exempted is still a SPEC GAP — say in the PR description that its pattern could be added to `scope.exempt`.
+A file the scope gate reports as **exempted** (it matched the project's `scope.exempt` by-product patterns) is not a gap, and neither is anything under `.marvin/`; do not record either. A recurring by-product the project has not exempted is still a SPEC GAP — say in the PR description which `scope.exempt` pattern would cover it: the lockfile's own path (`package-lock.json`, `bun.lock`), `**/*.d.ts` or `**/*.d.mts` for a generated declaration, `.claude/agent-memory/**` for a subagent's notes.
 
 ---
 

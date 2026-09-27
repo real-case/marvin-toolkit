@@ -314,6 +314,15 @@ export const TaskMetricsRework = z.object({
     .nullable(),
   /** R4 — verification runs before the first green full run. */
   runs_before_green: NullableInt,
+  /**
+   * R5 — did a critic's highest DISPATCH pass exceed its budget (two for the
+   * spec critic, one on the light tier, three for the diff critic)? Null per
+   * critic when no dispatch of it was recorded. Missing on records rolled up
+   * before the field existed; a reader treats that as null.
+   */
+  critic_budget_exceeded: z
+    .object({ spec: z.boolean().nullable(), diff: z.boolean().nullable() })
+    .optional(),
 });
 export type TaskMetricsRework = z.infer<typeof TaskMetricsRework>;
 

@@ -27,6 +27,7 @@ import {
   type SpecRecord,
 } from "../storage/spec.js";
 import {
+  PROGRESS_SOURCES,
   progressJournalPath,
   readProgress,
   recordProgress,
@@ -162,13 +163,15 @@ const SpecInput = z.object({
       "action: next — the kebab-case slug of the spec being created, so the answer carries the composed filename and any collision with an existing spec. action: progress / resume — the slug whose journal is written or read (it is also the journal's filename, so it is rejected rather than sanitised).",
     ),
   source: z
-    .enum(["task-start", "task-implement"])
+    .enum(PROGRESS_SOURCES)
     .optional()
-    .describe("action: progress — which skill is writing; step ids collide across the two."),
+    .describe(
+      "action: progress — which writer: task-start, task-implement, or the headless marvin-tm-executor; step ids collide across them.",
+    ),
   step: z
     .string()
     .optional()
-    .describe('action: progress — the writer\'s own step id ("1.5", "4F", "5F", "2.5").'),
+    .describe('action: progress — the writer\'s own step id ("1.5", "4F", "5F", "2.5", "§1").'),
   kind: z
     .enum(["step", "criterion", "decision", "note", "archived"])
     .optional()
@@ -205,7 +208,7 @@ const SpecInput = z.object({
     .string()
     .optional()
     .describe(
-      "action: scope — git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes.",
+      "action: scope — git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes; the diff starts at its merge base with HEAD, so commits that reached the base after the fork are not counted.",
     ),
 });
 type SpecInput = z.infer<typeof SpecInput>;
@@ -2215,7 +2218,8 @@ function readOracle(cmd: string, projectRoot: string, plannedPaths: string[]): O
  *    selects a workspace by name, which moves the paths somewhere this gate
  *    cannot resolve.
  *  - `oracle-filter` (FAIL): a test runner's name filter whose value starts
- *    with `-` is parsed as a flag — the filter runs nothing, or errors.
+ *    with `-` is parsed as an option, and the runner exits with an error
+ *    (vitest 4: `CACError: Unknown option`), so the oracle can never pass.
  *  - `oracle-narrow` (WARN): a project-wide gate or bare runner that names no
  *    file, directory, quoted pattern, URL or test filter — `npm test`, `bun run
  *    build`, `npm run e2e`. It proves the suite is green, not that this
@@ -2274,7 +2278,7 @@ function checkOracles(c: SpecContract, projectRoot: string): Check[] {
       fail(
         "oracle-filter",
         "Oracles",
-        `test-name filter(s) starting with "-" are parsed as flags, so the filter selects nothing: ${listed(flagFilters)} — drop the leading dashes from the pattern`,
+        `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} — drop the leading dashes from the pattern`,
       ),
     );
   }

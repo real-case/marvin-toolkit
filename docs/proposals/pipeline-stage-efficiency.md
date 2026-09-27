@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | Proposed |
+| Status     | Changes 2–8 implemented in 0.28.0; change 1 waits for five ADR-0046-shaped specs |
 | Date       | 2026-09-27 |
 | Applies to | `task-start` and `task-implement` skills, `marvin-tm-spec-critic` and `marvin-tm-executor` agents, the `metrics`, `spec` and `verify` tools, `changedFilesForScope` in `lib/git.ts` |
 | Principle  | A check earns its place by separating good work from bad. A check that almost always fires, or never fires, costs time and returns no signal. |
