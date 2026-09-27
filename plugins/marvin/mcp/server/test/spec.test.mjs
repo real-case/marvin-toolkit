@@ -532,11 +532,132 @@ test("spike_required: true blocks dispatch", async () => {
   assert.equal(find(parsed, "spike-required").status, "fail");
 });
 
-test("a missing Definition of Done section blocks", async () => {
-  const content = VALID_FEATURE.replace("## Definition of Done", "## Implementation Notes");
+test("a missing Chosen Approach section blocks", async () => {
+  const content = VALID_FEATURE.replace("## Chosen Approach", "## Implementation Notes");
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "sections-required").status, "fail");
+});
+
+// ── the lean spec shape (ADR-0046) ───────────────────────────────────────────
+
+/** Drop one `## Heading` section (heading through the line before the next `##`). */
+const withoutSection = (content, heading) =>
+  content
+    .replace(new RegExp(`## ${heading}\\n[\\s\\S]*?(?=\\n## |$)`), "")
+    .replace(/\n{3,}/g, "\n\n");
+
+const LEAN_DROPPED = [
+  "Data & Config",
+  "Test Plan",
+  "Definition of Done",
+  "Security / NFR",
+  "Why this over alternatives",
+  "Design Notes",
+  "Future Considerations",
+];
+
+test("a lean feature spec without the dropped sections passes clean", async () => {
+  const lean = LEAN_DROPPED.reduce(withoutSection, VALID_FEATURE);
+  for (const heading of LEAN_DROPPED) assert.ok(!lean.includes(`## ${heading}`), heading);
+  const { parsed } = await callSpec({ specContent: lean, projectRoot: repoRoot });
+  assert.equal(
+    parsed.verdict,
+    "PASS",
+    JSON.stringify(parsed.checks.filter((c) => c.status !== "pass")),
+  );
+  assert.equal(find(parsed, "sections-required").status, "pass");
+  assert.equal(find(parsed, "sections-recommended"), undefined);
+});
+
+test("a lean bugfix spec without Definition of Done and Design Notes passes", async () => {
+  const lean = ["Definition of Done", "Design Notes"].reduce(withoutSection, VALID_BUGFIX);
+  const { parsed } = await callSpec({ specContent: lean, projectRoot: repoRoot });
+  assert.notEqual(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "sections-required").status, "pass");
+  assert.equal(find(parsed, "sections-recommended"), undefined);
+});
+
+test("a contract that declares no satisfies at all passes the symmetry check", async () => {
+  const content = VALID_FEATURE.replace(/\n {4}satisfies: \[[^\]]*\]/g, "");
+  assert.ok(!/satisfies:/.test(content));
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS");
+  assert.equal(find(parsed, "graph-symmetry").status, "pass");
+});
+
+test("Context is recommended, except on the light tier", async () => {
+  const noContext = withoutSection(VALID_FEATURE, "Context");
+  // risk: low with three files is the light tier — Context is optional.
+  const light = await callSpec({ specContent: noContext, projectRoot: repoRoot });
+  assert.equal(find(light.parsed, "sections-recommended"), undefined);
+  // The same spec at risk: medium is not.
+  const medium = await callSpec({
+    specContent: noContext.replace("risk: low", "risk: medium"),
+    projectRoot: repoRoot,
+  });
+  const rec = find(medium.parsed, "sections-recommended");
+  assert.equal(rec.status, "warn");
+  assert.match(rec.detail, /context/);
+});
+
+test("a risk: high spec with no Security / NFR warns; with one it passes", async () => {
+  const high = VALID_FEATURE.replace("risk: low", "risk: high");
+  const withSection = await callSpec({ specContent: high, projectRoot: repoRoot });
+  assert.equal(find(withSection.parsed, "security-nfr").status, "pass");
+
+  const without = await callSpec({
+    specContent: withoutSection(high, "Security / NFR"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(without.parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(without.parsed, "security-nfr").status, "warn");
+
+  // Below risk: high the section is optional and nothing is said about it.
+  const low = await callSpec({
+    specContent: withoutSection(VALID_FEATURE, "Security / NFR"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(low.parsed, "security-nfr"), undefined);
+});
+
+test("a spec over the size budget warns and never fails", async () => {
+  const within = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
+  assert.equal(find(within.parsed, "spec-size").status, "pass");
+
+  // Three files and three criteria: 3072 + 1200 + 1500 = 5772 bytes.
+  const padded = VALID_FEATURE.replace(
+    "## Chosen Approach\n",
+    "## Chosen Approach\n" + "Restated decision. ".repeat(300) + "\n",
+  );
+  const { parsed } = await callSpec({ specContent: padded, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  const size = find(parsed, "spec-size");
+  assert.equal(size.status, "warn");
+  assert.match(size.detail, /budget of 5772/);
+});
+
+test("an over-long criterion statement and file intent each warn", async () => {
+  const long = (n) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+  const content = VALID_FEATURE.replace(
+    "statement: Given the index, then it links the sample",
+    `statement: ${long(41)}`,
+  ).replace("intent: the sample doc", `intent: ${long(61)}`);
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(parsed, "ac-length").status, "warn");
+  assert.match(find(parsed, "ac-length").detail, /AC2 \(41\)/);
+  assert.equal(find(parsed, "intent-length").status, "warn");
+  assert.match(find(parsed, "intent-length").detail, /F2 \(61\)/);
+
+  // At the limits exactly, nothing is said.
+  const atLimit = VALID_FEATURE.replace(
+    "statement: Given the index, then it links the sample",
+    `statement: ${long(40)}`,
+  ).replace("intent: the sample doc", `intent: ${long(60)}`);
+  const ok = await callSpec({ specContent: atLimit, projectRoot: repoRoot });
+  assert.equal(find(ok.parsed, "ac-length"), undefined);
+  assert.equal(find(ok.parsed, "intent-length"), undefined);
 });
 
 test("a missing breaking declaration blocks", async () => {

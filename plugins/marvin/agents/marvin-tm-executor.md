@@ -42,13 +42,12 @@ underneath it, and the mandatory re-review costs several times what the overlap 
 
 The spec is provided inline below (injected by the batch-dispatch caller). Read it fully. Identify:
 - Goal and criteria (each with its `oracle` proof)
-- Chosen approach and implementation sketch
-- The `spec-contract` block's `files` — the authoritative allowlist of files you may touch
+- Chosen approach: the order of work and the **traps** it lists (a spec written before the lean template may carry them under a separate `## Design Notes` heading — read it too when present)
+- The `spec-contract` block's `files` — the authoritative allowlist of files you may touch, and each file's `intent`
 - Non-goals (what NOT to do)
-- Design notes (nuances and warnings)
 - The `## Critic Verdict & Overrides` section — the spec critic's recorded verdict, which you render on the PR's **Spec critic** line together with any recorded author override. Render the recorded value when it holds one of the four terminal verdicts (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE`), an `UNABLE` as `⚠️ critic UNABLE — <reason>` with the reason verbatim, and `⚠️ critic skipped` in every other case: "none", "none — critic skipped", an empty section, or an absent section. A semantic gate that did not run is never silent in the PR
 
-**Search lessons before writing code.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the spec's slug and touched areas — a prior lesson from this repo is a constraint on your implementation, same rank as a design note. If the tool is unavailable in this headless run, skip silently.
+**Search lessons before writing code.** If the `marvin` MCP `lessons` tool is available, call it with `action: "search"` and keywords from the spec's slug and touched areas — a prior lesson from this repo is a constraint on your implementation, same rank as a trap in Chosen Approach. If the tool is unavailable in this headless run, skip silently.
 
 ### 2. Implement
 

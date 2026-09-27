@@ -29041,6 +29041,14 @@ var Config = external_exports.object({
   spec: SpecConfig.optional(),
   /** By-product path patterns the scope gate and Q1 exempt (ADR-0045); absent means none. */
   scope: ScopeConfig.optional(),
+  /**
+   * What this host needs before a PR can merge — a version bump, a committed
+   * build artefact, a changelog entry (ADR-0046). It used to be rewritten into
+   * every spec's host-bindings block; `/marvin:task-start` now proposes it once
+   * per project and turns each entry that touches a file into a contract row.
+   * Absent means none recorded.
+   */
+  merge_obligations: external_exports.array(external_exports.string().min(1)).optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
@@ -32534,6 +32542,15 @@ var HostBindings = external_exports.object({
   merge_obligations: external_exports.array(external_exports.string()).optional(),
   gates: external_exports.record(external_exports.string()).optional()
 }).passthrough();
+var SPEC_SIZE_BASE = 3 * 1024;
+var SPEC_SIZE_PER_FILE = 400;
+var SPEC_SIZE_PER_CRITERION = 500;
+function specSizeBudget(files, criteria) {
+  return SPEC_SIZE_BASE + SPEC_SIZE_PER_FILE * files + SPEC_SIZE_PER_CRITERION * criteria;
+}
+function wordCount(text) {
+  return (text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
 function extractContractBlock(body) {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
   return m ? m[1] : null;
@@ -34094,6 +34111,22 @@ var SERIES_METRICS = [
     pick: (_r, extra) => extra.escaped
   },
   {
+    group: "quality",
+    key: "spec_bytes",
+    id: "Q13",
+    label: "spec size in bytes",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.bytes ?? null
+  },
+  {
+    group: "quality",
+    key: "spec_words",
+    id: "Q14",
+    label: "spec size in words",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.words ?? null
+  },
+  {
     group: "rework",
     key: "seals",
     id: "R1",
@@ -35006,7 +35039,8 @@ function readRollupSpec(specPath, projectRoot, notes) {
     frontmatter,
     contract,
     stamped_sha: frontmatter.contract_sha?.trim() || null,
-    actual_sha: block !== null ? contractHash(block) : null
+    actual_sha: block !== null ? contractHash(block) : null,
+    size: { bytes: Buffer.byteLength(raw, "utf8"), words: wordCount(raw) }
   };
 }
 function readRunResult(path, slug, notes) {
@@ -35355,6 +35389,10 @@ function rollUpMetrics(input) {
     }
     oracle_resolution = { by_source, unresolved };
   }
+  const spec_size = input.spec?.size ? {
+    ...input.spec.size,
+    budget: contract ? specSizeBudget(contract.files.length, contract.criteria.length) : null
+  } : null;
   const quality = {
     scope_drift,
     oracle_strength,
@@ -35365,7 +35403,8 @@ function rollUpMetrics(input) {
     spec_gaps,
     open_items,
     dor_first_call,
-    oracle_resolution
+    oracle_resolution,
+    spec_size
   };
   let seals = null;
   let reseals = null;
@@ -36413,31 +36452,14 @@ var import_yaml4 = __toESM(require_dist2());
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
-var FEATURE_REQUIRED = [
-  "goal",
-  "data config",
-  "chosen approach",
-  "test plan",
-  "definition of done",
-  "non goals",
-  "open questions",
-  "security nfr"
-];
-var FEATURE_RECOMMENDED = [
-  "context",
-  "why this over alternatives",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes",
-  "future considerations"
-];
+var FEATURE_REQUIRED = ["goal", "chosen approach", "non goals", "open questions"];
+var FEATURE_RECOMMENDED = ["context", "assumptions", "critic verdict overrides"];
 var BUGFIX_REQUIRED = [
   "problem",
   "reproduction steps",
   "root cause analysis",
   "fix approach",
   "regression test specification",
-  "definition of done",
   "non goals",
   "open questions"
 ];
@@ -36445,9 +36467,13 @@ var BUGFIX_RECOMMENDED = [
   "expected behavior",
   "severity impact",
   "assumptions",
-  "critic verdict overrides",
-  "design notes"
+  "critic verdict overrides"
 ];
+var AC_STATEMENT_MAX_WORDS = 40;
+var FILE_INTENT_MAX_WORDS = 60;
+var LIGHT_TIER_MAX_FILES = 5;
+var SPLIT_MAX_FILES = 15;
+var SPLIT_MAX_CRITERIA = 12;
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
   specContent: external_exports.string().optional().describe(
@@ -37072,8 +37098,17 @@ function validateSpec(raw, projectRoot, specConfig) {
   checks.push(...checkFrontmatter(frontmatter, type));
   const sections = parseSections(body);
   if (type === "feature" || type === "bugfix") {
-    const [required2, recommended] = type === "feature" ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
+    const contract = parsedContract(body);
+    const lightTier = type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract !== null && contract.files.length <= LIGHT_TIER_MAX_FILES;
+    const [required2, recommended] = type === "feature" ? [
+      FEATURE_REQUIRED,
+      lightTier ? FEATURE_RECOMMENDED.filter((s) => s !== "context") : FEATURE_RECOMMENDED
+    ] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required2, recommended));
+    if (type === "feature" && (frontmatter.risk ?? "").trim() === "high") {
+      checks.push(checkSecurityNfr(sections.get("security nfr")));
+    }
+    if (contract) checks.push(...checkSize(raw, contract));
     checks.push(checkOpenQuestions(sections.get("open questions")));
     checks.push(checkAssumptions(sections.get("assumptions")));
     checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
@@ -37300,12 +37335,12 @@ function checkFiles(c, projectRoot) {
     if ((f.action === "edit" || f.action === "delete") && !exists) missing.push(f.path);
     if (f.action === "new" && exists) newButExists.push(f.path);
   }
-  if (c.files.length > 12) {
+  if (c.files.length > SPLIT_MAX_FILES || c.criteria.length > SPLIT_MAX_CRITERIA) {
     checks.push(
       warn(
         "fcp-size",
         "Spec contract",
-        `${c.files.length} files planned \u2014 confirm this is one PR, not several (scope gate)`
+        `${c.files.length} files and ${c.criteria.length} criteria planned (threshold ${SPLIT_MAX_FILES} / ${SPLIT_MAX_CRITERIA}) \u2014 the split must have been presented explicitly at Step 4.5F`
       )
     );
   }
@@ -37497,14 +37532,57 @@ var PATHISH = /^(?:\.{1,2}\/)?(?:\.?[\w@+-][\w@.+-]*\/)+\.?[\w@+-][\w@.+-]*\.[A-
 var MAX_CITED_BYTES = 8 * 1024 * 1024;
 var MAX_LISTED = 8;
 function plannedFiles(body) {
+  return parsedContract(body)?.files ?? [];
+}
+function parsedContract(body) {
   const text = extractContractBlock(body);
-  if (text === null) return [];
+  if (text === null) return null;
   try {
     const parsed = SpecContract.safeParse((0, import_yaml4.parse)(text));
-    return parsed.success ? parsed.data.files : [];
+    return parsed.success ? parsed.data : null;
   } catch {
-    return [];
+    return null;
   }
+}
+function checkSize(raw, c) {
+  const checks = [];
+  const bytes = Buffer.byteLength(raw, "utf8");
+  const budget = specSizeBudget(c.files.length, c.criteria.length);
+  checks.push(
+    bytes > budget ? warn(
+      "spec-size",
+      "Size",
+      `${bytes} bytes against a budget of ${budget} (3 KB + 400 B \xD7 ${c.files.length} files + 500 B \xD7 ${c.criteria.length} criteria) \u2014 delete restatement: a fact lives in the contract and prose refers to it by id`
+    ) : pass("spec-size", "Size", `${bytes} bytes within the budget of ${budget}`)
+  );
+  const longAc = c.criteria.map((cr) => [cr.id, wordCount(cr.statement)]).filter(([, n]) => n > AC_STATEMENT_MAX_WORDS);
+  if (longAc.length) {
+    checks.push(
+      warn(
+        "ac-length",
+        "Acceptance Criteria",
+        `statement over ${AC_STATEMENT_MAX_WORDS} words: ${longAc.map(([id, n]) => `${id} (${n})`).join(", ")} \u2014 one behaviour per criterion, as Given/When/Then`
+      )
+    );
+  }
+  const longIntent = c.files.map((f) => [f.id, wordCount(f.intent)]).filter(([, n]) => n > FILE_INTENT_MAX_WORDS);
+  if (longIntent.length) {
+    checks.push(
+      warn(
+        "intent-length",
+        "File intents",
+        `intent over ${FILE_INTENT_MAX_WORDS} words: ${longIntent.map(([id, n]) => `${id} (${n})`).join(", ")} \u2014 say what changes in the file; a test file names the criteria it covers`
+      )
+    );
+  }
+  return checks;
+}
+function checkSecurityNfr(section) {
+  return section === void 0 ? warn(
+    "security-nfr",
+    "Security / NFR",
+    "risk: high but no Security / NFR section \u2014 state the concern and the criterion or file that addresses it"
+  ) : pass("security-nfr", "Security / NFR", "present for a risk: high spec");
 }
 function stripFences(body) {
   const out = [];
@@ -38220,6 +38298,7 @@ function renderDigest(b, record2, terminalBlocks, ignored) {
     `- Q8 open items: ${q.open_items ? `deferred ${q.open_items.deferred} \xB7 blocked ${q.open_items.blocked}` : "\u2014"}`,
     `- Q9 DoR passed on first call: ${q.dor_first_call === null ? "\u2014" : q.dor_first_call ? "yes" : "no"}`,
     `- Q10 oracle resolution: ${q.oracle_resolution ? `${Object.entries(q.oracle_resolution.by_source).map(([s, n]) => `${s} ${n}`).join(" \xB7 ") || "no runs at this seal"} \xB7 unresolved ${q.oracle_resolution.unresolved}` : "\u2014"}`,
+    `- Q13/Q14 spec size: ${q.spec_size ? `${q.spec_size.bytes} bytes \xB7 ${q.spec_size.words} words${q.spec_size.budget !== null ? ` \xB7 budget ${q.spec_size.budget} (${(q.spec_size.bytes / q.spec_size.budget).toFixed(1)}\xD7)` : ""}` : "\u2014"}`,
     "",
     "## Rework",
     `- R1 seals: ${r.seals ?? "\u2014"}${r.reseals !== null ? ` (reseals ${r.reseals})` : ""}`,
@@ -38680,7 +38759,7 @@ function buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings)
     const url = trackerUrl(config2, tracker);
     links.push({ kind: "tracker", label: tracker, ...url ? { url } : { ref: tracker } });
   }
-  const adr = hostBindings?.decision_record?.path;
+  const adr = hostBindings?.decision_record?.path ?? config2.adr?.dir;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
   links.push(...critiqueLinks(env2, projectRoot, slug));
   return links;
@@ -38871,7 +38950,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.26.0";
+var VERSION = "0.27.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

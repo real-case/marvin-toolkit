@@ -12,7 +12,7 @@ import type {
 import type { ProgressEntry } from "../storage/progress.js";
 import { redGreenProof, type OracleRun } from "../storage/oracles.js";
 import { isGreenFullRun, type VerifyRunEntry } from "../storage/verify-runs.js";
-import type { SpecContract } from "../storage/spec.js";
+import { specSizeBudget, type SpecContract } from "../storage/spec.js";
 import type { VerifyResult } from "./reports.js";
 import { normalizeScopePath } from "./git.js";
 import { partitionScope } from "./scope.js";
@@ -51,6 +51,8 @@ export interface RollupSpec {
   stamped_sha: string | null;
   /** The block's hash as recomputed now, null when there is no block. */
   actual_sha: string | null;
+  /** The file's size as read (ADR-0046); absent in fixtures that predate it. */
+  size?: { bytes: number; words: number } | null;
 }
 
 export interface RollupGit {
@@ -394,6 +396,14 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     oracle_resolution = { by_source, unresolved };
   }
 
+  // Q13/Q14 — the spec's size, and the budget its contract earns.
+  const spec_size: TaskMetricsQuality["spec_size"] = input.spec?.size
+    ? {
+        ...input.spec.size,
+        budget: contract ? specSizeBudget(contract.files.length, contract.criteria.length) : null,
+      }
+    : null;
+
   const quality: TaskMetricsQuality = {
     scope_drift,
     oracle_strength,
@@ -405,6 +415,7 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     open_items,
     dor_first_call,
     oracle_resolution,
+    spec_size,
   };
 
   // ── rework ────────────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   resolveSpecBySlug,
   resolveSpecDir,
   specSearchDirs,
+  wordCount,
 } from "../storage/spec.js";
 import { readVerifyRuns, verifyJournalPath } from "../storage/verify-runs.js";
 
@@ -137,6 +138,7 @@ function readRollupSpec(specPath: string, projectRoot: string, notes: string[]):
     contract,
     stamped_sha: frontmatter.contract_sha?.trim() || null,
     actual_sha: block !== null ? contractHash(block) : null,
+    size: { bytes: Buffer.byteLength(raw, "utf8"), words: wordCount(raw) },
   };
 }
 

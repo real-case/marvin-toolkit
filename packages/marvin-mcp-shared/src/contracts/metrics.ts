@@ -278,6 +278,21 @@ export const TaskMetricsQuality = z.object({
       unresolved: z.number().int().nonnegative(),
     })
     .nullable(),
+  /**
+   * Q13/Q14 — the spec's size at roll-up time (ADR-0046): UTF-8 bytes, words,
+   * and the budget `3 KB + 400 B per file + 500 B per criterion` its contract
+   * earns (null when the contract is unusable). Null when no spec was read.
+   * Missing on records rolled up before the field existed; a reader treats that
+   * as null.
+   */
+  spec_size: z
+    .object({
+      bytes: z.number().int().nonnegative(),
+      words: z.number().int().nonnegative(),
+      budget: z.number().int().positive().nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 export type TaskMetricsQuality = z.infer<typeof TaskMetricsQuality>;
 
