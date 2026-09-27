@@ -149,6 +149,13 @@ out-of-scope file. Resolve a FAIL before continuing: revert genuine scope creep,
 legitimate discovery — record it as a **SPEC GAP** and re-run with `allow: [<paths>]` (the sealed
 contract is immutable; do not silently edit it). This is the *mechanical* half of scope-creep
 detection; `marvin-tm-diff-critic` below is the *semantic* half.
+Two kinds of change never reach that FAIL and need no SPEC GAP: anything under `.marvin/` (the
+spec file included), and **by-product files** matching a `scope.exempt` pattern in
+`.marvin/config.json` — a reviewer subagent's agent-memory notes, a lock file an allowed dependency
+rewrites, a typed sidecar the project requires beside every module. The gate lists them as exempted,
+with the pattern that matched, so they stay visible. A by-product the project has not exempted is
+still a FAIL: record the SPEC GAP, and if it will recur on every task, suggest adding its pattern
+through `/marvin:track-config` (`scope_exempt`).
 
 1. **Verify.** Invoke `/marvin:task-verify feature`. In this chained call, pass `mode: feature`
    (and the `stack` if already known) forward so the tool skips re-detection (it calls the `verify`
@@ -426,6 +433,11 @@ Rationale: {why this was the minimal reasonable choice}
    one-line `detail` — never a credential, token or customer datum. Spec gaps per task are the direct
    feedback from implementation to intake, and the PR body is the only other place they survive.
 4. Never expand scope to fill a gap.
+
+A file the scope gate reports as **exempted** is not a gap: it matched a `scope.exempt` pattern the
+project configured for by-products, and recording it would only repeat what the gate already says.
+The same holds for anything under `.marvin/` — a mutation harness kept under `.marvin/task/runs/`
+included.
 
 ## Blocker protocol
 

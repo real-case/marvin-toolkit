@@ -226,6 +226,14 @@ test("rollup derives one block from the spec, journals and receipt, reports `ign
     );
     // one undeclared change: an untracked file the contract does not name
     writeFileSync(join(dir, "src-a.txt"), "changed\n");
+    // one by-product the project exempts (ADR-0045): the config reaches the
+    // roll-up through `performRollup`, the path all three anchors share
+    mkdirSync(join(dir, ".claude", "agent-memory", "critic"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "agent-memory", "critic", "MEMORY.md"), "# notes\n");
+    writeFileSync(
+      join(dir, ".marvin", "config.json"),
+      JSON.stringify({ scope: { exempt: [".claude/agent-memory/**"] } }),
+    );
 
     const runs = join(dir, ".marvin", "task", "runs");
     writeFileSync(
@@ -361,7 +369,16 @@ test("rollup derives one block from the spec, journals and receipt, reports `ign
     assert.equal(b.quality.spec_gaps, 1);
     assert.equal(b.quality.critics.spec.quality.verdict, "PASS WITH WARNINGS");
     assert.equal(b.quality.critics.diff, null);
-    assert.deepEqual(b.quality.scope_drift, { declared: 1, changed: 1, undeclared: ["src-a.txt"] });
+    assert.deepEqual(b.quality.scope_drift, {
+      declared: 1,
+      changed: 2,
+      undeclared: ["src-a.txt"],
+      exempt: [".claude/agent-memory/critic/MEMORY.md"],
+    });
+    assert.match(
+      text,
+      /Q1 exempted by scope\.exempt: 1 — \.claude\/agent-memory\/critic\/MEMORY\.md/,
+    );
     assert.equal(b.quality.oracle_strength.executable, 1);
     assert.ok(b.head_sha, "the head is recorded");
     assert.match(b.rolled_up_at, /^\d{4}-\d{2}-\d{2}T/);

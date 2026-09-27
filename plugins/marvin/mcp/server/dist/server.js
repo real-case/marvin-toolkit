@@ -28883,11 +28883,11 @@ var PROMPTS = [
   },
   {
     name: "track-config",
-    description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses",
+    description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses, scope exemptions",
     body: callTool(
       "task",
       { action: "config" },
-      "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown."
+      'Mine the user\'s message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker\'s exact workflow name), and `scope_exempt` (a JSON array of project-relative path patterns for by-product files the spec scope gate should not count as violations \u2014 `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","bun.lock"]; it replaces the whole list, so include the current entries when adding one). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.'
     )
   }
 ];
@@ -29017,6 +29017,9 @@ var AdrConfig = external_exports.object({
 var SpecConfig = external_exports.object({
   dir: external_exports.string().min(1).optional()
 });
+var ScopeConfig = external_exports.object({
+  exempt: external_exports.array(external_exports.string()).optional()
+});
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
 });
@@ -29036,6 +29039,8 @@ var Config = external_exports.object({
   adr: AdrConfig.optional(),
   /** Spec corpus location (ADR-0037); absent means detect/default. */
   spec: SpecConfig.optional(),
+  /** By-product path patterns the scope gate and Q1 exempt (ADR-0045); absent means none. */
+  scope: ScopeConfig.optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
@@ -29205,6 +29210,90 @@ function checkoutBranch(branch, cwd) {
   return git(["checkout", branch], cwd);
 }
 
+// src/lib/scope.ts
+function isMarvinArtifact(path) {
+  return path.startsWith(".marvin/");
+}
+function partitionScope(changed, opts) {
+  const allowed = new Set([...opts.allowlist].map(normalizeScopePath));
+  const specPath = opts.specPath ? normalizeScopePath(opts.specPath) : null;
+  const { matchers, rejected } = compileExemptions(opts.exempt ?? []);
+  const judged = [];
+  const outside = [];
+  const exempt = [];
+  for (const raw of changed) {
+    const path = normalizeScopePath(raw);
+    if (!path || isMarvinArtifact(path) || path === specPath) continue;
+    judged.push(path);
+    if (allowed.has(path)) continue;
+    const hit = matchers.find((m) => m.test(path));
+    if (hit) exempt.push({ path, pattern: hit.pattern });
+    else outside.push(path);
+  }
+  return { judged, outside, exempt, rejected };
+}
+function describeExemptions(exempt) {
+  const byPattern = /* @__PURE__ */ new Map();
+  for (const e of exempt) {
+    const paths = byPattern.get(e.pattern);
+    if (paths) paths.push(e.path);
+    else byPattern.set(e.pattern, [e.path]);
+  }
+  return [...byPattern].map(([pattern, paths]) => `\`${pattern}\` (${paths.length}): ${paths.join(", ")}`).join("; ");
+}
+function compileExemptions(patterns) {
+  const matchers = [];
+  const rejected = [];
+  for (const pattern of patterns) {
+    const issue2 = exemptPatternIssue(pattern);
+    if (issue2) {
+      rejected.push({ pattern, issue: issue2 });
+      continue;
+    }
+    const re = globToRegExp(canonicalPattern(pattern));
+    matchers.push({ pattern, test: (path) => re.test(path) });
+  }
+  return { matchers, rejected };
+}
+function exemptPatternIssue(pattern) {
+  if (typeof pattern !== "string" || pattern.trim() === "") return "it is empty";
+  const p = pattern.trim();
+  if (p.startsWith("/")) {
+    return "it starts with `/` \u2014 patterns are already relative to the project root, so drop the leading slash";
+  }
+  if (p.includes("\\")) return "it contains a backslash \u2014 write paths with forward slashes";
+  if (p.startsWith("!")) {
+    return "it starts with `!` \u2014 negation is not supported; list only the paths to exempt";
+  }
+  const segments = canonicalPattern(p).split("/");
+  if (segments.some((s) => s === ".." || s === "." || s === "")) {
+    return "it contains an empty, `.` or `..` segment \u2014 name paths inside the project, one `/` between segments";
+  }
+  if (!/[^*?/]/.test(p)) {
+    return "it is only wildcards \u2014 it would exempt every changed file and switch the scope gate off";
+  }
+  return null;
+}
+function canonicalPattern(pattern) {
+  let p = pattern.trim().replace(/^\.\//, "");
+  if (p.endsWith("/")) p = `${p}**`;
+  return p;
+}
+function globToRegExp(pattern) {
+  const segments = pattern.split("/");
+  let source = "";
+  segments.forEach((segment, i) => {
+    const last2 = i === segments.length - 1;
+    if (segment === "**") {
+      source += last2 ? ".*" : "(?:[^/]*/)*";
+      return;
+    }
+    source += segment.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*+/g, "[^/]*").replace(/\?/g, "[^/]");
+    if (!last2) source += "/";
+  });
+  return new RegExp(`^${source}$`);
+}
+
 // src/storage/config.ts
 function loadConfig(configPath, projectDir) {
   if (!existsSync(configPath)) {
@@ -29272,6 +29361,18 @@ function neutraliseUnusableSettings(config2) {
   }
   return warnings;
 }
+function scopeExemptWarnings(config2) {
+  const warnings = [];
+  for (const pattern of config2.scope?.exempt ?? []) {
+    const issue2 = exemptPatternIssue(pattern);
+    if (issue2) {
+      warnings.push(
+        `\`scope.exempt\` pattern ${JSON.stringify(pattern)} is ignored \u2014 ${issue2}. Files it was meant to exempt still count against a task's scope until it is fixed (\`/marvin:track-config\`).`
+      );
+    }
+  }
+  return warnings;
+}
 var PLACEHOLDER = /\{[^}]*\}/;
 function trackerTemplateIssue(template) {
   if (!template.includes("{tracker_id}")) {
@@ -29318,10 +29419,19 @@ function updateConfigFile(configPath, patch) {
     }
     raw = { ...json };
   }
-  for (const [key, value] of Object.entries(patch)) {
+  const { scope_exempt, ...topLevel } = patch;
+  for (const [key, value] of Object.entries(topLevel)) {
     if (value === void 0) continue;
     if (value === null) delete raw[key];
     else raw[key] = value;
+  }
+  if (scope_exempt !== void 0) {
+    const current = raw.scope;
+    const scope = typeof current === "object" && current !== null && !Array.isArray(current) ? { ...current } : {};
+    if (scope_exempt === null) delete scope.exempt;
+    else scope.exempt = scope_exempt;
+    if (Object.keys(scope).length === 0) delete raw.scope;
+    else raw.scope = scope;
   }
   const merged = Config.safeParse(raw);
   if (!merged.success) {
@@ -29344,6 +29454,22 @@ function parseStatusesJson(input) {
   const parsed = Statuses.safeParse(json);
   if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
   return { ok: true, statuses: parsed.data };
+}
+function parseExemptJson(input) {
+  let json;
+  try {
+    json = JSON.parse(input);
+  } catch (err3) {
+    const reason = err3 instanceof Error ? err3.message : String(err3);
+    return { ok: false, error: `not valid JSON: ${reason}` };
+  }
+  if (!Array.isArray(json) || json.some((p) => typeof p !== "string")) {
+    return { ok: false, error: "expected a JSON array of strings" };
+  }
+  const patterns = [...new Set(json.map((p) => p.trim()))];
+  const issues = patterns.map((p) => ({ p, issue: exemptPatternIssue(p) })).filter((x) => x.issue !== null).map((x) => `${JSON.stringify(x.p)}: ${x.issue}`);
+  if (issues.length > 0) return { ok: false, error: issues.join("; ") };
+  return { ok: true, patterns };
 }
 function zodIssues(error2) {
   return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
@@ -31541,6 +31667,9 @@ var TaskInput = external_exports.object({
   statuses: external_exports.string().optional().describe(
     'config: the board status vocabulary as a JSON array of {key, role, tracker_status?} \u2014 roles: todo|wip|review|done|blocked, e.g. [{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"}]'
   ),
+  scope_exempt: external_exports.string().optional().describe(
+    'config: by-product path patterns the spec scope gate and the metrics roll-up exempt (scope.exempt, ADR-0045), as a JSON array of strings \u2014 project-relative, `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","**/*.d.mts","bun.lock"]. Replaces the whole list; an empty string clears it'
+  ),
   edit: external_exports.boolean().optional().describe(
     "config: open the interactive form for the scalar settings instead of just showing the configuration"
   )
@@ -31548,7 +31677,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env2) {
   return defineTool({
     name: "task",
-    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
+    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary, the scope exemptions). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -31989,6 +32118,22 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
     }
     patch.statuses = parsed.statuses;
   }
+  if (input.scope_exempt !== void 0) {
+    if (input.scope_exempt.trim() === "") {
+      patch.scope_exempt = null;
+    } else {
+      const parsed = parseExemptJson(input.scope_exempt);
+      if (!parsed.ok) {
+        return errOk(
+          `Invalid \`scope_exempt\` \u2014 ${parsed.error}.
+Expected a JSON array of project-relative path patterns: \`**\` matches any number of directories, \`*\` anything within one segment, \`?\` one character; every pattern is anchored at the project root. Example:
+\`[".claude/agent-memory/**","**/*.d.mts","bun.lock"]\`
+Nothing was written.`
+        );
+      }
+      patch.scope_exempt = parsed.patterns;
+    }
+  }
   if (input.base_branch !== void 0) {
     const value = input.base_branch.trim();
     if (value !== "" && !isSafeBranchRef(value)) {
@@ -32020,7 +32165,7 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
   if (Object.keys(patch).length === 0 && input.edit) {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms \u2014 pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?})."
+        "This host does not support interactive forms \u2014 pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?}), `scope_exempt` (a JSON array of path patterns)."
       );
     }
     const data = await elicit(
@@ -32087,7 +32232,7 @@ function renderConfigView(env2, loaded) {
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
-  for (const w of settingWarnings) lines.push(`\u26A0 ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2)]) lines.push(`\u26A0 ${w}`, "");
   lines.push(`- **Project:** \`${env2.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
@@ -32112,8 +32257,25 @@ function renderConfigView(env2, loaded) {
     lines.push(`| ${s.key} | ${s.role} | ${s.tracker_status ?? "\u2014"} |`);
   }
   lines.push("");
+  lines.push("## Scope exemptions");
+  lines.push("");
+  const exempt = config2.scope?.exempt;
+  if (exempt === void 0) {
+    lines.push(
+      "_None configured \u2014 every changed file outside a spec's `files` list is a scope violation (a SPEC GAP). Set `scope_exempt` to exempt by-products such as reviewer agent memory or a lock file._"
+    );
+  } else if (exempt.length === 0) {
+    lines.push("_Configured as an empty list \u2014 nothing is exempt._");
+  } else {
+    for (const pattern of exempt) lines.push(`- \`${pattern}\``);
+    lines.push("");
+    lines.push(
+      "_Changed files matching these patterns are reported as exempted by the spec scope gate and in a task's metrics, never as violations or undeclared._"
+    );
+  }
+  lines.push("");
   lines.push(
-    "_Change settings by argument \u2014 `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}) \u2014 or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._"
+    "_Change settings by argument \u2014 `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}), `scope_exempt` (JSON array of path patterns; empty string clears) \u2014 or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._"
   );
   return lines.join("\n");
 }
@@ -33802,6 +33964,16 @@ var SERIES_METRICS = [
     pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null
   },
   {
+    // Present only where the project configures `scope.exempt` (ADR-0045), so
+    // its count is the tasks that ran under an exemption list, not every task.
+    group: "quality",
+    key: "scope_drift_exempt",
+    id: "Q1",
+    label: "by-product files exempted (scope.exempt)",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.exempt?.length ?? null
+  },
+  {
     group: "quality",
     key: "oracle_strength_share",
     id: "Q2",
@@ -34188,7 +34360,7 @@ function renderDashboard(env2, loaded, version2, input) {
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : [],
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...settingWarnings.map((w) => `- \u26A0 config: ${w}`)
+      ...[...settingWarnings, ...scopeExemptWarnings(config2)].map((w) => `- \u26A0 config: ${w}`)
     ],
     board: [
       "## Board",
@@ -34863,7 +35035,7 @@ function collectGit(projectRoot, base, notes) {
   }
   return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
 }
-function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
+function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now, scopeExempt) {
   const notes = [];
   const specPath = findSpecBySlug(slug, projectRoot, specConfig);
   const spec = specPath ? readRollupSpec(specPath, projectRoot, notes) : null;
@@ -34894,6 +35066,7 @@ function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
     critique,
     events: events.length ? events : null,
     git: git2,
+    scope_exempt: scopeExempt ?? null,
     notes
   };
 }
@@ -35117,12 +35290,22 @@ function rollUpMetrics(input) {
   let scope_drift = null;
   if (input.git?.changed_files && contract) {
     const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
-    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
-    const changed = input.git.changed_files.map(normalizeScopePath).filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    const exemptPatterns = input.scope_exempt ?? null;
+    const part = partitionScope(input.git.changed_files, {
+      allowlist: declared,
+      specPath: input.spec ? input.spec.path : null,
+      exempt: exemptPatterns
+    });
+    for (const r of part.rejected) {
+      notes.push(
+        `scope.exempt pattern ${JSON.stringify(r.pattern)} ignored \u2014 ${r.issue}; the files it names stay in Q1's undeclared list`
+      );
+    }
     scope_drift = {
       declared: declared.size,
-      changed: changed.length,
-      undeclared: changed.filter((p) => !declared.has(p)).sort()
+      changed: part.judged.length,
+      undeclared: part.outside.sort(),
+      exempt: exemptPatterns ? part.exempt.map((e) => e.path).sort() : null
     };
   }
   let oracle_strength = null;
@@ -35266,7 +35449,9 @@ function performRollup(req) {
   const { env: env2, projectRoot, config: config2, slug } = req;
   const base = req.base?.trim() || config2.base_branch;
   const now = req.now ?? (/* @__PURE__ */ new Date()).toISOString();
-  const block = rollUpMetrics(collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now));
+  const block = rollUpMetrics(
+    collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now, config2.scope?.exempt)
+  );
   const dir = metricsDirFor(env2, projectRoot);
   const path = recordPathFor(dir, slug, projectRoot, config2.spec);
   appendTaskMetrics(path, block);
@@ -36272,7 +36457,7 @@ var SpecInput = external_exports.object({
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   ),
   action: external_exports.enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"]).optional().describe(
-    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate). next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
+    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
   ),
   mode: external_exports.enum(["dor", "seal", "scope"]).optional().describe(
     "Deprecated synonym for `action`, kept so shipped callers keep working. Same three values; `action` wins when both are passed and they agree, and a disagreeing pair is rejected rather than answered for."
@@ -36294,7 +36479,7 @@ var SpecInput = external_exports.object({
   ),
   contractSha: external_exports.string().optional().describe("action: progress \u2014 the seal in force, when the writer knows one."),
   allow: external_exports.array(external_exports.string()).optional().describe(
-    "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs)."
+    "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs). By-product paths matching `scope.exempt` in .marvin/config.json need no entry here."
   ),
   base: external_exports.string().optional().describe(
     "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
@@ -36307,7 +36492,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -36345,7 +36530,7 @@ async function runSpec(input, env2) {
   }
   if (action === "seal") return verifySeal(raw, env2, projectRoot, diskPath);
   if (action === "scope") {
-    return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
+    return verifyScope(raw, env2, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
   const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
   const { type, checks, contractSha } = validateSpec(raw, projectRoot, config2.spec);
@@ -36786,7 +36971,7 @@ function pushTo(map, key, value) {
   if (bucket) bucket.push(value);
   else map.set(key, [value]);
 }
-function verifyScope(raw, projectRoot, allow, base, specPath) {
+function verifyScope(raw, env2, projectRoot, allow, base, specPath) {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const blockText = extractContractBlock(body);
@@ -36826,27 +37011,53 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
       )
     ]);
   }
-  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizeScopePath));
-  const specRel = specPath ? normalizeScopePath(relativeToRoot(specPath, projectRoot)) : null;
-  const ignored = (p) => p.startsWith(".marvin/") || p === specRel;
-  const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
-  const violations = changed.filter((p) => !allowed.has(p));
-  if (violations.length === 0) {
-    return result("PASS", type, [
+  const loaded = loadConfig(specConfigPath(env2, projectRoot));
+  const { judged, outside, exempt, rejected } = partitionScope(
+    changedFilesForScope(projectRoot, base),
+    {
+      allowlist: [...parsed.data.files.map((f) => f.path), ...allow],
+      specPath: specPath ? relativeToRoot(specPath, projectRoot) : null,
+      exempt: loaded.config.scope?.exempt
+    }
+  );
+  const exemptNote = exempt.length ? `; ${exempt.length} by-product file(s) exempted by scope.exempt \u2014 ${describeExemptions(exempt)}` : "";
+  const checks = [];
+  if (outside.length === 0) {
+    checks.push(
       pass(
         "scope",
         "Scope",
-        `all ${changed.length} in-scope changed file(s) are within the contract allowlist`
+        `all ${judged.length - exempt.length} in-scope changed file(s) are within the contract allowlist${exemptNote}`
       )
-    ]);
+    );
+  } else {
+    checks.push(
+      fail(
+        "scope",
+        "Scope",
+        `${outside.length} changed file(s) outside the contract allowlist (scope creep): ${outside.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or \u2014 if intentional \u2014 re-run with allow: [...] as a recorded SPEC GAP${exemptNote ? `${exemptNote}.` : "."}`
+      )
+    );
   }
-  return result("FAIL", type, [
-    fail(
-      "scope",
-      "Scope",
-      `${violations.length} changed file(s) outside the contract allowlist (scope creep): ${violations.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or \u2014 if intentional \u2014 re-run with allow: [...] as a recorded SPEC GAP.`
-    )
-  ]);
+  if (loaded.warning) {
+    checks.push(
+      warn(
+        "scope-config",
+        "Scope config",
+        `${loaded.warning} \u2014 the file was not applied, so no scope.exempt pattern is in force`
+      )
+    );
+  }
+  if (rejected.length) {
+    checks.push(
+      warn(
+        "scope-exempt",
+        "Scope exemptions",
+        `${rejected.length} scope.exempt pattern(s) ignored, so the files they name still count against the allowlist: ${rejected.map((r) => `${JSON.stringify(r.pattern)} (${r.issue})`).join("; ")}`
+      )
+    );
+  }
+  return result(computeVerdict2(checks), type, checks);
 }
 function relativeToRoot(p, root) {
   const np = normalizeScopePath(p);
@@ -37996,6 +38207,10 @@ function renderDigest(b, record2, terminalBlocks, ignored) {
     "",
     "## Quality",
     `- Q1 scope drift: ${q.scope_drift ? `${q.scope_drift.undeclared.length} undeclared of ${q.scope_drift.changed} changed (declared ${q.scope_drift.declared})${q.scope_drift.undeclared.length ? `: ${q.scope_drift.undeclared.join(", ")}` : ""}` : "\u2014"}`,
+    // Only when the project configures `scope.exempt`; null and a pre-0.26 record print nothing.
+    ...q.scope_drift?.exempt ? [
+      `- Q1 exempted by scope.exempt: ${q.scope_drift.exempt.length}${q.scope_drift.exempt.length ? ` \u2014 ${q.scope_drift.exempt.join(", ")}` : ""}`
+    ] : [],
     `- Q2 oracle strength: ${q.oracle_strength ? `${q.oracle_strength.executable}/${q.oracle_strength.criteria} executable (${pct(q.oracle_strength.share)})` : "\u2014"}`,
     `- Q3 red-green (bugfix): ${q.red_green ? `${q.red_green.proven}/${q.red_green.criteria} proven (${pct(q.red_green.share)})` : "\u2014"}`,
     `- Q4 not-run gates: ${q.not_run ? `${q.not_run.not_run}/${q.not_run.gates} (${pct(q.not_run.share)})` : "\u2014"}`,
@@ -38656,7 +38871,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.25.0";
+var VERSION = "0.26.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

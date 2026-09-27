@@ -185,6 +185,16 @@ export const SERIES_METRICS: readonly SeriesMetric[] = [
     pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null,
   },
   {
+    // Present only where the project configures `scope.exempt` (ADR-0045), so
+    // its count is the tasks that ran under an exemption list, not every task.
+    group: "quality",
+    key: "scope_drift_exempt",
+    id: "Q1",
+    label: "by-product files exempted (scope.exempt)",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.exempt?.length ?? null,
+  },
+  {
     group: "quality",
     key: "oracle_strength_share",
     id: "Q2",

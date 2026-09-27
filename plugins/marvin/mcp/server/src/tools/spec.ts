@@ -40,6 +40,7 @@ import {
   inGitRepo,
   normalizeScopePath as normalizePath,
 } from "../lib/git.js";
+import { describeExemptions, partitionScope } from "../lib/scope.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
@@ -142,7 +143,7 @@ const SpecInput = z.object({
     .enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"])
     .optional()
     .describe(
-      "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate). next: allocate the next ordering number for a new spec — the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to.",
+      "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec — the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to.",
     ),
   mode: z
     .enum(["dor", "seal", "scope"])
@@ -194,7 +195,7 @@ const SpecInput = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "action: scope — extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs).",
+      "action: scope — extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs). By-product paths matching `scope.exempt` in .marvin/config.json need no entry here.",
     ),
   base: z
     .string()
@@ -225,7 +226,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
@@ -291,7 +292,7 @@ async function runSpec(input: SpecInput, env: ServerEnv): Promise<ToolResult> {
 
   if (action === "seal") return verifySeal(raw, env, projectRoot, diskPath);
   if (action === "scope") {
-    return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
+    return verifyScope(raw, env, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
 
   // The `spec.dir` tier for the depends_on lookup follows the resolved root, as
@@ -1087,10 +1088,17 @@ function pushTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
  * eyeball. The semantic half (is an in-allowlist change *doing* something out of
  * scope?) stays with marvin-tm-diff-critic. marvin's own `.marvin/` artifacts and
  * the spec file are excluded; intentional out-of-allowlist files (recorded SPEC
- * GAPs) are passed in `allow`.
+ * GAPs) are passed in `allow`; by-product files matching a `scope.exempt`
+ * pattern in `.marvin/config.json` are not violations and are named in the
+ * detail (ADR-0045). The judgement itself is `partitionScope`, shared with the
+ * metrics roll-up so the gate and Q1 can never disagree.
+ *
+ * With no `scope.exempt` configured, or none matching, the answer is
+ * byte-identical to the gate's answer before exemptions existed.
  */
 function verifyScope(
   raw: string,
+  env: ServerEnv,
   projectRoot: string,
   allow: string[],
   base: string | undefined,
@@ -1138,35 +1146,78 @@ function verifyScope(
     ]);
   }
 
-  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizePath));
-  const specRel = specPath ? normalizePath(relativeToRoot(specPath, projectRoot)) : null;
-  const ignored = (p: string) => p.startsWith(".marvin/") || p === specRel;
+  // One argument, as every other action reads it: an absent file must not make
+  // the gate shell out to git for a base branch it never uses.
+  const loaded = loadConfig(specConfigPath(env, projectRoot));
+  const { judged, outside, exempt, rejected } = partitionScope(
+    changedFilesForScope(projectRoot, base),
+    {
+      allowlist: [...parsed.data.files.map((f) => f.path), ...allow],
+      specPath: specPath ? relativeToRoot(specPath, projectRoot) : null,
+      exempt: loaded.config.scope?.exempt,
+    },
+  );
 
-  const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
-  const violations = changed.filter((p) => !allowed.has(p));
+  // Appended only when something was exempted, so a project without
+  // `scope.exempt` — or one whose patterns matched nothing — reads exactly as
+  // before. When it is present it names every path and the pattern that took
+  // it, so an exemption is always visible in the answer that relied on it.
+  const exemptNote = exempt.length
+    ? `; ${exempt.length} by-product file(s) exempted by scope.exempt — ${describeExemptions(exempt)}`
+    : "";
 
-  if (violations.length === 0) {
-    return result("PASS", type, [
+  const checks: Check[] = [];
+  if (outside.length === 0) {
+    checks.push(
       pass(
         "scope",
         "Scope",
-        `all ${changed.length} in-scope changed file(s) are within the contract allowlist`,
+        `all ${judged.length - exempt.length} in-scope changed file(s) are within the contract allowlist${exemptNote}`,
       ),
-    ]);
+    );
+  } else {
+    checks.push(
+      fail(
+        "scope",
+        "Scope",
+        `${outside.length} changed file(s) outside the contract allowlist (scope creep): ${outside.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP${exemptNote ? `${exemptNote}.` : "."}`,
+      ),
+    );
   }
-  return result("FAIL", type, [
-    fail(
-      "scope",
-      "Scope",
-      `${violations.length} changed file(s) outside the contract allowlist (scope creep): ${violations.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP.`,
-    ),
-  ]);
+
+  // The config the exemptions come from could not be (fully) applied. Silence
+  // here would make the gate stricter than the project asked for with no
+  // explanation, so each reason becomes a warning beside the verdict.
+  if (loaded.warning) {
+    checks.push(
+      warn(
+        "scope-config",
+        "Scope config",
+        `${loaded.warning} — the file was not applied, so no scope.exempt pattern is in force`,
+      ),
+    );
+  }
+  if (rejected.length) {
+    checks.push(
+      warn(
+        "scope-exempt",
+        "Scope exemptions",
+        `${rejected.length} scope.exempt pattern(s) ignored, so the files they name still count against the allowlist: ${rejected
+          .map((r) => `${JSON.stringify(r.pattern)} (${r.issue})`)
+          .join("; ")}`,
+      ),
+    );
+  }
+
+  return result(computeVerdict(checks), type, checks);
 }
 
 // `changedFilesForScope` and `normalizePath` moved to `lib/git.ts` (ADR-0043):
 // the metrics roll-up computes scope drift over the same file set this gate
 // judges, and two copies of "what changed" would drift the first time either
-// was touched.
+// was touched. The judgement over that set — marvin's own files, the allowlist,
+// the `scope.exempt` by-products — moved to `lib/scope.ts` for the same reason
+// (ADR-0045).
 
 /** Make `p` relative to `root` when it is an absolute path under it. */
 function relativeToRoot(p: string, root: string): string {

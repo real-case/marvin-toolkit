@@ -79,7 +79,7 @@ For each file in the diff, classify:
 | **spec-adjacent** | File not listed, but change is a direct consequence of a listed change (e.g., updated caller of a modified signature) |
 | **out-of-scope** | File not listed, change is not required by any listed change |
 | **test** | New or modified test file |
-| **generated** | Lockfiles, snapshots, build artifacts |
+| **generated** | Lockfiles, snapshots, build artifacts, and any path matching a `scope.exempt` pattern in `.marvin/config.json` — a by-product the project has exempted from scope (ADR-0045), such as reviewer agent memory |
 
 ### 3. Run the critique checklist
 

@@ -69,7 +69,9 @@ If something is ambiguous:
 `action: "scope"` (pass the spec path) first — it FAILs if any changed file is outside
 the contract `files` allowlist. Treat a FAIL as scope creep: revert it, or record a SPEC GAP and
 re-run with `allow: [<paths>]`. (Falls back to the inline self-review checklist in §4 when the tool is
-unavailable.)
+unavailable.) Files under `.marvin/` and by-product files matching a `scope.exempt` pattern in
+`.marvin/config.json` — reviewer agent memory, a lock file, a typed sidecar — are not violations: the
+gate lists them as exempted with the matching pattern, and they need no SPEC GAP.
 
 **Run the gates.**
 - **Preferred — the `verify` tool.** If the `marvin` MCP `verify` tool is available, call it
@@ -385,6 +387,8 @@ Rationale: {why this was the minimal reasonable choice}
 
 3. **Record it durably** (ADR-0043), when the `metrics` tool is available: `action: "record"`, `kind: "spec-gap"`, `source: "marvin-tm-executor"`, the current section as `step`, the spec's `slug`, and the situation as a one-line `detail` — never a credential, token or customer datum.
 4. **Never expand scope** to fill a gap. If the spec doesn't mention error handling for a new edge case, add basic error handling — don't build a comprehensive error framework.
+
+A file the scope gate reports as **exempted** (it matched the project's `scope.exempt` by-product patterns) is not a gap, and neither is anything under `.marvin/`; do not record either. A recurring by-product the project has not exempted is still a SPEC GAP — say in the PR description that its pattern could be added to `scope.exempt`.
 
 ---
 
