@@ -2,7 +2,8 @@ name: Release
 
 # The marvin plugin is installed via the Claude Code marketplace (git), not npm.
 # A release is therefore a tag plus a GitHub Release whose notes come straight from
-# the plugin changelog. Tag a version to publish:
+# the plugin changelog: every version section since the previous release tag
+# (scripts/release-notes.mjs). Tag a version to publish:
 #   git tag v2.0.0-alpha.17 && git push origin v2.0.0-alpha.17
 on:
   push:
@@ -16,30 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history and tags: the notes span every version since the previous tag.
+          fetch-depth: 0
 
-      - name: Extract changelog notes for this tag
-        id: notes
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          # Pull the section for this version out of the plugin changelog.
-          notes=$(awk -v ver="$version" '
-            $0 ~ "^## \\[" ver "\\]" { capture = 1; next }
-            capture && /^## \[/ { exit }
-            capture { print }
-          ' plugins/marvin/CHANGELOG.md)
-          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
-            notes="See [plugins/marvin/CHANGELOG.md](../blob/main/plugins/marvin/CHANGELOG.md) for details."
-          fi
-          {
-            echo "body<<EOF"
-            echo "$notes"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+      - name: Build release notes from the changelog
+        run: node scripts/release-notes.mjs --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --server "$GITHUB_SERVER_URL" > "$RUNNER_TEMP/notes.md"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           name: marvin ${{ github.ref_name }}
-          body: ${{ steps.notes.outputs.body }}
+          body_path: ${{ runner.temp }}/notes.md
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
