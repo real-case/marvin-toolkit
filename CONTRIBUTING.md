@@ -113,7 +113,7 @@ GitHub Release, with no npm publish.
 
 1. Bump the version with `npm run sync-version <x.y.z>`, rebuild with `npm run build`, and update both changelogs — `plugins/marvin/CHANGELOG.md` for the plugin and the root `CHANGELOG.md` for marketplace-level changes.
 2. Tag and push: `git tag v<version> && git push origin v<version>`.
-3. The [release workflow](./.github/workflows/release.yml) opens a GitHub Release, drawing its notes from `plugins/marvin/CHANGELOG.md`. Pre-1.0 tags with an `-alpha`, `-beta`, or `-rc` suffix are marked as pre-releases automatically.
+3. The [release workflow](./.github/workflows/release.yml) opens a GitHub Release whose notes are every `plugins/marvin/CHANGELOG.md` section since the previous release tag, with relative links rewritten to point at the tagged files ([`scripts/release-notes.mjs`](./scripts/release-notes.mjs)). Pre-1.0 tags with an `-alpha`, `-beta`, or `-rc` suffix are marked as pre-releases automatically.
 
 ## License
 
