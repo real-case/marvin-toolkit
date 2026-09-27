@@ -37,7 +37,7 @@ the author *which* half of the critique produced the verdict they are routed by,
 the receipt records.
 
 - Critic verdict `BLOCK` → spec author must revise before DoR is attempted.
-- `PASS WITH WARNINGS` → DoR proceeds; warnings attached to the spec's "Future Considerations" or addressed at author's discretion.
+- `PASS WITH WARNINGS` → DoR proceeds; the author resolves each warning by editing the lines it names, or records an override in one line. Warnings are never parked in the spec: the receipt is where your report lives.
 - `PASS` → DoR proceeds normally.
 - `NEEDS_CONTEXT` → the author supplies the input you named and re-dispatches you **once**, stating that it is the re-dispatch. A second `NEEDS_CONTEXT` on the same critique is treated as `UNABLE`. `NEEDS_CONTEXT` is never the verdict recorded in the spec — it resolves on that re-dispatch or becomes `UNABLE`.
 - `UNABLE` → not a pass, and not a revision request either. The author records it verbatim in the spec's **Critic Verdict & Overrides** and carries it to the PR's **Spec critic** line exactly as a skipped critic is carried.
@@ -52,6 +52,10 @@ The critic's verdict is advisory — the author or user can override it, but an 
 ## Input
 
 A drafted spec (path or inline content). This is a candidate `.marvin/task/<slug>.md` that has not yet been finalized.
+
+The dispatch also states the spec's size and its budget, `3 KB + 400 B per file + 500 B per
+criterion`. When it does not, compute both yourself (`wc -c` on the spec, the counts from its
+contract).
 
 ## Workflow
 
@@ -82,12 +86,15 @@ Apply every category below. For each finding, emit one entry.
 - Is scope small enough for one PR, or should it be split?
 
 #### 3.2 Acceptance criteria
+- Does each criterion state observable behaviour? A criterion that describes the design ("uses a
+  map", "adds a helper") rather than what a caller can observe is a warning under this category.
 - Is each criterion testable from the outside? "Feels intuitive" and "is performant" without a threshold are **blockers**.
 - Is there a failure path for each criterion? "X should return 200" is incomplete without "X returns 4xx when Y".
 - Can a reviewer read the criteria and know, without running the code, what test proves each one?
-- Does each criterion's `oracle` name a *genuine* proof (a real test path/command, or a justified `prose-review`)? An `oracle` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate checks the oracle is typed, its `kind: test` ref is allowlisted, and that ≥1 criterion is non-prose-review; you check each one is *real*.
+- Does each criterion's `oracle` name a *genuine* proof (a real test path/command, or a justified `prose-review`)? An `oracle` that merely restates the criterion, or points at a test that would not actually exercise it, is a **blocker** — the mechanical `spec` gate checks the oracle is typed, its `kind: test` ref is allowlisted, that ≥1 criterion is non-prose-review, that every file an oracle command names exists or is planned (`oracle-paths`), that no test-name filter starts with `-` (`oracle-filter`), and it warns on a whole-suite command (`oracle-narrow`) and on a missing `failure:` line (`oracle-failure`). Do not re-report those; you check each oracle is *real* — above all, whether it can FAIL on the wrong implementation its `failure:` line describes.
 
 #### 3.3 Codebase grounding
+- The gate FAILs a `path:line` citation past the end of the file it names (`cite-lines`); a citation that points inside the file but at the wrong code is still yours to catch.
 - Does the Chosen Approach match existing patterns, or silently diverge? Divergence is acceptable — unexplained divergence is a **blocker**.
 - Does the `spec-contract` block's `files` name the real integration points, or just the obvious file? A plan that misses the true integration point — or omits a caller that must change — is a **blocker**.
 - Are there sibling patterns (the same logic elsewhere) the spec ignores?
@@ -111,6 +118,25 @@ Apply every category below. For each finding, emit one entry.
 - Language like "as discussed", "obviously", "clearly" — is the claimed consensus reflected in the codebase?
 - Acceptance criteria that only re-state the goal ("feature works as described") — these are **blockers**.
 - Any section that reads like filler ("standard error handling will apply") without specifics.
+
+#### 3.8 Economy
+Every other category asks what is missing. This one asks what is redundant, so that resolving your
+findings does not grow the spec on every round. A decision lives in exactly one place: a requirement
+in the contract (a criterion or a file intent), a design choice or trap in Chosen Approach, a
+default in Assumptions.
+- **`[redundancy]`** — a decision restated outside the place it lives, in different words or the
+  same. A **warning**; the fix is to delete the copy and refer to the id.
+- **`[drift]`** — a restatement that contradicts the contract: prose that says one thing while a
+  file row or criterion says another. A **blocker**, because an implementer cannot tell which copy
+  is authoritative; the fix is to delete the prose copy.
+- **`[prose-only]`** — a requirement that exists only in prose, where neither the gate nor you can
+  bind it to a proof. A **warning**; the fix is to move it into the contract as a criterion or an
+  intent.
+- **`[size]`** — the spec exceeds its budget. A **warning**, naming the sections that carry the
+  excess.
+
+Report each redundancy once, at the copy to delete. Never resolve an Economy finding by asking for
+more text.
 
 ### 4. Emit structured report
 
@@ -161,7 +187,7 @@ budget is part of this contract, not a style note.
 **The two axes.** `Compliance` is the spec against the project's conventions and the template's
 obligations — grounding, traceability realism, cited files that exist (workflow steps 1–2 and
 sections 3.1–3.3). `Quality` is the spec's intrinsic soundness — testable criteria, non-strawman
-variants, the confirmation-bias signals of section 3.7. Judge each independently and by the same
+variants, the confirmation-bias signals of section 3.7, and the Economy findings of section 3.8. Judge each independently and by the same
 rules; a spec can satisfy every formal obligation and still rest on criteria nothing can prove,
 and the single line used to hide that.
 
@@ -225,5 +251,6 @@ first report; repeating its agreed parts is the most expensive thing you can do.
 - **Specific beats stylistic.** "Acceptance criterion #3 can't be tested because the function returns `void` and has no observable side effect in [file:line]" beats "criteria are vague".
 - **One finding per issue.** Don't bundle three problems into one bullet.
 - **No new requirements.** If the spec is silent on something, you can flag it as a question, not add it as a blocker unless it is genuinely undefined behavior.
+- **A fix is an edit, not an addition.** Phrase every `Fix:` line as a change to the lines the finding names — replace, move or delete. A fix that asks for an explanatory paragraph grows the spec and is the pattern section 3.8 exists to reverse.
 - **Length discipline.** See **Output budget** above — it is countable, and it binds. If you have nothing to say in a category, say "none" and move on.
 - **You are not the decider.** Your report goes back to the spec author, who decides whether to revise or override. `BLOCK` is a recommendation, not a veto.

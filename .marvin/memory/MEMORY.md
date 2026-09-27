@@ -31,3 +31,4 @@ in the linked file. Recalled at task intake.
 - [A heuristic that picks the important lines can hide the verdict](a-heuristic-that-picks-the-important.md) — pitfall · 2026-09-03 · verify, output, regex, heuristics, review
 - [Don't let a feature PR be the first to track a tooling directory in a shared repo](don-t-let-a-feature-pr-be-the-first-to.md) — process · 2026-09-03 · pr-review, merge-conflicts, repo-hygiene, artefacts, naming
 - [The red phase of an oracle cannot be reconstructed after the code is green](the-red-phase-of-an-oracle-cannot-be.md) — process · 2026-09-05 · oracles, red-green, task-implement, verify, metrics, proof
+- [Validate the same canonical form the matcher compiles](validate-the-same-canonical-form-the.md) — bug-pattern · 2026-09-27 · validation, normalisation, scope, glob

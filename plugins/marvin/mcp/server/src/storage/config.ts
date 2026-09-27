@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type { z } from "zod";
 import { Config, Statuses, type Config as ConfigType, type StatusDef } from "./schema.js";
 import { defaultBranchFromOrigin, hasGit, inGitRepo } from "../lib/git.js";
+import { exemptPatternIssue } from "../lib/scope.js";
 
 /** Where the effective `base_branch` value came from (shown by the config view). */
 export type BaseBranchSource = "config" | "origin/HEAD" | "default";
@@ -98,6 +99,9 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
  * the wrong instrument here: it would reset `statuses`, `gates` and
  * `base_branch` too, so one mistyped URL template would take the board's
  * vocabulary with it.
+ *
+ * `scope.exempt` is checked elsewhere, per entry and without being rewritten —
+ * see `scopeExemptWarnings`.
  */
 function neutraliseUnusableSettings(config: ConfigType): string[] {
   const warnings: string[] = [];
@@ -108,6 +112,31 @@ function neutraliseUnusableSettings(config: ConfigType): string[] {
         `\`tracker_url_template\` ${JSON.stringify(config.tracker_url_template)} is ignored — ${issue}. Tasks show their tracker id without a link until it is fixed (\`/marvin:track-config\`).`,
       );
       config.tracker_url_template = null;
+    }
+  }
+  return warnings;
+}
+
+/**
+ * One warning per `scope.exempt` entry the matcher will ignore (ADR-0045), for
+ * the two views that report the configuration as a whole — the `config` action
+ * and the dashboard.
+ *
+ * Deliberately NOT part of `settingWarnings`, and the list is never rewritten
+ * at load. `compileExemptions` in `lib/scope.ts` is the single place a pattern
+ * is accepted or ignored, so the scope gate names the ignored entry in its own
+ * answer; dropping it here would leave the gate nothing to name. And the
+ * tracker view renders every `settingWarnings` entry as the reason its links
+ * are missing, which an exemption pattern never is.
+ */
+export function scopeExemptWarnings(config: ConfigType): string[] {
+  const warnings: string[] = [];
+  for (const pattern of config.scope?.exempt ?? []) {
+    const issue = exemptPatternIssue(pattern);
+    if (issue) {
+      warnings.push(
+        `\`scope.exempt\` pattern ${JSON.stringify(pattern)} is ignored — ${issue}. Files it was meant to exempt still count against a task's scope until it is fixed (\`/marvin:track-config\`).`,
+      );
     }
   }
   return warnings;
@@ -170,6 +199,13 @@ export interface ConfigPatch {
   tracker_url_template?: string | null;
   branch_template?: string | null;
   statuses?: StatusDef[] | null;
+  /**
+   * `scope.exempt` (ADR-0045). Nested, unlike the keys above, so it is merged
+   * into the file's `scope` object rather than replacing it: any other key a
+   * future tool keeps under `scope` survives, and clearing the list drops an
+   * emptied `scope` object instead of leaving `{}` behind.
+   */
+  scope_exempt?: string[] | null;
 }
 
 export type ConfigWriteResult =
@@ -216,10 +252,22 @@ export function updateConfigFile(configPath: string, patch: ConfigPatch): Config
     raw = { ...(json as Record<string, unknown>) };
   }
 
-  for (const [key, value] of Object.entries(patch)) {
+  const { scope_exempt, ...topLevel } = patch;
+  for (const [key, value] of Object.entries(topLevel)) {
     if (value === undefined) continue;
     if (value === null) delete raw[key];
     else raw[key] = value;
+  }
+  if (scope_exempt !== undefined) {
+    const current = raw.scope;
+    const scope: Record<string, unknown> =
+      typeof current === "object" && current !== null && !Array.isArray(current)
+        ? { ...(current as Record<string, unknown>) }
+        : {};
+    if (scope_exempt === null) delete scope.exempt;
+    else scope.exempt = scope_exempt;
+    if (Object.keys(scope).length === 0) delete raw.scope;
+    else raw.scope = scope;
   }
 
   const merged = Config.safeParse(raw);
@@ -253,6 +301,37 @@ export function parseStatusesJson(input: string): StatusesParse {
   const parsed = Statuses.safeParse(json);
   if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
   return { ok: true, statuses: parsed.data };
+}
+
+export type ExemptParse = { ok: true; patterns: string[] } | { ok: false; error: string };
+
+/**
+ * Parse the `scope_exempt` tool argument — a JSON array of strings, the same
+ * transport `statuses` uses — fail-closed: not JSON, not an array of strings, or
+ * any entry `compileExemptions` would ignore is an error naming every bad
+ * entry, and nothing is written. A pattern the loader would only warn about is
+ * refused here because writing it would persist a setting that does nothing.
+ * Entries are trimmed and de-duplicated, keeping first-seen order (the order in
+ * which the gate tries them).
+ */
+export function parseExemptJson(input: string): ExemptParse {
+  let json: unknown;
+  try {
+    json = JSON.parse(input);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `not valid JSON: ${reason}` };
+  }
+  if (!Array.isArray(json) || json.some((p) => typeof p !== "string")) {
+    return { ok: false, error: "expected a JSON array of strings" };
+  }
+  const patterns = [...new Set((json as string[]).map((p) => p.trim()))];
+  const issues = patterns
+    .map((p) => ({ p, issue: exemptPatternIssue(p) }))
+    .filter((x) => x.issue !== null)
+    .map((x) => `${JSON.stringify(x.p)}: ${x.issue}`);
+  if (issues.length > 0) return { ok: false, error: issues.join("; ") };
+  return { ok: true, patterns };
 }
 
 /** Render zod issues as `path: message` lines joined with "; " — the exact-issues contract. */

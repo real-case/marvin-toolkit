@@ -227,12 +227,24 @@ export type CriticAxes = z.infer<typeof CriticAxes>;
 
 /** Quality: what the work produced (Q1–Q10; Q11 and Q12 are computed by `series` and never stored). */
 export const TaskMetricsQuality = z.object({
-  /** Q1 — changed files against the base minus the contract's declared paths. */
+  /**
+   * Q1 — changed files against the base minus the contract's declared paths.
+   * `changed` counts every judged file, exempt ones included; `undeclared` is
+   * what remains after the declared and the exempt are removed.
+   */
   scope_drift: z
     .object({
       declared: z.number().int().nonnegative(),
       changed: z.number().int().nonnegative(),
       undeclared: z.array(z.string().min(1)),
+      /**
+       * Changed files the contract did not declare that matched a
+       * `scope.exempt` pattern — by-products, removed from `undeclared`
+       * (ADR-0045). Null when the project configures no `scope.exempt`: the
+       * source is absent, so no count of zero is claimed. Missing on records
+       * rolled up before the field existed; a reader treats that as null.
+       */
+      exempt: z.array(z.string().min(1)).nullable().optional(),
     })
     .nullable(),
   /** Q2 — criteria with an executable (test or command) oracle. */
@@ -266,6 +278,21 @@ export const TaskMetricsQuality = z.object({
       unresolved: z.number().int().nonnegative(),
     })
     .nullable(),
+  /**
+   * Q13/Q14 — the spec's size at roll-up time (ADR-0046): UTF-8 bytes, words,
+   * and the budget `3 KB + 400 B per file + 500 B per criterion` its contract
+   * earns (null when the contract is unusable). Null when no spec was read.
+   * Missing on records rolled up before the field existed; a reader treats that
+   * as null.
+   */
+  spec_size: z
+    .object({
+      bytes: z.number().int().nonnegative(),
+      words: z.number().int().nonnegative(),
+      budget: z.number().int().positive().nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 export type TaskMetricsQuality = z.infer<typeof TaskMetricsQuality>;
 
@@ -287,6 +314,15 @@ export const TaskMetricsRework = z.object({
     .nullable(),
   /** R4 — verification runs before the first green full run. */
   runs_before_green: NullableInt,
+  /**
+   * R5 — did a critic's highest DISPATCH pass exceed its budget (two for the
+   * spec critic, one on the light tier, three for the diff critic)? Null per
+   * critic when no dispatch of it was recorded. Missing on records rolled up
+   * before the field existed; a reader treats that as null.
+   */
+  critic_budget_exceeded: z
+    .object({ spec: z.boolean().nullable(), diff: z.boolean().nullable() })
+    .optional(),
 });
 export type TaskMetricsRework = z.infer<typeof TaskMetricsRework>;
 

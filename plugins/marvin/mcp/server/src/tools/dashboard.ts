@@ -15,7 +15,7 @@ import type {
   VerificationFreshness,
 } from "@marvin-toolkit/mcp-shared/contracts";
 import type { ServerEnv } from "../lib/env.js";
-import { loadConfig, type LoadedConfig } from "../storage/config.js";
+import { loadConfig, scopeExemptWarnings, type LoadedConfig } from "../storage/config.js";
 import { lessonsStats } from "../storage/lessons.js";
 import { listRecords } from "../storage/metrics.js";
 import { fmtMs, summarizeSeries, toSeriesRecords } from "../lib/metrics-series.js";
@@ -154,7 +154,7 @@ function renderDashboard(
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...settingWarnings.map((w) => `- ⚠ config: ${w}`),
+      ...[...settingWarnings, ...scopeExemptWarnings(config)].map((w) => `- ⚠ config: ${w}`),
     ],
     board: [
       "## Board",

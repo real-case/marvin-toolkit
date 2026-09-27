@@ -28883,11 +28883,11 @@ var PROMPTS = [
   },
   {
     name: "track-config",
-    description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses",
+    description: "Show or edit the board configuration \u2014 base branch, tracker URL template, branch template, statuses, scope exemptions",
     body: callTool(
       "task",
       { action: "config" },
-      "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown."
+      'Mine the user\'s message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), `statuses` (a JSON array of {key, role, tracker_status?} \u2014 roles: todo, wip, review, done, blocked; tracker_status is the tracker\'s exact workflow name), and `scope_exempt` (a JSON array of project-relative path patterns for by-product files the spec scope gate should not count as violations \u2014 `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","bun.lock"]; it replaces the whole list, so include the current entries when adding one). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.'
     )
   }
 ];
@@ -29017,6 +29017,9 @@ var AdrConfig = external_exports.object({
 var SpecConfig = external_exports.object({
   dir: external_exports.string().min(1).optional()
 });
+var ScopeConfig = external_exports.object({
+  exempt: external_exports.array(external_exports.string()).optional()
+});
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
 });
@@ -29036,6 +29039,16 @@ var Config = external_exports.object({
   adr: AdrConfig.optional(),
   /** Spec corpus location (ADR-0037); absent means detect/default. */
   spec: SpecConfig.optional(),
+  /** By-product path patterns the scope gate and Q1 exempt (ADR-0045); absent means none. */
+  scope: ScopeConfig.optional(),
+  /**
+   * What this host needs before a PR can merge — a version bump, a committed
+   * build artefact, a changelog entry (ADR-0046). It used to be rewritten into
+   * every spec's host-bindings block; `/marvin:task-start` now proposes it once
+   * per project and turns each entry that touches a file into a contract row.
+   * Absent means none recorded.
+   */
+  merge_obligations: external_exports.array(external_exports.string().min(1)).optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */
@@ -29163,13 +29176,18 @@ function hashObjects(paths, cwd) {
 }
 function changedFilesForScope(projectRoot, base) {
   const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const diff = git(["diff", "--name-only", forkPoint(ref, projectRoot)], projectRoot);
   const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
   const lines = [
     ...diff.ok ? diff.value.split("\n") : [],
     ...untracked.ok ? untracked.value.split("\n") : []
   ];
   return [...new Set(lines.map(normalizeScopePath).filter(Boolean))];
+}
+function forkPoint(ref, cwd) {
+  if (ref === "HEAD") return ref;
+  const mb = git(["merge-base", ref, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : ref;
 }
 function normalizeScopePath(p) {
   return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
@@ -29203,6 +29221,90 @@ function checkoutBranch(branch, cwd) {
     return { ok: false, code: -1, stderr: "uncommitted changes \u2014 commit or stash first" };
   }
   return git(["checkout", branch], cwd);
+}
+
+// src/lib/scope.ts
+function isMarvinArtifact(path) {
+  return path.startsWith(".marvin/");
+}
+function partitionScope(changed, opts) {
+  const allowed = new Set([...opts.allowlist].map(normalizeScopePath));
+  const specPath = opts.specPath ? normalizeScopePath(opts.specPath) : null;
+  const { matchers, rejected } = compileExemptions(opts.exempt ?? []);
+  const judged = [];
+  const outside = [];
+  const exempt = [];
+  for (const raw of changed) {
+    const path = normalizeScopePath(raw);
+    if (!path || isMarvinArtifact(path) || path === specPath) continue;
+    judged.push(path);
+    if (allowed.has(path)) continue;
+    const hit = matchers.find((m) => m.test(path));
+    if (hit) exempt.push({ path, pattern: hit.pattern });
+    else outside.push(path);
+  }
+  return { judged, outside, exempt, rejected };
+}
+function describeExemptions(exempt) {
+  const byPattern = /* @__PURE__ */ new Map();
+  for (const e of exempt) {
+    const paths = byPattern.get(e.pattern);
+    if (paths) paths.push(e.path);
+    else byPattern.set(e.pattern, [e.path]);
+  }
+  return [...byPattern].map(([pattern, paths]) => `\`${pattern}\` (${paths.length}): ${paths.join(", ")}`).join("; ");
+}
+function compileExemptions(patterns) {
+  const matchers = [];
+  const rejected = [];
+  for (const pattern of patterns) {
+    const issue2 = exemptPatternIssue(pattern);
+    if (issue2) {
+      rejected.push({ pattern, issue: issue2 });
+      continue;
+    }
+    const re = globToRegExp(canonicalPattern(pattern));
+    matchers.push({ pattern, test: (path) => re.test(path) });
+  }
+  return { matchers, rejected };
+}
+function exemptPatternIssue(pattern) {
+  if (typeof pattern !== "string" || pattern.trim() === "") return "it is empty";
+  const p = pattern.trim();
+  if (p.startsWith("/")) {
+    return "it starts with `/` \u2014 patterns are already relative to the project root, so drop the leading slash";
+  }
+  if (p.includes("\\")) return "it contains a backslash \u2014 write paths with forward slashes";
+  if (p.startsWith("!")) {
+    return "it starts with `!` \u2014 negation is not supported; list only the paths to exempt";
+  }
+  const segments = canonicalPattern(p).split("/");
+  if (segments.some((s) => s === ".." || s === "." || s === "")) {
+    return "it contains an empty, `.` or `..` segment \u2014 name paths inside the project, one `/` between segments";
+  }
+  if (!/[^*?/]/.test(canonicalPattern(p))) {
+    return "it is only wildcards \u2014 it would exempt every changed file and switch the scope gate off";
+  }
+  return null;
+}
+function canonicalPattern(pattern) {
+  let p = pattern.trim().replace(/^\.\//, "");
+  if (p.endsWith("/")) p = `${p}**`;
+  return p;
+}
+function globToRegExp(pattern) {
+  const segments = pattern.split("/");
+  let source = "";
+  segments.forEach((segment, i) => {
+    const last2 = i === segments.length - 1;
+    if (segment === "**") {
+      source += last2 ? ".*" : "(?:[^/]*/)*";
+      return;
+    }
+    source += segment.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*+/g, "[^/]*").replace(/\?/g, "[^/]");
+    if (!last2) source += "/";
+  });
+  return new RegExp(`^${source}$`);
 }
 
 // src/storage/config.ts
@@ -29272,6 +29374,18 @@ function neutraliseUnusableSettings(config2) {
   }
   return warnings;
 }
+function scopeExemptWarnings(config2) {
+  const warnings = [];
+  for (const pattern of config2.scope?.exempt ?? []) {
+    const issue2 = exemptPatternIssue(pattern);
+    if (issue2) {
+      warnings.push(
+        `\`scope.exempt\` pattern ${JSON.stringify(pattern)} is ignored \u2014 ${issue2}. Files it was meant to exempt still count against a task's scope until it is fixed (\`/marvin:track-config\`).`
+      );
+    }
+  }
+  return warnings;
+}
 var PLACEHOLDER = /\{[^}]*\}/;
 function trackerTemplateIssue(template) {
   if (!template.includes("{tracker_id}")) {
@@ -29318,10 +29432,19 @@ function updateConfigFile(configPath, patch) {
     }
     raw = { ...json };
   }
-  for (const [key, value] of Object.entries(patch)) {
+  const { scope_exempt, ...topLevel } = patch;
+  for (const [key, value] of Object.entries(topLevel)) {
     if (value === void 0) continue;
     if (value === null) delete raw[key];
     else raw[key] = value;
+  }
+  if (scope_exempt !== void 0) {
+    const current = raw.scope;
+    const scope = typeof current === "object" && current !== null && !Array.isArray(current) ? { ...current } : {};
+    if (scope_exempt === null) delete scope.exempt;
+    else scope.exempt = scope_exempt;
+    if (Object.keys(scope).length === 0) delete raw.scope;
+    else raw.scope = scope;
   }
   const merged = Config.safeParse(raw);
   if (!merged.success) {
@@ -29344,6 +29467,22 @@ function parseStatusesJson(input) {
   const parsed = Statuses.safeParse(json);
   if (!parsed.success) return { ok: false, error: zodIssues(parsed.error) };
   return { ok: true, statuses: parsed.data };
+}
+function parseExemptJson(input) {
+  let json;
+  try {
+    json = JSON.parse(input);
+  } catch (err3) {
+    const reason = err3 instanceof Error ? err3.message : String(err3);
+    return { ok: false, error: `not valid JSON: ${reason}` };
+  }
+  if (!Array.isArray(json) || json.some((p) => typeof p !== "string")) {
+    return { ok: false, error: "expected a JSON array of strings" };
+  }
+  const patterns = [...new Set(json.map((p) => p.trim()))];
+  const issues = patterns.map((p) => ({ p, issue: exemptPatternIssue(p) })).filter((x) => x.issue !== null).map((x) => `${JSON.stringify(x.p)}: ${x.issue}`);
+  if (issues.length > 0) return { ok: false, error: issues.join("; ") };
+  return { ok: true, patterns };
 }
 function zodIssues(error2) {
   return error2.issues.map((i) => i.path.length > 0 ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
@@ -31541,6 +31680,9 @@ var TaskInput = external_exports.object({
   statuses: external_exports.string().optional().describe(
     'config: the board status vocabulary as a JSON array of {key, role, tracker_status?} \u2014 roles: todo|wip|review|done|blocked, e.g. [{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"}]'
   ),
+  scope_exempt: external_exports.string().optional().describe(
+    'config: by-product path patterns the spec scope gate and the metrics roll-up exempt (scope.exempt, ADR-0045), as a JSON array of strings \u2014 project-relative, `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","**/*.d.mts","bun.lock"]. Replaces the whole list; an empty string clears it'
+  ),
   edit: external_exports.boolean().optional().describe(
     "config: open the interactive form for the scalar settings instead of just showing the configuration"
   )
@@ -31548,7 +31690,7 @@ var TaskInput = external_exports.object({
 function buildTaskTool(server, env2) {
   return defineTool({
     name: "task",
-    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
+    description: 'The marvin task board \u2014 create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary, the scope exemptions). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing \u2014 pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -31989,6 +32131,22 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
     }
     patch.statuses = parsed.statuses;
   }
+  if (input.scope_exempt !== void 0) {
+    if (input.scope_exempt.trim() === "") {
+      patch.scope_exempt = null;
+    } else {
+      const parsed = parseExemptJson(input.scope_exempt);
+      if (!parsed.ok) {
+        return errOk(
+          `Invalid \`scope_exempt\` \u2014 ${parsed.error}.
+Expected a JSON array of project-relative path patterns: \`**\` matches any number of directories, \`*\` anything within one segment, \`?\` one character; every pattern is anchored at the project root. Example:
+\`[".claude/agent-memory/**","**/*.d.mts","bun.lock"]\`
+Nothing was written.`
+        );
+      }
+      patch.scope_exempt = parsed.patterns;
+    }
+  }
   if (input.base_branch !== void 0) {
     const value = input.base_branch.trim();
     if (value !== "" && !isSafeBranchRef(value)) {
@@ -32020,7 +32178,7 @@ Expected a JSON array of {key, role, tracker_status?}: keys are lowercase kebab-
   if (Object.keys(patch).length === 0 && input.edit) {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms \u2014 pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?})."
+        "This host does not support interactive forms \u2014 pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?}), `scope_exempt` (a JSON array of path patterns)."
       );
     }
     const data = await elicit(
@@ -32087,7 +32245,7 @@ function renderConfigView(env2, loaded) {
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
-  for (const w of settingWarnings) lines.push(`\u26A0 ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2)]) lines.push(`\u26A0 ${w}`, "");
   lines.push(`- **Project:** \`${env2.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
@@ -32112,8 +32270,25 @@ function renderConfigView(env2, loaded) {
     lines.push(`| ${s.key} | ${s.role} | ${s.tracker_status ?? "\u2014"} |`);
   }
   lines.push("");
+  lines.push("## Scope exemptions");
+  lines.push("");
+  const exempt = config2.scope?.exempt;
+  if (exempt === void 0) {
+    lines.push(
+      "_None configured \u2014 every changed file outside a spec's `files` list is a scope violation (a SPEC GAP). Set `scope_exempt` to exempt by-products such as reviewer agent memory or a lock file._"
+    );
+  } else if (exempt.length === 0) {
+    lines.push("_Configured as an empty list \u2014 nothing is exempt._");
+  } else {
+    for (const pattern of exempt) lines.push(`- \`${pattern}\``);
+    lines.push("");
+    lines.push(
+      "_Changed files matching these patterns are reported as exempted by the spec scope gate and in a task's metrics, never as violations or undeclared._"
+    );
+  }
+  lines.push("");
   lines.push(
-    "_Change settings by argument \u2014 `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}) \u2014 or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._"
+    "_Change settings by argument \u2014 `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}), `scope_exempt` (JSON array of path patterns; empty string clears) \u2014 or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._"
   );
   return lines.join("\n");
 }
@@ -32214,8 +32389,8 @@ function buildTaskDetailTool(env2) {
 }
 function tasksHint(tasks) {
   if (tasks.length === 0) return "";
-  const listed = tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ");
-  return ` Tasks: ${listed}.`;
+  const listed2 = tasks.map((t) => `${t.frontmatter.id} (${t.frontmatter.title})`).join(", ");
+  return ` Tasks: ${listed2}.`;
 }
 function renderDetailText(d) {
   const lines = [];
@@ -32372,6 +32547,15 @@ var HostBindings = external_exports.object({
   merge_obligations: external_exports.array(external_exports.string()).optional(),
   gates: external_exports.record(external_exports.string()).optional()
 }).passthrough();
+var SPEC_SIZE_BASE = 3 * 1024;
+var SPEC_SIZE_PER_FILE = 400;
+var SPEC_SIZE_PER_CRITERION = 500;
+function specSizeBudget(files, criteria) {
+  return SPEC_SIZE_BASE + SPEC_SIZE_PER_FILE * files + SPEC_SIZE_PER_CRITERION * criteria;
+}
+function wordCount(text) {
+  return (text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
 function extractContractBlock(body) {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
   return m ? m[1] : null;
@@ -33716,8 +33900,8 @@ function listRecords(dir) {
 }
 
 // src/lib/metrics-series.ts
-function toSeriesRecords(listed) {
-  return listed.map((r) => ({
+function toSeriesRecords(listed2) {
+  return listed2.map((r) => ({
     slug: r.slug,
     filename: r.filename,
     events: r.events.length,
@@ -33800,6 +33984,16 @@ var SERIES_METRICS = [
     label: "undeclared files changed",
     unit: "count",
     pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null
+  },
+  {
+    // Present only where the project configures `scope.exempt` (ADR-0045), so
+    // its count is the tasks that ran under an exemption list, not every task.
+    group: "quality",
+    key: "scope_drift_exempt",
+    id: "Q1",
+    label: "by-product files exempted (scope.exempt)",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.exempt?.length ?? null
   },
   {
     group: "quality",
@@ -33922,6 +34116,22 @@ var SERIES_METRICS = [
     pick: (_r, extra) => extra.escaped
   },
   {
+    group: "quality",
+    key: "spec_bytes",
+    id: "Q13",
+    label: "spec size in bytes",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.bytes ?? null
+  },
+  {
+    group: "quality",
+    key: "spec_words",
+    id: "Q14",
+    label: "spec size in words",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.words ?? null
+  },
+  {
     group: "rework",
     key: "seals",
     id: "R1",
@@ -33984,6 +34194,18 @@ var SERIES_METRICS = [
     label: "verification runs before the first green",
     unit: "count",
     pick: (r) => r.block?.rework.runs_before_green ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_budget_exceeded",
+    id: "R5",
+    label: "tasks where a critic was dispatched past its budget",
+    unit: "share",
+    pick: (r) => {
+      const e = r.block?.rework.critic_budget_exceeded;
+      if (!e || e.spec === null && e.diff === null) return null;
+      return e.spec === true || e.diff === true ? 1 : 0;
+    }
   }
 ];
 function stat(values) {
@@ -34188,7 +34410,7 @@ function renderDashboard(env2, loaded, version2, input) {
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : [],
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...settingWarnings.map((w) => `- \u26A0 config: ${w}`)
+      ...[...settingWarnings, ...scopeExemptWarnings(config2)].map((w) => `- \u26A0 config: ${w}`)
     ],
     board: [
       "## Board",
@@ -34595,14 +34817,18 @@ function redGreenProof(runs, contractSha, criterionId) {
 
 // src/lib/metrics-collect.ts
 var import_yaml2 = __toESM(require_dist2());
+var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
 var PROGRESS_TAG = "spec-progress";
 var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
 var ProgressEntrySchema = external_exports.object({
   /** The spec's validated kebab-case slug — also this journal's filename. */
   slug: external_exports.string().min(1),
-  /** Which skill wrote it: step ids collide across the two pipelines. */
-  source: external_exports.enum(["task-start", "task-implement"]),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  /**
+   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
+   * is the headless implementation path, which numbers its steps `§1`–`§5`.
+   */
+  source: external_exports.enum(PROGRESS_SOURCES),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
   step: external_exports.string().min(1),
   kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
   /** One line of position and choice. Never a credential, token or customer datum. */
@@ -34834,7 +35060,8 @@ function readRollupSpec(specPath, projectRoot, notes) {
     frontmatter,
     contract,
     stamped_sha: frontmatter.contract_sha?.trim() || null,
-    actual_sha: block !== null ? contractHash(block) : null
+    actual_sha: block !== null ? contractHash(block) : null,
+    size: { bytes: Buffer.byteLength(raw, "utf8"), words: wordCount(raw) }
   };
 }
 function readRunResult(path, slug, notes) {
@@ -34863,7 +35090,7 @@ function collectGit(projectRoot, base, notes) {
   }
   return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
 }
-function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
+function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now, scopeExempt) {
   const notes = [];
   const specPath = findSpecBySlug(slug, projectRoot, specConfig);
   const spec = specPath ? readRollupSpec(specPath, projectRoot, notes) : null;
@@ -34894,6 +35121,7 @@ function collectRollupInputs(env2, projectRoot, specConfig, slug, base, now) {
     critique,
     events: events.length ? events : null,
     git: git2,
+    scope_exempt: scopeExempt ?? null,
     notes
   };
 }
@@ -34980,6 +35208,29 @@ function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
       )
     } : r
   );
+}
+
+// src/lib/critic-budget.ts
+var SPEC_CRITIC_BUDGET = 2;
+var SPEC_CRITIC_LIGHT_BUDGET = 1;
+var DIFF_CRITIC_BUDGET = 3;
+var LIGHT_TIER_MAX_FILES = 5;
+function isLightTier(spec) {
+  if (!spec || !spec.contract) return null;
+  const fm = spec.frontmatter;
+  const type = fm.type?.trim();
+  const low = type === "bugfix" ? fm.severity?.trim() === "low" : fm.risk?.trim() === "low";
+  return low && spec.contract.files.length <= LIGHT_TIER_MAX_FILES;
+}
+function criticBudget(critic, spec) {
+  if (critic !== "marvin-tm-spec-critic") return { limit: DIFF_CRITIC_BUDGET, tier: null };
+  const light = isLightTier(spec);
+  if (light === null) return { limit: SPEC_CRITIC_BUDGET, tier: null };
+  return light ? { limit: SPEC_CRITIC_LIGHT_BUDGET, tier: "light" } : { limit: SPEC_CRITIC_BUDGET, tier: "standard" };
+}
+function budgetStatus(pass2, limit) {
+  if (pass2 > limit) return "exceeded";
+  return pass2 === limit ? "final" : "within";
 }
 
 // src/lib/metrics-rollup.ts
@@ -35083,9 +35334,15 @@ function rollUpMetrics(input) {
   }
   let implement_ms = null;
   if (progress) {
-    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
-    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
-    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    const start = progress.find(
+      (e) => e.source === "task-implement" && e.step === "2.5" || e.source === "marvin-tm-executor" && e.step === "\xA71"
+    );
+    if (!start) {
+      notes.push(
+        "T2: the progress journal has no task-implement step 2.5 or marvin-tm-executor \xA71 entry"
+      );
+    } else if (!lastCriterion)
+      notes.push("T2: the progress journal records no completed criterion");
     else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
   }
   let first_green_ms = null;
@@ -35117,12 +35374,22 @@ function rollUpMetrics(input) {
   let scope_drift = null;
   if (input.git?.changed_files && contract) {
     const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
-    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
-    const changed = input.git.changed_files.map(normalizeScopePath).filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    const exemptPatterns = input.scope_exempt ?? null;
+    const part = partitionScope(input.git.changed_files, {
+      allowlist: declared,
+      specPath: input.spec ? input.spec.path : null,
+      exempt: exemptPatterns
+    });
+    for (const r of part.rejected) {
+      notes.push(
+        `scope.exempt pattern ${JSON.stringify(r.pattern)} ignored \u2014 ${r.issue}; the files it names stay in Q1's undeclared list`
+      );
+    }
     scope_drift = {
       declared: declared.size,
-      changed: changed.length,
-      undeclared: changed.filter((p) => !declared.has(p)).sort()
+      changed: part.judged.length,
+      undeclared: part.outside.sort(),
+      exempt: exemptPatterns ? part.exempt.map((e) => e.path).sort() : null
     };
   }
   let oracle_strength = null;
@@ -35172,6 +35439,10 @@ function rollUpMetrics(input) {
     }
     oracle_resolution = { by_source, unresolved };
   }
+  const spec_size = input.spec?.size ? {
+    ...input.spec.size,
+    budget: contract ? specSizeBudget(contract.files.length, contract.criteria.length) : null
+  } : null;
   const quality = {
     scope_drift,
     oracle_strength,
@@ -35182,7 +35453,8 @@ function rollUpMetrics(input) {
     spec_gaps,
     open_items,
     dor_first_call,
-    oracle_resolution
+    oracle_resolution,
+    spec_size
   };
   let seals = null;
   let reseals = null;
@@ -35205,12 +35477,23 @@ function rollUpMetrics(input) {
     red_green: events.filter((e) => e.kind === "fix-round" && e.loop === "red-green").length
   } : null;
   const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
+  const budgetExceeded = (critic) => {
+    if (!events) return null;
+    const passes = events.filter((e) => e.kind === "critic-dispatch" && e.critic === critic).map((e) => e.pass ?? 0);
+    if (!passes.length) return null;
+    return Math.max(...passes) > criticBudget(critic, input.spec).limit;
+  };
+  const critic_budget_exceeded = {
+    spec: budgetExceeded("marvin-tm-spec-critic"),
+    diff: budgetExceeded("marvin-tm-diff-critic")
+  };
   const rework = {
     seals,
     reseals,
     critic_passes,
     fix_rounds,
-    runs_before_green
+    runs_before_green,
+    critic_budget_exceeded
   };
   const sources = {
     spec: presence(input.spec),
@@ -35266,7 +35549,9 @@ function performRollup(req) {
   const { env: env2, projectRoot, config: config2, slug } = req;
   const base = req.base?.trim() || config2.base_branch;
   const now = req.now ?? (/* @__PURE__ */ new Date()).toISOString();
-  const block = rollUpMetrics(collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now));
+  const block = rollUpMetrics(
+    collectRollupInputs(env2, projectRoot, config2.spec, slug, base, now, config2.scope?.exempt)
+  );
   const dir = metricsDirFor(env2, projectRoot);
   const path = recordPathFor(dir, slug, projectRoot, config2.spec);
   appendTaskMetrics(path, block);
@@ -36027,6 +36312,13 @@ function redGreenStatus(projectRoot, specSlug, specConfig) {
   if (!slug) return none;
   const spec = readSealedSpec(slug, projectRoot, specConfig);
   if ("error" in spec) return none;
+  if (spec.type === "feature") {
+    const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
+    if (tests.length === 0) return none;
+    const runs2 = readOracleRuns(runsDirOf(projectRoot), slug);
+    const proven = tests.some((c) => redGreenProof(runs2, spec.contractSha, c.id) === "proven");
+    return proven ? { status: "proven", unproven: [] } : { status: "missing", unproven: [tests[0].id] };
+  }
   if (spec.type !== "bugfix") return none;
   const regression = spec.criteria.filter((c) => c.regression === true);
   if (regression.length === 0) return none;
@@ -36228,31 +36520,14 @@ var import_yaml4 = __toESM(require_dist2());
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
-var FEATURE_REQUIRED = [
-  "goal",
-  "data config",
-  "chosen approach",
-  "test plan",
-  "definition of done",
-  "non goals",
-  "open questions",
-  "security nfr"
-];
-var FEATURE_RECOMMENDED = [
-  "context",
-  "why this over alternatives",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes",
-  "future considerations"
-];
+var FEATURE_REQUIRED = ["goal", "chosen approach", "non goals", "open questions"];
+var FEATURE_RECOMMENDED = ["context", "assumptions", "critic verdict overrides"];
 var BUGFIX_REQUIRED = [
   "problem",
   "reproduction steps",
   "root cause analysis",
   "fix approach",
   "regression test specification",
-  "definition of done",
   "non goals",
   "open questions"
 ];
@@ -36260,9 +36535,13 @@ var BUGFIX_RECOMMENDED = [
   "expected behavior",
   "severity impact",
   "assumptions",
-  "critic verdict overrides",
-  "design notes"
+  "critic verdict overrides"
 ];
+var AC_STATEMENT_MAX_WORDS = 40;
+var FILE_INTENT_MAX_WORDS = 60;
+var LIGHT_TIER_MAX_FILES2 = 5;
+var SPLIT_MAX_FILES = 15;
+var SPLIT_MAX_CRITERIA = 12;
 var SpecInput = external_exports.object({
   specPath: external_exports.string().optional().describe("Path to the spec file to validate (relative to projectRoot or absolute)."),
   specContent: external_exports.string().optional().describe(
@@ -36272,7 +36551,7 @@ var SpecInput = external_exports.object({
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   ),
   action: external_exports.enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"]).optional().describe(
-    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate). next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
+    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
   ),
   mode: external_exports.enum(["dor", "seal", "scope"]).optional().describe(
     "Deprecated synonym for `action`, kept so shipped callers keep working. Same three values; `action` wins when both are passed and they agree, and a disagreeing pair is rejected rather than answered for."
@@ -36280,8 +36559,10 @@ var SpecInput = external_exports.object({
   slug: external_exports.string().optional().describe(
     "action: next \u2014 the kebab-case slug of the spec being created, so the answer carries the composed filename and any collision with an existing spec. action: progress / resume \u2014 the slug whose journal is written or read (it is also the journal's filename, so it is rejected rather than sanitised)."
   ),
-  source: external_exports.enum(["task-start", "task-implement"]).optional().describe("action: progress \u2014 which skill is writing; step ids collide across the two."),
-  step: external_exports.string().optional().describe(`action: progress \u2014 the writer's own step id ("1.5", "4F", "5F", "2.5").`),
+  source: external_exports.enum(PROGRESS_SOURCES).optional().describe(
+    "action: progress \u2014 which writer: task-start, task-implement, or the headless marvin-tm-executor; step ids collide across them."
+  ),
+  step: external_exports.string().optional().describe(`action: progress \u2014 the writer's own step id ("1.5", "4F", "5F", "2.5", "\xA71").`),
   kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]).optional().describe(
     'action: progress \u2014 what this entry records. "archived" is the boundary a resumed run appends when the user chooses to start clean; everything before it stops counting without being deleted.'
   ),
@@ -36294,10 +36575,10 @@ var SpecInput = external_exports.object({
   ),
   contractSha: external_exports.string().optional().describe("action: progress \u2014 the seal in force, when the writer knows one."),
   allow: external_exports.array(external_exports.string()).optional().describe(
-    "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs)."
+    "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs). By-product paths matching `scope.exempt` in .marvin/config.json need no entry here."
   ),
   base: external_exports.string().optional().describe(
-    "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
+    "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes; the diff starts at its merge base with HEAD, so commits that reached the base after the fork are not counted."
   )
 });
 var SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
@@ -36307,7 +36588,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -36345,7 +36626,7 @@ async function runSpec(input, env2) {
   }
   if (action === "seal") return verifySeal(raw, env2, projectRoot, diskPath);
   if (action === "scope") {
-    return verifyScope(raw, projectRoot, input.allow ?? [], input.base, input.specPath);
+    return verifyScope(raw, env2, projectRoot, input.allow ?? [], input.base, input.specPath);
   }
   const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
   const { type, checks, contractSha } = validateSpec(raw, projectRoot, config2.spec);
@@ -36749,11 +37030,11 @@ function collectSpecFindings(corpus, dir, dirs, projectRoot) {
     const cur = numbers[i];
     if (cur - prev > 1) {
       const size = cur - prev - 1;
-      const listed = Math.min(size, MAX_LISTED_HOLE_IDS);
-      const shown = Array.from({ length: listed }, (_, k) => formatSpecId(prev + 1 + k, width)).map(
+      const listed2 = Math.min(size, MAX_LISTED_HOLE_IDS);
+      const shown = Array.from({ length: listed2 }, (_, k) => formatSpecId(prev + 1 + k, width)).map(
         (g) => `\`${g}\``
       );
-      const missing = size > listed ? `${shown.join(", ")}, and ${size - listed} more` : shown.join(", ");
+      const missing = size > listed2 ? `${shown.join(", ")}, and ${size - listed2} more` : shown.join(", ");
       findings.push({
         kind: "numbering-hole",
         severity: "warning",
@@ -36786,7 +37067,7 @@ function pushTo(map, key, value) {
   if (bucket) bucket.push(value);
   else map.set(key, [value]);
 }
-function verifyScope(raw, projectRoot, allow, base, specPath) {
+function verifyScope(raw, env2, projectRoot, allow, base, specPath) {
   const { frontmatter, body } = parseFrontmatter(raw);
   const type = frontmatter.type ?? null;
   const blockText = extractContractBlock(body);
@@ -36826,27 +37107,53 @@ function verifyScope(raw, projectRoot, allow, base, specPath) {
       )
     ]);
   }
-  const allowed = new Set([...parsed.data.files.map((f) => f.path), ...allow].map(normalizeScopePath));
-  const specRel = specPath ? normalizeScopePath(relativeToRoot(specPath, projectRoot)) : null;
-  const ignored = (p) => p.startsWith(".marvin/") || p === specRel;
-  const changed = changedFilesForScope(projectRoot, base).filter((p) => !ignored(p));
-  const violations = changed.filter((p) => !allowed.has(p));
-  if (violations.length === 0) {
-    return result("PASS", type, [
+  const loaded = loadConfig(specConfigPath(env2, projectRoot));
+  const { judged, outside, exempt, rejected } = partitionScope(
+    changedFilesForScope(projectRoot, base),
+    {
+      allowlist: [...parsed.data.files.map((f) => f.path), ...allow],
+      specPath: specPath ? relativeToRoot(specPath, projectRoot) : null,
+      exempt: loaded.config.scope?.exempt
+    }
+  );
+  const exemptNote = exempt.length ? `; ${exempt.length} by-product file(s) exempted by scope.exempt \u2014 ${describeExemptions(exempt)}` : "";
+  const checks = [];
+  if (outside.length === 0) {
+    checks.push(
       pass(
         "scope",
         "Scope",
-        `all ${changed.length} in-scope changed file(s) are within the contract allowlist`
+        `all ${judged.length - exempt.length} in-scope changed file(s) are within the contract allowlist${exemptNote}`
       )
-    ]);
+    );
+  } else {
+    checks.push(
+      fail(
+        "scope",
+        "Scope",
+        `${outside.length} changed file(s) outside the contract allowlist (scope creep): ${outside.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or \u2014 if intentional \u2014 re-run with allow: [...] as a recorded SPEC GAP${exemptNote ? `${exemptNote}.` : "."}`
+      )
+    );
   }
-  return result("FAIL", type, [
-    fail(
-      "scope",
-      "Scope",
-      `${violations.length} changed file(s) outside the contract allowlist (scope creep): ${violations.join(", ")}. Either add them to the spec's files list (amend the spec, then re-seal), or \u2014 if intentional \u2014 re-run with allow: [...] as a recorded SPEC GAP.`
-    )
-  ]);
+  if (loaded.warning) {
+    checks.push(
+      warn(
+        "scope-config",
+        "Scope config",
+        `${loaded.warning} \u2014 the file was not applied, so no scope.exempt pattern is in force`
+      )
+    );
+  }
+  if (rejected.length) {
+    checks.push(
+      warn(
+        "scope-exempt",
+        "Scope exemptions",
+        `${rejected.length} scope.exempt pattern(s) ignored, so the files they name still count against the allowlist: ${rejected.map((r) => `${JSON.stringify(r.pattern)} (${r.issue})`).join("; ")}`
+      )
+    );
+  }
+  return result(computeVerdict2(checks), type, checks);
 }
 function relativeToRoot(p, root) {
   const np = normalizeScopePath(p);
@@ -36861,14 +37168,24 @@ function validateSpec(raw, projectRoot, specConfig) {
   checks.push(...checkFrontmatter(frontmatter, type));
   const sections = parseSections(body);
   if (type === "feature" || type === "bugfix") {
-    const [required2, recommended] = type === "feature" ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
+    const contract = parsedContract(body);
+    const lightTier = type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract !== null && contract.files.length <= LIGHT_TIER_MAX_FILES2;
+    const [required2, recommended] = type === "feature" ? [
+      FEATURE_REQUIRED,
+      lightTier ? FEATURE_RECOMMENDED.filter((s) => s !== "context") : FEATURE_RECOMMENDED
+    ] : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required2, recommended));
+    if (type === "feature" && (frontmatter.risk ?? "").trim() === "high") {
+      checks.push(checkSecurityNfr(sections.get("security nfr")));
+    }
+    if (contract) checks.push(...checkSize(raw, contract));
     checks.push(checkOpenQuestions(sections.get("open questions")));
     checks.push(checkAssumptions(sections.get("assumptions")));
     checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
     const hb = checkHostBindings(body);
     checks.push(...hb.checks);
     checks.push(...checkContractBlock(body, type, projectRoot, hb.specLocation, specConfig));
+    checks.push(...checkCitations(body, plannedFiles(body), projectRoot));
   } else {
     checks.push(
       fail("type", "Frontmatter", "cannot validate sections without a valid type (feature|bugfix)")
@@ -37000,6 +37317,7 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   checks.push(...checkCriteria(c, type));
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
+  checks.push(...checkOracles(c, projectRoot));
   checks.push(...checkDependsOn(c.depends_on, specLocation, projectRoot, specConfig));
   return checks;
 }
@@ -37087,12 +37405,12 @@ function checkFiles(c, projectRoot) {
     if ((f.action === "edit" || f.action === "delete") && !exists) missing.push(f.path);
     if (f.action === "new" && exists) newButExists.push(f.path);
   }
-  if (c.files.length > 12) {
+  if (c.files.length > SPLIT_MAX_FILES || c.criteria.length > SPLIT_MAX_CRITERIA) {
     checks.push(
       warn(
         "fcp-size",
         "Spec contract",
-        `${c.files.length} files planned \u2014 confirm this is one PR, not several (scope gate)`
+        `${c.files.length} files and ${c.criteria.length} criteria planned (threshold ${SPLIT_MAX_FILES} / ${SPLIT_MAX_CRITERIA}) \u2014 the split must have been presented explicitly at Step 4.5F`
       )
     );
   }
@@ -37278,6 +37596,312 @@ function testPath(ref) {
   if (!file.includes("/")) return null;
   if (!/\.[A-Za-z0-9]+$/.test(file)) return null;
   return file;
+}
+var CITED_PATH = /(?<![\w./:@~-])((?:\.{1,2}\/)?\.?[\w@+-][\w@.+-]*(?:\/\.?[\w@+-][\w@.+-]*)*\.[A-Za-z][A-Za-z0-9]*)(:\d+(?:\s?[-–]\s?\d+)?(?:,\s?\d+(?:\s?[-–]\s?\d+)?)*)?/g;
+var PATHISH = /^(?:\.{1,2}\/)?(?:\.?[\w@+-][\w@.+-]*\/)+\.?[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]*$/;
+var MAX_CITED_BYTES = 8 * 1024 * 1024;
+var MAX_LISTED = 8;
+function plannedFiles(body) {
+  return parsedContract(body)?.files ?? [];
+}
+function parsedContract(body) {
+  const text = extractContractBlock(body);
+  if (text === null) return null;
+  try {
+    const parsed = SpecContract.safeParse((0, import_yaml4.parse)(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+function checkSize(raw, c) {
+  const checks = [];
+  const bytes = Buffer.byteLength(raw, "utf8");
+  const budget = specSizeBudget(c.files.length, c.criteria.length);
+  checks.push(
+    bytes > budget ? warn(
+      "spec-size",
+      "Size",
+      `${bytes} bytes against a budget of ${budget} (3 KB + 400 B \xD7 ${c.files.length} files + 500 B \xD7 ${c.criteria.length} criteria) \u2014 delete restatement: a fact lives in the contract and prose refers to it by id`
+    ) : pass("spec-size", "Size", `${bytes} bytes within the budget of ${budget}`)
+  );
+  const longAc = c.criteria.map((cr) => [cr.id, wordCount(cr.statement)]).filter(([, n]) => n > AC_STATEMENT_MAX_WORDS);
+  if (longAc.length) {
+    checks.push(
+      warn(
+        "ac-length",
+        "Acceptance Criteria",
+        `statement over ${AC_STATEMENT_MAX_WORDS} words: ${longAc.map(([id, n]) => `${id} (${n})`).join(", ")} \u2014 one behaviour per criterion, as Given/When/Then`
+      )
+    );
+  }
+  const longIntent = c.files.map((f) => [f.id, wordCount(f.intent)]).filter(([, n]) => n > FILE_INTENT_MAX_WORDS);
+  if (longIntent.length) {
+    checks.push(
+      warn(
+        "intent-length",
+        "File intents",
+        `intent over ${FILE_INTENT_MAX_WORDS} words: ${longIntent.map(([id, n]) => `${id} (${n})`).join(", ")} \u2014 say what changes in the file; a test file names the criteria it covers`
+      )
+    );
+  }
+  return checks;
+}
+function checkSecurityNfr(section) {
+  return section === void 0 ? warn(
+    "security-nfr",
+    "Security / NFR",
+    "risk: high but no Security / NFR section \u2014 state the concern and the criterion or file that addresses it"
+  ) : pass("security-nfr", "Security / NFR", "present for a risk: high spec");
+}
+function stripFences(body) {
+  const out = [];
+  let fence2 = null;
+  for (const line of body.split("\n")) {
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const marker = m[1][0];
+      if (fence2 === null) fence2 = marker;
+      else if (fence2 === marker) fence2 = null;
+      continue;
+    }
+    if (fence2 === null) out.push(line);
+  }
+  return out.join("\n");
+}
+function listed(items) {
+  const head = items.slice(0, MAX_LISTED).join(", ");
+  return items.length > MAX_LISTED ? `${head} and ${items.length - MAX_LISTED} more` : head;
+}
+function lineCount(abs, cache) {
+  if (cache.has(abs)) return cache.get(abs);
+  let n = null;
+  try {
+    const st = statSync(abs);
+    if (st.isFile() && st.size <= MAX_CITED_BYTES) {
+      const text = readFileSync(abs, "utf8");
+      n = text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+    }
+  } catch {
+    n = null;
+  }
+  cache.set(abs, n);
+  return n;
+}
+function citedFile(path, projectRoot, tracked) {
+  const direct = join(projectRoot, path);
+  if (existsSync(direct)) return direct;
+  const suffix = `/${path}`;
+  const hits = tracked().filter((f) => f.endsWith(suffix));
+  return hits.length === 1 ? join(projectRoot, hits[0]) : null;
+}
+function checkCitations(body, planned, projectRoot) {
+  const plannedNew = new Set(
+    planned.filter((f) => f.action === "new").map((f) => normalizeScopePath(f.path))
+  );
+  let trackedList = null;
+  const tracked = () => {
+    if (trackedList === null) {
+      const r = git(["ls-files"], projectRoot, { maxBuffer: 64 * 1024 * 1024 });
+      trackedList = r.ok ? r.value.split("\n").filter(Boolean) : [];
+    }
+    return trackedList;
+  };
+  const cache = /* @__PURE__ */ new Map();
+  const stale = /* @__PURE__ */ new Set();
+  let citations = 0;
+  for (const m of stripFences(body).matchAll(CITED_PATH)) {
+    const tail = m[2];
+    if (!tail) continue;
+    const path = normalizeScopePath(m[1]);
+    if (isAbsolute(path) || path.startsWith(".marvin/") || path.includes("..")) continue;
+    if (plannedNew.has(path)) continue;
+    const abs = citedFile(path, projectRoot, tracked);
+    const lines = abs ? lineCount(abs, cache) : null;
+    if (lines === null) continue;
+    citations += 1;
+    const cited = (tail.match(/\d+/g) ?? []).map(Number);
+    if (cited.some((n) => n < 1 || n > lines)) {
+      stale.add(`${path}${tail.replace(/\s/g, "")} (${lines} lines)`);
+    }
+  }
+  return [
+    stale.size ? fail(
+      "cite-lines",
+      "Grounding",
+      `line citation(s) past the end of the file: ${listed([...stale])} \u2014 re-read the file and cite the current lines`
+    ) : pass("cite-lines", "Grounding", `${citations} line citation(s) resolve`)
+  ];
+}
+function shellWords(cmd) {
+  const out = [];
+  let cur = "";
+  let quoted = false;
+  let open = false;
+  let quote = null;
+  const flush = () => {
+    if (open) out.push({ text: cur, quoted });
+    cur = "";
+    quoted = false;
+    open = false;
+  };
+  for (const ch of cmd) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      quoted = true;
+      open = true;
+    } else if (/\s/.test(ch)) {
+      flush();
+    } else if (ch === ";" || ch === "|" || ch === "&") {
+      flush();
+      out.push({ text: ch, quoted: false });
+    } else {
+      cur += ch;
+      open = true;
+    }
+  }
+  flush();
+  return out;
+}
+function oracleCommand(cr) {
+  const run3 = (cr.oracle.run ?? "").trim();
+  if (run3) return run3;
+  const ref = (cr.oracle.ref ?? "").trim();
+  if (!ref) return null;
+  if (cr.oracle.kind === "command") return ref;
+  if (cr.oracle.kind === "test" && /\s/.test(ref.split("::")[0] ?? "")) return ref;
+  return null;
+}
+var FILTER_FLAGS = /* @__PURE__ */ new Set([
+  "-t",
+  "--testNamePattern",
+  "--test-name-pattern",
+  "-g",
+  "--grep",
+  "-k"
+]);
+var CWD_FLAGS = /* @__PURE__ */ new Set(["-C", "--cwd", "--dir", "--prefix", "--root"]);
+var WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["-w", "--workspace", "--filter"]);
+var OUTPUT_WORDS = /* @__PURE__ */ new Set([">", ">>", "2>", "&>", "tee", "-o", "--output", "--outfile"]);
+var GENERIC_GATES = /^(?:(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest|tsc|eslint)|(?:test|tests|build|lint|typecheck|type-check|check|e2e|ci|verify)(?::[\w-]+)?)$/;
+var RUNNERS = /^(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest)$|^test$|^--test$/;
+function readOracle(cmd, projectRoot, plannedPaths) {
+  const words = shellWords(cmd);
+  const bases = [projectRoot];
+  for (let i = 0; i < words.length - 1; i++) {
+    const w = words[i].text;
+    if (w === "cd" || CWD_FLAGS.has(w)) bases.push(join(projectRoot, words[i + 1].text));
+  }
+  const runner = words.some((w) => RUNNERS.test(w.text));
+  const shape = {
+    missing: [],
+    workspaceRelative: words.some(
+      (w) => WORKSPACE_FLAGS.has(w.text) || /^--(workspace|filter)=/.test(w.text)
+    ),
+    flagFilter: null,
+    narrowed: false,
+    generic: words.some((w) => GENERIC_GATES.test(w.text))
+  };
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const prev = i > 0 ? words[i - 1].text : "";
+    if (FILTER_FLAGS.has(word.text) && i + 1 < words.length) {
+      const value = words[i + 1].text;
+      if (runner && value.startsWith("-")) shape.flagFilter = `${word.text} "${value}"`;
+      if (runner) shape.narrowed = true;
+      continue;
+    }
+    if (word.quoted && word.text.trim() !== "") shape.narrowed = true;
+    if (word.text.includes("://")) shape.narrowed = true;
+    if (OUTPUT_WORDS.has(prev) || word.text.startsWith("-")) continue;
+    if (/[*?$<>{}[\]=`~]/.test(word.text)) continue;
+    const path = normalizeScopePath(
+      word.text.split("::")[0].replace(/(?::\d+)+$/, "").replace(/,$/, "")
+    );
+    const pathish = PATHISH.test(path);
+    const found = bases.some((b) => existsSync(join(b, path)));
+    const planned = plannedPaths.some((p) => p === path || p.endsWith(`/${path}`));
+    if (pathish || found && (path.includes("/") || /\.[A-Za-z]/.test(path))) {
+      shape.narrowed = true;
+    }
+    if (pathish && !found && !planned && !isAbsolute(path)) shape.missing.push(path);
+  }
+  return shape;
+}
+function checkOracles(c, projectRoot) {
+  const plannedPaths = c.files.map((f) => normalizeScopePath(f.path));
+  const missing = [];
+  const missingInWorkspace = [];
+  const flagFilters = [];
+  const broad = [];
+  const noFailure = [];
+  let commands = 0;
+  for (const cr of c.criteria) {
+    if (cr.oracle.kind === "prose-review") continue;
+    if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    const cmd = oracleCommand(cr);
+    if (!cmd) continue;
+    commands += 1;
+    const shape = readOracle(cmd, projectRoot, plannedPaths);
+    for (const p of shape.missing) {
+      (shape.workspaceRelative ? missingInWorkspace : missing).push(`${cr.id}\u2192${p}`);
+    }
+    if (shape.flagFilter) flagFilters.push(`${cr.id}: ${shape.flagFilter}`);
+    if (!shape.narrowed && shape.generic) broad.push(`${cr.id}: ${cmd}`);
+  }
+  const checks = [
+    missing.length ? fail(
+      "oracle-paths",
+      "Oracles",
+      `oracle command(s) name files that neither exist nor are planned, so they cannot run: ${listed(missing)}`
+    ) : pass(
+      "oracle-paths",
+      "Oracles",
+      `${commands} oracle command(s) name only real or planned files`
+    )
+  ];
+  if (missingInWorkspace.length) {
+    checks.push(
+      warn(
+        "oracle-paths",
+        "Oracles",
+        `workspace-relative oracle path(s) not found from the project root \u2014 confirm they exist in the workspace: ${listed(missingInWorkspace)}`
+      )
+    );
+  }
+  if (flagFilters.length) {
+    checks.push(
+      fail(
+        "oracle-filter",
+        "Oracles",
+        `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
+      )
+    );
+  }
+  if (broad.length) {
+    checks.push(
+      warn(
+        "oracle-narrow",
+        "Oracles",
+        `whole-suite oracle(s) that name no file, pattern or test filter prove the suite, not the criterion: ${listed(broad)}`
+      )
+    );
+  }
+  if (noFailure.length) {
+    checks.push(
+      warn(
+        "oracle-failure",
+        "Oracles",
+        `criteria with a real oracle but no \`failure:\` \u2014 state what the oracle shows when the criterion is unmet: ${listed(noFailure)}`
+      )
+    );
+  }
+  return checks;
 }
 var NONE_VOCABULARY = ["none", "n/a", "nil", "\u2014", "-", "none."];
 function normalizeSection(section) {
@@ -37555,7 +38179,8 @@ function recordEvent(input, slug, projectRoot, dir, specConfig) {
   const path = recordPathFor(dir, slug, projectRoot, specConfig);
   appendMetricEvent(path, event);
   const record2 = relFromRoot(path, projectRoot);
-  const payload = { action: "record", slug, record: record2, event };
+  const budget = event.kind === "critic-dispatch" ? dispatchBudget(event, slug, projectRoot, specConfig) : null;
+  const payload = { action: "record", slug, record: record2, event, ...budget ? { budget } : {} };
   return {
     content: [
       {
@@ -37565,12 +38190,37 @@ function recordEvent(input, slug, projectRoot, dir, specConfig) {
 Recorded **${event.kind}** (${event.source}, step ${event.step}).
 **Record:** \`${record2}\`
 
-\`\`\`json metric-event
-` + JSON.stringify(payload) + "\n```"
+` + (budget ? `${budgetLine(budget)}
+
+` : "") + "```json metric-event\n" + JSON.stringify(payload) + "\n```"
       }
     ],
     structuredContent: payload
   };
+}
+function dispatchBudget(event, slug, projectRoot, specConfig) {
+  let spec = null;
+  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
+  if (specPath) {
+    try {
+      spec = readRollupSpec(specPath, projectRoot, []);
+    } catch {
+      spec = null;
+    }
+  }
+  const critic = event.critic;
+  const pass2 = event.pass;
+  const { limit, tier } = criticBudget(critic, spec);
+  return { critic, pass: pass2, limit, tier, status: budgetStatus(pass2, limit) };
+}
+function budgetLine(b) {
+  const of = `pass ${b.pass} of ${b.limit} for \`${b.critic}\`${b.tier ? ` (${b.tier} tier)` : ""}`;
+  if (b.status === "within") return `**Budget:** within \u2014 ${of}.`;
+  if (b.status === "final") {
+    return `**Budget:** final \u2014 ${of}. This is the last dispatch the budget allows; say so in the dispatch prompt.`;
+  }
+  const next = b.critic === "marvin-tm-spec-critic" ? "present the surviving blockers to the user and let them choose: revise once more without a critic, or record the survivors as an override" : "classify each surviving blocker as deferred or blocked, and let the draft PR carry them";
+  return `**Budget: exceeded** \u2014 ${of}. Stop: do not dispatch this critic again for this task; ${next}. The event was recorded, so the overrun is counted.`;
 }
 function rollup(input, env2, slug, projectRoot, config2) {
   const { block, record: record2, terminalBlocks, ignored } = performRollup({
@@ -37731,6 +38381,10 @@ function renderDigest(b, record2, terminalBlocks, ignored) {
     "",
     "## Quality",
     `- Q1 scope drift: ${q.scope_drift ? `${q.scope_drift.undeclared.length} undeclared of ${q.scope_drift.changed} changed (declared ${q.scope_drift.declared})${q.scope_drift.undeclared.length ? `: ${q.scope_drift.undeclared.join(", ")}` : ""}` : "\u2014"}`,
+    // Only when the project configures `scope.exempt`; null and a pre-0.26 record print nothing.
+    ...q.scope_drift?.exempt ? [
+      `- Q1 exempted by scope.exempt: ${q.scope_drift.exempt.length}${q.scope_drift.exempt.length ? ` \u2014 ${q.scope_drift.exempt.join(", ")}` : ""}`
+    ] : [],
     `- Q2 oracle strength: ${q.oracle_strength ? `${q.oracle_strength.executable}/${q.oracle_strength.criteria} executable (${pct(q.oracle_strength.share)})` : "\u2014"}`,
     `- Q3 red-green (bugfix): ${q.red_green ? `${q.red_green.proven}/${q.red_green.criteria} proven (${pct(q.red_green.share)})` : "\u2014"}`,
     `- Q4 not-run gates: ${q.not_run ? `${q.not_run.not_run}/${q.not_run.gates} (${pct(q.not_run.share)})` : "\u2014"}`,
@@ -37740,15 +38394,20 @@ function renderDigest(b, record2, terminalBlocks, ignored) {
     `- Q8 open items: ${q.open_items ? `deferred ${q.open_items.deferred} \xB7 blocked ${q.open_items.blocked}` : "\u2014"}`,
     `- Q9 DoR passed on first call: ${q.dor_first_call === null ? "\u2014" : q.dor_first_call ? "yes" : "no"}`,
     `- Q10 oracle resolution: ${q.oracle_resolution ? `${Object.entries(q.oracle_resolution.by_source).map(([s, n]) => `${s} ${n}`).join(" \xB7 ") || "no runs at this seal"} \xB7 unresolved ${q.oracle_resolution.unresolved}` : "\u2014"}`,
+    `- Q13/Q14 spec size: ${q.spec_size ? `${q.spec_size.bytes} bytes \xB7 ${q.spec_size.words} words${q.spec_size.budget !== null ? ` \xB7 budget ${q.spec_size.budget} (${(q.spec_size.bytes / q.spec_size.budget).toFixed(1)}\xD7)` : ""}` : "\u2014"}`,
     "",
     "## Rework",
     `- R1 seals: ${r.seals ?? "\u2014"}${r.reseals !== null ? ` (reseals ${r.reseals})` : ""}`,
     `- R2 critic passes: spec ${r.critic_passes.spec ?? "\u2014"} \xB7 diff ${r.critic_passes.diff ?? "\u2014"}`,
     `- R3 fix rounds: ${r.fix_rounds ? `verify-gate ${r.fix_rounds.verify_gate} \xB7 critic ${r.fix_rounds.critic} \xB7 red-green ${r.fix_rounds.red_green}` : "\u2014"}`,
-    `- R4 runs before first green: ${r.runs_before_green ?? "\u2014"}`
+    `- R4 runs before first green: ${r.runs_before_green ?? "\u2014"}`,
+    `- R5 critic budget exceeded: spec ${yesNo(r.critic_budget_exceeded?.spec)} \xB7 diff ${yesNo(r.critic_budget_exceeded?.diff)}`
   ];
   if (b.notes.length) lines.push("", "## Notes", ...b.notes.map((n) => `- ${n}`));
   return lines.join("\n");
+}
+function yesNo(v) {
+  return v === true ? "yes" : v === false ? "no" : "\u2014";
 }
 function errText3(text) {
   return {
@@ -38200,7 +38859,7 @@ function buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings)
     const url = trackerUrl(config2, tracker);
     links.push({ kind: "tracker", label: tracker, ...url ? { url } : { ref: tracker } });
   }
-  const adr = hostBindings?.decision_record?.path;
+  const adr = hostBindings?.decision_record?.path ?? config2.adr?.dir;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
   links.push(...critiqueLinks(env2, projectRoot, slug));
   return links;
@@ -38391,7 +39050,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.24.0";
+var VERSION = "0.28.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

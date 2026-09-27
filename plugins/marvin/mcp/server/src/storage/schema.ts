@@ -192,6 +192,28 @@ export const SpecConfig = z.object({
 export type SpecConfig = z.infer<typeof SpecConfig>;
 
 /**
+ * Task-scope configuration (ADR-0045), read by the `spec` tool's scope gate and
+ * the metrics roll-up — both through `partitionScope` in `lib/scope.ts`.
+ *
+ * `exempt` lists path patterns for files a task writes as a BY-PRODUCT: a
+ * reviewer subagent's memory notes, a lock file rewritten by an allowed
+ * dependency, a typed sidecar the host requires beside every module. No spec
+ * author can plan them, so without this list each one is a SPEC GAP recorded by
+ * hand and an `undeclared` path in the task's metrics. Matching paths are not
+ * scope violations and are reported separately, never silently.
+ *
+ * Absent means no exemptions — marvin ships no defaults, so a host's scope gate
+ * widens only by its own decision. Each entry is a string here; whether it is a
+ * usable pattern is decided by `compileExemptions`, which ignores a bad entry
+ * rather than failing the whole file, and the loader reports it as a setting
+ * warning. A non-array value still fails the schema, like any mistyped key.
+ */
+export const ScopeConfig = z.object({
+  exempt: z.array(z.string()).optional(),
+});
+export type ScopeConfig = z.infer<typeof ScopeConfig>;
+
+/**
  * Usage-telemetry configuration (ADR-0030), owned by the usage-log middleware.
  * The single kill-switch: `enabled` defaults to `true`, so an absent `usage`
  * block (and an absent config file) means logging is ON — telemetry is
@@ -221,6 +243,16 @@ export const Config = z.object({
   adr: AdrConfig.optional(),
   /** Spec corpus location (ADR-0037); absent means detect/default. */
   spec: SpecConfig.optional(),
+  /** By-product path patterns the scope gate and Q1 exempt (ADR-0045); absent means none. */
+  scope: ScopeConfig.optional(),
+  /**
+   * What this host needs before a PR can merge — a version bump, a committed
+   * build artefact, a changelog entry (ADR-0046). It used to be rewritten into
+   * every spec's host-bindings block; `/marvin:task-start` now proposes it once
+   * per project and turns each entry that touches a file into a contract row.
+   * Absent means none recorded.
+   */
+  merge_obligations: z.array(z.string().min(1)).optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */

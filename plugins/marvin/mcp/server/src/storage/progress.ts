@@ -26,6 +26,9 @@ import { z } from "zod";
  * human uses to decide what NOT to re-check.
  */
 
+/** Who may write a progress entry: the two interactive skills and the headless executor. */
+export const PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"] as const;
+
 /** The typed-block tag, matching `oracle-run` / `audit-report` / `verify-result`. */
 export const PROGRESS_TAG = "spec-progress";
 const PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
@@ -33,9 +36,12 @@ const PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n``
 const ProgressEntrySchema = z.object({
   /** The spec's validated kebab-case slug — also this journal's filename. */
   slug: z.string().min(1),
-  /** Which skill wrote it: step ids collide across the two pipelines. */
-  source: z.enum(["task-start", "task-implement"]),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  /**
+   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
+   * is the headless implementation path, which numbers its steps `§1`–`§5`.
+   */
+  source: z.enum(PROGRESS_SOURCES),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
   step: z.string().min(1),
   kind: z.enum(["step", "criterion", "decision", "note", "archived"]),
   /** One line of position and choice. Never a credential, token or customer datum. */

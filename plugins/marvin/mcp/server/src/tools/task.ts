@@ -22,6 +22,8 @@ import {
 } from "../storage/tasks.js";
 import {
   loadConfig,
+  parseExemptJson,
+  scopeExemptWarnings,
   parseStatusesJson,
   trackerTemplateIssue,
   updateConfigFile,
@@ -124,6 +126,12 @@ const TaskInput = z.object({
     .describe(
       'config: the board status vocabulary as a JSON array of {key, role, tracker_status?} — roles: todo|wip|review|done|blocked, e.g. [{"key":"backlog","role":"todo"},{"key":"in-progress","role":"wip","tracker_status":"In Progress"}]',
     ),
+  scope_exempt: z
+    .string()
+    .optional()
+    .describe(
+      'config: by-product path patterns the spec scope gate and the metrics roll-up exempt (scope.exempt, ADR-0045), as a JSON array of strings — project-relative, `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","**/*.d.mts","bun.lock"]. Replaces the whole list; an empty string clears it',
+    ),
   edit: z
     .boolean()
     .optional()
@@ -138,7 +146,7 @@ export function buildTaskTool(server: McpServer, env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "task",
     description:
-      'The marvin task board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
+      'The marvin task board — create, list, and move tasks (bug/feature/chore/spike) on the per-project board under .marvin/track/: pick up work, send it to review, mark it done, move it to any configured status, link a PR URL to a task (link-pr), archive finished tasks off the board (archive), or show and edit the board configuration (config: base branch, tracker URL template, branch template, the status vocabulary, the scope exemptions). Statuses are role-driven and configurable per project (ADR-0026). Serves chat requests like "add a bug to the board", "what am I working on?" or "connect our Jira statuses". Defaults to an interactive main menu when called with no arguments; every form field can also be passed as an argument (type, title, description, tracker_id, taskId, status, confirm, and the config fields) and the form covers only what is missing — pass what the user already said.',
     inputSchema: TaskInput,
     // Bind the task-list `ui://` widget for MCP Apps hosts (ADR-0024). Tool-level:
     // the widget renders the `list` action's TaskListPayload; other actions deliver
@@ -699,14 +707,16 @@ function isHttpUrl(raw: string): boolean {
  *  - no config arguments → render the effective configuration (works on every
  *    host, no form);
  *  - any of `base_branch` / `tracker_url_template` / `branch_template` /
- *    `statuses` → validate fail-closed and write (empty string clears a
- *    setting back to its default);
+ *    `statuses` / `scope_exempt` → validate fail-closed and write (empty string
+ *    clears a setting back to its default);
  *  - `edit=true` with no values → elicit the scalar fields on hosts with
  *    elicitation; instructive isError naming the arguments otherwise.
  *
  * `statuses` arrives as a JSON string and is validated against the same
  * schema the config loader enforces — an invalid payload answers with the
- * exact issues and writes nothing. Keys the surface does not manage (the
+ * exact issues and writes nothing. `scope_exempt` travels the same way and is
+ * checked by the matcher's own `exemptPatternIssue`, so a pattern the scope
+ * gate would ignore is never written. Keys the surface does not manage (the
  * verify tool's `gates`, anything future) survive the read-modify-write.
  */
 async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): Promise<ToolResult> {
@@ -722,6 +732,19 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
       );
     }
     patch.statuses = parsed.statuses;
+  }
+  if (input.scope_exempt !== undefined) {
+    if (input.scope_exempt.trim() === "") {
+      patch.scope_exempt = null;
+    } else {
+      const parsed = parseExemptJson(input.scope_exempt);
+      if (!parsed.ok) {
+        return errOk(
+          `Invalid \`scope_exempt\` — ${parsed.error}.\nExpected a JSON array of project-relative path patterns: \`**\` matches any number of directories, \`*\` anything within one segment, \`?\` one character; every pattern is anchored at the project root. Example:\n\`[".claude/agent-memory/**","**/*.d.mts","bun.lock"]\`\nNothing was written.`,
+        );
+      }
+      patch.scope_exempt = parsed.patterns;
+    }
   }
   if (input.base_branch !== undefined) {
     const value = input.base_branch.trim();
@@ -757,7 +780,7 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
   if (Object.keys(patch).length === 0 && input.edit) {
     if (!canElicit(server)) {
       return errOk(
-        "This host does not support interactive forms — pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?}).",
+        "This host does not support interactive forms — pass the settings to change as tool arguments and retry: `base_branch`, `tracker_url_template`, `branch_template` (strings; an empty string clears a setting), `statuses` (a JSON array of {key, role, tracker_status?}), `scope_exempt` (a JSON array of path patterns).",
       );
     }
     const data = await elicit(
@@ -855,7 +878,7 @@ function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>)
   if (warning) lines.push(`⚠ ${warning} — showing defaults.`, "");
   // Per-setting fallbacks: the file holds a value, the effective setting below
   // reads "not set", and this is the only place that explains the gap.
-  for (const w of settingWarnings) lines.push(`⚠ ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config)]) lines.push(`⚠ ${w}`, "");
   lines.push(`- **Project:** \`${env.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
   lines.push(
@@ -880,8 +903,25 @@ function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>)
     lines.push(`| ${s.key} | ${s.role} | ${s.tracker_status ?? "—"} |`);
   }
   lines.push("");
+  lines.push("## Scope exemptions");
+  lines.push("");
+  const exempt = config.scope?.exempt;
+  if (exempt === undefined) {
+    lines.push(
+      "_None configured — every changed file outside a spec's `files` list is a scope violation (a SPEC GAP). Set `scope_exempt` to exempt by-products such as reviewer agent memory or a lock file._",
+    );
+  } else if (exempt.length === 0) {
+    lines.push("_Configured as an empty list — nothing is exempt._");
+  } else {
+    for (const pattern of exempt) lines.push(`- \`${pattern}\``);
+    lines.push("");
+    lines.push(
+      "_Changed files matching these patterns are reported as exempted by the spec scope gate and in a task's metrics, never as violations or undeclared._",
+    );
+  }
+  lines.push("");
   lines.push(
-    "_Change settings by argument — `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}) — or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._",
+    "_Change settings by argument — `base_branch`, `tracker_url_template`, `branch_template` (empty string clears), `statuses` (JSON array of {key, role, tracker_status?}), `scope_exempt` (JSON array of path patterns; empty string clears) — or interactively with `edit=true`. This is where a tracker's real workflow gets entered: one status per remote state, `tracker_status` holding the exact remote name._",
   );
   return lines.join("\n");
 }

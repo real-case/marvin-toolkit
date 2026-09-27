@@ -118,7 +118,7 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - **Existing specs** — call the `spec` MCP tool with `action: "list"`. It answers with the resolved spec directory and every spec in it — slug, title, status, and whether it is sealed — so you do not scan directories by hand or guess which one this project uses. Identify each spec by its `slug`, never by its number. Detect duplication and any sibling spec this task would depend on. The DoR gate **mechanically forbids** depending on an incomplete sibling (`depends_on` must name `shipped` specs), so you must know what exists and at what status. If the tool is unavailable, list `.marvin/task/` (the default home) and any host spec dir, and say that the enumeration was done by hand.
 - `VISION.md` if present — future direction (informs variant evaluation).
 - **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the task) to recall lessons captured on past tasks and bug fixes in this repo (`.marvin/memory`). A relevant `bug-pattern` or `gotcha` becomes a constraint, a test to add, or an explicit non-goal — this is how the pipeline stops repeating mistakes (ADR-0021). If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
-- **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. These populate the spec's **host-bindings** block (`spec_location`, `decision_record`, `merge_obligations`, `gates`) so the artifact conforms to the host instead of importing marvin's layout.
+- **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. They live **once per project in `.marvin/config.json`**, never in a spec: `spec.dir` (ADR-0037), `adr.dir` (ADR-0027), `gates` (ADR-0009) and `merge_obligations` (a list of strings: what this host needs to merge, such as a version bump or a committed build artefact). Read the config first. When any of these keys is absent, **propose the missing ones once**, as one block, including a `gates.test_one` template that runs a single test (for example `npx vitest run {file} -t "{name}"`; the oracle runner substitutes `{file}` and `{name}`). Write them only after the user confirms, as a read-modify-write that keeps every other key. With `gates.test_one` configured, no criterion needs its own `oracle.run`. A spec written before this rule may still carry a `host-bindings` block; the gate keeps accepting it, but a new spec does not write one.
 
 ### 1.4 Clarifying questions & dimension sweep
 
@@ -268,7 +268,7 @@ Analyze the codebase and present findings to the user:
 
 1. **Affected files and modules** — read the actual code, not just filenames. This becomes the contract's `files`, so be precise about which files change and how.
 2. **Callers / reverse-deps** — grep for who invokes or consumes each surface you change (`rg`, `git grep`). Every caller that must change is a `files` entry. A forgotten caller is the single largest source of an incomplete allowlist — find them here, before drafting, not in the critic.
-3. **Recent churn** — `git log --oneline -5 -- <file>` for each affected file. Hotspots are risk signals; note them in Design Notes.
+3. **Recent churn** — `git log --oneline -5 -- <file>` for each affected file. Hotspots are risk signals; note them as traps in Chosen Approach.
 4. **Existing patterns** — how does the codebase currently handle similar functionality?
 5. **Reusable components** — hooks, utilities, helpers that can be leveraged
 6. **Potential conflicts** — areas where changes might cause side effects
@@ -276,7 +276,7 @@ Analyze the codebase and present findings to the user:
 
 **Verify the stack.** From the dependency manifest read in 1.3, confirm whether the work is solvable with the current stack (→ `NATIVE`), needs a new dependency (→ `EXTENSION`, list it), or is non-standard (→ `EXPERIMENTAL`). The marker must reflect the manifest, not an assumption.
 
-**Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command`, Test Plan, and the convention the executor follows. Knowing the command is not knowing the patterns. **Prefer the command the project declares** — a CI job, a `Makefile` target, a manifest script — over a guessed ecosystem default; for a stack you don't recognise, **ask the user** for the test command rather than guessing, since a wrong `test_command` poisons every downstream gate. If you cannot determine them, that is an Open Question — resolve it before DoR.
+**Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command` and the convention the executor follows; a non-obvious test design (a mutation to catch, a fixture the test needs) goes into the test file's `intent`. Knowing the command is not knowing the patterns. **Prefer the command the project declares** — a CI job, a `Makefile` target, a manifest script — over a guessed ecosystem default; for a stack you don't recognise, **ask the user** for the test command rather than guessing, since a wrong `test_command` poisons every downstream gate. If you cannot determine them, that is an Open Question — resolve it before DoR.
 
 If `VISION.md` exists, note future-direction intent — it informs variant evaluation.
 
@@ -357,58 +357,89 @@ Record the selected approach and the carried-forward `risk` rating for the spec 
 ### Step 4.5F: Scope & Size Gate
 
 Before crystallizing, apply the one-PR test from `skills/task-start/references/routing.md` to the
-chosen approach.
+chosen approach. **A plan with more than 15 files or more than 12 criteria must present the split
+explicitly** even when the test seems to hold: the size does not decide the split, but it obliges
+you to show one and let the user reject it.
 
-- If it fails, **stop and present the slices** as a numbered list, then let the user pick one of
-  exactly two options. Proceed on neither without an answer:
+- If the test fails, or the size threshold is crossed, **stop and present the slices** as a
+  numbered list, then let the user pick one of exactly two options. Proceed on neither without an
+  answer:
   1. **Slice now** — spec the first slice here, create a board card for each remaining slice
      (mechanics in the same reference), and list them under `## Deferred slices` in this spec.
-  2. **Keep the scope** — record the user's one-line rationale in `## Design Notes` and continue.
+  2. **Keep the scope** — record the user's one-line rationale in `## Chosen Approach` and continue.
 - A spec the executor cannot implement without making scope decisions is too big — the executor is forbidden from making those decisions.
 
 ### Step 5F: Crystallization
 
-Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them**. Do not copy the template over that file: it holds every answer the user has given since step 1.5, and re-copying destroys them silently. That guidance is addressed to you, not to the finished spec: it carries no braces, so no gate can see it, and a spec that ships with it reads as half-filled. The template holds the whole feature scaffold (frontmatter, the `spec-contract` and `host-bindings` YAML blocks, and every prose section listed below). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **feature-spec template** at `skills/task-start/references/feature-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder you keep, **and delete the unbraced guidance lines and the writing-rules comment that sit beside them**. Do not copy the template over that file: it holds every answer the user has given since step 1.5, and re-copying destroys them silently. That guidance is addressed to you, not to the finished spec: it carries no braces, so no gate can see it, and a spec that ships with it reads as half-filled. Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
-Fill **every** section from the dialogue context — write "N/A" / "none" deliberately rather than leaving a section blank or a `{placeholder}` unfilled:
+**Every fact lives in one place, and every section has a reader.** The target is the size budget
+`3 KB + 400 B per file + 500 B per criterion`, which the DoR gate warns above. Write under these
+rules:
+
+- **One fact, one place.** A requirement lives in the contract, as a criterion or a file intent.
+  Prose refers to it by id (`F3`, `AC2`) and never restates it. A requirement found only in prose is
+  a defect, because nothing proves it: move it into the contract.
+- **Chosen Approach carries only what the contract cannot.** That means the order of work, the traps
+  an implementer would fall into, cross-cutting decisions, the stack-compliance marker and at most
+  three rejected alternatives, each with the project constraint that rejects it.
+- **Context is pointers, not evidence.** Each bullet is a `path:line` and one clause.
+- **Evidence goes to a sidecar.** Measurements, probes and provenance go to
+  `<spec dir>/runs/<slug>.evidence.md` (`.marvin/task/runs/` by default), cited from Context in one
+  line. The `runs/` subdirectory is invisible to every spec enumerator, so the sidecar is never
+  mistaken for a spec.
+- **The critic's narrative goes to the receipt.** Critic Verdict & Overrides is one line: the
+  verdict, the receipt numbers and any override.
+- **The contract fields have limits**, stated in the template: a `statement` of at most 30 words as
+  Given/When/Then, a `failure` line that names a wrong implementation rather than negating the
+  statement, an `intent` of at most two sentences, a `signature` with no comments restating
+  criteria, no `oracle.run` when `gates.test_one` derives it, and no rationale, history or evidence
+  anywhere in the block, because `contract_sha` seals it.
+- **Optional sections are written only when they apply.** Data & Config when there is a migration,
+  variable, flag or config key. Security / NFR when `risk: high` or the change touches auth, crypto,
+  PII or input parsing. Deferred slices when slices were deferred. Delete the section otherwise;
+  do not write "N/A".
+
+Fill the sections the draft keeps:
 - **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk`, `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
-- **Goal** — from intake
-- **Context** — from context mapping, including callers/reverse-deps and sibling specs
+- **Goal** — one or two sentences
+- **Context** — pointers from context mapping, including callers and the evidence sidecar; optional on the light tier (below)
 - **Spec Contract** (the ` ```yaml spec-contract ` block) — the machine-validated heart of the spec, parsed and schema-checked by the gate:
-  - `files` — the authoritative allowlist: one entry per file with `id` (F1, F2…), `path`, `action` (new/edit/delete), `intent`, `satisfies` (the AC ids it implements — exactly those whose `implemented_by` names this file, since the gate compares the two — or "—" for infra rows: docs, changelog, version bump), optional `anchor` (file:line). **Every test named in a `kind: test` oracle MUST be a `files` entry** — the allowlist forbids the executor from creating an unlisted file.
-  - `criteria` — minimum 3, each with an `id` (AC1…), a `statement`, `implemented_by` (the `files` ids), a typed `oracle` (`kind: test | command | prose-review`, plus a `ref` for the first two) and a `failure` path. **At least one criterion must carry a non-prose-review oracle.**
+  - `files` — the authoritative allowlist: one entry per file with `id` (F1, F2…), `path`, `action` (new/edit/delete), `intent`, optional `anchor` (file:line). Merge obligations from the config (docs, changelog, version bump, committed build artefacts) are `files` rows when they touch a file. **Every test named in a `kind: test` oracle MUST be a `files` entry** — the allowlist forbids the executor from creating an unlisted file. `satisfies` is optional: the gate derives it from `implemented_by`, and a declared list that disagrees is a FAIL.
+  - `criteria` — minimum 3, each with an `id` (AC1…), a `statement`, `implemented_by` (the `files` ids), a typed `oracle` (`kind: test | command | prose-review`, plus a `ref` for the first two) and a `failure` path. **At least one criterion must carry a non-prose-review oracle.** An obligation that used to sit in a Definition of Done or a Test Plan, such as a test that must be watched to fail, becomes a criterion, a `failure` line or a test file's `intent`.
   - `contract` — the exact callable surface as `kind` (function/route/schema/cli/event) + a literal `signature` the implementer copies; `kind: none` if there is no callable surface.
   - `build_order` (optional) — the order the executor applies the files.
   - `depends_on` (optional) — sibling spec slugs this task depends on; the gate **fails** unless each is `status: shipped`.
-- **Host Bindings** (the ` ```yaml host-bindings ` block) — discovered, not assumed: `spec_location` (where this host keeps specs), `decision_record` (its ADR/RFC convention), `merge_obligations` (from CONTRIBUTING/CI), `gates` (the host's commands). Advisory — it conforms the artifact to the host, and `spec_location` resolves `depends_on`.
-- **Data & Config** — migrations/env/flags, or "N/A"
-- **Chosen Approach** + **Why this over alternatives** (rejected variants with reasons)
-- **Test Plan** — harness, test locations, fixture/mocking conventions from neighboring tests
-- **Definition of Done** — merge-readiness beyond ACs: gates green plus repo-specific obligations (docs/CHANGELOG/version bump/committed build artefacts) from CLAUDE.md, each a `files` entry if it touches a file
-- **Non-goals** — explicit scope boundaries discussed during dialogue
-- **Security / NFR** — or "N/A — {reason}"
+- **Chosen Approach** — the rules above
+- **Non-goals** — explicit scope boundaries discussed during dialogue, as a short list
+- **Assumptions** — defaults taken instead of asking, limited to those the contract does not show
+
+**The light tier.** A spec with `risk: low` and at most five files may omit Context, and Step 8F
+dispatches the critic once rather than up to twice.
 
 Present the draft to the user. Iterate until they approve.
 
-### Step 6F: Future Considerations
+### Step 6F: Follow-ups
 
-Suggest notes based on dialogue context (deliberately-excluded scope), VISION.md (relationship to planned evolution), and edge cases discovered during context mapping. The user decides what to include. Slices deferred at Step 4.5F do **not** belong here — they are board cards, listed under `## Deferred slices`.
+Suggest follow-ups based on the dialogue (deliberately excluded scope), `VISION.md`, and edge cases discovered during context mapping. The user decides which to keep, and each one they keep becomes a board card through `/marvin:track-new` — never a spec section, because nothing reads a list of future work inside a sealed spec. Slices deferred at Step 4.5F are already cards and are listed under `## Deferred slices`.
 
 ### Step 7F: Definition of Ready — mechanical gate (tool first)
 
 Run the deterministic gate **before** the critic. It is free, fast, and catches shape errors the expensive opus critic should not burn a pass on. The critic only ever sees shape-valid specs.
 
-Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `specPath` and the project root. The drafted spec is a file on disk from step 1.5, so the gate reads it there rather than taking an inline `specContent` copy — the one instruction whose input changed when the write moved forward. `status: draft` does not fail the gate; the finalize step flips it. It deterministically verifies: required frontmatter keys + valid enums (including `breaking` and `spike_required: false`), all required prose sections present (including **Definition of Done**), and the **`spec-contract` YAML block** — parsed by `yaml` and schema-validated **fail-closed**: every `files` `edit`/`delete` path exists on disk, ≥3 criteria each with a typed `oracle`, the **traceability triple** (every criterion's `implemented_by` names real `files` ids, every `satisfies` points at a real criterion, **the two directions agree** — a declared `satisfies` list that denies a criterion naming it is a FAIL — every `kind: test` oracle's path is an allowlisted `files` entry, ≥1 non-prose-review oracle), a bugfix carries a `regression: true` criterion, Open Questions resolved to "none", and no leftover `{…}` placeholders (which parse as YAML maps and trip the schema).
+Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `specPath` and the project root. The drafted spec is a file on disk from step 1.5, so the gate reads it there rather than taking an inline `specContent` copy — the one instruction whose input changed when the write moved forward. `status: draft` does not fail the gate; the finalize step flips it. It deterministically verifies: required frontmatter keys + valid enums (including `breaking` and `spike_required: false`), the required prose sections present (Goal, Chosen Approach, Non-goals, Open Questions), and the **`spec-contract` YAML block** — parsed by `yaml` and schema-validated **fail-closed**: every `files` `edit`/`delete` path exists on disk, ≥3 criteria each with a typed `oracle`, the **traceability triple** (every criterion's `implemented_by` names real `files` ids, every `satisfies` points at a real criterion, **the two directions agree** — a declared `satisfies` list that denies a criterion naming it is a FAIL — every `kind: test` oracle's path is an allowlisted `files` entry, ≥1 non-prose-review oracle), a bugfix carries a `regression: true` criterion, Open Questions resolved to "none", and no leftover `{…}` placeholders (which parse as YAML maps and trip the schema). It also checks what can be known about grounding and oracles without judgement: a `path:line` citation past the end of its file FAILs (`cite-lines`), an oracle command naming a file that neither exists nor is planned FAILs (`oracle-paths`), a test-name filter starting with `-` FAILs because the runner parses it as an option and exits with an error (`oracle-filter`), and a whole-suite oracle or a real oracle with no `failure:` line warns (`oracle-narrow`, `oracle-failure`). Fix these before dispatching the critic: a pass spent on them is a pass not spent on meaning.
 
 - **FAIL** — show the failing checks, loop back to the relevant step (usually 2F, 3F, or 5F), fix, re-run. **Do not invoke the critic and do not write the spec.**
 - **PASS / PASS WITH WARNINGS** — proceed to the critic; address or consciously accept warnings.
-- If the `spec` tool is unavailable, self-check the same list manually and note the degradation in Design Notes.
+It also warns, never fails, on size: a spec over the budget (`spec-size`), a criterion `statement` over 40 words (`ac-length`), a file `intent` over 60 words (`intent-length`), and a `risk: high` spec with no Security / NFR section (`security-nfr`). Treat a size warning as a request to delete restatement, not to argue for the length.
+
+- If the `spec` tool is unavailable, self-check the same list manually and note the degradation in Assumptions.
 
 **Record the call** (ADR-0043). After the gate answers — every time it answers, including each re-run the Step 8F sweep prescribes — call the `metrics` tool on the `marvin` server with `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7F"`, the spec's `slug`, its `verdict`, and `call` incremented per run (`1` for the first). Whether the gate passed on its first call is a metric that lives nowhere else once the session is compacted, and the call costs one tool round-trip.
 
 ### Step 8F: Critic Review (semantic)
 
-On a shape-valid spec, invoke the `marvin-tm-spec-critic` agent via Task-tool, passing the drafted spec content. The critic judges what the tool cannot: that the contract's `files` name the *real* integration points, that each `oracle` is *genuine* (not a restatement of the criterion), and that rejected variants are not strawmen.
+On a shape-valid spec, invoke the `marvin-tm-spec-critic` agent via Task-tool, passing the drafted spec content **and its size budget**: the spec's bytes and `3 KB + 400 B per file + 500 B per criterion` computed for its contract, so the critic can report an over-budget spec. The critic judges what the tool cannot: that the contract's `files` name the *real* integration points, that each `oracle` is *genuine* (not a restatement of the criterion), and that rejected variants are not strawmen.
 
 **Before every dispatch — the deterministic sweep.** A dispatch costs minutes; each check below
 costs seconds and each has cost a real critic round. Run all four before the first dispatch and
@@ -416,10 +447,10 @@ again before any re-dispatch:
 
 1. **Step 7F again** if you edited the draft at all — a fix that broke the contract's shape is
    caught in about a second, and the critic must never spend a pass on shape.
-2. **The spec's declared gates against the project's real ones.** Read `.github/workflows/*`,
-   `package.json` scripts or the `Makefile` and confirm the Definition of Done and any gate list
-   name every job that actually runs. A CI job the spec omits is a blocker the critic will find
-   and a `grep` finds for free.
+2. **The configured gates against the project's real ones.** Read `.github/workflows/*`,
+   `package.json` scripts or the `Makefile` and confirm that `gates` in `.marvin/config.json` and
+   the contract's merge-obligation rows name every job that actually runs. A CI job nobody names is
+   a blocker the critic will find and a `grep` finds for free.
 3. **Every shell snippet you wrote into the spec, re-read for its exit code.** A chain like
    `… && exit 1 || exit 0` exits 0 on exactly the drift it was written to detect. That is a real
    finding from an instrumented run, and it was introduced by the previous round's own fix.
@@ -427,7 +458,7 @@ again before any re-dispatch:
    blockers of rounds 2 and 3 in that run were created by the fix for round 1 and round 2 — the
    loop fed itself. When you correct one back-reference, transpose the whole graph.
 
-**Record each dispatch and its verdict** (ADR-0043). Immediately before the dispatch, call the `metrics` tool with `action: "record"`, `kind: "critic-dispatch"`, `critic: "marvin-tm-spec-critic"`, `source: "task-start"`, `step: "8F"`, the spec's `slug` and the `pass` number — `1` for the first dispatch, `2` for the second; a `NEEDS_CONTEXT` re-dispatch reuses its pass number. When a terminal verdict arrives, record `kind: "critic-verdict"` with the same `critic` and `pass`, the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report. The pair is what makes the time inside a critic dispatch and the passes before a terminal verdict measurable without a clock in the model; compaction destroys the in-session count, and each call costs one round-trip.
+**Record each dispatch and its verdict** (ADR-0043). Immediately before the dispatch, call the `metrics` tool with `action: "record"`, `kind: "critic-dispatch"`, `critic: "marvin-tm-spec-critic"`, `source: "task-start"`, `step: "8F"`, the spec's `slug` and the `pass` number — `1` for the first dispatch, `2` for the second; a `NEEDS_CONTEXT` re-dispatch reuses its pass number. When a terminal verdict arrives, record `kind: "critic-verdict"` with the same `critic` and `pass`, the `verdict`, and the `blockers` and `warnings` counts from the critic's block or report. The pair is what makes the time inside a critic dispatch and the passes before a terminal verdict measurable without a clock in the model; compaction destroys the in-session count, and each call costs one round-trip. **Read the dispatch answer's Budget line before dispatching.** The tool judges the `pass` against the budget below, telling the light tier from the spec's own frontmatter and contract: `final` means say in the prompt that this is the last dispatch, and `exceeded` means do not dispatch at all — go to the user's choice described under the budget. The line survives compaction; the count in your context does not.
 
 - **Verdict `BLOCK`** — present blockers, loop back to the relevant step (usually 2F, 3F, or 5F), then **re-run Step 7F** before returning here. Do not write the spec. This is a **loop with a budget** — see below.
 - **Verdict `PASS WITH WARNINGS`** — show warnings; the user decides whether to revise or proceed. If proceeding, record the override in **Critic Verdict & Overrides**.
@@ -435,7 +466,14 @@ again before any re-dispatch:
 - **Verdict `NEEDS_CONTEXT`** — the critic could not judge yet and named the exact input it lacks (the spec content itself, a cited file that exists but it could not read, a listing that came back empty). Supply that input and re-dispatch the critic **once**, stating in the dispatch that this is the re-dispatch for the `NEEDS_CONTEXT` it raised — it enters with a fresh context and cannot see the earlier turn. A second `NEEDS_CONTEXT` is treated as `UNABLE`.
 - **Verdict `UNABLE`** — the critic could not judge and could not name what would fix that. It is **not** a pass. Record it verbatim as `UNABLE — <reason>` in **Critic Verdict & Overrides**, show the critic's Blocker / Attempted / Recommendation to the user, and let the user decide whether to proceed.
 
-**Critic budget — two dispatches per spec.** This step is a loop and it used to have no limit at
+**Resolve a finding by editing the lines it names.** Do not add a paragraph that explains the fix,
+and do not park a warning in the spec: the receipt under `.marvin/critique/` already records how
+each finding was handled. A `[redundancy]` finding is resolved by deleting the restatement, a
+`[prose-only]` finding by moving the requirement into the contract, and a `[drift]` finding by
+deleting the copy that contradicts the contract. A spec that grows on every round is the failure
+this rule exists to stop.
+
+**Critic budget — two dispatches per spec, one on the light tier.** This step is a loop and it used to have no limit at
 all; one instrumented run spent four dispatches and 34.8 minutes here, which is where the budget
 comes from. Counted in dispatches, not in rounds, because that is the unit that costs minutes:
 
@@ -450,8 +488,10 @@ comes from. Counted in dispatches, not in rounds, because that is the unit that 
   faster and better informed than a third opinion.
 - A `NEEDS_CONTEXT` re-dispatch does **not** spend the budget: it answers missing input rather than
   retrying a failed attempt, and keeps its own one-shot allowance.
+- **The light tier** (`risk: low` and at most five files) gets one dispatch. A `BLOCK` on it goes
+  straight to the user's choice described for the second dispatch above.
 
-Record the verdict in the spec's **Critic Verdict & Overrides** section — that section is the carrier for **this** critic, and `/marvin:task-deliver` renders it on the PR's **Spec critic** line (the diff critic gets its own line, from `/marvin:task-implement`). Record only a terminal verdict: `PASS`, `PASS WITH WARNINGS`, `BLOCK` or `UNABLE`. If Task-tool is unavailable, write "none — critic skipped" there **and** carry that fact forward so the PR reads "⚠️ critic skipped" — a skipped semantic gate is never silent. An `UNABLE` verdict is carried the same way and reads "⚠️ critic UNABLE — <reason>".
+Record the verdict in the spec's **Critic Verdict & Overrides** section as one line — the verdict, the receipt numbers and any override (`PASS WITH WARNINGS — receipts 046, 047; override: <finding> because <reason>`). That section is the carrier for **this** critic, and `/marvin:task-deliver` renders it on the PR's **Spec critic** line (the diff critic gets its own line, from `/marvin:task-implement`). Record only a terminal verdict: `PASS`, `PASS WITH WARNINGS`, `BLOCK` or `UNABLE`. If Task-tool is unavailable, write "none — critic skipped" there **and** carry that fact forward so the PR reads "⚠️ critic skipped" — a skipped semantic gate is never silent. An `UNABLE` verdict is carried the same way and reads "⚠️ critic UNABLE — <reason>".
 
 Where the critic emitted a ` ```json critic-verdict ` block, route on the **roll-up** computed from its two axes (`BLOCK` > `UNABLE` > `PASS WITH WARNINGS` > `PASS`); where it did not, route on the `**Verdict:**` line exactly as above.
 
@@ -559,25 +599,25 @@ Determine the fix:
 
 ### Step 6B: Crystallization
 
-Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them** (same rule as Step 5F: the guidance is for the author, and no gate can see it once it ships). Do not copy the template over that file — same reason as 5F: it would destroy the answers gathered since 1.5. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` and `host-bindings` YAML blocks, Fix Approach, Regression Test Specification, and the rest). Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
+Produce the full spec from the **bugfix-spec template** at `skills/task-start/references/bugfix-spec-template.md` — fill the draft already at that path (the file step 1.5 created and recorded in the journal), fill every `{…}` placeholder, **and delete the unbraced guidance lines that sit beside them** (same rule as Step 5F: the guidance is for the author, and no gate can see it once it ships). Do not copy the template over that file — same reason as 5F: it would destroy the answers gathered since 1.5. The template holds the whole bugfix scaffold (frontmatter, Problem / Expected / Reproduction, Root Cause Analysis, the `spec-contract` YAML block, Fix Approach, Regression Test Specification, and the rest). The writing rules of Step 5F apply unchanged: one fact in one place, evidence in the sidecar, the contract-field limits, traps and at most one rejected alternative in Fix Approach, and Deferred slices only when slices were deferred. Read it from the plugin: the `skills/…` path resolves through all three entry points — chat and `/<command>` natively, `/marvin:<command>` via the server's plugin-root preamble (ADR-0008).
 
-Fill **every** section (write "N/A"/"none" deliberately), including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
+Fill every section the draft keeps, including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
 
 Present to user. Iterate until approved.
 
 ### Step 7B: Definition of Ready — mechanical gate (tool first)
 
-Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass the draft's `specPath` — the file step 1.5 opened — plus the project root, not an inline `specContent` copy. For bugfix it additionally expects the Root Cause Analysis, Fix Approach, Regression Test Specification, and Definition of Done sections, ≥2 criteria, a criterion marked `regression: true`, plus the traceability triple — the regression test named in its `oracle` must be an allowlisted `files` entry.
+Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass the draft's `specPath` — the file step 1.5 opened — plus the project root, not an inline `specContent` copy. For bugfix it additionally expects the Problem, Reproduction Steps, Root Cause Analysis, Fix Approach and Regression Test Specification sections, ≥2 criteria, a criterion marked `regression: true`, plus the traceability triple — the regression test named in its `oracle` must be an allowlisted `files` entry.
 
 - **FAIL** → show failing checks, loop back (usually 3B or 5B), fix, re-run. **Do not invoke the critic and do not write.**
 - **PASS / PASS WITH WARNINGS** → proceed to the critic.
-- Tool unavailable → self-check manually, note in Design Notes.
+- Tool unavailable → self-check manually, note the degradation in Assumptions.
 
 Record the call as Step 7F does: `metrics` tool, `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7B"`, the `slug`, the `verdict`, and `call` incremented per run.
 
 ### Step 8B: Critic Review (semantic)
 
-On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the drafted bugfix spec. Run the same **deterministic sweep** before every dispatch, apply the same **two-dispatch budget**, the same verdict rules as Step 8F, record each dispatch and its terminal verdict through the `metrics` tool exactly as Step 8F does (`critic-dispatch` before, `critic-verdict` after, `step: "8B"`), and record the verdict in **Critic Verdict & Overrides**:
+On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the drafted bugfix spec. Run the same **deterministic sweep** before every dispatch, apply the same **dispatch budget** (two, or one on the light tier, where a bugfix qualifies with `severity: low` and at most five files), the same **resolution rule** (edit the lines a finding names; add no explanatory paragraph), the same verdict rules as Step 8F, record each dispatch and its terminal verdict through the `metrics` tool exactly as Step 8F does (`critic-dispatch` before, `critic-verdict` after, `step: "8B"`), and record the verdict in **Critic Verdict & Overrides**:
 
 - `BLOCK` → loop back (usually 3B root-cause or 5B fix-approach), then **re-run Step 7B** before returning.
 - `PASS WITH WARNINGS` → user decides; record override if proceeding.
@@ -625,4 +665,5 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
 - **The user decides.** Present trade-offs and let the user choose. Never select a variant unilaterally.
 - **Reject untestable criteria.** "It should be intuitive" → what specific behavior, proven by what test?
 - **Keep it conversational.** This is a dialogue, not a form. Adapt to the user's communication style.
-- **No generic filler.** Every section must contain specific, actionable content or an explicit "N/A"/"none".
+- **No generic filler.** Every section kept must contain specific, actionable content; an optional section that does not apply is deleted, not filled with "N/A".
+- **One fact, one place.** A decision is written once, where its reader looks for it, and referred to by id everywhere else. A restatement is not emphasis: it is a second copy that drifts from the contract the first time either is edited.

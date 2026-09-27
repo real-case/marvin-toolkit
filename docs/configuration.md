@@ -67,6 +67,8 @@ Here is a complete example with every field set:
     { "key": "done", "role": "done", "tracker_status": "Done" },
     { "key": "blocked", "role": "blocked" }
   ],
+  "scope": { "exempt": [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"] },
+  "merge_obligations": ["a CHANGELOG entry for every user-visible change"],
   "usage": { "enabled": true }
 }
 ```
@@ -220,6 +222,60 @@ specs that already live elsewhere. What does **not** move is the verification ar
 says. A spec is a project document and follows the host's conventions; everything Marvin
 generates about a run is a service file and stays in the working directory
 ([ADR-0037](./adr/0037-spec-corpus-mechanics.md)).
+
+### `merge_obligations`
+
+This is what the project needs before a pull request can merge beyond its gates: a version
+bump, a committed build artefact, a changelog entry. It is an optional list of strings. Until
+[ADR-0046](./adr/0046-lean-spec-shape.md) every spec rewrote it into a `host-bindings` block;
+now `/marvin:task-start` proposes it once per project, together with any missing `spec.dir`,
+`adr.dir`, `gates` or `gates.test_one`, writes it only after you confirm, and turns each
+obligation that touches a file into a row of the spec's contract.
+
+```json
+{ "merge_obligations": ["npm run sync-version", "commit the rebuilt dist/server.js"] }
+```
+
+### `scope`
+
+This holds the by-product exemptions for a task's scope, read by the `spec` tool's scope gate
+and by the task-metrics roll-up. It is an optional object with one optional field, `exempt`, a
+list of path patterns. When it is absent nothing is exempt: marvin ships no defaults, so the
+scope gate of a project only widens by that project's own decision
+([ADR-0045](./adr/0045-scope-byproduct-exemptions.md)).
+
+A spec's `files` list is the allowlist for a task's changes, and the scope gate fails on any
+changed file outside it. Some files change as a by-product of doing the task rather than as
+part of it, and no spec author can plan them: a reviewer subagent writing notes into its own
+`.claude/agent-memory/` directory, a lock file rewritten when an allowed dependency is added, a
+hand-written `.d.mts` sidecar the project requires beside every module a typed test imports.
+Without an exemption each of them is a SPEC GAP recorded by hand and an `undeclared` path in the
+task's metrics. A changed file that matches a pattern here is not a violation. The gate still
+names it, with the pattern that matched, and the task's metrics record list it under
+`scope_drift.exempt` instead of `undeclared`. A file the contract declares is always counted as
+declared, even when a pattern would match it too.
+
+The pattern grammar is deliberately small:
+
+| Pattern | Matches |
+|---------|---------|
+| `**` as a whole segment | zero or more directories: `**/*.d.mts` matches `x.d.mts` and `scripts/x.d.mts` |
+| `*` | any characters within one segment, including a leading dot |
+| `?` | exactly one character within a segment |
+| a trailing `/` | everything under that directory: `.claude/agent-memory/` equals `.claude/agent-memory/**` |
+| anything else | itself, literally; there are no character classes, braces or negation |
+
+Every pattern is matched against the whole project-relative path, so `bun.lock` is the lock
+file at the root and `**/bun.lock` is every lock file in the tree. Unlike `.gitignore`, a slash
+does not change where a pattern applies. A pattern that is empty, absolute, contains a
+backslash or a `.`/`..` segment, starts with `!`, or consists only of wildcards (which would
+exempt every file) is ignored. `/marvin:track-config` refuses to write one, and one edited into
+the file by hand is reported by `/marvin:track-config`, `/marvin:dashboard`, and the scope gate
+itself.
+
+`/marvin:track-config` sets the list with `scope_exempt`, a JSON array of patterns that replaces
+the whole list; an empty string removes it. `.marvin/` is never part of a task's scope, whatever
+this list says, so a harness kept under `.marvin/task/runs/` needs no entry.
 
 ## Environment variables
 

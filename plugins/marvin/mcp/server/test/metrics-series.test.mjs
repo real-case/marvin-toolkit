@@ -28,13 +28,17 @@ const T = (hhmmss, day = "03") => `2026-09-${day}T${hhmmss}.000Z`;
 const SEAL = "bbbbbbbbbbbbbbbb";
 
 /** A rolled-up block from the SHIPPED roll-up, so the fixture can never drift from the contract. */
-function block(slug, { type = "feature", day = "03", criteria = 2, gaps = 1, active = true } = {}) {
+function block(
+  slug,
+  { type = "feature", day = "03", criteria = 2, gaps = 1, active = true, size = null } = {},
+) {
   return rollUpMetrics({
     slug,
     base_branch: "dev",
     now: T("12:00:00", day),
     spec: {
       path: `.marvin/task/001-${slug}.md`,
+      size,
       frontmatter: { type, risk: "low", created: `2026-09-${day}`, contract_sha: SEAL },
       contract: {
         files: [{ id: "F1", path: `src/${slug}.ts`, action: "edit" }],
@@ -164,6 +168,29 @@ test("escaped defects: each shipped bugfix credits the EARLIER shipped specs who
   assert.deepEqual(escapedDefects(legacy).pairs, [
     { bugfix: "older-fix", credited: ["numbered", "old"] },
   ]);
+});
+
+test("Q13/Q14: spec size aggregates over the records that measured it (ADR-0046)", () => {
+  const row = (slug, size) => ({
+    slug,
+    filename: `001-${slug}.md`,
+    events: 1,
+    block: block(slug, { size }),
+    review_fix_commits: null,
+  });
+  const s = aggregateSeries({
+    dir: ".marvin/metrics",
+    now: T("13:00:00"),
+    records: [
+      row("alpha", { bytes: 12000, words: 1500 }),
+      row("beta", { bytes: 36000, words: 4500 }),
+      row("legacy", null),
+    ],
+    shipped: null,
+    filters: {},
+  });
+  assert.deepEqual(s.quality.spec_bytes, { count: 2, mean: 24000, median: 24000, max: 36000 });
+  assert.deepEqual(s.quality.spec_words, { count: 2, mean: 3000, median: 3000, max: 4500 });
 });
 
 test("coverage names the header-only records the seal anchor creates", () => {

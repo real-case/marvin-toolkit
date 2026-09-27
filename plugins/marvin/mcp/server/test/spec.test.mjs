@@ -88,7 +88,7 @@ criteria:
     implemented_by: [F1, F3]
     oracle:
       kind: command
-      ref: npm run build
+      ref: grep -q sample docs/sample-new.md
     failure: no link
   - id: AC3
     statement: Given the change, when reviewed, then it reads cleanly
@@ -373,10 +373,140 @@ test("all-prose-review oracles block", async () => {
   const content = VALID_FEATURE.replace(
     "      kind: test\n      ref: test/sample.test.mjs::exists",
     "      kind: prose-review",
-  ).replace("      kind: command\n      ref: npm run build", "      kind: prose-review");
+  ).replace(
+    "      kind: command\n      ref: grep -q sample docs/sample-new.md",
+    "      kind: prose-review",
+  );
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "ac-verified-real").status, "fail");
+});
+
+// ── grounding and oracle runnability ─────────────────────────────────────────
+
+/** VALID_FEATURE with AC2's command oracle replaced by `cmd`. */
+const withAc2Oracle = (cmd) =>
+  VALID_FEATURE.replace("ref: grep -q sample docs/sample-new.md", `ref: ${JSON.stringify(cmd)}`);
+
+/** VALID_FEATURE with one more line of Context prose. */
+const withContext = (line) =>
+  VALID_FEATURE.replace("- Sibling specs: none", `- Sibling specs: none\n- ${line}`);
+
+test("a line citation past the end of the file blocks", async () => {
+  const { parsed } = await callSpec({
+    specContent: withContext("The rule lives at `CLAUDE.md:999999`."),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "cite-lines");
+  assert.equal(check.status, "fail");
+  assert.match(check.detail, /CLAUDE\.md:999999 \(\d+ lines\)/);
+});
+
+test("a citation written relative to a package resolves through the tracked files", async () => {
+  // `tools/spec.ts` is not a path from the root; exactly one tracked file ends with it.
+  const past = await callSpec({
+    specContent: withContext("See tools/spec.ts:999999 and tools/spec.ts:1-3."),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(past.parsed, "cite-lines").status, "fail");
+  assert.match(find(past.parsed, "cite-lines").detail, /tools\/spec\.ts:999999/);
+  assert.doesNotMatch(find(past.parsed, "cite-lines").detail, /tools\/spec\.ts:1-3/);
+
+  const within = await callSpec({
+    specContent: withContext("See tools/spec.ts:1-3."),
+    projectRoot: repoRoot,
+  });
+  const check = find(within.parsed, "cite-lines");
+  assert.equal(check.status, "pass");
+  assert.match(check.detail, /^1 line citation/);
+});
+
+test("citations the gate cannot or need not check are skipped, not reported", async () => {
+  const content = withContext(
+    "Unchecked: `docs/sample-new.md:50` (planned new), `index.ts:40` (ambiguous), " +
+      "`other-repo/src/x.ts:9` (resolves to nothing), `.marvin/task/runs/x.md:3`.",
+  ).replace("## Chosen Approach\n", "## Chosen Approach\n```\nCLAUDE.md:999999\n```\n");
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+  assert.equal(find(parsed, "cite-lines").status, "pass");
+});
+
+test("a test-name filter starting with a dash blocks, only for a test runner", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle('npx vitest run test/sample.test.mjs -t "--staged refuses"'),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.match(find(parsed, "oracle-filter").detail, /AC2: -t "--staged refuses"/);
+
+  // `-t` followed by a flag is ordinary outside a test runner.
+  const docker = await callSpec({
+    specContent: withAc2Oracle("docker run -t --rm scripts/image.Dockerfile"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(docker.parsed, "oracle-filter"), undefined);
+});
+
+test("an oracle naming a file that neither exists nor is planned blocks", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("node scripts/does-not-exist.mjs --check"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "oracle-paths");
+  assert.equal(check.status, "fail");
+  assert.match(check.detail, /AC2→scripts\/does-not-exist\.mjs/);
+
+  // A planned file, a file under a `cd` target and an output path all resolve.
+  const ok = await callSpec({
+    specContent: withAc2Oracle(
+      "node --test test/sample.test.mjs && cd plugins/marvin && node mcp/server/bin/widget-preview.mjs > out/report.txt",
+    ),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(ok.parsed, "oracle-paths").status, "pass");
+});
+
+test("a workspace-relative oracle path only warns", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("npm test -w @marvin-toolkit/server -- test/not-at-root.test.mjs"),
+    projectRoot: repoRoot,
+  });
+  const checks = parsed.checks.filter((c) => c.id === "oracle-paths");
+  assert.deepEqual(
+    checks.map((c) => c.status),
+    ["pass", "warn"],
+  );
+  assert.notEqual(parsed.verdict, "FAIL");
+});
+
+test("a whole-suite oracle warns; a narrowed or bespoke command does not", async () => {
+  const { parsed } = await callSpec({
+    specContent: withAc2Oracle("npm run build"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(parsed, "oracle-narrow").detail, /AC2: npm run build/);
+
+  for (const cmd of [
+    "npx vitest run plugins/marvin/mcp/server/test",
+    "npm test -- -t 'links the sample'",
+    "grep -q sample CLAUDE.md",
+    "bun run metrics --negative-check",
+  ]) {
+    const r = await callSpec({ specContent: withAc2Oracle(cmd), projectRoot: repoRoot });
+    assert.equal(find(r.parsed, "oracle-narrow"), undefined, cmd);
+  }
+});
+
+test("a real oracle with no failure line warns", async () => {
+  const { parsed } = await callSpec({
+    specContent: VALID_FEATURE.replace("    failure: no link\n", ""),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.match(find(parsed, "oracle-failure").detail, /AC2/);
 });
 
 test("an empty contract signature blocks", async () => {
@@ -402,11 +532,132 @@ test("spike_required: true blocks dispatch", async () => {
   assert.equal(find(parsed, "spike-required").status, "fail");
 });
 
-test("a missing Definition of Done section blocks", async () => {
-  const content = VALID_FEATURE.replace("## Definition of Done", "## Implementation Notes");
+test("a missing Chosen Approach section blocks", async () => {
+  const content = VALID_FEATURE.replace("## Chosen Approach", "## Implementation Notes");
   const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
   assert.equal(parsed.verdict, "FAIL");
   assert.equal(find(parsed, "sections-required").status, "fail");
+});
+
+// ── the lean spec shape (ADR-0046) ───────────────────────────────────────────
+
+/** Drop one `## Heading` section (heading through the line before the next `##`). */
+const withoutSection = (content, heading) =>
+  content
+    .replace(new RegExp(`## ${heading}\\n[\\s\\S]*?(?=\\n## |$)`), "")
+    .replace(/\n{3,}/g, "\n\n");
+
+const LEAN_DROPPED = [
+  "Data & Config",
+  "Test Plan",
+  "Definition of Done",
+  "Security / NFR",
+  "Why this over alternatives",
+  "Design Notes",
+  "Future Considerations",
+];
+
+test("a lean feature spec without the dropped sections passes clean", async () => {
+  const lean = LEAN_DROPPED.reduce(withoutSection, VALID_FEATURE);
+  for (const heading of LEAN_DROPPED) assert.ok(!lean.includes(`## ${heading}`), heading);
+  const { parsed } = await callSpec({ specContent: lean, projectRoot: repoRoot });
+  assert.equal(
+    parsed.verdict,
+    "PASS",
+    JSON.stringify(parsed.checks.filter((c) => c.status !== "pass")),
+  );
+  assert.equal(find(parsed, "sections-required").status, "pass");
+  assert.equal(find(parsed, "sections-recommended"), undefined);
+});
+
+test("a lean bugfix spec without Definition of Done and Design Notes passes", async () => {
+  const lean = ["Definition of Done", "Design Notes"].reduce(withoutSection, VALID_BUGFIX);
+  const { parsed } = await callSpec({ specContent: lean, projectRoot: repoRoot });
+  assert.notEqual(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "sections-required").status, "pass");
+  assert.equal(find(parsed, "sections-recommended"), undefined);
+});
+
+test("a contract that declares no satisfies at all passes the symmetry check", async () => {
+  const content = VALID_FEATURE.replace(/\n {4}satisfies: \[[^\]]*\]/g, "");
+  assert.ok(!/satisfies:/.test(content));
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS");
+  assert.equal(find(parsed, "graph-symmetry").status, "pass");
+});
+
+test("Context is recommended, except on the light tier", async () => {
+  const noContext = withoutSection(VALID_FEATURE, "Context");
+  // risk: low with three files is the light tier — Context is optional.
+  const light = await callSpec({ specContent: noContext, projectRoot: repoRoot });
+  assert.equal(find(light.parsed, "sections-recommended"), undefined);
+  // The same spec at risk: medium is not.
+  const medium = await callSpec({
+    specContent: noContext.replace("risk: low", "risk: medium"),
+    projectRoot: repoRoot,
+  });
+  const rec = find(medium.parsed, "sections-recommended");
+  assert.equal(rec.status, "warn");
+  assert.match(rec.detail, /context/);
+});
+
+test("a risk: high spec with no Security / NFR warns; with one it passes", async () => {
+  const high = VALID_FEATURE.replace("risk: low", "risk: high");
+  const withSection = await callSpec({ specContent: high, projectRoot: repoRoot });
+  assert.equal(find(withSection.parsed, "security-nfr").status, "pass");
+
+  const without = await callSpec({
+    specContent: withoutSection(high, "Security / NFR"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(without.parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(without.parsed, "security-nfr").status, "warn");
+
+  // Below risk: high the section is optional and nothing is said about it.
+  const low = await callSpec({
+    specContent: withoutSection(VALID_FEATURE, "Security / NFR"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(low.parsed, "security-nfr"), undefined);
+});
+
+test("a spec over the size budget warns and never fails", async () => {
+  const within = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
+  assert.equal(find(within.parsed, "spec-size").status, "pass");
+
+  // Three files and three criteria: 3072 + 1200 + 1500 = 5772 bytes.
+  const padded = VALID_FEATURE.replace(
+    "## Chosen Approach\n",
+    "## Chosen Approach\n" + "Restated decision. ".repeat(300) + "\n",
+  );
+  const { parsed } = await callSpec({ specContent: padded, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  const size = find(parsed, "spec-size");
+  assert.equal(size.status, "warn");
+  assert.match(size.detail, /budget of 5772/);
+});
+
+test("an over-long criterion statement and file intent each warn", async () => {
+  const long = (n) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+  const content = VALID_FEATURE.replace(
+    "statement: Given the index, then it links the sample",
+    `statement: ${long(41)}`,
+  ).replace("intent: the sample doc", `intent: ${long(61)}`);
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+  assert.equal(find(parsed, "ac-length").status, "warn");
+  assert.match(find(parsed, "ac-length").detail, /AC2 \(41\)/);
+  assert.equal(find(parsed, "intent-length").status, "warn");
+  assert.match(find(parsed, "intent-length").detail, /F2 \(61\)/);
+
+  // At the limits exactly, nothing is said.
+  const atLimit = VALID_FEATURE.replace(
+    "statement: Given the index, then it links the sample",
+    `statement: ${long(40)}`,
+  ).replace("intent: the sample doc", `intent: ${long(60)}`);
+  const ok = await callSpec({ specContent: atLimit, projectRoot: repoRoot });
+  assert.equal(find(ok.parsed, "ac-length"), undefined);
+  assert.equal(find(ok.parsed, "intent-length"), undefined);
 });
 
 test("a missing breaking declaration blocks", async () => {
@@ -839,6 +1090,33 @@ test("every declared argument is still accepted (strictness rejects only unknown
   }
 });
 
+test("scope: a base passed as `base` is diffed from its merge base, so later base-branch commits are not counted", async () => {
+  const dir = gitScopeRepo();
+  const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  try {
+    g("checkout", "-qb", "task");
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    g("commit", "-qam", "task change");
+    // A commit that lands on the base branch after the fork.
+    g("checkout", "-q", "main");
+    writeFileSync(join(dir, "src", "other.ts"), "export const o = 1;\n");
+    g("add", "-A");
+    g("commit", "-qm", "base moved on");
+    g("checkout", "-q", "task");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+      base: "main",
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.doesNotMatch(find(parsed, "scope").detail, /other\.ts/);
+    assert.match(find(parsed, "scope").detail, /all 1 in-scope changed file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("scope: marvin's own .marvin/ artifacts are never scope violations", async () => {
   const dir = gitScopeRepo();
   try {
@@ -848,6 +1126,178 @@ test("scope: marvin's own .marvin/ artifacts are never scope violations", async 
     const { parsed } = await callSpec({ specContent: SCOPE_SPEC, mode: "scope", projectRoot: dir });
     assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
     assert.doesNotMatch(find(parsed, "scope").detail, /verification/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── scope.exempt: by-product files the gate does not count (ADR-0045) ──────
+//
+// The two texts below were captured from the committed server BEFORE
+// exemptions existed, on the scenario `noConfigScenario` rebuilds. Without a
+// `scope.exempt` key the gate must still produce them byte for byte — the
+// no-config path is not allowed to move at all.
+const SCOPE_BASELINE_PASS =
+  '# Spec Readiness Report\n\n**Type:** feature\n**Verdict:** PASS\n\n## Checks\n- ✅ **Scope** — all 1 in-scope changed file(s) are within the contract allowlist\n\n```json spec-result\n{"verdict":"PASS","type":"feature","contractSha":null,"checks":[{"id":"scope","status":"pass","detail":"all 1 in-scope changed file(s) are within the contract allowlist"}]}\n```';
+const SCOPE_BASELINE_FAIL =
+  '# Spec Readiness Report\n\n**Type:** feature\n**Verdict:** FAIL\n\n## Checks\n- ❌ **Scope** — 1 changed file(s) outside the contract allowlist (scope creep): .claude/agent-memory/critic/MEMORY.md. Either add them to the spec\'s files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP.\n\n## Definition of Ready: BLOCKED\n\nResolve the ❌ checks above, then re-run the gate. Do not write the spec until this passes.\n\n```json spec-result\n{"verdict":"FAIL","type":"feature","contractSha":null,"checks":[{"id":"scope","status":"fail","detail":"1 changed file(s) outside the contract allowlist (scope creep): .claude/agent-memory/critic/MEMORY.md. Either add them to the spec\'s files list (amend the spec, then re-seal), or — if intentional — re-run with allow: [...] as a recorded SPEC GAP."}]}\n```';
+
+const AGENT_MEMORY = join(".claude", "agent-memory", "critic", "MEMORY.md");
+
+function writeScopeConfig(dir, config) {
+  mkdirSync(join(dir, ".marvin"), { recursive: true });
+  writeFileSync(
+    join(dir, ".marvin", "config.json"),
+    typeof config === "string" ? config : JSON.stringify(config),
+  );
+}
+
+function writeAgentMemory(dir) {
+  mkdirSync(join(dir, ".claude", "agent-memory", "critic"), { recursive: true });
+  writeFileSync(join(dir, AGENT_MEMORY), "# notes\n");
+}
+
+test("scope: with no config the answer is byte-identical to the gate before exemptions", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    const clean = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(clean.text, SCOPE_BASELINE_PASS);
+
+    // An agent-memory by-product with nothing configured is the scope creep it always was.
+    writeAgentMemory(dir);
+    const creep = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(creep.text, SCOPE_BASELINE_FAIL);
+    assert.equal(creep.isError, true);
+
+    // A config file that sets other keys but no `scope` changes nothing either.
+    writeScopeConfig(dir, { base_branch: "main", spec: { dir: "specs" } });
+    const other = await callSpec({ specContent: SCOPE_SPEC, action: "scope", projectRoot: dir });
+    assert.equal(other.text, SCOPE_BASELINE_FAIL);
+
+    // Nor does an exemption list that matches nothing in this change set.
+    writeScopeConfig(dir, { scope: { exempt: ["bun.lock"] } });
+    rmSync(join(dir, ".claude"), { recursive: true, force: true });
+    const unmatched = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(unmatched.text, SCOPE_BASELINE_PASS);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a changed file matching scope.exempt passes, and the answer names it and its pattern", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeAgentMemory(dir);
+    writeFileSync(join(dir, "bun.lock"), "lock\n");
+    writeScopeConfig(dir, {
+      scope: { exempt: [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"] },
+    });
+    const { parsed, isError, text } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(isError, false);
+    const detail = find(parsed, "scope").detail;
+    assert.equal(
+      detail,
+      "all 1 in-scope changed file(s) are within the contract allowlist; 2 by-product file(s) exempted by scope.exempt — " +
+        "`.claude/agent-memory/**` (1): .claude/agent-memory/critic/MEMORY.md; `bun.lock` (1): bun.lock",
+    );
+    assert.match(
+      text,
+      /exempted by scope\.exempt/,
+      "the exemption is in the human-readable text too",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a file matching no scope.exempt pattern still fails, and the exemptions are still named", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeAgentMemory(dir);
+    writeFileSync(join(dir, "src", "b.ts"), "export const b = 1;\n"); // real scope creep
+    writeScopeConfig(dir, { scope: { exempt: [".claude/agent-memory/**"] } });
+    const { parsed, isError } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true);
+    const detail = find(parsed, "scope").detail;
+    assert.match(
+      detail,
+      /^1 changed file\(s\) outside the contract allowlist \(scope creep\): src\/b\.ts\./,
+    );
+    assert.doesNotMatch(detail.split(";")[0], /agent-memory/, "the exempt file is not a violation");
+    assert.match(
+      detail,
+      /1 by-product file\(s\) exempted by scope\.exempt — `\.claude\/agent-memory\/\*\*` \(1\)/,
+    );
+
+    // `allow` still works beside an exemption: the SPEC GAP path is unchanged.
+    const allowed = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+      allow: ["src/b.ts"],
+    });
+    assert.equal(allowed.parsed.verdict, "PASS", JSON.stringify(allowed.parsed.checks, null, 2));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: an unusable scope.exempt pattern exempts nothing and is named as a warning", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, "bun.lock"), "lock\n");
+    writeScopeConfig(dir, { scope: { exempt: ["/bun.lock", "**"] } });
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "FAIL", "bun.lock is still outside the allowlist");
+    assert.match(find(parsed, "scope").detail, /bun\.lock/);
+    const w = find(parsed, "scope-exempt");
+    assert.equal(w.status, "warn");
+    assert.match(w.detail, /2 scope\.exempt pattern\(s\) ignored/);
+    assert.match(w.detail, /"\/bun\.lock" \(it starts with `\/`/);
+    assert.match(w.detail, /"\*\*" \(it is only wildcards/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scope: a config file that cannot be applied is a warning, not a silent loss of exemptions", async () => {
+  const dir = gitScopeRepo();
+  try {
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    writeScopeConfig(dir, "{ not json");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+    });
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS", JSON.stringify(parsed.checks, null, 2));
+    assert.equal(find(parsed, "scope").status, "pass");
+    const w = find(parsed, "scope-config");
+    assert.equal(w.status, "warn");
+    assert.match(w.detail, /not valid JSON/);
+    assert.match(w.detail, /no scope\.exempt pattern is in force/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

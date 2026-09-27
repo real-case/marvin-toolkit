@@ -215,7 +215,7 @@ optional `.marvin/config.json` managed through `/marvin:track-config`.
 | `/marvin:track-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `open the login-timeout task` |
 | `/marvin:track-start` | Pick a todo task, branch off, and mark it work-in-progress. | `marvin start a board task`, `pick a todo and branch off` |
 | `/marvin:track-move` | Move a task — to review, to done, or to any configured status. | `marvin move task 3 to review`, `mark this done`, `set task 3 to blocked` |
-| `/marvin:track-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, and statuses — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
+| `/marvin:track-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses, and the scope exemptions for by-product files — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
 
 The board dashboard scoped to these commands is `/marvin:help track`
 ([ADR-0032](./adr/0032-track-surface-reduction.md) records the seven-command surface).

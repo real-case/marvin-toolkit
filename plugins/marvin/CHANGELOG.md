@@ -4,6 +4,191 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.28.0] — 2026-09-27
+
+Changes 2–8 of `docs/proposals/pipeline-stage-efficiency.md`: the pipeline stages the host
+measurements showed to be unenforced, inert or miscounted. Change 1, recalibrating the spec critic,
+waits for five specs written in the ADR-0046 shape, as the proposal orders.
+
+### Added
+
+- **Critic budgets in the `metrics` answer.** A `critic-dispatch` event is now answered with a
+  **Budget** line and a `budget` field: `within`, `final` (the last dispatch the budget allows) or
+  `exceeded`. The spec critic gets two dispatches, one on the light tier, which the tool reads from
+  the spec's own frontmatter and contract; the diff critic gets three, the first dispatch plus one
+  in each of the critic loop's first two rounds. An overrun is still recorded, so it is counted. The
+  roll-up gains `rework.critic_budget_exceeded` (R5, per critic), and `/marvin:task-metrics` reports
+  the share of tasks that exceeded a budget. A record rolled up earlier reads as null.
+- **A red phase on the feature path** ([ADR-0047](../../docs/adr/0047-feature-red-phase.md)).
+  `/marvin:task-implement` Step 5F and `marvin-tm-executor` §2 record one `expect: "fail"` oracle
+  run for the first `kind: test` criterion before implementing, and the delivery gate now reads a
+  feature's `red_green`: `proven` when any `kind: test` criterion has a red→green pair, `missing`
+  when none has, `unknown` when the spec has none. It stays advisory.
+- **Delivery and progress on the headless path.** `marvin-tm-executor` writes progress entries
+  (`source: "marvin-tm-executor"`, from `§1`) and, after `gh pr create` succeeds, sets the spec to
+  `status: shipped` and appends `## Delivery`, as `/marvin:task-deliver` Step 4 does. The roll-up's
+  T2 now starts from the executor's `§1` entry as well as `task-implement`'s step 2.5, so headless
+  tasks get time fields. The executor also runs the feature oracles after its gates, and records a
+  bugfix red and green through `verify` when the tool is available.
+- **Lint before the full `verify`.** Step 6F (and 9B) and the executor run `verify` with
+  `only: ["lint"]` first. Lint caused 6 of the 9 failed gates in the measured first runs. The lint
+  pass is a targeted run, so it counts toward R4 `runs_before_green`.
+- **A `scope.exempt` suggestion at the first by-product SPEC GAP.** `task-implement` names the
+  pattern for a lockfile, a generated declaration file or a subagent's memory notes, and points the
+  user at `/marvin:track-config`. No defaults ship (ADR-0045).
+
+### Changed
+
+- **The scope diff starts at the merge base.** `changedFilesForScope` diffs from
+  `git merge-base <base> HEAD` instead of `<base>`, so commits that reached the base branch after
+  the fork no longer count as undeclared changes. Both callers, the scope gate and the Q1 roll-up,
+  go through it. Without a base the diff is still against `HEAD`, and when no merge base exists the
+  base ref itself is used.
+
+### Fixed
+
+- **The `oracle-filter` detail stated the wrong consequence.** A test-name filter that starts with
+  `-` is parsed as an option, and the runner exits with an error (vitest 4: `CACError: Unknown
+  option`), so the oracle can never pass. The check was correct; the detail and the 0.25.0 entry
+  below said it selected nothing and passed.
+
+## [0.27.0] — 2026-09-27
+
+Specs from `/marvin:task-start` get a lean shape: nine permanent sections plus three optional ones
+instead of eighteen, each fact stated once, and a critic that can ask for text to be removed. The
+measured corpus had a median of 37 KB, about a third of it restatement that had started to
+contradict the contracts it restated ([ADR-0046](../../docs/adr/0046-lean-spec-shape.md),
+`docs/proposals/spec-size-reduction.md`).
+
+### Added
+
+- **Advisory size checks in the DoR gate.** `spec-size` warns above
+  `3 KB + 400 B per file + 500 B per criterion`, `ac-length` on a criterion statement over 40 words,
+  `intent-length` on a file intent over 60 words, and `security-nfr` on a `risk: high` feature with
+  no Security / NFR section. All four warn and none fails, so every sealed spec stays dispatchable.
+- **`merge_obligations` in `.marvin/config.json`**, an optional list of what the host needs to merge.
+  With `spec.dir`, `adr.dir`, `gates` and `gates.test_one`, it replaces the `host-bindings` block a
+  spec used to carry; `/marvin:task-start` proposes the missing keys once per project and writes
+  them after confirmation.
+- **Spec size in the task metrics.** The terminal `task-metrics` block gains `quality.spec_size`
+  (`bytes`, `words`, `budget`), read from the spec at roll-up time, and `/marvin:task-metrics`
+  reports Q13 `spec_bytes` and Q14 `spec_words`. A record rolled up earlier reads as null.
+- **The spec critic's Economy category.** `[redundancy]` and `[size]` are warnings, `[drift]` (a
+  restatement that contradicts the contract) is a blocker, and `[prose-only]` flags a requirement
+  nothing can prove. A criterion that describes design rather than behaviour is reported as well.
+
+### Changed
+
+- **The spec templates.** The feature template keeps Goal, Context, Spec Contract, Chosen Approach,
+  Non-goals, Assumptions, Open Questions and a one-line Critic Verdict & Overrides; Data & Config,
+  Security / NFR and Deferred slices are written only when they apply. Test Plan, Definition of
+  Done, Design Notes, Why this over alternatives, Future Considerations and Host Bindings are gone:
+  their content moves into the contract or into Chosen Approach as traps and at most three rejected
+  alternatives. The bugfix template drops Definition of Done, Design Notes and Host Bindings.
+  Both state limits on the contract fields, and `satisfies` is now optional.
+- **The DoR gate's required sections.** A feature requires Goal, Chosen Approach, Non-goals and Open
+  Questions, and recommends Context, Assumptions and Critic Verdict & Overrides; a bugfix no longer
+  requires Definition of Done. Sections were only removed, so a spec that passed still passes.
+- **`task-start` writing rules.** Step 5F replaces "fill every section" with one fact in one place,
+  evidence in a `runs/<slug>.evidence.md` sidecar, and the critic's narrative in its receipt. Step
+  4.5F must present a split for a plan above 15 files or 12 criteria, and the gate's `fcp-size`
+  warning moved to the same threshold. Step 6F turns follow-ups into board cards instead of a spec
+  section. Steps 8F/8B resolve a critic finding by editing the lines it names and pass the size
+  budget to the critic.
+- **A light tier.** A feature with `risk: low` and at most five files may omit Context and gets one
+  spec-critic dispatch instead of two.
+- **The executor** reads traps from Chosen Approach, and still reads `## Design Notes` in an older
+  spec.
+- **The task summary** links the ADR directory from `adr.dir` when a spec carries no
+  `host-bindings` block.
+
+## [0.26.0] — 2026-09-27
+
+Files a task writes as a by-product, rather than as part of the change, stop counting as scope
+creep once the project says which they are. In one host project a third of all recorded SPEC GAPs
+were such files: reviewer agent-memory notes, `.d.mts` sidecars, a lock file, and a harness under
+`.marvin/` that was already exempt ([ADR-0045](../../docs/adr/0045-scope-byproduct-exemptions.md)).
+
+### Added
+
+- **`scope.exempt` in `.marvin/config.json`: path patterns for by-product files.** A changed file
+  the spec's `files` list does not name and that matches a pattern is not a violation for the scope
+  gate (`spec action: "scope"`) and not `undeclared` in a task's metrics. It is never silent: the
+  gate's detail names each exempted path with the pattern that matched it. A file the contract
+  declares is always counted as declared. Patterns are project-relative and anchored at the root:
+  `**` for any depth, `*` within one segment, `?` for one character, a trailing `/` for a whole
+  directory. There are no character classes, braces or negation. marvin ships **no defaults**, so a
+  project without the key gets the gate's previous answer byte for byte.
+- **Q1 `scope_drift.exempt`.** The terminal `task-metrics` block lists the exempted paths, or `null`
+  when the project configures no list: the source is absent, so no zero is claimed. `changed` still
+  counts them; only `undeclared` shrinks. `metrics action: "series"` gains a
+  `scope_drift_exempt` row, and a single record's view prints the exempted paths.
+- **`/marvin:track-config` shows and sets the list.** `scope_exempt` takes a JSON array that
+  replaces the list, and an empty string removes it. The view gains a "Scope exemptions" section.
+  A pattern the matcher cannot honour (absolute, only wildcards, a `..` segment, a leading `!`) is
+  refused with the reason, and nothing is written.
+
+### Changed
+
+- **The scope gate and the metrics roll-up share one judgement.** `partitionScope` in the new
+  `lib/scope.ts` removes marvin's own files, then the allowlist, then the exemptions, and both
+  callers use it, so the gate's violations and Q1's `undeclared` cannot disagree. The
+  `.marvin/`-and-spec exclusion that each of them wrote out separately now lives only there.
+- **The scope gate reads the project config**, and reports what it could not apply: a
+  `.marvin/config.json` that fails to load adds a `scope-config` warning, and a pattern it ignores
+  adds a `scope-exempt` warning naming the pattern and the reason. A hand-edited bad pattern also
+  appears in `/marvin:track-config` and `/marvin:dashboard`. It is never removed from the list,
+  since the gate would then have nothing to name.
+- **`task-implement`, `marvin-tm-executor` and `marvin-tm-diff-critic` know about exemptions.** A
+  file the gate reports as exempted, or anything under `.marvin/`, needs no SPEC GAP. A recurring
+  by-product that is not exempted is still one, and the session suggests its pattern for the list.
+  The diff critic classifies an exempt path as `generated`.
+
+## [0.25.0] — 2026-09-27
+
+The Definition-of-Ready gate takes over the decidable half of two finding classes the spec critic
+was spending its passes on. Across 54 spec-critic receipts in one host project, `[oracle]` and
+`[grounding]` were the two largest blocker categories; most of those blockers are judgements the
+gate cannot make, but some are facts it can check before the critic is dispatched.
+
+### Added
+
+- **`cite-lines` (FAIL): a line citation past the end of its file.** Every `path:line`,
+  `path:a-b` or `path:a,b` in the spec's prose, fenced blocks excluded, is resolved from the project
+  root, or else to the one tracked file whose path ends with it, so `Pages.tsx:969` and a path written
+  relative to a package are both checked. A citation that resolves to no file or to several is
+  skipped rather than guessed at. Paths planned `new` and `.marvin/` artifacts are exempt.
+- **`oracle-paths` (FAIL): an oracle command naming a file that neither exists nor is planned.**
+  Such an oracle cannot run. Paths are resolved from the root, from any `cd`/`-C`/`--cwd` target in
+  the command, and against the contract's `files`. Output targets (`>`, `tee`, `-o`) are ignored. A
+  command that selects a workspace by name (`-w`, `--workspace`, `--filter`) only warns, because
+  its paths are relative to a directory the gate cannot resolve.
+- **`oracle-filter` (FAIL): a test-name filter that starts with `-`.** `vitest -t "--staged …"`
+  hands the pattern to the argument parser as an option, and the runner exits with an error, so
+  the oracle can never pass. Checked only when the command invokes a test runner,
+  so `docker run -t --rm` is not flagged. The host sweep found three such oracles in two sealed
+  specs. One of them surfaced during implementation; the other two had gone unnoticed.
+- **`oracle-narrow` (WARN): a whole-suite oracle.** A project-wide gate or bare runner (`npm test`,
+  `npm run e2e`, `npx vitest run`) that names no file, directory, quoted pattern, URL or test filter
+  proves the suite is green, not that the criterion holds. A bespoke script is not flagged.
+- **`oracle-failure` (WARN): a real oracle with no `failure:` line.** Stating what the oracle shows
+  when the criterion is unmet is what lets anyone check that it can fail at all.
+
+### Changed
+
+- **The spec critic no longer re-reports what the gate checks.** `marvin-tm-spec-critic` is told
+  which oracle and citation facts are now mechanical, and is pointed at what remains: whether an
+  oracle that runs can also FAIL on the wrong implementation its `failure:` line describes.
+  `task-start` step 7F lists the new checks and asks for them to be fixed before the critic is
+  dispatched.
+
+### Not added
+
+- **A "named path does not exist" finding.** It was built and measured before release: across the
+  49 specs of three host projects it was wrong about four times in five (a path in another
+  repository, an import alias, a MIME type, an illustrative `src/components/Foo.tsx`). A missing
+  file stays a critic finding.
+
 ## [0.24.0] — 2026-09-08
 
 The eighth command group, `audit`: a project-audit programme of twenty-two audits reachable through

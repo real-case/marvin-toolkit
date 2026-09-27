@@ -1145,6 +1145,68 @@ test("deliver gate reports a proven red-green pair for a recorded red-then-green
   }
 });
 
+test("deliver gate reads a feature's red-green from its kind: test criterion (ADR-0047)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-feature-"));
+  try {
+    writeSpec(dir, { slug: "demo-feature", type: "feature", block: FEATURE_BLOCK });
+    writeFileSync(join(dir, "thing.test.sh"), "grep -q done thing.txt\n");
+    writeFileSync(join(dir, "thing.txt"), "todo\n");
+    writeVerification(dir, "PASS");
+    const gate = () =>
+      callVerify({ action: "gate", projectRoot: dir, specSlug: "demo-feature" }, "deliver-gate");
+
+    // No red on the record: missing, named by the first kind: test criterion, and still ALLOW.
+    const before = await gate();
+    assert.equal(before.parsed.red_green, "missing", "a feature is no longer `unknown`");
+    assert.equal(before.parsed.decision, "ALLOW");
+    assert.match(before.parsed.reason, /red→green pair at this contract_sha for AC1 —/);
+
+    // Red for AC1 only, then the implementation changes and the whole set goes green.
+    await callVerify(
+      {
+        action: "oracles",
+        projectRoot: dir,
+        specSlug: "demo-feature",
+        criteria: ["AC1"],
+        expect: "fail",
+      },
+      "oracle-result",
+    );
+    writeFileSync(join(dir, "thing.txt"), "done\n");
+    await callVerify(
+      { action: "oracles", projectRoot: dir, specSlug: "demo-feature" },
+      "oracle-result",
+    );
+
+    const after = await gate();
+    assert.equal(after.parsed.red_green, "proven", "one proven kind: test criterion is enough");
+    assert.doesNotMatch(after.parsed.reason, /red→green pair/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate keeps a feature with no kind: test criterion at `unknown`", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-feature-none-"));
+  try {
+    const block = FEATURE_BLOCK.replace(
+      "      kind: test\n      ref: thing.test.sh::the first thing works\n      run: sh thing.test.sh",
+      "      kind: command\n      ref: sh thing.test.sh",
+    );
+    assert.notEqual(block, FEATURE_BLOCK, "the fixture edit applied");
+    writeSpec(dir, { slug: "demo-feature", type: "feature", block });
+    writeVerification(dir, "PASS");
+    const gate = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: "demo-feature" },
+      "deliver-gate",
+    );
+    assert.equal(gate.parsed.red_green, "unknown");
+    assert.doesNotMatch(gate.parsed.reason, /red→green/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("oracles refuses a tampered contract and an unsealed spec without spawning", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-oracles-seal-"));
   try {

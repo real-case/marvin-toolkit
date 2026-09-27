@@ -441,11 +441,11 @@ export const PROMPTS: PromptDef[] = [
   {
     name: "track-config",
     description:
-      "Show or edit the board configuration — base branch, tracker URL template, branch template, statuses",
+      "Show or edit the board configuration — base branch, tracker URL template, branch template, statuses, scope exemptions",
     body: callTool(
       "task",
       { action: "config" },
-      "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} — roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.",
+      'Mine the user\'s message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), `statuses` (a JSON array of {key, role, tracker_status?} — roles: todo, wip, review, done, blocked; tracker_status is the tracker\'s exact workflow name), and `scope_exempt` (a JSON array of project-relative path patterns for by-product files the spec scope gate should not count as violations — `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","bun.lock"]; it replaces the whole list, so include the current entries when adding one). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.',
     ),
   },
 ];
