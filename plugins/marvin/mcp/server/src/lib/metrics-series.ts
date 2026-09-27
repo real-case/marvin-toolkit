@@ -399,6 +399,18 @@ export const SERIES_METRICS: readonly SeriesMetric[] = [
     unit: "count",
     pick: (r) => r.block?.rework.runs_before_green ?? null,
   },
+  {
+    group: "rework",
+    key: "critic_budget_exceeded",
+    id: "R5",
+    label: "tasks where a critic was dispatched past its budget",
+    unit: "share",
+    pick: (r) => {
+      const e = r.block?.rework.critic_budget_exceeded;
+      if (!e || (e.spec === null && e.diff === null)) return null;
+      return e.spec === true || e.diff === true ? 1 : 0;
+    },
+  },
 ];
 
 /** count / mean / median / max over the present values; all null at count 0. */

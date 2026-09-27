@@ -1090,6 +1090,33 @@ test("every declared argument is still accepted (strictness rejects only unknown
   }
 });
 
+test("scope: a base passed as `base` is diffed from its merge base, so later base-branch commits are not counted", async () => {
+  const dir = gitScopeRepo();
+  const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  try {
+    g("checkout", "-qb", "task");
+    writeFileSync(join(dir, "src", "a.ts"), "export const a = 2;\n");
+    g("commit", "-qam", "task change");
+    // A commit that lands on the base branch after the fork.
+    g("checkout", "-q", "main");
+    writeFileSync(join(dir, "src", "other.ts"), "export const o = 1;\n");
+    g("add", "-A");
+    g("commit", "-qm", "base moved on");
+    g("checkout", "-q", "task");
+    const { parsed } = await callSpec({
+      specContent: SCOPE_SPEC,
+      action: "scope",
+      projectRoot: dir,
+      base: "main",
+    });
+    assert.equal(parsed.verdict, "PASS", JSON.stringify(parsed.checks, null, 2));
+    assert.doesNotMatch(find(parsed, "scope").detail, /other\.ts/);
+    assert.match(find(parsed, "scope").detail, /all 1 in-scope changed file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("scope: marvin's own .marvin/ artifacts are never scope violations", async () => {
   const dir = gitScopeRepo();
   try {

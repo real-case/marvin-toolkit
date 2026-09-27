@@ -121,6 +121,24 @@ Follow the spec's **Chosen Approach** section. Rules:
 
 Use TodoWrite to track acceptance criteria as you go — one todo per criterion, marked complete as each is implemented and covered by a test.
 
+**Red phase — one criterion per task** (ADR-0047). Before implementing anything, take the **first**
+criterion in the contract whose oracle is `kind: test`, write its test, and record one run of it
+with the `verify` tool: `action: "oracles"`, the spec's `specSlug`, `criteria: ["<that id>"]` and
+`expect: "fail"`. It takes seconds. Then implement as below, and **do not edit that test file again**:
+Step 6F's oracle run is its green, and the delivery gate reads a red and a green over one unchanged
+test file at one `contract_sha` as `red_green: "proven"`. One criterion is enough, and a spec with no
+`kind: test` criterion has no red phase at all.
+
+- **`status: "fail"`** — the red. Continue.
+- **`status: "pass"`** — the behaviour already exists or the test cannot fail. Tighten the test
+  until it fails for the missing behaviour; if it cannot be made to fail, record a SPEC GAP and
+  continue without a red.
+- **`status: "not-run"`** — neither a red nor a green. Fix the cause the `reason` names (usually a
+  missing `gates.test_one` or `oracle.run`) and record the red again.
+
+`red_green` stays advisory: a missing pair adds a warning to the delivery gate's reason and never
+changes its decision.
+
 **And record each one durably.** As each acceptance criterion is completed, call the `spec` tool with
 `action: "progress"`, `kind: "criterion"`, the criterion id, and the resolved `specPath`. These are
 not duplicates of the TodoWrite list: TodoWrite is the live in-session view and **context compaction
@@ -157,7 +175,12 @@ with the pattern that matched, so they stay visible. A by-product the project ha
 still a FAIL: record the SPEC GAP, and if it will recur on every task, suggest adding its pattern
 through `/marvin:track-config` (`scope_exempt`).
 
-1. **Verify.** Invoke `/marvin:task-verify feature`. In this chained call, pass `mode: feature`
+1. **Lint first.** Call the `verify` tool with `only: ["lint"]`, `mode: feature` and the spec's
+   `specSlug`, and fix what it reports. Lint is the most common first-run failure — 6 of 9 failed
+   gates across three measured hosts — and costs seconds, while the full run it saves costs about
+   two minutes. An answer that no gate matched means the project has no lint gate: go straight on.
+   This pass is not a fix-cycle round.
+2. **Verify.** Invoke `/marvin:task-verify feature`. In this chained call, pass `mode: feature`
    (and the `stack` if already known) forward so the tool skips re-detection (it calls the `verify`
    tool, `execution: parallel`).
    - **PASS / PASS WITH WARNINGS** — proceed (collect warnings for the PR).
@@ -171,9 +194,9 @@ through `/marvin:track-config` (`scope_exempt`).
      worth more than one carrying none. This is the single place the critic sees a tree that is not
      green, and the reason is that the alternative is no semantic review at all, exactly when the
      change is in its worst shape.
-2. **Record the acceptance oracles.** With the gates green, call the `verify` tool with
-   `action: "oracles"` and this spec's `specSlug` (`expect` defaults to `"pass"`, which is the only
-   phase a feature has). It runs each criterion's own typed oracle and appends the outcome to
+3. **Record the acceptance oracles.** With the gates green, call the `verify` tool with
+   `action: "oracles"` and this spec's `specSlug` (`expect` defaults to `"pass"`: this is the green
+   that pairs with Step 5F's red). It runs each criterion's own typed oracle and appends the outcome to
    `.marvin/task/runs/<slug>.oracles.md`. The gates prove the suite is green; the oracles prove
    **this spec's criteria** are, one at a time, which is the question the critic asks next and the
    only one the whole-suite verdict cannot answer. It is cheap: one measured run executed nine
@@ -181,7 +204,7 @@ through `/marvin:track-config` (`scope_exempt`).
    verify-gate-loop failure like any other — fix it before the critic sees the diff. The tool refuses
    an **unsealed** spec before spawning anything: that is Step 2's seal warning coming due, so record
    it and move on rather than sealing a spec mid-execution.
-3. **Dispatch the critic — once.** If Task-tool is available, dispatch `marvin-tm-diff-critic`
+4. **Dispatch the critic — once.** If Task-tool is available, dispatch `marvin-tm-diff-critic`
    against the now-green tree, passing the spec path, `git diff`, **and**
    `git status --porcelain --untracked-files=all`. The status listing is not a nicety: a new file is
    untracked, so `git diff` cannot show it, and a feature spec is mostly `action: new` rows — one
@@ -192,6 +215,9 @@ through `/marvin:track-config` (`scope_exempt`).
    `critic: "marvin-tm-diff-critic"`, `source: "task-implement"`, `step: "6F"`, the spec's `slug`
    and `pass: 1` — a critic-loop re-dispatch after a fix increments the pass, a `NEEDS_CONTEXT`
    re-dispatch reuses it. Compaction destroys the in-session count; the call costs one round-trip.
+   The answer carries a **Budget** line: `final` means say in the dispatch prompt that it is the
+   last one, and `exceeded` means do not dispatch — classify each surviving blocker as deferred or
+   blocked instead. The event is recorded either way.
 
 **Critic result:** before acting on any finding, open the file it cites at the cited lines and read
 enough around them to judge the claim — a finding whose premise the current code contradicts is not
@@ -309,9 +335,9 @@ one unchanged test file are the pair `/marvin:task-deliver`'s gate reads as `red
 
 ### Step 9B: Verify, then self-review
 
-Same as Step 6F, with `mode: bug` and in the same order: run `/marvin:task-verify bug` first and
-dispatch `marvin-tm-diff-critic` **once** afterwards (if Task-tool is available), against the green
-tree, passing the spec path, `git diff` **and** `git status --porcelain --untracked-files=all`. On a
+Same as Step 6F, with `mode: bug` and in the same order: the lint-only pass, then
+`/marvin:task-verify bug`, then `marvin-tm-diff-critic` dispatched **once** (if Task-tool is
+available) against the green tree, passing the spec path, `git diff` **and** `git status --porcelain --untracked-files=all`. On a
 verify FAIL, retry only the failed gate (`only: ["<gate>"]`) under the **Fix-cycle protocol** then a
 final full pass, and dispatch the critic only once that is green. The red and green oracle runs of
 Steps 6B and 8B are this pipeline's per-criterion proof, so Step 6F's oracle step is already done. A
@@ -338,7 +364,8 @@ notes, and self-review findings.
 ## Guidelines
 
 - **Watch, don't race.** Show the user each major step before executing. Interactive is the whole point of this skill versus a headless `marvin-tm-executor` run.
-- **Never skip the regression test step for bugs.** Red→green is the proof the fix works.
+- **Never skip the regression test step for bugs.** Red→green is the proof the fix works. A
+  feature records one red too (Step 5F), on its first `kind: test` criterion.
 - **Respect the fix-cycle budget.** Three rounds, counted per loop, and the third one changes the
   approach instead of repeating it. At the limit, stop and record the item as deferred or blocked —
   don't silently flail.
@@ -433,6 +460,20 @@ Rationale: {why this was the minimal reasonable choice}
    one-line `detail` — never a credential, token or customer datum. Spec gaps per task are the direct
    feedback from implementation to intake, and the PR body is the only other place they survive.
 4. Never expand scope to fill a gap.
+
+**A by-product gap names its pattern.** When the path you are recording has a by-product shape, the
+same gap will recur on every task until the project exempts it. At the **first** such gap, show the
+user the pattern that would cover it and point them at `/marvin:track-config` (`scope_exempt`). No
+default ships (ADR-0045), so the choice stays theirs:
+
+| Shape | Examples | Pattern to suggest |
+| ----- | -------- | ------------------ |
+| Lockfile an allowed dependency change rewrote | `package-lock.json`, `bun.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `poetry.lock` | the lockfile's own path |
+| Generated declaration or type sidecar | `src/a.d.ts`, `lib/b.d.mts` | `**/*.d.ts`, `**/*.d.mts` |
+| A subagent's memory notes | `.claude/agent-memory/<agent>/MEMORY.md` | `.claude/agent-memory/**` |
+
+Record the gap as usual this time: an exemption applies from the next scope check on, not to the
+change already in hand.
 
 A file the scope gate reports as **exempted** is not a gap: it matched a `scope.exempt` pattern the
 project configured for by-products, and recording it would only repeat what the gate already says.

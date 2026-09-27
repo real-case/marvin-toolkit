@@ -298,6 +298,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0044](./docs/adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Accepted |
 | [0045](./docs/adr/0045-scope-byproduct-exemptions.md) | By-product files are exempted from a task's scope by project configuration | Accepted |
 | [0046](./docs/adr/0046-lean-spec-shape.md) | A spec keeps only the sections a reader uses, and states each fact once | Proposed |
+| [0047](./docs/adr/0047-feature-red-phase.md) | A feature records one red phase, and the delivery gate reads it | Proposed |
 
 ## Contributing
 

@@ -1343,10 +1343,17 @@ async function runOracles(
 }
 
 /**
- * Advisory red-green status for the delivery gate. `unknown` is the answer for
- * everything that is not a bugfix spec with regression criteria at a readable
- * seal — including every caller that passes no slug, which is why the field is
- * strictly additive.
+ * Advisory red-green status for the delivery gate, over one of two criterion
+ * sets at a readable seal:
+ *
+ * - a **bugfix** proves EVERY `regression: true` criterion (ADR-0036);
+ * - a **feature** proves ONE criterion whose oracle is `kind: test` — any one
+ *   will do (ADR-0047). The feature red phase asks for the first such criterion,
+ *   so `unproven` names that one when none is proven.
+ *
+ * `unknown` is the answer for everything else — a spec with no criterion of the
+ * relevant shape, an unreadable contract, and every caller that passes no slug,
+ * which is why the field is strictly additive.
  */
 type RedGreen = "proven" | "missing" | "unknown";
 
@@ -1362,6 +1369,15 @@ function redGreenStatus(
   // A tampered or unreadable contract is `unknown` here rather than an error:
   // this field is advisory, and the gate's own refusals are the ones that block.
   if ("error" in spec) return none;
+  if (spec.type === "feature") {
+    const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
+    if (tests.length === 0) return none;
+    const runs = readOracleRuns(runsDirOf(projectRoot), slug);
+    const proven = tests.some((c) => redGreenProof(runs, spec.contractSha, c.id) === "proven");
+    return proven
+      ? { status: "proven", unproven: [] }
+      : { status: "missing", unproven: [tests[0]!.id] };
+  }
   if (spec.type !== "bugfix") return none;
   const regression = spec.criteria.filter((c) => c.regression === true);
   if (regression.length === 0) return none;

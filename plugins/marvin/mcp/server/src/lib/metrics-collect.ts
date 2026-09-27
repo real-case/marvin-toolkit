@@ -113,7 +113,7 @@ export function latestReceipts(
   };
 }
 
-function readRollupSpec(specPath: string, projectRoot: string, notes: string[]): RollupSpec {
+export function readRollupSpec(specPath: string, projectRoot: string, notes: string[]): RollupSpec {
   const raw = readFileSync(specPath, "utf8");
   const { frontmatter, body } = parseFrontmatter(raw);
   const block = extractContractBlock(body);

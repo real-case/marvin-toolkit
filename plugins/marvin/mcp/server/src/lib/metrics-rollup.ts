@@ -16,6 +16,7 @@ import { specSizeBudget, type SpecContract } from "../storage/spec.js";
 import type { VerifyResult } from "./reports.js";
 import { normalizeScopePath } from "./git.js";
 import { partitionScope } from "./scope.js";
+import { criticBudget } from "./critic-budget.js";
 
 /**
  * The metrics roll-up (ADR-0043 §2) — the **pure half** of the `metrics` tool's
@@ -229,12 +230,21 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     } else intake_ms = interval("T1", start.at, end.at, notes);
   }
 
-  // T2 — `at` of the last criterion entry minus `at` of the task-implement step 2.5 entry.
+  // T2 — `at` of the last criterion entry minus `at` of the implementation's start:
+  // task-implement's step 2.5 entry, or the headless executor's §1 entry.
   let implement_ms: number | null = null;
   if (progress) {
-    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
-    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
-    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    const start = progress.find(
+      (e) =>
+        (e.source === "task-implement" && e.step === "2.5") ||
+        (e.source === "marvin-tm-executor" && e.step === "§1"),
+    );
+    if (!start) {
+      notes.push(
+        "T2: the progress journal has no task-implement step 2.5 or marvin-tm-executor §1 entry",
+      );
+    } else if (!lastCriterion)
+      notes.push("T2: the progress journal records no completed criterion");
     else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
   }
 
@@ -454,12 +464,27 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
   // R4 — runs before the first green full run; undefined (null) when none is green.
   const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
 
+  // R5 — the highest DISPATCH pass against the budget the metrics tool judged it by.
+  const budgetExceeded = (critic: string): boolean | null => {
+    if (!events) return null;
+    const passes = events
+      .filter((e) => e.kind === "critic-dispatch" && e.critic === critic)
+      .map((e) => e.pass ?? 0);
+    if (!passes.length) return null;
+    return Math.max(...passes) > criticBudget(critic, input.spec).limit;
+  };
+  const critic_budget_exceeded = {
+    spec: budgetExceeded("marvin-tm-spec-critic"),
+    diff: budgetExceeded("marvin-tm-diff-critic"),
+  };
+
   const rework: TaskMetricsRework = {
     seals,
     reseals,
     critic_passes,
     fix_rounds,
     runs_before_green,
+    critic_budget_exceeded,
   };
 
   const sources: MetricsSources = {

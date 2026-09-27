@@ -133,6 +133,64 @@ test("record stamps `at`, names the record after the spec's file, and falls back
   }
 });
 
+test("a critic-dispatch answer states the budget, and past it says exceeded and still records the event", async () => {
+  const dir = project(); // risk: low and one file — the spec critic's light tier
+  const dispatch = (critic, pass) =>
+    callTool("metrics", {
+      action: "record",
+      slug: "demo-slug",
+      source: critic === "marvin-tm-spec-critic" ? "task-start" : "task-implement",
+      step: critic === "marvin-tm-spec-critic" ? "8F" : "6F",
+      kind: "critic-dispatch",
+      critic,
+      pass,
+      projectRoot: dir,
+    });
+  try {
+    const first = await dispatch("marvin-tm-spec-critic", 1);
+    assert.notEqual(first.isError, true, textOf(first));
+    assert.deepEqual(first.structuredContent.budget, {
+      critic: "marvin-tm-spec-critic",
+      pass: 1,
+      limit: 1,
+      tier: "light",
+      status: "final",
+    });
+    assert.match(textOf(first), /\*\*Budget:\*\* final/);
+
+    const second = await dispatch("marvin-tm-spec-critic", 2);
+    assert.notEqual(second.isError, true, "an overrun is reported, never refused");
+    assert.equal(second.structuredContent.budget.status, "exceeded");
+    assert.match(textOf(second), /\*\*Budget: exceeded\*\*.*Stop: do not dispatch/);
+    const onDisk = readFileSync(join(dir, ".marvin", "metrics", "007-demo-slug.md"), "utf8");
+    assert.equal((onDisk.match(/"kind":"critic-dispatch"/g) ?? []).length, 2, "both were recorded");
+
+    const diff = await dispatch("marvin-tm-diff-critic", 1);
+    assert.deepEqual(diff.structuredContent.budget, {
+      critic: "marvin-tm-diff-critic",
+      pass: 1,
+      limit: 3,
+      tier: null,
+      status: "within",
+    });
+
+    // Any other kind carries no budget at all.
+    const gap = await callTool("metrics", {
+      action: "record",
+      slug: "demo-slug",
+      source: "task-implement",
+      step: "6F",
+      kind: "spec-gap",
+      detail: "x",
+      projectRoot: dir,
+    });
+    assert.equal(gap.structuredContent.budget, undefined);
+    assert.doesNotMatch(textOf(gap), /Budget/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("record refuses a non-kebab slug, a half-written event and an unknown key, and writes nothing", async () => {
   const dir = project();
   try {

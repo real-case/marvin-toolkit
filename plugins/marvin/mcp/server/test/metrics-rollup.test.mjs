@@ -373,6 +373,8 @@ test("with every source present, every metric of the derivation table is derived
   );
   assert.equal(b.rework.reseals, 1);
   assert.deepEqual(b.rework.critic_passes, { spec: 2, diff: null });
+  // R5 — two spec dispatches on a risk: medium spec is the standard budget; one diff dispatch is within its own.
+  assert.deepEqual(b.rework.critic_budget_exceeded, { spec: false, diff: false });
   assert.deepEqual(b.rework.fix_rounds, { verify_gate: 1, critic: 0, red_green: 0 });
   assert.equal(
     b.rework.runs_before_green,
@@ -445,6 +447,7 @@ const ABSENT_ROWS = {
     assert.equal(b.quality.open_items, null);
     assert.equal(b.quality.dor_first_call, null);
     assert.deepEqual(b.rework.critic_passes, { spec: null, diff: null });
+    assert.deepEqual(b.rework.critic_budget_exceeded, { spec: null, diff: null });
     assert.equal(b.rework.fix_rounds, null);
   },
   git: (b) => {
@@ -710,4 +713,65 @@ test("Q3 red-green completeness is derived for a bugfix from a red then green pa
   // the same pair under a superseded seal proves nothing about the contract in force
   bug.oracles = bug.oracles.map((r) => ({ ...r, contract_sha: SEAL1 }));
   assert.deepEqual(rollUpMetrics(bug).quality.red_green, { criteria: 2, proven: 0, share: 0 });
+});
+
+test("R5: a critic dispatched past its budget is counted, and the light tier halves the spec critic's", () => {
+  const dispatch = (critic, pass) =>
+    ev({ kind: "critic-dispatch", critic, pass, at: T("11:30:00") });
+  const base = fullInputs();
+  const light = {
+    ...base.spec,
+    frontmatter: { ...base.spec.frontmatter, risk: "low" },
+  };
+  // Two spec dispatches: within the standard budget, past the light one.
+  const events = [dispatch("marvin-tm-spec-critic", 1), dispatch("marvin-tm-spec-critic", 2)];
+  assert.deepEqual(rollUpMetrics({ ...base, events }).rework.critic_budget_exceeded, {
+    spec: false,
+    diff: null,
+  });
+  assert.deepEqual(rollUpMetrics({ ...base, spec: light, events }).rework.critic_budget_exceeded, {
+    spec: true,
+    diff: null,
+  });
+  // A bugfix qualifies by severity, not risk.
+  const lowBug = {
+    ...base.spec,
+    frontmatter: { ...base.spec.frontmatter, type: "bugfix", risk: "medium", severity: "low" },
+  };
+  assert.equal(
+    rollUpMetrics({ ...base, spec: lowBug, events }).rework.critic_budget_exceeded.spec,
+    true,
+  );
+  // The diff critic: the first dispatch plus two critic-loop re-dispatches, and no more.
+  const diff = (n) => Array.from({ length: n }, (_, i) => dispatch("marvin-tm-diff-critic", i + 1));
+  assert.equal(
+    rollUpMetrics({ ...base, events: diff(3) }).rework.critic_budget_exceeded.diff,
+    false,
+  );
+  assert.equal(
+    rollUpMetrics({ ...base, events: diff(4) }).rework.critic_budget_exceeded.diff,
+    true,
+  );
+  // Without a spec the light tier cannot be established, so the standard budget applies.
+  assert.equal(
+    rollUpMetrics({ ...base, spec: null, events }).rework.critic_budget_exceeded.spec,
+    false,
+  );
+});
+
+test("T2: the headless executor's §1 entry anchors the implementation interval", () => {
+  const base = fullInputs();
+  const progress = [
+    progressEntry({ source: "marvin-tm-executor", step: "§1", at: T("11:00:00") }),
+    progressEntry({
+      source: "marvin-tm-executor",
+      step: "§2",
+      kind: "criterion",
+      criterion: "AC1",
+      at: T("11:05:00"),
+    }),
+  ];
+  const b = rollUpMetrics({ ...base, progress });
+  assert.equal(b.time.implement_ms, 300000);
+  assert.ok(!b.notes.some((n) => n.startsWith("T2:")), b.notes.join("\n"));
 });

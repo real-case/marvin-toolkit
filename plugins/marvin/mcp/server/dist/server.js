@@ -29176,13 +29176,18 @@ function hashObjects(paths, cwd) {
 }
 function changedFilesForScope(projectRoot, base) {
   const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const diff = git(["diff", "--name-only", forkPoint(ref, projectRoot)], projectRoot);
   const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
   const lines = [
     ...diff.ok ? diff.value.split("\n") : [],
     ...untracked.ok ? untracked.value.split("\n") : []
   ];
   return [...new Set(lines.map(normalizeScopePath).filter(Boolean))];
+}
+function forkPoint(ref, cwd) {
+  if (ref === "HEAD") return ref;
+  const mb = git(["merge-base", ref, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : ref;
 }
 function normalizeScopePath(p) {
   return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
@@ -34189,6 +34194,18 @@ var SERIES_METRICS = [
     label: "verification runs before the first green",
     unit: "count",
     pick: (r) => r.block?.rework.runs_before_green ?? null
+  },
+  {
+    group: "rework",
+    key: "critic_budget_exceeded",
+    id: "R5",
+    label: "tasks where a critic was dispatched past its budget",
+    unit: "share",
+    pick: (r) => {
+      const e = r.block?.rework.critic_budget_exceeded;
+      if (!e || e.spec === null && e.diff === null) return null;
+      return e.spec === true || e.diff === true ? 1 : 0;
+    }
   }
 ];
 function stat(values) {
@@ -34800,14 +34817,18 @@ function redGreenProof(runs, contractSha, criterionId) {
 
 // src/lib/metrics-collect.ts
 var import_yaml2 = __toESM(require_dist2());
+var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
 var PROGRESS_TAG = "spec-progress";
 var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
 var ProgressEntrySchema = external_exports.object({
   /** The spec's validated kebab-case slug — also this journal's filename. */
   slug: external_exports.string().min(1),
-  /** Which skill wrote it: step ids collide across the two pipelines. */
-  source: external_exports.enum(["task-start", "task-implement"]),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`. */
+  /**
+   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
+   * is the headless implementation path, which numbers its steps `§1`–`§5`.
+   */
+  source: external_exports.enum(PROGRESS_SOURCES),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
   step: external_exports.string().min(1),
   kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
   /** One line of position and choice. Never a credential, token or customer datum. */
@@ -35189,6 +35210,29 @@ function collectSeriesRecords(projectRoot, metricsDir, specConfig, opts) {
   );
 }
 
+// src/lib/critic-budget.ts
+var SPEC_CRITIC_BUDGET = 2;
+var SPEC_CRITIC_LIGHT_BUDGET = 1;
+var DIFF_CRITIC_BUDGET = 3;
+var LIGHT_TIER_MAX_FILES = 5;
+function isLightTier(spec) {
+  if (!spec || !spec.contract) return null;
+  const fm = spec.frontmatter;
+  const type = fm.type?.trim();
+  const low = type === "bugfix" ? fm.severity?.trim() === "low" : fm.risk?.trim() === "low";
+  return low && spec.contract.files.length <= LIGHT_TIER_MAX_FILES;
+}
+function criticBudget(critic, spec) {
+  if (critic !== "marvin-tm-spec-critic") return { limit: DIFF_CRITIC_BUDGET, tier: null };
+  const light = isLightTier(spec);
+  if (light === null) return { limit: SPEC_CRITIC_BUDGET, tier: null };
+  return light ? { limit: SPEC_CRITIC_LIGHT_BUDGET, tier: "light" } : { limit: SPEC_CRITIC_BUDGET, tier: "standard" };
+}
+function budgetStatus(pass2, limit) {
+  if (pass2 > limit) return "exceeded";
+  return pass2 === limit ? "final" : "within";
+}
+
 // src/lib/metrics-rollup.ts
 function epoch(iso) {
   if (!iso) return null;
@@ -35290,9 +35334,15 @@ function rollUpMetrics(input) {
   }
   let implement_ms = null;
   if (progress) {
-    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
-    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
-    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    const start = progress.find(
+      (e) => e.source === "task-implement" && e.step === "2.5" || e.source === "marvin-tm-executor" && e.step === "\xA71"
+    );
+    if (!start) {
+      notes.push(
+        "T2: the progress journal has no task-implement step 2.5 or marvin-tm-executor \xA71 entry"
+      );
+    } else if (!lastCriterion)
+      notes.push("T2: the progress journal records no completed criterion");
     else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
   }
   let first_green_ms = null;
@@ -35427,12 +35477,23 @@ function rollUpMetrics(input) {
     red_green: events.filter((e) => e.kind === "fix-round" && e.loop === "red-green").length
   } : null;
   const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
+  const budgetExceeded = (critic) => {
+    if (!events) return null;
+    const passes = events.filter((e) => e.kind === "critic-dispatch" && e.critic === critic).map((e) => e.pass ?? 0);
+    if (!passes.length) return null;
+    return Math.max(...passes) > criticBudget(critic, input.spec).limit;
+  };
+  const critic_budget_exceeded = {
+    spec: budgetExceeded("marvin-tm-spec-critic"),
+    diff: budgetExceeded("marvin-tm-diff-critic")
+  };
   const rework = {
     seals,
     reseals,
     critic_passes,
     fix_rounds,
-    runs_before_green
+    runs_before_green,
+    critic_budget_exceeded
   };
   const sources = {
     spec: presence(input.spec),
@@ -36251,6 +36312,13 @@ function redGreenStatus(projectRoot, specSlug, specConfig) {
   if (!slug) return none;
   const spec = readSealedSpec(slug, projectRoot, specConfig);
   if ("error" in spec) return none;
+  if (spec.type === "feature") {
+    const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
+    if (tests.length === 0) return none;
+    const runs2 = readOracleRuns(runsDirOf(projectRoot), slug);
+    const proven = tests.some((c) => redGreenProof(runs2, spec.contractSha, c.id) === "proven");
+    return proven ? { status: "proven", unproven: [] } : { status: "missing", unproven: [tests[0].id] };
+  }
   if (spec.type !== "bugfix") return none;
   const regression = spec.criteria.filter((c) => c.regression === true);
   if (regression.length === 0) return none;
@@ -36471,7 +36539,7 @@ var BUGFIX_RECOMMENDED = [
 ];
 var AC_STATEMENT_MAX_WORDS = 40;
 var FILE_INTENT_MAX_WORDS = 60;
-var LIGHT_TIER_MAX_FILES = 5;
+var LIGHT_TIER_MAX_FILES2 = 5;
 var SPLIT_MAX_FILES = 15;
 var SPLIT_MAX_CRITERIA = 12;
 var SpecInput = external_exports.object({
@@ -36491,8 +36559,10 @@ var SpecInput = external_exports.object({
   slug: external_exports.string().optional().describe(
     "action: next \u2014 the kebab-case slug of the spec being created, so the answer carries the composed filename and any collision with an existing spec. action: progress / resume \u2014 the slug whose journal is written or read (it is also the journal's filename, so it is rejected rather than sanitised)."
   ),
-  source: external_exports.enum(["task-start", "task-implement"]).optional().describe("action: progress \u2014 which skill is writing; step ids collide across the two."),
-  step: external_exports.string().optional().describe(`action: progress \u2014 the writer's own step id ("1.5", "4F", "5F", "2.5").`),
+  source: external_exports.enum(PROGRESS_SOURCES).optional().describe(
+    "action: progress \u2014 which writer: task-start, task-implement, or the headless marvin-tm-executor; step ids collide across them."
+  ),
+  step: external_exports.string().optional().describe(`action: progress \u2014 the writer's own step id ("1.5", "4F", "5F", "2.5", "\xA71").`),
   kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]).optional().describe(
     'action: progress \u2014 what this entry records. "archived" is the boundary a resumed run appends when the user chooses to start clean; everything before it stops counting without being deleted.'
   ),
@@ -36508,7 +36578,7 @@ var SpecInput = external_exports.object({
     "action: scope \u2014 extra file paths permitted beyond the contract files allowlist (recorded SPEC GAPs). By-product paths matching `scope.exempt` in .marvin/config.json need no entry here."
   ),
   base: external_exports.string().optional().describe(
-    "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes."
+    "action: scope \u2014 git ref to diff against (default HEAD, i.e. uncommitted changes). Pass the task base branch to include committed task changes; the diff starts at its merge base with HEAD, so commits that reached the base after the fork are not counted."
   )
 });
 var SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
@@ -37099,7 +37169,7 @@ function validateSpec(raw, projectRoot, specConfig) {
   const sections = parseSections(body);
   if (type === "feature" || type === "bugfix") {
     const contract = parsedContract(body);
-    const lightTier = type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract !== null && contract.files.length <= LIGHT_TIER_MAX_FILES;
+    const lightTier = type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract !== null && contract.files.length <= LIGHT_TIER_MAX_FILES2;
     const [required2, recommended] = type === "feature" ? [
       FEATURE_REQUIRED,
       lightTier ? FEATURE_RECOMMENDED.filter((s) => s !== "context") : FEATURE_RECOMMENDED
@@ -37809,7 +37879,7 @@ function checkOracles(c, projectRoot) {
       fail(
         "oracle-filter",
         "Oracles",
-        `test-name filter(s) starting with "-" are parsed as flags, so the filter selects nothing: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
+        `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
       )
     );
   }
@@ -38109,7 +38179,8 @@ function recordEvent(input, slug, projectRoot, dir, specConfig) {
   const path = recordPathFor(dir, slug, projectRoot, specConfig);
   appendMetricEvent(path, event);
   const record2 = relFromRoot(path, projectRoot);
-  const payload = { action: "record", slug, record: record2, event };
+  const budget = event.kind === "critic-dispatch" ? dispatchBudget(event, slug, projectRoot, specConfig) : null;
+  const payload = { action: "record", slug, record: record2, event, ...budget ? { budget } : {} };
   return {
     content: [
       {
@@ -38119,12 +38190,37 @@ function recordEvent(input, slug, projectRoot, dir, specConfig) {
 Recorded **${event.kind}** (${event.source}, step ${event.step}).
 **Record:** \`${record2}\`
 
-\`\`\`json metric-event
-` + JSON.stringify(payload) + "\n```"
+` + (budget ? `${budgetLine(budget)}
+
+` : "") + "```json metric-event\n" + JSON.stringify(payload) + "\n```"
       }
     ],
     structuredContent: payload
   };
+}
+function dispatchBudget(event, slug, projectRoot, specConfig) {
+  let spec = null;
+  const specPath = findSpecBySlug(slug, projectRoot, specConfig);
+  if (specPath) {
+    try {
+      spec = readRollupSpec(specPath, projectRoot, []);
+    } catch {
+      spec = null;
+    }
+  }
+  const critic = event.critic;
+  const pass2 = event.pass;
+  const { limit, tier } = criticBudget(critic, spec);
+  return { critic, pass: pass2, limit, tier, status: budgetStatus(pass2, limit) };
+}
+function budgetLine(b) {
+  const of = `pass ${b.pass} of ${b.limit} for \`${b.critic}\`${b.tier ? ` (${b.tier} tier)` : ""}`;
+  if (b.status === "within") return `**Budget:** within \u2014 ${of}.`;
+  if (b.status === "final") {
+    return `**Budget:** final \u2014 ${of}. This is the last dispatch the budget allows; say so in the dispatch prompt.`;
+  }
+  const next = b.critic === "marvin-tm-spec-critic" ? "present the surviving blockers to the user and let them choose: revise once more without a critic, or record the survivors as an override" : "classify each surviving blocker as deferred or blocked, and let the draft PR carry them";
+  return `**Budget: exceeded** \u2014 ${of}. Stop: do not dispatch this critic again for this task; ${next}. The event was recorded, so the overrun is counted.`;
 }
 function rollup(input, env2, slug, projectRoot, config2) {
   const { block, record: record2, terminalBlocks, ignored } = performRollup({
@@ -38304,10 +38400,14 @@ function renderDigest(b, record2, terminalBlocks, ignored) {
     `- R1 seals: ${r.seals ?? "\u2014"}${r.reseals !== null ? ` (reseals ${r.reseals})` : ""}`,
     `- R2 critic passes: spec ${r.critic_passes.spec ?? "\u2014"} \xB7 diff ${r.critic_passes.diff ?? "\u2014"}`,
     `- R3 fix rounds: ${r.fix_rounds ? `verify-gate ${r.fix_rounds.verify_gate} \xB7 critic ${r.fix_rounds.critic} \xB7 red-green ${r.fix_rounds.red_green}` : "\u2014"}`,
-    `- R4 runs before first green: ${r.runs_before_green ?? "\u2014"}`
+    `- R4 runs before first green: ${r.runs_before_green ?? "\u2014"}`,
+    `- R5 critic budget exceeded: spec ${yesNo(r.critic_budget_exceeded?.spec)} \xB7 diff ${yesNo(r.critic_budget_exceeded?.diff)}`
   ];
   if (b.notes.length) lines.push("", "## Notes", ...b.notes.map((n) => `- ${n}`));
   return lines.join("\n");
+}
+function yesNo(v) {
+  return v === true ? "yes" : v === false ? "no" : "\u2014";
 }
 function errText3(text) {
   return {
@@ -38950,7 +39050,7 @@ function buildPayload(reports) {
 }
 
 // src/server.ts
-var VERSION = "0.27.0";
+var VERSION = "0.28.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
