@@ -4,6 +4,51 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.25.0] — 2026-09-27
+
+The Definition-of-Ready gate takes over the decidable half of two finding classes the spec critic
+was spending its passes on. Across 54 spec-critic receipts in one host project, `[oracle]` and
+`[grounding]` were the two largest blocker categories; most of those blockers are judgements the
+gate cannot make, but some are facts it can check before the critic is dispatched.
+
+### Added
+
+- **`cite-lines` (FAIL): a line citation past the end of its file.** Every `path:line`,
+  `path:a-b` or `path:a,b` in the spec's prose, fenced blocks excluded, is resolved from the project
+  root, or else to the one tracked file whose path ends with it, so `Pages.tsx:969` and a path written
+  relative to a package are both checked. A citation that resolves to no file or to several is
+  skipped rather than guessed at. Paths planned `new` and `.marvin/` artifacts are exempt.
+- **`oracle-paths` (FAIL): an oracle command naming a file that neither exists nor is planned.**
+  Such an oracle cannot run. Paths are resolved from the root, from any `cd`/`-C`/`--cwd` target in
+  the command, and against the contract's `files`. Output targets (`>`, `tee`, `-o`) are ignored. A
+  command that selects a workspace by name (`-w`, `--workspace`, `--filter`) only warns, because
+  its paths are relative to a directory the gate cannot resolve.
+- **`oracle-filter` (FAIL): a test-name filter that starts with `-`.** `vitest -t "--staged …"`
+  hands the pattern to the argument parser as a flag, so the filter selects nothing and the oracle
+  passes without running the test it names. Checked only when the command invokes a test runner,
+  so `docker run -t --rm` is not flagged. The host sweep found three such oracles in two sealed
+  specs. One of them surfaced during implementation; the other two had gone unnoticed.
+- **`oracle-narrow` (WARN): a whole-suite oracle.** A project-wide gate or bare runner (`npm test`,
+  `npm run e2e`, `npx vitest run`) that names no file, directory, quoted pattern, URL or test filter
+  proves the suite is green, not that the criterion holds. A bespoke script is not flagged.
+- **`oracle-failure` (WARN): a real oracle with no `failure:` line.** Stating what the oracle shows
+  when the criterion is unmet is what lets anyone check that it can fail at all.
+
+### Changed
+
+- **The spec critic no longer re-reports what the gate checks.** `marvin-tm-spec-critic` is told
+  which oracle and citation facts are now mechanical, and is pointed at what remains: whether an
+  oracle that runs can also FAIL on the wrong implementation its `failure:` line describes.
+  `task-start` step 7F lists the new checks and asks for them to be fixed before the critic is
+  dispatched.
+
+### Not added
+
+- **A "named path does not exist" finding.** It was built and measured before release: across the
+  49 specs of three host projects it was wrong about four times in five (a path in another
+  repository, an import alias, a MIME type, an illustrative `src/components/Foo.tsx`). A missing
+  file stays a critic finding.
+
 ## [0.24.0] — 2026-09-08
 
 The eighth command group, `audit`: a project-audit programme of twenty-two audits reachable through
