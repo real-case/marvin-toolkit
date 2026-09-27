@@ -245,6 +245,14 @@ export const Config = z.object({
   spec: SpecConfig.optional(),
   /** By-product path patterns the scope gate and Q1 exempt (ADR-0045); absent means none. */
   scope: ScopeConfig.optional(),
+  /**
+   * What this host needs before a PR can merge — a version bump, a committed
+   * build artefact, a changelog entry (ADR-0046). It used to be rewritten into
+   * every spec's host-bindings block; `/marvin:task-start` now proposes it once
+   * per project and turns each entry that touches a file into a contract row.
+   * Absent means none recorded.
+   */
+  merge_obligations: z.array(z.string().min(1)).optional(),
   /** Usage-log kill-switch (ADR-0030); absent means enabled (opt-out telemetry). */
   usage: UsageConfig.optional(),
   /** The board's status vocabulary (ADR-0026); defaults to key == role. */

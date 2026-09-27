@@ -531,6 +531,15 @@ function renderDigest(
           } · unresolved ${q.oracle_resolution.unresolved}`
         : "—"
     }`,
+    `- Q13/Q14 spec size: ${
+      q.spec_size
+        ? `${q.spec_size.bytes} bytes · ${q.spec_size.words} words${
+            q.spec_size.budget !== null
+              ? ` · budget ${q.spec_size.budget} (${(q.spec_size.bytes / q.spec_size.budget).toFixed(1)}×)`
+              : ""
+          }`
+        : "—"
+    }`,
     "",
     "## Rework",
     `- R1 seals: ${r.seals ?? "—"}${r.reseals !== null ? ` (reseals ${r.reseals})` : ""}`,

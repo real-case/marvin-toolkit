@@ -430,7 +430,9 @@ function buildLinks(
     links.push({ kind: "tracker", label: tracker, ...(url ? { url } : { ref: tracker }) });
   }
 
-  const adr = hostBindings?.decision_record?.path;
+  // A spec sealed before ADR-0046 names its ADR directory in a host-bindings
+  // block; a newer one leaves it to the project config.
+  const adr = hostBindings?.decision_record?.path ?? config.adr?.dir;
   if (adr) links.push({ kind: "adr", label: adr, ref: adr });
 
   links.push(...critiqueLinks(env, projectRoot, slug));

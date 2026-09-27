@@ -380,6 +380,10 @@ test("rollup derives one block from the spec, journals and receipt, reports `ign
       /Q1 exempted by scope\.exempt: 1 — \.claude\/agent-memory\/critic\/MEMORY\.md/,
     );
     assert.equal(b.quality.oracle_strength.executable, 1);
+    // Q13/Q14 are read from the spec file itself at roll-up time (ADR-0046).
+    assert.ok(b.quality.spec_size.bytes > 0);
+    assert.ok(b.quality.spec_size.words > 0);
+    assert.ok(b.quality.spec_size.budget > 3072);
     assert.ok(b.head_sha, "the head is recorded");
     assert.match(b.rolled_up_at, /^\d{4}-\d{2}-\d{2}T/);
 

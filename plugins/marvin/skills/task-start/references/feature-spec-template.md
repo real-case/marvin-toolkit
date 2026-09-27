@@ -14,46 +14,60 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 
 # {Title}
 
+<!-- Writing rules (delete this comment). One fact, one place: a requirement lives in the contract,
+as a criterion or a file intent, and prose refers to it by id (F3, AC2) without restating it. A
+requirement found only in prose is a defect, because nothing proves it. Measurements, probes and
+provenance go to the evidence sidecar, and the critic's narrative stays in its receipt. Size budget:
+3 KB + 400 B per file + 500 B per criterion; the DoR gate warns above it. -->
+
 ## Goal
 {what this task delivers, and why — one or two sentences}
-Be specific: "add X for Y", never "improve X".
 
 ## Context
-- Related patterns: {existing code this builds on — file:line}
-- Callers / reverse-deps: {who calls or depends on the surface you change — file:line, or "none"}
-- Constraints: {tech-debt, architectural boundaries, performance budgets}
-- Sibling specs: {related entries under .marvin/task/ (or the host's spec dir), or "none"}
+Pointers, not evidence: each bullet is a `path:line` and one clause. Optional on the light tier
+(`risk: low` and at most five files).
+
+- {Pattern to follow: path/to/sibling.ts:42}
+- {Callers of the changed surface: path/to/caller.ts:17, or none}
+- {Evidence: .marvin/task/runs/<slug>.evidence.md, or none}
 
 ## Spec Contract
-The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
-block). The implementer/executor may touch **only** the files listed in `files`; each criterion is
-implemented by exactly its `implemented_by` rows and proven by its `oracle`. A test named in a
-`kind: test` oracle MUST also appear as a `files` row — the allowlist forbids an unlisted file.
-Use `<…>` for prose to fill; never leave a `{…}` placeholder (it parses as a YAML map and fails the
-gate).
+The authoritative contract, parsed and schema-checked by the `spec` DoR gate and sealed by
+`contract_sha`. The implementer may touch **only** the files in `files`. A test named in a
+`kind: test` oracle MUST also be a `files` row. Use `<…>` for prose to fill; a `{…}` placeholder
+parses as a YAML map and fails the gate. Delete the `#` comments below once filled: the contract
+carries no rationale, history or evidence.
+
+Field limits:
+
+- `statement`: at most 30 words, as Given/When/Then, one behaviour per criterion (the gate warns
+  over 40).
+- `failure`: one sentence naming a wrong implementation the oracle catches, not a negation of the
+  statement.
+- `intent`: at most two sentences on what changes in this file (the gate warns over 60 words). A
+  test file's intent names the criteria it covers and any non-obvious fixture.
+- `contract.signature`: the exact surface, with no comments that restate criteria.
+- `oracle.run`: omit it when `gates.test_one` in `.marvin/config.json` derives it.
+- `satisfies`: optional. `implemented_by` is the hand-written direction; a declared `satisfies`
+  list must agree with it, or the gate fails.
 
 ```yaml spec-contract
 files:
   - id: F1
     path: path/to/existing/file.ts
     action: edit          # new | edit | delete
-    intent: what changes and why
-    satisfies: [AC1, AC3] # the criteria this file implements, or "—" for infra rows.
-                          # Mirrors implemented_by exactly: a declared list that
-                          # disagrees with a criterion's own is a DoR failure.
+    intent: <what changes in this file>
     anchor: path/to/existing/file.ts:42
   - id: F2
     path: path/to/new/file.ts
     action: new
-    intent: why this file exists
-    satisfies: [AC2]
+    intent: <what this new file holds>
   - id: F3
     path: test/path.test.ts
     action: new
-    intent: tests for the criteria below
-    satisfies: [AC1, AC2]
-build_order: [F1, F2, F3]   # optional — deterministic order the executor applies the files
-depends_on: []              # sibling spec slugs this depends on; each MUST be status: shipped (or [])
+    intent: <covers AC1 and AC2; name any non-obvious fixture>
+build_order: [F1, F2, F3]   # optional
+depends_on: []              # sibling spec slugs; each MUST be status: shipped
 contract:
   kind: function            # function | route | schema | cli | event | none
   signature: |
@@ -65,113 +79,68 @@ criteria:
     oracle:
       kind: test            # test | command | prose-review
       ref: test/path.test.ts::the test name
-      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
-                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
-                            # per-stack default, then records `not-run` rather than guessing.
-    failure: what the wrong behaviour looks like
+    failure: <a wrong implementation this test catches>
   - id: AC2
-    statement: <observable behaviour>
+    statement: Given <state>, when <action>, then <result>
     implemented_by: [F2, F3]
     oracle:
       kind: command
       ref: npm run build
-    failure: <how it fails>
+    failure: <a wrong implementation this command catches>
   - id: AC3
-    statement: <observable behaviour>
+    statement: Given <state>, when <action>, then <result>
     implemented_by: [F1]
     oracle:
       kind: prose-review    # at least one criterion must carry a non-prose-review oracle
-    failure: <how it fails>
+    failure: <a wrong implementation a reviewer would catch>
 ```
-
-## Host Bindings
-Discovered from **this repo**, not assumed (task-start populates these from the host's conventions).
-Optional and advisory — the gate uses `spec_location` to resolve `depends_on`; the rest records where
-the spec lives and what the host requires to merge. Fill with `<…>`, never `{…}`.
-
-```yaml host-bindings
-spec_location: .marvin/task/     # where specs/RFCs live (default .marvin/task/, or the host's own convention)
-decision_record:                 # the host's ADR/RFC convention, if any
-  style: <madr | nygard | none>
-  path: docs/adr/
-merge_obligations:               # what THIS host needs to merge (from CONTRIBUTING / CI)
-  - <e.g. "ruff + mypy green (.pre-commit-config)">
-gates:                           # the host's actual gate commands
-  test: <the test command>
-```
-
-## Data & Config
-{migrations, new env vars, feature flags, config keys — or "N/A"}
-State a migration in both directions: forward and rollback.
 
 ## Chosen Approach
-{The selected variant, concrete enough to implement without further human input.}
+Only what the contract cannot carry.
 
-**Stack compliance:** NATIVE | EXTENSION | EXPERIMENTAL
-**Future alignment:** ALIGNED | NEUTRAL | CONFLICTS | N/A
+**Stack compliance:** {NATIVE | EXTENSION | EXPERIMENTAL} — {new dependency and why, or none}
 
-**Stack extensions required:**
-- {dependency} — {rationale}   ({omit or "none" if NATIVE})
-
-## Why this over alternatives
-- Variant {N} (rejected): {reason grounded in a project constraint, not generic}
-- Variant {N} (rejected): {reason}
-
-## Test Plan
-- Harness: {test runner + command — matches frontmatter test_command}
-- Test locations: {directory/convention where new tests live — grounded in existing neighbors}
-- Conventions: {fixture/mocking/setup patterns observed in sibling tests, or "none"}
-
-## Definition of Done
-Merge-readiness beyond the acceptance criteria. Host-specific obligations are whatever **this repo**
-requires to merge — discovered from its `CONTRIBUTING`, CI config, or `CLAUDE.md`/equivalent — and
-must appear as `files` rows in the contract if they touch files.
-
-- [ ] {test_command} green
-- [ ] lint / type-check / build green (whichever the host runs)
-- [ ] docs / changelog updated if the host expects them (required if `breaking: true`) — or "N/A"
-- [ ] host-specific merge obligations (e.g. a version bump, a committed build artefact, a generated file) — or "none"
+- {Order: the sequence of work, when it is not obvious from build_order}
+- {Traps: what an implementer would get wrong, with the F/AC id it affects}
+- {Rejected: variant because of a project constraint (at most three lines)}
 
 ## Non-goals
 - {what is explicitly NOT in scope}
 
-## Deferred slices
-Slices split off from this task at the scope gate, each already a board card. The rows are
-descriptive — the card is the work item, this list is the back-reference. Write `none` when nothing
-was deferred: an unfilled section is reported by the DoR gate, an absent one is silent.
-
-- {board id + one-line scope + why it is a separate PR, or none}
-
 ## Assumptions
-{each decision taken under uncertainty — or "none"}
-Record them so the implementer inherits the decisions rather than re-deciding them. Every default
-the intake assumed instead of asking belongs here, written as "assumed X because Y; correct now if
-wrong". "none" is an accepted value; the DoR gate records it as an advisory warning, not a failure.
+{each default taken instead of asking — or "none"}
+Write each as "assumed X because Y; correct now if wrong", limited to defaults the contract does not
+already show. "none" is an accepted value; the DoR gate records it as an advisory warning, not a
+failure.
+
+## Data & Config
+Optional: keep this section only when there is a migration, environment variable, flag or config
+key, and state a migration in both directions.
+
+- {migration, variable, flag or config key, with forward and rollback}
+
+## Security / NFR
+Optional, but required when `risk: high` or when the change touches auth, crypto, PII or input
+parsing; the DoR gate warns when a `risk: high` spec has none.
+
+- {the concern, and the criterion or file that addresses it}
+
+## Deferred slices
+Optional: keep this section only when slices were deferred at the scope gate. Each row is a board
+card already created.
+
+- {board id + one-line scope + which one-PR condition failed}
 
 ## Open Questions
 {any question still unresolved — MUST be "none" before DoR passes}
-An open question is a reason to keep authoring, not to dispatch. A genuine unknown that needs
-investigation is NOT an Assumption: set `spike_required: true` and resolve it (e.g. a spike via
-`/marvin:track-new`) first.
-
-## Security / NFR
-{Does this touch auth, crypto, PII, input parsing, or infra? Note observability,
-rollout/rollback, performance, a11y/i18n where relevant. "N/A — {one-line reason}" if none apply.}
+A genuine unknown that needs investigation is NOT an Assumption: set `spike_required: true` and
+resolve it (e.g. a spike via `/marvin:track-new`) first.
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE). The DoR gate reads the
-verdict off the first non-empty line, so write the token in capitals there. It may lead the line
-("BLOCK — resolved in this revision") or follow the critic's name
-("marvin-tm-spec-critic — **PASS WITH WARNINGS**"); a lower-case mention inside prose is not read as
-a verdict, and "none" is recognised only leading the line. NEEDS_CONTEXT is never recorded here — it
-resolves on the re-dispatch or becomes UNABLE. Record any author override as
-"Critic flagged X — override: Y". "none" if the critic step was skipped. A skipped critic and an
-UNABLE verdict are both surfaced in the PR, never silent; record an UNABLE verbatim as
-"UNABLE — {reason}".}
-
-## Design Notes
-{Nuances, warnings, "write it so it's easy to replace with X later".}
-
-## Future Considerations
-- {relationship to planned evolution / VISION.md}
-- {edge cases deliberately deferred to separate tasks}
+{VERDICT — receipts NNN, NNN; override: finding because reason}
+One line. The DoR gate reads the verdict off the first non-empty line, so write the token in
+capitals there (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE — <reason>`), or "none — critic
+skipped". NEEDS_CONTEXT is never recorded here. The critic's narrative stays in its receipt under
+`.marvin/critique/`.
+</content>
+</invoke>

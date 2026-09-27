@@ -93,6 +93,24 @@ export const HostBindings = z
   .passthrough();
 export type HostBindings = z.infer<typeof HostBindings>;
 
+/**
+ * The spec size budget of ADR-0046: `3 KB + 400 B per file + 500 B per
+ * criterion`. One home for two readers — the DoR gate warns above it, and the
+ * metrics roll-up records it beside the spec's measured size — so the number a
+ * spec is warned against and the number its record reports cannot drift.
+ */
+export const SPEC_SIZE_BASE = 3 * 1024;
+export const SPEC_SIZE_PER_FILE = 400;
+export const SPEC_SIZE_PER_CRITERION = 500;
+export function specSizeBudget(files: number, criteria: number): number {
+  return SPEC_SIZE_BASE + SPEC_SIZE_PER_FILE * files + SPEC_SIZE_PER_CRITERION * criteria;
+}
+
+/** Whitespace-separated words — the unit of the size checks and `spec_words`. */
+export function wordCount(text: string | undefined): number {
+  return (text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
+
 /** Extract the first fenced block whose info string mentions `spec-contract`. */
 export function extractContractBlock(body: string): string | null {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);

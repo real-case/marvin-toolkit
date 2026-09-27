@@ -4,6 +4,56 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.27.0] — 2026-09-27
+
+Specs from `/marvin:task-start` get a lean shape: nine permanent sections plus three optional ones
+instead of eighteen, each fact stated once, and a critic that can ask for text to be removed. The
+measured corpus had a median of 37 KB, about a third of it restatement that had started to
+contradict the contracts it restated ([ADR-0046](../../docs/adr/0046-lean-spec-shape.md),
+`docs/proposals/spec-size-reduction.md`).
+
+### Added
+
+- **Advisory size checks in the DoR gate.** `spec-size` warns above
+  `3 KB + 400 B per file + 500 B per criterion`, `ac-length` on a criterion statement over 40 words,
+  `intent-length` on a file intent over 60 words, and `security-nfr` on a `risk: high` feature with
+  no Security / NFR section. All four warn and none fails, so every sealed spec stays dispatchable.
+- **`merge_obligations` in `.marvin/config.json`**, an optional list of what the host needs to merge.
+  With `spec.dir`, `adr.dir`, `gates` and `gates.test_one`, it replaces the `host-bindings` block a
+  spec used to carry; `/marvin:task-start` proposes the missing keys once per project and writes
+  them after confirmation.
+- **Spec size in the task metrics.** The terminal `task-metrics` block gains `quality.spec_size`
+  (`bytes`, `words`, `budget`), read from the spec at roll-up time, and `/marvin:task-metrics`
+  reports Q13 `spec_bytes` and Q14 `spec_words`. A record rolled up earlier reads as null.
+- **The spec critic's Economy category.** `[redundancy]` and `[size]` are warnings, `[drift]` (a
+  restatement that contradicts the contract) is a blocker, and `[prose-only]` flags a requirement
+  nothing can prove. A criterion that describes design rather than behaviour is reported as well.
+
+### Changed
+
+- **The spec templates.** The feature template keeps Goal, Context, Spec Contract, Chosen Approach,
+  Non-goals, Assumptions, Open Questions and a one-line Critic Verdict & Overrides; Data & Config,
+  Security / NFR and Deferred slices are written only when they apply. Test Plan, Definition of
+  Done, Design Notes, Why this over alternatives, Future Considerations and Host Bindings are gone:
+  their content moves into the contract or into Chosen Approach as traps and at most three rejected
+  alternatives. The bugfix template drops Definition of Done, Design Notes and Host Bindings.
+  Both state limits on the contract fields, and `satisfies` is now optional.
+- **The DoR gate's required sections.** A feature requires Goal, Chosen Approach, Non-goals and Open
+  Questions, and recommends Context, Assumptions and Critic Verdict & Overrides; a bugfix no longer
+  requires Definition of Done. Sections were only removed, so a spec that passed still passes.
+- **`task-start` writing rules.** Step 5F replaces "fill every section" with one fact in one place,
+  evidence in a `runs/<slug>.evidence.md` sidecar, and the critic's narrative in its receipt. Step
+  4.5F must present a split for a plan above 15 files or 12 criteria, and the gate's `fcp-size`
+  warning moved to the same threshold. Step 6F turns follow-ups into board cards instead of a spec
+  section. Steps 8F/8B resolve a critic finding by editing the lines it names and pass the size
+  budget to the critic.
+- **A light tier.** A feature with `risk: low` and at most five files may omit Context and gets one
+  spec-critic dispatch instead of two.
+- **The executor** reads traps from Chosen Approach, and still reads `## Design Notes` in an older
+  spec.
+- **The task summary** links the ADR directory from `adr.dir` when a spec carries no
+  `host-bindings` block.
+
 ## [0.26.0] — 2026-09-27
 
 Files a task writes as a by-product, rather than as part of the change, stop counting as scope

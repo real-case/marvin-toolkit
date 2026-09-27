@@ -102,6 +102,7 @@ function fullInputs() {
     now: T("12:00:00"),
     spec: {
       path: ".marvin/task/001-demo.md",
+      size: { bytes: 9000, words: 1200 },
       frontmatter: {
         type: "feature",
         risk: "medium",
@@ -361,6 +362,8 @@ test("with every source present, every metric of the derivation table is derived
     by_source: { "oracle.run": 1, "config.test_one": 1 },
     unresolved: 1,
   });
+  // Q13/Q14 — three files and three criteria earn 3072 + 1200 + 1500 bytes (ADR-0046).
+  assert.deepEqual(b.quality.spec_size, { bytes: 9000, words: 1200, budget: 5772 });
 
   // rework
   assert.equal(
@@ -381,6 +384,20 @@ test("with every source present, every metric of the derivation table is derived
   assert.deepEqual(b.notes, ["T8: 1 critic dispatch(es) without a recorded verdict — excluded"]);
 });
 
+test("rollUpMetrics: a spec read before the size field existed reports no size, and an unusable contract no budget", () => {
+  const legacy = fullInputs();
+  delete legacy.spec.size;
+  assert.equal(rollUpMetrics(legacy).quality.spec_size, null);
+
+  const noContract = fullInputs();
+  noContract.spec.contract = null;
+  assert.deepEqual(rollUpMetrics(noContract).quality.spec_size, {
+    bytes: 9000,
+    words: 1200,
+    budget: null,
+  });
+});
+
 /** For each source, the rows that go null when exactly that source is absent. */
 const ABSENT_ROWS = {
   spec: (b) => {
@@ -390,6 +407,7 @@ const ABSENT_ROWS = {
     assert.equal(b.quality.oracle_strength, null);
     assert.deepEqual(b.time.oracle_ms, [], "no seal to join the oracle journal on");
     assert.equal(b.quality.oracle_resolution, null);
+    assert.equal(b.quality.spec_size, null);
   },
   progress: (b) => {
     assert.equal(b.time.intake_ms, null);

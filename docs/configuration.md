@@ -68,6 +68,7 @@ Here is a complete example with every field set:
     { "key": "blocked", "role": "blocked" }
   ],
   "scope": { "exempt": [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"] },
+  "merge_obligations": ["a CHANGELOG entry for every user-visible change"],
   "usage": { "enabled": true }
 }
 ```
@@ -221,6 +222,19 @@ specs that already live elsewhere. What does **not** move is the verification ar
 says. A spec is a project document and follows the host's conventions; everything Marvin
 generates about a run is a service file and stays in the working directory
 ([ADR-0037](./adr/0037-spec-corpus-mechanics.md)).
+
+### `merge_obligations`
+
+This is what the project needs before a pull request can merge beyond its gates: a version
+bump, a committed build artefact, a changelog entry. It is an optional list of strings. Until
+[ADR-0046](./adr/0046-lean-spec-shape.md) every spec rewrote it into a `host-bindings` block;
+now `/marvin:task-start` proposes it once per project, together with any missing `spec.dir`,
+`adr.dir`, `gates` or `gates.test_one`, writes it only after you confirm, and turns each
+obligation that touches a file into a row of the spec's contract.
+
+```json
+{ "merge_obligations": ["npm run sync-version", "commit the rebuilt dist/server.js"] }
+```
 
 ### `scope`
 

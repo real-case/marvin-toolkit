@@ -19,6 +19,8 @@ import {
   resolveSpecDir,
   specIdWidth,
   specSearchDirs,
+  specSizeBudget,
+  wordCount,
   type Criterion,
   type SpecCorpus,
   type SpecDirResolution,
@@ -81,32 +83,22 @@ const SEVERITY_VALUES = ["critical", "high", "medium", "low"] as const;
 /** Canonicalised (## heading → lowercase, alnum-separated) required/recommended
  * prose sections per type. The File Change Plan, Acceptance Criteria, and
  * Interface/Contract are no longer prose sections — they live in the
- * spec-contract block — so they are absent from these lists. */
-const FEATURE_REQUIRED = [
-  "goal",
-  "data config",
-  "chosen approach",
-  "test plan",
-  "definition of done",
-  "non goals",
-  "open questions",
-  "security nfr",
-];
-const FEATURE_RECOMMENDED = [
-  "context",
-  "why this over alternatives",
-  "assumptions",
-  "critic verdict overrides",
-  "design notes",
-  "future considerations",
-];
+ * spec-contract block — so they are absent from these lists.
+ *
+ * ADR-0046 shrank both lists to the sections a consumer actually reads. Data &
+ * Config, Security / NFR and Deferred slices became optional; Test Plan,
+ * Definition of Done, Design Notes, Why this over alternatives and Future
+ * Considerations were folded into the contract or Chosen Approach, or removed.
+ * Only ever removing names keeps every sealed spec passing: a spec that still
+ * carries a dropped section is not penalised for it. */
+const FEATURE_REQUIRED = ["goal", "chosen approach", "non goals", "open questions"];
+const FEATURE_RECOMMENDED = ["context", "assumptions", "critic verdict overrides"];
 const BUGFIX_REQUIRED = [
   "problem",
   "reproduction steps",
   "root cause analysis",
   "fix approach",
   "regression test specification",
-  "definition of done",
   "non goals",
   "open questions",
 ];
@@ -115,8 +107,20 @@ const BUGFIX_RECOMMENDED = [
   "severity impact",
   "assumptions",
   "critic verdict overrides",
-  "design notes",
 ];
+
+/** The size budget (`specSizeBudget`, ADR-0046) lives in ../storage/spec.ts.
+ * Every spec in the 2026-09 corpus exceeded it (median 2.6×), which is why the
+ * gate warns above it and never fails — a sealed spec must stay dispatchable.
+ * The word limits the template states are 30 and two sentences; the gate warns
+ * with headroom above them, so a borderline field is the critic's call. */
+const AC_STATEMENT_MAX_WORDS = 40;
+const FILE_INTENT_MAX_WORDS = 60;
+/** The light tier (ADR-0046): Context becomes optional. */
+const LIGHT_TIER_MAX_FILES = 5;
+/** Above either count, task-start Step 4.5F must present a split explicitly. */
+const SPLIT_MAX_FILES = 15;
+const SPLIT_MAX_CRITERIA = 12;
 
 // The spec-contract / host-bindings schemas and block extractors now live in
 // ../storage/spec.ts — the single source of truth shared with the task-summary
@@ -1241,11 +1245,24 @@ function validateSpec(
   const sections = parseSections(body);
 
   if (type === "feature" || type === "bugfix") {
+    const contract = parsedContract(body);
+    const lightTier =
+      type === "feature" &&
+      (frontmatter.risk ?? "").trim() === "low" &&
+      contract !== null &&
+      contract.files.length <= LIGHT_TIER_MAX_FILES;
     const [required, recommended] =
       type === "feature"
-        ? [FEATURE_REQUIRED, FEATURE_RECOMMENDED]
+        ? [
+            FEATURE_REQUIRED,
+            lightTier ? FEATURE_RECOMMENDED.filter((s) => s !== "context") : FEATURE_RECOMMENDED,
+          ]
         : [BUGFIX_REQUIRED, BUGFIX_RECOMMENDED];
     checks.push(...checkSections(sections, required, recommended));
+    if (type === "feature" && (frontmatter.risk ?? "").trim() === "high") {
+      checks.push(checkSecurityNfr(sections.get("security nfr")));
+    }
+    if (contract) checks.push(...checkSize(raw, contract));
     checks.push(checkOpenQuestions(sections.get("open questions")));
     checks.push(checkAssumptions(sections.get("assumptions")));
     checks.push(checkCriticVerdict(sections.get("critic verdict overrides")));
@@ -1433,7 +1450,12 @@ function checkContractBlock(
 
 /** The host-bindings block is optional and advisory (discovered, not load-bearing
  * for execution). Validate it lightly when present and surface its `spec_location`
- * so depends_on can resolve siblings; a malformed block warns, never blocks. */
+ * so depends_on can resolve siblings; a malformed block warns, never blocks.
+ *
+ * Since ADR-0046 a new spec writes no block: its four fields live once per
+ * project in `.marvin/config.json` (`spec.dir`, `adr.dir`, `gates`,
+ * `merge_obligations`). This reader stays for the specs sealed before that, so
+ * none of them changes verdict. */
 function checkHostBindings(body: string): { checks: Check[]; specLocation: string | undefined } {
   const text = extractHostBindings(body);
   if (text === null) return { checks: [], specLocation: undefined };
@@ -1548,12 +1570,12 @@ function checkFiles(c: SpecContract, projectRoot: string): Check[] {
     if ((f.action === "edit" || f.action === "delete") && !exists) missing.push(f.path);
     if (f.action === "new" && exists) newButExists.push(f.path);
   }
-  if (c.files.length > 12) {
+  if (c.files.length > SPLIT_MAX_FILES || c.criteria.length > SPLIT_MAX_CRITERIA) {
     checks.push(
       warn(
         "fcp-size",
         "Spec contract",
-        `${c.files.length} files planned — confirm this is one PR, not several (scope gate)`,
+        `${c.files.length} files and ${c.criteria.length} criteria planned (threshold ${SPLIT_MAX_FILES} / ${SPLIT_MAX_CRITERIA}) — the split must have been presented explicitly at Step 4.5F`,
       ),
     );
   }
@@ -1673,6 +1695,10 @@ export function checkGraph(c: SpecContract): Check[] {
   //     check, and it removes a finding class the semantic critic was paying
   //     minutes to catch by hand.
   //
+  //     Since ADR-0046 `implemented_by` is the hand-written direction and
+  //     `satisfies` is optional: its value is always derivable by transposing
+  //     `implemented_by`, so a row that omits it loses nothing, and a row that
+  //     declares it is still held to agreeing with it.
   //     A file row that declares NO `satisfies` (absent, or "none"/"—", which
   //     `refs` erases alike) declares no index and is exempt: an absent index is
   //     not a contradicting one, and infra rows legitimately carry none. Only
@@ -1841,14 +1867,82 @@ const MAX_LISTED = 8;
  * what is planned `new`, and it must still run when the block fails the schema
  * (that failure is `spec-contract`'s to report, not this check's). */
 function plannedFiles(body: string): { path: string; action: string }[] {
+  return parsedContract(body)?.files ?? [];
+}
+
+/** The contract block parsed and schema-valid, or null. The fail-closed
+ * reporting of an invalid block is `checkContractBlock`'s; this is for checks
+ * that only have something to say about a valid one. */
+function parsedContract(body: string): SpecContract | null {
   const text = extractContractBlock(body);
-  if (text === null) return [];
+  if (text === null) return null;
   try {
     const parsed = SpecContract.safeParse(parseYaml(text));
-    return parsed.success ? parsed.data.files : [];
+    return parsed.success ? parsed.data : null;
   } catch {
-    return [];
+    return null;
   }
+}
+
+// ── size (ADR-0046) ──────────────────────────────────────────────────────────
+
+/**
+ * Advisory size checks. All three warn and none fails: they exist so the
+ * "one fact, one place" rule does not depend on the model remembering it, and a
+ * failure would make every spec sealed before the rule undispatchable.
+ */
+function checkSize(raw: string, c: SpecContract): Check[] {
+  const checks: Check[] = [];
+  const bytes = Buffer.byteLength(raw, "utf8");
+  const budget = specSizeBudget(c.files.length, c.criteria.length);
+  checks.push(
+    bytes > budget
+      ? warn(
+          "spec-size",
+          "Size",
+          `${bytes} bytes against a budget of ${budget} (3 KB + 400 B × ${c.files.length} files + 500 B × ${c.criteria.length} criteria) — delete restatement: a fact lives in the contract and prose refers to it by id`,
+        )
+      : pass("spec-size", "Size", `${bytes} bytes within the budget of ${budget}`),
+  );
+
+  const longAc = c.criteria
+    .map((cr) => [cr.id, wordCount(cr.statement)] as const)
+    .filter(([, n]) => n > AC_STATEMENT_MAX_WORDS);
+  if (longAc.length) {
+    checks.push(
+      warn(
+        "ac-length",
+        "Acceptance Criteria",
+        `statement over ${AC_STATEMENT_MAX_WORDS} words: ${longAc.map(([id, n]) => `${id} (${n})`).join(", ")} — one behaviour per criterion, as Given/When/Then`,
+      ),
+    );
+  }
+
+  const longIntent = c.files
+    .map((f) => [f.id, wordCount(f.intent)] as const)
+    .filter(([, n]) => n > FILE_INTENT_MAX_WORDS);
+  if (longIntent.length) {
+    checks.push(
+      warn(
+        "intent-length",
+        "File intents",
+        `intent over ${FILE_INTENT_MAX_WORDS} words: ${longIntent.map(([id, n]) => `${id} (${n})`).join(", ")} — say what changes in the file; a test file names the criteria it covers`,
+      ),
+    );
+  }
+  return checks;
+}
+
+/** Security / NFR is optional, except that a `risk: high` feature must say
+ * what it did about the risk. A warning, like every ADR-0046 check. */
+function checkSecurityNfr(section: string | undefined): Check {
+  return section === undefined
+    ? warn(
+        "security-nfr",
+        "Security / NFR",
+        "risk: high but no Security / NFR section — state the concern and the criterion or file that addresses it",
+      )
+    : pass("security-nfr", "Security / NFR", "present for a risk: high spec");
 }
 
 /** The body with every fenced block removed — the contract block has its own
