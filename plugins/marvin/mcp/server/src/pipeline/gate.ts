@@ -7,6 +7,8 @@ export type Severity = "blocker" | "major" | "minor";
 export interface GateCommand {
   name: string;
   command: string;
+  /** Re-run once after a failure and call a pass on the re-run flaky. Default true. */
+  retry?: boolean;
 }
 export interface CheckRule {
   id: string;
@@ -69,17 +71,42 @@ export type Runner = (
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+/**
+ * The command is `$1` of a wrapper that runs it as a background job under `set -m`, so it
+ * gets its own process group, and that group is what a TERM or INT to the wrapper kills
+ * (KILL a second later for a command that ignores TERM). Killing only `/bin/sh` on a
+ * timeout would leave the suite running next to its own retry, and writing to the worktree.
+ * The wrapper's own stderr goes to /dev/null so the shell's job notices (`[1]+ Done`) stay
+ * out of the output; the command gets the real stderr back through fd 3.
+ */
+const RUNNER_WRAPPER = [
+  "set -m",
+  "exec 3>&2 2>/dev/null",
+  '/bin/sh -c "$1" 2>&3 3>&- &',
+  "pid=$!",
+  `trap 'kill -TERM -"$pid" 2>/dev/null; sleep 1; kill -KILL -"$pid" 2>/dev/null' TERM INT`,
+  'wait "$pid"',
+  "code=$?",
+  'exit "$code"',
+].join("\n");
+
 export const shellRunner: Runner = (command, cwd, timeoutMs) => {
   const started = Date.now();
-  const r = spawnSync("/bin/sh", ["-c", command], {
+  const r = spawnSync("/bin/sh", ["-c", RUNNER_WRAPPER, "sh", command], {
     cwd,
     encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
     timeout: timeoutMs,
     maxBuffer: MAX_BUFFER,
   });
-  const launch = r.error ? `error: ${r.error.message}\n` : "";
+  const timedOut = (r.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+  const launch = timedOut
+    ? `error: timed out after ${timeoutMs}ms\n`
+    : r.error
+      ? `error: ${r.error.message}\n`
+      : "";
   return {
-    code: r.status ?? 124,
+    code: timedOut ? 124 : (r.status ?? 124),
     output: `${r.stdout ?? ""}${r.stderr ?? ""}${launch}`,
     ms: Date.now() - started,
   };
@@ -97,15 +124,61 @@ export function runGates(
   run: Runner,
   timeoutMs: number,
 ): GateResult[] {
-  return commands.map(({ name, command }) => {
+  return commands.map(({ name, command, retry = true }) => {
     const first = run(command, cwd, timeoutMs);
     if (first.code === 0) return { name, result: "pass", ms: first.ms, tail: "" };
+    if (!retry) return { name, result: "fail", ms: first.ms, tail: relevantTail(first.output) };
     const second = run(command, cwd, timeoutMs);
     if (second.code === 0) {
       return { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) };
     }
     return { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) };
   });
+}
+
+const C_ESCAPES: Record<string, number> = {
+  '"': 0x22,
+  "\\": 0x5c,
+  a: 0x07,
+  b: 0x08,
+  t: 0x09,
+  n: 0x0a,
+  v: 0x0b,
+  f: 0x0c,
+  r: 0x0d,
+};
+
+/**
+ * Decode git's C-style quoting of a path: a name with a quote, backslash or control
+ * character, or (without `core.quotePath=false`) a non-ASCII byte, is wrapped in `"…"`
+ * with `\" \\ \a \b \t \n \v \f \r` and three-digit octal bytes, which form UTF-8.
+ * Anything not wrapped in quotes is returned as is.
+ */
+export function cUnquote(quoted: string): string {
+  if (quoted.length < 2 || !quoted.startsWith('"') || !quoted.endsWith('"')) return quoted;
+  const inner = quoted.slice(1, -1);
+  const bytes: number[] = [];
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner.charAt(i);
+    if (ch !== "\\") {
+      bytes.push(...Buffer.from(ch, "utf8"));
+      continue;
+    }
+    const octal = /^[0-7]{1,3}/.exec(inner.slice(i + 1, i + 4))?.[0];
+    if (octal) {
+      bytes.push(parseInt(octal, 8) & 0xff);
+      i += octal.length;
+      continue;
+    }
+    const escaped = C_ESCAPES[inner.charAt(i + 1)];
+    if (escaped !== undefined) {
+      bytes.push(escaped);
+      i += 1;
+      continue;
+    }
+    bytes.push(0x5c);
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 /**
@@ -136,7 +209,11 @@ export function addedLines(diff: string): AddedLine[] {
       continue;
     }
     if (raw.startsWith("+++ ")) {
-      file = raw.slice(4).replace(/\t.*$/, "").replace(/^b\//, "");
+      const name = raw.slice(4);
+      file = (name.startsWith('"') ? cUnquote(name) : name.replace(/\t.*$/, "")).replace(
+        /^b\//,
+        "",
+      );
       continue;
     }
     const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(raw);
@@ -325,7 +402,11 @@ export function runGateStage(o: {
     gates: runGates(
       [
         ...o.gates,
-        ...o.oracles.map((x) => ({ name: `oracle:${x.criterion}`, command: x.command })),
+        ...o.oracles.map((x) => ({
+          name: `oracle:${x.criterion}`,
+          command: x.command,
+          retry: false,
+        })),
       ],
       o.worktree,
       o.run,

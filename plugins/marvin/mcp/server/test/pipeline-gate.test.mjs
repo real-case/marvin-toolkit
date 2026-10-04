@@ -82,6 +82,45 @@ test("the shell runner reports the exit code, the output and a timeout as 124", 
   assert.equal(g.shellRunner("sleep 5", tmpdir(), 100).code, 124);
 });
 
+test("an acceptance oracle gets no flaky re-run: its first failure is a fail", () => {
+  let runs = 0;
+  const run = () => ({ code: ++runs === 1 ? 1 : 0, output: "error: boom", ms: 1 });
+  const [oracle] = g.runGates([{ name: "oracle:AC1", command: "x", retry: false }], "/", run, 1000);
+  assert.equal(oracle.result, "fail");
+  assert.equal(runs, 1);
+  runs = 0;
+  const [plain] = g.runGates([{ name: "test", command: "x" }], "/", run, 1000);
+  assert.equal(plain.result, "flaky");
+  assert.equal(runs, 2);
+});
+
+const survivors = (marker) =>
+  spawnSync("pgrep", ["-f", marker], { encoding: "utf8" }).stdout.trim();
+const marker = () => `31.${Math.floor(Math.random() * 1e9)}`;
+
+test("a timeout kills the whole process tree and says so in the output", () => {
+  const m = marker();
+  const started = Date.now();
+  const out = g.shellRunner(`sleep ${m} & sleep ${m} & wait`, tmpdir(), 300);
+  assert.equal(out.code, 124);
+  assert.match(out.output, /timed out after 300ms/);
+  assert.ok(Date.now() - started < 8000);
+  assert.equal(survivors(`sleep ${m}`), "");
+});
+
+test("a timeout also ends a command that ignores TERM", () => {
+  const m = marker();
+  const out = g.shellRunner(`trap '' TERM; sleep ${m} & wait`, tmpdir(), 300);
+  assert.equal(out.code, 124);
+  assert.equal(survivors(`sleep ${m}`), "");
+});
+
+test("the shell runner hands the command over unmangled and keeps its exit code", () => {
+  const out = g.shellRunner(`printf '%s|%s' "q'uote" '$HOME'; exit 7`, tmpdir(), 5000);
+  assert.equal(out.code, 7);
+  assert.equal(out.output, "q'uote|$HOME");
+});
+
 test("added lines carry their new-file line numbers", () => {
   const diff = [
     "diff --git a/src/a.ts b/src/a.ts",
@@ -142,6 +181,26 @@ test("an added line that looks like a file header cannot redirect the lines afte
     { file: "src/a.test.ts", line: 2, text: "-- a/other.ts" },
     { file: "src/a.test.ts", line: 3, text: "it.only('x');" },
   ]);
+});
+
+test("quoted patch headers are decoded, escapes and UTF-8 octal included", () => {
+  const diff = [
+    'diff --git "a/src/a\\"b.test.ts" "b/src/a\\"b.test.ts"',
+    '--- "a/src/a\\"b.test.ts"',
+    '+++ "b/src/a\\"b.test.ts"',
+    "@@ -0,0 +1 @@",
+    "+it.only('x');",
+    'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
+    '+++ "b/src/caf\\303\\251\\t\\\\x.ts"',
+    "@@ -0,0 +1 @@",
+    "+debugger;",
+  ].join("\n");
+  assert.deepEqual(g.addedLines(diff), [
+    { file: 'src/a"b.test.ts', line: 1, text: "it.only('x');" },
+    { file: "src/caf\u00e9\t\\x.ts", line: 1, text: "debugger;" },
+  ]);
+  assert.equal(g.cUnquote('"b/plain.ts"'), "b/plain.ts");
+  assert.equal(g.cUnquote("unquoted"), "unquoted");
 });
 
 test("checks respect path and exclude patterns", () => {
