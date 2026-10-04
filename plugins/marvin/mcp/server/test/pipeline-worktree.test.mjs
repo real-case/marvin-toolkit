@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, unlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -37,6 +37,23 @@ test("the run worktree branches from origin/<base> outside the repository tree (
     () => sh(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"),
     /no upstream/,
   );
+});
+
+test("the run worktree records the base commit and its private git dir for the gate", () => {
+  const repo = repoWithOrigin();
+  const made = wt.createRunWorktree({
+    repoRoot: repo,
+    base: "dev",
+    runId: "r3",
+    worktreesRoot: worktreesRoot(),
+  });
+  assert.match(made.baseSha, /^[0-9a-f]{40}$/);
+  assert.equal(made.baseSha, sh(repo, "rev-parse", "origin/dev"));
+  assert.equal(sh(made.path, "rev-parse", "HEAD"), made.baseSha);
+  assert.equal(made.gitDir, sh(made.path, "rev-parse", "--absolute-git-dir"));
+  const pointer = /^gitdir: (.+)$/m.exec(readFileSync(join(made.path, ".git"), "utf8"))?.[1];
+  assert.equal(realpathSync(made.gitDir), realpathSync(pointer));
+  assert.ok(made.gitDir.startsWith(join(realpathSync(repo), ".git", "worktrees")));
 });
 
 test("branch names follow the template and renaming refuses a taken name", () => {
