@@ -3,7 +3,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const sh = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+export const sh = (cwd, ...args) =>
+  execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
 
 export function repoWithOrigin(files = { "package-lock.json": "{}\n" }) {
   const root = mkdtempSync(join(tmpdir(), "pipe-git-"));
