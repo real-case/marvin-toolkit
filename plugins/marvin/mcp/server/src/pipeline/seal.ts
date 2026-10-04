@@ -127,12 +127,23 @@ const NOT_RUN_CODES: ReadonlySet<number> = new Set([124, 126, 127]);
 const TIMED_OUT = /timed out after/i;
 /**
  * vitest: `No test files found`, `No test found in suite x`, `No test suite found in file y`.
- * node --test: `Could not find '<path>'`, which it prints, with exit 1, for a path argument that
- * names no file and holds no glob magic (a brace set, a one-character class), at the start of a line.
+ * jest: `No tests found`.
  */
-const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b|^[ \t]*could not find '/im;
+const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b/i;
 /** jest, for a file with no test in it. */
 const NO_TEST_IN_SUITE = /\byour test suite must contain at least one test\b/i;
+
+/**
+ * Whether `node --test` reported that it found nothing under the candidate's own name. It prints
+ * `Could not find '<path>'`, with exit 1, for a path argument that names no file and holds no glob
+ * magic (a brace set, a one-character class): the path as given, or, in older versions, resolved
+ * against its working directory. Only that exact line counts, unindented, case-sensitive, with
+ * one of `spellings` quoted; the same words in a failure message (jest indents one) are a failure.
+ */
+function nodeFoundNothing(output: string, spellings: readonly string[]): boolean {
+  const lines = new Set(spellings.map((path) => `Could not find '${path}'`));
+  return output.split("\n").some((line) => lines.has(line));
+}
 
 /** The escape sequences a coloured reporter wraps its words in: CSI, OSC and the two-byte ones. */
 // eslint-disable-next-line no-control-regex -- the escape character is exactly what is stripped
@@ -162,8 +173,11 @@ function reportedFileCount(output: string): number | null {
   return largest;
 }
 
-/** Why a command's outcome is not a genuine failure of the test, or null if it is one. */
-function redProblem(result: ReturnType<Runner>): string | null {
+/**
+ * Why a command's outcome is not a genuine failure of the test, or null if it is one. `spellings`
+ * are the candidate's path as the command named it and its absolute forms.
+ */
+function redProblem(result: ReturnType<Runner>, spellings: readonly string[]): string | null {
   const { code } = result;
   const output = typeof result.output === "string" ? result.output.replace(ANSI, "") : "";
   if (code === 0) return "passes before implementation, so it proves nothing";
@@ -172,7 +186,9 @@ function redProblem(result: ReturnType<Runner>): string | null {
   }
   const files = reportedFileCount(output);
   if (files !== null && files !== 1) return `the runner ran ${files} test files, not just this one`;
-  return NO_TEST_FOUND.test(output) || NO_TEST_IN_SUITE.test(output)
+  return NO_TEST_FOUND.test(output) ||
+    NO_TEST_IN_SUITE.test(output) ||
+    nodeFoundNothing(output, spellings)
     ? "the runner found no test in it"
     : null;
 }
@@ -654,7 +670,11 @@ export function sealAuthoredTests(o: {
   for (const c of candidates) {
     let problem: string | null;
     try {
-      problem = redProblem(o.run(formatTestOne(o.testOne, c.path), o.worktree, o.timeoutMs));
+      problem = redProblem(o.run(formatTestOne(o.testOne, c.path), o.worktree, o.timeoutMs), [
+        c.path,
+        join(o.worktree, c.path),
+        join(realRoot, c.path),
+      ]);
     } catch (error) {
       problem = `test command did not run (${errorText(error)})`;
     }

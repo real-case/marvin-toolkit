@@ -26,6 +26,18 @@ const g = await importTs("src/pipeline/gate.ts");
 const hooks = fileURLToPath(new URL("../../../pipeline/hooks/", import.meta.url));
 const PATTERN = "\\.(test|spec)\\.[cm]?[jt]sx?$";
 
+/** The entry script of a runner the server package resolves, or null when it resolves none. */
+function binOf(name) {
+  try {
+    const manifest = createRequire(import.meta.url).resolve(`${name}/package.json`);
+    const { bin } = JSON.parse(readFileSync(manifest, "utf8"));
+    return join(dirname(manifest), typeof bin === "string" ? bin : bin[name]);
+  } catch {
+    return null;
+  }
+}
+const shellWord = (word) => `'${word.replaceAll("'", "'\\''")}'`;
+
 const scratch = [];
 after(() => {
   for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
@@ -1116,20 +1128,53 @@ test("a runner that finds no test in the file does not count as red", () => {
   }
 });
 
+const JEST_COULD_NOT_FIND = `FAIL ./a.test.ts
+  ✕ finds the user
+
+  ● finds the user
+
+    Could not find 'user' in the directory
+
+    > 1 | test("finds the user", () => { throw new Error("Could not find 'user' in the directory"); });
+        |                                      ^
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 total
+`;
+
 test("node's own 'Could not find' counts as no test, with the real runner too", () => {
   const wt = worktreeWith(["a.test.ts"]);
+  const verdict = (output) =>
+    seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
   for (const output of [
-    "Could not find 'x{a,b}.test.mjs'\n",
-    "Could not find '/work/tree/x[y].test.mjs'",
-    "  Could not find 'a.test.ts'",
+    "Could not find 'a.test.ts'\n",
+    `Could not find '${join(wt, "a.test.ts")}'`,
+    `Could not find '${join(realpathSync(wt), "a.test.ts")}'\n`,
+    "✖ failing tests:\nCould not find 'a.test.ts'\n",
   ]) {
-    const v = seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
-    assert.match(v.reasons[0], /^a\.test\.ts: the runner found no test in it$/, output);
+    assert.deepEqual(
+      verdict(output).reasons,
+      ["a.test.ts: the runner found no test in it"],
+      output,
+    );
   }
-  const mid = seal(wt, [authored("a.test.ts")], {
-    run: () => ({ code: 1, output: "AssertionError: Could not find 'x' in the list", ms: 1 }),
-  });
-  assert.equal(mid.ok, true, "the phrase inside a failure message is a failure");
+  for (const output of [
+    "AssertionError: Could not find 'x' in the list",
+    "  Could not find 'a.test.ts'",
+    "\tCould not find 'a.test.ts'",
+    "could not find 'a.test.ts'",
+    "COULD NOT FIND 'a.test.ts'",
+    "Could not find 'A.test.ts'",
+    "Could not find 'b.test.ts'",
+    "Could not find 'x{a,b}.test.mjs'\n",
+    "Could not find '/work/tree/a.test.ts'",
+    "Could not find 'a.test.ts' in the list",
+    "Could not find 'a.test.ts', 'b.test.ts'",
+    JEST_COULD_NOT_FIND,
+  ]) {
+    const v = verdict(output);
+    assert.equal(v.ok, true, `a failure, not node's line for this file: ${JSON.stringify(output)}`);
+  }
   const real = (candidate, body) => {
     const dir = tmp();
     gitInit(dir);
@@ -1150,14 +1195,43 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     'import { test } from "node:test";\ntest("red", () => { throw new Error("red"); });\n';
   for (const candidate of ["x{a,b}.test.mjs", "x{},y}.test.mjs", "x[y].test.mjs"]) {
     const v = real(candidate, red);
-    assert.equal(v.ok, false, candidate);
-    assert.match(v.reasons[0], /the runner found no test in it$/, candidate);
+    assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], candidate);
   }
   const genuine = real("plain.test.mjs", red);
   assert.equal(genuine.ok, true, genuine.reasons.join("; "));
+  const phrased = real(
+    "user.test.mjs",
+    red.replace('"red"', `"Could not find 'user' in the directory"`),
+  );
+  assert.equal(phrased.ok, true, phrased.reasons.join("; "));
   const passing = real("ok.test.mjs", 'import { test } from "node:test";\ntest("ok", () => {});\n');
   assert.match(passing.reasons[0], /passes before implementation/);
 });
+
+const jestBin = binOf("jest");
+
+test(
+  "a real jest failure whose message reads like node's line is an honest red test",
+  { skip: jestBin === null ? "jest is not installed for the server package" : false },
+  () => {
+    const testOne = `${shellWord(process.execPath)} ${shellWord(jestBin)} --ci --watchman=false {file}`;
+    const box = (message) => {
+      const wt = tmp();
+      gitInit(wt);
+      put(wt, "package.json", "{}\n");
+      put(
+        wt,
+        "a.test.js",
+        `test("finds the user", () => { throw new Error(${JSON.stringify(message)}); });\n`,
+      );
+      return seal(wt, [authored("a.test.js")], { testOne, run: g.shellRunner, timeoutMs: 120000 });
+    };
+    const phrased = box("Could not find 'user' in the directory");
+    assert.equal(phrased.ok, true, phrased.reasons.join("; "));
+    const control = box("user lookup failed");
+    assert.equal(control.ok, true, control.reasons.join("; "));
+  },
+);
 
 // ── the runner's own count of test files ────────────────────────────────────
 
@@ -1226,17 +1300,7 @@ test("without a count line the static readings decide, and a count of 1 does not
   assert.deepEqual(calls, [], "the static readings are checked before anything runs");
 });
 
-const require = createRequire(import.meta.url);
-const vitestBin = (() => {
-  try {
-    const manifest = require.resolve("vitest/package.json");
-    const { bin } = JSON.parse(readFileSync(manifest, "utf8"));
-    return join(dirname(manifest), typeof bin === "string" ? bin : bin.vitest);
-  } catch {
-    return null;
-  }
-})();
-const shellWord = (s) => `'${s.replaceAll("'", "'\\''")}'`;
+const vitestBin = binOf("vitest");
 
 test(
   "a real vitest under test.projects selects a plain-named sibling, and its own count gives it away",
