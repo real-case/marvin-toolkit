@@ -47,14 +47,18 @@ test("T1: a sealed test overwritten with a script that restores itself is uncomm
   assert.deepEqual(
     report.gates.map((x) => [x.name, x.result]),
     [
-      ["true", "pass"],
       ["oracle:AC1", "pass"],
+      ["true", "pass"],
     ],
   );
   assert.equal(w.git("status", "--porcelain"), "", "the attack leaves no trace afterwards");
   assert.equal(readFileSync(join(w.path, "src/a.test.mjs"), "utf8"), ORIGINAL);
   assert.equal(report.passed, false);
-  assert.deepEqual(claims(report), ["uncommitted work: src/a.test.mjs"]);
+  assert.deepEqual(claims(report), [
+    "sealed file src/a.test.mjs changed around oracle AC1",
+    "uncommitted work: src/a.test.mjs",
+  ]);
+  assert.deepEqual(report.sealed, [{ path: "src/a.test.mjs", ok: false }]);
 });
 
 test("T2: a weakened sealed test committed and then restored on disk fails the sealed hash", () => {
@@ -233,6 +237,57 @@ test("the check scan reports a path whose added lines it could not account for",
   assert.deepEqual(g.addedLineMismatches([], "-\t-\timg.png\0"), []);
   assert.deepEqual(g.addedLineMismatches([line("img.png", 1)], "-\t-\timg.png\0"), []);
   assert.deepEqual(g.addedLineMismatches([line("src/b.ts", 1)], ""), ["src/b.ts"]);
+});
+
+// ── oracles run first, each bracketed by sealed hashes ──────────────────────
+
+test("an ordinary gate that overwrites a sealed test cannot turn its oracle green", () => {
+  const { w, sealed } = withSealedTest();
+  const report = gateStage(w, {
+    sealed,
+    gates: [{ name: "test", command: "echo 'process.exit(0)' > src/a.test.mjs" }],
+    oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
+  });
+  assert.deepEqual(
+    report.gates.map((x) => [x.name, x.result]),
+    [
+      ["oracle:AC1", "fail"],
+      ["test", "pass"],
+    ],
+  );
+  assert.equal(report.passed, false);
+  assert.ok(claims(report).includes("gates modified tracked file src/a.test.mjs"));
+  assert.ok(claims(report).includes("sealed file src/a.test.mjs changed during gates"));
+});
+
+test("an oracle that rewrites a sealed file is named, and so is every oracle that sees it changed", () => {
+  const { w, sealed } = withSealedTest();
+  const report = gateStage(w, {
+    sealed,
+    oracles: [
+      { criterion: "AC1", command: "echo 'process.exit(0)' > src/a.test.mjs", reason: null },
+      { criterion: "AC2", command: "true", reason: null },
+    ],
+  });
+  assert.equal(report.passed, false);
+  assert.deepEqual(report.sealed, [{ path: "src/a.test.mjs", ok: false }]);
+  assert.deepEqual(claims(report), [
+    "gates modified tracked file src/a.test.mjs",
+    "sealed file src/a.test.mjs changed around oracle AC1",
+    "sealed file src/a.test.mjs changed around oracle AC2",
+    "sealed file src/a.test.mjs changed during gates",
+  ]);
+  assert.equal(report.blockers.find((b) => b.claim.includes("around oracle")).category, "scope");
+});
+
+test("an intact sealed test passes the bracket, and runs without oracles have none", () => {
+  const { w, sealed } = withSealedTest();
+  const quiet = gateStage(w, {
+    sealed,
+    oracles: [{ criterion: "AC1", command: "true", reason: null }],
+  });
+  assert.equal(quiet.passed, true, JSON.stringify(quiet));
+  assert.deepEqual(gateStage(w, { sealed }).blockers, []);
 });
 
 // ── nested repositories ──────────────────────────────────────────────────────

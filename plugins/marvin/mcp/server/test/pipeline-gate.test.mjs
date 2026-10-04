@@ -575,11 +575,11 @@ test("the gate stage runs oracles as gates, never re-runs one, and fails a chang
   assert.deepEqual(
     report.gates.map((x) => [x.name, x.result]),
     [
-      ["true", "pass"],
-      ["flaky", "flaky"],
       ["oracle:AC1", "pass"],
       ["oracle:AC2", "fail"],
       ["oracle:AC3", "fail"],
+      ["true", "pass"],
+      ["flaky", "flaky"],
     ],
   );
   assert.deepEqual(report.sealed, [{ path: "src/a.test.ts", ok: true }]);
@@ -600,7 +600,7 @@ test("a criterion with no runnable oracle is a gate blocker that names the reaso
   ]);
   assert.deepEqual(
     report.gates.map((x) => x.name),
-    ["true", "oracle:AC1"],
+    ["oracle:AC1", "true"],
   );
   assert.equal(g.reportFindings(report)[0].category, "gate");
 });

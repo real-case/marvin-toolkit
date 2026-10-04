@@ -745,19 +745,34 @@ export function runGateStage(o: GateStageOptions): GateReport {
       expected: "every criterion that is not prose-review resolves to a command",
     });
   }
-  const gates = runGates(
-    [
-      ...o.gates,
-      ...runnable.map((x) => ({
-        name: `oracle:${x.criterion}`,
-        command: x.command,
-        retry: false,
-      })),
-    ],
-    o.worktree,
-    o.run,
-    o.timeoutMs,
-  );
+  // Oracles run first, one at a time, so code from an ordinary gate (child-authored tests
+  // inside `npm test`, say) cannot rewrite a sealed test before its oracle reads it, and the
+  // sealed files are hashed on disk immediately before and after each one.
+  const aroundOracle = new Set<string>();
+  const oracleGates: GateResult[] = [];
+  for (const x of runnable) {
+    const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    oracleGates.push(
+      ...runGates(
+        [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
+        o.worktree,
+        o.run,
+        o.timeoutMs,
+      ),
+    );
+    const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    for (const path of new Set([...before, ...after].map((f) => f.path))) {
+      aroundOracle.add(path);
+      blockers.push({
+        category: "scope",
+        claim: `sealed file ${path} changed around oracle ${x.criterion}`,
+        file: path,
+        evidence: "sha256 differs from the sealed value just before or after the oracle ran",
+        expected: "sealed tests are byte-identical while their oracles run",
+      });
+    }
+  }
+  const gates = [...oracleGates, ...runGates(o.gates, o.worktree, o.run, o.timeoutMs)];
 
   const headAfter = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha) {
@@ -811,7 +826,10 @@ export function runGateStage(o: GateStageOptions): GateReport {
         expected: "sealed tests unchanged by the gates",
       });
     }
-    return { path: before.path, ok: before.ok && after?.ok === true };
+    return {
+      path: before.path,
+      ok: before.ok && after?.ok === true && !aroundOracle.has(before.path),
+    };
   });
   const protectedAfter = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
   for (const path of diffProtected(protectedBefore, protectedAfter)) {
