@@ -596,7 +596,7 @@ const PATCH_FLAGS = [
  * backslash, no empty, `.` or `..` segment, no control character. The gate compares these by
  * exact string against what git lists, so `./specs/a.test.mjs` would silently match nothing.
  */
-function isCanonicalPath(path: unknown): path is string {
+export function isCanonicalPath(path: unknown): path is string {
   return (
     typeof path === "string" &&
     path !== "" &&
