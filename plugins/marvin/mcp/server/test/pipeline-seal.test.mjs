@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -49,6 +50,12 @@ function git(dir, ...args) {
 function gitInit(dir) {
   const r = git(dir, "init", "-q");
   assert.equal(r.status, 0, r.stderr);
+  for (const [key, value] of [
+    ["core.autocrlf", "false"],
+    ["core.safecrlf", "false"],
+  ]) {
+    assert.equal(git(dir, "config", key, value).status, 0);
+  }
 }
 
 /** What the gate does with a sealed path: read its blob at HEAD. Null when git cannot find it. */
@@ -428,16 +435,298 @@ test("a file a red run creates is counted when the runs are over", () => {
   );
 });
 
-test("the files a command could select are the tracked and untracked, but not the ignored ones", () => {
-  const wt = worktreeWith(["a.test.ts", ".gitignore"]);
-  writeFileSync(join(wt, ".gitignore"), "ignored/\n");
-  mkdirSync(join(wt, "ignored"));
-  writeFileSync(join(wt, "ignored", "ba.test.ts"), "// ignored");
+const SELECTS = (path, other) => `${path}: the single-test command may also select ${other}`;
+
+/** A worktree holding `files`, then `extra`, which may add what git does not list. */
+function boxWith(files, extra = () => {}) {
+  const wt = worktreeWith(files);
+  extra(wt);
+  return wt;
+}
+const put = (wt, rel, body = "// x") => {
+  mkdirSync(dirname(join(wt, rel)), { recursive: true });
+  writeFileSync(join(wt, rel), body);
+};
+
+test("a sibling the runner would glob is counted whether or not git lists it", () => {
+  const verdict = (extra) =>
+    seal(
+      boxWith(["a.test.ts", ".gitignore"], (wt) => {
+        writeFileSync(join(wt, ".gitignore"), "coverage/\nignored/\n");
+        extra(wt);
+      }),
+      [authored("a.test.ts")],
+    );
+  assert.equal(verdict(() => {}).ok, true, "control: nothing beside it");
+  assert.deepEqual(verdict((wt) => put(wt, "coverage/xa.test.ts")).reasons, [
+    SELECTS("a.test.ts", "coverage/xa.test.ts"),
+  ]);
+  assert.deepEqual(verdict((wt) => put(wt, "ignored/ba.test.ts")).reasons, [
+    SELECTS("a.test.ts", "ignored/ba.test.ts"),
+  ]);
+  assert.deepEqual(verdict((wt) => put(wt, "xa.test.ts")).reasons, [
+    SELECTS("a.test.ts", "xa.test.ts"),
+  ]);
+  assert.equal(verdict((wt) => put(wt, "coverage/zzz.test.ts")).ok, true, "an unrelated sibling");
+});
+
+test("a failing test inside a nested repository can still be selected", () => {
+  const nested = (wt) => {
+    mkdirSync(join(wt, "vendor"));
+    gitInit(join(wt, "vendor"));
+    put(wt, "vendor/xa.test.ts");
+    put(wt, "vendor/deep/xb.test.ts");
+  };
+  const wt = boxWith(["a.test.ts", "b.test.ts"], nested);
+  assert.deepEqual(seal(wt, [authored("a.test.ts")]).reasons, [
+    SELECTS("a.test.ts", "vendor/xa.test.ts"),
+  ]);
+  assert.deepEqual(seal(wt, [authored("b.test.ts")]).reasons, [
+    SELECTS("b.test.ts", "vendor/deep/xb.test.ts"),
+  ]);
+  assert.equal(seal(worktreeWith(["a.test.ts"]), [authored("a.test.ts")]).ok, true, "control");
+});
+
+test("only .git entries and node_modules directories are not searched for siblings", () => {
+  const wt = boxWith(["a.test.ts", "x.test.js"], (w) => {
+    put(w, "node_modules/x.test.js");
+    put(w, "pkg/node_modules/deep/xa.test.ts");
+    put(w, ".git/hooks/xa.test.ts");
+    put(w, "vendor/.git", "gitdir: ../elsewhere");
+    put(w, "vendor/inner/.git/hooks/xa.test.ts");
+    put(w, "vendor/inner/.git/objects/xb.test.ts");
+    put(w, "vendor/node_modules/xa.test.ts");
+  });
   assert.equal(seal(wt, [authored("a.test.ts")]).ok, true);
-  writeFileSync(join(wt, "xa.test.ts"), "// untracked, not ignored");
-  assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
-  spawnSync("git", ["add", "xa.test.ts"], { cwd: wt });
-  assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
+  assert.equal(seal(wt, [authored("x.test.js")]).ok, true);
+  put(wt, "src/node_modules_x/xa.test.ts");
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, false, "a directory merely named like it");
+  const dotDir = boxWith(["a.test.ts"], (w) => put(w, ".hidden/xa.test.ts"));
+  assert.deepEqual(seal(dotDir, [authored("a.test.ts")]).reasons, [
+    SELECTS("a.test.ts", ".hidden/xa.test.ts"),
+  ]);
+});
+
+test("a candidate that jest would read as a regular expression is refused beside a match", () => {
+  const cases = [
+    ["a.b.test.js", "a_b.test.js"],
+    ["[id]/p.test.js", "i/p.test.js"],
+    ["a+b.test.js", "aab.test.js"],
+    ["x(y).test.js", "xy.test.js"],
+    ["a|b.test.js", "b.test.js"],
+  ];
+  for (const [candidate, sibling] of cases) {
+    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+    assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], candidate);
+    const unrelated = seal(worktreeWith([candidate, "zzz.test.js"]), [authored(candidate)]);
+    assert.equal(unrelated.ok, true, `${candidate} beside an unrelated file`);
+  }
+});
+
+test("a candidate that is not a regular expression matches every sibling", () => {
+  for (const candidate of ["a(b.test.js", "a[b.test.js", "(?<.test.js", "a{2,1}.test.js"]) {
+    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+    assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+    const v = seal(worktreeWith([candidate, "zzz.test.js"]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, "zzz.test.js")], candidate);
+  }
+});
+
+test("a candidate that node --test would read as a glob is refused beside a match", () => {
+  const cases = [
+    ["[id]/p.test.mjs", "i/p.test.mjs"],
+    ["a*.test.mjs", "abc.test.mjs"],
+    ["a*.test.mjs", "a/b/c.test.mjs"],
+    ["a?.test.mjs", "ab.test.mjs"],
+    ["x{a,b}.test.mjs", "xa.test.mjs"],
+    ["d*/x{a,b}.test.mjs", "d1/2/xa.test.mjs"],
+    ["x{a,b}.test.mjs", "xb.test.mjs"],
+    ["r[!a].test.mjs", "rb.test.mjs"],
+    ["r[a-c].test.mjs", "rb.test.mjs"],
+  ];
+  for (const [candidate, sibling] of cases) {
+    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+    assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], `${candidate} beside ${sibling}`);
+  }
+  for (const candidate of [
+    "+(a|b).test.mjs",
+    "@(a).test.mjs",
+    "!(a).test.mjs",
+    "?(a).test.mjs",
+    "*(a).test.mjs",
+    "[[:alpha:]].test.mjs",
+    "x{1..3}.test.mjs",
+  ]) {
+    const v = seal(worktreeWith([candidate, "zzz.test.mjs"]), [authored(candidate)]);
+    assert.deepEqual(
+      v.reasons,
+      [SELECTS(candidate, "zzz.test.mjs")],
+      `${candidate} (not modelled, so it matches all)`,
+    );
+  }
+});
+
+test("a path with plain punctuation is not mistaken for a pattern that selects its neighbours", () => {
+  const files = [
+    "src/app/(dashboard)/projects/p.test.tsx",
+    "src/app/(dashboard)/projects/q.test.tsx",
+    "src/app/(dashboard)/[id]/page.test.tsx",
+    "src/app/(auth)/login.test.tsx",
+  ];
+  const wt = worktreeWith(files);
+  for (const f of files) {
+    const v = seal(wt, [authored(f)]);
+    assert.deepEqual(
+      v.reasons.filter((r) => /may also select/.test(r)),
+      [],
+      f,
+    );
+  }
+});
+
+test("the built-in test shapes count as siblings even when the pattern is narrower", () => {
+  const narrow = { testPathPattern: "\\.test\\.ts$" };
+  const spec = boxWith(["a.test.ts"], (wt) => put(wt, "xa.test.tsx"));
+  assert.deepEqual(seal(spec, [authored("a.test.ts")], narrow).reasons, [
+    SELECTS("a.test.ts", "xa.test.tsx"),
+  ]);
+  const specShape = boxWith(["a.spec.ts"], (wt) => put(wt, "xa.spec.tsx"));
+  assert.deepEqual(
+    seal(specShape, [authored("a.spec.ts")], { testPathPattern: "\\.spec\\.ts$" }).reasons,
+    [SELECTS("a.spec.ts", "xa.spec.tsx")],
+  );
+  const underscores = boxWith(["a.test.ts"], (wt) => put(wt, "src/__tests__/a.test.ts.snap"));
+  assert.deepEqual(seal(underscores, [authored("a.test.ts")], narrow).reasons, [
+    SELECTS("a.test.ts", "src/__tests__/a.test.ts.snap"),
+  ]);
+  const top = boxWith(["a.test.ts"], (wt) => put(wt, "__tests__/helper-a.test.ts.txt"));
+  assert.deepEqual(seal(top, [authored("a.test.ts")], narrow).reasons, [
+    SELECTS("a.test.ts", "__tests__/helper-a.test.ts.txt"),
+  ]);
+  const plain = boxWith(["a.test.ts"], (wt) => put(wt, "src/a.test.ts.snap"));
+  assert.equal(seal(plain, [authored("a.test.ts")], narrow).ok, true, "a snapshot is not a test");
+});
+
+test("the file itself is not its own sibling, whatever name the disk gives it", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  linkSync(join(wt, "a.test.ts"), join(wt, "hard.ts"));
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true);
+  const other = tmp();
+  gitInit(other);
+  writeFileSync(join(other, `${NFD}.test.ts`), "// decomposed on disk");
+  const listed = git(other, "ls-files", "-z", "--others", "--exclude-standard").stdout.split(
+    "\0",
+  )[0];
+  const v = seal(other, [authored(listed)]);
+  assert.equal(v.ok, true, v.reasons.join("; "));
+});
+
+test(
+  "a directory the worktree walk cannot read is a reason, not a quiet pass",
+  {
+    skip: typeof process.getuid === "function" && process.getuid() === 0,
+  },
+  () => {
+    const wt = worktreeWith(["a.test.ts"]);
+    mkdirSync(join(wt, "locked"));
+    chmodSync(join(wt, "locked"), 0);
+    try {
+      const v = seal(wt, [authored("a.test.ts")]);
+      assert.equal(v.ok, false);
+      assert.match(
+        v.reasons[0],
+        /^a\.test\.ts: cannot tell what the single-test command may also select \(.*locked/,
+      );
+    } finally {
+      chmodSync(join(wt, "locked"), 0o755);
+    }
+  },
+);
+
+test("a sibling a red run plants where git does not look is counted when the runs are over", () => {
+  const wt = worktreeWith(["a.test.ts", ".gitignore"]);
+  writeFileSync(join(wt, ".gitignore"), "coverage/\n");
+  const plants = (command, cwd) => {
+    put(cwd, "coverage/xa.test.ts");
+    return { code: 1, output: "AssertionError", ms: 1 };
+  };
+  const v = seal(wt, [authored("a.test.ts")], { run: plants });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assert.equal(
+    v.reasons[0],
+    "a.test.ts: after the red runs, the single-test command may also select coverage/xa.test.ts",
+  );
+});
+
+test("the content git would commit is the content that gets sealed", () => {
+  const wt = worktreeWith([".gitattributes"]);
+  writeFileSync(join(wt, ".gitattributes"), "* text=auto\n");
+  const body =
+    'import { test } from "node:test";\r\ntest("x", () => { throw new Error("red"); });\r\n';
+  writeFileSync(join(wt, "a.test.mjs"), body);
+  writeFileSync(join(wt, "b.test.mjs"), body.replaceAll("\r\n", "\n"));
+  const crlf = seal(wt, [authored("a.test.mjs")]);
+  assert.equal(crlf.ok, false);
+  assert.deepEqual(crlf.reasons, [
+    "a.test.mjs: git would rewrite this file on commit (eol/filter attributes); write it in its committed form",
+  ]);
+  const lf = seal(wt, [authored("b.test.mjs")]);
+  assert.equal(lf.ok, true, lf.reasons.join("; "));
+  git(wt, "add", "-A");
+  assert.equal(git(wt, "commit", "-qm", "tests").status, 0);
+  assert.equal(
+    createHash("sha256").update(committedBlob(wt, "b.test.mjs")).digest("hex"),
+    lf.sealed[0].sha256,
+    "the gate's blob is what was sealed",
+  );
+  assert.notEqual(
+    createHash("sha256").update(committedBlob(wt, "a.test.mjs")).digest("hex"),
+    createHash("sha256").update(body).digest("hex"),
+    "the reproducer is real: the committed CRLF file differs from the disk bytes",
+  );
+});
+
+test("a conversion git fails on is a rewrite too", () => {
+  const wt = worktreeWith(["a.test.mjs", ".gitattributes"]);
+  writeFileSync(join(wt, ".gitattributes"), "a.test.mjs filter=broken\n");
+  git(wt, "config", "filter.broken.clean", "false");
+  git(wt, "config", "filter.broken.required", "true");
+  const probe = git(wt, "hash-object", "--path=a.test.mjs", "--", "a.test.mjs");
+  assert.notEqual(probe.status, 0, "the setup makes git fail on the file");
+  assert.deepEqual(seal(wt, [authored("a.test.mjs")]).reasons, [
+    "a.test.mjs: git would rewrite this file on commit (eol/filter attributes); write it in its committed form",
+  ]);
+});
+
+test("a clean filter on a path is a rewrite too, and a file with no attributes is not", () => {
+  const wt = worktreeWith(["a.test.ts", "b.test.ts", ".gitattributes"]);
+  writeFileSync(join(wt, ".gitattributes"), "b.test.ts filter=shout\n");
+  git(wt, "config", "filter.shout.clean", "tr a-z A-Z");
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true);
+  assert.match(
+    seal(wt, [authored("b.test.ts")]).reasons[0],
+    /^b\.test\.ts: git would rewrite this file on commit/,
+  );
+});
+
+test("a red run that adds an eol attribute is refused when the runs are over", () => {
+  const wt = worktreeWith(["a.test.mjs"]);
+  writeFileSync(join(wt, "a.test.mjs"), "// crlf\r\n");
+  const attributes = (command, cwd) => {
+    writeFileSync(join(cwd, ".gitattributes"), "* text=auto eol=lf\n");
+    return { code: 1, output: "AssertionError", ms: 1 };
+  };
+  const v = seal(wt, [authored("a.test.mjs")], { run: attributes });
+  assert.equal(v.ok, false);
+  assert.match(
+    v.reasons[0],
+    /^a\.test\.mjs: after the red runs, git would rewrite this file on commit/,
+  );
 });
 
 test("a path git does not list is refused, whatever the file system says", () => {

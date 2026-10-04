@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { isCanonicalPath, type Runner, type SealedFile, sha256File } from "./gate.js";
 
@@ -56,8 +56,13 @@ function placeholderIsQuoted(template: string): boolean {
  * them `{file}` would be a heredoc line, a comment, or a word the shell splits and globs.
  *
  * `gates.test_one` must select exactly ONE file. A runner that takes its argument as a filter
- * (vitest matches a substring of the path, jest a regular expression) selects every file the
- * argument matches, and `sealAuthoredTests` refuses a test another test file's path contains.
+ * selects every file the argument matches, and the runners disagree on what it is: vitest reads
+ * a substring, jest a regular expression, `node --test` a glob. `sealAuthoredTests` refuses a
+ * candidate that ANY of the three readings would match to another test file, even if the
+ * template hands the path over literally (`jest --runTestsByPath {file}`): seal cannot know the
+ * runner. A path with regular-expression or glob characters, such as a Next.js `[id]` directory,
+ * is therefore refused while a sibling it could match exists, and the operator adjusts
+ * `gates.test_one`.
  */
 export function formatTestOne(template: string, path: string): string {
   if (FOREIGN_PLACEHOLDERS.some((placeholder) => template.includes(placeholder))) {
@@ -151,6 +156,15 @@ function compilePattern(source: string): RegExp {
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+/** The environment git runs in: every inherited `GIT_*` variable dropped but `GIT_EXEC_PATH`. */
+function gitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
+  }
+  return env;
+}
+
 interface Listed {
   path: string;
   /** The name's bytes survive a UTF-8 round trip, so `path` is the name git holds, not a lossy decoding of it. */
@@ -165,10 +179,7 @@ interface Listed {
  * `GIT_INDEX_FILE` does not decide which repository is listed.
  */
 function listFiles(worktree: string): Listed[] {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
-  }
+  const env = gitEnv();
   let out: Buffer;
   try {
     out = execFileSync(
@@ -204,6 +215,221 @@ function listFiles(worktree: string): Listed[] {
  */
 const fold = (s: string): string => s.normalize("NFC").toLowerCase();
 
+/**
+ * Whether git would commit `path` with other bytes than the ones on disk: an eol or `filter`
+ * attribute, `core.autocrlf`. The gate compares the sealed hash with the committed blob, so a
+ * file git rewrites on commit could never converge. `hash-object --path` applies the filters a
+ * commit would; `--no-filters` hashes the disk bytes. A hash-object that fails (safecrlf, a
+ * failing filter) is a rewrite too: the commit would fail the same way.
+ */
+function gitWouldRewrite(worktree: string, path: string): boolean {
+  const run = (...args: string[]) =>
+    execFileSync("git", ["-c", "core.fsmonitor=false", "hash-object", ...args, "--", path], {
+      cwd: worktree,
+      env: gitEnv(),
+      maxBuffer: MAX_BUFFER,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+      .toString("utf8")
+      .trim();
+  try {
+    return run(`--path=${path}`) !== run("--no-filters");
+  } catch {
+    return true;
+  }
+}
+
+/** The shapes of a test file that runners select by default, whatever `testPathPattern` says. */
+const BUILTIN_TEST_SHAPES: readonly RegExp[] = [
+  /\.(test|spec)\.[cm]?[jt]sx?$/,
+  /(^|\/)__tests__\//,
+];
+
+interface Sibling {
+  path: string;
+  dev: bigint;
+  ino: bigint;
+}
+
+interface Walked {
+  siblings: Sibling[];
+  /** Set when a directory could not be read: what the runner could select is then unknown. */
+  problem: string | null;
+}
+
+/**
+ * Every file in the worktree that a runner could take for a test, found by walking the disk, not
+ * by asking git: vitest never reads `.gitignore` and does not stop at a nested repository, so an
+ * ignored `coverage/xa.test.ts` or a failing test inside `vendor/` is selected like any other.
+ * Symlinks are not followed. Only `.git` entries (a directory, or the file a worktree or
+ * submodule has) and directories named `node_modules` are skipped, which runners exclude by default.
+ */
+function walkTestFiles(worktree: string, isTest: RegExp): Walked {
+  const siblings: Sibling[] = [];
+  const pending = [""];
+  for (let rel = pending.pop(); rel !== undefined; rel = pending.pop()) {
+    let entries;
+    try {
+      entries = readdirSync(join(worktree, rel), { withFileTypes: true });
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") continue;
+      return {
+        siblings,
+        problem: `${errorCode(error) ?? errorText(error)} reading ${rel === "" ? "." : rel}`,
+      };
+    }
+    for (const entry of entries) {
+      if (entry.name === ".git") continue;
+      const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") pending.push(path);
+        continue;
+      }
+      if (!isTest.test(path) && !BUILTIN_TEST_SHAPES.some((shape) => shape.test(path))) continue;
+      try {
+        const { dev, ino } = lstatSync(join(worktree, path), { bigint: true });
+        siblings.push({ path, dev, ino });
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") {
+          return { siblings, problem: `${errorCode(error) ?? errorText(error)} reading ${path}` };
+        }
+      }
+    }
+  }
+  return { siblings, problem: null };
+}
+
+const escapeRegExp = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&");
+
+/** `[...]` of a glob, or -1: a `]` straight after the opening (and an optional `!`/`^`) is a member. */
+function classEnd(glob: string, open: number): number {
+  let i = open + 1;
+  if (glob[i] === "!" || glob[i] === "^") i += 1;
+  if (glob[i] === "]") i += 1;
+  return glob.indexOf("]", i);
+}
+
+/** `{...}` of a glob with its matching brace, or -1. */
+function braceEnd(glob: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < glob.length; i += 1) {
+    if (glob[i] === "\\") i += 1;
+    else if (glob[i] === "{") depth += 1;
+    else if (glob[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** The top-level comma-separated parts of a brace body. */
+function braceParts(body: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === "\\") i += 1;
+    else if (body[i] === "{") depth += 1;
+    else if (body[i] === "}") depth -= 1;
+    else if (body[i] === "," && depth === 0) {
+      parts.push(body.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(body.slice(start));
+  return parts;
+}
+
+/**
+ * A regular expression source that matches at least every path the glob matches, or null when
+ * the glob uses something not modelled (an extglob, a POSIX class, a brace range): null is read
+ * as "matches everything". `*` and `**` become `.*` (so they cross `/`), `?` becomes `.`, a
+ * negated class loses its `/` exclusion, and a brace set with one member also matches its own
+ * braces, which is how a shell reads it. Every simplification matches more, never less.
+ */
+function globSource(glob: string): string | null {
+  let out = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    const ch = glob[i] as string;
+    if ("?*+@!".includes(ch) && glob[i + 1] === "(") return null;
+    if (ch === "*") {
+      while (glob[i + 1] === "*") i += 1;
+      out += ".*";
+    } else if (ch === "?") {
+      out += ".";
+    } else if (ch === "[") {
+      const end = classEnd(glob, i);
+      if (end === -1) {
+        out += "\\[";
+        continue;
+      }
+      const inner = glob.slice(i + 1, end);
+      if (inner.includes("[:") || inner.includes("[.") || inner.includes("[=")) return null;
+      const negated = inner.startsWith("!") || inner.startsWith("^");
+      const members = (negated ? inner.slice(1) : inner).replace(/[\\\][^]/g, "\\$&");
+      out += `[${negated ? "^" : ""}${members}]`;
+      i = end;
+    } else if (ch === "{") {
+      const end = braceEnd(glob, i);
+      if (end === -1) {
+        out += "\\{";
+        continue;
+      }
+      const body = glob.slice(i + 1, end);
+      if (body.includes("..")) return null;
+      const parts = braceParts(body).map(globSource);
+      if (parts.some((part) => part === null)) return null;
+      const alternatives = parts as string[];
+      if (alternatives.length === 1) alternatives.push(escapeRegExp(glob.slice(i, end + 1)));
+      out += `(?:${alternatives.join("|")})`;
+      i = end;
+    } else if (ch === "\\") {
+      out += escapeRegExp(glob[i + 1] ?? "\\");
+      i += 1;
+    } else {
+      out += escapeRegExp(ch);
+    }
+  }
+  return out;
+}
+
+/** A matcher for `glob` over a whole path; null (read as "matches everything") if it cannot be built. */
+function globMatcher(glob: string): RegExp | null {
+  const source = globSource(glob);
+  if (source === null) return null;
+  try {
+    return new RegExp(`^${source}$`, "i");
+  } catch {
+    return null;
+  }
+}
+
+/** A matcher for `source` read as a case-insensitive regular expression; null if it does not compile. */
+function regexMatcher(source: string): RegExp | null {
+  try {
+    return new RegExp(source, "i");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The three ways a runner can read `{file}`: vitest takes it as a substring of the path, jest as
+ * a case-insensitive regular expression, `node --test` as a glob. The command may also select a
+ * sibling if ANY of them does, and a reading that cannot be built (a regular expression that does
+ * not compile, a glob with an extglob) counts as selecting every sibling.
+ */
+function selectedBy(candidate: string): (sibling: string) => boolean {
+  const c = fold(candidate);
+  const regex = regexMatcher(c);
+  const glob = globMatcher(c);
+  return (sibling) => {
+    const s = fold(sibling);
+    return s.includes(c) || regex === null || regex.test(s) || glob === null || glob.test(s);
+  };
+}
+
+const REWRITE =
+  "git would rewrite this file on commit (eol/filter attributes); write it in its committed form";
+
 const shown = (path: unknown): string =>
   typeof path === "string" ? JSON.stringify(path) : String(path);
 
@@ -221,11 +447,21 @@ interface Candidate {
  * `git ls-files` byte for byte (so seal, the runner's filter and the gate's `HEAD:<path>` blob
  * lookup all name the file by one spelling: a case variant or the other Unicode form of the
  * name, a gitignored file and a file inside a nested repository are refused), map to a
- * criterion, and FAIL when run on its own: a command that did not run, or found no test, proves nothing
- * either. No segment may start with `-` (the runner would read it as an option), and no OTHER
- * test file's path may contain the candidate's, because `gates.test_one` must select exactly
- * one file and a filter-style runner (vitest: a substring) would run both and judge the exit
- * code of the pair.
+ * criterion, and FAIL when run on its own: a command that did not run, or found no test, proves
+ * nothing either. No segment may start with `-` (the runner would read it as an option).
+ *
+ * `gates.test_one` must select exactly one file, and a runner that treats its argument as a
+ * filter would run a sibling too and judge the exit code of the pair. So no OTHER test file may
+ * be matched by the candidate's path read as a substring (vitest), as a regular expression
+ * (jest) or as a glob (`node --test`). The siblings come from walking the disk, not from git:
+ * they include ignored files and the contents of nested repositories, and skip only `.git` and
+ * `node_modules`. A sibling is any file matching the test pattern, a `.test`/`.spec` file or a
+ * file under `__tests__/`. The glob reading is converted to a regular expression here, not by
+ * `path.matchesGlob`, which Node 20 lacks before 20.17 and which is experimental in some
+ * versions; the conversion matches at least everything the glob does.
+ *
+ * Git must commit what is on disk: a file that an eol or filter attribute (or `core.autocrlf`)
+ * would rewrite on commit is refused, since the gate compares the sealed hash with the blob.
  *
  * Nothing is sealed unless every test passes every check. A red run executes the test, so each
  * file is hashed before the first run and again after the last, and one that changed while the
@@ -256,11 +492,21 @@ export function sealAuthoredTests(o: {
   let files: Listed[] | undefined;
   const isListed = (path: string, list: readonly Listed[]): boolean =>
     list.some((f) => f.exact && f.path === path);
-  const alsoSelected = (path: string, list: readonly Listed[]): string | undefined =>
-    list
-      .map((f) => f.path)
-      .filter((f) => f !== path && isTest.test(f) && fold(f).includes(fold(path)))
+  /** Why the single-test command may select a file other than `path`, or null if it cannot. */
+  const selection = (path: string, abs: string, walked: Walked): string | null => {
+    if (walked.problem !== null) {
+      return `cannot tell what the single-test command may also select (${walked.problem})`;
+    }
+    const self = lstatSync(abs, { bigint: true });
+    const selects = selectedBy(path);
+    const other = walked.siblings
+      .filter((s) => s.path !== path && !(s.dev === self.dev && s.ino === self.ino))
+      .map((s) => s.path)
+      .filter(selects)
       .sort()[0];
+    return other === undefined ? null : `the single-test command may also select ${other}`;
+  };
+  let walked: Walked | undefined;
 
   const seen = new Set<string>();
   const accepted: Omit<Candidate, "before">[] = [];
@@ -303,9 +549,14 @@ export function sealAuthoredTests(o: {
       reasons.push(`${path}: not listed by git under this exact spelling`);
       continue;
     }
-    const other = alsoSelected(path, files);
-    if (other !== undefined) {
-      reasons.push(`${path}: the single-test command may also select ${other}`);
+    if (gitWouldRewrite(o.worktree, path)) {
+      reasons.push(`${path}: ${REWRITE}`);
+      continue;
+    }
+    walked ??= walkTestFiles(o.worktree, isTest);
+    const selected = selection(path, abs, walked);
+    if (selected !== null) {
+      reasons.push(`${path}: ${selected}`);
       continue;
     }
     accepted.push({ path, abs, criteria: [...(criteria as string[])] });
@@ -335,6 +586,7 @@ export function sealAuthoredTests(o: {
   }
 
   const afterRuns = candidates.length > 0 ? listFiles(o.worktree) : [];
+  const walkedAfter = candidates.length > 0 ? walkTestFiles(o.worktree, isTest) : undefined;
   const sealed: SealedFile[] = [];
   for (const c of candidates) {
     if (failed.has(c.path)) continue;
@@ -347,11 +599,13 @@ export function sealAuthoredTests(o: {
       reasons.push(`${c.path}: after the red runs, not listed by git under this exact spelling`);
       continue;
     }
-    const other = alsoSelected(c.path, afterRuns);
-    if (other !== undefined) {
-      reasons.push(
-        `${c.path}: after the red runs, the single-test command may also select ${other}`,
-      );
+    if (gitWouldRewrite(o.worktree, c.path)) {
+      reasons.push(`${c.path}: after the red runs, ${REWRITE}`);
+      continue;
+    }
+    const selected = walkedAfter === undefined ? null : selection(c.path, c.abs, walkedAfter);
+    if (selected !== null) {
+      reasons.push(`${c.path}: after the red runs, ${selected}`);
       continue;
     }
     let after: string;
