@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { lstatSync, readdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { lstatSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { isCanonicalPath, type Runner, type SealedFile, sha256File } from "./gate.js";
 
@@ -123,8 +123,12 @@ function fileProblem(abs: string, realRoot: string, path: string): string | null
 
 const NOT_RUN_CODES: ReadonlySet<number> = new Set([124, 126, 127]);
 const TIMED_OUT = /timed out after/i;
-/** vitest: `No test files found`, `No test found in suite x`, `No test suite found in file y`. */
-const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b/i;
+/**
+ * vitest: `No test files found`, `No test found in suite x`, `No test suite found in file y`.
+ * node --test: `Could not find '<path>'`, which it prints, with exit 1, for a path argument that
+ * names no file and holds no glob magic (a brace set, a one-character class), at the start of a line.
+ */
+const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b|^[ \t]*could not find '/im;
 /** jest, for a file with no test in it. */
 const NO_TEST_IN_SUITE = /\byour test suite must contain at least one test\b/i;
 
@@ -220,23 +224,23 @@ const fold = (s: string): string => s.normalize("NFC").toLowerCase();
  * attribute, `core.autocrlf`. The gate compares the sealed hash with the committed blob, so a
  * file git rewrites on commit could never converge. `hash-object --path` applies the filters a
  * commit would; `--no-filters` hashes the disk bytes. A hash-object that fails (safecrlf, a
- * failing filter) is a rewrite too: the commit would fail the same way.
+ * failing filter) is a rewrite too, and so is one that exits 0 but writes an `error:` or `fatal:`
+ * line to stderr: a BOM under `working-tree-encoding` is reported that way by `hash-object`, while
+ * `git add` dies on it and commits nothing.
  */
 function gitWouldRewrite(worktree: string, path: string): boolean {
   const run = (...args: string[]) =>
-    execFileSync("git", ["-c", "core.fsmonitor=false", "hash-object", ...args, "--", path], {
+    spawnSync("git", ["-c", "core.fsmonitor=false", "hash-object", ...args, "--", path], {
       cwd: worktree,
       env: gitEnv(),
       maxBuffer: MAX_BUFFER,
-      stdio: ["ignore", "pipe", "pipe"],
-    })
-      .toString("utf8")
-      .trim();
-  try {
-    return run(`--path=${path}`) !== run("--no-filters");
-  } catch {
-    return true;
-  }
+      encoding: "utf8",
+    });
+  const filtered = run(`--path=${path}`);
+  const raw = run("--no-filters");
+  if (filtered.error || raw.error || filtered.status !== 0 || raw.status !== 0) return true;
+  if (/^(error|fatal):/m.test(`${filtered.stderr}${raw.stderr}`)) return true;
+  return filtered.stdout.trim() !== raw.stdout.trim();
 }
 
 /** The shapes of a test file that runners select by default, whatever `testPathPattern` says. */
@@ -249,25 +253,36 @@ interface Sibling {
   path: string;
   dev: bigint;
   ino: bigint;
+  /** In a nested `.git` or `node_modules` directory: vitest and jest exclude those, node's glob does not. */
+  runnerExcluded: boolean;
 }
 
 interface Walked {
   siblings: Sibling[];
   /** Set when a directory could not be read: what the runner could select is then unknown. */
   problem: string | null;
+  /** Symlinked directories that lead out of the worktree, which the walk does not enter. */
+  outside: string[];
 }
 
 /**
  * Every file in the worktree that a runner could take for a test, found by walking the disk, not
  * by asking git: vitest never reads `.gitignore` and does not stop at a nested repository, so an
  * ignored `coverage/xa.test.ts` or a failing test inside `vendor/` is selected like any other.
- * Symlinks are not followed. Only `.git` entries (a directory, or the file a worktree or
- * submodule has) and directories named `node_modules` are skipped, which runners exclude by default.
+ *
+ * Symlinked directories are followed (vitest follows them), under the name of the link, with the
+ * real paths of the directories above as the guard against a cycle; one whose real path lies
+ * outside the worktree is reported in `outside` and not entered. Only the ROOT `.git` and the root
+ * `node_modules` are skipped. Nested ones are walked, because node's glob can name a `.git` or
+ * `node_modules` segment with a class or a leading dot (`d/.gi[t]/a.test.mjs`), and their files are
+ * marked `runnerExcluded` so that only the glob reading counts them.
  */
-function walkTestFiles(worktree: string, isTest: RegExp): Walked {
+function walkTestFiles(worktree: string, realRoot: string, isTest: RegExp): Walked {
   const siblings: Sibling[] = [];
-  const pending = [""];
-  for (let rel = pending.pop(); rel !== undefined; rel = pending.pop()) {
+  const outside: string[] = [];
+  const pending = [{ rel: "", real: realRoot, chain: [realRoot] as readonly string[] }];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const { rel, real, chain } = next;
     let entries;
     try {
       entries = readdirSync(join(worktree, rel), { withFileTypes: true });
@@ -275,28 +290,54 @@ function walkTestFiles(worktree: string, isTest: RegExp): Walked {
       if (errorCode(error) === "ENOENT") continue;
       return {
         siblings,
+        outside,
         problem: `${errorCode(error) ?? errorText(error)} reading ${rel === "" ? "." : rel}`,
       };
     }
     for (const entry of entries) {
-      if (entry.name === ".git") continue;
+      if (rel === "" && (entry.name === ".git" || entry.name === "node_modules")) continue;
       const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
-      if (entry.isDirectory()) {
-        if (entry.name !== "node_modules") pending.push(path);
+      let directory = entry.isDirectory();
+      let childReal = join(real, entry.name);
+      if (entry.isSymbolicLink()) {
+        let target: string | null = null;
+        try {
+          if (statSync(join(worktree, path)).isDirectory())
+            target = realpathSync(join(worktree, path));
+        } catch {
+          target = null;
+        }
+        if (target !== null) {
+          if (target !== realRoot && !isInside(realRoot, target)) {
+            outside.push(path);
+            continue;
+          }
+          if (chain.includes(target)) continue;
+          directory = true;
+          childReal = target;
+        }
+      }
+      if (directory) {
+        pending.push({ rel: path, real: childReal, chain: [...chain, childReal] });
         continue;
       }
       if (!isTest.test(path) && !BUILTIN_TEST_SHAPES.some((shape) => shape.test(path))) continue;
       try {
         const { dev, ino } = lstatSync(join(worktree, path), { bigint: true });
-        siblings.push({ path, dev, ino });
+        const runnerExcluded = path.split("/").some((s) => s === ".git" || s === "node_modules");
+        siblings.push({ path, dev, ino, runnerExcluded });
       } catch (error) {
         if (errorCode(error) !== "ENOENT") {
-          return { siblings, problem: `${errorCode(error) ?? errorText(error)} reading ${path}` };
+          return {
+            siblings,
+            outside,
+            problem: `${errorCode(error) ?? errorText(error)} reading ${path}`,
+          };
         }
       }
     }
   }
-  return { siblings, problem: null };
+  return { siblings, outside, problem: null };
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&");
@@ -309,43 +350,15 @@ function classEnd(glob: string, open: number): number {
   return glob.indexOf("]", i);
 }
 
-/** `{...}` of a glob with its matching brace, or -1. */
-function braceEnd(glob: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < glob.length; i += 1) {
-    if (glob[i] === "\\") i += 1;
-    else if (glob[i] === "{") depth += 1;
-    else if (glob[i] === "}" && --depth === 0) return i;
-  }
-  return -1;
-}
-
-/** The top-level comma-separated parts of a brace body. */
-function braceParts(body: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < body.length; i += 1) {
-    if (body[i] === "\\") i += 1;
-    else if (body[i] === "{") depth += 1;
-    else if (body[i] === "}") depth -= 1;
-    else if (body[i] === "," && depth === 0) {
-      parts.push(body.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(body.slice(start));
-  return parts;
-}
-
 /**
- * A regular expression source that matches at least every path the glob matches, or null when
- * the glob uses something not modelled (an extglob, a POSIX class, a brace range): null is read
- * as "matches everything". `*` and `**` become `.*` (so they cross `/`), `?` becomes `.`, a
- * negated class loses its `/` exclusion, and a brace set with one member also matches its own
- * braces, which is how a shell reads it. Every simplification matches more, never less.
+ * A regular expression source that matches every path the glob matches, plus more, or null when
+ * the glob holds something not modelled, which is read as "matches everything": any `{` (brace
+ * expansion has rules of its own, such as `x{},y}` expanding to `x}` and `xy`), an extglob, a
+ * POSIX class. `*` and `**` become `.*` (so they cross `/`), `?` becomes `.`, and a negated class
+ * loses its `/` exclusion; leading dots are not special. Anything else is the literal character.
  */
 function globSource(glob: string): string | null {
+  if (glob.includes("{")) return null;
   let out = "";
   for (let i = 0; i < glob.length; i += 1) {
     const ch = glob[i] as string;
@@ -366,20 +379,6 @@ function globSource(glob: string): string | null {
       const negated = inner.startsWith("!") || inner.startsWith("^");
       const members = (negated ? inner.slice(1) : inner).replace(/[\\\][^]/g, "\\$&");
       out += `[${negated ? "^" : ""}${members}]`;
-      i = end;
-    } else if (ch === "{") {
-      const end = braceEnd(glob, i);
-      if (end === -1) {
-        out += "\\{";
-        continue;
-      }
-      const body = glob.slice(i + 1, end);
-      if (body.includes("..")) return null;
-      const parts = braceParts(body).map(globSource);
-      if (parts.some((part) => part === null)) return null;
-      const alternatives = parts as string[];
-      if (alternatives.length === 1) alternatives.push(escapeRegExp(glob.slice(i, end + 1)));
-      out += `(?:${alternatives.join("|")})`;
       i = end;
     } else if (ch === "\\") {
       out += escapeRegExp(glob[i + 1] ?? "\\");
@@ -413,17 +412,35 @@ function regexMatcher(source: string): RegExp | null {
 
 /**
  * The three ways a runner can read `{file}`: vitest takes it as a substring of the path, jest as
- * a case-insensitive regular expression, `node --test` as a glob. The command may also select a
- * sibling if ANY of them does, and a reading that cannot be built (a regular expression that does
- * not compile, a glob with an extglob) counts as selecting every sibling.
+ * a case-insensitive regular expression tested against the absolute path (and, in jest 30, the
+ * path relative to the root), `node --test` as a glob. The command may also select a sibling if
+ * ANY of them does. The candidate is compiled as written, with the `i` flag, never case-folded
+ * first (`[A-z]` is not `[a-z]`); each reading is tried against the sibling's path as it is on
+ * disk and in its folded form (NFC, lower case), relative and under each root spelling. A reading
+ * that cannot be built (a regular expression that does not compile, a glob that is not modelled)
+ * selects every sibling it applies to. vitest and jest exclude nested `.git` and `node_modules`
+ * directories, so those siblings count for the glob alone.
  */
-function selectedBy(candidate: string): (sibling: string) => boolean {
-  const c = fold(candidate);
-  const regex = regexMatcher(c);
-  const glob = globMatcher(c);
+function selectedBy(candidate: string, roots: readonly string[]): (sibling: Sibling) => boolean {
+  const folded = fold(candidate);
+  const regex = regexMatcher(candidate);
+  const glob = globMatcher(candidate);
   return (sibling) => {
-    const s = fold(sibling);
-    return s.includes(c) || regex === null || regex.test(s) || glob === null || glob.test(s);
+    const subjects = [sibling.path, ...roots.map((root) => `${root}/${sibling.path}`)];
+    const viaGlob =
+      glob === null || [sibling.path, fold(sibling.path)].some((subject) => glob.test(subject));
+    if (sibling.runnerExcluded) return viaGlob;
+    return (
+      viaGlob ||
+      regex === null ||
+      subjects.some(
+        (subject) =>
+          subject.includes(candidate) ||
+          fold(subject).includes(folded) ||
+          regex.test(subject) ||
+          regex.test(fold(subject)),
+      )
+    );
   };
 }
 
@@ -453,12 +470,17 @@ interface Candidate {
  * `gates.test_one` must select exactly one file, and a runner that treats its argument as a
  * filter would run a sibling too and judge the exit code of the pair. So no OTHER test file may
  * be matched by the candidate's path read as a substring (vitest), as a regular expression
- * (jest) or as a glob (`node --test`). The siblings come from walking the disk, not from git:
- * they include ignored files and the contents of nested repositories, and skip only `.git` and
- * `node_modules`. A sibling is any file matching the test pattern, a `.test`/`.spec` file or a
- * file under `__tests__/`. The glob reading is converted to a regular expression here, not by
- * `path.matchesGlob`, which Node 20 lacks before 20.17 and which is experimental in some
- * versions; the conversion matches at least everything the glob does.
+ * (jest) or as a glob (`node --test`); see `selectedBy`. The siblings come from walking the disk,
+ * not from git: they include ignored files, the contents of nested repositories and the files
+ * behind symlinked directories, and skip only the root `.git` and the root `node_modules` (see
+ * `walkTestFiles`). A symlinked directory that leaves the worktree is a reason of its own. A
+ * sibling is any file matching the test pattern, a `.test`/`.spec` file or a file under
+ * `__tests__/`. The glob reading is converted to a regular expression here, not by
+ * `path.matchesGlob`, which Node 20 lacks before 20.17 and which is experimental in some versions.
+ *
+ * This is a guard against honest mistakes and cheap tricks, not a proof: the red run executes
+ * test-author code, which can defeat any check made around it. The structural snapshots around
+ * the seal stage, the verifier and the PR review are the other lines.
  *
  * Git must commit what is on disk: a file that an eol or filter attribute (or `core.autocrlf`)
  * would rewrite on commit is refused, since the gate compares the sealed hash with the blob.
@@ -498,13 +520,20 @@ export function sealAuthoredTests(o: {
       return `cannot tell what the single-test command may also select (${walked.problem})`;
     }
     const self = lstatSync(abs, { bigint: true });
-    const selects = selectedBy(path);
+    const selects = selectedBy(path, [...new Set([o.worktree, realRoot])]);
+    const own = fold(path);
     const other = walked.siblings
-      .filter((s) => s.path !== path && !(s.dev === self.dev && s.ino === self.ino))
-      .map((s) => s.path)
+      .filter((s) => !(s.dev === self.dev && s.ino === self.ino && fold(s.path) === own))
       .filter(selects)
+      .map((s) => s.path)
       .sort()[0];
     return other === undefined ? null : `the single-test command may also select ${other}`;
+  };
+  const outsideLinks = (found: Walked): void => {
+    for (const link of found.outside) {
+      const reason = `${link}: symlinked directory points outside the worktree`;
+      if (!reasons.includes(reason)) reasons.push(reason);
+    }
   };
   let walked: Walked | undefined;
 
@@ -553,7 +582,10 @@ export function sealAuthoredTests(o: {
       reasons.push(`${path}: ${REWRITE}`);
       continue;
     }
-    walked ??= walkTestFiles(o.worktree, isTest);
+    if (walked === undefined) {
+      walked = walkTestFiles(o.worktree, realRoot, isTest);
+      outsideLinks(walked);
+    }
     const selected = selection(path, abs, walked);
     if (selected !== null) {
       reasons.push(`${path}: ${selected}`);
@@ -586,7 +618,9 @@ export function sealAuthoredTests(o: {
   }
 
   const afterRuns = candidates.length > 0 ? listFiles(o.worktree) : [];
-  const walkedAfter = candidates.length > 0 ? walkTestFiles(o.worktree, isTest) : undefined;
+  const walkedAfter =
+    candidates.length > 0 ? walkTestFiles(o.worktree, realRoot, isTest) : undefined;
+  if (walkedAfter !== undefined) outsideLinks(walkedAfter);
   const sealed: SealedFile[] = [];
   for (const c of candidates) {
     if (failed.has(c.path)) continue;

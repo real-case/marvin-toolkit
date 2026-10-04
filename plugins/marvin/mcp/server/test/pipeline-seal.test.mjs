@@ -326,6 +326,10 @@ test("the file must exist, be regular, and live inside the worktree", () => {
   assert.match(reasonFor("src/dangling.test.ts"), /symbolic link/);
   assert.match(reasonFor("outdir/x.test.ts"), /outside the worktree/);
   assert.deepEqual(calls, []);
+  assert.deepEqual(seal(wt, [authored("src/real.test.ts")]).reasons, [
+    "outdir: symlinked directory points outside the worktree",
+  ]);
+  rmSync(join(wt, "outdir"));
   assert.equal(seal(wt, [authored("src/real.test.ts")]).ok, true);
 });
 
@@ -435,6 +439,8 @@ test("a file a red run creates is counted when the runs are over", () => {
   );
 });
 
+const REWRITE_REASON =
+  "git would rewrite this file on commit (eol/filter attributes); write it in its committed form";
 const SELECTS = (path, other) => `${path}: the single-test command may also select ${other}`;
 
 /** A worktree holding `files`, then `extra`, which may add what git does not list. */
@@ -507,6 +513,49 @@ test("only .git entries and node_modules directories are not searched for siblin
   ]);
 });
 
+test("a nested .git or node_modules directory is walked, and node's glob can enter it", () => {
+  const cases = [
+    ["d/.gi[t]/a.test.mjs", "d/.git/a.test.mjs"],
+    ["d/.gi?/a.test.mjs", "d/.git/a.test.mjs"],
+    ["d/node_module[s]/a.test.mjs", "d/node_modules/a.test.mjs"],
+    ["d/node_module?/a.test.mjs", "d/node_modules/a.test.mjs"],
+    ["d/.git*/a.test.mjs", "d/.git/a.test.mjs"],
+  ];
+  for (const [candidate, sibling] of cases) {
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], `${candidate} beside ${sibling}`);
+  }
+  const unmatched = boxWith(["d/.gi[t]/a.test.mjs"], (w) => put(w, "d/.gix/a.test.mjs"));
+  assert.equal(
+    seal(unmatched, [authored("d/.gi[t]/a.test.mjs")]).ok,
+    true,
+    "a class that does not match",
+  );
+});
+
+test("a nested .git or node_modules directory counts for the glob reading only", () => {
+  const wt = boxWith(["a.test.ts", "x.test.js"], (w) => {
+    put(w, "pkg/node_modules/deep/xa.test.ts");
+    put(w, "vendor/inner/.git/hooks/xa.test.ts");
+    put(w, "vendor/node_modules/x.test.js");
+  });
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true, "vitest and jest exclude both names");
+  assert.equal(seal(wt, [authored("x.test.js")]).ok, true);
+  const braced = boxWith(["x{a}.test.ts"], (w) => put(w, "pkg/node_modules/deep/q.test.ts"));
+  assert.deepEqual(seal(braced, [authored("x{a}.test.ts")]).reasons, [
+    SELECTS("x{a}.test.ts", "pkg/node_modules/deep/q.test.ts"),
+  ]);
+  const rootBraced = boxWith(["x{a}.test.ts"], (w) => {
+    put(w, "node_modules/q.test.ts");
+    put(w, ".git/hooks/q.test.ts");
+  });
+  assert.equal(
+    seal(rootBraced, [authored("x{a}.test.ts")]).ok,
+    true,
+    "the root ones are never walked",
+  );
+});
+
 test("a candidate that jest would read as a regular expression is refused beside a match", () => {
   const cases = [
     ["a.b.test.js", "a_b.test.js"],
@@ -520,8 +569,74 @@ test("a candidate that jest would read as a regular expression is refused beside
     assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
     const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
     assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], candidate);
-    const unrelated = seal(worktreeWith([candidate, "zzz.test.js"]), [authored(candidate)]);
-    assert.equal(unrelated.ok, true, `${candidate} beside an unrelated file`);
+    if (!candidate.includes("|")) {
+      const unrelated = seal(worktreeWith([candidate, "zzz.test.js"]), [authored(candidate)]);
+      assert.equal(unrelated.ok, true, `${candidate} beside an unrelated file`);
+    }
+  }
+});
+
+test("jest tests its regular expression against the absolute path too", () => {
+  for (const [candidate, sibling] of [
+    ["[/]x.test.js", "x.test.js"],
+    ["q|/x.test.js", "x.test.js"],
+    ["(^|/)[^/]*x.test.js", "x.test.js"],
+  ]) {
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], `${candidate} beside ${sibling}`);
+    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+    assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+  }
+  const wt = worktreeWith(["[/]x.test.js", "d/x.test.js"]);
+  assert.deepEqual(seal(wt, [authored("[/]x.test.js")]).reasons, [
+    SELECTS("[/]x.test.js", "d/x.test.js"),
+  ]);
+});
+
+test("the pattern is compiled as written, so a range keeps its case", () => {
+  for (const [candidate, sibling] of [
+    ["x[A-z].test.js", "x_.test.js"],
+    ["x[A-z].test.mjs", "x_.test.mjs"],
+    ["x[A-z].test.js", "x[.test.js"],
+    ["x[A-z]+.test.js", "x_.test.js"],
+  ]) {
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], `${candidate} beside ${sibling}`);
+  }
+});
+
+test("a sibling whose raw name holds the candidate is selected although its folded name does not", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  put(wt, "a.test.ts\u0301/b.test.ts");
+  const v = seal(wt, [authored("a.test.ts")]);
+  assert.equal(v.ok, false);
+  assert.match(
+    v.reasons[0],
+    /^a\.test\.ts: the single-test command may also select a\.test\.ts.\/b\.test\.ts$/,
+  );
+  const jest = worktreeWith(["a.test.js"]);
+  put(jest, "a.test.js\u0301/b.test.js");
+  assert.equal(seal(jest, [authored("a.test.js")]).ok, false);
+  const control = worktreeWith(["a.test.ts"]);
+  put(control, "a.test.tsz/b.test.ts");
+  assert.deepEqual(seal(control, [authored("a.test.ts")]).reasons, [
+    SELECTS("a.test.ts", "a.test.tsz/b.test.ts"),
+  ]);
+});
+
+test("each reading is tried on the name as it is on disk and on its folded form", () => {
+  const cases = [
+    ["caf\u00e9+.test.js", "xcafe\u0301.test.js", "regex, folded name"],
+    ["a+.test.ts", "a+.test.ts\u0301/b.test.ts", "substring, raw name"],
+    ["caf\u00e9+.test.js", "xcafe\u0301+.test.js", "substring, folded name"],
+    ["x[!a]?.test.ts", "xe\u0301.test.ts", "glob, raw name"],
+    ["x[!a].test.ts", "xe\u0301.test.ts", "glob, folded name"],
+  ];
+  for (const [candidate, sibling, why] of cases) {
+    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+    assert.equal(alone.ok, true, `${why}: ${candidate} alone: ${alone.reasons.join("; ")}`);
+    const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
+    assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], why);
   }
 });
 
@@ -547,12 +662,17 @@ test("a candidate that node --test would read as a glob is refused beside a matc
     ["r[a-c].test.mjs", "rb.test.mjs"],
   ];
   for (const [candidate, sibling] of cases) {
-    const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
-    assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+    if (!candidate.includes("{")) {
+      const alone = seal(worktreeWith([candidate]), [authored(candidate)]);
+      assert.equal(alone.ok, true, `${candidate} alone: ${alone.reasons.join("; ")}`);
+    }
     const v = seal(worktreeWith([candidate, sibling]), [authored(candidate)]);
     assert.deepEqual(v.reasons, [SELECTS(candidate, sibling)], `${candidate} beside ${sibling}`);
   }
   for (const candidate of [
+    "x{},y}.test.mjs",
+    "x{a}.test.mjs",
+    "{a,b}/p.test.mjs",
     "+(a|b).test.mjs",
     "@(a).test.mjs",
     "!(a).test.mjs",
@@ -611,6 +731,22 @@ test("the built-in test shapes count as siblings even when the pattern is narrow
   assert.equal(seal(plain, [authored("a.test.ts")], narrow).ok, true, "a snapshot is not a test");
 });
 
+test("a hard link under a selected name is a sibling, a copy is too", () => {
+  for (const make of [
+    (wt) => linkSync(join(wt, "a.test.ts"), join(wt, "xa.test.ts")),
+    (wt) => writeFileSync(join(wt, "xa.test.ts"), readFileSync(join(wt, "a.test.ts"))),
+  ]) {
+    const wt = worktreeWith(["a.test.ts"]);
+    make(wt);
+    assert.deepEqual(seal(wt, [authored("a.test.ts")]).reasons, [
+      SELECTS("a.test.ts", "xa.test.ts"),
+    ]);
+  }
+  const wt = worktreeWith(["a.test.ts"]);
+  linkSync(join(wt, "a.test.ts"), join(wt, "other.txt"));
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true, "a link nothing selects is no sibling");
+});
+
 test("the file itself is not its own sibling, whatever name the disk gives it", () => {
   const wt = worktreeWith(["a.test.ts"]);
   linkSync(join(wt, "a.test.ts"), join(wt, "hard.ts"));
@@ -623,6 +759,63 @@ test("the file itself is not its own sibling, whatever name the disk gives it", 
   )[0];
   const v = seal(other, [authored(listed)]);
   assert.equal(v.ok, true, v.reasons.join("; "));
+});
+
+test("a symlinked directory is followed, because vitest follows it", () => {
+  const inside = boxWith(["a.test.ts"], (wt) => {
+    put(wt, "real/xa.test.ts");
+    symlinkSync("real", join(wt, "lnk"));
+  });
+  const v = seal(inside, [authored("a.test.ts")]);
+  assert.equal(v.ok, false);
+  assert.match(
+    v.reasons[0],
+    /^a\.test\.ts: the single-test command may also select (lnk|real)\/xa\.test\.ts$/,
+  );
+  const intoModules = boxWith(["a.test.ts"], (wt) => {
+    put(wt, "node_modules/pkg/xa.test.ts");
+    symlinkSync("node_modules/pkg", join(wt, "lnk"));
+  });
+  assert.deepEqual(seal(intoModules, [authored("a.test.ts")]).reasons, [
+    SELECTS("a.test.ts", "lnk/xa.test.ts"),
+  ]);
+  const named = boxWith(["a.test.ts"], (wt) => {
+    put(wt, "real/xa.test.ts");
+    symlinkSync("real", join(wt, "lnk.test.ts"));
+  });
+  assert.equal(seal(named, [authored("a.test.ts")]).reasons.length, 1);
+  const none = boxWith(["a.test.ts"], (wt) => put(wt, "real/zzz.txt"));
+  assert.equal(seal(none, [authored("a.test.ts")]).ok, true);
+});
+
+test("a symlinked directory that points outside the worktree is a reason, and is not walked", () => {
+  const base = tmp();
+  const wt = join(base, "wt");
+  mkdirSync(wt);
+  gitInit(wt);
+  writeFileSync(join(wt, "a.test.ts"), "// a");
+  const outside = join(base, "outside");
+  mkdirSync(outside);
+  writeFileSync(join(outside, "xa.test.ts"), "// outside");
+  symlinkSync(outside, join(wt, "lnk"));
+  mkdirSync(join(wt, "d"));
+  symlinkSync("../..", join(wt, "d", "up"));
+  const v = seal(wt, [authored("a.test.ts")]);
+  assert.equal(v.ok, false);
+  assert.deepEqual([...v.reasons].sort(), [
+    "d/up: symlinked directory points outside the worktree",
+    "lnk: symlinked directory points outside the worktree",
+  ]);
+  assert.ok(!v.reasons.some((r) => /may also select/.test(r)), "it is not walked");
+});
+
+test("a symlink loop does not hang the walk", () => {
+  const wt = worktreeWith(["a.test.ts", "d/keep.txt"]);
+  symlinkSync(".", join(wt, "loop"));
+  symlinkSync("..", join(wt, "d", "up"));
+  symlinkSync("../d", join(wt, "d", "self"));
+  symlinkSync("missing", join(wt, "dangling"));
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true);
 });
 
 test(
@@ -701,6 +894,20 @@ test("a conversion git fails on is a rewrite too", () => {
   assert.deepEqual(seal(wt, [authored("a.test.mjs")]).reasons, [
     "a.test.mjs: git would rewrite this file on commit (eol/filter attributes); write it in its committed form",
   ]);
+});
+
+test("a conversion git only complains about while it writes the object is a rewrite", () => {
+  const bom = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("// x\n", "utf16le")]);
+  const noBom = Buffer.from("// x\n", "utf16le");
+  const wt = worktreeWith([".gitattributes"]);
+  writeFileSync(join(wt, ".gitattributes"), "*.ts working-tree-encoding=UTF-16LE\n");
+  writeFileSync(join(wt, "a.test.ts"), bom);
+  writeFileSync(join(wt, "b.test.ts"), noBom);
+  const probe = git(wt, "hash-object", "--path=a.test.ts", "--", "a.test.ts");
+  assert.match(probe.stderr, /^(error|fatal):/m, "the setup makes git complain about the BOM");
+  assert.notEqual(git(wt, "add", "a.test.ts").status, 0, "and refuse to commit it");
+  assert.deepEqual(seal(wt, [authored("a.test.ts")]).reasons, [`a.test.ts: ${REWRITE_REASON}`]);
+  assert.deepEqual(seal(wt, [authored("b.test.ts")]).reasons, [`b.test.ts: ${REWRITE_REASON}`]);
 });
 
 test("a clean filter on a path is a rewrite too, and a file with no attributes is not", () => {
@@ -906,6 +1113,49 @@ test("a runner that finds no test in the file does not count as red", () => {
       true,
     );
   }
+});
+
+test("node's own 'Could not find' counts as no test, with the real runner too", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  for (const output of [
+    "Could not find 'x{a,b}.test.mjs'\n",
+    "Could not find '/work/tree/x[y].test.mjs'",
+    "  Could not find 'a.test.ts'",
+  ]) {
+    const v = seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
+    assert.match(v.reasons[0], /^a\.test\.ts: the runner found no test in it$/, output);
+  }
+  const mid = seal(wt, [authored("a.test.ts")], {
+    run: () => ({ code: 1, output: "AssertionError: Could not find 'x' in the list", ms: 1 }),
+  });
+  assert.equal(mid.ok, true, "the phrase inside a failure message is a failure");
+  const real = (candidate, body) => {
+    const dir = tmp();
+    gitInit(dir);
+    writeFileSync(join(dir, candidate), body);
+    const context = process.env.NODE_TEST_CONTEXT;
+    delete process.env.NODE_TEST_CONTEXT;
+    try {
+      return seal(dir, [authored(candidate)], {
+        testOne: "node --test {file}",
+        run: g.shellRunner,
+        timeoutMs: 30000,
+      });
+    } finally {
+      if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
+    }
+  };
+  const red =
+    'import { test } from "node:test";\ntest("red", () => { throw new Error("red"); });\n';
+  for (const candidate of ["x{a,b}.test.mjs", "x{},y}.test.mjs", "x[y].test.mjs"]) {
+    const v = real(candidate, red);
+    assert.equal(v.ok, false, candidate);
+    assert.match(v.reasons[0], /the runner found no test in it$/, candidate);
+  }
+  const genuine = real("plain.test.mjs", red);
+  assert.equal(genuine.ok, true, genuine.reasons.join("; "));
+  const passing = real("ok.test.mjs", 'import { test } from "node:test";\ntest("ok", () => {});\n');
+  assert.match(passing.reasons[0], /passes before implementation/);
 });
 
 test("a runner that throws is a reason", () => {
