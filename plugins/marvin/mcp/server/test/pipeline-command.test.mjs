@@ -121,8 +121,95 @@ test("Fable is refused for every role", () => {
   for (const model of ["fable", "claude-fable-5-1", "Fable"]) {
     assert.throws(
       () =>
-        cmd.buildChildCommand({ ...base, role: "executor", assignment: { model, effort: "high" } }),
+        cmd.buildChildCommand({
+          ...base,
+          role: "executor",
+          assignment: { model, effort: "high" },
+          allowedTools: writing,
+        }),
       /Fable is not allowed/,
+    );
+  }
+});
+
+test("F1: prefix validation rejects syntax characters and accepts valid prefixes", () => {
+  for (const char of ["(", ")", ",", "*", "\n"]) {
+    assert.throws(() => cmd.writingAllowedTools([`npm${char}run`]), /invalid allowlist prefix/);
+    assert.throws(() => cmd.readOnlyAllowedTools([`git${char}diff`]), /invalid allowlist prefix/);
+  }
+  assert.throws(() => cmd.writingAllowedTools(["  npm run  "]), /invalid allowlist prefix/);
+  assert.throws(() => cmd.writingAllowedTools([""]), /invalid allowlist prefix/);
+  // Valid prefixes with colon accepted
+  const w = cmd.writingAllowedTools(["npm run test:run"]);
+  assert.ok(w.includes("Bash(npm run test:run:*)"));
+  const r = cmd.readOnlyAllowedTools(["git status"]);
+  assert.ok(r.includes("Bash(git status:*)"));
+});
+
+test("F2: model allowlist rejects aliases and non-standard models", () => {
+  for (const model of ["default", "best", "gpt-5"]) {
+    assert.throws(
+      () =>
+        cmd.buildChildCommand({
+          ...base,
+          role: "executor",
+          assignment: { model, effort: "high" },
+          allowedTools: writing,
+        }),
+      /model not allowed/,
+    );
+  }
+  // Fable still rejected with its own message
+  assert.throws(
+    () =>
+      cmd.buildChildCommand({
+        ...base,
+        role: "executor",
+        assignment: { model: "claude-fable-5-1", effort: "high" },
+        allowedTools: writing,
+      }),
+    /Fable is not allowed/,
+  );
+  // Standard models accepted
+  for (const model of [
+    "opus",
+    "sonnet",
+    "haiku",
+    "claude-sonnet-5-5",
+    "claude-opus-4-1-20250701",
+  ]) {
+    const { argv } = cmd.buildChildCommand({
+      ...base,
+      role: "executor",
+      assignment: { model, effort: "high" },
+      allowedTools: writing,
+    });
+    assert.equal(after(argv, "--model"), model);
+  }
+});
+
+test("F3: role validation and read-only allowlist enforcement", () => {
+  // Unknown role throws
+  assert.throws(
+    () => cmd.buildChildCommand({ ...base, role: "unknown_role", allowedTools: writing }),
+    /unknown role/,
+  );
+  // Read-only role cannot have write tools
+  const writingTools = cmd.writingAllowedTools(["git", "npm run"]);
+  assert.throws(
+    () => cmd.buildChildCommand({ ...base, role: "verifier", allowedTools: writingTools }),
+    /read-only role.*cannot be granted.*mcp__plugin_marvin_marvin/,
+  );
+  // Read-only role cannot have Edit/Write/NotebookEdit/MultiEdit
+  for (const tool of ["Edit", "Write", "NotebookEdit", "MultiEdit"]) {
+    assert.throws(
+      () =>
+        cmd.buildChildCommand({
+          ...base,
+          role: "verifier",
+          allowedTools: [...cmd.READ_BASE_TOOLS, tool],
+        }),
+      new RegExp(`read-only role.*cannot be granted.*${tool}`),
     );
   }
 });

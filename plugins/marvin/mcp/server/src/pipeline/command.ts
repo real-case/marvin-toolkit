@@ -26,6 +26,12 @@ export interface ChildCommand {
 
 export const READ_ONLY_ROLES: ReadonlySet<Role> = new Set<Role>(["verifier", "retro"]);
 
+export const WRITING_ROLES: ReadonlySet<Role> = new Set<Role>([
+  "planner",
+  "test-author",
+  "executor",
+]);
+
 export const READ_BASE_TOOLS = [
   "Read",
   "Grep",
@@ -43,7 +49,20 @@ export const READ_BASE_TOOLS = [
   "Bash(gh pr diff:*)",
 ] as const;
 
+function validatePrefix(prefix: string): void {
+  if (prefix !== prefix.trim()) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (prefix.length === 0) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (/[(),[*\n]/.test(prefix)) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+}
+
 export function readOnlyAllowedTools(probePrefixes: readonly string[]): string[] {
+  probePrefixes.forEach((p) => validatePrefix(p));
   return [...READ_BASE_TOOLS, ...probePrefixes.map((p) => `Bash(${p}:*)`)];
 }
 
@@ -54,12 +73,46 @@ export const WRITING_BASE_TOOLS = [
 ] as const;
 
 export function writingAllowedTools(commandPrefixes: readonly string[]): string[] {
+  commandPrefixes.forEach((p) => validatePrefix(p));
   return [...WRITING_BASE_TOOLS, ...commandPrefixes.map((p) => `Bash(${p}:*)`)];
 }
 
 export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
+  // Validate role (F3: fail-closed role handling)
+  if (!READ_ONLY_ROLES.has(s.role) && !WRITING_ROLES.has(s.role)) {
+    throw new Error(`unknown role: ${s.role}`);
+  }
+
+  // Validate and require allowedTools early (before argv construction)
+  if (!s.allowedTools?.length) throw new Error(`${s.role} needs an explicit allowedTools list`);
+
+  // Validate read-only role allowlists (F3)
+  if (READ_ONLY_ROLES.has(s.role)) {
+    for (const entry of s.allowedTools) {
+      if (
+        entry.startsWith("mcp__") ||
+        entry === "Edit" ||
+        entry === "Write" ||
+        entry === "MultiEdit" ||
+        entry === "NotebookEdit"
+      ) {
+        throw new Error(`read-only role ${s.role} cannot be granted ${entry}`);
+      }
+    }
+  }
+
+  // Check Fable first (F2)
   if (/fable/i.test(s.assignment.model))
     throw new Error(`Fable is not allowed (user rule): ${s.assignment.model}`);
+
+  // Validate model allowlist (F2)
+  if (
+    !/^(opus|sonnet|haiku)$/.test(s.assignment.model) &&
+    !/^claude-(opus|sonnet|haiku)-[0-9a-z.-]+$/.test(s.assignment.model)
+  ) {
+    throw new Error(`model not allowed: ${s.assignment.model}`);
+  }
+
   const argv = [
     "claude",
     "-p",
@@ -82,7 +135,7 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     "--json-schema",
     s.schema,
   ];
-  if (!s.allowedTools?.length) throw new Error(`${s.role} needs an explicit allowedTools list`);
+
   if (READ_ONLY_ROLES.has(s.role)) {
     argv.push(
       "--permission-mode",
@@ -97,8 +150,10 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
   } else {
     argv.push("--permission-mode", "acceptEdits", "--allowedTools", ...s.allowedTools);
   }
+
   if (s.pluginDir) argv.push("--plugin-dir", s.pluginDir);
   if (s.resumeSessionId) argv.push("--resume", s.resumeSessionId);
+
   const env: Record<string, string> = {
     MARVIN_PIPELINE: "1",
     MARVIN_PIPELINE_RUN: s.runDir,
