@@ -34634,56 +34634,8 @@ function days(n) {
   return `${n} day(s)`;
 }
 
-// src/tools/verify.ts
-var import_yaml3 = __toESM(require_dist2());
-var DIGEST_EXCLUDE = [".marvin"];
-var MAX_DIGEST_PATHS = 5e3;
-function readChangedPaths(root) {
-  const diff = diffAgainstHead(root, {
-    format: "name-status",
-    exclude: DIGEST_EXCLUDE,
-    nul: true
-  });
-  if (diff === null) return null;
-  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
-  if (untracked === null) return null;
-  const paths = /* @__PURE__ */ new Map();
-  const fields = diff.split("\0").filter((s) => s.length > 0);
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    paths.set(fields[i + 1], fields[i]);
-  }
-  for (const p of untracked) if (!paths.has(p)) paths.set(p, "?");
-  return paths;
-}
-function digestFrom(paths, root) {
-  if (paths.size > MAX_DIGEST_PATHS) return null;
-  const sorted = [...paths.keys()].sort();
-  if (sorted.some((p) => p.includes("\n"))) return null;
-  const present = sorted.filter((p) => existsSync(join(root, p)));
-  const ids = hashObjects(present, root);
-  if (ids === null) return null;
-  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
-  const lines = sorted.map((p) => `${p}\0${paths.get(p)}\0${idByPath.get(p) ?? "D"}`);
-  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
-}
-function collectProvenance(cwd) {
-  const root = worktreeRoot(cwd);
-  if (!root) return null;
-  const paths = readChangedPaths(root);
-  return {
-    head_sha: headSha(root),
-    branch: currentBranch(root),
-    dirty: paths === null ? null : paths.size > 0,
-    worktree_digest: paths === null ? null : digestFrom(paths, root),
-    generated_at: (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-function classifyStaleness(recorded, current) {
-  if (!recorded || !current) return "unknown";
-  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
-  if (!recorded.head_sha || !current.head_sha) return "unknown";
-  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
-}
+// src/lib/oracles.ts
+var import_yaml2 = __toESM(require_dist2());
 var SHELL_METACHARACTERS = /[;|&`\n<>]|\$\(/;
 function splitRef(ref) {
   const i = ref.indexOf("::");
@@ -34815,8 +34767,72 @@ function redGreenProof(runs, contractSha, criterionId) {
   return "missing";
 }
 
+// src/lib/oracles.ts
+function parseContractCriteria(blockText) {
+  let parsed;
+  try {
+    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+  } catch (err3) {
+    return {
+      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
+    };
+  }
+  if (!parsed.success) {
+    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
+  }
+  return { criteria: parsed.data.criteria };
+}
+var DIGEST_EXCLUDE = [".marvin"];
+var MAX_DIGEST_PATHS = 5e3;
+function readChangedPaths(root) {
+  const diff = diffAgainstHead(root, {
+    format: "name-status",
+    exclude: DIGEST_EXCLUDE,
+    nul: true
+  });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
+  if (untracked === null) return null;
+  const paths = /* @__PURE__ */ new Map();
+  const fields = diff.split("\0").filter((s) => s.length > 0);
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    paths.set(fields[i + 1], fields[i]);
+  }
+  for (const p of untracked) if (!paths.has(p)) paths.set(p, "?");
+  return paths;
+}
+function digestFrom(paths, root) {
+  if (paths.size > MAX_DIGEST_PATHS) return null;
+  const sorted = [...paths.keys()].sort();
+  if (sorted.some((p) => p.includes("\n"))) return null;
+  const present = sorted.filter((p) => existsSync(join(root, p)));
+  const ids = hashObjects(present, root);
+  if (ids === null) return null;
+  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
+  const lines = sorted.map((p) => `${p}\0${paths.get(p)}\0${idByPath.get(p) ?? "D"}`);
+  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
+}
+function collectProvenance(cwd) {
+  const root = worktreeRoot(cwd);
+  if (!root) return null;
+  const paths = readChangedPaths(root);
+  return {
+    head_sha: headSha(root),
+    branch: currentBranch(root),
+    dirty: paths === null ? null : paths.size > 0,
+    worktree_digest: paths === null ? null : digestFrom(paths, root),
+    generated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyStaleness(recorded, current) {
+  if (!recorded || !current) return "unknown";
+  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
+  if (!recorded.head_sha || !current.head_sha) return "unknown";
+  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
+}
+
 // src/lib/metrics-collect.ts
-var import_yaml2 = __toESM(require_dist2());
+var import_yaml3 = __toESM(require_dist2());
 var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
 var PROGRESS_TAG = "spec-progress";
 var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
@@ -35043,7 +35059,7 @@ function readRollupSpec(specPath, projectRoot, notes) {
   let contract = null;
   if (block !== null) {
     try {
-      const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+      const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
       if (parsed.success) contract = parsed.data;
       else
         notes.push(
@@ -35142,7 +35158,7 @@ function readShippedSpecs(projectRoot, specConfig) {
     let files = [];
     if (block !== null) {
       try {
-        const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+        const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
         if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
       } catch {
       }
@@ -36166,23 +36182,14 @@ function readSealedSpec(slug, projectRoot, specConfig) {
       error: `spec \`${slug}\` has been edited since it was sealed \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`
     };
   }
-  let parsed;
-  try {
-    parsed = SpecContract.safeParse((0, import_yaml3.parse)(blockText));
-  } catch (err3) {
-    return {
-      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
-    };
-  }
-  if (!parsed.success) {
-    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
-  }
+  const parsed = parseContractCriteria(blockText);
+  if ("error" in parsed) return { error: parsed.error };
   return {
     slug,
     path,
     type: (frontmatter.type ?? "").trim(),
     contractSha: actual,
-    criteria: parsed.data.criteria
+    criteria: parsed.criteria
   };
 }
 function testFileHash(projectRoot, file) {

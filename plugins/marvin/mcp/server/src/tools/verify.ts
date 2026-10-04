@@ -3,11 +3,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
-import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import { projectConfigPath, type ServerEnv } from "../lib/env.js";
 import { diffAgainstHead, headSha, untrackedFiles } from "../lib/git.js";
+import { parseContractCriteria } from "../lib/oracles.js";
 import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
 import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
 import { loadConfig } from "../storage/config.js";
@@ -25,7 +25,6 @@ import {
 import { performRollup } from "../lib/metrics-record.js";
 import { recordVerifyRun, type VerifyRunEntry } from "../storage/verify-runs.js";
 import {
-  SpecContract,
   contractHash,
   extractContractBlock,
   resolveSpecBySlug,
@@ -1161,23 +1160,14 @@ function readSealedSpec(
         `the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`,
     };
   }
-  let parsed;
-  try {
-    parsed = SpecContract.safeParse(parseYaml(blockText));
-  } catch (err) {
-    return {
-      error: `spec-contract block is not valid YAML: ${err instanceof Error ? err.message : err}`,
-    };
-  }
-  if (!parsed.success) {
-    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
-  }
+  const parsed = parseContractCriteria(blockText);
+  if ("error" in parsed) return { error: parsed.error };
   return {
     slug,
     path,
     type: (frontmatter.type ?? "").trim(),
     contractSha: actual,
-    criteria: parsed.data.criteria,
+    criteria: parsed.criteria,
   };
 }
 

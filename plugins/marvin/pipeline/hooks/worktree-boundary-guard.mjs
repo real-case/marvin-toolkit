@@ -11,21 +11,44 @@
  * session — marvin's config and run state, Claude settings and hooks, husky, the MCP
  * config, `.git` — are protected, plus any regexes in MARVIN_PIPELINE_PROTECTED.
  */
+import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
 import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
 import { physicalPath, relativeInside } from "./lib/paths.mjs";
 
+/**
+ * The default protected paths live in `pipeline/protected.default.json`, one file read by
+ * this guard and by the engine's gate stage, so what a child may not write and what the
+ * gate flags as changed cannot drift apart. A file that cannot be read or is not a
+ * non-empty array of strings is not an empty list: it is remembered and re-thrown from
+ * `protectedPatterns`, so the guard denies every edit instead of quietly protecting less.
+ *
+ * @returns {{ sources: string[], error: Error | null }}
+ */
+function loadDefaults() {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(new URL("../protected.default.json", import.meta.url), "utf8"),
+    );
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      parsed.some((p) => typeof p !== "string")
+    ) {
+      throw new Error("must be a non-empty JSON array of regex strings");
+    }
+    return { sources: parsed, error: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { sources: [], error: new Error(`protected.default.json is unusable (${reason})`) };
+  }
+}
+
+const defaults = loadDefaults();
+
 /** JavaScript regexes over the worktree-relative POSIX path, matched case-insensitively. */
-export const DEFAULT_PROTECTED = [
-  String.raw`^\.marvin/config\.json$`,
-  String.raw`^\.marvin/pipeline/`,
-  String.raw`^\.claude/settings[^/]*\.json$`,
-  String.raw`^\.claude/hooks/`,
-  String.raw`^\.husky/`,
-  String.raw`^\.mcp\.json$`,
-  String.raw`^\.git(/|$)`,
-];
+export const DEFAULT_PROTECTED = defaults.sources;
 
 /**
  * The protected-path regexes: the defaults plus `extra`, a JSON array of regex sources.
@@ -36,6 +59,7 @@ export const DEFAULT_PROTECTED = [
  * @returns {RegExp[]}
  */
 export function protectedPatterns(extra) {
+  if (defaults.error) throw defaults.error;
   const sources = [...DEFAULT_PROTECTED];
   if (extra !== undefined) {
     let parsed;
