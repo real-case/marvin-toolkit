@@ -57,12 +57,14 @@ function placeholderIsQuoted(template: string): boolean {
  *
  * `gates.test_one` must select exactly ONE file. A runner that takes its argument as a filter
  * selects every file the argument matches, and the runners disagree on what it is: vitest reads
- * a substring, jest a regular expression, `node --test` a glob. `sealAuthoredTests` refuses a
- * candidate that ANY of the three readings would match to another test file, even if the
- * template hands the path over literally (`jest --runTestsByPath {file}`): seal cannot know the
- * runner. A path with regular-expression or glob characters, such as a Next.js `[id]` directory,
- * is therefore refused while a sibling it could match exists, and the operator adjusts
- * `gates.test_one`.
+ * a substring, jest a regular expression, `node --test` a glob, each against paths relative to a
+ * root the project's config may move. `sealAuthoredTests` refuses a red run in which the runner
+ * reports more than one test file. As a conservative fallback, checked before anything runs, it
+ * also refuses a candidate that ANY of three static readings would match to another test file,
+ * even if the template hands the path over literally (`jest --runTestsByPath {file}`): seal
+ * cannot know the runner. A path with regular-expression or glob characters, such as a Next.js
+ * `[id]` directory, is therefore refused while a sibling it could match exists, and the operator
+ * adjusts `gates.test_one`.
  */
 export function formatTestOne(template: string, path: string): string {
   if (FOREIGN_PLACEHOLDERS.some((placeholder) => template.includes(placeholder))) {
@@ -132,14 +134,44 @@ const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b|^[ \t]*could not f
 /** jest, for a file with no test in it. */
 const NO_TEST_IN_SUITE = /\byour test suite must contain at least one test\b/i;
 
+/** The escape sequences a coloured reporter wraps its words in: CSI, OSC and the two-byte ones. */
+// eslint-disable-next-line no-control-regex -- the escape character is exactly what is stripped
+const ANSI = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+/**
+ * The summary lines in which a runner reports how many test files it ran: vitest's
+ * ` Test Files  1 failed | 1 passed (2)` and jest's `Test Suites: 1 failed, 1 passed, 2 total`.
+ */
+const FILE_COUNTS: readonly RegExp[] = [
+  /^\s*Test Files\b.*\((\d+)\)\s*$/gm,
+  /^\s*Test Suites:.*?\b(\d+) total\b/gm,
+];
+
+/**
+ * The largest number of test files the runner says it ran, or null when it printed no count.
+ * The largest, because a test's own output can print a line of the same shape, and it must not
+ * be able to hide the runner's.
+ */
+function reportedFileCount(output: string): number | null {
+  let largest: number | null = null;
+  for (const line of FILE_COUNTS) {
+    for (const match of output.matchAll(line)) {
+      const n = Number(match[1]);
+      if (largest === null || n > largest) largest = n;
+    }
+  }
+  return largest;
+}
+
 /** Why a command's outcome is not a genuine failure of the test, or null if it is one. */
 function redProblem(result: ReturnType<Runner>): string | null {
   const { code } = result;
-  const output = typeof result.output === "string" ? result.output : "";
+  const output = typeof result.output === "string" ? result.output.replace(ANSI, "") : "";
   if (code === 0) return "passes before implementation, so it proves nothing";
   if (!Number.isInteger(code) || code < 0 || NOT_RUN_CODES.has(code) || TIMED_OUT.test(output)) {
     return `test command did not run (exit ${String(code)})`;
   }
+  const files = reportedFileCount(output);
+  if (files !== null && files !== 1) return `the runner ran ${files} test files, not just this one`;
   return NO_TEST_FOUND.test(output) || NO_TEST_IN_SUITE.test(output)
     ? "the runner found no test in it"
     : null;
@@ -411,15 +443,24 @@ function regexMatcher(source: string): RegExp | null {
 }
 
 /**
- * The three ways a runner can read `{file}`: vitest takes it as a substring of the path, jest as
- * a case-insensitive regular expression tested against the absolute path (and, in jest 30, the
- * path relative to the root), `node --test` as a glob. The command may also select a sibling if
- * ANY of them does. The candidate is compiled as written, with the `i` flag, never case-folded
- * first (`[A-z]` is not `[a-z]`); each reading is tried against the sibling's path as it is on
- * disk and in its folded form (NFC, lower case), relative and under each root spelling. A reading
- * that cannot be built (a regular expression that does not compile, a glob that is not modelled)
- * selects every sibling it applies to. vitest and jest exclude nested `.git` and `node_modules`
- * directories, so those siblings count for the glob alone.
+ * The static readings of `{file}`: a conservative fallback, not a model of how any runner really
+ * selects. `{file}` is read as a substring of the path (as vitest's filter is), as a
+ * case-insensitive regular expression (as jest's is) and as a glob (as `node --test`'s is), and
+ * the command may also select a sibling if ANY reading does. The candidate is compiled as
+ * written, with the `i` flag, never case-folded first (`[A-z]` is not `[a-z]`); each reading is
+ * tried against the sibling's path as it is on disk and in its folded form (NFC, lower case),
+ * relative to the worktree and under each spelling of its root. A reading that cannot be built
+ * (a regular expression that does not compile, a glob that is not modelled) selects every sibling
+ * it applies to. vitest and jest exclude nested `.git` and `node_modules` directories, so those
+ * siblings count for the glob alone.
+ *
+ * Every subject is relative to the worktree root, or absolute. A runner whose root sits below the
+ * worktree (vitest `test.projects`, `--root` or `--dir`; jest `rootDir` or `projects`) matches
+ * `{file}` against paths relative to that root, which none of these readings sees: such a
+ * selection is covered only by the runner's own count of the files it ran (`reportedFileCount`).
+ * Where a runner prints that count it is the primary evidence. These readings are what is left
+ * for a runner that prints none, such as `node --test`; they stay in force for every runner,
+ * because they are checked before anything runs.
  */
 function selectedBy(candidate: string, roots: readonly string[]): (sibling: Sibling) => boolean {
   const folded = fold(candidate);
@@ -468,15 +509,21 @@ interface Candidate {
  * nothing either. No segment may start with `-` (the runner would read it as an option).
  *
  * `gates.test_one` must select exactly one file, and a runner that treats its argument as a
- * filter would run a sibling too and judge the exit code of the pair. So no OTHER test file may
- * be matched by the candidate's path read as a substring (vitest), as a regular expression
- * (jest) or as a glob (`node --test`); see `selectedBy`. The siblings come from walking the disk,
- * not from git: they include ignored files, the contents of nested repositories and the files
- * behind symlinked directories, and skip only the root `.git` and the root `node_modules` (see
- * `walkTestFiles`). A symlinked directory that leaves the worktree is a reason of its own. A
- * sibling is any file matching the test pattern, a `.test`/`.spec` file or a file under
- * `__tests__/`. The glob reading is converted to a regular expression here, not by
- * `path.matchesGlob`, which Node 20 lacks before 20.17 and which is experimental in some versions.
+ * filter would run a sibling too and judge the exit code of the pair. Two kinds of evidence
+ * guard this. The primary one is the runner's own count: after each red run, a vitest or jest
+ * summary reporting any number of test files but 1 refuses the candidate. It alone covers a
+ * runner whose root sits below the worktree (vitest `test.projects`, jest `rootDir`), which
+ * matches `{file}` against paths the static readings never see. The fallback, for a runner that
+ * prints no count (`node --test`), is the static readings, which are conservative and are checked
+ * for every runner before anything runs: no OTHER test file may be matched by the candidate's
+ * path read as a substring, a regular expression or a glob, relative to the worktree root or
+ * absolute; see `selectedBy`. The siblings come from walking the disk, not from git: they
+ * include ignored files, the contents of nested repositories and the files behind symlinked
+ * directories, and skip only the root `.git` and the root `node_modules` (see `walkTestFiles`).
+ * A symlinked directory that leaves the worktree is a reason of its own. A sibling is any file
+ * matching the test pattern, a `.test`/`.spec` file or a file under `__tests__/`. The glob
+ * reading is converted to a regular expression here, not by `path.matchesGlob`, which Node 20
+ * lacks before 20.17 and which is experimental in some versions.
  *
  * This is a guard against honest mistakes and cheap tricks, not a proof: the red run executes
  * test-author code, which can defeat any check made around it. The structural snapshots around

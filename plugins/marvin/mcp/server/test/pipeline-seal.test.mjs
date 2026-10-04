@@ -15,6 +15,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1157,6 +1158,133 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
   const passing = real("ok.test.mjs", 'import { test } from "node:test";\ntest("ok", () => {});\n');
   assert.match(passing.reasons[0], /passes before implementation/);
 });
+
+// ── the runner's own count of test files ────────────────────────────────────
+
+const ESC = "\u001b";
+const RAN = (path, n) => `${path}: the runner ran ${n} test files, not just this one`;
+const COUNTED = {
+  vitestTwo:
+    " FAIL  xa.test.ts > red\n\n Test Files  1 failed | 1 passed (2)\n      Tests  1 failed | 1 passed (2)\n   Duration  85ms\n",
+  vitestOne:
+    " FAIL  a.test.ts > red\n\n Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)\n",
+  vitestTwoAnsi: `${ESC}[2m Test Files ${ESC}[22m ${ESC}[1m${ESC}[31m1 failed${ESC}[39m${ESC}[22m${ESC}[2m | ${ESC}[22m${ESC}[1m${ESC}[32m1 passed${ESC}[39m${ESC}[22m${ESC}[90m (2)${ESC}[39m\n`,
+  vitestOneAnsi: `${ESC}[2m Test Files ${ESC}[22m ${ESC}[1m${ESC}[31m1 failed${ESC}[39m${ESC}[22m${ESC}[90m (1)${ESC}[39m\n`,
+  jestTwo:
+    "Test Suites: 1 failed, 1 passed, 2 total\nTests:       1 failed, 1 passed, 2 total\nSnapshots:   0 total\n",
+  jestOne: "Test Suites: 1 failed, 1 total\nTests:       1 failed, 1 passed, 2 total\n",
+  jestTwoAnsi: `${ESC}[1mTest Suites:${ESC}[22m ${ESC}[1m${ESC}[31m1 failed${ESC}[39m${ESC}[22m, ${ESC}[1m${ESC}[32m1 passed${ESC}[39m${ESC}[22m, 2 total\n`,
+  jestOneAnsi: `${ESC}[1mTest Suites:${ESC}[22m ${ESC}[1m${ESC}[31m1 failed${ESC}[39m${ESC}[22m, 1 total\n`,
+};
+
+test("the runner's own count of test files is the primary evidence", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const verdict = (output, code = 1) =>
+    seal(wt, [authored("a.test.ts")], { run: () => ({ code, output, ms: 1 }) });
+  for (const [output, n] of [
+    [COUNTED.vitestTwo, 2],
+    [COUNTED.vitestTwoAnsi, 2],
+    [COUNTED.jestTwo, 2],
+    [COUNTED.jestTwoAnsi, 2],
+    [" Test Files  3 failed (3)\n", 3],
+    ["Test Suites: 2 failed, 1 passed, 3 total\r\n", 3],
+    ["Test Suites: 0 total\n", 0],
+    ["stdout | a.test.ts\n Test Files  1 failed (1)\n\n Test Files  1 failed | 1 passed (2)\n", 2],
+  ]) {
+    assert.deepEqual(verdict(output).reasons, [RAN("a.test.ts", n)], JSON.stringify(output));
+  }
+  for (const output of [
+    COUNTED.vitestOne,
+    COUNTED.vitestOneAnsi,
+    COUNTED.jestOne,
+    COUNTED.jestOneAnsi,
+    "AssertionError: expected 1 to equal 2",
+  ]) {
+    const v = verdict(output);
+    assert.equal(v.ok, true, `${JSON.stringify(output)}: ${v.reasons.join("; ")}`);
+  }
+  assert.match(
+    verdict(COUNTED.vitestTwo, 0).reasons[0],
+    /passes before implementation/,
+    "a passing run is refused as passing, whatever it counted",
+  );
+});
+
+test("without a count line the static readings decide, and a count of 1 does not lift them", () => {
+  const wt = worktreeWith(["a.test.ts", "ba.test.ts"]);
+  const calls = [];
+  for (const output of [
+    "AssertionError: expected 1 to equal 2",
+    COUNTED.vitestOne,
+    COUNTED.jestOne,
+  ]) {
+    const v = seal(wt, [authored("a.test.ts")], {
+      run: scripted({ "a.test.ts": { code: 1, output } }, calls),
+    });
+    assert.deepEqual(v.reasons, [SELECTS("a.test.ts", "ba.test.ts")], JSON.stringify(output));
+  }
+  assert.deepEqual(calls, [], "the static readings are checked before anything runs");
+});
+
+const require = createRequire(import.meta.url);
+const vitestBin = (() => {
+  try {
+    const manifest = require.resolve("vitest/package.json");
+    const { bin } = JSON.parse(readFileSync(manifest, "utf8"));
+    return join(dirname(manifest), typeof bin === "string" ? bin : bin.vitest);
+  } catch {
+    return null;
+  }
+})();
+const shellWord = (s) => `'${s.replaceAll("'", "'\\''")}'`;
+
+test(
+  "a real vitest under test.projects selects a plain-named sibling, and its own count gives it away",
+  { skip: vitestBin === null ? "vitest is not installed for the server package" : false },
+  () => {
+    const testOne = `${shellWord(process.execPath)} ${shellWord(vitestBin)} run {file}`;
+    const GREEN = 'test("vacuous", () => {});\n';
+    const RED_BODY = 'test("red", () => { expect(1).toBe(2); });\n';
+    const projects = (files) => {
+      const wt = tmp();
+      gitInit(wt);
+      for (const [path, body] of Object.entries({
+        "vitest.config.mjs": 'export default { test: { projects: ["packages/*"] } };\n',
+        "packages/app/vitest.config.mjs": "export default { test: { globals: true } };\n",
+        ...files,
+      })) {
+        put(wt, path, body);
+      }
+      return wt;
+    };
+    const real = (wt, paths) =>
+      seal(
+        wt,
+        paths.map((p, i) => authored(p, [`AC${i + 1}`])),
+        { testOne, run: g.shellRunner, timeoutMs: 120000 },
+      );
+    const honest = projects({
+      "packages/app/a.test.ts": GREEN,
+      "packages/app/data.test.ts": RED_BODY,
+    });
+    const v = real(honest, ["packages/app/a.test.ts", "packages/app/data.test.ts"]);
+    assert.deepEqual(v.reasons, [RAN("packages/app/a.test.ts", 2)]);
+    assert.deepEqual(v.sealed, []);
+    const apart = projects({
+      "packages/app/a.test.ts": GREEN,
+      "packages/app/zzz.test.ts": RED_BODY,
+    });
+    assert.deepEqual(real(apart, ["packages/app/a.test.ts", "packages/app/zzz.test.ts"]).reasons, [
+      "packages/app/a.test.ts: passes before implementation, so it proves nothing",
+    ]);
+    const plain = projects({
+      "packages/app/plain.test.ts": RED_BODY,
+      "packages/app/zz.test.ts": GREEN,
+    });
+    const control = real(plain, ["packages/app/plain.test.ts"]);
+    assert.equal(control.ok, true, control.reasons.join("; "));
+  },
+);
 
 test("a runner that throws is a reason", () => {
   const wt = worktreeWith(["a.test.ts"]);
