@@ -34782,6 +34782,9 @@ function parseContractCriteria(blockText) {
   }
   return { criteria: parsed.data.criteria };
 }
+function resolveCriteria(criteria, opts) {
+  return criteria.filter((criterion) => criterion.oracle.kind !== "prose-review").map((criterion) => ({ criterion, resolved: resolveOracleCommand(criterion, opts) }));
+}
 var DIGEST_EXCLUDE = [".marvin"];
 var MAX_DIGEST_PATHS = 5e3;
 function readChangedPaths(root) {
@@ -36230,11 +36233,11 @@ async function runOracles(projectRoot, input, config2) {
   const head = headSha(projectRoot);
   const runsDir = runsDirOf(projectRoot);
   const entries = [];
-  for (const criterion of runnable) {
-    const resolved = resolveOracleCommand(criterion, {
-      call: input.command,
-      testOne,
-      stack});
+  const resolutions = resolveCriteria(runnable, {
+    call: input.command,
+    testOne,
+    stack});
+  for (const { criterion, resolved } of resolutions) {
     const file = oracleTestFile(criterion);
     const base = {
       slug,

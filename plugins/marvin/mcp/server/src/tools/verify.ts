@@ -7,7 +7,7 @@ import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import { projectConfigPath, type ServerEnv } from "../lib/env.js";
 import { diffAgainstHead, headSha, untrackedFiles } from "../lib/git.js";
-import { parseContractCriteria } from "../lib/oracles.js";
+import { parseContractCriteria, resolveCriteria } from "../lib/oracles.js";
 import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
 import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
 import { loadConfig } from "../storage/config.js";
@@ -19,7 +19,6 @@ import {
   readOracleRuns,
   recordOracleRun,
   redGreenProof,
-  resolveOracleCommand,
   type OracleRun,
 } from "../storage/oracles.js";
 import { performRollup } from "../lib/metrics-record.js";
@@ -1241,13 +1240,13 @@ async function runOracles(
   const runsDir = runsDirOf(projectRoot);
 
   const entries: OracleRun[] = [];
-  for (const criterion of runnable) {
-    const resolved = resolveOracleCommand(criterion, {
-      call: input.command,
-      testOne,
-      stack,
-      projectRoot,
-    });
+  const resolutions = resolveCriteria(runnable, {
+    call: input.command,
+    testOne,
+    stack,
+    projectRoot,
+  });
+  for (const { criterion, resolved } of resolutions) {
     const file = oracleTestFile(criterion);
     const base = {
       slug,
