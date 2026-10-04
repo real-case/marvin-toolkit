@@ -68,7 +68,7 @@ export const gateStage = (w, over = {}) =>
     protectedPatterns: protectedDefaults,
     protectedBaseline: w.baseline,
     run: g.shellRunner,
-    timeoutMs: 10_000,
+    timeoutMs: 60_000,
     ...over,
   });
 

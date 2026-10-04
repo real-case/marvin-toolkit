@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -584,6 +593,108 @@ test("the gate stage runs oracles as gates, never re-runs one, and fails a chang
   );
   assert.deepEqual(report.sealed, [{ path: "src/a.test.ts", ok: true }]);
   assert.equal(report.passed, false);
+});
+
+test("prepare steps run first, so an oracle can rely on what they build", () => {
+  const w = runWorktree();
+  const report = gateStage(w, {
+    prepare: [{ name: "build", command: "echo built > .built" }],
+    oracles: [{ criterion: "AC1", command: "test -f .built", reason: null }],
+  });
+  assert.deepEqual(
+    report.gates.map((x) => [x.name, x.result]),
+    [
+      ["prepare:build", "pass"],
+      ["oracle:AC1", "pass"],
+      ["true", "pass"],
+    ],
+  );
+  assert.equal(report.passed, true, JSON.stringify(report));
+  assert.deepEqual(
+    gateStage(w).gates.map((x) => x.name),
+    ["true"],
+    "no prepare option, no prepare entries",
+  );
+});
+
+test("a failing prepare step is never retried, blocks, and leaves the oracles not run", () => {
+  const w = runWorktree();
+  const report = gateStage(w, {
+    prepare: [
+      { name: "build", command: "echo x >> .count; echo 'error: boom' >&2; exit 1" },
+      { name: "codegen", command: "touch .codegen-ran" },
+    ],
+    oracles: [
+      { criterion: "AC1", command: "true", reason: null },
+      { criterion: "AC2", command: "true", reason: null },
+    ],
+  });
+  assert.equal(readFileSync(join(w.path, ".count"), "utf8"), "x\n", "one run, no re-run");
+  assert.equal(existsSync(join(w.path, ".codegen-ran")), false);
+  assert.deepEqual(
+    report.gates.map((x) => [x.name, x.result]),
+    [
+      ["prepare:build", "fail"],
+      ["prepare:codegen", "not-run"],
+      ["oracle:AC1", "not-run"],
+      ["oracle:AC2", "not-run"],
+      ["true", "pass"],
+    ],
+  );
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["prepare step build failed"]);
+  assert.equal(report.blockers[0].category, "gate");
+  assert.match(report.blockers[0].evidence, /error: boom/);
+  assert.deepEqual(
+    g.reportFindings(report).map((f) => [f.severity, f.claim]),
+    [
+      ["blocker", "prepare:codegen was not run"],
+      ["blocker", "oracle:AC1 was not run"],
+      ["blocker", "oracle:AC2 was not run"],
+      ["blocker", "prepare step build failed"],
+    ],
+  );
+});
+
+test("a prepare step that overwrites a sealed test is caught by the bracket around the oracle", () => {
+  const w = runWorktree();
+  w.write("src/a.test.mjs", "throw new Error('the real acceptance test');\n");
+  w.commit("sealed acceptance test");
+  const sealed = [
+    {
+      path: "src/a.test.mjs",
+      sha256: g.sha256File(join(w.path, "src/a.test.mjs")),
+      criteria: ["AC1"],
+    },
+  ];
+  const report = gateStage(w, {
+    sealed,
+    prepare: [{ name: "build", command: "echo 'process.exit(0)' > src/a.test.mjs" }],
+    oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
+  });
+  assert.deepEqual(
+    report.gates.map((x) => [x.name, x.result]),
+    [
+      ["prepare:build", "pass"],
+      ["oracle:AC1", "pass"],
+      ["true", "pass"],
+    ],
+  );
+  assert.equal(report.passed, false);
+  assert.ok(claims(report).includes("sealed file src/a.test.mjs changed around oracle AC1"));
+  assert.deepEqual(report.sealed, [{ path: "src/a.test.mjs", ok: false }]);
+});
+
+test("a gate that was not run fails the report and is a finding", () => {
+  const report = g.buildReport({
+    ...empty,
+    gates: [{ name: "oracle:AC1", result: "not-run", ms: 0, tail: "prepare step build failed" }],
+  });
+  assert.equal(report.passed, false);
+  assert.deepEqual(
+    g.reportFindings(report).map((f) => [f.severity, f.category, f.claim, f.evidence]),
+    [["blocker", "gate", "oracle:AC1 was not run", "prepare step build failed"]],
+  );
 });
 
 test("a criterion with no runnable oracle is a gate blocker that names the reason", () => {

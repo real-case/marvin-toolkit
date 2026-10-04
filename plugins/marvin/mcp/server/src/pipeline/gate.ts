@@ -21,7 +21,7 @@ export interface CheckRule {
 }
 export interface GateResult {
   name: string;
-  result: "pass" | "fail" | "flaky";
+  result: "pass" | "fail" | "flaky" | "not-run";
   ms: number;
   tail: string;
 }
@@ -439,7 +439,7 @@ export function addedLineMismatches(lines: readonly AddedLine[], numstat: string
 
 export function buildReport(parts: Omit<GateReport, "passed">): GateReport {
   const passed =
-    parts.gates.every((g) => g.result !== "fail") &&
+    parts.gates.every((g) => g.result === "pass" || g.result === "flaky") &&
     parts.undeclared.length === 0 &&
     parts.protected.length === 0 &&
     parts.checks.every((c) => c.severity === "minor") &&
@@ -451,7 +451,18 @@ export function buildReport(parts: Omit<GateReport, "passed">): GateReport {
 export function reportFindings(r: GateReport): Finding[] {
   const out: Finding[] = [];
   for (const g of r.gates) {
-    if (g.result === "fail") {
+    if (g.result === "not-run") {
+      out.push({
+        id: `G-${g.name}-not-run`,
+        severity: "blocker",
+        category: "gate",
+        claim: `${g.name} was not run`,
+        evidence: g.tail,
+        expected: `${g.name} passes`,
+      });
+    }
+    // A failed prepare step is reported by its own blocker ("prepare step <name> failed").
+    if (g.result === "fail" && !g.name.startsWith("prepare:")) {
       out.push({
         id: `G-${g.name}`,
         severity: "blocker",
@@ -549,6 +560,12 @@ export interface GateStageOptions {
   baseSha: string;
   /** Absolute path of the worktree's private git dir, recorded at worktree creation. */
   gitDir: string;
+  /**
+   * Commands that run before the oracles (a build, code generation), never retried. A failure
+   * is a blocker, the remaining prepare steps and the oracles are reported as not run, and
+   * the ordinary gates still run.
+   */
+  prepare?: readonly GateCommand[];
   gates: readonly GateCommand[];
   oracles: readonly OracleInput[];
   contractFiles: readonly string[];
@@ -759,12 +776,44 @@ export function runGateStage(o: GateStageOptions): GateReport {
       expected: "every criterion that is not prose-review resolves to a command",
     });
   }
-  // Oracles run first, one at a time, so code from an ordinary gate (child-authored tests
-  // inside `npm test`, say) cannot rewrite a sealed test before its oracle reads it, and the
-  // sealed files are hashed on disk immediately before and after each one.
+  // Order: prepare steps, oracles, ordinary gates. The oracles run before the ordinary gates
+  // so code from those (child-authored tests inside `npm test`, say) cannot rewrite a sealed
+  // test before its oracle reads it, and one at a time, with the sealed files hashed on disk
+  // immediately before and after each, which also covers a prepare step that tampers.
+  const prepareGates: GateResult[] = [];
+  let prepareFailed: string | null = null;
+  for (const step of o.prepare ?? []) {
+    const name = `prepare:${step.name}`;
+    if (prepareFailed !== null) {
+      prepareGates.push({
+        name,
+        result: "not-run",
+        ms: 0,
+        tail: `prepare step ${prepareFailed} failed`,
+      });
+      continue;
+    }
+    const ran = runGates(
+      [{ name, command: step.command, retry: false }],
+      o.worktree,
+      o.run,
+      o.timeoutMs,
+    );
+    prepareGates.push(...ran);
+    const failure = ran.find((r) => r.result === "fail");
+    if (failure !== undefined) {
+      prepareFailed = step.name;
+      blockers.push({
+        category: "gate",
+        claim: `prepare step ${step.name} failed`,
+        evidence: failure.tail,
+        expected: "prepare steps succeed before the oracles run",
+      });
+    }
+  }
   const aroundOracle = new Set<string>();
   const oracleGates: GateResult[] = [];
-  for (const x of runnable) {
+  for (const x of prepareFailed === null ? runnable : []) {
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
     oracleGates.push(
       ...runGates(
@@ -786,7 +835,21 @@ export function runGateStage(o: GateStageOptions): GateReport {
       });
     }
   }
-  const gates = [...oracleGates, ...runGates(o.gates, o.worktree, o.run, o.timeoutMs)];
+  if (prepareFailed !== null) {
+    for (const x of runnable) {
+      oracleGates.push({
+        name: `oracle:${x.criterion}`,
+        result: "not-run",
+        ms: 0,
+        tail: `prepare step ${prepareFailed} failed`,
+      });
+    }
+  }
+  const gates = [
+    ...prepareGates,
+    ...oracleGates,
+    ...runGates(o.gates, o.worktree, o.run, o.timeoutMs),
+  ];
 
   const headAfter = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha) {
