@@ -19,7 +19,7 @@
  * gate stage hashes the sealed files as committed and fails any change.
  */
 import { readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { readPayload } from "../../hooks/lib/hook-io.mjs";
 import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
 import { candidatePaths, physicalPath, relativeInside } from "./lib/paths.mjs";
@@ -40,7 +40,7 @@ export function loadSealed(runDir, root) {
   if (!isAbsolute(runDir)) {
     throw new Error("the run's state directory (MARVIN_PIPELINE_RUN) is not an absolute path");
   }
-  if (relativeInside(physicalPath(runDir), physicalPath(resolve(root))) !== null) {
+  if (isInsideWorktree(runDir, root)) {
     throw new Error("the run's state directory (MARVIN_PIPELINE_RUN) lies inside the worktree");
   }
   let parsed;
@@ -70,6 +70,29 @@ function identity(path) {
   } catch (error) {
     if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return null;
     throw error;
+  }
+}
+
+/**
+ * Whether `runDir` is the worktree or lies inside it: by physical path, and by identity too.
+ * On a case-insensitive volume `<base>/WT/run` and `<base>/wt` name one directory under two
+ * spellings, so the physical strings differ; walking the run directory's ancestors and comparing
+ * each one's device and inode with the worktree's cannot be fooled by a spelling.
+ *
+ * @param {string} runDir Absolute.
+ * @param {string} root The worktree, absolute.
+ * @returns {boolean}
+ */
+function isInsideWorktree(runDir, root) {
+  const physicalRun = physicalPath(runDir);
+  const physicalRoot = physicalPath(resolve(root));
+  if (relativeInside(physicalRun, physicalRoot) !== null) return true;
+  const rootId = identity(physicalRoot);
+  if (rootId === null) return false;
+  for (let dir = physicalRun; ; dir = dirname(dir)) {
+    const id = identity(dir);
+    if (id !== null && id.dev === rootId.dev && id.ino === rootId.ino) return true;
+    if (dirname(dir) === dir) return false;
   }
 }
 

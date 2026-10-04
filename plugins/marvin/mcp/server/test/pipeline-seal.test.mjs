@@ -984,6 +984,43 @@ test("run state never lives inside the worktree", () => {
   assert.equal(edit({ file_path: join(wt, "src", "a.ts") }).status, 0);
 });
 
+test(
+  "run state inside the worktree is recognised under a case-variant spelling",
+  { skip: !caseInsensitive },
+  () => {
+    const { base, wt, run } = sealedBox();
+    const forged = join(wt, "run");
+    mkdirSync(forged);
+    writeFileSync(join(forged, "sealed.json"), "[]\n");
+    const sealed = join(wt, "src", "a.test.ts");
+    const call = (file_path, runDir, root) =>
+      hook(
+        "sealed-guard.mjs",
+        { tool_name: "Edit", tool_input: { file_path } },
+        { MARVIN_PIPELINE_RUN: runDir, CLAUDE_PROJECT_DIR: root },
+      );
+    assert.equal(existsSync(join(base, "WT", "run")), true, "the volume folds case");
+    const variantRun = call(sealed, join(base, "WT", "run"), wt);
+    assert.equal(variantRun.status, 2, "a case-variant run directory inside the worktree");
+    assert.match(variantRun.stderr, /lies inside the worktree/);
+    const variantRoot = call(sealed, forged, join(base, "WT"));
+    assert.equal(variantRoot.status, 2, "a case-variant worktree");
+    assert.match(variantRoot.stderr, /lies inside the worktree/);
+    assert.equal(call(sealed, join(base, "WT", "run", "."), wt).status, 2);
+    assert.equal(
+      call(sealed, join(base, "RUN"), join(base, "WT")).status,
+      2,
+      "outside: still guards",
+    );
+    assert.equal(
+      call(join(wt, "src", "a.ts"), join(base, "RUN"), join(base, "WT")).status,
+      0,
+      "a run directory outside the worktree in a case-variant spelling is fine",
+    );
+    assert.equal(call(sealed, run, wt).status, 2);
+  },
+);
+
 test("sealed-guard denies with the pipeline contract and never mentions the kill switch", () => {
   const { wt, edit } = sealedBox();
   const denial = edit({ file_path: join(wt, "src", "a.test.ts") });
