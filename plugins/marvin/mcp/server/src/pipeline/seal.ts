@@ -151,10 +151,12 @@ const ANSI = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)
 /**
  * The summary lines in which a runner reports how many test files it ran: vitest's
  * ` Test Files  1 failed | 1 passed (2)` and jest's `Test Suites: 1 failed, 1 passed, 2 total`.
+ * The indentation is spaces and tabs on the line itself: a `\s*` there would span blank lines,
+ * and output holding many of them would cost time quadratic in its length.
  */
 const FILE_COUNTS: readonly RegExp[] = [
-  /^\s*Test Files\b.*\((\d+)\)\s*$/gm,
-  /^\s*Test Suites:.*?\b(\d+) total\b/gm,
+  /^[ \t]*Test Files\b.*\((\d+)\)[ \t\r]*$/gm,
+  /^[ \t]*Test Suites:.*?\b(\d+) total\b/gm,
 ];
 
 /**

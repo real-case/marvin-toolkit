@@ -1342,6 +1342,19 @@ test("the runner's own count of test files is the primary evidence", () => {
     /passes before implementation/,
     "a passing run is refused as passing, whatever it counted",
   );
+  assert.deepEqual(verdict(" Test Files  1 failed | 1 passed (2)\r\n").reasons, [
+    RAN("a.test.ts", 2),
+  ]);
+});
+
+test("reading the count costs time linear in the output, however many blank lines it holds", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const output = ` Test Files  1 failed | 1 passed (2)\nend\n${"\n".repeat(300000)}end\n`;
+  const started = Date.now();
+  const v = seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
+  const elapsed = Date.now() - started;
+  assert.deepEqual(v.reasons, [RAN("a.test.ts", 2)]);
+  assert.ok(elapsed < 10000, `took ${elapsed} ms`);
 });
 
 test("without a count line the static readings decide, and a count of 1 does not lift them", () => {
