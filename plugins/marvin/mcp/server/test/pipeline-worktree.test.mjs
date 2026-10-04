@@ -74,51 +74,7 @@ test("exact branch name lookup distinguishes other/feat-x from feat-x", () => {
   assert.equal(sh(path, "branch", "--show-current"), "feat-x");
 });
 
-test("a main-checkout snapshot catches a child writing outside its worktree (S10)", () => {
-  const repo = repoWithOrigin();
-  const before = wt.snapshotTree(repo);
-  writeFileSync(join(repo, "leak.txt"), "x");
-  assert.deepEqual(wt.diffSnapshots(before, wt.snapshotTree(repo)), ["?? leak.txt"]);
-});
-
-test("snapshot content hashing detects overwrites, reverts, deletions on a dirty tree", () => {
-  const repo = repoWithOrigin({ "b.txt": "b\n" });
-  const b = join(repo, "b.txt");
-  writeFileSync(b, "modified\n");
-  const before = wt.snapshotTree(repo);
-  writeFileSync(b, "different\n");
-  const after1 = wt.snapshotTree(repo);
-  const diff1 = wt.diffSnapshots(before, after1);
-  assert.ok(diff1.some((d) => d.includes("(content changed)")));
-  sh(repo, "checkout", "--", "b.txt");
-  const after2 = wt.snapshotTree(repo);
-  const diff2 = wt.diffSnapshots(before, after2);
-  assert.ok(diff2.some((d) => d.includes("removed  M b.txt")));
-});
-
-test("snapshot detects untracked file deletion and content changes", () => {
-  const repo = repoWithOrigin();
-  const u = join(repo, "u.txt");
-  writeFileSync(u, "untracked\n");
-  const before = wt.snapshotTree(repo);
-  unlinkSync(u);
-  const after = wt.snapshotTree(repo);
-  const diff = wt.diffSnapshots(before, after);
-  assert.ok(diff.some((d) => d.includes("removed ?? u.txt")));
-});
-
-test("snapshot detects HEAD movement", () => {
-  const repo = repoWithOrigin();
-  const before = wt.snapshotTree(repo);
-  writeFileSync(join(repo, "c.txt"), "commit\n");
-  sh(repo, "add", ".");
-  sh(repo, "commit", "-m", "second");
-  const after = wt.snapshotTree(repo);
-  const diff = wt.diffSnapshots(before, after);
-  assert.ok(diff.some((d) => d.startsWith("HEAD")));
-});
-
-test("tree snapshot detects new untracked files", () => {
+test("snapshot detects new untracked file", () => {
   const repo = repoWithOrigin();
   const { path } = wt.createRunWorktree({
     repoRoot: repo,
@@ -130,4 +86,102 @@ test("tree snapshot detects new untracked files", () => {
   assert.deepEqual(wt.diffSnapshots(before, wt.snapshotTree(path)), []);
   writeFileSync(join(path, "new.txt"), "x");
   assert.deepEqual(wt.diffSnapshots(before, wt.snapshotTree(path)), ["?? new.txt"]);
+});
+
+test("snapshot detects main checkout leak (S10)", () => {
+  const repo = repoWithOrigin();
+  const before = wt.snapshotTree(repo);
+  writeFileSync(join(repo, "leak.txt"), "x");
+  assert.deepEqual(wt.diffSnapshots(before, wt.snapshotTree(repo)), ["?? leak.txt"]);
+});
+
+test("snapshot detects overwrite of already-modified file", () => {
+  const repo = repoWithOrigin({ "b.txt": "b\n" });
+  const b = join(repo, "b.txt");
+  writeFileSync(b, "modified\n");
+  const before = wt.snapshotTree(repo);
+  writeFileSync(b, "different\n");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, [" M b.txt (content changed)"]);
+});
+
+test("snapshot detects revert via git checkout", () => {
+  const repo = repoWithOrigin({ "b.txt": "b\n" });
+  const b = join(repo, "b.txt");
+  writeFileSync(b, "modified\n");
+  const before = wt.snapshotTree(repo);
+  sh(repo, "checkout", "--", "b.txt");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["removed  M b.txt"]);
+});
+
+test("snapshot detects untracked file deletion", () => {
+  const repo = repoWithOrigin();
+  const u = join(repo, "u.txt");
+  writeFileSync(u, "untracked\n");
+  const before = wt.snapshotTree(repo);
+  unlinkSync(u);
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["removed ?? u.txt"]);
+});
+
+test("snapshot detects HEAD movement", () => {
+  const repo = repoWithOrigin();
+  const before = wt.snapshotTree(repo);
+  writeFileSync(join(repo, "c.txt"), "commit\n");
+  sh(repo, "add", ".");
+  sh(repo, "commit", "-m", "second");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.equal(diff.length, 1);
+  assert.match(diff[0], /^HEAD [a-f0-9]{40} -> [a-f0-9]{40}$/);
+});
+
+test("snapshot detects git mv rename", () => {
+  const repo = repoWithOrigin();
+  const old = join(repo, "old.txt");
+  writeFileSync(old, "content\n");
+  sh(repo, "add", "old.txt");
+  sh(repo, "commit", "-m", "add old");
+  const before = wt.snapshotTree(repo);
+  sh(repo, "mv", "old.txt", "new.txt");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["R  new.txt"]);
+});
+
+test("snapshot detects colon in path", () => {
+  const repo = repoWithOrigin();
+  const colonPath = join(repo, "a:b.txt");
+  writeFileSync(colonPath, "first\n");
+  const before = wt.snapshotTree(repo);
+  writeFileSync(colonPath, "second\n");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["?? a:b.txt (content changed)"]);
+});
+
+test("snapshot detects staging changes (XY codes matter)", () => {
+  const repo = repoWithOrigin({ "b.txt": "b\n" });
+  const b = join(repo, "b.txt");
+  writeFileSync(b, "modified\n");
+  const before = wt.snapshotTree(repo);
+  sh(repo, "add", "b.txt");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["M  b.txt", "removed  M b.txt"]);
+});
+
+test("snapshot detects add of new untracked file", () => {
+  const repo = repoWithOrigin();
+  const n = join(repo, "n.txt");
+  writeFileSync(n, "new\n");
+  const before = wt.snapshotTree(repo);
+  sh(repo, "add", "n.txt");
+  const after = wt.snapshotTree(repo);
+  const diff = wt.diffSnapshots(before, after);
+  assert.deepEqual(diff, ["A  n.txt", "removed ?? n.txt"]);
 });

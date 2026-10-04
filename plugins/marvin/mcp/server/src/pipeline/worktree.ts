@@ -43,27 +43,43 @@ export function renameRunBranch(worktree: string, to: string): void {
 interface SnapshotEntry {
   xy: string;
   path: string;
+  orig: string | null;
   fingerprint: string;
 }
 
-interface Snapshot {
+interface SnapshotData {
   head: string;
-  entries: Map<string, SnapshotEntry>;
+  entries: SnapshotEntry[];
 }
 
-function snapshotTreeImpl(worktree: string): Snapshot {
+function snapshotTreeImpl(worktree: string): SnapshotData {
   const head = git(worktree, "rev-parse", "HEAD");
   const porcelainRaw = gitRaw(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all");
   const porcelainStr = porcelainRaw.toString("utf8");
-  const entries = new Map<string, SnapshotEntry>();
+  const entries: SnapshotEntry[] = [];
 
   if (porcelainStr) {
-    const records = porcelainStr.split("\0").filter((r) => r);
-    for (const record of records) {
+    const records = porcelainStr.split("\0");
+    let i = 0;
+    while (i < records.length) {
+      const record = records[i];
+      if (!record) {
+        i++;
+        continue;
+      }
+
       const xy = record.substring(0, 2);
       const path = record.substring(3);
-      let fingerprint: string;
+      let orig: string | null = null;
 
+      if ((xy[0] === "R" || xy[0] === "C") && i + 1 < records.length) {
+        orig = records[i + 1] ?? null;
+        i += 2;
+      } else {
+        i++;
+      }
+
+      let fingerprint: string;
       try {
         const fprint = git(worktree, "hash-object", "--", join(worktree, path));
         fingerprint = fprint;
@@ -78,65 +94,52 @@ function snapshotTreeImpl(worktree: string): Snapshot {
         }
       }
 
-      entries.set(path, { xy, path, fingerprint });
+      entries.push({ xy, path, orig, fingerprint });
     }
   }
 
+  entries.sort((a, b) => a.path.localeCompare(b.path));
   return { head, entries };
 }
 
 export function snapshotTree(worktree: string): string {
-  const snapshot = snapshotTreeImpl(worktree);
-  const lines = [snapshot.head];
-  for (const entry of snapshot.entries.values()) {
-    lines.push(`${entry.xy}:${entry.path}:${entry.fingerprint}`);
-  }
-  return lines.join("\n");
+  return JSON.stringify(snapshotTreeImpl(worktree));
 }
 
 export function diffSnapshots(before: string, after: string): string[] {
-  const lines = before.split("\n");
-  const beforeHead = lines[0];
-  const beforeEntries = new Map<string, SnapshotEntry>();
-  for (const line of lines.slice(1)) {
-    if (!line) continue;
-    const parts = line.split(":");
-    const xy = parts[0] ?? "";
-    const path = parts[1] ?? "";
-    const fingerprint = parts[2] ?? "";
-    beforeEntries.set(path, { xy, path, fingerprint });
+  const beforeData: SnapshotData = JSON.parse(before);
+  const afterData: SnapshotData = JSON.parse(after);
+
+  const beforeMap = new Map<string, SnapshotEntry>();
+  for (const entry of beforeData.entries) {
+    const key = `${entry.xy}\0${entry.path}`;
+    beforeMap.set(key, entry);
   }
 
-  const linesAfter = after.split("\n");
-  const afterHead = linesAfter[0];
-  const afterEntries = new Map<string, SnapshotEntry>();
-  for (const line of linesAfter.slice(1)) {
-    if (!line) continue;
-    const parts = line.split(":");
-    const xy = parts[0] ?? "";
-    const path = parts[1] ?? "";
-    const fingerprint = parts[2] ?? "";
-    afterEntries.set(path, { xy, path, fingerprint });
+  const afterMap = new Map<string, SnapshotEntry>();
+  for (const entry of afterData.entries) {
+    const key = `${entry.xy}\0${entry.path}`;
+    afterMap.set(key, entry);
   }
 
   const diff: string[] = [];
 
-  if (beforeHead !== afterHead) {
-    diff.push(`HEAD ${beforeHead} -> ${afterHead}`);
+  if (beforeData.head !== afterData.head) {
+    diff.push(`HEAD ${beforeData.head} -> ${afterData.head}`);
   }
 
-  for (const [path, afterEntry] of afterEntries) {
-    const beforeEntry = beforeEntries.get(path);
+  for (const [key, afterEntry] of afterMap) {
+    const beforeEntry = beforeMap.get(key);
     if (!beforeEntry) {
-      diff.push(`${afterEntry.xy} ${path}`);
+      diff.push(`${afterEntry.xy} ${afterEntry.path}`);
     } else if (beforeEntry.fingerprint !== afterEntry.fingerprint) {
-      diff.push(`${afterEntry.xy} ${path} (content changed)`);
+      diff.push(`${afterEntry.xy} ${afterEntry.path} (content changed)`);
     }
   }
 
-  for (const [path, beforeEntry] of beforeEntries) {
-    if (!afterEntries.has(path)) {
-      diff.push(`removed ${beforeEntry.xy} ${path}`);
+  for (const [key, beforeEntry] of beforeMap) {
+    if (!afterMap.has(key)) {
+      diff.push(`removed ${beforeEntry.xy} ${beforeEntry.path}`);
     }
   }
 
