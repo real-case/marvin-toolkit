@@ -151,18 +151,27 @@ function compilePattern(source: string): RegExp {
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+interface Listed {
+  path: string;
+  /** The name's bytes survive a UTF-8 round trip, so `path` is the name git holds, not a lossy decoding of it. */
+  exact: boolean;
+}
+
 /**
- * Every file the worktree holds that git does not ignore, tracked or not. Git runs against the
- * worktree with every inherited `GIT_*` variable dropped, so an ambient `GIT_DIR` or
+ * Every file the worktree holds that git does not ignore, tracked or not, spelled the way git
+ * spells it (`git ls-files`: a precomposed name where `core.precomposeunicode` is on, the case
+ * the index holds). That spelling is the one the gate looks a sealed path up under. Git runs
+ * against the worktree with every inherited `GIT_*` variable dropped, so an ambient `GIT_DIR` or
  * `GIT_INDEX_FILE` does not decide which repository is listed.
  */
-function listFiles(worktree: string): string[] {
+function listFiles(worktree: string): Listed[] {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
   }
+  let out: Buffer;
   try {
-    const out = execFileSync(
+    out = execFileSync(
       "git",
       [
         "-c",
@@ -175,11 +184,25 @@ function listFiles(worktree: string): string[] {
       ],
       { cwd: worktree, env, maxBuffer: MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] },
     );
-    return out.toString("utf8").split("\0").filter(Boolean);
   } catch (error) {
     throw new Error(`cannot list the worktree's files (${errorText(error)})`, { cause: error });
   }
+  return out
+    .toString("latin1")
+    .split("\0")
+    .filter(Boolean)
+    .map((raw) => {
+      const path = Buffer.from(raw, "latin1").toString("utf8");
+      return { path, exact: Buffer.from(path, "utf8").toString("latin1") === raw };
+    });
 }
+
+/**
+ * A name in the form two spellings of one file share: composed Unicode, lower case. Jest reads
+ * its path filter as a case-insensitive regular expression, and a file system may fold either, so
+ * a sibling that differs from a candidate only in case or Unicode form can still be selected by it.
+ */
+const fold = (s: string): string => s.normalize("NFC").toLowerCase();
 
 const shown = (path: unknown): string =>
   typeof path === "string" ? JSON.stringify(path) : String(path);
@@ -194,8 +217,11 @@ interface Candidate {
 /**
  * Judge the tests a test-author wrote before they become the acceptance contract. Each one
  * must be a canonical repo-relative path that matches the test pattern, name a regular file
- * inside the worktree (never a link, never through a symlinked directory), map to a criterion,
- * and FAIL when run on its own: a command that did not run, or found no test, proves nothing
+ * inside the worktree (never a link, never through a symlinked directory), appear in
+ * `git ls-files` byte for byte (so seal, the runner's filter and the gate's `HEAD:<path>` blob
+ * lookup all name the file by one spelling: a case variant or the other Unicode form of the
+ * name, a gitignored file and a file inside a nested repository are refused), map to a
+ * criterion, and FAIL when run on its own: a command that did not run, or found no test, proves nothing
  * either. No segment may start with `-` (the runner would read it as an option), and no OTHER
  * test file's path may contain the candidate's, because `gates.test_one` must select exactly
  * one file and a filter-style runner (vitest: a substring) would run both and judge the exit
@@ -227,9 +253,14 @@ export function sealAuthoredTests(o: {
   const reasons: string[] = [];
   if (o.tests.length === 0) reasons.push("no tests were authored");
 
-  let files: string[] | undefined;
-  const alsoSelected = (path: string, list: readonly string[]): string | undefined =>
-    list.filter((f) => f !== path && isTest.test(f) && f.includes(path)).sort()[0];
+  let files: Listed[] | undefined;
+  const isListed = (path: string, list: readonly Listed[]): boolean =>
+    list.some((f) => f.exact && f.path === path);
+  const alsoSelected = (path: string, list: readonly Listed[]): string | undefined =>
+    list
+      .map((f) => f.path)
+      .filter((f) => f !== path && isTest.test(f) && fold(f).includes(fold(path)))
+      .sort()[0];
 
   const seen = new Set<string>();
   const accepted: Omit<Candidate, "before">[] = [];
@@ -268,6 +299,10 @@ export function sealAuthoredTests(o: {
       continue;
     }
     files ??= listFiles(o.worktree);
+    if (!isListed(path, files)) {
+      reasons.push(`${path}: not listed by git under this exact spelling`);
+      continue;
+    }
     const other = alsoSelected(path, files);
     if (other !== undefined) {
       reasons.push(`${path}: the single-test command may also select ${other}`);
@@ -306,6 +341,10 @@ export function sealAuthoredTests(o: {
     const problem = fileProblem(c.abs, realRoot, c.path);
     if (problem !== null) {
       reasons.push(`${c.path}: after its red run, it ${problem}`);
+      continue;
+    }
+    if (!isListed(c.path, afterRuns)) {
+      reasons.push(`${c.path}: after the red runs, not listed by git under this exact spelling`);
       continue;
     }
     const other = alsoSelected(c.path, afterRuns);

@@ -35,12 +35,31 @@ function tmp(prefix = "pipe-seal-") {
   return dir;
 }
 
-function gitInit(dir) {
+function git(dir, ...args) {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
-  const r = spawnSync("git", ["init", "-q"], { cwd: dir, env, encoding: "utf8" });
+  const r = spawnSync(
+    "git",
+    ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args],
+    { cwd: dir, env, encoding: "utf8" },
+  );
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+function gitInit(dir) {
+  const r = git(dir, "init", "-q");
   assert.equal(r.status, 0, r.stderr);
 }
+
+/** What the gate does with a sealed path: read its blob at HEAD. Null when git cannot find it. */
+function committedBlob(dir, path) {
+  const r = git(dir, "cat-file", "blob", `HEAD:${path}`);
+  return r.status === 0 ? r.stdout : null;
+}
+
+const NFC = "caf\u00e9";
+const NFD = "cafe\u0301";
+const LISTED = "not listed by git under this exact spelling";
 
 function worktreeWith(files) {
   const wt = tmp();
@@ -419,6 +438,107 @@ test("the files a command could select are the tracked and untracked, but not th
   assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
   spawnSync("git", ["add", "xa.test.ts"], { cwd: wt });
   assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
+});
+
+test("a path git does not list is refused, whatever the file system says", () => {
+  const calls = [];
+  const wt = worktreeWith(["a.test.ts", "ignored/b.test.ts", "forced/c.test.ts", "sub/keep.txt"]);
+  writeFileSync(join(wt, ".gitignore"), "ignored/\nforced/\n");
+  git(wt, "add", "-f", "forced/c.test.ts");
+  gitInit(join(wt, "sub"));
+  writeFileSync(join(wt, "sub", "d.test.ts"), "// inside a nested repository");
+  const one = (path) => seal(wt, [authored(path)], { run: scripted({}, calls) });
+  assert.deepEqual(one("ignored/b.test.ts").reasons, [`ignored/b.test.ts: ${LISTED}`]);
+  assert.deepEqual(one("sub/d.test.ts").reasons, [`sub/d.test.ts: ${LISTED}`]);
+  assert.deepEqual(calls, [], "nothing runs for a file the gate could never find");
+  assert.equal(one("forced/c.test.ts").ok, true, "a tracked file is listed even if it is ignored");
+  assert.equal(one("a.test.ts").ok, true);
+});
+
+test("a case-variant spelling is not the spelling git lists", () => {
+  const wt = worktreeWith(["Foo.test.ts", "src/Bar.test.ts"]);
+  for (const variant of ["foo.test.ts", "FOO.test.ts", "SRC/Bar.test.ts", "src/bar.test.ts"]) {
+    const v = seal(wt, [authored(variant)]);
+    assert.equal(v.ok, false, variant);
+    assert.match(
+      v.reasons[0],
+      new RegExp(`^${variant.replace(".", "\\.")}: (${LISTED}|does not exist)$`),
+    );
+  }
+  assert.equal(seal(wt, [authored("Foo.test.ts")]).ok, true);
+  assert.equal(seal(wt, [authored("src/Bar.test.ts")], { run: scripted({}) }).ok, true);
+});
+
+test("seal and git agree on one spelling of a name that has two Unicode forms", () => {
+  const wt = tmp();
+  gitInit(wt);
+  writeFileSync(join(wt, `${NFD}.test.ts`), "// created decomposed");
+  const listed = git(wt, "ls-files", "-z", "--others", "--exclude-standard").stdout.split("\0")[0];
+  assert.ok(listed === `${NFC}.test.ts` || listed === `${NFD}.test.ts`, "git lists one of the two");
+  const other = listed === `${NFC}.test.ts` ? `${NFD}.test.ts` : `${NFC}.test.ts`;
+  const refused = seal(wt, [authored(other)]);
+  assert.equal(refused.ok, false, "the spelling git does not list");
+  assert.match(refused.reasons[0], new RegExp(`: (${LISTED}|does not exist)$`));
+  const accepted = seal(wt, [authored(listed)]);
+  assert.equal(accepted.ok, true, accepted.reasons.join("; "));
+  git(wt, "add", "-A");
+  assert.equal(git(wt, "commit", "-qm", "tests").status, 0);
+  assert.equal(committedBlob(wt, accepted.sealed[0].path), "// created decomposed");
+});
+
+test("a sibling that differs only in case or Unicode form is still a file the filter may select", () => {
+  const wt = worktreeWith(["a.test.ts", "xA.test.ts", `${NFC}.test.ts`]);
+  git(wt, "config", "core.precomposeunicode", "false");
+  writeFileSync(join(wt, `x${NFD}.test.ts`), "// decomposed sibling");
+  assert.ok(
+    git(wt, "ls-files", "-z", "--others", "--exclude-standard").stdout.includes(`x${NFD}.test.ts`),
+    "git lists the sibling decomposed, as it is on disk",
+  );
+  const case_ = seal(wt, [authored("a.test.ts")]);
+  assert.match(
+    case_.reasons[0],
+    /^a\.test\.ts: the single-test command may also select xA\.test\.ts$/,
+  );
+  const form = seal(wt, [authored(`${NFC}.test.ts`)]);
+  assert.equal(form.ok, false);
+  assert.match(form.reasons[0], /may also select x.*\.test\.ts$/);
+});
+
+test("every sealed path is one the gate finds as a committed blob", () => {
+  const paths = [
+    "a.test.ts",
+    "dir (x)/[id]/b.spec.mjs",
+    "it's here.test.ts",
+    "ünï/çx.test.ts",
+    `${NFC}-nfc.test.ts`,
+    "日本語/テスト.test.ts",
+    "emoji-\u{1F600}.test.ts",
+  ];
+  const wt = worktreeWith(paths);
+  const v = seal(
+    wt,
+    paths.map((p) => authored(p)),
+  );
+  assert.equal(v.ok, true, v.reasons.join("; "));
+  git(wt, "add", "-A");
+  assert.equal(git(wt, "commit", "-qm", "tests").status, 0);
+  for (const s of v.sealed) {
+    const blob = committedBlob(wt, s.path);
+    assert.notEqual(blob, null, `the gate cannot find ${s.path}`);
+    assert.equal(createHash("sha256").update(blob).digest("hex"), s.sha256, s.path);
+  }
+});
+
+test("a red run that gets the file ignored is refused when the runs are over", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const hides = (command, cwd) => {
+    writeFileSync(join(cwd, ".gitignore"), "a.test.ts\n");
+    return { code: 1, output: "AssertionError", ms: 1 };
+  };
+  const v = seal(wt, [authored("a.test.ts")], { run: hides });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assert.equal(v.reasons[0], `a.test.ts: after the red runs, ${LISTED}`);
 });
 
 test("a worktree whose files cannot be listed is a throw, not a quiet pass", () => {
@@ -1019,4 +1139,97 @@ test("test-path-guard denies with the pipeline contract and never mentions the k
   assert.match(denial.stderr, /test files only/);
   assert.match(denial.stderr, /src\/real\.ts/);
   assert.doesNotMatch(denial.stderr, /disable|MARVIN_HOOKS_DISABLED|hooks\.enabled/i);
+});
+
+// ── two validators of one path: the evidence ────────────────────────────────
+
+const { loadSealed, sealedHit } = await import(join(hooks, "sealed-guard.mjs"));
+
+test("seal's pattern test and test-path-guard's agree on every spelling a worktree holds", () => {
+  const paths = [
+    "a.test.ts",
+    "src/b.spec.mjs",
+    "src/c.test.tsx",
+    "a.test.ts.bak",
+    "a.test.json",
+    "a.TEST.ts",
+    "lib/helper.ts",
+    "test.ts",
+    "tests/x.ts",
+    "(dashboard)/[id]/p.test.cjs",
+  ];
+  const wt = worktreeWith(paths);
+  for (const path of paths) {
+    const v = seal(wt, [authored(path)]);
+    const sealSays = !v.reasons.some((r) => /: not a test path$/.test(r));
+    const guardSays =
+      hook(
+        "test-path-guard.mjs",
+        { tool_name: "Write", tool_input: { file_path: join(wt, path) } },
+        { MARVIN_PIPELINE_TEST_PATTERN: PATTERN, CLAUDE_PROJECT_DIR: wt },
+      ).status === 0;
+    assert.equal(sealSays, guardSays, path);
+  }
+});
+
+test("what writeSealManifest writes is what sealed-guard reads and matches", () => {
+  const base = realpathSync(tmp("pipe-manifest-"));
+  const wt = join(base, "wt");
+  const run = join(base, "run");
+  mkdirSync(wt);
+  mkdirSync(run);
+  const paths = [
+    "a.test.ts",
+    "dir (x)/[id]/b.spec.mjs",
+    'it\'s "here".test.ts',
+    `${NFC}.test.ts`,
+    "日本語/テスト.test.ts",
+    "emoji-\u{1F600}.test.ts",
+  ];
+  for (const p of paths) {
+    mkdirSync(dirname(join(wt, p)), { recursive: true });
+    writeFileSync(join(wt, p), "// sealed");
+  }
+  s.writeSealManifest(
+    run,
+    paths.map((path) => ({ path, sha256: "x", criteria: ["AC1"] })),
+  );
+  assert.deepEqual(loadSealed(run, wt), paths, "the same strings come back");
+  for (const p of paths) {
+    assert.equal(sealedHit(p, wt, paths), p);
+    assert.equal(sealedHit(join(wt, p), wt, paths), p);
+    assert.equal(
+      hook(
+        "sealed-guard.mjs",
+        { tool_name: "Edit", tool_input: { file_path: p } },
+        { MARVIN_PIPELINE_RUN: run, CLAUDE_PROJECT_DIR: wt },
+      ).status,
+      2,
+      p,
+    );
+  }
+  assert.equal(sealedHit("other.test.ts", wt, paths), null);
+});
+
+test("sealed-guard recognises the other Unicode form of a sealed name", () => {
+  const base = realpathSync(tmp("pipe-nfd-"));
+  const wt = join(base, "wt");
+  const run = join(base, "run");
+  mkdirSync(wt);
+  mkdirSync(run);
+  writeFileSync(join(wt, `${NFC}.test.ts`), "// sealed");
+  const folds = existsSync(join(wt, `${NFD}.test.ts`));
+  s.writeSealManifest(run, [{ path: `${NFC}.test.ts`, sha256: "x", criteria: [] }]);
+  const status = (file_path) =>
+    hook(
+      "sealed-guard.mjs",
+      { tool_name: "Edit", tool_input: { file_path } },
+      { MARVIN_PIPELINE_RUN: run, CLAUDE_PROJECT_DIR: wt },
+    ).status;
+  assert.equal(status(`${NFC}.test.ts`), 2);
+  assert.equal(
+    status(`${NFD}.test.ts`),
+    folds ? 2 : 0,
+    folds ? "same file by identity" : "a different file",
+  );
 });
