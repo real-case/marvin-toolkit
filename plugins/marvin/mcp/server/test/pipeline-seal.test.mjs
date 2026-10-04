@@ -822,6 +822,66 @@ test("a symlinked directory that points outside the worktree is a reason, and is
   assert.ok(!v.reasons.some((r) => /may also select/.test(r)), "it is not walked");
 });
 
+test("an outside link in a nested node_modules or .git blocks only a glob that can enter it", () => {
+  const linked = (candidate, link) => {
+    const base = tmp();
+    const wt = join(base, "wt");
+    const outside = join(base, "outside");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "x.test.ts"), "// behind the link");
+    mkdirSync(wt);
+    gitInit(wt);
+    put(wt, candidate);
+    mkdirSync(dirname(join(wt, link)), { recursive: true });
+    symlinkSync(outside, join(wt, link));
+    return seal(wt, [authored(candidate)]);
+  };
+  const OUT = (link) => `${link}: symlinked directory points outside the worktree`;
+  const dep = "packages/app/node_modules/dep";
+  for (const link of [dep, "packages/web/node_modules", "vendor/lib/.git/modules"]) {
+    const honest = linked("a.test.ts", link);
+    assert.equal(honest.ok, true, `${link}: ${honest.reasons.join("; ")}`);
+    assert.deepEqual(linked("x{a}.test.ts", link).reasons, [OUT(link)], `${link}: a brace`);
+  }
+  for (const candidate of ["pa*.test.ts", "packages/app/node_modules/de?/x.test.ts"]) {
+    assert.deepEqual(linked(candidate, dep).reasons, [OUT(dep)], `${candidate} can enter it`);
+  }
+  for (const candidate of [
+    "zz*.test.ts",
+    "packages/app/node_modules/d?/x.test.ts",
+    "packages/app/node_modules/dep.test.ts",
+    "packages/app/x.test.ts",
+  ]) {
+    const v = linked(candidate, dep);
+    assert.equal(v.ok, true, `${candidate} cannot enter it: ${v.reasons.join("; ")}`);
+  }
+  assert.deepEqual(
+    linked("a.test.ts", "packages/app/lib").reasons,
+    [OUT("packages/app/lib")],
+    "anywhere else, the link blocks every candidate",
+  );
+});
+
+test("an outside link a red run plants is judged when the runs are over", () => {
+  const plants = (link) => {
+    const base = tmp();
+    const wt = join(base, "wt");
+    mkdirSync(join(base, "outside"));
+    mkdirSync(wt);
+    gitInit(wt);
+    put(wt, "a.test.ts");
+    const run = (command, cwd) => {
+      mkdirSync(dirname(join(cwd, link)), { recursive: true });
+      symlinkSync(join(base, "outside"), join(cwd, link));
+      return { code: 1, output: "AssertionError", ms: 1 };
+    };
+    return seal(wt, [authored("a.test.ts")], { run });
+  };
+  assert.deepEqual(plants("lnk").reasons, ["lnk: symlinked directory points outside the worktree"]);
+  const nested = plants("packages/app/node_modules/dep");
+  assert.equal(nested.ok, true, nested.reasons.join("; "));
+});
+
 test("a symlink loop does not hang the walk", () => {
   const wt = worktreeWith(["a.test.ts", "d/keep.txt"]);
   symlinkSync(".", join(wt, "loop"));

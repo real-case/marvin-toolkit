@@ -305,13 +305,23 @@ interface Sibling {
   runnerExcluded: boolean;
 }
 
+interface OutsideLink {
+  path: string;
+  /** In a nested `.git` or `node_modules` directory, or named so: only node's glob can enter it. */
+  runnerExcluded: boolean;
+}
+
 interface Walked {
   siblings: Sibling[];
   /** Set when a directory could not be read: what the runner could select is then unknown. */
   problem: string | null;
   /** Symlinked directories that lead out of the worktree, which the walk does not enter. */
-  outside: string[];
+  outside: OutsideLink[];
 }
+
+/** Whether `path` lies in a nested `.git` or `node_modules` directory (the root ones are never walked). */
+const runnerExcludes = (path: string): boolean =>
+  path.split("/").some((segment) => segment === ".git" || segment === "node_modules");
 
 /**
  * Every file in the worktree that a runner could take for a test, found by walking the disk, not
@@ -322,12 +332,12 @@ interface Walked {
  * real paths of the directories above as the guard against a cycle; one whose real path lies
  * outside the worktree is reported in `outside` and not entered. Only the ROOT `.git` and the root
  * `node_modules` are skipped. Nested ones are walked, because node's glob can name a `.git` or
- * `node_modules` segment with a class or a leading dot (`d/.gi[t]/a.test.mjs`), and their files are
- * marked `runnerExcluded` so that only the glob reading counts them.
+ * `node_modules` segment with a class or a leading dot (`d/.gi[t]/a.test.mjs`), and their files and
+ * outside links are marked `runnerExcluded` so that only the glob reading counts them.
  */
 function walkTestFiles(worktree: string, realRoot: string, isTest: RegExp): Walked {
   const siblings: Sibling[] = [];
-  const outside: string[] = [];
+  const outside: OutsideLink[] = [];
   const pending = [{ rel: "", real: realRoot, chain: [realRoot] as readonly string[] }];
   for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
     const { rel, real, chain } = next;
@@ -357,7 +367,7 @@ function walkTestFiles(worktree: string, realRoot: string, isTest: RegExp): Walk
         }
         if (target !== null) {
           if (target !== realRoot && !isInside(realRoot, target)) {
-            outside.push(path);
+            outside.push({ path, runnerExcluded: runnerExcludes(path) });
             continue;
           }
           if (chain.includes(target)) continue;
@@ -372,8 +382,7 @@ function walkTestFiles(worktree: string, realRoot: string, isTest: RegExp): Walk
       if (!isTest.test(path) && !BUILTIN_TEST_SHAPES.some((shape) => shape.test(path))) continue;
       try {
         const { dev, ino } = lstatSync(join(worktree, path), { bigint: true });
-        const runnerExcluded = path.split("/").some((s) => s === ".git" || s === "node_modules");
-        siblings.push({ path, dev, ino, runnerExcluded });
+        siblings.push({ path, dev, ino, runnerExcluded: runnerExcludes(path) });
       } catch (error) {
         if (errorCode(error) !== "ENOENT") {
           return {
@@ -398,41 +407,44 @@ function classEnd(glob: string, open: number): number {
   return glob.indexOf("]", i);
 }
 
+const ANY = ".*";
+
 /**
- * A regular expression source that matches every path the glob matches, plus more, or null when
- * the glob holds something not modelled, which is read as "matches everything": any `{` (brace
- * expansion has rules of its own, such as `x{},y}` expanding to `x}` and `xy`), an extglob, a
- * POSIX class. `*` and `**` become `.*` (so they cross `/`), `?` becomes `.`, and a negated class
- * loses its `/` exclusion; leading dots are not special. Anything else is the literal character.
+ * The glob as a sequence of regular expression elements, each matching one character, or `.*`;
+ * joined, they match every path the glob matches, plus more. Null when the glob holds something
+ * not modelled, which is read as "matches everything": any `{` (brace expansion has rules of its
+ * own, such as `x{},y}` expanding to `x}` and `xy`), an extglob, a POSIX class. `*` and `**` become
+ * `.*` (so they cross `/`), `?` becomes `.`, and a negated class loses its `/` exclusion; leading
+ * dots are not special. Anything else is the literal character.
  */
-function globSource(glob: string): string | null {
+function globElements(glob: string): string[] | null {
   if (glob.includes("{")) return null;
-  let out = "";
+  const out: string[] = [];
   for (let i = 0; i < glob.length; i += 1) {
     const ch = glob[i] as string;
     if ("?*+@!".includes(ch) && glob[i + 1] === "(") return null;
     if (ch === "*") {
       while (glob[i + 1] === "*") i += 1;
-      out += ".*";
+      out.push(ANY);
     } else if (ch === "?") {
-      out += ".";
+      out.push(".");
     } else if (ch === "[") {
       const end = classEnd(glob, i);
       if (end === -1) {
-        out += "\\[";
+        out.push("\\[");
         continue;
       }
       const inner = glob.slice(i + 1, end);
       if (inner.includes("[:") || inner.includes("[.") || inner.includes("[=")) return null;
       const negated = inner.startsWith("!") || inner.startsWith("^");
       const members = (negated ? inner.slice(1) : inner).replace(/[\\\][^]/g, "\\$&");
-      out += `[${negated ? "^" : ""}${members}]`;
+      out.push(`[${negated ? "^" : ""}${members}]`);
       i = end;
     } else if (ch === "\\") {
-      out += escapeRegExp(glob[i + 1] ?? "\\");
+      out.push(escapeRegExp(glob[i + 1] ?? "\\"));
       i += 1;
     } else {
-      out += escapeRegExp(ch);
+      out.push(escapeRegExp(ch));
     }
   }
   return out;
@@ -440,12 +452,32 @@ function globSource(glob: string): string | null {
 
 /** A matcher for `glob` over a whole path; null (read as "matches everything") if it cannot be built. */
 function globMatcher(glob: string): RegExp | null {
-  const source = globSource(glob);
-  if (source === null) return null;
+  const elements = globElements(glob);
+  if (elements === null) return null;
   try {
-    return new RegExp(`^${source}$`, "i");
+    return new RegExp(`^${elements.join("")}$`, "i");
   } catch {
     return null;
+  }
+}
+
+/**
+ * Whether the glob reading of `glob` can match a path inside the directory `dir`, which it can
+ * when it is not modelled: does `dir/`, as it is on disk or folded, begin some path the glob
+ * matches? Each element in turn is optional, so that the sequence may stop anywhere, and the
+ * first `.*` ends it, since it matches any rest.
+ */
+function globCanEnter(glob: string, dir: string): boolean {
+  const elements = globElements(glob);
+  if (elements === null) return true;
+  const star = elements.indexOf(ANY);
+  const head = star === -1 ? elements : elements.slice(0, star + 1);
+  try {
+    const prefix = head.reduceRight((rest, element) => `(?:${element}${rest})?`, "");
+    const begins = new RegExp(`^${prefix}$`, "i");
+    return [dir, fold(dir)].some((subject) => begins.test(`${subject}/`));
+  } catch {
+    return true;
   }
 }
 
@@ -536,7 +568,9 @@ interface Candidate {
  * absolute; see `selectedBy`. The siblings come from walking the disk, not from git: they
  * include ignored files, the contents of nested repositories and the files behind symlinked
  * directories, and skip only the root `.git` and the root `node_modules` (see `walkTestFiles`).
- * A symlinked directory that leaves the worktree is a reason of its own. A sibling is any file
+ * A symlinked directory that leaves the worktree is a reason of its own, except one in a nested
+ * `.git` or `node_modules` directory, which counts only for a candidate whose glob reading can
+ * match a path inside it (vitest and jest never enter those directories). A sibling is any file
  * matching the test pattern, a `.test`/`.spec` file or a file under `__tests__/`. The glob
  * reading is converted to a regular expression here, not by `path.matchesGlob`, which Node 20
  * lacks before 20.17 and which is experimental in some versions.
@@ -592,9 +626,15 @@ export function sealAuthoredTests(o: {
       .sort()[0];
     return other === undefined ? null : `the single-test command may also select ${other}`;
   };
-  const outsideLinks = (found: Walked): void => {
+  /**
+   * A symlinked directory that leaves the worktree hides what the runner could select behind it.
+   * In a nested `.git` or `node_modules` directory only node's glob could enter it, so there it
+   * counts only for a candidate whose glob reading can match a path inside it.
+   */
+  const outsideLinks = (found: Walked, path: string): void => {
     for (const link of found.outside) {
-      const reason = `${link}: symlinked directory points outside the worktree`;
+      if (link.runnerExcluded && !globCanEnter(path, link.path)) continue;
+      const reason = `${link.path}: symlinked directory points outside the worktree`;
       if (!reasons.includes(reason)) reasons.push(reason);
     }
   };
@@ -645,10 +685,8 @@ export function sealAuthoredTests(o: {
       reasons.push(`${path}: ${REWRITE}`);
       continue;
     }
-    if (walked === undefined) {
-      walked = walkTestFiles(o.worktree, realRoot, isTest);
-      outsideLinks(walked);
-    }
+    walked ??= walkTestFiles(o.worktree, realRoot, isTest);
+    outsideLinks(walked, path);
     const selected = selection(path, abs, walked);
     if (selected !== null) {
       reasons.push(`${path}: ${selected}`);
@@ -687,7 +725,7 @@ export function sealAuthoredTests(o: {
   const afterRuns = candidates.length > 0 ? listFiles(o.worktree) : [];
   const walkedAfter =
     candidates.length > 0 ? walkTestFiles(o.worktree, realRoot, isTest) : undefined;
-  if (walkedAfter !== undefined) outsideLinks(walkedAfter);
+  if (walkedAfter !== undefined) for (const c of candidates) outsideLinks(walkedAfter, c.path);
   const sealed: SealedFile[] = [];
   for (const c of candidates) {
     if (failed.has(c.path)) continue;
