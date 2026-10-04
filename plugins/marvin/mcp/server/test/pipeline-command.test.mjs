@@ -14,6 +14,8 @@ const base = {
   settingsPath: "/state/r1/executor.settings.json",
   systemPromptPath: "/state/r1/executor.system.md",
   schema: "{}",
+  pluginDir: "/m/plugins/marvin",
+  branch: "feature/OSI-1--x",
 };
 const after = (argv, flag) => argv[argv.indexOf(flag) + 1];
 
@@ -51,19 +53,60 @@ test("every role needs an explicit allowlist; auto mode is never used", () => {
   }
 });
 
-test("a plugin dir is passed only when configured", () => {
-  assert.ok(
-    !cmd
-      .buildChildCommand({ ...base, role: "executor", allowedTools: writing })
-      .argv.includes("--plugin-dir"),
-  );
-  const { argv } = cmd.buildChildCommand({
-    ...base,
-    role: "executor",
-    allowedTools: writing,
-    pluginDir: "/m/plugins/marvin",
-  });
-  assert.equal(after(argv, "--plugin-dir"), "/m/plugins/marvin");
+const readOnly = cmd.readOnlyAllowedTools(["npx vitest run"]);
+const ROLE_TOOLS = {
+  planner: writing,
+  "test-author": writing,
+  executor: writing,
+  verifier: readOnly,
+  retro: readOnly,
+};
+
+test("every role is isolated from user/local settings and foreign MCP servers", () => {
+  for (const [role, allowedTools] of Object.entries(ROLE_TOOLS)) {
+    const { argv } = cmd.buildChildCommand({ ...base, role, allowedTools });
+    assert.equal(after(argv, "--setting-sources"), "project", role);
+    assert.ok(argv.includes("--strict-mcp-config"), role);
+    assert.equal(after(argv, "--plugin-dir"), "/m/plugins/marvin", role);
+  }
+});
+
+test("the plugin dir is required, non-empty and absolute", () => {
+  for (const pluginDir of [undefined, "", "plugins/marvin"]) {
+    assert.throws(
+      () => cmd.buildChildCommand({ ...base, role: "executor", allowedTools: writing, pluginDir }),
+      /pluginDir/,
+      String(pluginDir),
+    );
+  }
+});
+
+test("read-only roles disallow every edit tool and git push", () => {
+  for (const role of ["verifier", "retro"]) {
+    const { argv } = cmd.buildChildCommand({ ...base, role, allowedTools: readOnly });
+    const d = argv.indexOf("--disallowedTools");
+    assert.deepEqual(argv.slice(d + 1, d + 6), [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "MultiEdit",
+      "Bash(git push:*)",
+    ]);
+  }
+});
+
+test("children learn the run branch, or an empty one before it exists", () => {
+  for (const [role, allowedTools] of Object.entries(ROLE_TOOLS)) {
+    assert.equal(
+      cmd.buildChildCommand({ ...base, role, allowedTools }).env.MARVIN_PIPELINE_BRANCH,
+      "feature/OSI-1--x",
+    );
+    assert.equal(
+      cmd.buildChildCommand({ ...base, role, allowedTools, branch: null }).env
+        .MARVIN_PIPELINE_BRANCH,
+      "",
+    );
+  }
 });
 
 test("verifier is allowlist-only, edit tools denied, CI mode on", () => {
@@ -74,6 +117,7 @@ test("verifier is allowlist-only, edit tools denied, CI mode on", () => {
   assert.ok(!argv.some((a) => a.startsWith("Bash(npm run")));
   const d = argv.indexOf("--disallowedTools");
   assert.deepEqual(argv.slice(d + 1, d + 4), ["Edit", "Write", "NotebookEdit"]);
+  assert.ok(argv.includes("MultiEdit"));
   assert.equal(env.CI, "true");
 });
 

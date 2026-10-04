@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type { Assignment, Role } from "./run-store.js";
 
 export interface ChildLaunchSpec {
@@ -15,7 +16,8 @@ export interface ChildLaunchSpec {
   resumeSessionId?: string;
   allowedTools?: readonly string[];
   testPathPattern?: string;
-  pluginDir?: string;
+  pluginDir: string;
+  branch: string | null;
 }
 
 export interface ChildCommand {
@@ -31,6 +33,14 @@ export const WRITING_ROLES: ReadonlySet<Role> = new Set<Role>([
   "test-author",
   "executor",
 ]);
+
+export const READ_ONLY_DISALLOWED_TOOLS = [
+  "Edit",
+  "Write",
+  "NotebookEdit",
+  "MultiEdit",
+  "Bash(git push:*)",
+] as const;
 
 export const READ_BASE_TOOLS = [
   "Read",
@@ -101,6 +111,10 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     }
   }
 
+  if (typeof s.pluginDir !== "string" || !isAbsolute(s.pluginDir)) {
+    throw new Error(`${s.role} needs an absolute pluginDir (marvin's plugin root)`);
+  }
+
   // Check Fable first (F2)
   if (/fable/i.test(s.assignment.model))
     throw new Error(`Fable is not allowed (user rule): ${s.assignment.model}`);
@@ -125,6 +139,11 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     s.assignment.effort,
     "--permission-prompts",
     "none",
+    "--setting-sources",
+    "project",
+    "--strict-mcp-config",
+    "--plugin-dir",
+    s.pluginDir,
     "--output-format",
     "stream-json",
     "--verbose",
@@ -143,15 +162,12 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
       "--allowedTools",
       ...s.allowedTools,
       "--disallowedTools",
-      "Edit",
-      "Write",
-      "NotebookEdit",
+      ...READ_ONLY_DISALLOWED_TOOLS,
     );
   } else {
     argv.push("--permission-mode", "acceptEdits", "--allowedTools", ...s.allowedTools);
   }
 
-  if (s.pluginDir) argv.push("--plugin-dir", s.pluginDir);
   if (s.resumeSessionId) argv.push("--resume", s.resumeSessionId);
 
   const env: Record<string, string> = {
@@ -161,6 +177,7 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     MARVIN_PIPELINE_CHILD: s.name,
     MARVIN_PIPELINE_ORCH: s.orchestratorName,
     MARVIN_PIPELINE_BASE: s.base,
+    MARVIN_PIPELINE_BRANCH: s.branch ?? "",
     CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
     BASH_DEFAULT_TIMEOUT_MS: "600000",
     BASH_MAX_TIMEOUT_MS: "1800000",
