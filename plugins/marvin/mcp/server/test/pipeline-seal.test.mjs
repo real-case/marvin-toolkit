@@ -161,6 +161,29 @@ test("a placeholder that is already quoted is refused; one beside a closed quote
   );
 });
 
+test("a template in which {file} is not one shell word is refused", () => {
+  for (const template of [
+    "cat <<EOF\n{file}\nEOF",
+    "cat <<'EOF' >/dev/null\n{file}\nEOF",
+    "npx vitest run # {file}",
+    "npx vitest run {file} # all of them",
+    "echo `{file}`",
+    "echo $({file})",
+    "echo $(echo {file})",
+    "npx vitest run\nnpx vitest run {file}",
+    "npx vitest run {file}\r",
+  ]) {
+    assert.throws(
+      () => s.formatTestOne(template, "a.test.ts"),
+      /backtick|must not contain/,
+      template,
+    );
+  }
+  const probe = join(tmp(), "pwned");
+  assert.throws(() => s.formatTestOne(`cat <<EOF\n{file}\nEOF`, `$(touch ${probe}).test.ts`));
+  assert.equal(existsSync(probe), false);
+});
+
 const NASTY = [
   "$(touch pwned).test.ts",
   "`touch pwned`.test.ts",
@@ -301,6 +324,118 @@ test("every test must map to a criterion", () => {
   }
 });
 
+test("a path segment starting with a dash would be read as a runner option", () => {
+  const wt = worktreeWith([
+    "--foo.test.mjs",
+    "dir/-x.test.ts",
+    "-d/a.test.ts",
+    "ok-dir/a-b.test.ts",
+  ]);
+  const calls = [];
+  for (const path of ["--foo.test.mjs", "dir/-x.test.ts", "-d/a.test.ts"]) {
+    const v = seal(wt, [authored(path)], { run: scripted({}, calls) });
+    assert.equal(v.ok, false, path);
+    assert.equal(v.reasons.length, 1, path);
+    assert.equal(
+      v.reasons[0],
+      `${path}: a path segment starting with "-" would be read as a runner option`,
+    );
+  }
+  assert.deepEqual(calls, [], "the runner never sees the path");
+  assert.equal(seal(wt, [authored("ok-dir/a-b.test.ts")]).ok, true);
+});
+
+test("a vacuous test hidden behind a leading dash is not sealed by a real runner", () => {
+  const wt = tmp();
+  gitInit(wt);
+  writeFileSync(
+    join(wt, "--foo.test.mjs"),
+    'import { test } from "node:test";\ntest("vacuous", () => {});\n',
+  );
+  const v = seal(wt, [authored("--foo.test.mjs")], {
+    testOne: "node --test {file}",
+    run: g.shellRunner,
+    timeoutMs: 20000,
+  });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assert.match(v.reasons[0], /starting with "-"/);
+});
+
+test("the single-test command must not be able to select another test file", () => {
+  const calls = [];
+  const wt = worktreeWith([
+    "a.test.ts",
+    "ba.test.ts",
+    "src/c.test.ts",
+    "lib/src/c.test.ts",
+    "d.test.ts",
+    "d.test.tsx",
+    "e.test.ts",
+    "e.test.ts.bak",
+    "f.test.ts",
+    "g.test.ts",
+  ]);
+  const one = (path, tests = [authored(path)]) => seal(wt, tests, { run: scripted({}, calls) });
+  assert.deepEqual(one("a.test.ts").reasons, [
+    "a.test.ts: the single-test command may also select ba.test.ts",
+  ]);
+  assert.deepEqual(one("src/c.test.ts").reasons, [
+    "src/c.test.ts: the single-test command may also select lib/src/c.test.ts",
+  ]);
+  assert.match(one("d.test.ts").reasons[0], /d\.test\.ts: .* may also select d\.test\.tsx/);
+  assert.deepEqual(calls, [], "no test runs while another file could be selected with it");
+  assert.equal(one("e.test.ts").ok, true, "a file that is not a test path cannot be selected");
+  assert.equal(one("f.test.ts").ok, true);
+  assert.equal(one("lib/src/c.test.ts").ok, true, "the longer path is the one nothing contains");
+  const both = one("a.test.ts", [authored("a.test.ts"), authored("ba.test.ts", ["AC2"])]);
+  assert.equal(both.ok, false);
+  assert.equal(both.reasons.length, 1, "only the contained path is refused");
+  assert.match(both.reasons[0], /^a\.test\.ts: .* may also select ba\.test\.ts$/);
+});
+
+test("a file a red run creates is counted when the runs are over", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const creates = (command, cwd) => {
+    writeFileSync(join(cwd, "ba.test.ts"), "// appeared during the run");
+    return { code: 1, output: "AssertionError", ms: 1 };
+  };
+  const v = seal(wt, [authored("a.test.ts")], { run: creates });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assert.equal(
+    v.reasons[0],
+    "a.test.ts: after the red runs, the single-test command may also select ba.test.ts",
+  );
+});
+
+test("the files a command could select are the tracked and untracked, but not the ignored ones", () => {
+  const wt = worktreeWith(["a.test.ts", ".gitignore"]);
+  writeFileSync(join(wt, ".gitignore"), "ignored/\n");
+  mkdirSync(join(wt, "ignored"));
+  writeFileSync(join(wt, "ignored", "ba.test.ts"), "// ignored");
+  assert.equal(seal(wt, [authored("a.test.ts")]).ok, true);
+  writeFileSync(join(wt, "xa.test.ts"), "// untracked, not ignored");
+  assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
+  spawnSync("git", ["add", "xa.test.ts"], { cwd: wt });
+  assert.match(seal(wt, [authored("a.test.ts")]).reasons[0], /may also select xa\.test\.ts/);
+});
+
+test("a worktree whose files cannot be listed is a throw, not a quiet pass", () => {
+  const plain = tmp();
+  writeFileSync(join(plain, "a.test.ts"), "// a");
+  assert.throws(() => seal(plain, [authored("a.test.ts")]), /cannot list/);
+});
+
+test("a path through a symbolic link to a directory is not the file git holds", () => {
+  const wt = worktreeWith(["src/b.test.ts", "tests/keep.txt"]);
+  symlinkSync("../src", join(wt, "tests", "srcdir"));
+  const v = seal(wt, [authored("tests/srcdir/b.test.ts")]);
+  assert.equal(v.ok, false);
+  assert.match(v.reasons[0], /^tests\/srcdir\/b\.test\.ts: .*symbolic link/);
+  assert.equal(seal(wt, [authored("src/b.test.ts")]).ok, true);
+});
+
 // ── sealAuthoredTests: the red check ────────────────────────────────────────
 
 test("the red check counts only a real failure", () => {
@@ -347,6 +482,10 @@ test("a runner that finds no test in the file does not count as red", () => {
     "no tests found",
     "FAIL  Error: no test files found",
     "No tests found\n",
+    "Error: No test suite found in file /work/tree/empty.test.ts",
+    "FAIL  empty.test.ts\nError: no test suites found",
+    "Your test suite must contain at least one test.",
+    "  ● Test suite failed to run\n\n    Your test suite must contain at least one test.\n",
   ]) {
     const v = seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
     assert.equal(v.ok, false, output);
