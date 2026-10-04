@@ -29,7 +29,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,6 +43,7 @@ import { scaffoldLintRoot } from "./_lint-root.mjs";
 import {
   gitSubcommand,
   hooksEnabled,
+  isMain,
   splitSegments,
   tokenize,
 } from "../plugins/marvin/hooks/lib/hook-io.mjs";
@@ -906,6 +909,111 @@ test("hooks.json is the plugin wrapper shape and the command it declares runs", 
     const command = hook.command.split("${CLAUDE_PLUGIN_ROOT}").join(packDir);
     assertDenied(runHook(command, { cwd: dir, payload: payloadFor(denials[name], dir) }));
   }
+});
+
+// ── entry through a symlinked path ──────────────────────────────────────────
+
+test("both guards run when the plugin's hooks directory is reached through a symlink", () => {
+  // A plugin root whose `hooks` is a symlink to the real directory: the shape of a plugin
+  // cache that links rather than copies, and of any plugin under macOS's `/tmp`, which is
+  // `/private/tmp`. The ESM loader resolves `import.meta.url` through the link while
+  // `process.argv[1]` keeps the spelling the command used, so a main-guard comparing the
+  // two as strings skipped the guard's body, and the skipped guard allowed.
+  const linkedRoot = scratch("linked-root");
+  symlinkSync(join(packDir, "hooks"), join(linkedRoot, "hooks"), "dir");
+
+  const { dir, run } = makeRepo();
+  writeFileSync(join(dir, "aws.ts"), `export const key = "${FAKE_AWS_KEY}";\n`);
+  run("add", "aws.ts");
+  const denials = {
+    "bypass-guard": "git commit --no-verify -m x",
+    "secret-guard": "git commit -m x",
+  };
+  const declared = declaredCommands();
+  assert.deepEqual(
+    declared.map(({ raw }) => /hooks\/([a-z-]+)\.mjs/.exec(raw)[1]).sort(),
+    Object.keys(denials),
+    "every declared guard needs a deny-shaped payload here",
+  );
+
+  for (const { raw } of declared) {
+    const name = /hooks\/([a-z-]+)\.mjs/.exec(raw)[1];
+    // The real path is the control: it denies before and after the fix, so a red on the
+    // symlinked path can only be the entry check.
+    for (const [label, root] of [
+      ["real path", packDir],
+      ["symlinked path", linkedRoot],
+    ]) {
+      const command = raw.split("${CLAUDE_PLUGIN_ROOT}").join(root);
+      assertDenied(
+        runHook(command, { cwd: dir, payload: payloadFor(denials[name], dir) }),
+        `${name} through the ${label}:`,
+      );
+    }
+  }
+});
+
+test("isMain compares real paths, exports only when imported, and runs when it cannot compare", () => {
+  const guard = join(packDir, "hooks", "bypass-guard.mjs");
+  // What the ESM loader reports as the guard's `import.meta.url`: already resolved.
+  const url = pathToFileURL(realpathSync(guard)).href;
+  const linked = scratch("linked-argv");
+  symlinkSync(join(packDir, "hooks"), join(linked, "hooks"), "dir");
+
+  const saved = process.argv[1];
+  const launchedAs = (entry) => {
+    process.argv[1] = entry;
+    return isMain(url);
+  };
+  try {
+    assert.equal(launchedAs(guard), true, "launched by its real path");
+    assert.equal(
+      launchedAs(join(linked, "hooks", "bypass-guard.mjs")),
+      true,
+      "launched through a symlinked directory",
+    );
+    assert.equal(
+      launchedAs(fileURLToPath(import.meta.url)),
+      false,
+      "imported by another script: export only",
+    );
+    assert.equal(launchedAs(undefined), true, "no argv[1] to compare: the guard runs");
+    assert.equal(launchedAs(""), true, "an empty argv[1]: the guard runs");
+    assert.equal(
+      launchedAs(join(linked, "does-not-exist.mjs")),
+      true,
+      "an argv[1] that does not resolve: the guard runs",
+    );
+  } finally {
+    process.argv[1] = saved;
+  }
+
+  // The same two answers end to end, with a payload the guard must deny.
+  const payload = JSON.stringify(payloadFor("git commit --no-verify -m x", linked));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: linked };
+  delete env.MARVIN_HOOKS_DISABLED;
+
+  // Imported by a script: the guard must neither judge the payload nor exit the importer.
+  const probe = join(linked, "probe.mjs");
+  writeFileSync(
+    probe,
+    `import ${JSON.stringify(pathToFileURL(guard).href)};\nprocess.stdout.write("imported\\n");\n`,
+  );
+  const imported = spawnSync(process.execPath, [probe], { input: payload, encoding: "utf8", env });
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(imported.stdout, "imported\n", "the importer must keep running");
+  assert.ok(!BLOCKED.test(imported.stderr ?? ""));
+
+  // Loaded with no script path at all (`node -e`): no argv[1], so the guard runs and denies.
+  const evaluated = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", `import ${JSON.stringify(pathToFileURL(guard).href)};`],
+    { input: payload, encoding: "utf8", env },
+  );
+  assertDenied(
+    { status: evaluated.status, stdout: "", stderr: evaluated.stderr ?? "" },
+    "no argv[1]:",
+  );
 });
 
 // ── the shipped pattern list is not vacuous ─────────────────────────────────
