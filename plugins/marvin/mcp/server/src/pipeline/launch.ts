@@ -31,7 +31,18 @@ export function launchDetached(cmd: ChildCommand, runDir: string, name: string):
     detached: true,
     stdio: "ignore",
   });
+
+  let spawnError: Error | null = null;
+  child.on("error", (err: Error) => {
+    spawnError = err;
+  });
+
   child.unref();
-  if (child.pid === undefined) throw new Error(`failed to launch ${name}`);
+  if (child.pid === undefined) {
+    const message = spawnError
+      ? `failed to launch ${name}: ${(spawnError as Error).message}`
+      : `failed to launch ${name}`;
+    throw new Error(message);
+  }
   return { pid: child.pid, logPath, errPath, exitPath };
 }

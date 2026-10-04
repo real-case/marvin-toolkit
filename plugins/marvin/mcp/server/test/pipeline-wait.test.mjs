@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -134,4 +134,54 @@ test("a child that dies without a result is reported as crashed", async () => {
   });
   assert.equal(r.outcome, "crashed");
   assert.match(r.detail, /exit 3/);
+});
+
+test("spawn failure with nonexistent cwd throws cleanly and does not crash the process", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-"));
+  const badCwd = join(dir, "nonexistent", "path");
+  let thrown = false;
+  try {
+    launch.launchDetached(
+      { argv: [process.execPath, "-e", "console.log('hi')"], env: {}, cwd: badCwd },
+      dir,
+      "r1-bad-1",
+    );
+  } catch (e) {
+    thrown = true;
+    assert.match(String(e), /failed to launch r1-bad-1/);
+  }
+  assert.ok(thrown, "should have thrown");
+  // Verify process survives and can continue (no uncaught exception)
+  await new Promise((r) => setImmediate(r));
+});
+
+test("wrapper re-wait ensures the correct exit code is captured (S6)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-"));
+  const { pid } = launch.launchDetached(
+    {
+      argv: [
+        process.execPath,
+        "-e",
+        "process.on('SIGTERM', () => setTimeout(() => process.exit(7), 1500)); setTimeout(() => {}, 60000)",
+      ],
+      env: {},
+      cwd: dir,
+    },
+    dir,
+    "r1-executor-3",
+  );
+  await new Promise((r) => setTimeout(r, 300));
+  process.kill(pid, "SIGTERM");
+  // Exit file should not exist yet (child still running, delayed exit)
+  const exitPathExists = existsSync(join(dir, "r1-executor-3.exit"));
+  assert.equal(exitPathExists, false, "exit file should not exist at 300ms (child still running)");
+  const r = await wait.waitForChild({
+    runDir: dir,
+    name: "r1-executor-3",
+    pollMs: 50,
+    stallMs: 60_000,
+    deadlineMs: 10_000,
+  });
+  assert.equal(r.outcome, "crashed");
+  assert.match(r.detail, /exit 7/);
 });
