@@ -557,6 +557,14 @@ const REWRITE =
 const shown = (path: unknown): string =>
   typeof path === "string" ? JSON.stringify(path) : String(path);
 
+/**
+ * The longest candidate path, in UTF-16 code units, that the checks build regular expressions
+ * from. V8 compiles the glob-prefix expression recursively, one nested group per unit, and dies
+ * outside any `try` (out of memory, SIGABRT) a few thousand units in.
+ */
+const MAX_PATH = 1024;
+const SHOWN_PREFIX = 64;
+
 interface Candidate {
   path: string;
   abs: string;
@@ -572,7 +580,8 @@ interface Candidate {
  * lookup all name the file by one spelling: a case variant or the other Unicode form of the
  * name, a gitignored file and a file inside a nested repository are refused), map to a
  * criterion, and FAIL when run on its own: a command that did not run, or found no test, proves
- * nothing either. No segment may start with `-` (the runner would read it as an option).
+ * nothing either. No segment may start with `-` (the runner would read it as an option), and
+ * no path may be longer than `MAX_PATH`, since the checks compile it into regular expressions.
  *
  * `gates.test_one` must select exactly one file, and a runner that treats its argument as a
  * filter would run a sibling too and judge the exit code of the pair. Two kinds of evidence
@@ -664,6 +673,11 @@ export function sealAuthoredTests(o: {
     const path: unknown = t?.path;
     if (!isCanonicalPath(path)) {
       reasons.push(`${shown(path)}: path must be a canonical repo-relative POSIX path`);
+      continue;
+    }
+    if (path.length > MAX_PATH) {
+      const prefix = [...path].slice(0, SHOWN_PREFIX).join("");
+      reasons.push(`${prefix}…: path is too long to check safely (${path.length} chars)`);
       continue;
     }
     if (seen.has(path)) {

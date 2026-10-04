@@ -367,6 +367,31 @@ test("every test must map to a criterion", () => {
   }
 });
 
+test("a path too long to check safely is refused before any pattern is built from it", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const calls = [];
+  /** A canonical test path of exactly `n` characters, in segments of 100. */
+  const longPath = (n) => {
+    const tail = "x.test.ts";
+    let dirs = "";
+    while (dirs.length + 100 + tail.length <= n) dirs += `${"d".repeat(99)}/`;
+    return `${dirs}${"x".repeat(n - dirs.length - tail.length)}${tail}`;
+  };
+  for (const n of [1025, 5000]) {
+    const path = longPath(n);
+    assert.equal(path.length, n);
+    const v = seal(wt, [authored(path)], { run: scripted({}, calls) });
+    assert.deepEqual(v.reasons, [
+      `${path.slice(0, 64)}…: path is too long to check safely (${n} chars)`,
+    ]);
+  }
+  assert.deepEqual(calls, []);
+  const limit = seal(wt, [authored(longPath(1024))]);
+  assert.equal(limit.reasons.length, 1);
+  assert.doesNotMatch(limit.reasons[0], /too long/, "1024 characters are checked as usual");
+  assert.match(limit.reasons[0], /does not exist|cannot be inspected/);
+});
+
 test("a path segment starting with a dash would be read as a runner option", () => {
   const wt = worktreeWith([
     "--foo.test.mjs",
