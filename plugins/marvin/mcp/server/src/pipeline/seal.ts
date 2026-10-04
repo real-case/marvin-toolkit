@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isCanonicalPath, type Runner, type SealedFile, sha256File } from "./gate.js";
 
 export interface AuthoredTest {
@@ -133,16 +133,21 @@ const NO_TEST_FOUND = /\bno tests? (suites? |files? )?found\b/i;
 /** jest, for a file with no test in it. */
 const NO_TEST_IN_SUITE = /\byour test suite must contain at least one test\b/i;
 
+const COULD_NOT_FIND = /^Could not find '(.*)'$/;
+
 /**
- * Whether `node --test` reported that it found nothing under the candidate's own name. It prints
+ * Whether `node --test` reported that it found nothing under the candidate's name. It prints
  * `Could not find '<path>'`, with exit 1, for a path argument that names no file and holds no glob
- * magic (a brace set, a one-character class): the path as given, or, in older versions, resolved
- * against its working directory. Only that exact line counts, unindented, case-sensitive, with
- * one of `spellings` quoted; the same words in a failure message (jest indents one) are a failure.
+ * magic (a brace set, a one-character class): the argument as the template spelled it (`./{file}`
+ * gives `./x.test.mjs`), or, in older versions, resolved against its working directory. Only that
+ * exact line counts, unindented and case-sensitive, and only when `namesCandidate` accepts the
+ * quoted path; the same words in a failure message (jest indents one) are a failure.
  */
-function nodeFoundNothing(output: string, spellings: readonly string[]): boolean {
-  const lines = new Set(spellings.map((path) => `Could not find '${path}'`));
-  return output.split("\n").some((line) => lines.has(line));
+function nodeFoundNothing(output: string, namesCandidate: (quoted: string) => boolean): boolean {
+  return output.split("\n").some((line) => {
+    const quoted = COULD_NOT_FIND.exec(line)?.[1];
+    return quoted !== undefined && namesCandidate(quoted);
+  });
 }
 
 /**
@@ -184,10 +189,13 @@ function reportedFileCount(output: string): number | null {
 }
 
 /**
- * Why a command's outcome is not a genuine failure of the test, or null if it is one. `spellings`
- * are the candidate's path as the command named it and its absolute forms.
+ * Why a command's outcome is not a genuine failure of the test, or null if it is one.
+ * `namesCandidate` says whether a path the runner quotes is the candidate.
  */
-function redProblem(result: ReturnType<Runner>, spellings: readonly string[]): string | null {
+function redProblem(
+  result: ReturnType<Runner>,
+  namesCandidate: (quoted: string) => boolean,
+): string | null {
   const { code } = result;
   const output = typeof result.output === "string" ? result.output.replace(ANSI, "") : "";
   if (code === 0) return "passes before implementation, so it proves nothing";
@@ -198,7 +206,7 @@ function redProblem(result: ReturnType<Runner>, spellings: readonly string[]): s
   if (files !== null && files !== 1) return `the runner ran ${files} test files, not just this one`;
   return NO_TEST_FOUND.test(output) ||
     NO_TEST_IN_SUITE.test(output) ||
-    nodeFoundNothing(output, spellings)
+    nodeFoundNothing(output, namesCandidate)
     ? "the runner found no test in it"
     : null;
 }
@@ -718,11 +726,12 @@ export function sealAuthoredTests(o: {
   for (const c of candidates) {
     let problem: string | null;
     try {
-      problem = redProblem(o.run(formatTestOne(o.testOne, c.path), o.worktree, o.timeoutMs), [
-        c.path,
-        join(o.worktree, c.path),
-        join(realRoot, c.path),
-      ]);
+      const namesCandidate = (quoted: string): boolean =>
+        [o.worktree, realRoot].some((root) => resolve(root, quoted) === resolve(root, c.path));
+      problem = redProblem(
+        o.run(formatTestOne(o.testOne, c.path), o.worktree, o.timeoutMs),
+        namesCandidate,
+      );
     } catch (error) {
       problem = `test command did not run (${errorText(error)})`;
     }

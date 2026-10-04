@@ -1211,6 +1211,9 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     `Could not find '${join(wt, "a.test.ts")}'`,
     `Could not find '${join(realpathSync(wt), "a.test.ts")}'\n`,
     "✖ failing tests:\nCould not find 'a.test.ts'\n",
+    "Could not find './a.test.ts'\n",
+    "Could not find 'sub/../a.test.ts'\n",
+    `Could not find '${wt}/./a.test.ts'`,
   ]) {
     assert.deepEqual(
       verdict(output).reasons,
@@ -1230,29 +1233,30 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     "Could not find '/work/tree/a.test.ts'",
     "Could not find 'a.test.ts' in the list",
     "Could not find 'a.test.ts', 'b.test.ts'",
+    "Could not find 'user'",
+    "Could not find './b.test.ts'",
+    "  Could not find './a.test.ts'",
+    "Could not find './A.test.ts'",
     JEST_COULD_NOT_FIND,
   ]) {
     const v = verdict(output);
     assert.equal(v.ok, true, `a failure, not node's line for this file: ${JSON.stringify(output)}`);
   }
-  const real = (candidate, body) => {
+  const real = (candidate, body, testOne = "node --test {file}") => {
     const dir = tmp();
     gitInit(dir);
     writeFileSync(join(dir, candidate), body);
     const context = process.env.NODE_TEST_CONTEXT;
     delete process.env.NODE_TEST_CONTEXT;
     try {
-      return seal(dir, [authored(candidate)], {
-        testOne: "node --test {file}",
-        run: g.shellRunner,
-        timeoutMs: 30000,
-      });
+      return seal(dir, [authored(candidate)], { testOne, run: g.shellRunner, timeoutMs: 30000 });
     } finally {
       if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
     }
   };
   const red =
     'import { test } from "node:test";\ntest("red", () => { throw new Error("red"); });\n';
+  const green = 'import { test } from "node:test";\ntest("ok", () => {});\n';
   for (const candidate of ["x{a,b}.test.mjs", "x{},y}.test.mjs", "x[y].test.mjs"]) {
     const v = real(candidate, red);
     assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], candidate);
@@ -1264,8 +1268,16 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     red.replace('"red"', `"Could not find 'user' in the directory"`),
   );
   assert.equal(phrased.ok, true, phrased.reasons.join("; "));
-  const passing = real("ok.test.mjs", 'import { test } from "node:test";\ntest("ok", () => {});\n');
+  const passing = real("ok.test.mjs", green);
   assert.match(passing.reasons[0], /passes before implementation/);
+  const dotted = "node --test ./{file}";
+  for (const candidate of ["x{a,b}.test.mjs", "x[y].test.mjs"]) {
+    const v = real(candidate, red, dotted);
+    assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], `./${candidate}`);
+  }
+  const dottedRed = real("plain.test.mjs", red, dotted);
+  assert.equal(dottedRed.ok, true, dottedRed.reasons.join("; "));
+  assert.match(real("ok.test.mjs", green, dotted).reasons[0], /passes before implementation/);
 });
 
 const jestBin = binOf("jest");
@@ -1288,6 +1300,8 @@ test(
     };
     const phrased = box("Could not find 'user' in the directory");
     assert.equal(phrased.ok, true, phrased.reasons.join("; "));
+    const exact = box("Could not find 'user'");
+    assert.equal(exact.ok, true, exact.reasons.join("; "));
     const control = box("user lookup failed");
     assert.equal(control.ok, true, control.reasons.join("; "));
   },
