@@ -1373,53 +1373,115 @@ test("without a count line the static readings decide, and a count of 1 does not
   assert.deepEqual(calls, [], "the static readings are checked before anything runs");
 });
 
+test("an escape the strip removes never spans a line, so two streams cannot join around the summary", () => {
+  const wt = worktreeWith(["a.test.ts"]);
+  const verdict = (output) =>
+    seal(wt, [authored("a.test.ts")], { run: () => ({ code: 1, output, ms: 1 }) });
+  const stdout = ` ❯ |app| data.test.ts (1 test | 1 failed)\n\n${COUNTED.vitestTwo}`;
+  for (const [opener, terminator] of [
+    [`${ESC}]`, "\u0007"],
+    [`${ESC}]`, `${ESC}\\`],
+    [`${ESC}]8;;`, "\u0007"],
+    [`${ESC}P`, `${ESC}\\`],
+    [`${ESC}_`, "\u0007"],
+    [`${ESC}^`, `${ESC}\\`],
+    [`${ESC}X`, "\u0007"],
+  ]) {
+    const output = `${opener}${stdout}${terminator}`;
+    assert.deepEqual(verdict(output).reasons, [RAN("a.test.ts", 2)], JSON.stringify(output));
+  }
+  const linked = ` Test Files  ${ESC}]8;;file:///w/a.test.ts\u00071 failed${ESC}]8;;${ESC}\\ | 1 passed (2)\n`;
+  assert.deepEqual(
+    verdict(linked).reasons,
+    [RAN("a.test.ts", 2)],
+    "a one-line OSC is still stripped",
+  );
+  for (const [intro, terminator] of [
+    ["]", "\u0007"],
+    ["]", `${ESC}\\`],
+    ["P", `${ESC}\\`],
+    ["X", "\u0007"],
+    ["^", `${ESC}\\`],
+    ["_", "\u0007"],
+  ]) {
+    const output = ` Test Files  1 failed | 1 passed (2)${ESC}${intro}x;y${terminator}\n`;
+    assert.deepEqual(verdict(output).reasons, [RAN("a.test.ts", 2)], `one-line ESC ${intro}`);
+  }
+  assert.deepEqual(verdict(COUNTED.vitestTwoAnsi).reasons, [RAN("a.test.ts", 2)]);
+  assert.equal(verdict(COUNTED.vitestOneAnsi).ok, true);
+});
+
 const vitestBin = binOf("vitest");
+const VITEST_GREEN = 'test("vacuous", () => {});\n';
+const VITEST_RED = 'test("red", () => { expect(1).toBe(2); });\n';
+
+/** A worktree whose root vitest config runs every `packages/*` directory as a project. */
+function vitestProjects(files) {
+  const wt = tmp();
+  gitInit(wt);
+  for (const [path, body] of Object.entries({
+    "vitest.config.mjs": 'export default { test: { projects: ["packages/*"] } };\n',
+    "packages/app/vitest.config.mjs": "export default { test: { globals: true } };\n",
+    ...files,
+  })) {
+    put(wt, path, body);
+  }
+  return wt;
+}
+
+const sealWithVitest = (wt, paths) =>
+  seal(
+    wt,
+    paths.map((p, i) => authored(p, [`AC${i + 1}`])),
+    {
+      testOne: `${shellWord(process.execPath)} ${shellWord(vitestBin)} run {file}`,
+      run: g.shellRunner,
+      timeoutMs: 120000,
+    },
+  );
 
 test(
   "a real vitest under test.projects selects a plain-named sibling, and its own count gives it away",
   { skip: vitestBin === null ? "vitest is not installed for the server package" : false },
   () => {
-    const testOne = `${shellWord(process.execPath)} ${shellWord(vitestBin)} run {file}`;
-    const GREEN = 'test("vacuous", () => {});\n';
-    const RED_BODY = 'test("red", () => { expect(1).toBe(2); });\n';
-    const projects = (files) => {
-      const wt = tmp();
-      gitInit(wt);
-      for (const [path, body] of Object.entries({
-        "vitest.config.mjs": 'export default { test: { projects: ["packages/*"] } };\n',
-        "packages/app/vitest.config.mjs": "export default { test: { globals: true } };\n",
-        ...files,
-      })) {
-        put(wt, path, body);
-      }
-      return wt;
-    };
-    const real = (wt, paths) =>
-      seal(
-        wt,
-        paths.map((p, i) => authored(p, [`AC${i + 1}`])),
-        { testOne, run: g.shellRunner, timeoutMs: 120000 },
-      );
-    const honest = projects({
-      "packages/app/a.test.ts": GREEN,
-      "packages/app/data.test.ts": RED_BODY,
+    const honest = vitestProjects({
+      "packages/app/a.test.ts": VITEST_GREEN,
+      "packages/app/data.test.ts": VITEST_RED,
     });
-    const v = real(honest, ["packages/app/a.test.ts", "packages/app/data.test.ts"]);
+    const v = sealWithVitest(honest, ["packages/app/a.test.ts", "packages/app/data.test.ts"]);
     assert.deepEqual(v.reasons, [RAN("packages/app/a.test.ts", 2)]);
     assert.deepEqual(v.sealed, []);
-    const apart = projects({
-      "packages/app/a.test.ts": GREEN,
-      "packages/app/zzz.test.ts": RED_BODY,
+    const apart = vitestProjects({
+      "packages/app/a.test.ts": VITEST_GREEN,
+      "packages/app/zzz.test.ts": VITEST_RED,
     });
-    assert.deepEqual(real(apart, ["packages/app/a.test.ts", "packages/app/zzz.test.ts"]).reasons, [
-      "packages/app/a.test.ts: passes before implementation, so it proves nothing",
-    ]);
-    const plain = projects({
-      "packages/app/plain.test.ts": RED_BODY,
-      "packages/app/zz.test.ts": GREEN,
+    assert.deepEqual(
+      sealWithVitest(apart, ["packages/app/a.test.ts", "packages/app/zzz.test.ts"]).reasons,
+      ["packages/app/a.test.ts: passes before implementation, so it proves nothing"],
+    );
+    const plain = vitestProjects({
+      "packages/app/plain.test.ts": VITEST_RED,
+      "packages/app/zz.test.ts": VITEST_GREEN,
     });
-    const control = real(plain, ["packages/app/plain.test.ts"]);
+    const control = sealWithVitest(plain, ["packages/app/plain.test.ts"]);
     assert.equal(control.ok, true, control.reasons.join("; "));
+  },
+);
+
+test(
+  "a real vitest count survives an escape a test opens on stdout and closes on stderr",
+  { skip: vitestBin === null ? "vitest is not installed for the server package" : false },
+  () => {
+    for (const terminator of ["\\u0007", "\\u001b\\\\"]) {
+      const hiding = `test("vacuous", () => { process.stdout.write("\\u001b]"); process.stderr.write("${terminator}"); });\n`;
+      const wt = vitestProjects({
+        "packages/app/a.test.ts": hiding,
+        "packages/app/data.test.ts": VITEST_RED,
+      });
+      const v = sealWithVitest(wt, ["packages/app/a.test.ts", "packages/app/data.test.ts"]);
+      assert.deepEqual(v.reasons, [RAN("packages/app/a.test.ts", 2)], terminator);
+      assert.deepEqual(v.sealed, []);
+    }
   },
 );
 

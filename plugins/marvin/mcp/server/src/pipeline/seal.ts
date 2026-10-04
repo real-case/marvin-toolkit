@@ -145,9 +145,17 @@ function nodeFoundNothing(output: string, spellings: readonly string[]): boolean
   return output.split("\n").some((line) => lines.has(line));
 }
 
-/** The escape sequences a coloured reporter wraps its words in: CSI, OSC and the two-byte ones. */
-// eslint-disable-next-line no-control-regex -- the escape character is exactly what is stripped
-const ANSI = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+/**
+ * The escape sequences a coloured reporter wraps its words in, each within one line: a CSI
+ * (`ESC [`, parameter and intermediate bytes, a final byte), a string escape (OSC `ESC ]`, DCS
+ * `ESC P`, SOS `ESC X`, PM `ESC ^`, APC `ESC _`) ended by BEL or `ESC \` before the line ends, and
+ * the two-byte ones. A string escape may not span a newline: the output is stdout followed by
+ * stderr, so a test that opens one on stdout and closes it on stderr would otherwise make the
+ * runner's whole summary part of one escape, and the strip would delete it.
+ */
+const ANSI =
+  // eslint-disable-next-line no-control-regex -- the escape character is exactly what is stripped
+  /\u001b(?:\[[0-?]*[ -/]*[@-~]|[\]PX^_][^\u0007\u001b\n]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
 /**
  * The summary lines in which a runner reports how many test files it ran: vitest's
  * ` Test Files  1 failed | 1 passed (2)` and jest's `Test Suites: 1 failed, 1 passed, 2 total`.
@@ -161,8 +169,8 @@ const FILE_COUNTS: readonly RegExp[] = [
 
 /**
  * The largest number of test files the runner says it ran, or null when it printed no count.
- * The largest, because a test's own output can print a line of the same shape, and it must not
- * be able to hide the runner's.
+ * The largest, because a test's own output can print a line of the same shape: a forged line can
+ * raise the count, never lower it.
  */
 function reportedFileCount(output: string): number | null {
   let largest: number | null = null;
