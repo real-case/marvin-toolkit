@@ -292,13 +292,21 @@ export function compileProtected(patterns: readonly string[]): RegExp[] {
   });
 }
 
+/**
+ * Does `path` match a protected pattern, as written or with a trailing `/`? A pattern such
+ * as `^\.husky/` describes a directory, so a gitlink or a plain file standing where that
+ * directory belongs (`.husky`) is a change to it as much as a file inside would be.
+ */
+const isProtectedPath = (res: readonly RegExp[], path: string) =>
+  res.some((re) => re.test(path) || (!path.endsWith("/") && re.test(`${path}/`)));
+
 /** The changed paths that match a protected-path regex source, each listed once. */
 export function protectedChanges(
   changed: readonly string[],
   patterns: readonly string[],
 ): string[] {
   const res = compileProtected(patterns);
-  return [...new Set(changed)].filter((f) => res.some((re) => re.test(f)));
+  return [...new Set(changed)].filter((f) => isProtectedPath(res, f));
 }
 
 export const sha256Bytes = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -369,6 +377,8 @@ function isolatedGit(worktree: string, gitDir: string): IsolatedGit {
  * Git lists an embedded repository as its directory (`dir/`) and never looks inside it, so
  * the files in one cannot be fingerprinted. Every such directory, protected pattern or not,
  * is recorded as `"<dir>/": "nested-repo"` instead, so that one appearing is a difference.
+ * A committed one is a gitlink (index mode 160000), which `ls-files --cached` prints without
+ * the slash and the untracked listings never show; it is recorded under the same key.
  */
 export function snapshotProtected(
   worktree: string,
@@ -385,10 +395,14 @@ export function snapshotProtected(
   ]) {
     for (const name of nul(git.text(...args))) names.add(name);
   }
+  for (const entry of nul(git.text("ls-files", "-s", "-z"))) {
+    const gitlink = /^160000 [0-9a-f]+ \d\t([\s\S]+)$/.exec(entry)?.[1];
+    if (gitlink !== undefined) names.add(`${gitlink}/`);
+  }
   const out: ProtectedSnapshot = {};
   for (const name of [...names].sort()) {
     if (name.endsWith("/")) out[name] = NESTED_REPO;
-    else if (res.some((re) => re.test(name))) out[name] = fingerprint(join(worktree, name));
+    else if (isProtectedPath(res, name)) out[name] = fingerprint(join(worktree, name));
   }
   return out;
 }
@@ -628,7 +642,7 @@ export function runGateStage(o: GateStageOptions): GateReport {
       : exempt !== null &&
         exempt.test(path) &&
         !sealedPaths.has(path) &&
-        !protectedRes.some((re) => re.test(path));
+        !isProtectedPath(protectedRes, path);
   const hiddenByIndex = (): Set<string> =>
     new Set(
       nul(git.text("ls-files", "-v", "-z"))

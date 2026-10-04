@@ -384,6 +384,69 @@ test("a protected snapshot records every nested repository whatever the patterns
   assert.deepEqual(g.diffProtected({}, w.snapshot()), [".claude/", "vendor/lib/"]);
 });
 
+// ── committed gitlinks ───────────────────────────────────────────────────────
+
+const committedNestedRepo = (w, dir, files = {}) => {
+  nestedRepo(w, dir, files);
+  const inner = join(w.path, dir);
+  sh(inner, "add", "-A");
+  sh(inner, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "nested");
+};
+
+test("G1: a nested repository committed as a gitlink under an exempt parent is flagged", () => {
+  const exemptPattern = "^(specs/|\\.marvin/)";
+  const control = runWorktree();
+  control.write(".marvin/pipeline/checks.yaml", "- { id: x, pattern: y, message: z }\n");
+  control.commit();
+  const plain = gateStage(control, { exemptPattern });
+  assert.deepEqual(plain.protected, [".marvin/pipeline/checks.yaml"], "a plain file is caught");
+
+  const w = runWorktree();
+  committedNestedRepo(w, ".marvin/pipeline", { "checks.yaml": "- { id: x }\n" });
+  w.commit();
+  assert.match(w.git("ls-files", "-s"), /^160000 /m, "it really is a gitlink");
+  const report = gateStage(w, { exemptPattern });
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["nested git repository: .marvin/pipeline"]);
+  assert.deepEqual(report.protected, [".marvin/pipeline"]);
+});
+
+test("G2: a gitlink at an unexempt, unprotected path gets the nested-repo blocker too", () => {
+  const w = runWorktree();
+  committedNestedRepo(w, "vendor/sub", { "a.txt": "x\n" });
+  w.commit();
+  const report = gateStage(w);
+  assert.equal(report.passed, false);
+  assert.deepEqual(report.undeclared, ["vendor/sub"]);
+  assert.deepEqual(claims(report), ["nested git repository: vendor/sub"]);
+  assert.deepEqual(w.snapshot(), { "vendor/sub/": "nested-repo" });
+});
+
+test("G3: a gitlink the baseline already holds is tolerated", () => {
+  const w = runWorktree();
+  committedNestedRepo(w, "vendor/sub", { "a.txt": "x\n" });
+  w.commit();
+  w.baseline = w.snapshot();
+  assert.equal(w.baseline["vendor/sub/"], "nested-repo");
+  const report = gateStage(w, { contractFiles: ["vendor/sub"] });
+  assert.equal(report.passed, true, JSON.stringify(report));
+});
+
+test("G4: a plain file standing where a protected directory belongs is a protected change", () => {
+  assert.deepEqual(g.protectedChanges([".husky", ".claude/hooks", "src/a.ts"], protectedDefaults), [
+    ".husky",
+    ".claude/hooks",
+  ]);
+  assert.deepEqual(g.protectedChanges([".husky/"], protectedDefaults), [".husky/"]);
+  const w = runWorktree();
+  w.write(".husky", "not a directory\n");
+  w.commit();
+  const report = gateStage(w);
+  assert.equal(report.passed, false);
+  assert.deepEqual(report.protected, [".husky"]);
+  assert.deepEqual(w.snapshot(), { ".husky": g.sha256File(join(w.path, ".husky")) });
+});
+
 // ── index flags that hide changes ────────────────────────────────────────────
 
 test("N3a: an assume-unchanged sealed test overwritten with a self-restoring script is flagged", () => {
