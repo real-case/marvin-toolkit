@@ -195,6 +195,20 @@ test("quoted patch headers are decoded, escapes and UTF-8 octal included", () =>
   assert.equal(g.cUnquote("unquoted"), "unquoted");
 });
 
+test("a raw astral character inside a quoted header round-trips, alone or beside octal escapes", () => {
+  assert.equal(g.cUnquote('"b/src/\u{1F600}\\t.ts"'), "b/src/\u{1F600}\t.ts");
+  assert.equal(g.cUnquote('"\u{1F600}\\360\\237\\230\\200"'), "\u{1F600}\u{1F600}");
+  const diff = [
+    'diff --git "a/src/\u{1F600}\\t.ts" "b/src/\u{1F600}\\t.ts"',
+    '+++ "b/src/\u{1F600}\\t.ts"',
+    "@@ -0,0 +1 @@",
+    "+debugger;",
+  ].join("\n");
+  assert.deepEqual(g.addedLines(diff), [
+    { file: "src/\u{1F600}\t.ts", line: 1, text: "debugger;" },
+  ]);
+});
+
 test("checks respect path and exclude patterns", () => {
   const lines = [
     { file: "src/a.test.ts", line: 1, text: "it.only('x')" },
@@ -614,6 +628,41 @@ test("the gate stage refuses inputs that would make it protect or compare agains
   bad({ worktree: "relative" }, /absolute/);
   bad({ protectedBaseline: null }, /protectedBaseline/);
   bad({ protectedBaseline: { ".husky/x": 7 } }, /protectedBaseline/);
+});
+
+test("sealed and contract paths must be canonical repo-relative POSIX paths", () => {
+  const w = runWorktree();
+  const sealed = (path) => [{ path, sha256: "0".repeat(64), criteria: [] }];
+  for (const path of [
+    "./specs/a.test.mjs",
+    "/abs/a.test.mjs",
+    "src//a.test.mjs",
+    "src/./a.test.mjs",
+    "src/../a.test.mjs",
+    "../a.test.mjs",
+    "src\\a.test.mjs",
+    "src/a.test.mjs/",
+    "",
+    "src/a\u0000b",
+    "src/a\nb",
+  ]) {
+    assert.throws(
+      () => gateStage(w, { sealed: sealed(path) }),
+      /not canonical/,
+      JSON.stringify(path),
+    );
+    assert.throws(
+      () => gateStage(w, { contractFiles: [path] }),
+      /not canonical/,
+      JSON.stringify(path),
+    );
+  }
+  assert.throws(() => gateStage(w, { contractFiles: [7] }), /not canonical/);
+  const ok = gateStage(w, {
+    sealed: sealed("src/a.test.mjs"),
+    contractFiles: ["src/a.ts", ".husky/x"],
+  });
+  assert.deepEqual(ok.sealed, [{ path: "src/a.test.mjs", ok: false }]);
 });
 
 test("the stage reads the committed HEAD against the recorded base, not origin/<base>", () => {

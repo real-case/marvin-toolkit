@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, posix, resolve } from "node:path";
 
 export type Severity = "blocker" | "major" | "minor";
 export interface GateCommand {
@@ -172,21 +172,21 @@ const C_ESCAPES: Record<string, number> = {
  */
 export function cUnquote(quoted: string): string {
   if (quoted.length < 2 || !quoted.startsWith('"') || !quoted.endsWith('"')) return quoted;
-  const inner = quoted.slice(1, -1);
+  const chars = Array.from(quoted.slice(1, -1));
   const bytes: number[] = [];
-  for (let i = 0; i < inner.length; i += 1) {
-    const ch = inner.charAt(i);
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i] ?? "";
     if (ch !== "\\") {
       bytes.push(...Buffer.from(ch, "utf8"));
       continue;
     }
-    const octal = /^[0-7]{1,3}/.exec(inner.slice(i + 1, i + 4))?.[0];
+    const octal = /^[0-7]{1,3}/.exec(chars.slice(i + 1, i + 4).join(""))?.[0];
     if (octal) {
       bytes.push(parseInt(octal, 8) & 0xff);
       i += octal.length;
       continue;
     }
-    const escaped = C_ESCAPES[inner.charAt(i + 1)];
+    const escaped = C_ESCAPES[chars[i + 1] ?? ""];
     if (escaped !== undefined) {
       bytes.push(escaped);
       i += 1;
@@ -553,11 +553,35 @@ const PATCH_FLAGS = [
   "--dst-prefix=b/",
 ];
 
+/**
+ * A repo-relative POSIX path in the one spelling git prints it: no leading `/` or `./`, no
+ * backslash, no empty, `.` or `..` segment, no control character. The gate compares these by
+ * exact string against what git lists, so `./specs/a.test.mjs` would silently match nothing.
+ */
+function isCanonicalPath(path: unknown): path is string {
+  return (
+    typeof path === "string" &&
+    path !== "" &&
+    !path.startsWith("/") &&
+    !path.includes("\\") &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(path) &&
+    path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") &&
+    posix.normalize(path) === path
+  );
+}
+
 function validateOptions(o: GateStageOptions): void {
   if (!/^[0-9a-f]{40}$/.test(o.baseSha)) throw new Error("baseSha must be a 40-hex commit SHA");
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
   if (!isAbsolute(o.worktree)) throw new Error("worktree must be an absolute path");
   compileProtected(o.protectedPatterns);
+  for (const path of o.sealed.map((x) => x.path)) {
+    if (!isCanonicalPath(path)) throw new Error(`sealed path is not canonical: ${String(path)}`);
+  }
+  for (const path of o.contractFiles) {
+    if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
+  }
   const baseline: unknown = o.protectedBaseline;
   if (
     typeof baseline !== "object" ||
