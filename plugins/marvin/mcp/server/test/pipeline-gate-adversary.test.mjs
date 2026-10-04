@@ -235,6 +235,170 @@ test("the check scan reports a path whose added lines it could not account for",
   assert.deepEqual(g.addedLineMismatches([line("src/b.ts", 1)], ""), ["src/b.ts"]);
 });
 
+// ── nested repositories ──────────────────────────────────────────────────────
+
+const nestedRepo = (w, dir, files = {}) => {
+  mkdirSync(join(w.path, dir), { recursive: true });
+  sh(join(w.path, dir), "init", "-q", "-b", "dev");
+  for (const [rel, body] of Object.entries(files)) w.write(`${dir}/${rel}`, body);
+};
+
+test("N2a: a protected file placed in a nested repository created by a gate is flagged", () => {
+  const control = runWorktree();
+  const plain = gateStage(control, {
+    gates: [
+      {
+        name: "evil",
+        command: `mkdir -p .claude && printf '{"hooks":{}}' > .claude/settings.json`,
+      },
+    ],
+  });
+  assert.deepEqual(
+    plain.protected,
+    [".claude/settings.json"],
+    "without a nested repo it is caught",
+  );
+
+  const w = runWorktree();
+  const report = gateStage(w, {
+    gates: [
+      {
+        name: "evil",
+        command: `git init -q .claude && printf '{"hooks":{}}' > .claude/settings.json`,
+      },
+    ],
+  });
+  assert.equal(readFileSync(join(w.path, ".claude/settings.json"), "utf8"), '{"hooks":{}}');
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["nested git repository: .claude"]);
+  assert.equal(report.blockers[0].category, "scope");
+});
+
+test("N2b: a nested repository under an exempt path is not tolerated, and is named", () => {
+  const control = runWorktree();
+  control.write(".marvin/config.json", "{}\n");
+  assert.deepEqual(claims(gateStage(control, { exemptPattern: "^\\.marvin/" })), [
+    "uncommitted work: .marvin/config.json",
+  ]);
+
+  const w = runWorktree();
+  nestedRepo(w, ".marvin", { "config.json": "{}\n" });
+  const report = gateStage(w, { exemptPattern: "^\\.marvin/" });
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), [
+    "nested git repository: .marvin",
+    "uncommitted work: .marvin/",
+  ]);
+});
+
+test("N2c: a nested repository under an ignored path is named too", () => {
+  const control = runWorktree({ ".gitignore": ".claude/\n" });
+  control.write(".claude/settings.json", "{}\n");
+  assert.deepEqual(gateStage(control).protected, [".claude/settings.json"]);
+
+  const w = runWorktree({ ".gitignore": ".claude/\n" });
+  nestedRepo(w, ".claude", { "settings.json": "{}\n" });
+  assert.equal(w.git("status", "--porcelain"), "", "git reports a clean tree");
+  const report = gateStage(w);
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["nested git repository: .claude"]);
+});
+
+test("a nested repository that was in the baseline is tolerated, a new one is not", () => {
+  const w = runWorktree();
+  nestedRepo(w, "vendor/lib", { "a.txt": "x\n" });
+  w.baseline = w.snapshot();
+  assert.equal(w.baseline["vendor/lib/"], "nested-repo");
+  const quiet = gateStage(w);
+  assert.equal(quiet.passed, true, JSON.stringify(quiet));
+
+  nestedRepo(w, "tools/other");
+  const loud = gateStage(w);
+  assert.equal(loud.passed, false);
+  assert.deepEqual(claims(loud), [
+    "nested git repository: tools/other",
+    "uncommitted work: tools/other/",
+  ]);
+});
+
+test("a protected snapshot records every nested repository whatever the patterns", () => {
+  const w = runWorktree();
+  nestedRepo(w, "vendor/lib");
+  nestedRepo(w, ".claude");
+  assert.deepEqual(w.snapshot(), { ".claude/": "nested-repo", "vendor/lib/": "nested-repo" });
+  assert.deepEqual(g.diffProtected({}, w.snapshot()), [".claude/", "vendor/lib/"]);
+});
+
+// ── index flags that hide changes ────────────────────────────────────────────
+
+test("N3a: an assume-unchanged sealed test overwritten with a self-restoring script is flagged", () => {
+  const { w, sealed } = withSealedTest();
+  w.git("update-index", "--assume-unchanged", "src/a.test.mjs");
+  w.write("src/a.test.mjs", SELF_RESTORING);
+  assert.equal(w.git("status", "--porcelain"), "", "status is blind to the edit");
+  const report = gateStage(w, {
+    sealed,
+    oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
+  });
+  assert.equal(report.passed, false);
+  assert.ok(claims(report).includes("index flag hides changes: src/a.test.mjs"));
+  assert.equal(report.blockers.find((b) => b.claim.startsWith("index flag")).category, "scope");
+
+  const control = withSealedTest();
+  control.w.write("src/a.test.mjs", SELF_RESTORING);
+  assert.deepEqual(claims(gateStage(control.w, { sealed: control.sealed })), [
+    "uncommitted work: src/a.test.mjs",
+  ]);
+});
+
+test("N3b: a skip-worktree file with an uncommitted it.only is flagged", () => {
+  const w = runWorktree({ "src/a.test.ts": "it('x', () => {});\n" });
+  w.git("update-index", "--skip-worktree", "src/a.test.ts");
+  w.write("src/a.test.ts", "it.only('x', () => {});\ndebugger;\n");
+  assert.equal(w.git("status", "--porcelain"), "");
+  const report = gateStage(w, { contractFiles: ["src/a.test.ts"] });
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["index flag hides changes: src/a.test.ts"]);
+
+  const control = runWorktree({ "src/a.test.ts": "it('x', () => {});\n" });
+  control.write("src/a.test.ts", "it.only('x', () => {});\n");
+  assert.deepEqual(claims(gateStage(control, { contractFiles: ["src/a.test.ts"] })), [
+    "uncommitted work: src/a.test.ts",
+  ]);
+});
+
+test("N3c: a gate that sets skip-worktree and rewrites a tracked file is flagged", () => {
+  const w = runWorktree({ "src/a.ts": "const a = 1;\n" });
+  const report = gateStage(w, {
+    gates: [
+      {
+        name: "evil",
+        command: "git update-index --skip-worktree src/a.ts && echo evil > src/a.ts",
+      },
+    ],
+  });
+  assert.equal(w.git("status", "--porcelain"), "", "status is blind to the rewrite");
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), ["gates set an index flag on src/a.ts"]);
+
+  const control = runWorktree({ "src/a.ts": "const a = 1;\n" });
+  const plain = gateStage(control, { gates: [{ name: "evil", command: "echo evil > src/a.ts" }] });
+  assert.deepEqual(claims(plain), ["gates modified tracked file src/a.ts"]);
+});
+
+test("the index flag check names assume-unchanged and skip-worktree alike, and a clean index is quiet", () => {
+  const w = runWorktree({ "a.txt": "1\n", "b.txt": "2\n", "c.txt": "3\n" });
+  assert.equal(gateStage(w).passed, true);
+  w.git("update-index", "--assume-unchanged", "a.txt");
+  w.git("update-index", "--skip-worktree", "b.txt");
+  w.git("update-index", "--skip-worktree", "--assume-unchanged", "c.txt");
+  assert.deepEqual(claims(gateStage(w)), [
+    "index flag hides changes: a.txt",
+    "index flag hides changes: b.txt",
+    "index flag hides changes: c.txt",
+  ]);
+});
+
 // ── renames ──────────────────────────────────────────────────────────────────
 
 test("R1: moving a protected file to an exempt path still flags the origin", () => {

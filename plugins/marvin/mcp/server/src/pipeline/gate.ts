@@ -330,6 +330,8 @@ const fingerprint = (abs: string): string => {
 
 const nul = (s: string) => s.split("\0").filter(Boolean);
 
+const NESTED_REPO = "nested-repo";
+
 type IsolatedGit = {
   text: (...args: string[]) => string;
   bytes: (...args: string[]) => Buffer;
@@ -363,6 +365,10 @@ function isolatedGit(worktree: string, gitDir: string): IsolatedGit {
  * still shows up when its content changes. The engine takes a baseline before a writing child
  * runs and the gate compares against it. A symlink is `link:<target>`, a path git lists that
  * is gone from disk is `missing`.
+ *
+ * Git lists an embedded repository as its directory (`dir/`) and never looks inside it, so
+ * the files in one cannot be fingerprinted. Every such directory, protected pattern or not,
+ * is recorded as `"<dir>/": "nested-repo"` instead, so that one appearing is a difference.
  */
 export function snapshotProtected(
   worktree: string,
@@ -381,7 +387,8 @@ export function snapshotProtected(
   }
   const out: ProtectedSnapshot = {};
   for (const name of [...names].sort()) {
-    if (res.some((re) => re.test(name))) out[name] = fingerprint(join(worktree, name));
+    if (name.endsWith("/")) out[name] = NESTED_REPO;
+    else if (res.some((re) => re.test(name))) out[name] = fingerprint(join(worktree, name));
   }
   return out;
 }
@@ -616,10 +623,28 @@ export function runGateStage(o: GateStageOptions): GateReport {
   const exempt = o.exemptPattern ? new RegExp(o.exemptPattern) : null;
   const sealedPaths = new Set(o.sealed.map((s) => s.path));
   const tolerated = (path: string) =>
-    exempt !== null &&
-    exempt.test(path) &&
-    !sealedPaths.has(path) &&
-    !protectedRes.some((re) => re.test(path));
+    path.endsWith("/")
+      ? o.protectedBaseline[path] === NESTED_REPO
+      : exempt !== null &&
+        exempt.test(path) &&
+        !sealedPaths.has(path) &&
+        !protectedRes.some((re) => re.test(path));
+  const hiddenByIndex = (): Set<string> =>
+    new Set(
+      nul(git.text("ls-files", "-v", "-z"))
+        .filter((record) => {
+          const tag = record.charAt(0);
+          return tag !== tag.toUpperCase() || tag === "S";
+        })
+        .map((record) => record.slice(2)),
+    );
+  const nestedRepo = (path: string): GateBlocker => ({
+    category: "scope",
+    claim: `nested git repository: ${path.slice(0, -1)}`,
+    file: path.slice(0, -1),
+    evidence: "git lists the directory and does not look inside it",
+    expected: "no embedded git repository beyond those present when the run started",
+  });
 
   const headSha = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   git.text("cat-file", "-e", `${o.baseSha}^{commit}`);
@@ -633,6 +658,17 @@ export function runGateStage(o: GateStageOptions): GateReport {
       file: ".git",
       evidence: pointerBefore,
       expected: "the worktree's .git points at the git dir recorded when the run started",
+    });
+  }
+
+  const flagsBefore = hiddenByIndex();
+  for (const path of flagsBefore) {
+    blockers.push({
+      category: "scope",
+      claim: `index flag hides changes: ${path}`,
+      file: path,
+      evidence: "git ls-files -v marks the entry assume-unchanged or skip-worktree",
+      expected: "no assume-unchanged or skip-worktree entries: they blind every status check",
     });
   }
 
@@ -668,7 +704,8 @@ export function runGateStage(o: GateStageOptions): GateReport {
   for (const path of protectedChanges(changed, o.protectedPatterns)) flag(path, "committed diff");
   const protectedBefore = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
   for (const path of diffProtected(o.protectedBaseline, protectedBefore)) {
-    flag(path, "protected snapshot");
+    if (!path.endsWith("/")) flag(path, "protected snapshot");
+    else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
 
   const patch = git.text("diff", "--unified=0", ...PATCH_FLAGS, range);
@@ -695,6 +732,7 @@ export function runGateStage(o: GateStageOptions): GateReport {
     }
   });
 
+  const sealedOnDisk = checkSealed(o.worktree, o.sealed);
   const runnable = o.oracles.flatMap((x) =>
     x.command === null ? [] : [{ criterion: x.criterion, command: x.command }],
   );
@@ -730,6 +768,16 @@ export function runGateStage(o: GateStageOptions): GateReport {
       expected: "the gates leave the committed HEAD alone",
     });
   }
+  for (const path of hiddenByIndex()) {
+    if (flagsBefore.has(path)) continue;
+    blockers.push({
+      category: "scope",
+      claim: `gates set an index flag on ${path}`,
+      file: path,
+      evidence: "git ls-files -v marks the entry assume-unchanged or skip-worktree",
+      expected: "the gates leave the index flags alone",
+    });
+  }
   const seenBefore = new Set(dirtyBefore.map((e) => `${e.xy}\0${e.path}`));
   for (const e of status("no")) {
     if (seenBefore.has(`${e.xy}\0${e.path}`) || tolerated(e.path)) continue;
@@ -754,7 +802,7 @@ export function runGateStage(o: GateStageOptions): GateReport {
   const sealedAfter = checkSealed(o.worktree, o.sealed);
   const sealed = sealedBefore.map((before, i) => {
     const after = sealedAfter[i];
-    if (before.ok && after !== undefined && !after.ok) {
+    if (before.ok && sealedOnDisk[i]?.ok && after !== undefined && !after.ok) {
       blockers.push({
         category: "scope",
         claim: `sealed file ${before.path} changed during gates`,
@@ -766,8 +814,10 @@ export function runGateStage(o: GateStageOptions): GateReport {
     return { path: before.path, ok: before.ok && after?.ok === true };
   });
   const protectedAfter = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(protectedBefore, protectedAfter))
-    flag(path, "post-gate snapshot");
+  for (const path of diffProtected(protectedBefore, protectedAfter)) {
+    if (!path.endsWith("/")) flag(path, "post-gate snapshot");
+    else if (protectedAfter[path] === NESTED_REPO) blockers.push(nestedRepo(path));
+  }
 
   const protectedPaths = [...sources.keys()].sort();
   return buildReport({
