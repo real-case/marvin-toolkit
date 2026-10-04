@@ -26,7 +26,13 @@ export function createRunWorktree(o: {
   if (existsSync(path)) throw new Error(`worktree path exists: ${path}`);
   mkdirSync(dirname(path), { recursive: true });
   git(o.repoRoot, "fetch", "origin", o.base);
-  const baseSha = git(o.repoRoot, "rev-parse", `origin/${o.base}`);
+  const baseSha = git(
+    o.repoRoot,
+    "rev-parse",
+    "--verify",
+    "--end-of-options",
+    `refs/remotes/origin/${o.base}^{commit}`,
+  );
   git(o.repoRoot, "worktree", "add", "--no-track", "-b", branch, path, baseSha);
   const gitDir = git(path, "rev-parse", "--absolute-git-dir");
   return { path, branch, baseSha, gitDir };

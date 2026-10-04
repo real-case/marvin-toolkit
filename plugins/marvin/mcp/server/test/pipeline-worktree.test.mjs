@@ -56,6 +56,25 @@ test("the run worktree records the base commit and its private git dir for the g
   assert.ok(made.gitDir.startsWith(join(realpathSync(repo), ".git", "worktrees")));
 });
 
+test("a planted refs/tags/origin/<base> cannot shadow the remote-tracking base", () => {
+  const repo = repoWithOrigin();
+  const real = sh(repo, "rev-parse", "origin/dev");
+  writeFileSync(join(repo, "poison.txt"), "poisoned\n");
+  sh(repo, "add", ".");
+  sh(repo, "commit", "-m", "poisoned base");
+  const poisoned = sh(repo, "rev-parse", "HEAD");
+  sh(repo, "tag", "origin/dev", poisoned);
+  assert.equal(sh(repo, "rev-parse", "origin/dev"), poisoned, "the bare name resolves to the tag");
+  const made = wt.createRunWorktree({
+    repoRoot: repo,
+    base: "dev",
+    runId: "r4",
+    worktreesRoot: worktreesRoot(),
+  });
+  assert.equal(made.baseSha, real);
+  assert.equal(sh(made.path, "rev-parse", "HEAD"), real);
+});
+
 test("branch names follow the template and renaming refuses a taken name", () => {
   assert.equal(
     wt.branchName("feature/{tracker}--{slug}", {
