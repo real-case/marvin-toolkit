@@ -1,32 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse as parseYaml } from "yaml";
-import { importTs } from "./_tsload.mjs";
-import { repoWithOrigin, sh } from "./_pipeline-git.mjs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  claims,
+  defaultChecks,
+  g,
+  gateStage,
+  protectedDefaults,
+  runWorktree,
+} from "./_gate-fixture.mjs";
+import { sh } from "./_pipeline-git.mjs";
 
-const g = await importTs("src/pipeline/gate.ts");
 const pipelineDir = fileURLToPath(new URL("../../../pipeline/", import.meta.url));
 const { DEFAULT_PROTECTED } = await import(
   join(pipelineDir, "hooks", "worktree-boundary-guard.mjs")
 );
-const protectedDefaults = JSON.parse(
-  readFileSync(join(pipelineDir, "protected.default.json"), "utf8"),
-);
-const defaultChecks = parseYaml(readFileSync(join(pipelineDir, "checks.default.yaml"), "utf8"));
-
 const scripted = (codes) => {
   let i = 0;
   return () => ({ code: codes[i++] ?? 0, output: "out\nerror: boom", ms: 5 });
@@ -274,7 +266,7 @@ test("changed protected paths are matched case-insensitively and listed once", (
     ),
     [".husky/pre-commit", ".Husky/pre-push", ".claude/settings.local.json"],
   );
-  assert.deepEqual(g.protectedChanges([".husky/pre-commit"], []), []);
+  assert.throws(() => g.protectedChanges([".husky/pre-commit"], []), /non-empty array/);
 });
 
 test("the gate stage's default protected list is the one the boundary hook enforces", () => {
@@ -282,7 +274,7 @@ test("the gate stage's default protected list is the one the boundary hook enfor
   assert.ok(protectedDefaults.length > 0);
 });
 
-test("the boundary hook denies every edit when the shared protected list is unusable", () => {
+test("the boundary hook denies every edit when the shared protected list is unusable", async () => {
   const plugin = realpathSync(mkdtempSync(join(tmpdir(), "pipe-plugin-")));
   const pluginSrc = join(pipelineDir, "..");
   cpSync(join(pluginSrc, "hooks", "lib"), join(plugin, "hooks", "lib"), { recursive: true });
@@ -301,14 +293,22 @@ test("the boundary hook denies every edit when the shared protected list is unus
     );
   assert.equal(edit("src/a.ts").status, 0);
   assert.equal(edit(".husky/pre-commit").status, 2);
+  const hook = join(plugin, "pipeline", "hooks", "worktree-boundary-guard.mjs");
+  let load = 0;
+  const loaded = () => import(`${pathToFileURL(hook).href}?load=${(load += 1)}`);
+  assert.deepEqual((await loaded()).DEFAULT_PROTECTED, protectedDefaults);
   for (const broken of ["[]", "{}", '["^ok", 7]', "not json", '["["]']) {
     writeFileSync(list, broken);
     const denied = edit("src/a.ts");
     assert.equal(denied.status, 2, broken);
     assert.match(denied.stderr, /BLOCKED/, broken);
+    const mod = await loaded();
+    assert.equal(mod.DEFAULT_PROTECTED, null, broken);
+    assert.throws(() => mod.protectedPatterns(undefined), /protected\.default\.json is unusable/);
   }
   rmSync(list);
   assert.equal(edit("src/a.ts").status, 2);
+  assert.equal((await loaded()).DEFAULT_PROTECTED, null);
 });
 
 test("a modified sealed file is caught by its hash", () => {
@@ -337,12 +337,21 @@ test("a removed sealed file, or one replaced by a directory, is not intact", () 
   ]);
 });
 
+const empty = {
+  gates: [],
+  undeclared: [],
+  protected: [],
+  protectedSources: {},
+  protectedPatterns: protectedDefaults,
+  checks: [],
+  sealed: [],
+  blockers: [],
+};
+
 test("a report passes only when nothing blocks, and flaky becomes a minor finding", () => {
   const parts = {
+    ...empty,
     gates: [{ name: "test", result: "flaky", ms: 1, tail: "t" }],
-    undeclared: [],
-    protected: [],
-    checks: [],
     sealed: [{ path: "a.test.ts", ok: true }],
   };
   const report = g.buildReport(parts);
@@ -357,7 +366,7 @@ test("a report passes only when nothing blocks, and flaky becomes a minor findin
 });
 
 test("a failed gate, an undeclared file and a non-minor check each fail the report", () => {
-  const base = { gates: [], undeclared: [], protected: [], checks: [], sealed: [] };
+  const base = empty;
   const hit = (severity) => ({
     id: "c",
     file: "a.ts",
@@ -378,13 +387,7 @@ test("a failed gate, an undeclared file and a non-minor check each fail the repo
 });
 
 test("a protected changed path fails the report and is a scope blocker", () => {
-  const report = g.buildReport({
-    gates: [],
-    undeclared: [],
-    protected: [".husky/pre-commit"],
-    checks: [],
-    sealed: [],
-  });
+  const report = g.buildReport({ ...empty, protected: [".husky/pre-commit"] });
   assert.equal(report.passed, false);
   const findings = g.reportFindings(report);
   assert.equal(findings.length, 1);
@@ -394,14 +397,57 @@ test("a protected changed path fails the report and is a scope blocker", () => {
   );
 });
 
+test("a protected finding names where it was seen and the patterns it was judged against", () => {
+  const report = g.buildReport({
+    ...empty,
+    protected: [".a", ".b", ".c"],
+    protectedSources: {
+      ".a": ["committed diff"],
+      ".b": ["protected snapshot", "committed diff"],
+      ".c": ["post-gate snapshot"],
+    },
+    protectedPatterns: ["^\\.a$", "^\\.b$"],
+  });
+  const findings = g.reportFindings(report);
+  assert.deepEqual(
+    findings.map((f) => [f.file, f.claim, f.evidence]),
+    [
+      [".a", ".a is a protected path", "committed diff"],
+      [".b", ".b is a protected path", "protected snapshot, committed diff"],
+      [".c", "protected path .c changed during gates", "post-gate snapshot"],
+    ],
+  );
+  assert.equal(findings[0].expected, "no changes to protected paths (patterns: ^\\.a$, ^\\.b$)");
+});
+
+test("an engine blocker fails the report and becomes a blocker finding", () => {
+  const report = g.buildReport({
+    ...empty,
+    blockers: [
+      { category: "scope", claim: "HEAD moved during gates", evidence: "a -> b", expected: "e" },
+      { category: "gate", claim: "c", file: "x.ts", evidence: "ev", expected: "ex" },
+    ],
+  });
+  assert.equal(report.passed, false);
+  assert.deepEqual(
+    g.reportFindings(report).map((f) => [f.id, f.severity, f.category, f.file, f.claim]),
+    [
+      ["B-1", "blocker", "scope", undefined, "HEAD moved during gates"],
+      ["B-2", "blocker", "gate", "x.ts", "c"],
+    ],
+  );
+});
+
 test("finding ids are unique across a report with every kind of finding", () => {
   const report = g.buildReport({
+    ...empty,
     gates: [
       { name: "test", result: "fail", ms: 1, tail: "t" },
       { name: "lint", result: "flaky", ms: 1, tail: "t" },
     ],
     undeclared: ["a.ts", "b.ts"],
     protected: [".mcp.json", ".husky/x"],
+    blockers: [{ category: "scope", claim: "c", evidence: "e", expected: "x" }],
     checks: [
       {
         id: "debugger",
@@ -416,44 +462,19 @@ test("finding ids are unique across a report with every kind of finding", () => 
     sealed: [{ path: "a.test.ts", ok: false }],
   });
   const ids = g.reportFindings(report).map((f) => f.id);
-  assert.equal(ids.length, 8);
+  assert.equal(ids.length, 9);
   assert.equal(new Set(ids).size, ids.length);
 });
 
-function branchWith(files) {
-  const repo = repoWithOrigin();
-  sh(repo, "checkout", "-b", "feature/x");
-  for (const [path, body] of Object.entries(files)) {
-    mkdirSync(dirname(join(repo, path)), { recursive: true });
-    writeFileSync(join(repo, path), body);
-  }
-  sh(repo, "add", ".");
-  sh(repo, "commit", "-m", "work");
-  return repo;
-}
-
-const stage = (repo, over = {}) =>
-  g.runGateStage({
-    worktree: repo,
-    base: "dev",
-    gates: [{ name: "true", command: "true" }],
-    oracles: [],
-    contractFiles: [],
-    sealed: [],
-    checks: defaultChecks,
-    exemptPattern: null,
-    protectedPatterns: protectedDefaults,
-    run: g.shellRunner,
-    timeoutMs: 10_000,
-    ...over,
-  });
-
-test("the gate stage finds a debugger statement and an undeclared file on a real branch", () => {
-  const repo = branchWith({ "src/a.ts": "const x = 1;\ndebugger;\n" });
-  const report = stage(repo);
+test("the gate stage finds a committed debugger statement and an undeclared file", () => {
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\ndebugger;\n");
+  w.commit();
+  const report = gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.undeclared, ["src/a.ts"]);
   assert.deepEqual(report.protected, []);
+  assert.deepEqual(report.blockers, []);
   assert.deepEqual(
     report.checks.map((c) => [c.id, c.file, c.line]),
     [["debugger", "src/a.ts", 2]],
@@ -464,46 +485,75 @@ test("the gate stage finds a debugger statement and an undeclared file on a real
   );
 });
 
-test("the gate stage passes a declared, clean change", () => {
-  const repo = branchWith({ "src/a.ts": "const x = 1;\n" });
-  const report = stage(repo, { contractFiles: ["src/a.ts"] });
+test("the gate stage passes a declared, clean, committed change", () => {
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.commit();
+  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
   assert.equal(report.passed, true);
   assert.deepEqual(g.reportFindings(report), []);
 });
 
-test("the gate stage sees untracked files, protected paths and awkward names", () => {
-  const repo = branchWith({
-    ".husky/pré-commit": "echo ok\n",
-    '.husky/odd"name': "echo ok\n",
-    "src/a.ts": "1\n",
-    "src/café.ts": "debugger;\n",
-  });
-  writeFileSync(join(repo, ".mcp.json"), "{}\n");
-  const report = stage(repo, { contractFiles: ["src/a.ts", "src/café.ts"] });
+test("the gate stage finds committed protected paths with awkward names", () => {
+  const w = runWorktree();
+  w.write(".husky/pré-commit", "echo ok\n");
+  w.write('.husky/odd"name', "echo ok\n");
+  w.write(".mcp.json", "{}\n");
+  w.write("src/a.ts", "1\n");
+  w.write("src/café.ts", "debugger;\n");
+  w.commit();
+  const report = gateStage(w, { contractFiles: ["src/a.ts", "src/café.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(
     report.checks.map((c) => [c.id, c.file]),
     [["debugger", "src/café.ts"]],
   );
   const protectedPaths = ['.husky/odd"name', ".husky/pré-commit", ".mcp.json"];
-  assert.deepEqual([...report.protected].sort(), protectedPaths);
-  assert.deepEqual([...report.undeclared].sort(), protectedPaths);
+  assert.deepEqual(report.protected, protectedPaths);
+  assert.deepEqual(report.undeclared, protectedPaths);
+  assert.deepEqual(report.blockers, []);
   const blockers = g
     .reportFindings(report)
     .filter((f) => f.category === "scope" && f.severity === "blocker");
-  assert.deepEqual(blockers.map((f) => f.file).sort(), protectedPaths);
+  assert.deepEqual(
+    blockers.map((f) => f.file),
+    protectedPaths,
+  );
 });
 
-test("the gate stage runs oracle commands as gates and fails on a sealed test edit", () => {
-  const repo = branchWith({ "src/a.test.ts": "x\n" });
+test("a path with a quote in its name is attributed to the right file by the check scan", () => {
+  const w = runWorktree();
+  w.write('src/a"b.test.ts', "it.only('x');\nconst y = 1;\n");
+  w.commit();
+  const report = gateStage(w, { contractFiles: ['src/a"b.test.ts'] });
+  assert.deepEqual(
+    report.checks.map((c) => [c.id, c.file, c.line, c.severity]),
+    [["only", 'src/a"b.test.ts', 1, "blocker"]],
+  );
+  assert.deepEqual(report.blockers, []);
+});
+
+test("the gate stage runs oracles as gates, never re-runs one, and fails a changed sealed test", () => {
+  const w = runWorktree();
+  w.write("src/a.test.ts", "x\n");
+  w.commit();
   const sealed = [
-    { path: "src/a.test.ts", sha256: g.sha256File(join(repo, "src/a.test.ts")), criteria: ["AC1"] },
+    {
+      path: "src/a.test.ts",
+      sha256: g.sha256File(join(w.path, "src/a.test.ts")),
+      criteria: ["AC1"],
+    },
   ];
-  writeFileSync(join(repo, "src/a.test.ts"), "y\n");
-  const report = stage(repo, {
+  const flaky = "test -f .once || { touch .once; exit 1; }";
+  const report = gateStage(w, {
+    gates: [
+      { name: "true", command: "true" },
+      { name: "flaky", command: flaky },
+    ],
     oracles: [
-      { criterion: "AC1", command: "true" },
-      { criterion: "AC2", command: "exit 1" },
+      { criterion: "AC1", command: "true", reason: null },
+      { criterion: "AC2", command: "exit 1", reason: null },
+      { criterion: "AC3", command: "test -f .twice || { touch .twice; exit 1; }", reason: null },
     ],
     sealed,
     contractFiles: [],
@@ -512,10 +562,82 @@ test("the gate stage runs oracle commands as gates and fails on a sealed test ed
     report.gates.map((x) => [x.name, x.result]),
     [
       ["true", "pass"],
+      ["flaky", "flaky"],
       ["oracle:AC1", "pass"],
       ["oracle:AC2", "fail"],
+      ["oracle:AC3", "fail"],
     ],
   );
-  assert.deepEqual(report.sealed, [{ path: "src/a.test.ts", ok: false }]);
+  assert.deepEqual(report.sealed, [{ path: "src/a.test.ts", ok: true }]);
   assert.equal(report.passed, false);
+});
+
+test("a criterion with no runnable oracle is a gate blocker that names the reason", () => {
+  const w = runWorktree();
+  const report = gateStage(w, {
+    oracles: [
+      { criterion: "AC1", command: "true", reason: null },
+      { criterion: "AC2", command: null, reason: "no-single-test-command" },
+    ],
+  });
+  assert.equal(report.passed, false);
+  assert.deepEqual(claims(report), [
+    "criterion AC2 has no runnable oracle: no-single-test-command",
+  ]);
+  assert.deepEqual(
+    report.gates.map((x) => x.name),
+    ["true", "oracle:AC1"],
+  );
+  assert.equal(g.reportFindings(report)[0].category, "gate");
+});
+
+test("a gate stage with a clean tree and a gate that leaves an untracked artefact still passes", () => {
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.commit();
+  const report = gateStage(w, {
+    contractFiles: ["src/a.ts"],
+    gates: [{ name: "build", command: "mkdir -p coverage && echo x > coverage/lcov.info" }],
+  });
+  assert.equal(report.passed, true, JSON.stringify(report));
+});
+
+test("the gate stage refuses inputs that would make it protect or compare against nothing", () => {
+  const w = runWorktree();
+  const bad = (over, message) => assert.throws(() => gateStage(w, over), message);
+  bad({ protectedPatterns: [] }, /non-empty array/);
+  bad({ protectedPatterns: [7] }, /only strings/);
+  bad({ protectedPatterns: ["["] }, /regular expression|Invalid/i);
+  bad({ baseSha: "dev" }, /40-hex/);
+  bad({ baseSha: "0".repeat(40) }, /./);
+  bad({ gitDir: "relative/.git" }, /absolute/);
+  bad({ worktree: "relative" }, /absolute/);
+  bad({ protectedBaseline: null }, /protectedBaseline/);
+  bad({ protectedBaseline: { ".husky/x": 7 } }, /protectedBaseline/);
+});
+
+test("the stage reads the committed HEAD against the recorded base, not origin/<base>", () => {
+  const w = runWorktree();
+  w.write("src/a.ts", "debugger;\n");
+  w.commit();
+  sh(w.path, "update-ref", "refs/remotes/origin/dev", "HEAD");
+  const report = gateStage(w);
+  assert.deepEqual(
+    report.checks.map((c) => c.id),
+    ["debugger"],
+  );
+  assert.deepEqual(report.undeclared, ["src/a.ts"]);
+});
+
+test("a file marked -diff in a committed .gitattributes (a lockfile) is scanned, with no false parse blocker", () => {
+  const w = runWorktree();
+  w.write(".gitattributes", "package-lock.json -diff\n");
+  w.write("package-lock.json", '{ "a": 1 }\ndebugger;\n');
+  w.commit();
+  const report = gateStage(w, { contractFiles: [".gitattributes", "package-lock.json"] });
+  assert.deepEqual(report.blockers, []);
+  assert.deepEqual(
+    report.checks.map((c) => [c.id, c.file, c.line]),
+    [["debugger", "package-lock.json", 2]],
+  );
 });

@@ -20,11 +20,13 @@ import { physicalPath, relativeInside } from "./lib/paths.mjs";
 /**
  * The default protected paths live in `pipeline/protected.default.json`, one file read by
  * this guard and by the engine's gate stage, so what a child may not write and what the
- * gate flags as changed cannot drift apart. A file that cannot be read or is not a
- * non-empty array of strings is not an empty list: it is remembered and re-thrown from
- * `protectedPatterns`, so the guard denies every edit instead of quietly protecting less.
+ * gate flags as changed cannot drift apart. A file that cannot be read, is not a non-empty
+ * array of strings, or holds a pattern that does not compile is not an empty list: the
+ * defaults are `null`, `protectedPatterns` throws, and the guard denies every edit instead of
+ * quietly protecting less (nor does an importer of the constant get a list that protects
+ * nothing).
  *
- * @returns {{ sources: string[], error: Error | null }}
+ * @returns {{ sources: string[] | null, error: Error | null }}
  */
 function loadDefaults() {
   try {
@@ -38,16 +40,22 @@ function loadDefaults() {
     ) {
       throw new Error("must be a non-empty JSON array of regex strings");
     }
+    for (const source of parsed) new RegExp(source, "i");
     return { sources: parsed, error: null };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return { sources: [], error: new Error(`protected.default.json is unusable (${reason})`) };
+    return { sources: null, error: new Error(`protected.default.json is unusable (${reason})`) };
   }
 }
 
 const defaults = loadDefaults();
 
-/** JavaScript regexes over the worktree-relative POSIX path, matched case-insensitively. */
+/**
+ * JavaScript regexes over the worktree-relative POSIX path, matched case-insensitively;
+ * `null` when the shared list is unusable.
+ *
+ * @type {string[] | null}
+ */
 export const DEFAULT_PROTECTED = defaults.sources;
 
 /**
@@ -59,7 +67,7 @@ export const DEFAULT_PROTECTED = defaults.sources;
  * @returns {RegExp[]}
  */
 export function protectedPatterns(extra) {
-  if (defaults.error) throw defaults.error;
+  if (DEFAULT_PROTECTED === null) throw defaults.error;
   const sources = [...DEFAULT_PROTECTED];
   if (extra !== undefined) {
     let parsed;
