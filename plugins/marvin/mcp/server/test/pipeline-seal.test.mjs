@@ -1310,6 +1310,22 @@ test(
   },
 );
 
+test("the manifest is read from the directory the containment check judged", () => {
+  const { wt, run, status } = sealedBox();
+  const sealed = join(wt, "src", "a.test.ts");
+  mkdirSync(join(run, "sub"));
+  mkdirSync(join(wt, "x"));
+  symlinkSync(join(run, "sub"), join(wt, "x", "lnk"));
+  writeFileSync(join(wt, "x", "sealed.json"), "[]\n");
+  const viaDotDot = `${wt}/x/lnk/..`;
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: viaDotDot }), 2, "the real manifest");
+  assert.equal(status(join(wt, "src", "a.ts"), { MARVIN_PIPELINE_RUN: viaDotDot }), 0);
+  writeFileSync(join(run, "sealed.json"), "[]\n");
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: viaDotDot }), 0, "and that one is read");
+  rmSync(join(run, "sealed.json"));
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: viaDotDot }), 2, "none: never the forged one");
+});
+
 test("sealed-guard denies with the pipeline contract and never mentions the kill switch", () => {
   const { wt, edit } = sealedBox();
   const denial = edit({ file_path: join(wt, "src", "a.test.ts") });

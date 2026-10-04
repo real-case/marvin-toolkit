@@ -27,7 +27,9 @@ import { candidatePaths, physicalPath, relativeInside } from "./lib/paths.mjs";
 /**
  * The sealed paths recorded for this run. Throws unless the run directory is an absolute path
  * outside the worktree and the manifest is a JSON array of non-empty strings; an empty array is
- * a valid manifest that seals nothing.
+ * a valid manifest that seals nothing. The manifest is read from the PHYSICAL run directory, the
+ * one the containment check judged: joined lexically, `<wt>/x/lnk/..` would read `<wt>/x/sealed.json`
+ * while the kernel (and `physicalPath`) resolve it to the parent of `lnk`'s target.
  *
  * @param {string | undefined} runDir The MARVIN_PIPELINE_RUN value.
  * @param {string} root The worktree (`CLAUDE_PROJECT_DIR`), absolute.
@@ -45,7 +47,7 @@ export function loadSealed(runDir, root) {
   }
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(join(runDir, "sealed.json"), "utf8"));
+    parsed = JSON.parse(readFileSync(join(physicalPath(runDir), "sealed.json"), "utf8"));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`sealed.json cannot be read (${reason})`, { cause: error });
