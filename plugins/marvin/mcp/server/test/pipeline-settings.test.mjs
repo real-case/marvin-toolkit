@@ -28,3 +28,19 @@ test("role-specific guards go only where they belong", () => {
   for (const role of ["planner", "test-author", "executor"])
     assert.match(pre(role), /worktree-boundary-guard/);
 });
+
+test("the MCP guard covers every marvin tool a child could misuse", () => {
+  const s = buildRoleSettings("executor", "/h");
+  const entry = s.hooks.PreToolUse.find((m) =>
+    m.hooks.some((h) => /child-mcp-guard\.mjs/.test(h.command)),
+  );
+  assert.equal(entry.matcher, "mcp__.*marvin.*__(task|tracker|spec|adr|lessons|verify|report)$");
+  const matcher = new RegExp(entry.matcher);
+  for (const tool of ["task", "tracker", "spec", "adr", "lessons", "verify", "report"]) {
+    assert.ok(matcher.test(`mcp__plugin_marvin_marvin__${tool}`), tool);
+    assert.ok(matcher.test(`mcp__marvin__${tool}`), tool);
+  }
+  for (const tool of ["task-detail", "dashboard", "help", "summary"]) {
+    assert.ok(!matcher.test(`mcp__plugin_marvin_marvin__${tool}`), tool);
+  }
+});

@@ -11,7 +11,10 @@ export function buildRoleSettings(role: Role, hooksDir: string): Record<string, 
   });
   const pre: { matcher: string; hooks: unknown[] }[] = [
     { matcher: "Bash", hooks: [hook("child-git-guard.mjs")] },
-    { matcher: "mcp__.*marvin__task$", hooks: [hook("child-mcp-guard.mjs")] },
+    {
+      matcher: "mcp__.*marvin.*__(task|tracker|spec|adr|lessons|verify|report)$",
+      hooks: [hook("child-mcp-guard.mjs")],
+    },
   ];
   if (role === "verifier" || role === "retro")
     pre.push({ matcher: "Bash", hooks: [hook("readonly-guard.mjs")] });

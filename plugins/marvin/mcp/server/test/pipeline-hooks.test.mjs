@@ -52,7 +52,7 @@ test("child git guard keeps children on their branch", () => {
     "gh pr merge 3",
     "gh pr ready 3",
   ]) {
-    assert.notEqual(childGitViolation(c, "dev"), null, c);
+    assert.notEqual(childGitViolation(c, { base: "dev", branch: "feature/OSI-1--x" }), null, c);
   }
   for (const c of [
     "git checkout -- src/a.ts",
@@ -60,7 +60,7 @@ test("child git guard keeps children on their branch", () => {
     "git merge origin/dev",
     "git commit -m 'feat: x'",
   ]) {
-    assert.equal(childGitViolation(c, "dev"), null, c);
+    assert.equal(childGitViolation(c, { base: "dev", branch: "feature/OSI-1--x" }), null, c);
   }
 });
 
