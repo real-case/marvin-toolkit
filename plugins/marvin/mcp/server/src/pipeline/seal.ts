@@ -523,10 +523,11 @@ function regexMatcher(source: string): RegExp | null {
  * Every subject is relative to the worktree root, or absolute. A runner whose root sits below the
  * worktree (vitest `test.projects`, `--root` or `--dir`; jest `rootDir` or `projects`) matches
  * `{file}` against paths relative to that root, which none of these readings sees: such a
- * selection is covered only by the runner's own count of the files it ran (`reportedFileCount`).
- * Where a runner prints that count it is the primary evidence. These readings are what is left
- * for a runner that prints none, such as `node --test`; they stay in force for every runner,
- * because they are checked before anything runs.
+ * selection shows only in the runner's own count of the files it ran (`reportedFileCount`), and
+ * only when the candidate ran beside the sibling. Where a runner prints that count it is the
+ * primary evidence. These readings are what is left for a runner that prints none, such as
+ * `node --test`; they stay in force for every runner, because they are checked before anything
+ * runs.
  */
 function selectedBy(candidate: string, roots: readonly string[]): (sibling: Sibling) => boolean {
   const folded = fold(candidate);
@@ -585,22 +586,27 @@ interface Candidate {
  *
  * `gates.test_one` must select exactly one file, and a runner that treats its argument as a
  * filter would run a sibling too and judge the exit code of the pair. Two kinds of evidence
- * guard this. The primary one is the runner's own count: after each red run, a vitest or jest
- * summary reporting any number of test files but 1 refuses the candidate. It alone covers a
- * runner whose root sits below the worktree (vitest `test.projects`, jest `rootDir`), which
- * matches `{file}` against paths the static readings never see. The fallback, for a runner that
- * prints no count (`node --test`), is the static readings, which are conservative and are checked
- * for every runner before anything runs: no OTHER test file may be matched by the candidate's
- * path read as a substring, a regular expression or a glob, relative to the worktree root or
- * absolute; see `selectedBy`. The siblings come from walking the disk, not from git: they
- * include ignored files, the contents of nested repositories and the files behind symlinked
- * directories, and skip only the root `.git` and the root `node_modules` (see `walkTestFiles`).
- * A symlinked directory that leaves the worktree is a reason of its own, except one in a nested
- * `.git` or `node_modules` directory, which counts only for a candidate whose glob reading can
- * match a path inside it (vitest and jest never enter those directories). A sibling is any file
- * matching the test pattern, a `.test`/`.spec` file or a file under `__tests__/`. The glob
- * reading is converted to a regular expression here, not by `path.matchesGlob`, which Node 20
- * lacks before 20.17 and which is experimental in some versions.
+ * guard this, and neither is complete. The primary one is the runner's own count: after each red
+ * run, a vitest or jest summary reporting any number of test files but 1 refuses the candidate.
+ * It is the only evidence against a runner whose root sits below the worktree (vitest
+ * `test.projects`, jest `rootDir`), which matches `{file}` against paths the static readings
+ * never see, and it catches such a selection only when the candidate ran too. A count of 1 shows
+ * that one file ran, not that it was the candidate: a project `include` that leaves the
+ * candidate out, beside a red sibling whose path contains the candidate's, runs the sibling alone
+ * and is sealed. The fallback, for a runner that prints no count (`node --test`), is the static
+ * readings, which are conservative and are checked for every runner before anything runs: no
+ * OTHER test file may be matched by the candidate's path read as a substring, a regular
+ * expression or a glob, relative to the worktree root or absolute; see `selectedBy`. The
+ * siblings come from walking the disk, not from git: they include ignored files, the contents of
+ * nested repositories and the files behind symlinked directories, and skip only the root `.git`
+ * and the root `node_modules` (see `walkTestFiles`). A symlinked directory that leaves the
+ * worktree is a reason of its own, except one in a nested `.git` or `node_modules` directory,
+ * which counts only for a candidate whose glob reading can match a path inside it (vitest and
+ * jest never enter those directories). A sibling is any file matching the test pattern, a
+ * `.test`/`.spec` file or a file under `__tests__/`; a file of another shape that a project's
+ * runner config selects is not seen. The glob reading is converted to a regular expression
+ * here, not by `path.matchesGlob`, which Node 20 lacks before 20.17 and which is experimental in
+ * some versions.
  *
  * This is a guard against honest mistakes and cheap tricks, not a proof: the red run executes
  * test-author code, which can defeat any check made around it. The structural snapshots around
