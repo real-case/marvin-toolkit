@@ -7,8 +7,8 @@
  * to the delivery gate; sealing a spec is the planner's step alone. Matched in the role
  * settings by `mcp__.*marvin.*__(task|tracker|spec|adr|lessons|verify|report)$`.
  */
-import { isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
+import { readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
 
 const isSet = (value) => value !== undefined && value !== false;
 
@@ -54,7 +54,7 @@ export function childMcpViolation(toolName, input, role) {
   }
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("child-mcp-guard", () => {
     const payload = readPayload();
     const why = childMcpViolation(

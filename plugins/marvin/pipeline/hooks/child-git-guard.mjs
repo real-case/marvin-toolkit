@@ -18,8 +18,8 @@
  * the deterministic second line, and it fails closed.
  */
 import { isAbsolute, resolve } from "node:path";
-import { gitSubcommand, isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
+import { gitSubcommand, readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
 import { physicalPath, relativeInside } from "./lib/paths.mjs";
 import {
   ASSIGNMENT,
@@ -595,7 +595,7 @@ function cwdViolation(command, cwd, root) {
     : null;
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("child-git-guard", () => {
     const payload = readPayload();
     const command = payload?.tool_input?.command;

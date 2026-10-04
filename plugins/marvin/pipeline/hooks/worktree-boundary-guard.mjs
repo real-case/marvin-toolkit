@@ -12,10 +12,9 @@
  * config, `.git` — are protected, plus any regexes in MARVIN_PIPELINE_PROTECTED.
  */
 import { readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
-import { isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
-import { physicalPath, relativeInside } from "./lib/paths.mjs";
+import { readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
+import { worktreeViolation } from "./lib/paths.mjs";
 
 /**
  * The default protected paths live in `pipeline/protected.default.json`, one file read by
@@ -93,23 +92,13 @@ export function protectedPatterns(extra) {
  * @returns {string | null}
  */
 export function boundaryViolation(target, root, patterns) {
-  if (typeof target !== "string" || target === "") return "the edit names no file";
-  if (typeof root !== "string" || !isAbsolute(root)) {
-    return "the run's worktree (CLAUDE_PROJECT_DIR) is unknown";
-  }
-  const realRoot = physicalPath(resolve(root));
-  const asWritten = isAbsolute(target) ? target : `${root}/${target}`;
-  for (const candidate of [asWritten, resolve(root, target)]) {
-    const rel = relativeInside(physicalPath(candidate), realRoot);
-    if (rel === null) return `${target} is outside this run's worktree (${root})`;
-    if (rel === "") return `${target} is the worktree itself, not a file in it`;
+  return worktreeViolation(target, root, (rel) => {
     const hit = patterns.find((pattern) => pattern.test(rel));
-    if (hit) return `${rel} is a protected path (${hit.source})`;
-  }
-  return null;
+    return hit ? `${rel} is a protected path (${hit.source})` : null;
+  });
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("worktree-boundary-guard", () => {
     const input = readPayload()?.tool_input ?? {};
     const targets = [input.file_path, input.notebook_path].filter((t) => t !== undefined);

@@ -6,7 +6,9 @@
  * `<MARVIN_PIPELINE_RUN>/sealed.json`. This guard is wired into executor sessions only, so a
  * missing run directory, an unreadable or malformed manifest, an unknown worktree and an edit
  * that names no file are all misconfigurations, and every one denies: a guard that cannot
- * tell what is sealed must not let the edit through.
+ * tell what is sealed must not let the edit through. The run directory must be absolute and
+ * must lie outside the worktree: relative, it would be read from the hook's directory, and
+ * inside, it is a place the child can write, where a forged manifest could seal nothing.
  *
  * A target is sealed when it resolves to the same PHYSICAL path as a sealed file, and also
  * when it exists and is the same file (device and inode). The second test is what catches
@@ -18,20 +20,28 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
-import { physicalPath } from "./lib/paths.mjs";
+import { readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
+import { candidatePaths, physicalPath, relativeInside } from "./lib/paths.mjs";
 
 /**
- * The sealed paths recorded for this run. Throws unless the manifest is a JSON array of
- * non-empty strings; an empty array is a valid manifest that seals nothing.
+ * The sealed paths recorded for this run. Throws unless the run directory is an absolute path
+ * outside the worktree and the manifest is a JSON array of non-empty strings; an empty array is
+ * a valid manifest that seals nothing.
  *
  * @param {string | undefined} runDir The MARVIN_PIPELINE_RUN value.
+ * @param {string} root The worktree (`CLAUDE_PROJECT_DIR`), absolute.
  * @returns {string[]}
  */
-export function loadSealed(runDir) {
+export function loadSealed(runDir, root) {
   if (typeof runDir !== "string" || runDir === "") {
     throw new Error("the run's state directory (MARVIN_PIPELINE_RUN) is unknown");
+  }
+  if (!isAbsolute(runDir)) {
+    throw new Error("the run's state directory (MARVIN_PIPELINE_RUN) is not an absolute path");
+  }
+  if (relativeInside(physicalPath(runDir), physicalPath(resolve(root))) !== null) {
+    throw new Error("the run's state directory (MARVIN_PIPELINE_RUN) lies inside the worktree");
   }
   let parsed;
   try {
@@ -74,8 +84,7 @@ function identity(path) {
  * @returns {string | null}
  */
 export function sealedHit(target, root, sealed) {
-  const written = isAbsolute(target) ? target : `${root}/${target}`;
-  const candidates = [...new Set([written, resolve(root, target)])].map((p) => physicalPath(p));
+  const candidates = candidatePaths(target, root).map((p) => physicalPath(p));
   const same = candidates.map(identity).filter((id) => id !== null);
   for (const entry of sealed) {
     const sealedPath = physicalPath(resolve(root, entry));
@@ -86,7 +95,7 @@ export function sealedHit(target, root, sealed) {
   return null;
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("sealed-guard", () => {
     const input = readPayload()?.tool_input ?? {};
     const targets = [input.file_path, input.notebook_path].filter((t) => t !== undefined);
@@ -100,7 +109,7 @@ if (isMain(import.meta.url)) {
     if (typeof root !== "string" || !isAbsolute(root)) {
       return denyPipeline("sealed-guard", ["the run's worktree (CLAUDE_PROJECT_DIR) is unknown."]);
     }
-    const sealed = loadSealed(process.env.MARVIN_PIPELINE_RUN);
+    const sealed = loadSealed(process.env.MARVIN_PIPELINE_RUN, root);
     for (const target of targets) {
       const hit = sealedHit(target, root, sealed);
       if (hit !== null) {

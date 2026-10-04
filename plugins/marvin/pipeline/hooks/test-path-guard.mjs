@@ -9,10 +9,9 @@
  * empty or non-compiling pattern, an unknown worktree and an edit that names no file are
  * misconfigurations, and every one denies. (The protected paths are `worktree-boundary-guard`'s.)
  */
-import { isAbsolute, resolve } from "node:path";
-import { isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
-import { physicalPath, relativeInside } from "./lib/paths.mjs";
+import { readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
+import { worktreeViolation } from "./lib/paths.mjs";
 
 /**
  * Why the test-author may not write `target`, or null. `..` is judged both as the kernel
@@ -25,22 +24,12 @@ import { physicalPath, relativeInside } from "./lib/paths.mjs";
  * @returns {string | null}
  */
 export function testPathViolation(target, root, pattern) {
-  if (typeof target !== "string" || target === "") return "the write names no file";
-  if (typeof root !== "string" || !isAbsolute(root)) {
-    return "the run's worktree (CLAUDE_PROJECT_DIR) is unknown";
-  }
-  const realRoot = physicalPath(resolve(root));
-  const written = isAbsolute(target) ? target : `${root}/${target}`;
-  for (const candidate of new Set([written, resolve(root, target)])) {
-    const rel = relativeInside(physicalPath(candidate), realRoot);
-    if (rel === null) return `${target} is outside this run's worktree (${root})`;
-    if (rel === "") return `${target} is the worktree itself, not a file in it`;
-    if (!pattern.test(rel)) return `the test-author writes test files only; ${rel} is not one`;
-  }
-  return null;
+  return worktreeViolation(target, root, (rel) =>
+    pattern.test(rel) ? null : `the test-author writes test files only; ${rel} is not one`,
+  );
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("test-path-guard", () => {
     const source = process.env.MARVIN_PIPELINE_TEST_PATTERN;
     if (typeof source !== "string" || source === "") {
@@ -61,7 +50,7 @@ if (isMain(import.meta.url)) {
     const root = process.env.CLAUDE_PROJECT_DIR;
     const why =
       targets.length === 0
-        ? "the write names no file"
+        ? "the edit names no file"
         : targets.map((t) => testPathViolation(t, root, pattern)).find((w) => w !== null);
     return why
       ? denyPipeline("test-path-guard", [

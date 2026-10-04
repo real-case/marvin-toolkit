@@ -35,8 +35,16 @@ function tmp(prefix = "pipe-seal-") {
   return dir;
 }
 
+function gitInit(dir) {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+  const r = spawnSync("git", ["init", "-q"], { cwd: dir, env, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+}
+
 function worktreeWith(files) {
   const wt = tmp();
+  gitInit(wt);
   for (const f of files) {
     mkdirSync(dirname(join(wt, f)), { recursive: true });
     writeFileSync(join(wt, f), `// ${f}`);
@@ -245,6 +253,7 @@ test("the file must exist, be regular, and live inside the worktree", () => {
   const wt = join(base, "wt");
   const outside = join(base, "outside");
   mkdirSync(join(wt, "src", "dir.test.ts"), { recursive: true });
+  gitInit(wt);
   mkdirSync(outside);
   writeFileSync(join(wt, "src", "real.test.ts"), "// real");
   writeFileSync(join(outside, "x.test.ts"), "// outside");
@@ -275,6 +284,7 @@ test("a worktree reached through an alias is the same worktree", () => {
   const base = tmp();
   const wt = join(base, "wt");
   mkdirSync(wt);
+  gitInit(wt);
   writeFileSync(join(wt, "a.test.ts"), "// a");
   const alias = join(base, "alias");
   symlinkSync(wt, alias);
@@ -462,7 +472,7 @@ test("a non-canonical path never reaches the manifest", () => {
 
 const HOOK_ENV = ["MARVIN_PIPELINE_RUN", "MARVIN_PIPELINE_TEST_PATTERN", "CLAUDE_PROJECT_DIR"];
 
-function hook(file, payload, env = {}) {
+function hook(file, payload, env = {}, cwd = undefined) {
   const merged = { ...process.env };
   for (const key of HOOK_ENV) delete merged[key];
   for (const [key, value] of Object.entries(env)) {
@@ -472,6 +482,7 @@ function hook(file, payload, env = {}) {
   const r = spawnSync(process.execPath, [join(hooks, file)], {
     input: typeof payload === "string" ? payload : JSON.stringify(payload),
     env: merged,
+    cwd,
     encoding: "utf8",
   });
   return { status: r.status, stderr: r.stderr };
@@ -672,6 +683,46 @@ test("sealed-guard fails closed on every misconfiguration", () => {
     ).status,
     2,
   );
+});
+
+test("run state never lives inside the worktree", () => {
+  const { base, wt, run, edit, status } = sealedBox();
+  const sealed = join(wt, "src", "a.test.ts");
+  const forged = join(wt, "run");
+  mkdirSync(forged);
+  writeFileSync(join(forged, "sealed.json"), "[]\n");
+  assert.equal(
+    status(sealed, { MARVIN_PIPELINE_RUN: forged }),
+    2,
+    "a manifest inside the worktree",
+  );
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: wt }), 2, "the worktree itself");
+  const forgedViaLink = join(base, "run-link");
+  symlinkSync(forged, forgedViaLink);
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: forgedViaLink }), 2, "reached by a symlink");
+  const inWorktreeViaLink = join(wt, "to-run");
+  symlinkSync(run, inWorktreeViaLink);
+  assert.equal(status(sealed, { MARVIN_PIPELINE_RUN: inWorktreeViaLink }), 2, "still guards");
+  assert.equal(
+    status(join(wt, "src", "a.ts"), { MARVIN_PIPELINE_RUN: inWorktreeViaLink }),
+    0,
+    "a link inside the worktree to a run directory outside it is a legitimate spelling",
+  );
+  const relative = (cwd, file_path) =>
+    hook(
+      "sealed-guard.mjs",
+      { tool_name: "Edit", tool_input: { file_path } },
+      { MARVIN_PIPELINE_RUN: "run", CLAUDE_PROJECT_DIR: wt },
+      cwd,
+    );
+  const fromWorktree = relative(wt, sealed);
+  assert.equal(fromWorktree.status, 2, "a relative run directory would read the worktree's file");
+  assert.match(fromWorktree.stderr, /MARVIN_PIPELINE_RUN\) is not an absolute path/);
+  const elsewhere = relative(base, join(wt, "src", "a.ts"));
+  assert.equal(elsewhere.status, 2, "and has no fixed meaning anywhere else");
+  assert.match(elsewhere.stderr, /is not an absolute path/);
+  assert.equal(edit({ file_path: sealed }).status, 2, "the real run directory still guards");
+  assert.equal(edit({ file_path: join(wt, "src", "a.ts") }).status, 0);
 });
 
 test("sealed-guard denies with the pipeline contract and never mentions the kill switch", () => {

@@ -7,8 +7,8 @@
  * attached (`>file`), `&>`, `>|`, `>&file` or quoted target is a write like any other.
  * The `dontAsk` allowlist remains the primary boundary for read-only roles.
  */
-import { gitSubcommand, isMain, readPayload } from "../../hooks/lib/hook-io.mjs";
-import { denyPipeline, pipelineMain } from "./lib/deny.mjs";
+import { gitSubcommand, readPayload } from "../../hooks/lib/hook-io.mjs";
+import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
 import { commandSegments, commandStart, execContexts, programName, words } from "./lib/shell.mjs";
 
 const GIT_READ = new Set([
@@ -204,7 +204,7 @@ export function readonlyViolation(command) {
   return null;
 }
 
-if (isMain(import.meta.url)) {
+if (isPipelineEntry(import.meta.url)) {
   pipelineMain("readonly-guard", () => {
     const command = readPayload()?.tool_input?.command;
     const why =

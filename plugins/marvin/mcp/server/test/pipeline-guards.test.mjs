@@ -1,10 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const hooks = fileURLToPath(new URL("../../../pipeline/hooks/", import.meta.url));
 const { childGitViolation } = await import(join(hooks, "child-git-guard.mjs"));
@@ -704,4 +713,109 @@ test("no pipeline denial advertises the hooks kill switch", () => {
   assert.equal(readonly.status, 2);
   assert.match(readonly.stderr, /^marvin:pipeline:readonly-guard: BLOCKED - /);
   assert.doesNotMatch(readonly.stderr, /disable|MARVIN_HOOKS_DISABLED/i);
+});
+
+// ── G. guards reached through a symlinked path ──────────────────────────────
+
+const { isPipelineEntry } = await import(join(hooks, "lib", "deny.mjs"));
+const { candidatePaths } = await import(join(hooks, "lib", "paths.mjs"));
+
+const guardFiles = readdirSync(hooks).filter((f) => f.endsWith("-guard.mjs"));
+
+test("every pipeline guard decides entry by real paths, never by hook-io's isMain", () => {
+  assert.ok(guardFiles.length >= 6, guardFiles.join(", "));
+  for (const file of guardFiles) {
+    assert.doesNotMatch(readFileSync(join(hooks, file), "utf8"), /\bisMain\b/, file);
+  }
+});
+
+test("every pipeline guard still denies when it is launched through a symlink", () => {
+  const base = mkdtempSync(join(tmpdir(), "pipe-link-"));
+  const root = join(base, "wt");
+  mkdirSync(root);
+  const deny = (tool_name, tool_input, env = {}) => ({ payload: { tool_name, tool_input }, env });
+  const cases = {
+    "child-git-guard.mjs": deny(
+      "Bash",
+      { command: "git push --force" },
+      { MARVIN_PIPELINE_BASE: "dev", MARVIN_PIPELINE_BRANCH: "feature/OSI-1--x" },
+    ),
+    "readonly-guard.mjs": deny("Bash", { command: "rm -rf src" }),
+    "child-mcp-guard.mjs": deny(
+      "mcp__plugin_marvin_marvin__spec",
+      { action: "seal" },
+      { MARVIN_PIPELINE_ROLE: "executor" },
+    ),
+    "worktree-boundary-guard.mjs": deny(
+      "Write",
+      { file_path: "/etc/passwd" },
+      { CLAUDE_PROJECT_DIR: root },
+    ),
+    "sealed-guard.mjs": deny("Edit", { file_path: join(root, "a.test.ts") }),
+    "test-path-guard.mjs": deny("Write", { file_path: join(root, "a.ts") }),
+  };
+  assert.deepEqual(Object.keys(cases).sort(), [...guardFiles].sort(), "a guard has no case here");
+  const dirLink = join(base, "hooks-link");
+  symlinkSync(hooks, dirLink);
+  const fileLinks = join(base, "file-links");
+  mkdirSync(fileLinks);
+  const run = (script, { payload, env }) => {
+    const r = spawnSync(process.execPath, [script], {
+      input: JSON.stringify(payload),
+      env: { ...cleanEnv, ...env },
+      encoding: "utf8",
+    });
+    return { status: r.status, stderr: r.stderr };
+  };
+  for (const [file, c] of Object.entries(cases)) {
+    symlinkSync(join(hooks, file), join(fileLinks, file));
+    const real = run(join(hooks, file), c);
+    assert.equal(real.status, 2, `${file} by its real path`);
+    assert.match(
+      real.stderr,
+      new RegExp(`^marvin:pipeline:${file.replace(".mjs", "")}: BLOCKED - `),
+    );
+    for (const via of [join(dirLink, file), join(fileLinks, file)]) {
+      const linked = run(via, c);
+      assert.equal(linked.status, 2, `${file} through ${via}`);
+      assert.equal(linked.stderr, real.stderr, `${file} through ${via} ran its body`);
+    }
+  }
+  rmSync(base, { recursive: true, force: true });
+});
+
+test("isPipelineEntry compares real paths and runs the body when it cannot compare", () => {
+  const here = fileURLToPath(import.meta.url);
+  const base = mkdtempSync(join(tmpdir(), "pipe-entry-"));
+  const link = join(base, "this-test.mjs");
+  symlinkSync(here, link);
+  const argv1 = process.argv[1];
+  try {
+    process.argv[1] = here;
+    assert.equal(isPipelineEntry(pathToFileURL(here).href), true);
+    assert.equal(isPipelineEntry(pathToFileURL(link).href), true, "the url spelled through a link");
+    assert.equal(isPipelineEntry(pathToFileURL(join(hooks, "sealed-guard.mjs")).href), false);
+    process.argv[1] = link;
+    assert.equal(isPipelineEntry(pathToFileURL(here).href), true, "argv spelled through a link");
+    assert.equal(isPipelineEntry(pathToFileURL(join(hooks, "sealed-guard.mjs")).href), false);
+    process.argv[1] = undefined;
+    assert.equal(isPipelineEntry(pathToFileURL(join(hooks, "sealed-guard.mjs")).href), true);
+    process.argv[1] = join(base, "no-such-file.mjs");
+    assert.equal(isPipelineEntry(pathToFileURL(join(hooks, "sealed-guard.mjs")).href), true);
+    process.argv[1] = here;
+    assert.equal(isPipelineEntry(pathToFileURL(join(base, "gone.mjs")).href), true);
+    assert.equal(isPipelineEntry("not a url"), true);
+  } finally {
+    process.argv[1] = argv1;
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("candidatePaths names both readings of `..`, once when they agree", () => {
+  assert.deepEqual(candidatePaths("src/a.ts", "/r"), ["/r/src/a.ts"]);
+  assert.deepEqual(candidatePaths("/r/src/a.ts", "/r"), ["/r/src/a.ts"]);
+  assert.deepEqual(candidatePaths("a/../b.ts", "/r"), ["/r/a/../b.ts", "/r/b.ts"]);
+  assert.deepEqual(candidatePaths("/r/a/../b.ts", "/r"), ["/r/a/../b.ts", "/r/b.ts"]);
+  assert.deepEqual(candidatePaths("../x", "/r"), ["/r/../x", "/x"]);
+  assert.deepEqual(candidatePaths("/etc/x", "/r"), ["/etc/x"]);
 });

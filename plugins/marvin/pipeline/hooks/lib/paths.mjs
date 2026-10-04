@@ -69,3 +69,44 @@ export function relativeInside(target, root) {
   if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) return null;
   return rel.split(sep).join("/");
 }
+
+/**
+ * The distinct absolute paths an edit of `target` can name: the one as written, which the
+ * kernel resolves with `..` applied AFTER the symlink before it, and the lexically normalised
+ * one, which a tool that cleans the path first would open. Either may be the file a write lands
+ * on, so a guard judges both.
+ *
+ * @param {string} target The tool's `file_path` or `notebook_path`, absolute or relative to `root`.
+ * @param {string} root The worktree (`CLAUDE_PROJECT_DIR`).
+ * @returns {string[]}
+ */
+export function candidatePaths(target, root) {
+  const written = isAbsolute(target) ? target : `${root}/${target}`;
+  return [...new Set([written, resolve(root, target)])];
+}
+
+/**
+ * Why an edit of `target` may not proceed, or null. The target must name a file inside the
+ * worktree under both readings of `..` (as a physical path, every symlink followed), and
+ * `judge` is asked about the worktree-relative POSIX path of each reading.
+ *
+ * @param {unknown} target
+ * @param {unknown} root The worktree (`CLAUDE_PROJECT_DIR`).
+ * @param {(rel: string) => string | null} judge A reason to deny `rel`, or null.
+ * @returns {string | null}
+ */
+export function worktreeViolation(target, root, judge) {
+  if (typeof target !== "string" || target === "") return "the edit names no file";
+  if (typeof root !== "string" || !isAbsolute(root)) {
+    return "the run's worktree (CLAUDE_PROJECT_DIR) is unknown";
+  }
+  const realRoot = physicalPath(resolve(root));
+  for (const candidate of candidatePaths(target, root)) {
+    const rel = relativeInside(physicalPath(candidate), realRoot);
+    if (rel === null) return `${target} is outside this run's worktree (${root})`;
+    if (rel === "") return `${target} is the worktree itself, not a file in it`;
+    const why = judge(rel);
+    if (why !== null) return why;
+  }
+  return null;
+}

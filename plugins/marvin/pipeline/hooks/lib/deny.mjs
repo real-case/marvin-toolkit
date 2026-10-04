@@ -12,8 +12,31 @@
  * every developer's `Bash` call), `pipelineMain` turns it into a denial.
  */
 
-import { writeSync } from "node:fs";
+import { realpathSync, writeSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { DENY, main } from "../../../hooks/lib/hook-io.mjs";
+
+/**
+ * Whether the module at `url` is the script node was launched with, comparing the REAL path
+ * of both sides. hook-io's `isMain` compares `process.argv[1]`, which keeps the symlinks of the
+ * path the hook command spelled, with `import.meta.url`, which the ESM loader has already
+ * resolved: launched through a symlinked hooks directory the two differ, the guard's body is
+ * skipped, and the call is allowed. A pipeline guard must never be skipped by a spelling, so
+ * when the comparison cannot be made at all (no `argv[1]`, a path that does not resolve, a
+ * `url` that is not one) this answers true and the guard runs.
+ *
+ * @param {string} url The caller's `import.meta.url`.
+ * @returns {boolean}
+ */
+export function isPipelineEntry(url) {
+  try {
+    const entry = process.argv[1];
+    if (typeof entry !== "string" || entry === "") return true;
+    return realpathSync(entry) === realpathSync(fileURLToPath(url));
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Write the denial to stderr and return the deny code. The first line is
