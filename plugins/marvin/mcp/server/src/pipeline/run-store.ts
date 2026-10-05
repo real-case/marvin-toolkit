@@ -94,6 +94,8 @@ export const Run = z.object({
   retries: z.record(z.string(), z.number().int()),
   questionsAnswered: z.number().int().min(0),
   testAuthorAttempts: z.number().int().min(0),
+  /** Rounds in which the executor asked a question or raised a dispute. Absent from older run files. */
+  executorQuestionRounds: z.number().int().min(0).default(0),
   sealed: z.array(
     z.object({ path: z.string(), sha256: z.string(), criteria: z.array(z.string()) }),
   ),
@@ -188,6 +190,7 @@ export function initRun(o: {
     retries: {},
     questionsAnswered: 0,
     testAuthorAttempts: 0,
+    executorQuestionRounds: 0,
     sealed: [],
     assumptions: [],
     previousFindings: [],

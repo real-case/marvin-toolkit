@@ -84,15 +84,18 @@ test("state root honours MARVIN_PIPELINE_HOME", () => {
   );
 });
 
-test("a run file written before ciSince existed still loads, and the field starts empty", () => {
+test("a run file written before ciSince and executorQuestionRounds existed still loads, with both at their defaults", () => {
   const dir = mkdtempSync(join(tmpdir(), "pipe-"));
-  const { ciSince, ...old } = fresh();
-  assert.equal(ciSince, null);
+  const { ciSince, executorQuestionRounds, ...old } = fresh();
+  assert.deepEqual([ciSince, executorQuestionRounds], [null, 0]);
   writeFileSync(join(dir, "run.json"), JSON.stringify(old));
-  assert.equal(rs.loadRun(dir).ciSince, null);
-  assert.equal(
-    rs.Run.parse({ ...old, ciSince: "2026-10-04T10:00:00.000Z" }).ciSince,
-    "2026-10-04T10:00:00.000Z",
-  );
+  const loaded = rs.loadRun(dir);
+  assert.deepEqual([loaded.ciSince, loaded.executorQuestionRounds], [null, 0]);
+  const stamped = { ...old, ciSince: "2026-10-04T10:00:00.000Z", executorQuestionRounds: 2 };
+  assert.deepEqual(rs.Run.parse(stamped).executorQuestionRounds, 2);
   assert.throws(() => rs.Run.parse({ ...old, ciSince: 5 }), /ciSince/);
+  assert.throws(
+    () => rs.Run.parse({ ...old, executorQuestionRounds: -1 }),
+    /executorQuestionRounds/,
+  );
 });

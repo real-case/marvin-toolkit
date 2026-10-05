@@ -29,6 +29,7 @@ caps:
   test_author_attempts: 2
   child_retries: 1
   ci_wait_minutes: 60
+  executor_questions: 3
   spec_critic: { light: 1, default: 2 }
 sensitive_paths: [] # JS regexes over repo-relative paths
 cross_repo_markers: [] # JS regexes over the spec text

@@ -729,8 +729,19 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       if (output?.role !== "executor") break;
       const out = output.data;
       if (out.status === "needs_input") {
+        const cap = rubric.caps.executor_questions;
+        if (run.executorQuestionRounds >= cap) {
+          return ask({ ...run, haltRole: "executor" }, "halt", {
+            reason: `executor asked more than ${cap} times`,
+            detail: { questions: out.questions, dispute: out.dispute ?? null },
+          });
+        }
+        const asking = { ...run, awaitingRole: "executor" as const };
         return ask(
-          go({ ...run, awaitingRole: "executor" }, "awaiting_answer"),
+          go(
+            { ...asking, executorQuestionRounds: run.executorQuestionRounds + 1 },
+            "awaiting_answer",
+          ),
           "executor_questions",
           {
             questions: out.questions,

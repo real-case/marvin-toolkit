@@ -62,6 +62,7 @@ export const Rubric = z
         test_author_attempts: z.number().int().min(1),
         child_retries: z.number().int().min(0),
         ci_wait_minutes: z.number().int().min(1),
+        executor_questions: z.number().int().min(0),
         spec_critic: z
           .object({ light: z.number().int().min(1), default: z.number().int().min(1) })
           .strict(),

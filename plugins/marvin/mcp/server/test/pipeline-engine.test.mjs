@@ -1531,3 +1531,59 @@ test("fix 6: an executor done that also carries questions or a dispute is malfor
   const withDispute = child("executor", executorDone({ dispute }));
   retryThenHalt(executingRun(), withDispute, "executor", /executor.*dispute/);
 });
+
+const askExecutor = (extra = {}) =>
+  child(
+    "executor",
+    { status: "needs_input", summary: "s", questions: [question], ...extra },
+    "needs_input",
+  );
+const answerExecutor = () =>
+  answer("executor_questions", { kind: "answers", text: "Q1: A", count: 1 });
+
+test("fix 7: the executor may ask three times; the fourth round halts instead of asking again", () => {
+  let run = executingRun();
+  for (let round = 1; round <= 3; round += 1) {
+    const asked = go(run, askExecutor());
+    assert.equal(judgmentOf(asked), "executor_questions", `round ${round}`);
+    assert.equal(asked.run.executorQuestionRounds, round);
+    run = go(asked.run, answerExecutor()).run;
+    assert.equal(run.stage, "executing");
+    assert.equal(run.executorQuestionRounds, round);
+  }
+  const fourth = go(run, askExecutor());
+  assert.equal(judgmentOf(fourth), "halt");
+  assert.equal(fourth.run.haltRole, "executor");
+  assert.equal(fourth.run.stage, "executing");
+  assert.equal(fourth.run.executorQuestionRounds, 3);
+  assert.match(payloadOf(fourth).reason, /executor asked more than 3 times/);
+  assert.equal(spawnOf(fourth), undefined);
+});
+
+test("fix 7: a dispute is a round too, and the cap is the rubric's", () => {
+  const dispute = { path: "src/a.test.ts", reason: "r", evidence: "e" };
+  const disputed = child(
+    "executor",
+    { status: "needs_input", summary: "s", dispute },
+    "needs_input",
+  );
+  const first = go(executingRun(), disputed);
+  assert.equal(first.run.executorQuestionRounds, 1);
+  assert.equal(judgmentOf(first), "executor_questions");
+  const none = loadRubric(DEFAULT, "caps: { executor_questions: 0 }\n");
+  assert.equal(judgmentOf(go(executingRun(), disputed, none)), "halt");
+  const two = loadRubric(DEFAULT, "caps: { executor_questions: 2 }\n");
+  const second = go(go(first.run, answerExecutor(), two).run, disputed, two);
+  assert.equal(judgmentOf(second), "executor_questions");
+  const third = go(go(second.run, answerExecutor(), two).run, disputed, two);
+  assert.equal(judgmentOf(third), "halt");
+});
+
+test("fix 7: a halt retry after the cap re-spawns the executor and the rounds are not reset", () => {
+  const run = { ...executingRun(), executorQuestionRounds: 3 };
+  const halted = go(run, askExecutor());
+  const retried = go(halted.run, answer("halt", { kind: "retry" }));
+  assert.equal(spawnOf(retried).role, "executor");
+  assert.equal(retried.run.executorQuestionRounds, 3);
+  assert.equal(judgmentOf(go(retried.run, askExecutor())), "halt");
+});
