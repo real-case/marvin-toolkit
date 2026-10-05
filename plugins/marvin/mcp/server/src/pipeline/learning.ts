@@ -309,8 +309,10 @@ function slowOnLongLine(source: string): boolean {
 }
 
 /**
- * Why a retro-proposed pattern must not run over every added line, or null. The gate runs these
- * synchronously, so one that backtracks without bound would stall every later run.
+ * Why a retro-proposed pattern should not be written to `checks.yaml`, or null. An early
+ * rejection, not a guarantee: no static read or probe is complete (overlapping alternatives,
+ * bounded repeats and sequential quantifiers all find their way round one). What actually
+ * keeps a slow rule from stalling a run is the time budget `scanChecks` gives every rule.
  */
 export function regexHazard(source: string): string | null {
   return (

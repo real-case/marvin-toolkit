@@ -361,6 +361,16 @@ const REJECTIONS = [
     /checks\.0\.pattern.*too slow/,
   ],
   [
+    "a repeated group of identical alternatives",
+    (r) => (r.checks[0].pattern = "(a|a)+$"),
+    /checks\.0\.pattern.*alternation/,
+  ],
+  [
+    "a bounded repeat of a group holding a quantifier",
+    (r) => (r.checks[0].pattern = "(.*a){25}"),
+    /checks\.0\.pattern.*nested quantifier/,
+  ],
+  [
     "a path_pattern with a nested quantifier",
     (r) => (r.checks[0].path_pattern = "(a+)+$"),
     /checks\.0\.path_pattern.*nested quantifier/,

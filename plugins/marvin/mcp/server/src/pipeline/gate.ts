@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { isAbsolute, join, posix, resolve } from "node:path";
+import { createContext, Script } from "node:vm";
 
 export const SEVERITIES = ["blocker", "major", "minor"] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -39,6 +40,8 @@ export interface CheckHit {
   message: string;
   severity: Severity;
   category: string;
+  /** The rule did not finish within its time budget; there is no file, line or text. */
+  timedOut?: true;
 }
 export interface SealedFile {
   path: string;
@@ -243,26 +246,70 @@ export function addedLines(diff: string): AddedLine[] {
   return out;
 }
 
-export function scanChecks(lines: readonly AddedLine[], rules: readonly CheckRule[]): CheckHit[] {
+/** How long one check may spend matching over all the added lines. */
+export const CHECK_BUDGET_MS = 2000;
+
+/**
+ * The matching loop of one rule, run in a vm so that its timeout can interrupt a regular
+ * expression that backtracks without bound (V8 checks for the interrupt inside the match).
+ * Returns the indices of the lines that match.
+ */
+const MATCH_LINES = new Script(`(() => {
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (only !== null && !only.test(line.file)) continue;
+    if (skip !== null && skip.test(line.file)) continue;
+    if (re.test(line.text)) out.push(i);
+  }
+  return out;
+})()`);
+
+/**
+ * Run each rule over the added lines. A rule is given `budgetMs` for the whole scan; one that
+ * does not finish (a pattern such as `(a|aa)+$` on a line of `a`s) is cut off and reported as
+ * a blocker in the `gate` category, never waited for and never dropped. The patterns come from
+ * `checks.yaml`, which a retro child proposes into, so no pattern is trusted to be cheap.
+ */
+export function scanChecks(
+  lines: readonly AddedLine[],
+  rules: readonly CheckRule[],
+  budgetMs: number = CHECK_BUDGET_MS,
+): CheckHit[] {
   const hits: CheckHit[] = [];
+  const context = createContext({ lines, re: null, only: null, skip: null });
   for (const rule of rules) {
-    const re = new RegExp(rule.pattern);
-    const only = rule.path_pattern ? new RegExp(rule.path_pattern) : null;
-    const skip = rule.exclude_pattern ? new RegExp(rule.exclude_pattern) : null;
-    for (const l of lines) {
-      if (only && !only.test(l.file)) continue;
-      if (skip?.test(l.file)) continue;
-      if (re.test(l.text)) {
-        hits.push({
-          id: rule.id,
-          file: l.file,
-          line: l.line,
-          text: l.text.trim(),
-          message: rule.message,
-          severity: rule.severity ?? "major",
-          category: rule.category ?? "convention",
-        });
-      }
+    context.re = new RegExp(rule.pattern);
+    context.only = rule.path_pattern ? new RegExp(rule.path_pattern) : null;
+    context.skip = rule.exclude_pattern ? new RegExp(rule.exclude_pattern) : null;
+    let matched: number[];
+    try {
+      matched = MATCH_LINES.runInContext(context, { timeout: budgetMs }) as number[];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw error;
+      hits.push({
+        id: rule.id,
+        file: "",
+        line: 0,
+        text: "",
+        message: `check ${rule.id} exceeded its ${budgetMs / 1000} s time budget`,
+        severity: "blocker",
+        category: "gate",
+        timedOut: true,
+      });
+      continue;
+    }
+    for (const i of matched) {
+      const l = lines[i]!;
+      hits.push({
+        id: rule.id,
+        file: l.file,
+        line: l.line,
+        text: l.text.trim(),
+        message: rule.message,
+        severity: rule.severity ?? "major",
+        category: rule.category ?? "convention",
+      });
     }
   }
   return hits;
@@ -515,16 +562,27 @@ export function reportFindings(r: GateReport): Finding[] {
     });
   });
   r.checks.forEach((c, i) =>
-    out.push({
-      id: `C-${c.id}-${i + 1}`,
-      severity: c.severity,
-      category: c.category,
-      file: c.file,
-      line: c.line,
-      claim: c.message,
-      evidence: c.text,
-      expected: `no match for check ${c.id}`,
-    }),
+    out.push(
+      c.timedOut
+        ? {
+            id: `C-${c.id}-${i + 1}`,
+            severity: c.severity,
+            category: c.category,
+            claim: c.message,
+            evidence: "the check's matching was interrupted at its time budget",
+            expected: `check ${c.id} finishes within its time budget`,
+          }
+        : {
+            id: `C-${c.id}-${i + 1}`,
+            severity: c.severity,
+            category: c.category,
+            file: c.file,
+            line: c.line,
+            claim: c.message,
+            evidence: c.text,
+            expected: `no match for check ${c.id}`,
+          },
+    ),
   );
   for (const s of r.sealed) {
     if (!s.ok) {

@@ -801,3 +801,82 @@ test("a file marked -diff in a committed .gitattributes (a lockfile) is scanned,
     [["debugger", "package-lock.json", 2]],
   );
 });
+
+const slowRule = {
+  id: "slow",
+  pattern: "(a|aa)+$",
+  message: "m",
+  severity: "minor",
+  category: "convention",
+};
+const slowLine = { file: "src/a.ts", line: 1, text: `${"a".repeat(40)}b` };
+const debuggerLine = { file: "src/b.ts", line: 2, text: "debugger;" };
+const debuggerRule = { id: "debugger", pattern: "\\bdebugger;", message: "no debugger" };
+
+test("a check that backtracks without bound is cut off at its time budget and reported, not waited for", () => {
+  const started = Date.now();
+  const hits = g.scanChecks([slowLine, debuggerLine], [slowRule, debuggerRule]);
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 3500, `took ${elapsed} ms`);
+  assert.deepEqual(
+    hits.map((h) => [h.id, h.severity, h.category, h.message]),
+    [
+      ["slow", "blocker", "gate", "check slow exceeded its 2 s time budget"],
+      ["debugger", "major", "convention", "no debugger"],
+    ],
+  );
+  assert.equal(hits[1].file, "src/b.ts");
+});
+
+test("the budget is per check: a cut-off rule is reported, the rules after it still run, and a short budget says so", () => {
+  const hits = g.scanChecks([slowLine, debuggerLine], [slowRule, debuggerRule, slowRule], 250);
+  assert.deepEqual(
+    hits.map((h) => [h.id, h.message]),
+    [
+      ["slow", "check slow exceeded its 0.25 s time budget"],
+      ["debugger", "no debugger"],
+      ["slow", "check slow exceeded its 0.25 s time budget"],
+    ],
+  );
+});
+
+test("a pattern that is invalid still throws a SyntaxError from scanChecks, as before the budget", () => {
+  assert.throws(
+    () => g.scanChecks([debuggerLine], [{ id: "bad", pattern: "(", message: "m" }]),
+    SyntaxError,
+  );
+});
+
+test("a rule that is fast over many lines is not touched by the budget", () => {
+  const lines = Array.from({ length: 50_000 }, (_, i) => ({
+    file: "src/a.ts",
+    line: i + 1,
+    text: i % 10_000 === 0 ? "debugger;" : `const value${i} = ${i};`,
+  }));
+  const started = Date.now();
+  const hits = g.scanChecks(lines, [debuggerRule, ...defaultChecks]);
+  assert.equal(hits.length, 10);
+  assert.ok(Date.now() - started < 1500);
+});
+
+test("a cut-off check is a blocker finding in the gate category and fails the report", () => {
+  const hits = g.scanChecks([slowLine], [slowRule], 250);
+  const report = g.buildReport({
+    gates: [],
+    undeclared: [],
+    protected: [],
+    protectedSources: {},
+    protectedPatterns: [],
+    checks: hits,
+    sealed: [],
+    blockers: [],
+  });
+  assert.equal(report.passed, false);
+  const [finding, ...rest] = g.reportFindings(report);
+  assert.deepEqual(rest, []);
+  assert.equal(finding.severity, "blocker");
+  assert.equal(finding.category, "gate");
+  assert.equal(finding.claim, "check slow exceeded its 0.25 s time budget");
+  assert.equal(finding.file, undefined);
+  assert.match(finding.expected, /time budget/);
+});
