@@ -262,6 +262,22 @@ const asFindings = (xs: Record<string, unknown>[]) => xs as unknown as Finding[]
 const asRecords = (fs: readonly Finding[]) => fs as unknown as Record<string, unknown>[];
 const unique = (xs: readonly string[]) => [...new Set(xs)];
 
+const UNSPECIFIED_CLAIM = {
+  gate: "gate failed without a blocking finding",
+  verifier: "verifier rejected without a blocking finding",
+  ci: "CI failed without a named failing job",
+} as const;
+
+/** A rejection always has something to fix: a verdict that names no finding gets this one. */
+const unspecified = (source: keyof typeof UNSPECIFIED_CLAIM): Finding => ({
+  id: `${source}-unspecified`,
+  severity: "blocker",
+  category: "gate",
+  claim: UNSPECIFIED_CLAIM[source],
+  evidence: `the ${source} verdict is a rejection and names no blocking finding`,
+  expected: `the ${source} names what failed`,
+});
+
 /** A re-seal replaces the entries it names and leaves every other seal as it was. */
 function mergeSealed(old: Run["sealed"], fresh: Run["sealed"]): Run["sealed"] {
   const byPath = new Map(old.map((s) => [s.path, s]));
@@ -388,7 +404,8 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     }
     return { run: reopened, actions: [action] };
   };
-  const reject = (r: Run, source: "gate" | "verifier" | "ci", fs: Finding[]): Decision => {
+  const reject = (r: Run, source: "gate" | "verifier" | "ci", found: Finding[]): Decision => {
+    const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
     const last = r.rejections.at(-1)?.fingerprints ?? [];
     let rung = r.rung + 1;
@@ -625,7 +642,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         };
       }
       if (obs.kind === "seal") {
-        if (obs.ok) {
+        if (obs.ok === true && obs.reasons.length === 0 && obs.sealed.length > 0) {
           const r = go(
             { ...run, sealed: mergeSealed(run.sealed, obs.sealed), iteration: run.iteration + 1 },
             "executing",
@@ -635,7 +652,10 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
             actions: [spawn(r, "executor", executorCtx(r, asFindings(run.previousFindings)))],
           };
         }
-        return reopenTests(run, obs.reasons.join("\n"), "acceptance tests rejected", obs.reasons);
+        const reasons = obs.reasons.length
+          ? obs.reasons
+          : [obs.ok ? "seal reported success but sealed no tests" : "seal failed without a reason"];
+        return reopenTests(run, reasons.join("\n"), "acceptance tests rejected", reasons);
       }
       break;
     }
@@ -657,8 +677,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     }
     case "gating": {
       if (obs.kind !== "gate") break;
-      if (!obs.report.passed) return reject(run, "gate", obs.findings.filter(blocking));
-      const minors = asRecords(obs.findings.filter((f) => !blocking(f)));
+      const blockers = obs.findings.filter(blocking);
+      if (obs.report.passed !== true || blockers.length > 0) return reject(run, "gate", blockers);
+      const minors = asRecords(obs.findings);
       const r = go(
         {
           ...run,
@@ -752,7 +773,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       }
       if (obs.kind !== "ci") break;
       if (obs.state === "pending") return { run, actions: [{ kind: "work", work: "ci" }] };
-      if (obs.state === "green") return toRetro(run);
+      if (obs.state === "green" && obs.failing.length === 0) return toRetro(run);
       if (obs.state === "no_ci") return ask(run, "no_ci", {});
       if (obs.state === "closed")
         return ask({ ...run, haltRole: null }, "halt", { reason: "PR was closed" });
@@ -799,7 +820,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       }
       if (obs.kind === "ci") {
         if (obs.state === "pending") return { run, actions: [{ kind: "work", work: "ci" }] };
-        if (obs.state === "green") {
+        if (obs.state === "green" && obs.failing.length === 0) {
           return {
             run: go(run, "ready"),
             actions: [
@@ -809,7 +830,10 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           };
         }
         return ask({ ...run, haltRole: null }, "halt", {
-          reason: `CI ${obs.state} after finalize`,
+          reason:
+            obs.state === "green"
+              ? "CI reports green but names failing jobs after finalize"
+              : `CI ${obs.state} after finalize`,
           failing: obs.failing,
         });
       }

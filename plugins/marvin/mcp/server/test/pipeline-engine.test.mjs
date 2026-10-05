@@ -1014,3 +1014,117 @@ test("findingsText lists each finding with its location and evidence", () => {
   assert.match(text, /\[F1\] major\/criterion src\/a\.ts:7: c — expected: x/);
   assert.match(text, /evidence: e/);
 });
+
+const gateObs = (passed, findings) => ({ kind: "gate", report: report(passed), findings });
+
+test("a passed gate report that still carries a blocking finding is a rejection with that finding", () => {
+  for (const severity of ["major", "blocker"]) {
+    const blocking = finding({ id: "G1", severity, category: "scope", claim: "undeclared file" });
+    const d = go(at("gating", { iteration: 1 }), gateObs(true, [blocking]));
+    assert.equal(d.run.stage, "executing", severity);
+    assert.deepEqual([spawnOf(d).role, spawnOf(d).iteration], ["executor", 2]);
+    assert.match(spawnOf(d).context.findings, /undeclared file/);
+    assert.deepEqual(d.run.previousFindings, [blocking]);
+    assert.deepEqual(d.run.rejections, [
+      { iteration: 1, source: "gate", fingerprints: ["scope|src/a.ts|AC1"] },
+    ]);
+    assert.deepEqual(d.run.minorFindings, []);
+    assert.deepEqual(works(d), []);
+  }
+});
+
+test("a passed gate report with a blocking and a minor finding rejects on the blocking one only", () => {
+  const blocking = finding({ id: "G1", claim: "undeclared file" });
+  const minor = finding({ id: "G2", severity: "minor", claim: "flaky lint" });
+  const d = go(at("gating", { iteration: 1 }), gateObs(true, [minor, blocking]));
+  assert.equal(d.run.stage, "executing");
+  assert.deepEqual(d.run.previousFindings, [blocking]);
+  assert.doesNotMatch(spawnOf(d).context.findings, /flaky lint/);
+});
+
+test("a passed gate report with only minor findings goes to the verifier and keeps them as notes", () => {
+  const minor = finding({ id: "G2", severity: "minor", claim: "flaky lint" });
+  const d = go(at("gating", { iteration: 1 }), gateObs(true, [minor]));
+  assert.equal(d.run.stage, "verifying");
+  assert.deepEqual(d.run.minorFindings, [minor]);
+});
+
+test("a failed gate report without a blocking finding is a rejection with one synthesized blocker", () => {
+  const minor = finding({ id: "G2", severity: "minor", claim: "flaky lint" });
+  for (const findings of [[], [minor]]) {
+    const d = go(at("gating", { iteration: 1 }), gateObs(false, findings));
+    assert.equal(d.run.stage, "executing");
+    assert.equal(spawnOf(d).role, "executor");
+    assert.equal(d.run.previousFindings.length, 1);
+    assert.deepEqual(
+      [d.run.previousFindings[0].severity, d.run.previousFindings[0].category],
+      ["blocker", "gate"],
+    );
+    assert.equal(d.run.previousFindings[0].claim, "gate failed without a blocking finding");
+    assert.match(spawnOf(d).context.findings, /gate failed without a blocking finding/);
+    assert.deepEqual(d.run.rejections[0].fingerprints, ["gate||"]);
+  }
+});
+
+test("only a report that is exactly passed:true can pass the gate", () => {
+  for (const passed of [undefined, null, "true", 1]) {
+    const d = go(at("gating", { iteration: 1 }), gateObs(passed, []));
+    assert.equal(d.run.stage, "executing", String(passed));
+    assert.equal(d.run.previousFindings[0].claim, "gate failed without a blocking finding");
+  }
+});
+
+test("a verifier PASS verdict with a blocking finding is a rejection, whatever the verdict says", () => {
+  for (const severity of ["major", "blocker"]) {
+    const blocking = finding({ severity, claim: "regression in b", file: "src/b.ts" });
+    const d = go(at("verifying", { iteration: 1 }), child("verifier", verdict("PASS", [blocking])));
+    assert.equal(d.run.stage, "executing", severity);
+    assert.match(spawnOf(d).context.findings, /regression in b/);
+  }
+  const unmet = go(
+    at("verifying", { iteration: 1 }),
+    child("verifier", verdict("PASS", [], [{ id: "AC1", result: "unmet", evidence: "e" }])),
+  );
+  assert.equal(unmet.run.stage, "executing");
+  assert.match(unmet.run.previousFindings[0].claim, /criterion AC1 unmet/);
+});
+
+test("a CI state and the jobs it names must agree: red without a job is still a rejection, green with failing jobs is not green", () => {
+  const unnamed = go(at("ci_wait", { iteration: 1 }), { kind: "ci", state: "red", failing: [] });
+  assert.equal(unnamed.run.stage, "executing");
+  assert.equal(unnamed.run.previousFindings.length, 1);
+  assert.equal(unnamed.run.previousFindings[0].claim, "CI failed without a named failing job");
+  const disagreeing = go(at("ci_wait", { iteration: 1 }), {
+    kind: "ci",
+    state: "green",
+    failing: ["build"],
+  });
+  assert.equal(disagreeing.run.stage, "executing");
+  assert.match(spawnOf(disagreeing).context.findings, /CI job build failed/);
+  const finalized = at("finalizing", { finalized: true });
+  const stopped = go(finalized, { kind: "ci", state: "green", failing: ["build"] });
+  assert.equal(judgmentOf(stopped), "halt");
+  assert.equal(stopped.run.stage, "finalizing");
+});
+
+test("a seal result and its reasons must agree: success with reasons or with nothing sealed is a failure", () => {
+  const withReasons = go(at("test_authoring"), {
+    kind: "seal",
+    ok: true,
+    reasons: ["passes before implementation"],
+    sealed: [sealedTest()],
+  });
+  assert.equal(withReasons.run.stage, "test_authoring");
+  assert.deepEqual(withReasons.run.sealed, []);
+  assert.match(spawnOf(withReasons).context.feedback, /passes before implementation/);
+  const nothing = go(at("test_authoring"), { kind: "seal", ok: true, reasons: [], sealed: [] });
+  assert.equal(nothing.run.stage, "test_authoring");
+  assert.match(spawnOf(nothing).context.feedback, /sealed no tests/);
+  const unexplained = go(at("test_authoring"), {
+    kind: "seal",
+    ok: false,
+    reasons: [],
+    sealed: [],
+  });
+  assert.equal(spawnOf(unexplained).context.feedback, "seal failed without a reason");
+});
