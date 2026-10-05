@@ -16,6 +16,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1435,19 +1436,22 @@ test("a lesson that duplicates one already in the store is skipped and recorded 
   assert.equal(status(fx.wt), "");
 });
 
-test("the engine's commit and push run with husky off and never skip a hook by flag", () => {
+test("the engine runs no hook at all: not a commit hook, not the push hook, not a reference-transaction hook", () => {
   const fx = prFixture();
   const hooks = join(fx.repo, ".git", "hooks");
   mkdirSync(hooks, { recursive: true });
-  for (const name of ["pre-commit", "pre-push"]) {
+  const marker = join(tmp("pipe-marker-"), "ran");
+  for (const name of ["pre-commit", "pre-push", "reference-transaction", "post-commit"]) {
     const file = join(hooks, name);
-    writeFileSync(file, '#!/bin/sh\n[ "$HUSKY" = "0" ] && exit 0\necho "hook ran" >&2\nexit 1\n');
+    writeFileSync(file, `#!/bin/sh\necho "$0" >> '${marker}'\necho "hook ran" >&2\nexit 1\n`);
     chmodSync(file, 0o755);
   }
   assert.throws(() => sh(fx.wt, "commit", "--allow-empty", "-m", "probe"), /hook ran/);
+  rmSync(marker);
   const out = l.finalizeRun(fx.opts());
   assert.equal(out.pushed, true);
-  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), head(fx.wt));
+  assert.equal(existsSync(marker), false, "no hook ran");
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
 });
 
 test("a push the remote refuses is never forced: the local commit stays, the remote does not move", () => {
@@ -1647,7 +1651,7 @@ for (const [label, plant] of PLANTED_CONTENT) {
     const fx = prFixture();
     plant(fx);
     const dirty = treeOf(fx.wt);
-    assert.throws(() => l.finalizeRun(fx.opts()), /uncommitted or untracked/);
+    assert.throws(() => l.finalizeRun(fx.opts()), /uncommitted, untracked or ignored/);
     REFUSED_BEFORE_ANY_WRITE(fx);
     assert.deepEqual(treeOf(fx.wt), dirty, "the worktree is left exactly as it was found");
   });
@@ -1899,4 +1903,221 @@ test("a retry may stand on its own earlier finalize commit, recorded in the run 
   const again = l.finalizeRun(fx.opts());
   assert.equal(again.pushed, true);
   assert.equal(remoteRef(fx), own);
+});
+
+const onOrigin = (fx, path) => sh(fx.origin, "show", `refs/heads/${fx.branch}:${path}`);
+const originCount = (fx) =>
+  Number(sh(fx.origin, "rev-list", "--count", `${fx.gated}..refs/heads/${fx.branch}`));
+const WRITTEN = [
+  ".marvin/memory/MEMORY.md",
+  ".marvin/memory/t.md",
+  ".marvin/pipeline/calibration.jsonl",
+  ".marvin/pipeline/checks.yaml",
+  SPEC_PATH,
+];
+
+test("control: a no-op format command pushes one commit holding exactly the written files, and leaves them clean", () => {
+  const fx = prFixture();
+  const out = l.finalizeRun(
+    fx.opts({ formatCommand: `${seal.shellQuote(process.execPath)} -e "0"` }),
+  );
+  assert.equal(originCount(fx), 1);
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
+  assert.equal(head(fx.wt), out.commit);
+  assert.equal(sh(fx.wt, "rev-parse", `${out.commit}^`), fx.gated);
+  assert.deepEqual(
+    sh(fx.origin, "diff-tree", "-r", "--name-only", fx.gated, out.commit).split("\n"),
+    WRITTEN,
+  );
+  assert.deepEqual(
+    parse(onOrigin(fx, ".marvin/pipeline/checks.yaml")).map((r) => r.id),
+    ["no-console"],
+  );
+  assert.equal(sh(fx.wt, "status", "--porcelain", "--untracked-files=all", "--", ...WRITTEN), "");
+  assert.equal(sh(fx.wt, "diff", "--cached", "--name-only"), "");
+});
+
+const BASE_FILES = {
+  ".marvin/pipeline/checks.yaml": "- { id: seed, pattern: s, message: m }\n",
+  ".marvin/pipeline/calibration.jsonl": '{"runId":"r0","ts":"2026-01-01"}\n',
+};
+
+/** Make git read `path`'s committed blob as `content`, the way a child can through a replace ref. */
+function replaceBlob(fx, path, content) {
+  const real = sh(fx.wt, "rev-parse", `HEAD:${path}`);
+  const fake = execFileSync("git", ["hash-object", "-w", "--stdin"], {
+    cwd: fx.wt,
+    input: content,
+    encoding: "utf8",
+  }).trim();
+  sh(fx.wt, "replace", real, fake);
+}
+
+test("replace refs over the committed base files do not change what finalize builds on or pushes", () => {
+  const fx = prFixture();
+  commitMore(fx, BASE_FILES);
+  replaceBlob(
+    fx,
+    ".marvin/pipeline/checks.yaml",
+    "- { id: seed, pattern: s, message: m }\n- { id: planted, pattern: '(a|aa)+$', message: m }\n",
+  );
+  replaceBlob(fx, ".marvin/pipeline/calibration.jsonl", '{"runId":"forged","tier":"light"}\n');
+  replaceBlob(fx, SPEC_PATH, SPEC.replace("Body.", "Body.\n\nINJECTED"));
+
+  const out = l.finalizeRun(fx.opts());
+
+  assert.deepEqual(
+    parse(onOrigin(fx, ".marvin/pipeline/checks.yaml")).map((r) => r.id),
+    ["seed", "no-console"],
+  );
+  assert.deepEqual(
+    onOrigin(fx, ".marvin/pipeline/calibration.jsonl")
+      .split("\n")
+      .map((x) => JSON.parse(x).runId),
+    ["r0", "r1"],
+  );
+  assert.doesNotMatch(onOrigin(fx, SPEC_PATH), /INJECTED/);
+  assert.equal(originCount(fx), 1);
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
+});
+
+const GIT_FORMATTER = `
+import { execFileSync } from "node:child_process";
+import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+const [mode, marker] = process.argv.slice(2);
+const git = (...a) => execFileSync("git", a, { encoding: "utf8" }).trim();
+const common = () => git("rev-parse", "--path-format=absolute", "--git-common-dir");
+if (mode === "commit") {
+  writeFileSync("planted.txt", "x\\n");
+  git("add", "planted.txt");
+  git("commit", "-q", "-m", "formatter commit");
+} else if (mode === "hook") {
+  mkdirSync(join(common(), "hooks"), { recursive: true });
+  const hook = join(common(), "hooks", "pre-commit");
+  writeFileSync(hook, "#!/bin/sh\\ntouch '" + marker + "'\\nprintf '%s\\\\n' '- { id: planted, pattern: x, message: m }' > .marvin/pipeline/checks.yaml\\ngit add .marvin/pipeline/checks.yaml\\n");
+  chmodSync(hook, 0o755);
+} else if (mode === "replace-head") {
+  const index = join(tmpdir(), "fmt-index-" + process.pid);
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  const run = (input, ...a) => execFileSync("git", a, { encoding: "utf8", env, input }).trim();
+  const head = git("rev-parse", "HEAD");
+  run(undefined, "read-tree", "HEAD");
+  const blob = run("planted\\n", "hash-object", "-w", "--stdin");
+  run(undefined, "update-index", "--add", "--cacheinfo", "100644," + blob + ",planted-by-replace.txt");
+  const tree = run(undefined, "write-tree");
+  const commit = run(undefined, "commit-tree", tree, "-p", git("rev-parse", "HEAD^"), "-m", "replaced");
+  git("replace", "-f", head, commit);
+} else if (mode === "filter") {
+  git("config", "filter.evil.clean", "sed s/console/evil-console/");
+  mkdirSync(join(common(), "info"), { recursive: true });
+  appendFileSync(join(common(), "info", "attributes"), "*.yaml filter=evil\\n");
+}
+`;
+
+function gitFormatter(mode, marker = "-") {
+  const script = join(tmp("pipe-fmt-"), "fmt.mjs");
+  writeFileSync(script, GIT_FORMATTER);
+  return [process.execPath, script, mode, marker].map(seal.shellQuote).join(" ");
+}
+
+test("F1: a format command that commits by itself is refused, its commit is taken back off the branch and nothing is pushed", () => {
+  const fx = prFixture();
+  assert.throws(
+    () => l.finalizeRun(fx.opts({ formatCommand: gitFormatter("commit") })),
+    /HEAD moved/,
+  );
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), fx.gated);
+  assert.equal(sh(fx.wt, "rev-parse", `refs/heads/${fx.branch}`), fx.gated);
+  assert.equal(originCount(fx), 0);
+  assert.equal(
+    sh(fx.wt, "status", "--porcelain", "--untracked-files=all", "--", ".marvin", SPEC_PATH),
+    "",
+  );
+});
+
+test("F2: a hook the format command installs in the common git dir never runs, and the pushed files are the written ones", () => {
+  const fx = prFixture();
+  const marker = join(tmp("pipe-marker-"), "ran");
+  const out = l.finalizeRun(fx.opts({ formatCommand: gitFormatter("hook", marker) }));
+  assert.equal(existsSync(marker), false, "the hook did not run");
+  assert.deepEqual(
+    parse(onOrigin(fx, ".marvin/pipeline/checks.yaml")).map((r) => r.id),
+    ["no-console"],
+  );
+  assert.equal(originCount(fx), 1);
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
+  assert.deepEqual(
+    sh(fx.origin, "diff-tree", "-r", "--name-only", fx.gated, out.commit).split("\n"),
+    WRITTEN,
+  );
+});
+
+test("F3: a format command that replaces the HEAD commit object changes nothing that is committed or pushed", () => {
+  const fx = prFixture();
+  const out = l.finalizeRun(fx.opts({ formatCommand: gitFormatter("replace-head") }));
+  assert.equal(originCount(fx), 1);
+  assert.equal(
+    sh(fx.origin, "ls-tree", "-r", "--name-only", out.commit).includes("planted-by-replace.txt"),
+    false,
+  );
+  assert.equal(sh(fx.origin, "rev-parse", `${out.commit}^`), fx.gated);
+  assert.deepEqual(
+    sh(fx.origin, "diff-tree", "-r", "--name-only", fx.gated, out.commit).split("\n"),
+    WRITTEN,
+  );
+});
+
+test("F4: a clean filter the format command configures does not rewrite what is committed", () => {
+  const fx = prFixture();
+  const out = l.finalizeRun(fx.opts({ formatCommand: gitFormatter("filter") }));
+  const checks = onOrigin(fx, ".marvin/pipeline/checks.yaml");
+  assert.doesNotMatch(checks, /evil/);
+  assert.deepEqual(
+    parse(checks).map((r) => r.id),
+    ["no-console"],
+  );
+  assert.equal(originCount(fx), 1);
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
+});
+
+test("finalize pushes the commit it built, not whatever HEAD names by then", () => {
+  const fx = prFixture();
+  const out = l.finalizeRun(fx.opts());
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
+  assert.equal(sh(fx.wt, "log", "-1", "--format=%an <%ae>|%s", out.commit), `t <t@t>|${SUBJECT}`);
+  assert.equal(sh(fx.wt, "log", "-1", "--format=%B", out.commit).split("\n").at(-1), TRAILER);
+});
+
+test("a committed subdirectory under .marvin/memory does not stop finalize, and is left as it was", () => {
+  const fx = prFixture();
+  commitMore(fx, { ".marvin/memory/sub/note.md": "---\ntitle: nested\n---\nkept\n" });
+  const out = l.finalizeRun(fx.opts());
+  assert.equal(onOrigin(fx, ".marvin/memory/sub/note.md"), "---\ntitle: nested\n---\nkept");
+  assert.deepEqual(
+    sh(fx.origin, "diff-tree", "-r", "--name-only", fx.gated, out.commit).split("\n"),
+    WRITTEN,
+  );
+});
+
+test("an ignored file planted under the targets is refused, though git status does not list it", () => {
+  const exclude = (fx) => {
+    mkdirSync(join(fx.repo, ".git", "info"), { recursive: true });
+    appendFileSync(join(fx.repo, ".git", "info", "exclude"), "planted.md\nevil.yaml\n");
+  };
+  const fx = prFixture();
+  exclude(fx);
+  mkdirSync(join(fx.wt, ".marvin", "memory"), { recursive: true });
+  writeFileSync(join(fx.wt, ".marvin", "memory", "planted.md"), "planted\n");
+  mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+  writeFileSync(join(fx.wt, ".marvin", "pipeline", "evil.yaml"), "- x\n");
+  assert.equal(status(fx.wt), "", "an ordinary status does not show them");
+  assert.throws(() => l.finalizeRun(fx.opts()), /uncommitted, untracked or ignored/);
+  assert.equal(head(fx.wt), fx.gated);
+  assert.deepEqual(readdirSync(fx.runDir), []);
+
+  const clean = prFixture();
+  exclude(clean);
+  assert.doesNotThrow(() => l.finalizeRun(clean.opts()), "an exclude rule alone is not a problem");
 });

@@ -899,12 +899,12 @@ function assertCommittedTargets(git: IsolatedGit, targets: readonly string[]): v
     );
   }
   const dirty = git
-    .text("status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...targets)
+    .text("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored", "--", ...targets)
     .split("\0")
     .filter(Boolean);
   if (dirty.length) {
     throw new Error(
-      `refusing to finalize: uncommitted or untracked content under ${targets.join(", ")}: ${dirty
+      `refusing to finalize: uncommitted, untracked or ignored content under ${targets.join(", ")}: ${dirty
         .slice(0, 5)
         .map((r) => r.slice(3))
         .join(", ")}`,
@@ -936,15 +936,52 @@ function isOwnFinalizeCommit(
 }
 
 /**
- * After the format command, which ran foreign code in the worktree: every written path must still
- * be a plain file with one link, `checks.yaml` must hold the rules finalize wrote and
- * `calibration.jsonl` the records. A formatter may change layout; Markdown may be reformatted freely.
+ * Whether `contents` (path to bytes) holds the rules finalize wrote in `checks.yaml` and the
+ * records it wrote in `calibration.jsonl`. A formatter may change layout; it may not change
+ * what a rule or a record says.
  */
-function assertFormatted(
+function verifyContents(
+  contents: ReadonlyMap<string, Buffer>,
+  expected: { rules: unknown; records: unknown[] },
+  who: string,
+): void {
+  const checks = contents.get(CHECKS_PATH);
+  if (expected.rules !== undefined && checks !== undefined) {
+    let rules: unknown;
+    try {
+      rules = parse(checks.toString("utf8"));
+    } catch {
+      rules = undefined;
+    }
+    if (!isDeepStrictEqual(rules, expected.rules)) {
+      throw new Error(
+        `${who} changed the rules in ${CHECKS_PATH}: a formatter may change layout, not rules`,
+      );
+    }
+  }
+  const calibration = contents.get(CALIBRATION_PATH);
+  if (
+    calibration !== undefined &&
+    !isDeepStrictEqual(jsonLines(calibration.toString("utf8")), expected.records)
+  ) {
+    throw new Error(
+      `${who} changed the records in ${CALIBRATION_PATH}: a formatter may change layout, not records`,
+    );
+  }
+}
+
+/**
+ * After the format command, which ran foreign code in the worktree: every written path must still
+ * be a plain file with one link, and `verifyContents` must hold. Returns the bytes read, once,
+ * which are the bytes finalize then hashes: nothing is checked on one read and committed from
+ * another. Markdown may be reformatted freely.
+ */
+function readFormatted(
   worktree: string,
   paths: readonly string[],
   expected: { rules: unknown; records: unknown[] },
-): void {
+): Map<string, Buffer> {
+  const contents = new Map<string, Buffer>();
   for (const rel of paths) {
     assertPlain(worktree, rel);
     assertNotHardLinked(worktree, rel);
@@ -955,27 +992,13 @@ function assertFormatted(
       throw new Error(`the format command removed ${rel}`);
     }
     if (!stat.isFile()) throw new Error(`the format command left ${rel} as something but a file`);
+    contents.set(rel, readFileSync(join(worktree, rel)));
   }
-  if (expected.rules !== undefined && paths.includes(CHECKS_PATH)) {
-    let rules: unknown;
-    try {
-      rules = parse(readFileSync(join(worktree, CHECKS_PATH), "utf8"));
-    } catch {
-      rules = undefined;
-    }
-    if (!isDeepStrictEqual(rules, expected.rules)) {
-      throw new Error(
-        `the format command changed the rules in ${CHECKS_PATH}: a formatter may change layout, not rules`,
-      );
-    }
-  }
-  const records = jsonLines(readFileSync(join(worktree, CALIBRATION_PATH), "utf8"));
-  if (!isDeepStrictEqual(records, expected.records)) {
-    throw new Error(
-      `the format command changed the records in ${CALIBRATION_PATH}: a formatter may change layout, not records`,
-    );
-  }
+  verifyContents(contents, expected, "the format command");
+  return contents;
 }
+
+const nulList = (text: string) => text.split("\0").filter(Boolean);
 
 /**
  * The run's last write. With a PR: apply the retro, add the calibration record, ship the spec,
@@ -990,10 +1013,19 @@ function assertFormatted(
  * behind an index flag, or holds a link or a hard link there is refused before anything is
  * written, since the finalize commit is not gated again.
  *
- * Everything is validated before the first write, and a failure up to and including the commit
- * puts every written file back to what the commit holds, so the call can simply be made again.
- * A push that fails after the commit leaves the commit in place; the next call recognises it as
- * its own and pushes it.
+ * The format command runs foreign code in the worktree, and the common git dir (replace refs,
+ * hooks, config, filters) is as writable to a child as the worktree is. So every git call is the
+ * hardened one, and the finalize commit is built from plumbing only: the bytes read once after
+ * formatting are hashed without filters, a temporary index seeded from the gated commit takes
+ * them, `commit-tree` makes the commit and `update-ref` moves the branch only if it still names
+ * the gated commit. Before anything is pushed, the commit is checked: one parent, the gated
+ * commit; exactly the written files changed; each blob byte-equal to what was written and
+ * `checks.yaml` and `calibration.jsonl` still saying what finalize wrote.
+ *
+ * Everything is validated before the first write, and a failure up to and including that check
+ * puts the branch and every written file back to what the gated commit holds, so the call can
+ * simply be made again. A push that fails after the commit leaves the commit in place; the next
+ * call recognises it as its own and pushes it.
  */
 export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const { run } = o;
@@ -1072,7 +1104,8 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     else writeWhole(worktree, rel, base);
   };
   const scratch = mkdtempSync(join(tmpdir(), "marvin-finalize-"));
-  let committed = false;
+  const branchRef = `refs/heads/${branch}`;
+  let newCommit: string | null = null;
 
   try {
     const memoryBase = new Map<string, Buffer>();
@@ -1087,8 +1120,11 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     addLessons(scratch, o.runDir, retro.lessons, sink);
     const memoryChanges: [string, Buffer][] = [];
     const memoryDir = join(scratch, MEMORY_DIR);
-    for (const name of existsSync(memoryDir) ? readdirSync(memoryDir) : []) {
-      const rel = `${MEMORY_DIR}/${name}`;
+    const memoryFiles = existsSync(memoryDir)
+      ? readdirSync(memoryDir, { withFileTypes: true })
+      : [];
+    for (const entry of memoryFiles.filter((e) => e.isFile())) {
+      const rel = `${MEMORY_DIR}/${entry.name}`;
       const content = readFileSync(join(scratch, rel));
       if (!memoryBase.get(rel)?.equals(content)) memoryChanges.push([rel, content]);
     }
@@ -1114,29 +1150,86 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
         );
       }
     }
-    assertFormatted(worktree, paths, expected);
-
-    git.text("add", "--", ...paths);
-    const staged = git.text("diff", "--cached", "--name-only", "-z", "--", ...paths);
-    if (staged !== "") {
-      git.text(
-        "commit",
-        "--only",
-        "-m",
-        `chore(${slug}): ship spec; lessons and calibration from run ${run.id}`,
-        "-m",
-        COMMIT_TRAILER,
-        "--",
-        ...paths,
+    const headNow = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (headNow !== headSha) {
+      throw new Error(
+        `HEAD moved from ${headSha} to ${headNow} while finalize ran: the format command must not commit`,
       );
-      committed = true;
+    }
+    const branchNow = git.text("symbolic-ref", "--short", "HEAD").trim();
+    if (branchNow !== branch) {
+      throw new Error(
+        `the worktree moved to branch ${branchNow} while finalize ran, not ${branch}`,
+      );
+    }
+    const contents = readFormatted(worktree, paths, expected);
+
+    // The commit is built from the bytes just read and verified, with git plumbing only: no hook,
+    // no filter and no replace ref has a chance to change what goes in.
+    const plumbing = isolatedGit(worktree, o.gitDir, {
+      HUSKY: "0",
+      GIT_INDEX_FILE: join(scratch, "index"),
+    });
+    plumbing.text("read-tree", headSha);
+    const changed: string[] = [];
+    let indexInfo = "";
+    for (const [rel, bytes] of contents) {
+      const oid = git.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
+      const committedEntry = treeEntries(git, headSha, rel, false).find((e) => e.path === rel);
+      if (committedEntry?.oid === oid) continue;
+      changed.push(rel);
+      indexInfo += `${committedEntry?.mode ?? "100644"} ${oid}\t${rel}\0`;
+    }
+    if (changed.length > 0) {
+      plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
+      const tree = plumbing.text("write-tree").trim();
+      const subject = `chore(${slug}): ship spec; lessons and calibration from run ${run.id}`;
+      newCommit = git
+        .text("commit-tree", tree, "-p", headSha, "-m", subject, "-m", COMMIT_TRAILER)
+        .trim();
+      git.text("update-ref", branchRef, newCommit, headSha);
+      git.text("reset", "-q", "--", ...changed);
+
+      const parents = git.text("rev-list", "--parents", "-n", "1", newCommit).trim().split(" ");
+      if (
+        git.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== newCommit ||
+        parents.length !== 2 ||
+        parents[1] !== headSha
+      ) {
+        throw new Error(
+          `the finalize commit ${newCommit} is not the one HEAD names, on top of ${headSha}`,
+        );
+      }
+      const listed = nulList(
+        git.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headSha, newCommit),
+      ).sort();
+      if (!isDeepStrictEqual(listed, [...changed].sort())) {
+        throw new Error(
+          `the finalize commit changes ${listed.join(", ")}, not only ${[...changed].join(", ")}`,
+        );
+      }
+      const committedContents = new Map<string, Buffer>();
+      for (const [rel, bytes] of contents) {
+        const blob = committedFile(git, newCommit, rel);
+        if (blob === null || !blob.equals(bytes)) {
+          throw new Error(`${rel} in the finalize commit is not what finalize wrote`);
+        }
+        committedContents.set(rel, blob);
+      }
+      verifyContents(committedContents, expected, "the finalize commit");
     }
   } catch (error) {
+    try {
+      const current = git.text("rev-parse", "--verify", branchRef).trim();
+      if (current !== headSha) git.text("update-ref", branchRef, headSha, current);
+    } catch {
+      // best effort: the original error is the one worth reporting
+    }
     for (const rel of written) {
       try {
         restoreFromCommit(rel);
       } catch {
-        // best effort: the original error is the one worth reporting
+        // best effort, as above
       }
     }
     try {
@@ -1149,21 +1242,20 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  const commit = committed ? git.text("rev-parse", "HEAD").trim() : null;
-  if (commit !== null) {
+  if (newCommit !== null) {
     writeWhole(
       o.runDir,
       FINALIZE_RECORD,
-      `${JSON.stringify({ expectedHead: o.expectedHead, commit })}\n`,
+      `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}\n`,
     );
   }
   try {
-    git.text("push", "origin", `HEAD:refs/heads/${branch}`);
+    git.text("push", "origin", `${newCommit ?? headSha}:${branchRef}`);
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error);
     throw new Error(`push of ${branch} failed; the finalize commit stays in the worktree: ${why}`, {
       cause: error,
     });
   }
-  return { shipped: true, commit, pushed: true, written: [...written] };
+  return { shipped: true, commit: newCommit, pushed: true, written: [...written] };
 }
