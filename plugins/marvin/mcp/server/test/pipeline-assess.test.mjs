@@ -464,6 +464,7 @@ test("a mistyped rubric key is refused at load, naming the key", () => {
     ["tiers: { light: { max_file: 3 } }\n", "max_file"],
     ["tiers: { medium: { max_files: 3 } }\n", "medium"],
     ["caps: { rejection: 2 }\n", "rejection"],
+    ["caps: { ci_wait_minute: 5 }\n", "ci_wait_minute"],
     ["caps: { spec_critic: { light: 1, default: 2, extra: 3 } }\n", "extra"],
     ["assignments: { standard: { tester: opus/high } }\n", "tester"],
     ["assignments: { epic: { planner: opus/high } }\n", "epic"],
@@ -572,4 +573,12 @@ test("a bare severity key marks a spec as a bugfix", () => {
   const typed = a.readSignals(full("slug: x\ntype: bugfix\nrisk: low", FILES, CRITERIA), rubric);
   assert.equal(typed.bugfix, true);
   assert.equal(a.readSignals(full("slug: x\nrisk: low", FILES, CRITERIA), rubric).bugfix, false);
+});
+
+test("the CI wait deadline is a cap with a default of 60 minutes, overridable and at least one", () => {
+  assert.equal(a.loadRubric(DEFAULT, null).caps.ci_wait_minutes, 60);
+  assert.equal(a.loadRubric(DEFAULT, "caps: { ci_wait_minutes: 10 }\n").caps.ci_wait_minutes, 10);
+  assert.equal(a.loadRubric(DEFAULT, "caps: { ci_wait_minutes: 10 }\n").caps.rejections, 3);
+  assert.throws(() => a.loadRubric(DEFAULT, "caps: { ci_wait_minutes: 0 }\n"), /ci_wait_minutes/);
+  assert.throws(() => a.loadRubric(DEFAULT, "caps: { ci_wait_minutes: 1.5 }\n"), /ci_wait_minutes/);
 });

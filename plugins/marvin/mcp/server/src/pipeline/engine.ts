@@ -311,7 +311,11 @@ export function decide(run: Run, obs: Observation, rubric: Rubric, now: Date): D
 }
 
 function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
-  const go = (r: Run, to: Stage, reason?: string) => transition(r, to, now, reason);
+  const go = (r: Run, to: Stage, reason?: string) => {
+    const next = transition(r, to, now, reason);
+    return to === "ci_wait" || to === "finalizing" ? next : { ...next, ciSince: null };
+  };
+  const startClock = (r: Run): Run => ({ ...r, ciSince: now.toISOString() });
   const ask = (r: Run, judgment: JudgmentKind, payload: Record<string, unknown>): Decision => ({
     run: r,
     actions: [{ kind: "judgment", judgment, payload }],
@@ -373,6 +377,20 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       run: retro,
       actions: [spawn(retro, "retro", {}), { kind: "notify", text: `halted: ${reason}` }],
     };
+  };
+  /** Poll CI again, unless the wait has outlasted its deadline: then the orchestrator is asked. */
+  const pollCi = (r: Run): Decision => {
+    const started = r.ciSince === null ? Number.NaN : Date.parse(r.ciSince);
+    if (Number.isNaN(started)) {
+      return { run: startClock(r), actions: [{ kind: "work", work: "ci" }] };
+    }
+    const waited = now.getTime() - started;
+    if (waited > rubric.caps.ci_wait_minutes * 60_000) {
+      return ask(r, "no_ci", {
+        reason: `CI still pending after ${Math.floor(waited / 60_000)} min`,
+      });
+    }
+    return { run: r, actions: [{ kind: "work", work: "ci" }] };
   };
   const toRetro = (r: Run): Decision => {
     const retro = go(r, "retro");
@@ -463,7 +481,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     };
     if (role === null) {
       if (r.stage === "ci_wait" || r.stage === "finalizing") {
-        return { run: cleared, actions: [{ kind: "work", work: "ci" }] };
+        return { run: startClock(cleared), actions: [{ kind: "work", work: "ci" }] };
       }
       throw new Error(`nothing to retry in stage ${r.stage}`);
     }
@@ -774,7 +792,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           actions: [{ kind: "work", work: "snapshot" }, spawn(r, "verifier", verifierCtx(r))],
         };
       }
-      const r = go(base, "ci_wait");
+      const r = startClock(go(base, "ci_wait"));
       return {
         run: r,
         actions: [
@@ -789,11 +807,13 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         const a = obs.answer;
         if (a.kind === "cancel") return cancel(run, a.reason);
         if (a.kind === "proceed") return toRetro(run);
-        if (a.kind === "wait") return { run, actions: [{ kind: "work", work: "ci" }] };
+        if (a.kind === "wait") {
+          return { run: startClock(run), actions: [{ kind: "work", work: "ci" }] };
+        }
         break;
       }
       if (obs.kind !== "ci") break;
-      if (obs.state === "pending") return { run, actions: [{ kind: "work", work: "ci" }] };
+      if (obs.state === "pending") return pollCi(run);
       if (obs.state === "green" && obs.failing.length === 0) return toRetro(run);
       if (obs.state === "no_ci") return ask(run, "no_ci", {});
       if (obs.state === "closed")
@@ -830,6 +850,24 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       break;
     }
     case "finalizing": {
+      if (obs.kind === "answer") {
+        if (obs.judgment !== "no_ci") break;
+        const a = obs.answer;
+        if (a.kind === "cancel") return cancel(run, a.reason);
+        if (a.kind === "wait") {
+          return { run: startClock(run), actions: [{ kind: "work", work: "ci" }] };
+        }
+        if (a.kind === "proceed") {
+          return {
+            run: go(run, "ready"),
+            actions: [
+              { kind: "work", work: "mark_ready" },
+              { kind: "notify", text: "PR ready to merge; CI was not green when the wait ended" },
+            ],
+          };
+        }
+        break;
+      }
       if (obs.kind === "finalized") {
         if (run.haltReason) {
           return {
@@ -837,10 +875,13 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
             actions: [{ kind: "notify", text: "halted run closed; retro saved" }],
           };
         }
-        return { run: { ...run, finalized: true }, actions: [{ kind: "work", work: "ci" }] };
+        return {
+          run: startClock({ ...run, finalized: true }),
+          actions: [{ kind: "work", work: "ci" }],
+        };
       }
       if (obs.kind === "ci") {
-        if (obs.state === "pending") return { run, actions: [{ kind: "work", work: "ci" }] };
+        if (obs.state === "pending") return pollCi(run);
         if (obs.state === "green" && obs.failing.length === 0) {
           return {
             run: go(run, "ready"),

@@ -107,6 +107,8 @@ export const Run = z.object({
   pendingWork: z.object({ work: z.string(), data: Json.optional() }).nullable(),
   haltRole: z.enum(ROLES).nullable(),
   finalized: z.boolean(),
+  /** When the current wait for CI began; null outside a CI wait. Absent from runs written before it existed. */
+  ciSince: z.string().nullable().default(null),
   lastSpawn: z.record(z.string(), Json),
   children: z.array(Child),
   createdAt: z.string(),
@@ -197,6 +199,7 @@ export function initRun(o: {
     pendingWork: null,
     haltRole: null,
     finalized: false,
+    ciSince: null,
     lastSpawn: {},
     children: [],
     createdAt: ts,

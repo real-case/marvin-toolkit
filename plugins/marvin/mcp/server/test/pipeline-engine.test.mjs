@@ -1242,3 +1242,111 @@ test("fix 10: a halt retry resets the budget of the halted role only", () => {
   const polled = go(ci.run, answer("halt", { kind: "retry" }));
   assert.deepEqual(polled.run.retries, { executor: 1 });
 });
+
+const MINUTE = 60_000;
+const goAt = (run, obs, when, r = rubric) => decide(run, obs, r, when);
+const pendingCi = { kind: "ci", state: "pending", failing: [] };
+const ciRun = () => go(verifyingRun(), child("verifier", verdict("PASS"))).run;
+
+test("fix 2: the CI wait starts its clock when it is entered and stops it when it is left", () => {
+  const entered = go(verifyingRun(), child("verifier", verdict("PASS")));
+  assert.equal(entered.run.stage, "ci_wait");
+  assert.equal(entered.run.ciSince, NOW.toISOString());
+  assert.deepEqual(works(entered), ["ci"]);
+  assert.equal(go(entered.run, { kind: "ci", state: "green", failing: [] }).run.ciSince, null);
+  assert.equal(go(entered.run, { kind: "ci", state: "red", failing: ["b"] }).run.ciSince, null);
+  assert.equal(go(entered.run, { kind: "ci", state: "conflict", failing: [] }).run.ciSince, null);
+  const cancelled = go(entered.run, answer("no_ci", { kind: "cancel", reason: "stop" }));
+  assert.equal(cancelled.run.ciSince, null);
+});
+
+test("fix 2: 5000 pending polls inside the deadline raise nothing; the first one past it asks no_ci", () => {
+  let run = ciRun();
+  const since = run.ciSince;
+  for (let i = 0; i < 5000; i += 1) {
+    const d = goAt(run, pendingCi, new Date(NOW.getTime() + i * 700));
+    assert.deepEqual(works(d), ["ci"], `poll ${i}`);
+    assert.equal(judgmentOf(d), undefined, `poll ${i}`);
+    run = d.run;
+  }
+  assert.equal(run.ciSince, since);
+  assert.equal(run.stage, "ci_wait");
+  const edge = goAt(run, pendingCi, new Date(NOW.getTime() + 60 * MINUTE));
+  assert.equal(judgmentOf(edge), undefined);
+  const late = goAt(run, pendingCi, new Date(NOW.getTime() + 61 * MINUTE));
+  assert.equal(judgmentOf(late), "no_ci");
+  assert.equal(payloadOf(late).reason, "CI still pending after 61 min");
+  assert.deepEqual(works(late), []);
+  assert.equal(late.run.stage, "ci_wait");
+});
+
+test("fix 2: the wait answer restarts the clock, proceed starts the retro, cancel halts", () => {
+  const run = ciRun();
+  const later = new Date(NOW.getTime() + 61 * MINUTE);
+  const asked = goAt(run, pendingCi, later);
+  const waited = goAt(asked.run, answer("no_ci", { kind: "wait" }), later);
+  assert.equal(waited.run.ciSince, later.toISOString());
+  assert.deepEqual(works(waited), ["ci"]);
+  const soon = new Date(later.getTime() + 5 * MINUTE);
+  assert.equal(judgmentOf(goAt(waited.run, pendingCi, soon)), undefined);
+  const again = new Date(later.getTime() + 61 * MINUTE);
+  assert.equal(judgmentOf(goAt(waited.run, pendingCi, again)), "no_ci");
+  assert.equal(go(asked.run, answer("no_ci", { kind: "proceed" })).run.stage, "retro");
+  assert.equal(go(asked.run, answer("no_ci", { kind: "cancel", reason: "x" })).run.stage, "retro");
+});
+
+test("fix 2: the deadline is the rubric's, and a run with no recorded start begins its clock on the first poll", () => {
+  const short = loadRubric(DEFAULT, "caps: { ci_wait_minutes: 10 }\n");
+  const run = ciRun();
+  assert.equal(
+    judgmentOf(goAt(run, pendingCi, new Date(NOW.getTime() + 9 * MINUTE), short)),
+    undefined,
+  );
+  assert.equal(
+    judgmentOf(goAt(run, pendingCi, new Date(NOW.getTime() + 11 * MINUTE), short)),
+    "no_ci",
+  );
+  const unstarted = go(at("ci_wait"), pendingCi);
+  assert.equal(unstarted.run.ciSince, NOW.toISOString());
+  assert.deepEqual(works(unstarted), ["ci"]);
+  const garbled = go(at("ci_wait", { ciSince: "not a date" }), pendingCi);
+  assert.equal(garbled.run.ciSince, NOW.toISOString());
+  const future = goAt(
+    at("ci_wait", { ciSince: new Date(NOW.getTime() + 5 * MINUTE).toISOString() }),
+    pendingCi,
+    NOW,
+  );
+  assert.equal(judgmentOf(future), undefined);
+});
+
+test("fix 2: the wait after finalize has the same deadline, and its answers close or release the run", () => {
+  const started = go(at("finalizing"), { kind: "finalized" });
+  assert.equal(started.run.ciSince, NOW.toISOString());
+  const inside = goAt(started.run, pendingCi, new Date(NOW.getTime() + 59 * MINUTE));
+  assert.deepEqual(works(inside), ["ci"]);
+  const late = new Date(NOW.getTime() + 61 * MINUTE);
+  const asked = goAt(started.run, pendingCi, late);
+  assert.equal(judgmentOf(asked), "no_ci");
+  assert.match(payloadOf(asked).reason, /CI still pending after 61 min/);
+  const waited = goAt(asked.run, answer("no_ci", { kind: "wait" }), late);
+  assert.deepEqual([works(waited), waited.run.ciSince], [["ci"], late.toISOString()]);
+  const proceeded = go(asked.run, answer("no_ci", { kind: "proceed" }));
+  assert.deepEqual(
+    [proceeded.run.stage, works(proceeded), proceeded.run.ciSince],
+    ["ready", ["mark_ready"], null],
+  );
+  const cancelled = go(asked.run, answer("no_ci", { kind: "cancel", reason: "stop" }));
+  assert.deepEqual(
+    [cancelled.run.stage, cancelled.run.haltReason, cancelled.run.ciSince],
+    ["done", "stop", null],
+  );
+  const ready = go(started.run, { kind: "ci", state: "green", failing: [] });
+  assert.equal(ready.run.ciSince, null);
+});
+
+test("fix 2: a halt retry in a CI wait starts the clock again", () => {
+  const closed = go(ciRun(), { kind: "ci", state: "closed", failing: [] });
+  const later = new Date(NOW.getTime() + 90 * MINUTE);
+  const retried = goAt(closed.run, answer("halt", { kind: "retry" }), later);
+  assert.deepEqual([works(retried), retried.run.ciSince], [["ci"], later.toISOString()]);
+});

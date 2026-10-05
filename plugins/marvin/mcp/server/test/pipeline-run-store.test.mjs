@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -82,4 +82,17 @@ test("state root honours MARVIN_PIPELINE_HOME", () => {
     rs.runDirFor("/x/osint-chat-client", "r1", { MARVIN_PIPELINE_HOME: "/s" }),
     "/s/osint-chat-client/r1",
   );
+});
+
+test("a run file written before ciSince existed still loads, and the field starts empty", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-"));
+  const { ciSince, ...old } = fresh();
+  assert.equal(ciSince, null);
+  writeFileSync(join(dir, "run.json"), JSON.stringify(old));
+  assert.equal(rs.loadRun(dir).ciSince, null);
+  assert.equal(
+    rs.Run.parse({ ...old, ciSince: "2026-10-04T10:00:00.000Z" }).ciSince,
+    "2026-10-04T10:00:00.000Z",
+  );
+  assert.throws(() => rs.Run.parse({ ...old, ciSince: 5 }), /ciSince/);
 });
