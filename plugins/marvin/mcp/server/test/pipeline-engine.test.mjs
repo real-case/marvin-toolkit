@@ -1350,3 +1350,124 @@ test("fix 2: a halt retry in a CI wait starts the clock again", () => {
   const retried = goAt(closed.run, answer("halt", { kind: "retry" }), later);
   assert.deepEqual([works(retried), retried.run.ciSince], [["ci"], later.toISOString()]);
 });
+
+const sealedAc = [
+  sealedTest("src/a.test.ts", ["AC1", "AC2"]),
+  sealedTest("src/b.test.ts", ["AC3"]),
+];
+const unverifiedRun = (extra = {}) => at("verifying", { iteration: 1, sealed: sealedAc, ...extra });
+const hollowAll = verdict(
+  "PASS",
+  [],
+  [
+    { id: "AC1", result: "unverifiable", evidence: "no env" },
+    { id: "AC2", result: "unverifiable", evidence: "no env" },
+    { id: "AC3", result: "unverifiable", evidence: "no env" },
+  ],
+);
+const coversAll = verdict(
+  "PASS",
+  [],
+  [
+    { id: "AC1", result: "met", evidence: "t" },
+    { id: "AC2", result: "unverifiable", evidence: "no env" },
+    { id: "AC3", result: "met", evidence: "t" },
+  ],
+);
+const unverified = (a) => answer("unverified", a);
+
+test("fix 3 (P4): a PASS whose every criterion is unverifiable does not reach CI; the orchestrator is asked", () => {
+  const d = go(unverifiedRun(), child("verifier", hollowAll));
+  assert.equal(judgmentOf(d), "unverified");
+  assert.equal(d.run.stage, "verifying");
+  assert.deepEqual(works(d), []);
+  assert.deepEqual(payloadOf(d), { criteria: hollowAll.criteria, missing: [] });
+  assert.equal(d.run.minorFindings.length, 3);
+  const noSealed = go(
+    at("verifying", { iteration: 1 }),
+    child("verifier", verdict("PASS", [], [{ id: "AC1", result: "unverifiable", evidence: "x" }])),
+  );
+  assert.equal(judgmentOf(noSealed), "unverified");
+});
+
+test("fix 3 (P4b): a PASS that omits a sealed criterion does not reach CI, even if it names a met one", () => {
+  const unknownOnly = verdict("PASS", [], [{ id: "ZZ9", result: "met", evidence: "t" }]);
+  const d = go(unverifiedRun(), child("verifier", unknownOnly));
+  assert.equal(judgmentOf(d), "unverified");
+  assert.deepEqual(payloadOf(d).missing, ["AC1", "AC2", "AC3"]);
+  const partial = verdict("PASS", [], [{ id: "AC1", result: "met", evidence: "t" }]);
+  const p = go(unverifiedRun(), child("verifier", partial));
+  assert.equal(judgmentOf(p), "unverified");
+  assert.deepEqual(payloadOf(p).missing, ["AC2", "AC3"]);
+});
+
+test("fix 3: the controls still pass - a met criterion that covers every sealed id goes to CI", () => {
+  const d = go(unverifiedRun(), child("verifier", coversAll));
+  assert.equal(d.run.stage, "ci_wait");
+  assert.deepEqual(works(d), ["ci"]);
+  const plain = go(at("verifying", { iteration: 1 }), child("verifier", verdict("PASS")));
+  assert.equal(plain.run.stage, "ci_wait");
+});
+
+test("fix 3: a blocking finding still rejects a hollow PASS", () => {
+  const d = go(
+    unverifiedRun(),
+    child("verifier", { ...hollowAll, findings: [finding({ claim: "regression in b" })] }),
+  );
+  assert.equal(d.run.stage, "executing");
+  assert.equal(judgmentOf(d), undefined);
+});
+
+test("fix 3: proceed needs a reason, records it as an assumption, and goes to CI", () => {
+  const asked = go(unverifiedRun(), child("verifier", hollowAll));
+  for (const proceed of [
+    { kind: "proceed" },
+    { kind: "proceed", reason: "" },
+    { kind: "proceed", reason: "   " },
+  ]) {
+    assert.throws(() => go(asked.run, unverified(proceed)), /reason/);
+  }
+  const d = go(asked.run, unverified({ kind: "proceed", reason: "no CI env for AC2" }));
+  assert.equal(d.run.stage, "ci_wait");
+  assert.deepEqual(works(d), ["ci"]);
+  assert.equal(d.run.ciSince, NOW.toISOString());
+  assert.deepEqual(d.run.assumptions, [
+    "verification accepted without evidence: no CI env for AC2",
+  ]);
+});
+
+test("fix 3: retry re-runs the verifier once; a second hollow PASS halts; cancel runs the retro", () => {
+  const first = go(unverifiedRun(), child("verifier", hollowAll));
+  const retried = go(first.run, unverified({ kind: "retry" }));
+  assert.equal(retried.run.stage, "verifying");
+  assert.deepEqual(works(retried), ["snapshot"]);
+  assert.equal(spawnOf(retried).role, "verifier");
+  assert.deepEqual(retried.run.lastSpawn.verifier, spawnOf(retried));
+  const second = go(retried.run, child("verifier", hollowAll));
+  assert.equal(judgmentOf(second), "halt");
+  assert.equal(second.run.haltRole, "verifier");
+  assert.equal(spawnOf(second), undefined);
+  const recovered = go(retried.run, child("verifier", coversAll));
+  assert.equal(recovered.run.stage, "ci_wait");
+  const cancelled = go(first.run, unverified({ kind: "cancel", reason: "stop" }));
+  assert.deepEqual([cancelled.run.stage, spawnOf(cancelled).role], ["retro", "retro"]);
+});
+
+test("fix 3: the unverified answers belong to the verifying stage and to retry, proceed or cancel only", () => {
+  assert.throws(() => go(at("ci_wait"), unverified({ kind: "retry" })), /no rule/);
+  assert.throws(() => go(unverifiedRun(), unverified({ kind: "wait" })), /no rule/);
+  assert.throws(() => go(unverifiedRun(), unverified({ kind: "approve" })), /no rule/);
+  assert.throws(() => go(unverifiedRun(), answer("no_ci", { kind: "proceed" })), /no rule/);
+});
+
+test("fix 3: a hollow PASS found by a real sequence from the gate to the judgment", () => {
+  const gated = go(at("gating", { iteration: 1, sealed: sealedAc }), {
+    kind: "gate",
+    report: report(true),
+    findings: [],
+  });
+  const asked = go(gated.run, child("verifier", hollowAll));
+  assert.equal(judgmentOf(asked), "unverified");
+  const accepted = go(asked.run, unverified({ kind: "proceed", reason: "env missing" }));
+  assert.equal(accepted.run.stage, "ci_wait");
+});

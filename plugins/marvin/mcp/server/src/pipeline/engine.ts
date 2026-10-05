@@ -25,7 +25,7 @@ import {
 import type { WaitResult } from "./wait.js";
 
 export type JudgmentKind =
-  "planner_questions" | "executor_questions" | "spec_approval" | "halt" | "no_ci";
+  "planner_questions" | "executor_questions" | "spec_approval" | "halt" | "no_ci" | "unverified";
 export type Answer =
   | { kind: "answers"; text: string; count: number }
   | { kind: "approve"; tier?: Tier; reason?: string }
@@ -33,7 +33,7 @@ export type Answer =
   | { kind: "revise_tests"; text: string }
   | { kind: "retry" }
   | { kind: "wait" }
-  | { kind: "proceed" }
+  | { kind: "proceed"; reason?: string }
   | { kind: "cancel"; reason: string };
 export type Observation =
   | { kind: "start" }
@@ -733,6 +733,37 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       };
     }
     case "verifying": {
+      if (obs.kind === "answer") {
+        if (obs.judgment !== "unverified") break;
+        const a = obs.answer;
+        if (a.kind === "cancel") return cancel(run, a.reason);
+        if (a.kind === "proceed") {
+          const reason = a.reason?.trim();
+          if (!reason) throw new Error("proceeding without verification evidence needs a reason");
+          const assumptions = [
+            ...run.assumptions,
+            `verification accepted without evidence: ${reason}`,
+          ];
+          return {
+            run: startClock(go({ ...run, assumptions: unique(assumptions) }, "ci_wait")),
+            actions: [
+              { kind: "work", work: "ci" },
+              { kind: "notify", text: "verification accepted without evidence; waiting for CI" },
+            ],
+          };
+        }
+        if (a.kind === "retry") {
+          const r = {
+            ...run,
+            retries: { ...run.retries, unverified: (run.retries.unverified ?? 0) + 1 },
+          };
+          return {
+            run: r,
+            actions: [{ kind: "work", work: "snapshot" }, spawn(r, "verifier", verifierCtx(r))],
+          };
+        }
+        break;
+      }
       if (output?.role !== "verifier") break;
       const v = output.data;
       const unmet = v.criteria
@@ -791,6 +822,17 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           run: r,
           actions: [{ kind: "work", work: "snapshot" }, spawn(r, "verifier", verifierCtx(r))],
         };
+      }
+      const named = new Set(v.criteria.map((c) => c.id));
+      const missing = unique(run.sealed.flatMap((s) => s.criteria)).filter((id) => !named.has(id));
+      if (!v.criteria.some((c) => c.result === "met") || missing.length > 0) {
+        if ((run.retries.unverified ?? 0) >= rubric.caps.child_retries) {
+          return ask({ ...base, haltRole: "verifier" }, "halt", {
+            reason: "verifier PASS verified nothing, again after a retry",
+            detail: { criteria: v.criteria, missing },
+          });
+        }
+        return ask(base, "unverified", { criteria: v.criteria, missing });
       }
       const r = startClock(go(base, "ci_wait"));
       return {
