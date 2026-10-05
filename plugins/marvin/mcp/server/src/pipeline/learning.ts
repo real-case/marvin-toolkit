@@ -1,5 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
+import { createContext, Script } from "node:vm";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { parseFrontmatter } from "../storage/frontmatter.js";
@@ -185,6 +196,131 @@ const CHECK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const CATEGORY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const ONE_LINE = /^[^\r\n]+$/;
 
+/** The quantifier at `source[i]`: its length (a lazy `?` included) and whether it can repeat. */
+function quantifierAt(source: string, i: number): { length: number; repeats: boolean } | null {
+  const ch = source[i];
+  let length: number;
+  let repeats: boolean;
+  if (ch === "*" || ch === "+" || ch === "?") {
+    length = 1;
+    repeats = ch !== "?";
+  } else if (ch === "{") {
+    const braces = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i, i + 32));
+    if (!braces) return null;
+    length = braces[0].length;
+    repeats =
+      braces[2] === undefined ? Number(braces[1]) > 1 : braces[3] === "" || Number(braces[3]) > 1;
+  } else {
+    return null;
+  }
+  return { length: source[i + length] === "?" ? length + 1 : length, repeats };
+}
+
+/**
+ * The shapes that make a backtracking engine take exponential time, found by reading the
+ * pattern: a backreference, a repeated group that holds a quantifier (`(a+)+`), a repeated
+ * group that holds an alternation (`(a|aa)+`). Deliberately conservative: it also refuses the
+ * harmless ones, which can be written without the group.
+ */
+function staticRegexHazard(source: string): string | null {
+  type Frame = { quantified: boolean; alternation: boolean };
+  const stack: Frame[] = [{ quantified: false, alternation: false }];
+  let i = 0;
+  while (i < source.length) {
+    const top = stack[stack.length - 1]!;
+    const ch = source[i]!;
+    if (ch === "\\") {
+      const next = source[i + 1];
+      if (next !== undefined && (/[1-9]/.test(next) || (next === "k" && source[i + 2] === "<"))) {
+        return "it holds a backreference";
+      }
+      i += 2;
+    } else if (ch === "[") {
+      i += 1;
+      while (i < source.length && source[i] !== "]") i += source[i] === "\\" ? 2 : 1;
+      i += 1;
+    } else if (ch === "(") {
+      stack.push({ quantified: false, alternation: false });
+      i += 1;
+      if (source[i] === "?") {
+        i += 1;
+        const kind = source[i];
+        if (kind === ":" || kind === "=" || kind === "!") {
+          i += 1;
+        } else if (kind === "<") {
+          i += 1;
+          if (source[i] === "=" || source[i] === "!") i += 1;
+          else i = source.indexOf(">", i) + 1 || source.length;
+        }
+      }
+    } else if (ch === ")") {
+      const group = stack.length > 1 ? stack.pop()! : top;
+      const parent = stack[stack.length - 1]!;
+      i += 1;
+      const quantifier = quantifierAt(source, i);
+      if (quantifier) {
+        if (quantifier.repeats && group.quantified) {
+          return "it has a nested quantifier: a repeated group that already holds a quantifier";
+        }
+        if (quantifier.repeats && group.alternation) {
+          return "it repeats a group that holds an alternation";
+        }
+        i += quantifier.length;
+      }
+      parent.quantified ||= group.quantified || quantifier !== null;
+      parent.alternation ||= group.alternation;
+    } else if (ch === "|") {
+      top.alternation = true;
+      i += 1;
+    } else {
+      const quantifier = quantifierAt(source, i);
+      if (quantifier) top.quantified = true;
+      i += quantifier ? quantifier.length : 1;
+    }
+  }
+  return null;
+}
+
+/** A line this long, and this much time, is what the gate would give a rule per added line. */
+const PROBE_LENGTH = 5_000;
+const PROBE_BUDGET_MS = 250;
+const PROBE_CHARS = ["a", "x", "0", " ", ".", "/", "-", "_"];
+const PROBE_ENDS = ["!", "\n"];
+
+/**
+ * Does matching `source` over a long line of one repeated character, ended by one that breaks
+ * an anchor, take longer than the budget? What the static read cannot see (`a*a*a*b`) shows
+ * here. The match runs in a vm with a timeout, which interrupts a regular expression mid-match.
+ */
+function slowOnLongLine(source: string): boolean {
+  const context = createContext({ source, input: "" });
+  const script = new Script("new RegExp(source).test(input)");
+  for (const ch of PROBE_CHARS) {
+    for (const end of PROBE_ENDS) {
+      context.input = ch.repeat(PROBE_LENGTH) + end;
+      try {
+        script.runInContext(context, { timeout: PROBE_BUDGET_MS });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Why a retro-proposed pattern must not run over every added line, or null. The gate runs these
+ * synchronously, so one that backtracks without bound would stall every later run.
+ */
+export function regexHazard(source: string): string | null {
+  return (
+    staticRegexHazard(source) ??
+    (slowOnLongLine(source)
+      ? `it is too slow to run over every added line: no match within ${PROBE_BUDGET_MS} ms on a ${PROBE_LENGTH}-character line`
+      : null)
+  );
+}
+
 const regexSource = z
   .string()
   .min(1)
@@ -197,6 +333,14 @@ const regexSource = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `not a valid regular expression: ${why}`,
+      });
+      return;
+    }
+    const hazard = regexHazard(value);
+    if (hazard !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unsafe regular expression: ${hazard}`,
       });
     }
   });
@@ -261,12 +405,79 @@ export function parseRetro(raw: unknown): RetroOutput {
   throw new Error(`retro output rejected: ${issues.join("; ")}`);
 }
 
-/** Write a file whole: a temp file in the same directory, then a rename over the target. */
-function writeWhole(path: string, content: string | Uint8Array): void {
+/**
+ * Why `rel` is not a plain path beneath `root`, or null. A symbolic link at any component, or a
+ * file where a directory belongs, is a problem; a component that does not exist yet is not. With
+ * no link below `root`, everything under it is physically under `root`, whatever `root` is.
+ */
+function physicalProblem(root: string, rel: string): string | null {
+  const parts = rel.split("/");
+  let current = root;
+  for (const [i, part] of parts.entries()) {
+    current = join(current, part);
+    const where = parts.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === "ENOENT" ? null : `${where} cannot be inspected (${code ?? String(error)})`;
+    }
+    if (stat.isSymbolicLink()) return `${where} is a symbolic link`;
+    if (i < parts.length - 1 && !stat.isDirectory()) return `${where} is not a directory`;
+  }
+  return null;
+}
+
+/**
+ * The engine writes into a worktree a child has had its hands on, and into a run dir. A planted
+ * symbolic link would send a write somewhere else (the main checkout, a dotfile), so every
+ * path is checked before it is read or written, and a link is refused rather than followed.
+ */
+function assertPlain(root: string, rel: string): void {
+  const problem = physicalProblem(root, rel);
+  if (problem !== null) throw new Error(`refusing to use ${rel} under ${root}: ${problem}`);
+}
+
+/**
+ * The lesson store appends to `MEMORY.md` in place and writes a lesson wherever a slug free by
+ * `existsSync` points, which a dangling link satisfies. So the directory must hold no symbolic
+ * link at all, and `MEMORY.md` no second hard link.
+ */
+function assertMemoryStore(root: string): void {
+  assertPlain(root, MEMORY_DIR);
+  const dir = join(root, MEMORY_DIR);
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    const stat = lstatSync(join(dir, name));
+    if (stat.isSymbolicLink()) {
+      throw new Error(`refusing to use ${MEMORY_DIR}/${name}: it is a symbolic link`);
+    }
+    if (name === "MEMORY.md" && stat.nlink > 1) {
+      throw new Error(
+        `refusing to use ${MEMORY_INDEX_PATH}: it is a hard link, and would be written through`,
+      );
+    }
+  }
+}
+
+/** Create `rel` under `root` as a directory, after checking that nothing on the way is a link. */
+function ensureDir(root: string, rel: string): void {
+  assertPlain(root, rel);
+  mkdirSync(join(root, rel), { recursive: true });
+}
+
+/**
+ * Write a file whole: a temp file beside it, created exclusively so a planted name is not
+ * followed, then a rename over the target.
+ */
+function writeWhole(root: string, rel: string, content: string | Uint8Array): void {
+  assertPlain(root, rel);
+  const path = join(root, rel);
   mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
   try {
-    writeFileSync(tmp, content);
+    writeFileSync(tmp, content, { flag: "wx" });
     renameSync(tmp, path);
   } catch (error) {
     rmSync(tmp, { force: true });
@@ -277,7 +488,9 @@ function writeWhole(path: string, content: string | Uint8Array): void {
 const ExistingChecks = z.array(z.object({ id: z.string() }).passthrough());
 
 /** The rules already in `checks.yaml`; a file that is not a list of rules is never replaced. */
-function readExistingChecks(path: string): Record<string, unknown>[] {
+function readExistingChecks(worktree: string): Record<string, unknown>[] {
+  assertPlain(worktree, CHECKS_PATH);
+  const path = join(worktree, CHECKS_PATH);
   if (!existsSync(path)) return [];
   let doc: unknown;
   try {
@@ -308,14 +521,14 @@ const proposalText = (n: number, p: RetroOutput["proposals"][number]) =>
 
 /** Proposals and prune candidates are for a human, so they live in the run dir, never the repo. */
 function writeRunDirFiles(runDir: string, retro: RetroOutput): void {
-  const dir = join(runDir, "proposals");
-  mkdirSync(dir, { recursive: true });
+  ensureDir(runDir, "proposals");
   retro.proposals.forEach((p, i) =>
-    writeWhole(join(dir, `${i + 1}-${p.target}.md`), proposalText(i + 1, p)),
+    writeWhole(runDir, `proposals/${i + 1}-${p.target}.md`, proposalText(i + 1, p)),
   );
   if (retro.prune.length) {
     writeWhole(
-      join(dir, "prune.md"),
+      runDir,
+      "proposals/prune.md",
       `${retro.prune.map((p) => `- ${p.id}: ${p.reason}`).join("\n")}\n`,
     );
   }
@@ -327,8 +540,7 @@ function applyParsed(o: {
   retro: RetroOutput;
   addLesson: AddLessonFn;
 }): ApplyResult {
-  const checksPath = join(o.worktree, CHECKS_PATH);
-  const existing = readExistingChecks(checksPath);
+  const existing = readExistingChecks(o.worktree);
   const written: string[] = [];
 
   const ids = new Set(existing.map((c) => c.id));
@@ -339,7 +551,7 @@ function applyParsed(o: {
     fresh.push(rule);
   }
   if (fresh.length) {
-    writeWhole(checksPath, stringify([...existing, ...fresh], { lineWidth: 0 }));
+    writeWhole(o.worktree, CHECKS_PATH, stringify([...existing, ...fresh], { lineWidth: 0 }));
     written.push(CHECKS_PATH);
   }
 
@@ -354,7 +566,8 @@ function applyParsed(o: {
   }
   if (duplicates.length) {
     writeWhole(
-      join(o.runDir, "proposals", "duplicate-lessons.md"),
+      o.runDir,
+      "proposals/duplicate-lessons.md",
       `# Lessons skipped as near-duplicates\n\n${duplicates.map((d) => `- ${d.title} (near-duplicate of ${d.of})`).join("\n")}\n`,
     );
   }
@@ -460,6 +673,7 @@ export function finalizeSpec(
  * first, so finalizing again after a failed push does not count the run twice.
  */
 export function appendCalibration(worktree: string, record: CalibrationRecord): void {
+  assertPlain(worktree, CALIBRATION_PATH);
   const file = join(worktree, CALIBRATION_PATH);
   const line = JSON.stringify(record);
   const isThisRun = (existing: string) => {
@@ -473,7 +687,7 @@ export function appendCalibration(worktree: string, record: CalibrationRecord): 
   const next = lines.some(isThisRun)
     ? lines.map((existing) => (isThisRun(existing) ? line : existing))
     : [...lines, line];
-  writeWhole(file, `${next.join("\n")}\n`);
+  writeWhole(worktree, CALIBRATION_PATH, `${next.join("\n")}\n`);
 }
 
 /** The tag that records which finding category a lesson was written to reduce. */
@@ -486,6 +700,7 @@ export const targetTag = (category: string) => `target:${category}`;
  */
 export function lessonStoreSink(source: string): AddLessonFn {
   return (root, lesson) => {
+    assertMemoryStore(root);
     const memoryDir = join(root, MEMORY_DIR);
     const duplicate = findNearDuplicate(memoryDir, lesson.title);
     if (duplicate) return { duplicateOf: duplicate.slug };
@@ -559,8 +774,8 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
 
   if (run.prUrl === null) {
     writeRunDirFiles(o.runDir, retro);
-    writeWhole(join(o.runDir, "retro-output.json"), `${JSON.stringify(retro, null, 2)}\n`);
-    writeWhole(join(o.runDir, "calibration.json"), `${JSON.stringify(record, null, 2)}\n`);
+    writeWhole(o.runDir, "retro-output.json", `${JSON.stringify(retro, null, 2)}\n`);
+    writeWhole(o.runDir, "calibration.json", `${JSON.stringify(record, null, 2)}\n`);
     return { shipped: false, commit: null, pushed: false, written: [] };
   }
 
@@ -576,6 +791,10 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     throw new Error("worktree and gitDir must be absolute paths");
   }
   const abs = (rel: string) => join(worktree, rel);
+  const tracked = [specPath, CHECKS_PATH, CALIBRATION_PATH];
+  if (retro.lessons.length) tracked.push(MEMORY_INDEX_PATH);
+  for (const rel of tracked) assertPlain(worktree, rel);
+  if (retro.lessons.length) assertMemoryStore(worktree);
   const specText = readFileSync(abs(specPath), "utf8");
   const shipped = finalizeSpec(specText, {
     pr: run.prUrl,
@@ -586,7 +805,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
 
   const git = isolatedGit(worktree, o.gitDir, { HUSKY: "0" });
   const before = new Map<string, Buffer | null>();
-  for (const rel of [specPath, CHECKS_PATH, CALIBRATION_PATH, MEMORY_INDEX_PATH]) {
+  for (const rel of tracked) {
     before.set(rel, existsSync(abs(rel)) ? readFileSync(abs(rel)) : null);
   }
   const sink = o.addLesson ?? lessonStoreSink(`pipeline:${run.id}`);
@@ -609,7 +828,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     for (const rel of applied.written) written.add(rel);
     appendCalibration(worktree, record);
     written.add(CALIBRATION_PATH);
-    writeWhole(abs(specPath), shipped);
+    writeWhole(worktree, specPath, shipped);
     written.add(specPath);
     const paths = [...written];
 
@@ -642,7 +861,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     for (const [rel, content] of before) {
       try {
         if (content === null) rmSync(abs(rel), { force: true });
-        else writeFileSync(abs(rel), content);
+        else writeWhole(worktree, rel, content);
       } catch {
         // best effort: the original error is the one worth reporting
       }

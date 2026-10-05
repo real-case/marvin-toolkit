@@ -3,16 +3,18 @@ import assert from "node:assert/strict";
 import {
   chmodSync,
   existsSync,
-  lstatSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { importTs } from "./_tsload.mjs";
 import { repoWithOrigin, sh } from "./_pipeline-git.mjs";
@@ -323,6 +325,52 @@ const REJECTIONS = [
   ],
   ["an empty pattern", (r) => (r.checks[0].pattern = ""), /checks\.0\.pattern/],
   [
+    "a pattern with a nested quantifier",
+    (r) => (r.checks[0].pattern = "(a+)+$"),
+    /checks\.0\.pattern.*nested quantifier/,
+  ],
+  [
+    "a repeated group holding a star",
+    (r) => (r.checks[0].pattern = "(.*)*x"),
+    /checks\.0\.pattern.*nested quantifier/,
+  ],
+  [
+    "a repeated group of words and spaces",
+    (r) => (r.checks[0].pattern = "(\\w+\\s?)+$"),
+    /checks\.0\.pattern.*nested quantifier/,
+  ],
+  [
+    "a nested quantifier two groups down",
+    (r) => (r.checks[0].pattern = "((ab)+c)+d"),
+    /checks\.0\.pattern.*nested quantifier/,
+  ],
+  [
+    "a repeated group of overlapping alternatives",
+    (r) => (r.checks[0].pattern = "(a|aa)+$"),
+    /checks\.0\.pattern.*alternation/,
+  ],
+  ["a backreference", (r) => (r.checks[0].pattern = "(a)\\1"), /checks\.0\.pattern.*backreference/],
+  [
+    "a named backreference",
+    (r) => (r.checks[0].pattern = "(?<n>a)\\k<n>"),
+    /checks\.0\.pattern.*backreference/,
+  ],
+  [
+    "a pattern that is worse than linear on a long line",
+    (r) => (r.checks[0].pattern = "a*a*a*a*b"),
+    /checks\.0\.pattern.*too slow/,
+  ],
+  [
+    "a path_pattern with a nested quantifier",
+    (r) => (r.checks[0].path_pattern = "(a+)+$"),
+    /checks\.0\.path_pattern.*nested quantifier/,
+  ],
+  [
+    "an exclude_pattern with a backreference",
+    (r) => (r.checks[0].exclude_pattern = "(a)\\1"),
+    /checks\.0\.exclude_pattern.*backreference/,
+  ],
+  [
     "a severity outside the gate's set",
     (r) => (r.checks[0].severity = "critical"),
     /checks\.0\.severity/,
@@ -381,6 +429,49 @@ for (const [label, mutate, expected] of REJECTIONS) {
     assert.deepEqual(added, []);
   });
 }
+
+const DEFAULT_CHECKS = fileURLToPath(
+  new URL("../../../pipeline/checks.default.yaml", import.meta.url),
+);
+const withCheck = (check) => ({ ...goodRetro(), checks: [{ id: "ok", message: "m", ...check }] });
+
+test("ordinary patterns are accepted, the shipped default checks among them", () => {
+  const fine = [
+    "console\\.log",
+    "\\b(it|test|describe)\\.skip\\(|\\bxit\\(",
+    "(foo|bar)baz",
+    "(?:\\.test|\\.spec)\\.[jt]sx?$",
+    "^\\s*import .* from ['\"]lodash['\"]",
+    "a{2,5}",
+    "[a-z]+@[a-z]+\\.com",
+    "(ab)+",
+    "(?:ab)*c",
+    "x?y*",
+    "(?<!\\.)\\bparseInt\\(",
+    "[+*?]+",
+    "(\\(a)+",
+    "([+*]x)+",
+    "a{,5}b",
+    "(a+)?b",
+    "(a+){1}b",
+  ];
+  for (const pattern of fine) {
+    assert.doesNotThrow(() => l.parseRetro(withCheck({ pattern })), pattern);
+  }
+  const defaults = parse(readFileSync(DEFAULT_CHECKS, "utf8"));
+  assert.ok(defaults.length >= 3);
+  for (const rule of defaults) {
+    assert.doesNotThrow(() => l.parseRetro(withCheck(rule)), rule.id);
+  }
+});
+
+test("a catastrophic pattern is refused by reading it, not by running it on a long line", () => {
+  const started = Date.now();
+  for (const pattern of ["(a+)+$", "(a|aa)+$", "(x+x+)+y", "(a)\\1"]) {
+    assert.throws(() => l.parseRetro(withCheck({ pattern })), /retro output rejected/, pattern);
+  }
+  assert.ok(Date.now() - started < 200, `took ${Date.now() - started} ms`);
+});
 
 test("retro output that is not an object at all is rejected", () => {
   for (const retro of [null, undefined, "x", 3, [], { checks: null }]) {
@@ -503,7 +594,7 @@ test("rules deduplicate inside one retro, round-trip through YAML, and an unchan
   assert.deepEqual(second.written, []);
 });
 
-test("checks.yaml and the proposals are written whole: the old file is replaced, never written through", () => {
+test("checks.yaml and the proposals are written whole: a new file replaces the old one, which is never written through", () => {
   const wt = tmp("pipe-wt-");
   const runDir = tmp("pipe-run-");
   const outside = join(tmp("pipe-out-"), "outside.yaml");
@@ -511,24 +602,156 @@ test("checks.yaml and the proposals are written whole: the old file is replaced,
   writeFileSync(outside, original);
   mkdirSync(join(wt, ".marvin", "pipeline"), { recursive: true });
   const checks = join(wt, ".marvin", "pipeline", "checks.yaml");
-  symlinkSync(outside, checks);
+  linkSync(outside, checks);
   const proposalTarget = join(tmp("pipe-out-"), "proposal.md");
   writeFileSync(proposalTarget, "untouched\n");
   mkdirSync(join(runDir, "proposals"));
-  symlinkSync(proposalTarget, join(runDir, "proposals", "1-marvin.md"));
+  linkSync(proposalTarget, join(runDir, "proposals", "1-marvin.md"));
 
   l.applyRetro({ worktree: wt, runDir, retro: goodRetro(), addLesson: () => {} });
 
   assert.equal(readFileSync(outside, "utf8"), original);
-  assert.equal(lstatSync(checks).isSymbolicLink(), false);
   assert.deepEqual(
     parse(readFileSync(checks, "utf8")).map((r) => r.id),
     ["keep", "no-console"],
   );
   assert.equal(readFileSync(proposalTarget, "utf8"), "untouched\n");
-  assert.equal(lstatSync(join(runDir, "proposals", "1-marvin.md")).isSymbolicLink(), false);
+  assert.match(readFileSync(join(runDir, "proposals", "1-marvin.md"), "utf8"), /Proposal 1/);
   assert.deepEqual(readdirSync(join(wt, ".marvin", "pipeline")), ["checks.yaml"]);
   assert.deepEqual(readdirSync(join(runDir, "proposals")), ["1-marvin.md"]);
+});
+
+/** Every file in a flat directory with its content, to show that nothing was written there. */
+const contents = (dir) =>
+  readdirSync(dir)
+    .sort()
+    .map((name) => [name, readFileSync(join(dir, name), "utf8")]);
+
+const PLANTED_IN_WORKTREE = [
+  ["a symlinked .marvin", (wt, out) => symlinkSync(out, join(wt, ".marvin"))],
+  [
+    "a symlinked .marvin/pipeline",
+    (wt, out) => {
+      mkdirSync(join(wt, ".marvin"));
+      symlinkSync(out, join(wt, ".marvin", "pipeline"));
+    },
+  ],
+  [
+    "a symlinked checks.yaml",
+    (wt, out) => {
+      mkdirSync(join(wt, ".marvin", "pipeline"), { recursive: true });
+      writeFileSync(join(out, "victim.yaml"), "- { id: v, pattern: p, message: m }\n");
+      symlinkSync(join(out, "victim.yaml"), join(wt, ".marvin", "pipeline", "checks.yaml"));
+    },
+  ],
+  [
+    "a dangling symlinked checks.yaml",
+    (wt, out) => {
+      mkdirSync(join(wt, ".marvin", "pipeline"), { recursive: true });
+      symlinkSync(join(out, "new.yaml"), join(wt, ".marvin", "pipeline", "checks.yaml"));
+    },
+  ],
+];
+
+for (const [label, plant] of PLANTED_IN_WORKTREE) {
+  test(`applyRetro refuses ${label}: nothing lands outside the worktree`, () => {
+    const wt = tmp("pipe-wt-");
+    const runDir = tmp("pipe-run-");
+    const out = tmp("pipe-out-");
+    plant(wt, out);
+    const outBefore = contents(out);
+    assert.throws(
+      () => l.applyRetro({ worktree: wt, runDir, retro: goodRetro(), addLesson: () => {} }),
+      /symbolic link/,
+    );
+    assert.deepEqual(contents(out), outBefore);
+    assert.deepEqual(readdirSync(runDir), []);
+  });
+}
+
+test("appendCalibration refuses a symlinked directory or file on the way to calibration.jsonl", () => {
+  const agg = l.aggregate(makeRun(), []);
+  const record = l.calibrationRecord(makeRun(), agg, []);
+  for (const [label, plant] of PLANTED_IN_WORKTREE) {
+    if (/checks\.yaml/.test(label)) continue;
+    const wt = tmp("pipe-wt-");
+    const out = tmp("pipe-out-");
+    plant(wt, out);
+    const outBefore = contents(out);
+    assert.throws(() => l.appendCalibration(wt, record), /symbolic link/, label);
+    assert.deepEqual(contents(out), outBefore, label);
+  }
+  const wt = tmp("pipe-wt-");
+  const out = tmp("pipe-out-");
+  mkdirSync(join(wt, ".marvin", "pipeline"), { recursive: true });
+  writeFileSync(join(out, "victim.jsonl"), '{"runId":"x"}\n');
+  symlinkSync(join(out, "victim.jsonl"), join(wt, ".marvin", "pipeline", "calibration.jsonl"));
+  assert.throws(() => l.appendCalibration(wt, record), /symbolic link/);
+  assert.equal(readFileSync(join(out, "victim.jsonl"), "utf8"), '{"runId":"x"}\n');
+});
+
+const PLANTED_IN_MEMORY = [
+  ["a symlinked .marvin/memory", (memory, out) => symlinkSync(out, memory)],
+  [
+    "a dangling symlink where the lesson file will go",
+    (memory, out) => {
+      mkdirSync(memory, { recursive: true });
+      symlinkSync(join(out, "stolen.md"), join(memory, "t.md"));
+    },
+  ],
+  [
+    "a symlinked MEMORY.md",
+    (memory, out) => {
+      mkdirSync(memory, { recursive: true });
+      writeFileSync(join(out, "victim.md"), "precious\n");
+      symlinkSync(join(out, "victim.md"), join(memory, "MEMORY.md"));
+    },
+  ],
+  [
+    "a hard-linked MEMORY.md, which the lesson store appends to in place",
+    (memory, out) => {
+      mkdirSync(memory, { recursive: true });
+      writeFileSync(join(out, "victim.md"), "precious\n");
+      linkSync(join(out, "victim.md"), join(memory, "MEMORY.md"));
+    },
+  ],
+];
+
+for (const [label, plant] of PLANTED_IN_MEMORY) {
+  test(`the lesson sink refuses ${label}`, () => {
+    const wt = tmp("pipe-wt-");
+    const out = tmp("pipe-out-");
+    mkdirSync(join(wt, ".marvin"), { recursive: true });
+    plant(join(wt, ".marvin", "memory"), out);
+    const outBefore = contents(out);
+    assert.throws(
+      () => l.lessonStoreSink("pipeline:r1")(wt, goodRetro().lessons[0]),
+      /symbolic link|hard link/,
+    );
+    assert.deepEqual(contents(out), outBefore);
+  });
+}
+
+test("a symlink planted under the run dir's proposals is refused too", () => {
+  for (const plant of [
+    (runDir, out) => symlinkSync(out, join(runDir, "proposals")),
+    (runDir, out) => {
+      mkdirSync(join(runDir, "proposals"));
+      writeFileSync(join(out, "victim.md"), "untouched\n");
+      symlinkSync(join(out, "victim.md"), join(runDir, "proposals", "1-marvin.md"));
+    },
+  ]) {
+    const wt = tmp("pipe-wt-");
+    const runDir = tmp("pipe-run-");
+    const out = tmp("pipe-out-");
+    plant(runDir, out);
+    const outBefore = contents(out);
+    assert.throws(
+      () => l.applyRetro({ worktree: wt, runDir, retro: goodRetro(), addLesson: () => {} }),
+      /symbolic link/,
+    );
+    assert.deepEqual(contents(out), outBefore);
+  }
 });
 
 test("proposal files are named from the index and the enum only, and prune proposals go beside them", () => {
@@ -1114,4 +1337,41 @@ test("finalize can be run again after a failed push: no second commit, one calib
   );
   assert.equal(readFileSync(join(fx.wt, SPEC_PATH), "utf8").match(/^## Delivery$/gm).length, 1);
   assert.equal(status(fx.wt), "");
+});
+
+test("finalize refuses a symlink planted under the worktree before it writes anything", () => {
+  const plants = [
+    [
+      "a symlinked .marvin/pipeline",
+      (fx, out) => symlinkSync(out, join(fx.wt, ".marvin", "pipeline")),
+    ],
+    [
+      "a symlinked directory holding the spec",
+      (fx, out) => {
+        writeFileSync(join(out, "001-demo.md"), SPEC);
+        rmSync(join(fx.wt, ".marvin", "task"), { recursive: true });
+        symlinkSync(out, join(fx.wt, ".marvin", "task"));
+      },
+    ],
+    [
+      "a symlinked spec",
+      (fx, out) => {
+        writeFileSync(join(out, "elsewhere.md"), SPEC);
+        rmSync(join(fx.wt, SPEC_PATH));
+        symlinkSync(join(out, "elsewhere.md"), join(fx.wt, SPEC_PATH));
+      },
+    ],
+    ["a symlinked .marvin/memory", (fx, out) => symlinkSync(out, join(fx.wt, ".marvin", "memory"))],
+  ];
+  for (const [label, plant] of plants) {
+    const fx = prFixture();
+    const out = tmp("pipe-out-");
+    plant(fx, out);
+    const outBefore = contents(out);
+    const headBefore = head(fx.wt);
+    assert.throws(() => l.finalizeRun(fx.opts()), /symbolic link/, label);
+    assert.deepEqual(contents(out), outBefore, label);
+    assert.equal(head(fx.wt), headBefore, label);
+    assert.deepEqual(readdirSync(fx.runDir), [], label);
+  }
 });
