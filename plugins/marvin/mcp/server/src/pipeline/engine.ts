@@ -972,10 +972,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         }
         if (a.kind === "proceed") {
           return {
-            run: go(run, "ready"),
+            run: go(run, "done"),
             actions: [
-              { kind: "work", work: "mark_ready" },
-              { kind: "notify", text: "PR ready to merge; CI was not green when the wait ended" },
+              { kind: "notify", text: "CI did not complete after finalize; PR left as draft" },
             ],
           };
         }

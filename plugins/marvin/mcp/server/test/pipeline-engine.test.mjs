@@ -1334,7 +1334,7 @@ test("fix 2: the wait after finalize has the same deadline, and its answers clos
   const proceeded = go(asked.run, answer("no_ci", { kind: "proceed" }));
   assert.deepEqual(
     [proceeded.run.stage, works(proceeded), proceeded.run.ciSince],
-    ["ready", ["mark_ready"], null],
+    ["done", [], null],
   );
   const cancelled = go(asked.run, answer("no_ci", { kind: "cancel", reason: "stop" }));
   assert.deepEqual(
@@ -1701,4 +1701,45 @@ test("fix 9: an unspecified gate failure followed by a CI conflict is not a repe
   const unnamed = go({ ...first.run, stage: "ci_wait" }, ciRed(), stepRubric);
   assert.deepEqual(unnamed.run.rejections[1].fingerprints, ["gate||unspecified-ci"]);
   assert.equal(unnamed.run.rung, 2);
+});
+
+test("ruling: after finalize a no_ci proceed never marks the PR ready; it closes the run and leaves the draft", () => {
+  const finalized = at("finalizing", { finalized: true });
+  const asked = goAt(
+    { ...finalized, ciSince: NOW.toISOString() },
+    pendingCi,
+    new Date(NOW.getTime() + 61 * MINUTE),
+  );
+  assert.equal(judgmentOf(asked), "no_ci");
+  const proceeded = go(asked.run, answer("no_ci", { kind: "proceed" }));
+  assert.deepEqual(
+    [proceeded.run.stage, proceeded.run.haltReason, proceeded.run.ciSince],
+    ["done", null, null],
+  );
+  assert.deepEqual(proceeded.actions, [
+    { kind: "notify", text: "CI did not complete after finalize; PR left as draft" },
+  ]);
+  assert.ok(!proceeded.actions.some((a) => a.kind === "work"));
+  const stateless = go(finalized, answer("no_ci", { kind: "proceed" }));
+  assert.deepEqual([stateless.run.stage, works(stateless)], ["done", []]);
+});
+
+test("ruling: only a green CI result after finalize reaches ready; wait and cancel are as before", () => {
+  const finalized = at("finalizing", { finalized: true, ciSince: NOW.toISOString() });
+  const ready = go(finalized, { kind: "ci", state: "green", failing: [] });
+  assert.deepEqual([ready.run.stage, works(ready)], ["ready", ["mark_ready"]]);
+  const waited = go(finalized, answer("no_ci", { kind: "wait" }));
+  assert.deepEqual(
+    [waited.run.stage, works(waited), waited.run.ciSince],
+    ["finalizing", ["ci"], NOW.toISOString()],
+  );
+  const cancelled = go(finalized, answer("no_ci", { kind: "cancel", reason: "stop" }));
+  assert.deepEqual([cancelled.run.stage, cancelled.run.haltReason], ["done", "stop"]);
+  for (const stage of ["ci_wait"]) {
+    const before = go(at(stage), answer("no_ci", { kind: "proceed" }));
+    assert.deepEqual(
+      [before.run.stage, spawnOf(before)?.role, works(before)],
+      ["retro", "retro", []],
+    );
+  }
 });
