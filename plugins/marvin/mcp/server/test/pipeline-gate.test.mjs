@@ -809,15 +809,14 @@ const slowRule = {
   severity: "minor",
   category: "convention",
 };
-const slowLine = { file: "src/a.ts", line: 1, text: `${"a".repeat(40)}b` };
+// each extra character multiplies the work by about 1.6, so 45 outlasts any budget here
+const slowLine = { file: "src/a.ts", line: 1, text: `${"a".repeat(45)}b` };
 const debuggerLine = { file: "src/b.ts", line: 2, text: "debugger;" };
 const debuggerRule = { id: "debugger", pattern: "\\bdebugger;", message: "no debugger" };
 
 test("a check that backtracks without bound is cut off at its time budget and reported, not waited for", () => {
-  const started = Date.now();
   const hits = g.scanChecks([slowLine, debuggerLine], [slowRule, debuggerRule]);
-  const elapsed = Date.now() - started;
-  assert.ok(elapsed < 3500, `took ${elapsed} ms`);
+  assert.equal(hits[0].timedOut, true);
   assert.deepEqual(
     hits.map((h) => [h.id, h.severity, h.category, h.message]),
     [
@@ -853,10 +852,12 @@ test("a rule that is fast over many lines is not touched by the budget", () => {
     line: i + 1,
     text: i % 10_000 === 0 ? "debugger;" : `const value${i} = ${i};`,
   }));
-  const started = Date.now();
   const hits = g.scanChecks(lines, [debuggerRule, ...defaultChecks]);
   assert.equal(hits.length, 10);
-  assert.ok(Date.now() - started < 1500);
+  assert.equal(
+    hits.some((h) => h.timedOut),
+    false,
+  );
 });
 
 test("a cut-off check is a blocker finding in the gate category and fails the report", () => {
