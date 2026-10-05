@@ -7,6 +7,7 @@ import { importTs } from "./_tsload.mjs";
 const engine = await importTs("src/pipeline/engine.ts");
 const { decide } = engine;
 const { initRun } = await importTs("src/pipeline/run-store.ts");
+const gateModule = await importTs("src/pipeline/gate.ts");
 const { loadRubric } = await importTs("src/pipeline/assess.ts");
 const DEFAULT = readFileSync(
   fileURLToPath(new URL("../../../pipeline/rubric.default.yaml", import.meta.url)),
@@ -1470,4 +1471,63 @@ test("fix 3: a hollow PASS found by a real sequence from the gate to the judgmen
   assert.equal(judgmentOf(asked), "unverified");
   const accepted = go(asked.run, unverified({ kind: "proceed", reason: "env missing" }));
   assert.equal(accepted.run.stage, "ci_wait");
+});
+
+const scopeBlocker = { category: "scope", claim: "wrote outside", evidence: "e", expected: "x" };
+
+test("fix 5 (P6): the gate rule derives findings from the report itself, so empty findings cannot hide a failure", () => {
+  const lying = {
+    ...report(true),
+    protected: [".husky/pre-commit"],
+    protectedPatterns: ["^\\.husky/"],
+    undeclared: ["x.ts"],
+    blockers: [scopeBlocker],
+  };
+  const d = go(at("gating", { iteration: 1 }), { kind: "gate", report: lying, findings: [] });
+  assert.equal(d.run.stage, "executing");
+  assert.deepEqual(works(d), []);
+  const ids = d.run.previousFindings.map((f) => f.id).sort();
+  assert.deepEqual(ids, ["B-1", "P-1", "S-1"]);
+  assert.match(spawnOf(d).context.findings, /\.husky\/pre-commit is a protected path/);
+});
+
+test("fix 5: a finding the runtime already supplied is not counted twice, and derived minors are kept as notes", () => {
+  const withProtected = { ...report(false), protected: ["a.ts"], protectedPatterns: ["a"] };
+  const { reportFindings } = gateModule;
+  const supplied = reportFindings(withProtected);
+  const d = go(at("gating", { iteration: 1 }), {
+    kind: "gate",
+    report: withProtected,
+    findings: supplied,
+  });
+  assert.equal(d.run.previousFindings.length, supplied.length);
+  const flaky = { ...report(true), gates: [{ name: "lint", result: "flaky", ms: 1, tail: "t" }] };
+  const passed = go(at("gating", { iteration: 1 }), { kind: "gate", report: flaky, findings: [] });
+  assert.equal(passed.run.stage, "verifying");
+  assert.deepEqual(
+    passed.run.minorFindings.map((f) => f.id),
+    ["G-lint-flaky"],
+  );
+});
+
+test("fix 6: a planner spec_ready that also carries questions is malformed", () => {
+  const both = child(
+    "planner",
+    {
+      status: "spec_ready",
+      summary: "s",
+      spec: { path: "specs/1-x.md" },
+      questions: [question],
+    },
+    "spec_ready",
+  );
+  retryThenHalt(planningRun(), { ...both, signals: light }, "planner", /planner.*questions/);
+});
+
+test("fix 6: an executor done that also carries questions or a dispute is malformed", () => {
+  const withQuestions = child("executor", executorDone({ questions: [question] }));
+  retryThenHalt(executingRun(), withQuestions, "executor", /executor.*questions/);
+  const dispute = { path: "src/a.test.ts", reason: "r", evidence: "e" };
+  const withDispute = child("executor", executorDone({ dispute }));
+  retryThenHalt(executingRun(), withDispute, "executor", /executor.*dispute/);
 });

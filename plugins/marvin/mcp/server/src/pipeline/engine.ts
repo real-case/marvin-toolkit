@@ -12,7 +12,13 @@ import {
   tierFor,
 } from "./assess.js";
 import type { CiState } from "./ci.js";
-import { type Finding, type GateReport, isCanonicalPath, SEVERITIES } from "./gate.js";
+import {
+  type Finding,
+  type GateReport,
+  isCanonicalPath,
+  reportFindings,
+  SEVERITIES,
+} from "./gate.js";
 import {
   Assignment,
   ROLES,
@@ -127,6 +133,13 @@ export const PlannerOutput = z
         message: "spec_ready requires a spec",
       });
     }
+    if (out.status === "spec_ready" && out.questions.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["questions"],
+        message: "spec_ready must not carry questions",
+      });
+    }
   });
 
 export const TestAuthorOutput = z.object({
@@ -151,6 +164,20 @@ export const ExecutorOutput = z
         code: z.ZodIssueCode.custom,
         path: ["questions"],
         message: "needs_input requires a question or a dispute",
+      });
+    }
+    if (out.status === "done" && out.questions.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["questions"],
+        message: "done must not carry questions",
+      });
+    }
+    if (out.status === "done" && out.dispute) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dispute"],
+        message: "done must not carry a dispute",
       });
     }
   });
@@ -716,9 +743,14 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     }
     case "gating": {
       if (obs.kind !== "gate") break;
-      const blockers = obs.findings.filter(blocking);
+      const supplied = new Set(obs.findings.map((f) => f.id));
+      const found = [
+        ...obs.findings,
+        ...reportFindings(obs.report).filter((f) => !supplied.has(f.id)),
+      ];
+      const blockers = found.filter(blocking);
       if (obs.report.passed !== true || blockers.length > 0) return reject(run, "gate", blockers);
-      const minors = asRecords(obs.findings);
+      const minors = asRecords(found);
       const r = go(
         {
           ...run,
