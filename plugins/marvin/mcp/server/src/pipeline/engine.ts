@@ -555,11 +555,22 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       if (output?.role !== "planner") break;
       const out = output.data;
       if (out.status === "needs_input") {
-        if (run.questionsAnswered + out.questions.length > rubric.caps.planner_questions) {
+        const cap = rubric.caps.planner_questions;
+        if (run.questionsAnswered + out.questions.length > cap) {
+          if (run.questionsAnswered > cap) {
+            return ask({ ...run, haltRole: "planner" }, "halt", {
+              reason: "planner kept asking past the question cap",
+              detail: out.questions,
+            });
+          }
           const lines = out.questions.map(
             (q) => `${q.id}: ${q.recommendation} (recommendation accepted: question cap reached)`,
           );
-          const r = { ...run, assumptions: unique([...run.assumptions, ...lines]) };
+          const r = {
+            ...run,
+            questionsAnswered: run.questionsAnswered + out.questions.length,
+            assumptions: unique([...run.assumptions, ...lines]),
+          };
           return {
             run: r,
             actions: [spawn(r, "planner", { message: `ANSWERS:\n${lines.join("\n")}` }, true)],

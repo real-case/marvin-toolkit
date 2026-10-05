@@ -1128,3 +1128,44 @@ test("a seal result and its reasons must agree: success with reasons or with not
   });
   assert.equal(spawnOf(unexplained).context.feedback, "seal failed without a reason");
 });
+
+const askQuestion = (questions = [question]) =>
+  child("planner", { status: "needs_input", summary: "s", questions }, "needs_input");
+const answerPlanner = (count = 1) =>
+  answer("planner_questions", { kind: "answers", text: "Q1: A", count });
+
+test("fix 1: past the question cap the planner is accepted once, then halted; it cannot loop", () => {
+  let run = planningRun();
+  for (let round = 0; round < 8; round += 1) {
+    const asked = go(run, askQuestion());
+    assert.equal(judgmentOf(asked), "planner_questions", `round ${round}`);
+    run = go(asked.run, answerPlanner()).run;
+  }
+  assert.equal(run.questionsAnswered, 8);
+  const accepted = go(run, askQuestion([{ ...question, id: "Q9" }]));
+  assert.equal(judgmentOf(accepted), undefined);
+  assert.deepEqual([spawnOf(accepted).role, spawnOf(accepted).resume], ["planner", true]);
+  assert.equal(accepted.run.questionsAnswered, 9);
+  const again = go(accepted.run, askQuestion([{ ...question, id: "Q10" }]));
+  assert.equal(judgmentOf(again), "halt");
+  assert.equal(again.run.haltRole, "planner");
+  assert.equal(again.run.stage, "planning");
+  assert.match(payloadOf(again).reason, /planner kept asking past the question cap/);
+  assert.equal(spawnOf(again), undefined);
+  assert.equal(again.run.assumptions.length, 1);
+});
+
+test("fix 1: a round that jumps over the cap counts every accepted question, so the next ask halts", () => {
+  const four = ["Q1", "Q2", "Q3", "Q4"].map((id) => ({ ...question, id }));
+  const accepted = go({ ...planningRun(), questionsAnswered: 6 }, askQuestion(four));
+  assert.equal(accepted.run.questionsAnswered, 10);
+  assert.equal(judgmentOf(go(accepted.run, askQuestion())), "halt");
+});
+
+test("fix 1: an orchestrator that retries the planner halt gets the same resumed spawn, and is asked again only by a halt", () => {
+  const accepted = go({ ...planningRun(), questionsAnswered: 8 }, askQuestion());
+  const halted = go(accepted.run, askQuestion());
+  const retried = go(halted.run, answer("halt", { kind: "retry" }));
+  assert.deepEqual(spawnOf(retried), spawnOf(accepted));
+  assert.equal(judgmentOf(go(retried.run, askQuestion())), "halt");
+});
