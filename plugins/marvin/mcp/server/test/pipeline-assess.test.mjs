@@ -410,3 +410,166 @@ test("the approval preview shows every role for the run's tier, falling back to 
     retro: "sonnet/medium",
   });
 });
+
+// ── fix round 1 ──
+
+test("only the test-author may be skipped", () => {
+  for (const role of ["planner", "executor", "verifier", "retro"]) {
+    for (const tier of ["light", "standard", "heavy"]) {
+      assert.throws(
+        () => a.loadRubric(DEFAULT, `assignments: { ${tier}: { ${role}: skip } }\n`),
+        new RegExp(`assignments\\.${tier}\\.${role}`),
+        `${tier}/${role}`,
+      );
+    }
+  }
+  const r = a.loadRubric(DEFAULT, "assignments: { heavy: { test-author: skip } }\n");
+  assert.equal(a.assignmentFor("heavy", "test-author", 0, r), "skip");
+});
+
+test("a rubric that skipped the loader still cannot skip a role that must run", () => {
+  const r = structuredClone(rubric);
+  for (const role of ["planner", "executor", "verifier", "retro"]) {
+    const broken = structuredClone(r);
+    broken.assignments.standard[role] = "skip";
+    assert.throws(() => a.assignmentFor("standard", role, 0, broken), /cannot be skipped/, role);
+  }
+});
+
+test("a malformed assignment or ladder step says what is expected", () => {
+  const bad = (text) => assert.throws(() => a.loadRubric(DEFAULT, text), Error);
+  for (const text of [
+    "assignments: { standard: { executor: sonnet-high } }\n",
+    "assignments: { standard: { executor: sonnet/ultra } }\n",
+  ]) {
+    assert.throws(
+      () => a.loadRubric(DEFAULT, text),
+      /assignments\.standard\.executor: expected "<model>\/<effort>" \(effort: low\|medium\|high\|xhigh\|max\)/,
+    );
+  }
+  assert.throws(
+    () => a.loadRubric(DEFAULT, "assignments: { standard: { test-author: nope } }\n"),
+    /assignments\.standard\.test-author: expected "<model>\/<effort>".* or "skip"/,
+  );
+  assert.throws(
+    () => a.loadRubric(DEFAULT, "escalation: [effort+2]\n"),
+    /escalation\.0: expected "effort\+1", "model:<model>" or "halt"/,
+  );
+  bad("escalation: [model:]\n");
+});
+
+test("a mistyped rubric key is refused at load, naming the key", () => {
+  for (const [text, key] of [
+    ["sensitive_path: ['^a/']\n", "sensitive_path"],
+    ["tiers: { light: { max_file: 3 } }\n", "max_file"],
+    ["tiers: { medium: { max_files: 3 } }\n", "medium"],
+    ["caps: { rejection: 2 }\n", "rejection"],
+    ["caps: { spec_critic: { light: 1, default: 2, extra: 3 } }\n", "extra"],
+    ["assignments: { standard: { tester: opus/high } }\n", "tester"],
+    ["assignments: { epic: { planner: opus/high } }\n", "epic"],
+    ["slicing: { enable: true }\n", "enable"],
+    ["versoin: 1\n", "versoin"],
+  ]) {
+    assert.throws(() => a.loadRubric(DEFAULT, text), new RegExp(`Unrecognized key.*${key}`), key);
+  }
+});
+
+test("the slicing thresholds are at least one", () => {
+  assert.throws(() => a.loadRubric(DEFAULT, "slicing: { min_criteria: 0 }\n"), /min_criteria/);
+  assert.throws(() => a.loadRubric(DEFAULT, "slicing: { min_files: -3 }\n"), /min_files/);
+  assert.equal(a.loadRubric(DEFAULT, "slicing: { min_files: 1 }\n").slicing.min_files, 1);
+});
+
+test("a contract with no files or no criteria is refused", () => {
+  const wrap = (body) =>
+    `---\nslug: x\nrisk: low\n---\n# X\n\`\`\`yaml spec-contract\n${body}\n\`\`\`\n`;
+  assert.throws(() => a.readSignals(wrap("{}"), rubric), /spec-contract/);
+  assert.throws(
+    () => a.readSignals(wrap("files: []\ncriteria:\n  - id: AC1"), rubric),
+    /spec-contract/,
+  );
+  assert.throws(
+    () => a.readSignals(wrap("files:\n  - path: src/a.ts\ncriteria: []"), rubric),
+    /spec-contract/,
+  );
+});
+
+test("a risk the rubric cannot read is reported as a fallback, not as a real medium", () => {
+  const reasons = (front) =>
+    a.tierFor(a.readSignals(full(front, FILES, CRITERIA), rubric), rubric).reasons;
+  const typo = reasons("slug: x\ntype: feature\nrisk: hgih");
+  assert.ok(typo.includes('risk "hgih" not recognised, treated as medium'), typo.join(" | "));
+  assert.ok(!typo.includes("risk medium"));
+  const missing = reasons("slug: x\ntype: feature");
+  assert.ok(missing.includes("risk not set, treated as medium"), missing.join(" | "));
+  const real = reasons("slug: x\ntype: feature\nrisk: medium");
+  assert.ok(real.includes("risk medium"));
+  assert.ok(!real.some((r) => /not recognised|not set/.test(r)));
+  const many = Array.from({ length: 16 }, (_, i) => `  - path: src/f${i}.ts`).join("\n");
+  const heavy = a.tierFor(
+    a.readSignals(full("slug: x\ntype: feature\nrisk: hgih", many, CRITERIA), rubric),
+    rubric,
+  );
+  assert.equal(heavy.tier, "heavy");
+  assert.ok(heavy.reasons.includes('risk "hgih" not recognised, treated as medium'));
+});
+
+test("the end of the ladder is a HaltError, and a refused model is not", () => {
+  assert.equal(typeof a.HaltError, "function");
+  assert.ok(new a.HaltError("x") instanceof Error);
+  assert.throws(() => a.assignmentFor("standard", "executor", 3, rubric), a.HaltError);
+  const spent = a.loadRubric(DEFAULT, "escalation: [effort+1]\n");
+  assert.throws(() => a.assignmentFor("standard", "executor", 2, spent), a.HaltError);
+  const refused = structuredClone(rubric);
+  refused.assignments.standard.executor = "fable/high";
+  assert.throws(
+    () => a.assignmentFor("standard", "executor", 0, refused),
+    (e) =>
+      e instanceof Error && !(e instanceof a.HaltError) && /Fable is not allowed/.test(e.message),
+  );
+  const rung = structuredClone(rubric);
+  assert.throws(
+    () => a.assignmentFor("standard", "executor", -1, rung),
+    (e) => e instanceof Error && !(e instanceof a.HaltError),
+  );
+});
+
+test("the approval preview shows the verifier after the floor", () => {
+  const r = a.loadRubric(
+    DEFAULT,
+    "assignments: { standard: { executor: opus/high, verifier: sonnet/high } }\n",
+  );
+  assert.equal(a.previewAssignments(run("standard", "light"), r).verifier, "opus/high");
+  const effort = a.loadRubric(
+    DEFAULT,
+    "assignments: { standard: { executor: sonnet/max, verifier: sonnet/high } }\n",
+  );
+  assert.equal(a.previewAssignments(run("standard", "light"), effort).verifier, "sonnet/max");
+  assert.equal(a.previewAssignments(run("standard", "light"), rubric).verifier, "opus/high");
+});
+
+test("a spec with no front matter is read as a medium feature", () => {
+  const text =
+    "# X\n\n```yaml spec-contract\nfiles:\n  - path: src/a.ts\ncriteria:\n  - id: AC1\n```\n";
+  const s = a.readSignals(text, rubric);
+  assert.equal(s.risk, "medium");
+  assert.equal(s.bugfix, false);
+  assert.equal(s.files, 1);
+});
+
+test("the Fable guard holds for every role of a rubric that skipped the loader", () => {
+  for (const role of ["planner", "test-author", "verifier", "retro"]) {
+    const r = structuredClone(rubric);
+    r.assignments.standard[role] = "fable/high";
+    assert.throws(() => a.assignmentFor("standard", role, 0, r), /Fable is not allowed/, role);
+  }
+});
+
+test("a bare severity key marks a spec as a bugfix", () => {
+  const bare = a.readSignals(full("slug: x\nseverity: high", FILES, CRITERIA), rubric);
+  assert.equal(bare.bugfix, true);
+  assert.equal(bare.risk, "high");
+  const typed = a.readSignals(full("slug: x\ntype: bugfix\nrisk: low", FILES, CRITERIA), rubric);
+  assert.equal(typed.bugfix, true);
+  assert.equal(a.readSignals(full("slug: x\nrisk: low", FILES, CRITERIA), rubric).bugfix, false);
+});

@@ -2,31 +2,26 @@ version: 1
 tiers:
   light: { max_files: 5, risk: [low] }
   heavy: { min_files: 16, risk: [high] }
-assignments: # "<model>/<effort>" or "skip"
+# "<model>/<effort>"; only the test-author may be "skip"
+assignments:
   light:
-    {
-      planner: opus/medium,
-      test-author: skip,
-      executor: sonnet/medium,
-      verifier: sonnet/high,
-      retro: sonnet/medium,
-    }
+    planner: opus/medium
+    test-author: skip
+    executor: sonnet/medium
+    verifier: sonnet/high
+    retro: sonnet/medium
   standard:
-    {
-      planner: opus/high,
-      test-author: opus/medium,
-      executor: sonnet/high,
-      verifier: opus/high,
-      retro: opus/medium,
-    }
+    planner: opus/high
+    test-author: opus/medium
+    executor: sonnet/high
+    verifier: opus/high
+    retro: opus/medium
   heavy:
-    {
-      planner: opus/xhigh,
-      test-author: opus/high,
-      executor: opus/high,
-      verifier: opus/xhigh,
-      retro: opus/medium,
-    }
+    planner: opus/xhigh
+    test-author: opus/high
+    executor: opus/high
+    verifier: opus/xhigh
+    retro: opus/medium
 escalation: [effort+1, model:opus, halt]
 caps:
   rejections: 3

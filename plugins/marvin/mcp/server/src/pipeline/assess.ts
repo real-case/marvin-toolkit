@@ -12,43 +12,71 @@ import {
   type Tier,
 } from "./run-store.js";
 
-const AssignmentText = z.union([
-  z.literal("skip"),
-  z.string().regex(new RegExp(`^[A-Za-z0-9.-]+/(${EFFORTS.join("|")})$`)),
-]);
-const RoleRow = z.object({
-  planner: AssignmentText,
-  "test-author": AssignmentText,
-  executor: AssignmentText,
-  verifier: AssignmentText,
-  retro: AssignmentText,
-});
+const MODEL_EFFORT = `[A-Za-z0-9.-]+/(${EFFORTS.join("|")})`;
+const EXPECTED_ASSIGNMENT = `expected "<model>/<effort>" (effort: ${EFFORTS.join("|")})`;
+
+const ModelEffortText = z.string().regex(new RegExp(`^${MODEL_EFFORT}$`), EXPECTED_ASSIGNMENT);
+/** The test-author is the one role a tier may leave out; every other role always runs. */
+const SkippableText = z
+  .string()
+  .regex(new RegExp(`^(skip|${MODEL_EFFORT})$`), `${EXPECTED_ASSIGNMENT} or "skip"`);
+const RoleRow = z
+  .object({
+    planner: ModelEffortText,
+    "test-author": SkippableText,
+    executor: ModelEffortText,
+    verifier: ModelEffortText,
+    retro: ModelEffortText,
+  })
+  .strict();
 const Risk = z.enum(["low", "medium", "high"]);
 type Risk = z.infer<typeof Risk>;
 
-export const Rubric = z.object({
-  version: z.literal(1),
-  tiers: z.object({
-    light: z.object({ max_files: z.number().int().min(0), risk: z.array(Risk) }),
-    heavy: z.object({ min_files: z.number().int().min(1), risk: z.array(Risk) }),
-  }),
-  assignments: z.object({ light: RoleRow, standard: RoleRow, heavy: RoleRow }),
-  escalation: z.array(z.string().regex(/^(effort\+1|model:[A-Za-z0-9.-]+|halt)$/)),
-  caps: z.object({
-    rejections: z.number().int().min(1),
-    planner_questions: z.number().int().min(0),
-    test_author_attempts: z.number().int().min(1),
-    child_retries: z.number().int().min(0),
-    spec_critic: z.object({ light: z.number().int().min(1), default: z.number().int().min(1) }),
-  }),
-  sensitive_paths: z.array(z.string()),
-  cross_repo_markers: z.array(z.string()),
-  slicing: z.object({
-    enabled: z.boolean(),
-    min_criteria: z.number().int(),
-    min_files: z.number().int(),
-  }),
-});
+/**
+ * Every object is `.strict()`: a rubric is hand-edited and its keys decide tiering and
+ * escalation, so a mistyped one (`sensitive_path`) must fail at load rather than be stripped
+ * and silently leave the default in force.
+ */
+export const Rubric = z
+  .object({
+    version: z.literal(1),
+    tiers: z
+      .object({
+        light: z.object({ max_files: z.number().int().min(0), risk: z.array(Risk) }).strict(),
+        heavy: z.object({ min_files: z.number().int().min(1), risk: z.array(Risk) }).strict(),
+      })
+      .strict(),
+    assignments: z.object({ light: RoleRow, standard: RoleRow, heavy: RoleRow }).strict(),
+    escalation: z.array(
+      z
+        .string()
+        .regex(
+          /^(effort\+1|model:[A-Za-z0-9.-]+|halt)$/,
+          'expected "effort+1", "model:<model>" or "halt"',
+        ),
+    ),
+    caps: z
+      .object({
+        rejections: z.number().int().min(1),
+        planner_questions: z.number().int().min(0),
+        test_author_attempts: z.number().int().min(1),
+        child_retries: z.number().int().min(0),
+        spec_critic: z
+          .object({ light: z.number().int().min(1), default: z.number().int().min(1) })
+          .strict(),
+      })
+      .strict(),
+    sensitive_paths: z.array(z.string()),
+    cross_repo_markers: z.array(z.string()),
+    slicing: z
+      .object({
+        enabled: z.boolean(),
+        min_criteria: z.number().int().min(1),
+        min_files: z.number().int().min(1),
+      })
+      .strict(),
+  })
+  .strict();
 export type Rubric = z.infer<typeof Rubric>;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -135,16 +163,23 @@ export interface Signals {
   paths: string[];
   sensitive: string[];
   crossRepo: string[];
+  /** Set when the spec's risk could not be read and `risk` is the `medium` fallback. */
+  riskNote: string | null;
 }
 
-const toRisk = (value: string | undefined): Risk => {
+function readRisk(value: string | undefined): { risk: Risk; note: string | null } {
   const v = value?.trim().toLowerCase();
-  return v === "low" || v === "medium" ? v : v === "high" || v === "critical" ? "high" : "medium";
-};
+  if (v === "low" || v === "medium") return { risk: v, note: null };
+  if (v === "high" || v === "critical") return { risk: "high", note: null };
+  const note = v
+    ? `risk ${JSON.stringify(value?.trim())} not recognised, treated as medium`
+    : "risk not set, treated as medium";
+  return { risk: "medium", note };
+}
 
 const ContractShape = z.object({
-  files: z.array(z.object({ path: z.string().min(1), action: z.string().optional() })).default([]),
-  criteria: z.array(z.object({ id: z.string().min(1) })).default([]),
+  files: z.array(z.object({ path: z.string().min(1), action: z.string().optional() })).min(1),
+  criteria: z.array(z.object({ id: z.string().min(1) })).min(1),
 });
 
 /**
@@ -169,8 +204,10 @@ export function readSignals(specText: string, rubric: Rubric): Signals {
   const { files, criteria } = readContract(text);
   const paths = files.map((f) => f.path);
   const sensitive = rubric.sensitive_paths.map((r) => new RegExp(r));
+  const { risk, note } = readRisk(frontmatter.risk ?? frontmatter.severity);
   return {
-    risk: toRisk(frontmatter.risk ?? frontmatter.severity),
+    risk,
+    riskNote: note,
     bugfix: frontmatter.type === "bugfix" || Object.hasOwn(frontmatter, "severity"),
     files: files.length,
     newFiles: files.filter((f) => f.action === "new").length,
@@ -189,8 +226,8 @@ export function tierFor(s: Signals, r: Rubric): { tier: Tier; reasons: string[] 
     ...s.sensitive.map((p) => `sensitive path ${p}`),
     ...s.crossRepo.map((m) => `cross-repo marker ${m}`),
   );
-  if (heavy.length) return { tier: "heavy", reasons: heavy };
-  const base = [`risk ${s.risk}`, `${s.files} contract files`];
+  if (heavy.length) return { tier: "heavy", reasons: s.riskNote ? [...heavy, s.riskNote] : heavy };
+  const base = [s.riskNote ?? `risk ${s.risk}`, `${s.files} contract files`];
   if (r.tiers.light.risk.includes(s.risk) && s.files <= r.tiers.light.max_files) {
     return { tier: "light", reasons: base };
   }
@@ -202,14 +239,36 @@ const toAssignment = (text: string): Assignment => {
   return { model, effort: effort as Effort };
 };
 
+/** The end of the executor's escalation ladder, as distinct from a fault such as a refused model. */
+export class HaltError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HaltError";
+  }
+}
+
 const exhausted = (rung: number) =>
-  new Error(`halt: the escalation ladder is exhausted at rung ${rung}`);
+  new HaltError(`halt: the escalation ladder is exhausted at rung ${rung}`);
 
 /**
  * What a role runs as. Only the executor climbs the escalation ladder: `rung` is the number of
- * steps already spent, a `halt` step (or running past the last step) throws, and a rubric that
- * skipped `loadRubric` still cannot name a model the pipeline refuses.
+ * steps already spent, and a `halt` step or running past the last step throws a `HaltError`. Only
+ * the test-author can come back as `"skip"`; a rubric that skipped `loadRubric` still cannot
+ * skip another role or name a model the pipeline refuses (both throw a plain `Error`).
  */
+export function assignmentFor(
+  tier: Tier,
+  role: "test-author",
+  rung: number,
+  r: Rubric,
+): Assignment | "skip";
+export function assignmentFor(
+  tier: Tier,
+  role: Exclude<Role, "test-author">,
+  rung: number,
+  r: Rubric,
+): Assignment;
+export function assignmentFor(tier: Tier, role: Role, rung: number, r: Rubric): Assignment | "skip";
 export function assignmentFor(
   tier: Tier,
   role: Role,
@@ -218,7 +277,10 @@ export function assignmentFor(
 ): Assignment | "skip" {
   if (!Number.isInteger(rung) || rung < 0) throw new Error(`invalid escalation rung: ${rung}`);
   const raw = r.assignments[tier][role];
-  if (raw === "skip") return "skip";
+  if (raw === "skip") {
+    if (role !== "test-author") throw new Error(`role ${role} cannot be skipped`);
+    return "skip";
+  }
   let a = toAssignment(raw);
   if (role === "executor") {
     for (const step of r.escalation.slice(0, rung)) {
@@ -260,17 +322,19 @@ export const shouldAuthorTests = (run: Run, r: Rubric) =>
 export const criticCap = (run: Run, r: Rubric) =>
   (run.tier ?? run.stageA) === "light" ? r.caps.spec_critic.light : r.caps.spec_critic.default;
 
+/**
+ * What the approval message shows: every role at rung 0, with the verifier already floored
+ * against the executor it will check, so the preview names what will actually launch.
+ */
 export function previewAssignments(run: Run, r: Rubric): Record<Role, string> {
   const tier = run.tier ?? run.stageA;
-  const show = (role: Role) => {
-    const a = assignmentFor(tier, role, 0, r);
-    return a === "skip" ? "skip" : `${a.model}/${a.effort}`;
-  };
+  const show = (a: Assignment | "skip") => (a === "skip" ? "skip" : `${a.model}/${a.effort}`);
+  const executor = assignmentFor(tier, "executor", 0, r);
   return {
-    planner: show("planner"),
-    "test-author": show("test-author"),
-    executor: show("executor"),
-    verifier: show("verifier"),
-    retro: show("retro"),
+    planner: show(assignmentFor(tier, "planner", 0, r)),
+    "test-author": show(assignmentFor(tier, "test-author", 0, r)),
+    executor: show(executor),
+    verifier: show(enforceVerifierFloor(executor, assignmentFor(tier, "verifier", 0, r))),
+    retro: show(assignmentFor(tier, "retro", 0, r)),
   };
 }
