@@ -246,6 +246,143 @@ test("a malformed .marvin/config.json warns and falls back to detection", async 
   }
 });
 
+// ── `gates.extra`: project gates that run after the four standard ones ──
+
+const EXTRA_GATES = {
+  test: "sleep 0.4 && echo test >> order.log",
+  lint: "echo lint >> order.log",
+  typecheck: "true",
+  build: "true",
+  extra: [
+    { name: "css-types", command: "sleep 0.3 && echo css-types >> order.log" },
+    { name: "format", command: "echo format >> order.log" },
+  ],
+};
+
+async function withExtraGates(gates, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-extra-"));
+  try {
+    writeConfig(dir, JSON.stringify({ gates }));
+    return await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("gates.extra run after the four standard gates, one at a time, in declaration order", async () => {
+  await withExtraGates(EXTRA_GATES, async (dir) => {
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "PASS");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["test", "lint", "typecheck", "build", "css-types", "format"],
+    );
+    // The slow `test` gate finishes after `lint` (they overlap), and both extras follow it:
+    // `css-types` sleeps, yet `format` still comes second because the extras do not overlap.
+    const order = readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
+    assert.deepEqual(order, ["lint", "test", "css-types", "format"]);
+  });
+});
+
+test("a failing extra gate fails the verdict and names itself in the report", async () => {
+  const gates = { ...EXTRA_GATES, extra: [{ name: "css-types", command: "echo broken; exit 3" }] };
+  await withExtraGates(gates, async (dir) => {
+    const { parsed, isError, text } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true);
+    const extra = parsed.gates.find((g) => g.name === "css-types");
+    assert.equal(extra.status, "fail");
+    assert.equal(extra.code, 3);
+    assert.match(text, /## css-types Results/);
+    assert.match(text, /`echo broken; exit 3`/);
+  });
+});
+
+test("extra gates still run after a failed standard gate, except under fail-fast", async () => {
+  const gates = { ...EXTRA_GATES, lint: "exit 1" };
+  await withExtraGates(gates, async (dir) => {
+    const all = (await callVerify({ projectRoot: dir, write: false })).parsed;
+    assert.equal(all.verdict, "FAIL");
+    assert.deepEqual(
+      all.gates.map((g) => g.name),
+      ["test", "lint", "typecheck", "build", "css-types", "format"],
+    );
+    const fast = (await callVerify({ projectRoot: dir, write: false, execution: "fail-fast" }))
+      .parsed;
+    assert.deepEqual(
+      fast.gates.map((g) => g.name),
+      ["test", "lint"],
+    );
+  });
+});
+
+test("sequential execution runs the extras after the standard gates too", async () => {
+  await withExtraGates(EXTRA_GATES, async (dir) => {
+    const { parsed } = await callVerify({
+      projectRoot: dir,
+      write: false,
+      execution: "sequential",
+    });
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["test", "lint", "typecheck", "build", "css-types", "format"],
+    );
+    const order = readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
+    assert.deepEqual(order, ["test", "lint", "css-types", "format"]);
+  });
+});
+
+test("the dry-run plan lists the extras after the standard gates", async () => {
+  await withExtraGates(EXTRA_GATES, async (dir) => {
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    const at = (s) => res.indexOf(s);
+    assert.ok(at("**build**") > -1 && at("**css-types**") > at("**build**"));
+    assert.ok(at("**format**") > at("**css-types**"));
+    assert.match(res, /sleep 0\.3 && echo css-types/);
+    assert.match(res, /\.marvin\/config\.json/);
+  });
+});
+
+test("extra gates alone make a plan for a stack nothing detects", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-extra-only-"));
+  try {
+    writeFileSync(join(dir, "README.md"), "# docs only\n");
+    writeConfig(dir, JSON.stringify({ gates: { extra: [{ name: "docs", command: "true" }] } }));
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["docs"],
+    );
+    assert.equal(parsed.verdict, "PASS");
+    const plan = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(plan, /\*\*Stacks:\*\* \.marvin\/config\.json\n/);
+    assert.match(plan, /\*\*docs\*\*: `true`/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("`only` and explicit per-call gates leave the extras out", async () => {
+  await withExtraGates(EXTRA_GATES, async (dir) => {
+    const only = (await callVerify({ projectRoot: dir, write: false, only: ["lint"] })).parsed;
+    assert.deepEqual(
+      only.gates.map((g) => g.name),
+      ["lint"],
+    );
+    const explicit = (
+      await callVerify({
+        projectRoot: dir,
+        write: false,
+        gates: [{ name: "test", command: "true" }],
+      })
+    ).parsed;
+    assert.deepEqual(
+      explicit.gates.map((g) => g.name),
+      ["test"],
+    );
+  });
+});
+
 // ── built-in stack detection: top-10 ecosystems emit canonical gates ──
 
 const STACK_DETECTION_CASES = [

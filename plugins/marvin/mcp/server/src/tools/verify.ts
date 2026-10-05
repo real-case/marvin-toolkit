@@ -44,10 +44,17 @@ import {
 const GATE_NAMES = ["test", "lint", "typecheck", "build"] as const;
 type GateName = (typeof GATE_NAMES)[number];
 
-/** A single gate: a label and the shell command that runs it. */
+/** The `Stacks:` entry that shows `.marvin/config.json` took part in building the plan. */
+const CONFIG_STACK = ".marvin/config.json";
+
+/**
+ * A single gate: a label and the shell command that runs it. The label is one of the four
+ * standard names, or — for a `gates.extra` entry, flagged by `extra` — the project's own.
+ */
 interface GateSpec {
-  name: GateName;
+  name: string;
   command: string;
+  extra?: true;
 }
 
 /**
@@ -58,7 +65,7 @@ interface GateSpec {
 type GateStatus = "pass" | "fail" | "error" | "not-run";
 
 interface GateResult {
-  name: GateName;
+  name: string;
   command: string;
   status: GateStatus;
   code: number | null;
@@ -301,7 +308,11 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
 
   // Resolve the gate plan: explicit per-call gates > config-declared gates > detection.
   const detected = resolvePlan(input, projectRoot, configGates);
-  if (detected.gates.length === 0) {
+  // `gates.extra` is a config-declared addition to the standard plan, so a caller that names
+  // its own gates (explicit `gates`) or selects some (`only`, which can only name standard
+  // gates) gets exactly those and none of the project's extras.
+  const extraGates = input.gates?.length || input.only ? [] : extraGateSpecs(config.gates);
+  if (detected.gates.length === 0 && extraGates.length === 0) {
     return ok(
       `No quality gates detected for \`${projectRoot}\`.\n` +
         `Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), ` +
@@ -312,10 +323,18 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   }
 
   let gates = detected.gates;
-  if (input.only) gates = gates.filter((g) => input.only!.includes(g.name));
-  if (gates.length === 0) {
+  if (input.only) {
+    const only: readonly string[] = input.only;
+    gates = gates.filter((g) => only.includes(g.name));
+  }
+  if (gates.length === 0 && extraGates.length === 0) {
     return ok(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
+  gates = [...gates, ...extraGates];
+  const stacks =
+    extraGates.length > 0 && !detected.stacks.includes(CONFIG_STACK)
+      ? [...detected.stacks, CONFIG_STACK]
+      : detected.stacks;
 
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
@@ -323,7 +342,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
       ? `\n\n> ⚠️ \`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`
       : "";
     return ok(
-      `# Verify Plan (dry run)\n\n**Stacks:** ${detected.stacks.join(", ") || "explicit"}\n**Execution:** ${input.execution}\n\n${plan}${warn}`,
+      `# Verify Plan (dry run)\n\n**Stacks:** ${stacks.join(", ") || "explicit"}\n**Execution:** ${input.execution}\n\n${plan}${warn}`,
     );
   }
 
@@ -375,7 +394,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
     execution: input.execution,
     results,
     warnings,
-    stacks: detected.stacks,
+    stacks,
     wallClockMs,
     sumOfGatesMs,
   });
@@ -411,7 +430,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
       code: r.code,
       durationMs: r.durationMs,
     })),
-    detectedStacks: detected.stacks,
+    detectedStacks: stacks,
     warnings,
     wallClockMs,
     sumOfGatesMs,
@@ -538,7 +557,7 @@ function mergeConfigGates(
     if (override) gates.push(override);
     else gates.push(...base.gates.filter((g) => g.name === name));
   }
-  return { stacks: [...base.stacks, ".marvin/config.json"], gates };
+  return { stacks: [...base.stacks, CONFIG_STACK], gates };
 }
 
 /** Map the `.marvin/config.json` `gates` object to internal gate specs. */
@@ -550,6 +569,13 @@ function gateSpecsFromConfig(gates: Partial<Record<GateName, string>> | undefine
     if (command) out.push({ name, command });
   }
   return out;
+}
+
+/** Map the `.marvin/config.json` `gates.extra` list to gate specs, in declaration order. */
+function extraGateSpecs(
+  gates: { extra?: { name: string; command: string }[] } | undefined,
+): GateSpec[] {
+  return (gates?.extra ?? []).map((g) => ({ name: g.name, command: g.command, extra: true }));
 }
 
 /** Gate name → the declared script/target names that satisfy it, in priority order. */
@@ -623,22 +649,32 @@ function detectMakefile(projectRoot: string): { stacks: string[]; gates: GateSpe
  * computed until every branch has settled (parallel/sequential) or fail-fast
  * has stopped. A gate that crashes becomes its own `error` result — never a
  * loss of sibling results (R-V-3 / F-1).
+ *
+ * `gates.extra` entries come last and always one at a time: `parallel` runs the standard
+ * gates concurrently and only then walks the extras in declaration order, `sequential` walks
+ * everything in plan order, and `fail-fast` stops at the first failure wherever it falls.
  */
 async function executeGates(
   planned: PlannedGate[],
   execution: VerifyInput["execution"],
   cwd: string,
 ): Promise<GateResult[]> {
+  const results: GateResult[] = [];
+  let inOrder = planned;
+
   if (execution === "parallel") {
-    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
-    return settled.map((s, i) =>
-      s.status === "fulfilled" ? s.value : crashResult(planned[i]!.gate, s.reason),
+    const standard = planned.filter((p) => !p.gate.extra);
+    const settled = await Promise.allSettled(standard.map((p) => runGate(p, cwd)));
+    results.push(
+      ...settled.map((s, i) =>
+        s.status === "fulfilled" ? s.value : crashResult(standard[i]!.gate, s.reason),
+      ),
     );
+    inOrder = planned.filter((p) => p.gate.extra);
   }
 
-  // sequential / fail-fast: one at a time.
-  const results: GateResult[] = [];
-  for (const p of planned) {
+  // sequential / fail-fast (and the extras after a parallel batch): one at a time.
+  for (const p of inOrder) {
     let r: GateResult;
     try {
       r = await runGate(p, cwd);
@@ -723,7 +759,7 @@ function probeToken(token: string, cwd: string): Probe {
   return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
 }
 
-function notRunWarning(gate: GateName, token: string | undefined): string {
+function notRunWarning(gate: string, token: string | undefined): string {
   return (
     `gate not run: \`${gate}\` — \`${token ?? "the gate command"}\` is not on PATH ` +
     `(install it, or pin a different command in \`.marvin/config.json\`)`
@@ -1394,7 +1430,7 @@ function renderMarkdown(o: {
 }): string {
   // Render every result for a gate name — a monorepo may detect the same gate
   // (e.g. "test") for more than one stack; the verdict already counts them all.
-  const section = (title: string, n: GateName) => {
+  const section = (title: string, n: string) => {
     const rs = o.results.filter((r) => r.name === n);
     if (rs.length === 0)
       return `## ${title} Results\n- **Status:** N/A — not configured for this stack`;
@@ -1408,6 +1444,12 @@ function renderMarkdown(o: {
       .join("\n");
     return `## ${title} Results\n${body}`;
   };
+
+  // Extra gates have no fixed heading, so each present one gets a section named after itself.
+  const standardNames: readonly string[] = GATE_NAMES;
+  const extraNames = [
+    ...new Set(o.results.map((r) => r.name).filter((n) => !standardNames.includes(n))),
+  ];
 
   return [
     `# Verification Report`,
@@ -1425,6 +1467,7 @@ function renderMarkdown(o: {
     ``,
     section("Build", "build"),
     ``,
+    ...extraNames.flatMap((n) => [section(n, n), ``]),
     `## Warnings`,
     o.warnings.length ? o.warnings.map((w) => `- ${w}`).join("\n") : "- none",
     ``,

@@ -257,3 +257,30 @@ test("F3: role validation and read-only allowlist enforcement", () => {
     );
   }
 });
+
+test("modelFamily names the family of an alias or a full model id", () => {
+  for (const [model, family] of [
+    ["opus", "opus"],
+    ["sonnet", "sonnet"],
+    ["haiku", "haiku"],
+    ["claude-opus-5-5", "opus"],
+    ["claude-sonnet-5-5", "sonnet"],
+    ["claude-haiku-4-5", "haiku"],
+    ["claude-opus-4-1-20250701", "opus"],
+  ]) {
+    assert.equal(cmd.modelFamily(model), family, model);
+  }
+});
+
+test("modelFamily refuses Fable first, in any case, then anything outside the allowlist", () => {
+  for (const model of ["fable", "claude-fable-5-1", "Fable", "FABLE", "claude-opus-fable-1"]) {
+    assert.throws(
+      () => cmd.modelFamily(model),
+      new RegExp(`^Error: Fable is not allowed \\(user rule\\): ${model}$`),
+      model,
+    );
+  }
+  for (const model of ["default", "best", "gpt-5", "gpt-x", "claude-opus", "Opus", "opus ", ""]) {
+    assert.throws(() => cmd.modelFamily(model), /model not allowed: /, JSON.stringify(model));
+  }
+});

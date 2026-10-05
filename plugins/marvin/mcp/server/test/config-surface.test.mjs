@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { withSession } from "./_driver.mjs";
+import { importTs } from "./_tsload.mjs";
+
+const { Config } = await importTs("src/storage/schema.ts");
+const { loadConfig } = await importTs("src/storage/config.ts");
 
 /** The D2 example vocabulary from the kanban-rework plan (ADR-0026). */
 const CUSTOM_STATUSES = [
@@ -527,6 +531,167 @@ test("a hand-edited unusable scope.exempt pattern is reported by the view, not b
       /scope\.exempt/,
       "the tracker only explains missing links",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── autopilot pipeline settings: `pipeline` and `gates.extra` ──
+
+const PIPELINE_DEFAULTS = {
+  branch_template: "feature/{tracker}--{slug}",
+  tracker_default: "TBD",
+  bootstrap: null,
+  lockfile: null,
+  github: { token_command: null },
+  stall_minutes: 15,
+  no_ci_minutes: 10,
+  gate_timeout_minutes: 20,
+  ci_poll_seconds: 60,
+  test_path_pattern: "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)",
+  scope_exempt_pattern: null,
+  format_command: null,
+  conventions: "",
+  allowed_commands: [
+    "git",
+    "gh pr create",
+    "gh pr view",
+    "gh pr edit",
+    "npm run",
+    "npm ci",
+    "npx --no",
+  ],
+};
+
+test("an empty config parses to every pipeline default, inner ones included", () => {
+  assert.deepEqual(Config.parse({}).pipeline, PIPELINE_DEFAULTS);
+});
+
+test("a partial pipeline block keeps the defaults of the keys it omits", () => {
+  const { pipeline } = Config.parse({
+    pipeline: { stall_minutes: 30, github: {}, bootstrap: "npm ci" },
+  });
+  assert.deepEqual(pipeline, {
+    ...PIPELINE_DEFAULTS,
+    stall_minutes: 30,
+    bootstrap: "npm ci",
+  });
+  const withToken = Config.parse({ pipeline: { github: { token_command: "gh auth token" } } });
+  assert.equal(withToken.pipeline.github.token_command, "gh auth token");
+  assert.equal(withToken.pipeline.ci_poll_seconds, 60);
+});
+
+test("the default test-path pattern matches test files and nothing else", () => {
+  const pattern = new RegExp(Config.parse({}).pipeline.test_path_pattern);
+  for (const p of ["src/a.test.ts", "a.spec.tsx", "src/__tests__/x.ts", "test/b.test.mjs"]) {
+    assert.ok(pattern.test(p), p);
+  }
+  for (const p of ["src/a.ts", "src/contest.ts", "src/latest/x.ts"]) {
+    assert.ok(!pattern.test(p), p);
+  }
+});
+
+test("a pipeline time or cadence below one is refused", () => {
+  for (const key of ["stall_minutes", "no_ci_minutes", "gate_timeout_minutes", "ci_poll_seconds"]) {
+    assert.equal(Config.safeParse({ pipeline: { [key]: 0 } }).success, false, key);
+    assert.equal(Config.safeParse({ pipeline: { [key]: 1.5 } }).success, false, key);
+  }
+});
+
+test("gates.extra defaults to empty and keeps declaration order", () => {
+  assert.deepEqual(Config.parse({ gates: {} }).gates.extra, []);
+  assert.equal(Config.parse({}).gates, undefined, "a config with no gates stays that way");
+  const extra = [
+    { name: "css-types", command: "npm run css-types:check" },
+    { name: "format", command: "npm run format:check" },
+    { name: "a11y", command: "npm run a11y" },
+  ];
+  assert.deepEqual(Config.parse({ gates: { test: "npm test", extra } }).gates.extra, extra);
+});
+
+test("gates.extra refuses each malformed entry, naming the problem", () => {
+  const problem = (extra) => {
+    const parsed = Config.safeParse({ gates: { extra } });
+    assert.equal(parsed.success, false, JSON.stringify(extra));
+    return parsed.error.issues.map((i) => i.message).join(" | ");
+  };
+  assert.match(problem([{ name: "", command: "x" }]), /name/);
+  assert.match(problem([{ name: "-lead", command: "x" }]), /name/);
+  assert.match(problem([{ name: "has space", command: "x" }]), /name/);
+  assert.match(problem([{ name: "slash/y", command: "x" }]), /name/);
+  assert.match(problem([{ name: "ok", command: "" }]), /command|at least 1/i);
+  assert.match(problem([{ name: "ok" }]), /command|required/i);
+  for (const name of ["test", "lint", "typecheck", "build", "Build", "TEST"]) {
+    assert.match(problem([{ name, command: "x" }]), /standard gate/i, name);
+  }
+  for (const name of ["prepare:deps", "oracle:AC1", "Prepare:x", "oracle:"]) {
+    assert.match(problem([{ name, command: "x" }]), /reserved/i, name);
+  }
+  assert.match(
+    problem([
+      { name: "fmt", command: "x" },
+      { name: "fmt", command: "y" },
+    ]),
+    /duplicate/i,
+  );
+  assert.match(
+    problem([
+      { name: "fmt", command: "x" },
+      { name: "FMT", command: "y" },
+    ]),
+    /duplicate/i,
+  );
+});
+
+test("gates.extra accepts the allowed name characters", () => {
+  const names = ["css-types", "a11y", "9lives", "check_1", "lint.docs", "X"];
+  const parsed = Config.parse({ gates: { extra: names.map((name) => ({ name, command: "x" })) } });
+  assert.deepEqual(
+    parsed.gates.extra.map((g) => g.name),
+    names,
+  );
+});
+
+test("a hand-edited config with a bad gates.extra falls back to defaults with a warning", () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    const configPath = join(dir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        base_branch: "main",
+        gates: { extra: [{ name: "oracle:AC1", command: "x" }] },
+      }),
+    );
+    const { config, warning } = loadConfig(configPath);
+    assert.match(warning, /failed schema validation/);
+    assert.match(warning, /reserved/i);
+    assert.equal(config.base_branch, "dev", "the whole file falls back, as for any schema error");
+    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an update leaves a hand-written pipeline block and gates.extra exactly as written", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    const configPath = join(dir, ".marvin", "config.json");
+    const seeded = {
+      base_branch: "dev",
+      gates: { test: "npm test", extra: [{ name: "format", command: "npm run format:check" }] },
+      pipeline: { bootstrap: "npm ci", github: { token_command: "gh auth token" } },
+    };
+    writeFileSync(configPath, JSON.stringify(seeded, null, 2));
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", base_branch: "main" } },
+    ]);
+    assert.notEqual(results[0].isError, true, textOf(results[0]));
+    const onDisk = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.deepEqual(onDisk.gates, seeded.gates, "no default leaked into gates");
+    assert.deepEqual(onDisk.pipeline, seeded.pipeline, "no default leaked into pipeline");
+    assert.equal(onDisk.base_branch, "main");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

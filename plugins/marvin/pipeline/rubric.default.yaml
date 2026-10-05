@@ -1,0 +1,39 @@
+version: 1
+tiers:
+  light: { max_files: 5, risk: [low] }
+  heavy: { min_files: 16, risk: [high] }
+assignments: # "<model>/<effort>" or "skip"
+  light:
+    {
+      planner: opus/medium,
+      test-author: skip,
+      executor: sonnet/medium,
+      verifier: sonnet/high,
+      retro: sonnet/medium,
+    }
+  standard:
+    {
+      planner: opus/high,
+      test-author: opus/medium,
+      executor: sonnet/high,
+      verifier: opus/high,
+      retro: opus/medium,
+    }
+  heavy:
+    {
+      planner: opus/xhigh,
+      test-author: opus/high,
+      executor: opus/high,
+      verifier: opus/xhigh,
+      retro: opus/medium,
+    }
+escalation: [effort+1, model:opus, halt]
+caps:
+  rejections: 3
+  planner_questions: 8
+  test_author_attempts: 2
+  child_retries: 1
+  spec_critic: { light: 1, default: 2 }
+sensitive_paths: [] # JS regexes over repo-relative paths
+cross_repo_markers: [] # JS regexes over the spec text
+slicing: { enabled: false, min_criteria: 6, min_files: 10 }

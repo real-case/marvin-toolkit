@@ -127,6 +127,46 @@ export interface Handoff {
   filename: string;
 }
 
+/** The four standard gate names; an extra gate may not reuse one. */
+const STANDARD_GATE_NAMES = ["test", "lint", "typecheck", "build"];
+
+/** Name prefixes the pipeline's gate stage uses for its own entries (`prepare:`, `oracle:`). */
+const RESERVED_GATE_PREFIXES = ["prepare:", "oracle:"];
+
+/**
+ * One project gate that runs after the standard four (`gates.extra`). Names are compared
+ * case-insensitively, so `Build` cannot shadow `build` in a report and `Format`/`format`
+ * cannot both be declared.
+ */
+export const GateExtra = z
+  .object({
+    name: z.string(),
+    command: z.string().min(1),
+  })
+  .superRefine((gate, ctx) => {
+    const name = gate.name.toLowerCase();
+    const problem = RESERVED_GATE_PREFIXES.some((p) => name.startsWith(p))
+      ? `gate name "${gate.name}" is reserved: names starting with ${RESERVED_GATE_PREFIXES.join(" or ")} belong to the pipeline's gate stage`
+      : STANDARD_GATE_NAMES.includes(name)
+        ? `gate name "${gate.name}" is a standard gate (${STANDARD_GATE_NAMES.join(", ")}); extra gates need their own name`
+        : /^[a-z0-9][a-z0-9_.-]*$/i.test(gate.name)
+          ? null
+          : `gate name "${gate.name}" must start with a letter or digit and use only letters, digits, "_", "." and "-"`;
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["name"] });
+  });
+export type GateExtra = z.infer<typeof GateExtra>;
+
+function uniqueExtraNames(extra: GateExtra[], ctx: z.RefinementCtx): void {
+  const seen = new Set<string>();
+  for (const gate of extra) {
+    const name = gate.name.toLowerCase();
+    if (seen.has(name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate gate name "${gate.name}"` });
+    }
+    seen.add(name);
+  }
+}
+
 /**
  * Per-gate command overrides for the `verify` tool, declared once per project
  * (ADR-0009). Any gate set here wins over auto-detection (config-first); gates
@@ -154,6 +194,13 @@ export const GateCommands = z.object({
    * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
    */
   test_one: z.string().min(1).optional(),
+  /**
+   * Project gates that run AFTER the four standard ones, one at a time, in declaration order
+   * (autopilot pipeline). Unlike `test`/`lint`/`typecheck`/`build` they are never detected from
+   * the stack, and `verify`'s `only` and explicit per-call `gates` leave them out: the project
+   * names them and `verify` runs them last. Entries are checked by `GateExtra`.
+   */
+  extra: z.array(GateExtra).superRefine(uniqueExtraNames).default([]),
 });
 export type GateCommands = z.infer<typeof GateCommands>;
 
@@ -227,6 +274,53 @@ export const UsageConfig = z.object({
 });
 export type UsageConfig = z.infer<typeof UsageConfig>;
 
+/**
+ * Settings of the autopilot pipeline (`marvin-pipe`), read from the BASE commit's
+ * `.marvin/config.json`, never from a run worktree. Every key has a default, so an absent
+ * `pipeline` block means the defaults. The parent objects use `.default({})` because zod 3
+ * parses a default through its inner schema, which is what fills the nested defaults.
+ */
+export const PipelineConfig = z.object({
+  /** Run branch name; placeholders `{tracker}` and `{slug}`. */
+  branch_template: z.string().min(1).default("feature/{tracker}--{slug}"),
+  /** Tracker id used in the branch name when the spec names none. */
+  tracker_default: z.string().min(1).default("TBD"),
+  /** Command run once in a fresh run worktree before any child starts (e.g. `npm ci`). */
+  bootstrap: z.string().min(1).nullable().default(null),
+  /** The lockfile the bootstrap installs from. */
+  lockfile: z.string().min(1).nullable().default(null),
+  github: z
+    .object({
+      /** Command printing the GitHub token the pipeline's `gh` calls use. */
+      token_command: z.string().min(1).nullable().default(null),
+    })
+    .default({}),
+  /** Minutes without child output before the child counts as stalled. */
+  stall_minutes: z.number().int().min(1).default(15),
+  /** Minutes after a push with no CI run appearing before the pipeline concludes there is no CI. */
+  no_ci_minutes: z.number().int().min(1).default(10),
+  /** Minutes a single gate may run before it is killed. */
+  gate_timeout_minutes: z.number().int().min(1).default(20),
+  /** Seconds between CI status polls. */
+  ci_poll_seconds: z.number().int().min(1).default(60),
+  /** JavaScript regex over repo-relative paths: which files are tests (the test-author writes only these). */
+  test_path_pattern: z
+    .string()
+    .min(1)
+    .default("(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"),
+  /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
+  scope_exempt_pattern: z.string().min(1).nullable().default(null),
+  /** Formatter run, with each written file appended, over files the pipeline itself writes. */
+  format_command: z.string().min(1).nullable().default(null),
+  /** Project conventions handed to the verifier. */
+  conventions: z.string().default(""),
+  /** Bash command prefixes the writing roles (planner, test-author, executor) may run. */
+  allowed_commands: z
+    .array(z.string().min(1))
+    .default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"]),
+});
+export type PipelineConfig = z.infer<typeof PipelineConfig>;
+
 export const Config = z.object({
   base_branch: z.string().default("dev"),
   /**
@@ -264,6 +358,8 @@ export const Config = z.object({
    * git ref falls back to that default at create time (with a warning).
    */
   branch_template: z.string().min(1).optional(),
+  /** Autopilot pipeline settings; absent means every default. */
+  pipeline: PipelineConfig.default({}),
 });
 export type Config = z.infer<typeof Config>;
 

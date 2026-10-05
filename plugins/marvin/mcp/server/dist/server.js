@@ -28987,6 +28987,26 @@ var HandoffFrontmatter = external_exports.object({
   spec_slug: external_exports.string().min(1).optional(),
   created: external_exports.string().datetime()
 });
+var STANDARD_GATE_NAMES = ["test", "lint", "typecheck", "build"];
+var RESERVED_GATE_PREFIXES = ["prepare:", "oracle:"];
+var GateExtra = external_exports.object({
+  name: external_exports.string(),
+  command: external_exports.string().min(1)
+}).superRefine((gate, ctx) => {
+  const name = gate.name.toLowerCase();
+  const problem = RESERVED_GATE_PREFIXES.some((p) => name.startsWith(p)) ? `gate name "${gate.name}" is reserved: names starting with ${RESERVED_GATE_PREFIXES.join(" or ")} belong to the pipeline's gate stage` : STANDARD_GATE_NAMES.includes(name) ? `gate name "${gate.name}" is a standard gate (${STANDARD_GATE_NAMES.join(", ")}); extra gates need their own name` : /^[a-z0-9][a-z0-9_.-]*$/i.test(gate.name) ? null : `gate name "${gate.name}" must start with a letter or digit and use only letters, digits, "_", "." and "-"`;
+  if (problem) ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: problem, path: ["name"] });
+});
+function uniqueExtraNames(extra, ctx) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const gate of extra) {
+    const name = gate.name.toLowerCase();
+    if (seen.has(name)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate gate name "${gate.name}"` });
+    }
+    seen.add(name);
+  }
+}
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
@@ -29008,7 +29028,14 @@ var GateCommands = external_exports.object({
    *
    * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
    */
-  test_one: external_exports.string().min(1).optional()
+  test_one: external_exports.string().min(1).optional(),
+  /**
+   * Project gates that run AFTER the four standard ones, one at a time, in declaration order
+   * (autopilot pipeline). Unlike `test`/`lint`/`typecheck`/`build` they are never detected from
+   * the stack, and `verify`'s `only` and explicit per-call `gates` leave them out: the project
+   * names them and `verify` runs them last. Entries are checked by `GateExtra`.
+   */
+  extra: external_exports.array(GateExtra).superRefine(uniqueExtraNames).default([])
 });
 var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
@@ -29022,6 +29049,38 @@ var ScopeConfig = external_exports.object({
 });
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
+});
+var PipelineConfig = external_exports.object({
+  /** Run branch name; placeholders `{tracker}` and `{slug}`. */
+  branch_template: external_exports.string().min(1).default("feature/{tracker}--{slug}"),
+  /** Tracker id used in the branch name when the spec names none. */
+  tracker_default: external_exports.string().min(1).default("TBD"),
+  /** Command run once in a fresh run worktree before any child starts (e.g. `npm ci`). */
+  bootstrap: external_exports.string().min(1).nullable().default(null),
+  /** The lockfile the bootstrap installs from. */
+  lockfile: external_exports.string().min(1).nullable().default(null),
+  github: external_exports.object({
+    /** Command printing the GitHub token the pipeline's `gh` calls use. */
+    token_command: external_exports.string().min(1).nullable().default(null)
+  }).default({}),
+  /** Minutes without child output before the child counts as stalled. */
+  stall_minutes: external_exports.number().int().min(1).default(15),
+  /** Minutes after a push with no CI run appearing before the pipeline concludes there is no CI. */
+  no_ci_minutes: external_exports.number().int().min(1).default(10),
+  /** Minutes a single gate may run before it is killed. */
+  gate_timeout_minutes: external_exports.number().int().min(1).default(20),
+  /** Seconds between CI status polls. */
+  ci_poll_seconds: external_exports.number().int().min(1).default(60),
+  /** JavaScript regex over repo-relative paths: which files are tests (the test-author writes only these). */
+  test_path_pattern: external_exports.string().min(1).default("(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"),
+  /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
+  scope_exempt_pattern: external_exports.string().min(1).nullable().default(null),
+  /** Formatter run, with each written file appended, over files the pipeline itself writes. */
+  format_command: external_exports.string().min(1).nullable().default(null),
+  /** Project conventions handed to the verifier. */
+  conventions: external_exports.string().default(""),
+  /** Bash command prefixes the writing roles (planner, test-author, executor) may run. */
+  allowed_commands: external_exports.array(external_exports.string().min(1)).default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"])
 });
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
@@ -29059,7 +29118,9 @@ var Config = external_exports.object({
    * means the default ADR-0019 scheme; a template that renders an invalid
    * git ref falls back to that default at create time (with a warning).
    */
-  branch_template: external_exports.string().min(1).optional()
+  branch_template: external_exports.string().min(1).optional(),
+  /** Autopilot pipeline settings; absent means every default. */
+  pipeline: PipelineConfig.default({})
 });
 var ROLE_ORDER = ["wip", "review", "todo", "blocked", "done"];
 function orderedStatuses(config2) {
@@ -35588,6 +35649,7 @@ function performRollup(req) {
 
 // src/tools/verify.ts
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
+var CONFIG_STACK = ".marvin/config.json";
 function hasFile(root, ...names) {
   return names.some((n) => existsSync(join(root, n)));
 }
@@ -35733,17 +35795,23 @@ async function runVerify(input, env2) {
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
-  if (detected.gates.length === 0) {
+  const extraGates = input.gates?.length || input.only ? [] : extraGateSpecs(config2.gates);
+  if (detected.gates.length === 0 && extraGates.length === 0) {
     return ok3(
       `No quality gates detected for \`${projectRoot}\`.
 Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
   }
   let gates = detected.gates;
-  if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
-  if (gates.length === 0) {
+  if (input.only) {
+    const only = input.only;
+    gates = gates.filter((g) => only.includes(g.name));
+  }
+  if (gates.length === 0 && extraGates.length === 0) {
     return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
+  gates = [...gates, ...extraGates];
+  const stacks = extraGates.length > 0 && !detected.stacks.includes(CONFIG_STACK) ? [...detected.stacks, CONFIG_STACK] : detected.stacks;
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
     const warn2 = configWarning ? `
@@ -35752,7 +35820,7 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
     return ok3(
       `# Verify Plan (dry run)
 
-**Stacks:** ${detected.stacks.join(", ") || "explicit"}
+**Stacks:** ${stacks.join(", ") || "explicit"}
 **Execution:** ${input.execution}
 
 ${plan}${warn2}`
@@ -35789,7 +35857,7 @@ ${plan}${warn2}`
     execution: input.execution,
     results,
     warnings,
-    stacks: detected.stacks,
+    stacks,
     wallClockMs,
     sumOfGatesMs
   });
@@ -35804,7 +35872,7 @@ ${plan}${warn2}`
       code: r.code,
       durationMs: r.durationMs
     })),
-    detectedStacks: detected.stacks,
+    detectedStacks: stacks,
     warnings,
     wallClockMs,
     sumOfGatesMs,
@@ -35880,7 +35948,7 @@ function mergeConfigGates(base, configGates) {
     if (override) gates.push(override);
     else gates.push(...base.gates.filter((g) => g.name === name));
   }
-  return { stacks: [...base.stacks, ".marvin/config.json"], gates };
+  return { stacks: [...base.stacks, CONFIG_STACK], gates };
 }
 function gateSpecsFromConfig(gates) {
   if (!gates) return [];
@@ -35890,6 +35958,9 @@ function gateSpecsFromConfig(gates) {
     if (command) out.push({ name, command });
   }
   return out;
+}
+function extraGateSpecs(gates) {
+  return (gates?.extra ?? []).map((g) => ({ name: g.name, command: g.command, extra: true }));
 }
 var DECLARED_GATE_ALIASES = [
   ["test", ["test"]],
@@ -35943,14 +36014,19 @@ function detectMakefile(projectRoot) {
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
 async function executeGates(planned, execution, cwd) {
-  if (execution === "parallel") {
-    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
-    return settled.map(
-      (s, i) => s.status === "fulfilled" ? s.value : crashResult(planned[i].gate, s.reason)
-    );
-  }
   const results = [];
-  for (const p of planned) {
+  let inOrder = planned;
+  if (execution === "parallel") {
+    const standard = planned.filter((p) => !p.gate.extra);
+    const settled = await Promise.allSettled(standard.map((p) => runGate(p, cwd)));
+    results.push(
+      ...settled.map(
+        (s, i) => s.status === "fulfilled" ? s.value : crashResult(standard[i].gate, s.reason)
+      )
+    );
+    inOrder = planned.filter((p) => p.gate.extra);
+  }
+  for (const p of inOrder) {
     let r;
     try {
       r = await runGate(p, cwd);
@@ -36358,6 +36434,10 @@ ${r.details}
     return `## ${title} Results
 ${body}`;
   };
+  const standardNames = GATE_NAMES;
+  const extraNames = [
+    ...new Set(o.results.map((r) => r.name).filter((n) => !standardNames.includes(n)))
+  ];
   return [
     `# Verification Report`,
     ``,
@@ -36374,6 +36454,7 @@ ${body}`;
     ``,
     section("Build", "build"),
     ``,
+    ...extraNames.flatMap((n) => [section(n, n), ``]),
     `## Warnings`,
     o.warnings.length ? o.warnings.map((w) => `- ${w}`).join("\n") : "- none",
     ``

@@ -87,6 +87,24 @@ export function writingAllowedTools(commandPrefixes: readonly string[]): string[
   return [...WRITING_BASE_TOOLS, ...commandPrefixes.map((p) => `Bash(${p}:*)`)];
 }
 
+export type ModelFamily = "opus" | "sonnet" | "haiku";
+
+const MODEL_ALIAS = /^(opus|sonnet|haiku)$/;
+const MODEL_FULL_ID = /^claude-(opus|sonnet|haiku)-[0-9a-z.-]+$/;
+
+/**
+ * The one model rule the pipeline enforces: Fable is refused first, in any case, then the
+ * model must be an `opus|sonnet|haiku` alias or a full `claude-<family>-…` id. The child
+ * command and the rubric loader both go through it, so a model that cannot launch is
+ * rejected when the rubric loads rather than when a child starts.
+ */
+export function modelFamily(model: string): ModelFamily {
+  if (/fable/i.test(model)) throw new Error(`Fable is not allowed (user rule): ${model}`);
+  const family = MODEL_ALIAS.exec(model)?.[1] ?? MODEL_FULL_ID.exec(model)?.[1];
+  if (!family) throw new Error(`model not allowed: ${model}`);
+  return family as ModelFamily;
+}
+
 export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
   // Validate role (F3: fail-closed role handling)
   if (!READ_ONLY_ROLES.has(s.role) && !WRITING_ROLES.has(s.role)) {
@@ -115,17 +133,7 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     throw new Error(`${s.role} needs an absolute pluginDir (marvin's plugin root)`);
   }
 
-  // Check Fable first (F2)
-  if (/fable/i.test(s.assignment.model))
-    throw new Error(`Fable is not allowed (user rule): ${s.assignment.model}`);
-
-  // Validate model allowlist (F2)
-  if (
-    !/^(opus|sonnet|haiku)$/.test(s.assignment.model) &&
-    !/^claude-(opus|sonnet|haiku)-[0-9a-z.-]+$/.test(s.assignment.model)
-  ) {
-    throw new Error(`model not allowed: ${s.assignment.model}`);
-  }
+  modelFamily(s.assignment.model);
 
   const argv = [
     "claude",
