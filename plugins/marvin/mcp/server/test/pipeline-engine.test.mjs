@@ -1169,3 +1169,76 @@ test("fix 1: an orchestrator that retries the planner halt gets the same resumed
   assert.deepEqual(spawnOf(retried), spawnOf(accepted));
   assert.equal(judgmentOf(go(retried.run, askQuestion())), "halt");
 });
+
+test("fix 4: a crashed, malformed or limited result in a stage that does not own its role throws", () => {
+  const foreign = [
+    [at("ci_wait", { iteration: 1 }), "executor"],
+    [at("gating", { iteration: 1 }), "verifier"],
+    [at("executing", { iteration: 1 }), "planner"],
+    [at("verifying", { iteration: 1 }), "retro"],
+  ];
+  for (const [run, role] of foreign) {
+    for (const outcome of ["crashed", "failed", "limited", "stalled"]) {
+      assert.throws(
+        () => go(run, child(role, null, outcome)),
+        new RegExp(`no rule for stage ${run.stage} and ${role} result`),
+        `${role} ${outcome} in ${run.stage}`,
+      );
+    }
+    assert.throws(
+      () => go(run, child(role, { status: "done", nonsense: true })),
+      new RegExp(`no rule for stage ${run.stage} and ${role} result`),
+    );
+  }
+  assert.throws(
+    () => go(at("ci_wait"), child("executor", { status: "done", pr_url: "https://example.com/x" })),
+    /no rule for stage ci_wait and executor result/,
+  );
+});
+
+test("fix 4: a foreign-stage fault leaves no retry or halt behind; the control in its own stage still retries", () => {
+  const run = at("ci_wait", { iteration: 1 });
+  assert.throws(() => go(run, child("executor", null, "crashed")), /no rule/);
+  assert.deepEqual(run.retries, {});
+  const own = go(executingRun(), child("executor", null, "crashed"));
+  assert.equal(spawnOf(own).role, "executor");
+});
+
+test("fix 4: a leak or a tree mutation still halts in any stage", () => {
+  const leaked = go(at("ci_wait", { iteration: 1 }), {
+    ...child("executor", null, "crashed"),
+    leaked: ["?? spike.txt"],
+  });
+  assert.equal(judgmentOf(leaked), "halt");
+  assert.equal(leaked.run.haltRole, "executor");
+  const mutated = go(at("gating", { iteration: 1 }), {
+    ...child("verifier", verdict("PASS")),
+    mutated: ["?? x.txt"],
+  });
+  assert.equal(judgmentOf(mutated), "halt");
+});
+
+test("fix 4: a halt cancel at ready or done throws; at finalizing it still closes the run", () => {
+  const cancel = answer("halt", { kind: "cancel", reason: "stop" });
+  for (const stage of ["ready", "done", "halted"]) {
+    assert.throws(() => go(at(stage), cancel), new RegExp(`no rule for stage ${stage}`), stage);
+  }
+  const closed = go(at("finalizing", { finalized: true }), cancel);
+  assert.deepEqual([closed.run.stage, closed.run.haltReason], ["done", "stop"]);
+});
+
+test("fix 10: a halt retry resets the budget of the halted role only", () => {
+  const spent = { ...executingRun(), retries: { verifier: 1, planner: 1 } };
+  const first = go(spent, child("executor", null, "crashed"));
+  const halted = go(first.run, child("executor", null, "crashed"));
+  assert.deepEqual(halted.run.retries, { verifier: 1, planner: 1, executor: 1 });
+  const retried = go(halted.run, answer("halt", { kind: "retry" }));
+  assert.deepEqual(retried.run.retries, { verifier: 1, planner: 1 });
+  const ci = go(at("finalizing", { finalized: true, retries: { executor: 1 } }), {
+    kind: "ci",
+    state: "red",
+    failing: ["b"],
+  });
+  const polled = go(ci.run, answer("halt", { kind: "retry" }));
+  assert.deepEqual(polled.run.retries, { executor: 1 });
+});

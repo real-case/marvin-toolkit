@@ -357,6 +357,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     feedback: feedback || "(first attempt)",
   });
   const cancel = (r: Run, reason: string): Decision => {
+    if (r.stage === "ready" || r.stage === "done" || r.stage === "halted") {
+      throw new Error(`no rule for stage ${r.stage} and cancel`);
+    }
     if (r.stage === "finalizing") {
       const closed = { ...go(r, "done"), haltReason: r.haltReason ?? reason };
       return { run: closed, actions: [{ kind: "notify", text: `halted: ${reason}` }] };
@@ -452,8 +455,12 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
    * test authoring. A halt with no role is a CI wait that polls again.
    */
   const retryHalt = (r: Run): Decision => {
-    const cleared: Run = { ...r, retries: {}, haltRole: null };
     const role = r.haltRole;
+    const cleared: Run = {
+      ...r,
+      retries: Object.fromEntries(Object.entries(r.retries).filter(([name]) => name !== role)),
+      haltRole: null,
+    };
     if (role === null) {
       if (r.stage === "ci_wait" || r.stage === "finalizing") {
         return { run: cleared, actions: [{ kind: "work", work: "ci" }] };
@@ -496,6 +503,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         reason: `${role} mutated the tree`,
         detail: child.mutated,
       });
+    }
+    if (STAGE_OF[role] !== run.stage) {
+      throw new Error(`no rule for stage ${run.stage} and ${role} result`);
     }
     let fault: { kind: string; reason: string; detail: string } | null = null;
     if (CHILD_FAULTS.has(result.outcome)) {
