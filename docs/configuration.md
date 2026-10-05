@@ -45,7 +45,9 @@ other tools when it writes. The one exception is `usage.enabled`: no tool action
 that key, so it is set by editing the file directly, leaving every other key in place.
 That is the edit `/marvin:onboard` offers to make for you. Invalid JSON or a schema
 violation makes Marvin fall back to defaults and surface a warning through
-`/marvin:dashboard` rather than failing.
+`/marvin:dashboard` rather than failing. The two autopilot subtrees, `gates.extra` and
+`pipeline`, are the exception: a mistake inside one of them resets that subtree alone and
+leaves the rest of the file in force (see [`pipeline`](#pipeline)).
 
 Here is a complete example with every field set:
 
@@ -58,7 +60,14 @@ Here is a complete example with every field set:
     "test": "npm test",
     "lint": "npm run lint",
     "typecheck": "tsc --noEmit",
-    "build": "npm run build"
+    "build": "npm run build",
+    "extra": [{ "name": "css-types", "command": "npm run css-types:check" }]
+  },
+  "pipeline": {
+    "bootstrap": "npm ci --prefer-offline",
+    "lockfile": "package-lock.json",
+    "stall_minutes": 15,
+    "allowed_commands": ["git", "gh pr create", "npm run", "npx --no"]
   },
   "statuses": [
     { "key": "backlog", "role": "todo" },
@@ -119,15 +128,49 @@ resolve to a command. It is never scheduled, never appears in a verdict, and nev
 `verification.md`; the dry-run plan lists the four gates and nothing else. See
 [single-test resolution](#single-test-resolution-test_one) below.
 
-Those four *gate* keys are the complete set. There is no fifth gate and no way to declare one: a
-key Marvin does not recognise, whether a typo such as `tests` or an invented `audit`, is stripped
-when the config loads, and the gate it was meant to configure falls back to detection with no
-error reported anywhere. [ADR-0009](./adr/0009-config-first-gate-resolution.md) records that
+Those four *gate* keys are the complete set that detection and overrides know about. A key Marvin
+does not recognise, whether a typo such as `tests` or an invented `audit`, is stripped when the
+config loads, and the gate it was meant to configure falls back to detection with no error
+reported anywhere. A project's own gates have exactly one home, `extra`, described next. [ADR-0009](./adr/0009-config-first-gate-resolution.md) records that
 as an accepted trade-off. The effective set stays inspectable: the report's `Stacks:` line
 names `.marvin/config.json` whenever an override applied, and the dry-run plan (`verify` with
 `dryRun: true`) lists the exact command resolved for each gate. The dry run is the one that
 catches a stripped key in a config where other keys did apply, because the `Stacks:` marker
 appears as soon as any single key survives.
+
+#### `gates.extra`
+
+This is a list of project gates that `verify` runs **after** the four standard ones. It is an
+optional array of `{ "name", "command" }` objects and defaults to `[]`; the shape is for checks
+that are not a stack's test, lint, type-check or build, such as `npm run css-types:check` or a
+format check that only reads.
+
+```json
+{
+  "gates": {
+    "extra": [
+      { "name": "css-types", "command": "npm run css-types:check" },
+      { "name": "format", "command": "npm run format:check" }
+    ]
+  }
+}
+```
+
+- A `name` starts with a letter or digit and uses only letters, digits, `_`, `.` and `-`. It may
+  not be one of `test`, `lint`, `typecheck` or `build`, and may not start with `prepare:` or
+  `oracle:`, which the pipeline's gate stage keeps for its own entries. Names are unique, and
+  compared case-insensitively. The `command` is a non-empty shell command.
+- The standard gates run as the `execution` mode says; the extras then run one at a time, in the
+  order written. Under `parallel` and `sequential` every extra runs even after a failure; under
+  `fail-fast` the run stops at the first failure, extras included. Each extra gets its own
+  `<name> Results` section in `verification.md` and its own row in the verdict, and a failing one
+  fails the run.
+- The extras are not detected from the stack, and a call that names its own gates leaves them out:
+  `only` and an explicit `gates` list run exactly what they name. The dry-run plan lists them after
+  the four standard gates.
+- A `gates.extra` the schema rejects is dropped on its own, with the reason shown by
+  `/marvin:track-config`, `/marvin:dashboard` and as a `verify` warning, so a gate never vanishes
+  silently. Everything else in the file stays in force.
 
 ### `statuses`
 
@@ -277,6 +320,40 @@ itself.
 the whole list; an empty string removes it. `.marvin/` is never part of a task's scope, whatever
 this list says, so a harness kept under `.marvin/task/runs/` needs no entry.
 
+### `pipeline`
+
+This holds the settings of the autopilot pipeline (`marvin-pipe`). It is an optional object, and
+every key has a default, so an absent block means all of them. The pipeline reads it from the
+base commit's `.marvin/config.json`, never from a run's worktree.
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `branch_template` | `feature/{tracker}--{slug}` | The name of a run's branch. `{tracker}` is the spec's tracker id, or `tracker_default` when it names none; `{slug}` is the spec's slug. |
+| `tracker_default` | `TBD` | The tracker id used in the branch name when the spec has none. |
+| `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing. |
+| `lockfile` | `null` | The lockfile `bootstrap` installs from, such as `package-lock.json`. |
+| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. `null` uses `gh`'s own authentication. |
+| `stall_minutes` | `15` | Minutes without output from a child before it counts as stalled. |
+| `no_ci_minutes` | `10` | Minutes after a push with no CI run appearing before the pipeline concludes the branch has no CI. |
+| `gate_timeout_minutes` | `20` | Minutes one gate command may run before it is killed. |
+| `ci_poll_seconds` | `60` | Seconds between CI status checks. |
+| `test_path_pattern` | `(^\|/)(__tests__/\|[^/]+\.(test\|spec)\.[cm]?[jt]sx?$)` | A JavaScript regular expression over repo-relative paths: which files are tests. The test-author may write only these. |
+| `scope_exempt_pattern` | `null` | A JavaScript regular expression over repo-relative paths that the pipeline's scope check tolerates as by-products of a task. `null` exempts nothing. |
+| `format_command` | `null` | A formatter run over the files the pipeline itself writes, with each path appended. |
+| `conventions` | `""` | Project conventions, as prose, handed to the verifier. |
+| `allowed_commands` | `["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"]` | The command prefixes the writing roles (planner, test-author, executor) may run in Bash. `npx --no` runs a tool that is already installed and never downloads one. |
+
+Two things differ from the rest of the file. The two pattern keys are regular expressions, not
+the globs of [`scope.exempt`](#scope), and a pattern that does not compile is refused when the
+config loads. Each `allowed_commands` entry must be a usable prefix: no `(`, `)`, `,`, `[` or `*`,
+no newline, and no leading or trailing space.
+
+A value the schema rejects, or an invalid `gates.extra`, resets **that subtree alone** to its
+default. The rest of the config is untouched and every other tool keeps working; the issue is
+named by `/marvin:track-config` and `/marvin:dashboard`. The pipeline fails closed instead: it
+refuses to start until the subtree is fixed, because running with defaults the project did not
+choose could do the wrong thing.
+
 ## Environment variables
 
 The `MARVIN_*` variables repoint where the server reads and writes, and you set them in
@@ -314,7 +391,8 @@ for anything else.
 
 Set `gates` when your project's commands differ from what auto-detection would choose, for
 example a custom test runner or a monorepo build script. Leave it unset to let Marvin
-detect the commands for you.
+detect the commands for you. Checks beyond the four go in [`gates.extra`](#gatesextra), which
+`verify` runs after the standard gates.
 
 ### Single-test resolution: `test_one`
 
