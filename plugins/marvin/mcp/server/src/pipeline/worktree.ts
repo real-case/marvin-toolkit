@@ -1,17 +1,20 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { HARDENED_GIT_OPTIONS, hardenedGitEnv } from "./gate.js";
 
 const git = (cwd: string, ...args: string[]) =>
-  execFileSync("git", args, {
+  execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
     cwd,
+    env: hardenedGitEnv(),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 
 const gitRaw = (cwd: string, ...args: string[]): Buffer =>
-  execFileSync("git", args, {
+  execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
     cwd,
+    env: hardenedGitEnv(),
     stdio: ["ignore", "pipe", "pipe"],
   });
 

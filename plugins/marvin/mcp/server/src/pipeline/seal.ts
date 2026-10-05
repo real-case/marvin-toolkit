@@ -1,7 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { isCanonicalPath, type Runner, type SealedFile, sha256File } from "./gate.js";
+import {
+  HARDENED_GIT_OPTIONS,
+  hardenedGitEnv,
+  isCanonicalPath,
+  type Runner,
+  type SealedFile,
+  sha256File,
+} from "./gate.js";
 
 export interface AuthoredTest {
   path: string;
@@ -229,15 +236,6 @@ function compilePattern(source: string): RegExp {
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-/** The environment git runs in: every inherited `GIT_*` variable dropped but `GIT_EXEC_PATH`. */
-function gitEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
-  }
-  return env;
-}
-
 interface Listed {
   path: string;
   /** The name's bytes survive a UTF-8 round trip, so `path` is the name git holds, not a lossy decoding of it. */
@@ -252,20 +250,12 @@ interface Listed {
  * `GIT_INDEX_FILE` does not decide which repository is listed.
  */
 function listFiles(worktree: string): Listed[] {
-  const env = gitEnv();
+  const env = hardenedGitEnv();
   let out: Buffer;
   try {
     out = execFileSync(
       "git",
-      [
-        "-c",
-        "core.fsmonitor=false",
-        "ls-files",
-        "-z",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-      ],
+      [...HARDENED_GIT_OPTIONS, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
       { cwd: worktree, env, maxBuffer: MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] },
     );
   } catch (error) {
@@ -299,9 +289,9 @@ const fold = (s: string): string => s.normalize("NFC").toLowerCase();
  */
 function gitWouldRewrite(worktree: string, path: string): boolean {
   const run = (...args: string[]) =>
-    spawnSync("git", ["-c", "core.fsmonitor=false", "hash-object", ...args, "--", path], {
+    spawnSync("git", [...HARDENED_GIT_OPTIONS, "hash-object", ...args, "--", path], {
       cwd: worktree,
-      env: gitEnv(),
+      env: hardenedGitEnv(),
       maxBuffer: MAX_BUFFER,
       encoding: "utf8",
     });

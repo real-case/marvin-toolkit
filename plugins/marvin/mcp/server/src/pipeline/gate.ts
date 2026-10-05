@@ -391,34 +391,79 @@ const NESTED_REPO = "nested-repo";
 export type IsolatedGit = {
   text: (...args: string[]) => string;
   bytes: (...args: string[]) => Buffer;
+  /** `text` with `input` on git's standard input. */
+  textIn: (input: string | Uint8Array, ...args: string[]) => string;
 };
+
+/**
+ * What every git call the engine makes puts before its subcommand. A child with code execution
+ * can write anywhere in the repository's common git dir, outside the worktree: replace refs
+ * that make an object read as another, a hooks directory, config naming filters and drivers.
+ * None of it may steer the engine, so replacement is off, hooks come from nowhere, and no
+ * fsmonitor command runs. (Filters and textconv are the caller's to avoid: read content with
+ * `cat-file blob` and `diff --no-textconv --no-ext-diff`.) The one definition: `seal.ts` and
+ * `worktree.ts` build their git calls from this too.
+ */
+export const HARDENED_GIT_OPTIONS: readonly string[] = [
+  "--no-replace-objects",
+  "-c",
+  "core.hooksPath=/dev/null",
+  "-c",
+  "core.fsmonitor=false",
+];
+
+/** The `GIT_*` variables that are the engine's own and carry no repository: git's helpers and its credentials. */
+const GIT_ENV_KEPT = new Set([
+  "GIT_EXEC_PATH",
+  "GIT_ASKPASS",
+  "GIT_SSH",
+  "GIT_SSH_COMMAND",
+  "GIT_SSH_VARIANT",
+  "GIT_TERMINAL_PROMPT",
+]);
+
+/**
+ * The environment git runs in: every inherited `GIT_*` variable that could name a repository, an
+ * index or a config dropped, `extraEnv` added, and object replacement turned off for good.
+ */
+export function hardenedGitEnv(extraEnv: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith("GIT_") || GIT_ENV_KEPT.has(key)) env[key] = value;
+  }
+  Object.assign(env, extraEnv);
+  env.GIT_NO_REPLACE_OBJECTS = "1";
+  return env;
+}
 
 /**
  * Git pinned to one repository: `GIT_DIR` and `GIT_WORK_TREE` are passed explicitly and every
  * other `GIT_*` variable is dropped, so neither the worktree's `.git` pointer (which a child
- * can rewrite) nor an inherited `GIT_INDEX_FILE` decides which repository is judged.
- * `extraEnv` is added to the environment but can never repoint either variable.
+ * can rewrite) nor an inherited `GIT_INDEX_FILE` decides which repository is judged. Every call
+ * carries `HARDENED_GIT_OPTIONS`. `extraEnv` is added to the environment but can never repoint
+ * `GIT_DIR` or `GIT_WORK_TREE`, nor turn object replacement back on.
  */
 export function isolatedGit(
   worktree: string,
   gitDir: string,
   extraEnv: Readonly<Record<string, string>> = {},
 ): IsolatedGit {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
-  }
-  Object.assign(env, extraEnv);
+  const env = hardenedGitEnv(extraEnv);
   env.GIT_DIR = gitDir;
   env.GIT_WORK_TREE = worktree;
-  const run = (args: string[]) =>
-    execFileSync("git", ["-c", "core.quotePath=false", "-c", "core.fsmonitor=false", ...args], {
+  const run = (args: string[], input?: string | Uint8Array) =>
+    execFileSync("git", [...HARDENED_GIT_OPTIONS, "-c", "core.quotePath=false", ...args], {
       cwd: worktree,
       env,
       maxBuffer: MAX_BUFFER,
-      stdio: ["ignore", "pipe", "pipe"],
+      input,
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
-  return { text: (...args) => run(args).toString("utf8"), bytes: (...args) => run(args) };
+  return {
+    text: (...args) => run(args).toString("utf8"),
+    bytes: (...args) => run(args),
+    textIn: (input, ...args) => run(args, input).toString("utf8"),
+  };
 }
 
 /**

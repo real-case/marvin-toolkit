@@ -881,3 +881,78 @@ test("a cut-off check is a blocker finding in the gate category and fails the re
   assert.equal(finding.file, undefined);
   assert.match(finding.expected, /time budget/);
 });
+
+/**
+ * A child with code execution can write into the common git dir. Make `w`'s HEAD commit (which
+ * holds the hook) read as another commit whose tree lacks it, through a replace ref.
+ */
+function replaceHeadWithoutHook(w) {
+  const real = w.git("rev-parse", "HEAD");
+  const branch = w.git("rev-parse", "--abbrev-ref", "HEAD");
+  w.git("checkout", "-q", "--detach", "HEAD^");
+  w.write("src/a.ts", "export const a = 1;\n");
+  w.git("add", "-A");
+  w.git("commit", "-q", "-m", "replacement without the hook");
+  const replacement = w.git("rev-parse", "HEAD");
+  w.git("checkout", "-q", branch);
+  w.git("replace", real, replacement);
+  w.git("rm", "-q", "--cached", "--", ".husky/pre-commit");
+  rmSync(join(w.path, ".husky", "pre-commit"));
+  return { real, replacement };
+}
+
+test("a replace ref over the child's HEAD commit does not hide a protected path from the gate", () => {
+  const w = runWorktree();
+  w.write(".husky/pre-commit", "echo hi\n");
+  w.write("src/a.ts", "export const a = 1;\n");
+  w.commit("work");
+  const options = { contractFiles: ["src/a.ts", ".husky/pre-commit"] };
+  assert.deepEqual(gateStage(w, options).protected, [".husky/pre-commit"]);
+
+  const { real, replacement } = replaceHeadWithoutHook(w);
+  assert.notEqual(real, replacement);
+  assert.equal(
+    w.git("ls-tree", "-r", "--name-only", real).includes(".husky/pre-commit"),
+    false,
+    "the replace ref works: an ordinary git no longer sees the hook",
+  );
+
+  assert.equal(w.git("status", "--porcelain"), "", "an ordinary git sees a clean worktree");
+  const report = gateStage(w, options);
+  assert.deepEqual(report.protected, [".husky/pre-commit"]);
+  assert.equal(report.passed, false);
+});
+
+test("the engine's git ignores replace refs, hooks and fsmonitor whatever the common git dir says", () => {
+  const w = runWorktree();
+  w.write(".husky/pre-commit", "echo hi\n");
+  w.commit("work");
+  const real = w.git("rev-parse", "HEAD");
+  replaceHeadWithoutHook(w);
+  const engine = g.isolatedGit(w.path, w.gitDir);
+  assert.equal(engine.text("config", "--get", "core.hooksPath").trim(), "/dev/null");
+  assert.equal(engine.text("config", "--get", "core.fsmonitor").trim(), "false");
+  assert.match(engine.text("ls-tree", "-r", "--name-only", real), /\.husky\/pre-commit/);
+  assert.equal(engine.text("rev-parse", "HEAD").trim(), real);
+  const hardened = g.hardenedGitEnv();
+  assert.equal(hardened.GIT_NO_REPLACE_OBJECTS, "1");
+  assert.deepEqual(
+    Object.keys(hardened).filter((key) => key.startsWith("GIT_")),
+    ["GIT_NO_REPLACE_OBJECTS"],
+  );
+  assert.equal(g.hardenedGitEnv({ GIT_INDEX_FILE: "/x" }).GIT_INDEX_FILE, "/x");
+  assert.equal(g.hardenedGitEnv({ GIT_NO_REPLACE_OBJECTS: "0" }).GIT_NO_REPLACE_OBJECTS, "1");
+});
+
+test("seal.ts and worktree.ts take their git hardening from gate.ts: there is one definition", () => {
+  const read = (name) =>
+    readFileSync(fileURLToPath(new URL(`../src/pipeline/${name}`, import.meta.url)), "utf8");
+  for (const name of ["seal.ts", "worktree.ts"]) {
+    const source = read(name);
+    assert.match(source, /HARDENED_GIT_OPTIONS/, name);
+    assert.match(source, /hardenedGitEnv/, name);
+    assert.doesNotMatch(source, /core\.fsmonitor|core\.hooksPath|no-replace-objects/, name);
+  }
+  assert.equal(read("gate.ts").match(/core\.hooksPath=\/dev\/null/g).length, 1);
+  assert.equal(read("gate.ts").match(/--no-replace-objects/g).length, 1);
+});

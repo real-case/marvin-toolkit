@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -220,4 +221,29 @@ test("snapshot detects add of new untracked file", () => {
   const after = wt.snapshotTree(repo);
   const diff = wt.diffSnapshots(before, after);
   assert.deepEqual(diff, ["A  n.txt", "removed ?? n.txt"]);
+});
+
+test("the snapshot of a worktree ignores replace refs written into the common git dir", () => {
+  const repo = repoWithOrigin();
+  const { path } = wt.createRunWorktree({
+    repoRoot: repo,
+    base: "dev",
+    runId: "r9",
+    worktreesRoot: worktreesRoot(),
+  });
+  const before = wt.snapshotTree(path);
+  const emptyTree = execFileSync("git", ["mktree"], {
+    cwd: path,
+    input: "",
+    encoding: "utf8",
+  }).trim();
+  const head = sh(path, "rev-parse", "HEAD");
+  const hollow = sh(path, "commit-tree", emptyTree, "-m", "hollow");
+  sh(path, "replace", head, hollow);
+  assert.notEqual(
+    sh(path, "status", "--porcelain"),
+    "",
+    "an ordinary git is fooled by the replace ref",
+  );
+  assert.deepEqual(wt.diffSnapshots(before, wt.snapshotTree(path)), []);
 });
