@@ -1,15 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -356,11 +360,6 @@ const REJECTIONS = [
     /checks\.0\.pattern.*backreference/,
   ],
   [
-    "a pattern that is worse than linear on a long line",
-    (r) => (r.checks[0].pattern = "a*a*a*a*b"),
-    /checks\.0\.pattern.*too slow/,
-  ],
-  [
     "a repeated group of identical alternatives",
     (r) => (r.checks[0].pattern = "(a|a)+$"),
     /checks\.0\.pattern.*alternation/,
@@ -405,6 +404,37 @@ const REJECTIONS = [
   ],
   ["a lesson title spanning two lines", (r) => (r.lessons[0].title = "a\nb"), /lessons\.0\.title/],
   ["a lesson with an empty body", (r) => (r.lessons[0].body = ""), /lessons\.0\.body/],
+  [
+    "a lesson body of 4001 characters",
+    (r) => (r.lessons[0].body = "b".repeat(4001)),
+    /lessons\.0\.body/,
+  ],
+  [
+    "a lesson titled Memory, which collides with the index",
+    (r) => (r.lessons[0].title = "Memory"),
+    /lessons\.0\.title/,
+  ],
+  [
+    "a lesson title that slugs to memory",
+    (r) => (r.lessons[0].title = "  MEMORY!! "),
+    /lessons\.0\.title/,
+  ],
+  [
+    "a lesson title holding link syntax",
+    (r) => (r.lessons[0].title = "x](https://evil.example/p) [y"),
+    /lessons\.0\.title/,
+  ],
+  ["a lesson title with a bracket", (r) => (r.lessons[0].title = "a [b"), /lessons\.0\.title/],
+  [
+    "a lesson tag that claims a target category",
+    (r) => (r.lessons[0].tags = ["role:executor", "target:other"]),
+    /lessons\.0\.tags\.1/,
+  ],
+  [
+    "a lesson tag claiming a target in capitals",
+    (r) => (r.lessons[0].tags = ["TARGET:other"]),
+    /lessons\.0\.tags\.0/,
+  ],
   ["a lesson whose body is whitespace", (r) => (r.lessons[0].body = " \n "), /lessons\.0\.body/],
   ["a lesson type outside the taxonomy", (r) => (r.lessons[0].type = "idea"), /lessons\.0\.type/],
   ["a lesson tag holding a comma", (r) => (r.lessons[0].tags = ["a,b"]), /lessons\.0\.tags\.0/],
@@ -475,12 +505,61 @@ test("ordinary patterns are accepted, the shipped default checks among them", ()
   }
 });
 
-test("a catastrophic pattern is refused by reading it, not by running it on a long line", () => {
-  const started = Date.now();
+test("a catastrophic pattern is refused by reading it: the reason is a static one, never a timing", () => {
   for (const pattern of ["(a+)+$", "(a|aa)+$", "(x+x+)+y", "(a)\\1"]) {
-    assert.throws(() => l.parseRetro(withCheck({ pattern })), /retro output rejected/, pattern);
+    assert.throws(
+      () => l.parseRetro(withCheck({ pattern })),
+      /retro output rejected: checks\.0\.pattern: unsafe regular expression: .*(nested quantifier|alternation|backreference)/,
+      pattern,
+    );
   }
-  assert.ok(Date.now() - started < 200, `took ${Date.now() - started} ms`);
+});
+
+test("a pattern the static read cannot judge is accepted here and left to the gate's time budget", () => {
+  for (const pattern of ["a*a*a*a*b", "b*b*b*b*c", "\\w*b\\w*b\\w*b\\w*c"]) {
+    assert.doesNotThrow(() => l.parseRetro(withCheck({ pattern })), pattern);
+  }
+});
+
+const manyOf = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+const CAPS = [
+  [
+    "checks",
+    10,
+    (r, n) => (r.checks = manyOf(n, (i) => ({ id: `c${i}`, pattern: "x", message: "m" }))),
+  ],
+  [
+    "lessons",
+    10,
+    (r, n) =>
+      (r.lessons = manyOf(n, (i) => ({ ...goodRetro().lessons[0], title: `Lesson number ${i}` }))),
+  ],
+  ["proposals", 20, (r, n) => (r.proposals = manyOf(n, () => goodRetro().proposals[0]))],
+  ["prune", 50, (r, n) => (r.prune = manyOf(n, (i) => ({ id: `p${i}`, reason: "r" })))],
+];
+
+for (const [name, cap, fill] of CAPS) {
+  test(`a retro with more than ${cap} ${name} is rejected at once; ${cap} are accepted`, () => {
+    const atCap = goodRetro();
+    fill(atCap, cap);
+    assert.doesNotThrow(() => l.parseRetro(atCap));
+    const over = goodRetro();
+    fill(over, cap + 1);
+    const started = Date.now();
+    assert.throws(
+      () => l.parseRetro(over),
+      new RegExp(`retro output rejected: ${name}: at most ${cap} allowed, got ${cap + 1}`),
+    );
+    assert.ok(Date.now() - started < 1000);
+  });
+}
+
+test("a retro of enormous arrays is refused on length alone, before any element is read", () => {
+  const retro = { checks: [], proposals: [], lessons: [], prune: [] };
+  retro.checks = new Array(5_000_000).fill({ id: "BAD", pattern: "(", message: "m" });
+  const started = Date.now();
+  assert.throws(() => l.parseRetro(retro), /retro output rejected: checks: .*10/);
+  assert.ok(Date.now() - started < 1000);
 });
 
 test("retro output that is not an object at all is rejected", () => {
@@ -637,6 +716,19 @@ const contents = (dir) =>
     .sort()
     .map((name) => [name, readFileSync(join(dir, name), "utf8")]);
 
+/** Every path under a tree with its content or link target, for "nothing changed" checks. */
+function treeOf(dir, rel = "") {
+  const out = [];
+  for (const name of readdirSync(join(dir, rel)).sort()) {
+    const path = join(rel, name);
+    const stat = lstatSync(join(dir, path));
+    if (stat.isSymbolicLink()) out.push([path, `-> ${readlinkSync(join(dir, path))}`]);
+    else if (stat.isDirectory()) out.push([path, "dir"], ...treeOf(dir, path));
+    else out.push([path, readFileSync(join(dir, path), "utf8")]);
+  }
+  return out;
+}
+
 const PLANTED_IN_WORKTREE = [
   ["a symlinked .marvin", (wt, out) => symlinkSync(out, join(wt, ".marvin"))],
   [
@@ -756,11 +848,55 @@ test("a symlink planted under the run dir's proposals is refused too", () => {
     const out = tmp("pipe-out-");
     plant(runDir, out);
     const outBefore = contents(out);
+    const wtBefore = treeOf(wt);
+    const runBefore = treeOf(runDir);
+    const added = [];
     assert.throws(
-      () => l.applyRetro({ worktree: wt, runDir, retro: goodRetro(), addLesson: () => {} }),
+      () =>
+        l.applyRetro({
+          worktree: wt,
+          runDir,
+          retro: goodRetro(),
+          addLesson: (root, lesson) => added.push([root, lesson.title]),
+        }),
       /symbolic link/,
     );
     assert.deepEqual(contents(out), outBefore);
+    assert.deepEqual(treeOf(wt), wtBefore, "the worktree is as it was: no checks.yaml rewritten");
+    assert.deepEqual(treeOf(runDir), runBefore);
+    assert.deepEqual(added, []);
+  }
+});
+
+test("applyRetro looks at every target before the first write: a planted prune.md or memory store leaves the worktree alone", () => {
+  const retro = { ...goodRetro(), prune: [{ id: "x", reason: "r" }] };
+  for (const plant of [
+    (wt, runDir, out) => {
+      mkdirSync(join(runDir, "proposals"));
+      symlinkSync(join(out, "p.md"), join(runDir, "proposals", "prune.md"));
+    },
+    (wt, runDir, out) => {
+      mkdirSync(join(wt, ".marvin"), { recursive: true });
+      symlinkSync(out, join(wt, ".marvin", "memory"));
+    },
+    (wt, runDir, out) => {
+      mkdirSync(join(runDir, "proposals"));
+      symlinkSync(join(out, "d.md"), join(runDir, "proposals", "duplicate-lessons.md"));
+    },
+  ]) {
+    const wt = tmp("pipe-wt-");
+    const runDir = tmp("pipe-run-");
+    const out = tmp("pipe-out-");
+    plant(wt, runDir, out);
+    const wtBefore = treeOf(wt);
+    const runBefore = treeOf(runDir);
+    assert.throws(
+      () => l.applyRetro({ worktree: wt, runDir, retro, addLesson: () => {} }),
+      /symbolic link/,
+    );
+    assert.deepEqual(treeOf(wt), wtBefore);
+    assert.deepEqual(treeOf(runDir), runBefore);
+    assert.deepEqual(readdirSync(out), []);
   }
 });
 
@@ -1044,12 +1180,18 @@ function prFixture({ specPath = SPEC_PATH } = {}) {
     specPath,
     run,
     runDir: tmp("pipe-run-"),
+    gated: sh(made.path, "rev-parse", "HEAD"),
+    /** The commit the last gate approved: call after committing more setup. */
+    gate() {
+      this.gated = sh(made.path, "rev-parse", "HEAD");
+    },
     opts(extra = {}) {
       return {
         run,
         runDir: this.runDir,
         worktree: made.path,
         gitDir: made.gitDir,
+        expectedHead: this.gated,
         retro: goodRetro(),
         events: [],
         exposedLessons: ["L1"],
@@ -1232,6 +1374,7 @@ test("a failing format command throws, commits nothing and puts the written file
   sh(fx.wt, "add", ".");
   sh(fx.wt, "commit", "-m", "earlier lesson");
   sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+  fx.gate();
   const headBefore = head(fx.wt);
   const remoteBefore = sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`);
   const memoryBefore = readFileSync(join(fx.wt, ".marvin/memory/MEMORY.md"), "utf8");
@@ -1269,6 +1412,7 @@ test("a lesson that duplicates one already in the store is skipped and recorded 
   sh(fx.wt, "add", ".");
   sh(fx.wt, "commit", "-m", "earlier lesson");
   sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+  fx.gate();
   const retro = goodRetro();
   retro.lessons = [
     { ...retro.lessons[0], title: "Toast assertions are vacuous" },
@@ -1384,4 +1528,375 @@ test("finalize refuses a symlink planted under the worktree before it writes any
     assert.equal(head(fx.wt), headBefore, label);
     assert.deepEqual(readdirSync(fx.runDir), [], label);
   }
+});
+
+const remoteRef = (fx) => sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`);
+
+/** Commit `files` (path -> content) in the fixture's worktree, push, and take them as gated. */
+function commitMore(fx, files) {
+  for (const [path, body] of Object.entries(files)) {
+    mkdirSync(join(fx.wt, path, ".."), { recursive: true });
+    writeFileSync(join(fx.wt, path), body);
+  }
+  sh(fx.wt, "add", ".");
+  sh(fx.wt, "commit", "-m", "more setup");
+  sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+  fx.gate();
+}
+
+const REFUSED_BEFORE_ANY_WRITE = (fx, outBefore, out) => {
+  assert.equal(remoteRef(fx), fx.gated);
+  assert.equal(head(fx.wt), fx.gated);
+  assert.deepEqual(readdirSync(fx.runDir), []);
+  if (out) assert.deepEqual(contents(out), outBefore);
+};
+
+const HARD_LINKS = [
+  [
+    "an untracked calibration.jsonl",
+    (fx, secret) => {
+      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+      linkSync(secret, join(fx.wt, ".marvin", "pipeline", "calibration.jsonl"));
+    },
+  ],
+  [
+    "a committed checks.yaml with the same content",
+    (fx, secret) => {
+      writeFileSync(secret, "- { id: seed, pattern: s, message: m }\n");
+      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+      linkSync(secret, join(fx.wt, ".marvin", "pipeline", "checks.yaml"));
+      sh(fx.wt, "add", ".");
+      sh(fx.wt, "commit", "-m", "hard-linked checks");
+      sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+      fx.gate();
+    },
+  ],
+  [
+    "the committed spec",
+    (fx, secret) => {
+      writeFileSync(secret, SPEC);
+      unlinkSync(join(fx.wt, SPEC_PATH));
+      linkSync(secret, join(fx.wt, SPEC_PATH));
+    },
+  ],
+];
+
+for (const [label, plant] of HARD_LINKS) {
+  test(`finalize refuses ${label} hard-linked to a file outside the worktree, and pushes nothing`, () => {
+    const fx = prFixture();
+    const out = tmp("pipe-out-");
+    const secret = join(out, "credentials");
+    writeFileSync(secret, "TOP SECRET\n");
+    plant(fx, secret);
+    const outBefore = contents(out);
+    assert.throws(() => l.finalizeRun(fx.opts()), /hard link/);
+    REFUSED_BEFORE_ANY_WRITE(fx, outBefore, out);
+  });
+}
+
+const PLANTED_CONTENT = [
+  [
+    "an untracked checks.yaml holding a rule parseRetro would refuse, and an uncommitted spec edit",
+    (fx) => {
+      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+      writeFileSync(
+        join(fx.wt, ".marvin", "pipeline", "checks.yaml"),
+        "- { id: planted, pattern: '(a|aa)+$', message: m }\n",
+      );
+      appendFileSync(join(fx.wt, SPEC_PATH), "\nINJECTED\n");
+    },
+  ],
+  [
+    "an uncommitted rule appended to a committed checks.yaml",
+    (fx) => {
+      commitMore(fx, {
+        ".marvin/pipeline/checks.yaml": "- { id: seed, pattern: s, message: m }\n",
+      });
+      appendFileSync(
+        join(fx.wt, ".marvin", "pipeline", "checks.yaml"),
+        "- { id: planted, pattern: p, message: m }\n",
+      );
+    },
+  ],
+  [
+    "an untracked file beside checks.yaml",
+    (fx) => {
+      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+      writeFileSync(join(fx.wt, ".marvin", "pipeline", "evil.sh"), "rm -rf ~\n");
+    },
+  ],
+  [
+    "an untracked lesson",
+    (fx) => {
+      mkdirSync(join(fx.wt, ".marvin", "memory"), { recursive: true });
+      writeFileSync(join(fx.wt, ".marvin", "memory", "planted.md"), "---\ntitle: planted\n---\n");
+    },
+  ],
+  [
+    "a staged but uncommitted calibration.jsonl",
+    (fx) => {
+      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
+      writeFileSync(join(fx.wt, ".marvin", "pipeline", "calibration.jsonl"), '{"runId":"x"}\n');
+      sh(fx.wt, "add", ".marvin/pipeline/calibration.jsonl");
+    },
+  ],
+];
+
+for (const [label, plant] of PLANTED_CONTENT) {
+  test(`finalize refuses ${label}: nothing is committed, pushed or rewritten`, () => {
+    const fx = prFixture();
+    plant(fx);
+    const dirty = treeOf(fx.wt);
+    assert.throws(() => l.finalizeRun(fx.opts()), /uncommitted or untracked/);
+    REFUSED_BEFORE_ANY_WRITE(fx);
+    assert.deepEqual(treeOf(fx.wt), dirty, "the worktree is left exactly as it was found");
+  });
+}
+
+test("finalize refuses an index flag that hides changes under its targets", () => {
+  for (const flag of ["--assume-unchanged", "--skip-worktree"]) {
+    const fx = prFixture();
+    sh(fx.wt, "update-index", flag, SPEC_PATH);
+    appendFileSync(join(fx.wt, SPEC_PATH), "\nINJECTED\n");
+    assert.throws(() => l.finalizeRun(fx.opts()), /index flag/, flag);
+    REFUSED_BEFORE_ANY_WRITE(fx);
+  }
+});
+
+test("content planted while finalize runs never reaches the commit: every file is built from HEAD", () => {
+  const fx = prFixture();
+  commitMore(fx, {
+    ".marvin/pipeline/checks.yaml": "- { id: seed, pattern: s, message: m }\n",
+    ".marvin/pipeline/calibration.jsonl": '{"runId":"r0","ts":"2026-01-01"}\n',
+  });
+  mkdirSync(join(fx.wt, ".marvin", "memory"), { recursive: true });
+  lessonStore.addLesson(join(fx.wt, ".marvin", "memory"), {
+    type: "process",
+    title: "Seed lesson",
+    body: "kept",
+  });
+  sh(fx.wt, "add", ".");
+  sh(fx.wt, "commit", "-m", "seed lesson");
+  sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+  fx.gate();
+  const realSink = l.lessonStoreSink("pipeline:r1");
+  const roots = [];
+  const sink = (root, lesson) => {
+    roots.push([root, readdirSync(join(root, ".marvin", "memory")).sort()]);
+    writeFileSync(
+      join(fx.wt, ".marvin/pipeline/checks.yaml"),
+      "- { id: planted, pattern: p, message: m }\n",
+    );
+    writeFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), '{"runId":"planted"}\n');
+    appendFileSync(join(fx.wt, SPEC_PATH), "INJECTED\n");
+    writeFileSync(join(fx.wt, ".marvin/memory/MEMORY.md"), "planted index\n");
+    writeFileSync(join(fx.wt, ".marvin/memory/planted.md"), "planted lesson\n");
+    return realSink(root, lesson);
+  };
+
+  l.finalizeRun(fx.opts({ addLesson: sink }));
+
+  assert.deepEqual(roots.length, 1);
+  assert.notEqual(roots[0][0], fx.wt, "lessons are added in a private copy of the committed store");
+  assert.deepEqual(roots[0][1], ["MEMORY.md", "seed-lesson.md"]);
+  const committed = (path) => sh(fx.wt, "show", `HEAD:${path}`);
+  assert.deepEqual(
+    parse(committed(".marvin/pipeline/checks.yaml")).map((r) => r.id),
+    ["seed", "no-console"],
+  );
+  assert.deepEqual(
+    committed(".marvin/pipeline/calibration.jsonl")
+      .split("\n")
+      .map((x) => JSON.parse(x).runId),
+    ["r0", "r1"],
+  );
+  assert.doesNotMatch(committed(SPEC_PATH), /INJECTED/);
+  const index = committed(".marvin/memory/MEMORY.md");
+  assert.match(index, /\[Seed lesson\]/);
+  assert.match(index, /\[T\]/);
+  assert.doesNotMatch(index, /planted/);
+  assert.equal(
+    sh(fx.wt, "ls-tree", "-r", "--name-only", "HEAD", ".marvin/memory").includes("planted.md"),
+    false,
+  );
+  assert.equal(readFileSync(join(fx.wt, ".marvin/memory/planted.md"), "utf8"), "planted lesson\n");
+  assert.equal(readFileSync(join(fx.wt, ".marvin/memory/MEMORY.md"), "utf8"), index + "\n");
+});
+
+const FORMATTER = `
+import { linkSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+const [mode, outside, exit] = process.argv.slice(2);
+if (mode === "swap-dir") {
+  renameSync(".marvin/pipeline", ".marvin/pipeline-real");
+  symlinkSync(outside, ".marvin/pipeline");
+} else if (mode === "edit-rule") {
+  const f = ".marvin/pipeline/checks.yaml";
+  writeFileSync(f, readFileSync(f, "utf8").replace("console", "evil-console"));
+} else if (mode === "edit-calibration") {
+  const f = ".marvin/pipeline/calibration.jsonl";
+  writeFileSync(f, readFileSync(f, "utf8").replace('"runId":"r1"', '"runId":"r9"'));
+} else if (mode === "hard-link-spec") {
+  const spec = ".marvin/task/001-demo.md";
+  unlinkSync(spec);
+  linkSync(outside, spec);
+}
+process.exit(Number(exit ?? 0));
+`;
+
+function formatterCommand(mode, outside, exit = 0) {
+  const script = join(tmp("pipe-fmt-"), "fmt.mjs");
+  writeFileSync(script, FORMATTER);
+  return [process.execPath, script, mode, outside, String(exit)].map(seal.shellQuote).join(" ");
+}
+
+for (const exit of [1, 0]) {
+  test(`a format command that swaps .marvin/pipeline for a symlink and exits ${exit} deletes and rewrites nothing outside`, () => {
+    const fx = prFixture();
+    const out = tmp("pipe-out-");
+    writeFileSync(join(out, "checks.yaml"), "- { id: victim, pattern: v, message: m }\n");
+    writeFileSync(join(out, "calibration.jsonl"), '{"runId":"victim"}\n');
+    const outBefore = contents(out);
+    assert.throws(
+      () => l.finalizeRun(fx.opts({ formatCommand: formatterCommand("swap-dir", out, exit) })),
+      exit === 1 ? /format_command failed/ : /symbolic link/,
+    );
+    assert.deepEqual(contents(out), outBefore, "the files outside the worktree are untouched");
+    assert.equal(head(fx.wt), fx.gated);
+    assert.equal(remoteRef(fx), fx.gated);
+  });
+}
+
+test("a format command that rewrites a rule is refused: formatters may change layout, not rules", () => {
+  const fx = prFixture();
+  assert.throws(
+    () => l.finalizeRun(fx.opts({ formatCommand: formatterCommand("edit-rule", "-") })),
+    /checks\.yaml.*rules/,
+  );
+  assert.equal(head(fx.wt), fx.gated);
+  assert.equal(remoteRef(fx), fx.gated);
+  assert.equal(status(fx.wt), "");
+  assert.equal(existsSync(join(fx.wt, ".marvin/pipeline/checks.yaml")), false);
+});
+
+test("a format command that rewrites a calibration record is refused", () => {
+  const fx = prFixture();
+  assert.throws(
+    () => l.finalizeRun(fx.opts({ formatCommand: formatterCommand("edit-calibration", "-") })),
+    /calibration\.jsonl.*records/,
+  );
+  assert.equal(head(fx.wt), fx.gated);
+  assert.equal(status(fx.wt), "");
+});
+
+test("a format command that turns the spec into a hard link of an outside file is refused", () => {
+  const fx = prFixture();
+  const out = tmp("pipe-out-");
+  const secret = join(out, "credentials");
+  writeFileSync(secret, "TOP SECRET\n");
+  assert.throws(
+    () => l.finalizeRun(fx.opts({ formatCommand: formatterCommand("hard-link-spec", secret) })),
+    /hard link/,
+  );
+  assert.equal(head(fx.wt), fx.gated);
+  assert.equal(remoteRef(fx), fx.gated);
+  assert.equal(readFileSync(secret, "utf8"), "TOP SECRET\n");
+  assert.equal(status(fx.wt), "");
+});
+
+test("a format command may change layout: the same rules with a comment added are accepted", () => {
+  const fx = prFixture();
+  const script = join(tmp("pipe-fmt-"), "fmt.mjs");
+  writeFileSync(
+    script,
+    [
+      'import { appendFileSync } from "node:fs";',
+      "for (const f of process.argv.slice(2)) {",
+      '  if (f.endsWith("checks.yaml")) appendFileSync(f, "# formatted\\n");',
+      "}",
+    ].join("\n"),
+  );
+  const out = l.finalizeRun(
+    fx.opts({ formatCommand: [process.execPath, script].map(seal.shellQuote).join(" ") }),
+  );
+  assert.equal(out.pushed, true);
+  assert.match(sh(fx.wt, "show", "HEAD:.marvin/pipeline/checks.yaml"), /# formatted$/);
+  assert.equal(status(fx.wt), "");
+});
+
+test("finalize builds on the gated commit only: another commit on top, a detached HEAD or another branch is refused", () => {
+  const cases = [
+    [
+      "a commit made after the last gate",
+      (fx) => {
+        writeFileSync(join(fx.wt, "late.txt"), "late\n");
+        sh(fx.wt, "add", "late.txt");
+        sh(fx.wt, "commit", "-m", "late");
+      },
+      /HEAD is .* not the gated commit/,
+    ],
+    [
+      "a worktree on another branch",
+      (fx) => sh(fx.wt, "checkout", "-q", "-b", "elsewhere"),
+      /branch/,
+    ],
+    ["a detached HEAD", (fx) => sh(fx.wt, "checkout", "-q", "--detach"), /branch/],
+  ];
+  for (const [label, change, expected] of cases) {
+    const fx = prFixture();
+    change(fx);
+    const headNow = head(fx.wt);
+    assert.throws(() => l.finalizeRun(fx.opts()), expected, label);
+    assert.equal(head(fx.wt), headNow, label);
+    assert.equal(remoteRef(fx), fx.gated, label);
+    assert.deepEqual(readdirSync(fx.runDir), [], label);
+  }
+});
+
+test("expectedHead must be a full commit SHA", () => {
+  for (const expectedHead of [undefined, "", "HEAD", "abc123", "Z".repeat(40), "a".repeat(41)]) {
+    const fx = prFixture();
+    assert.throws(
+      () => l.finalizeRun(fx.opts({ expectedHead })),
+      /expectedHead/,
+      String(expectedHead),
+    );
+    assert.deepEqual(readdirSync(fx.runDir), []);
+  }
+});
+
+test("a run without a PR does not need expectedHead", () => {
+  const fx = prFixture();
+  const noPr = makeRun({ ...fx.run, prUrl: null });
+  assert.doesNotThrow(() => l.finalizeRun(fx.opts({ run: noPr, expectedHead: undefined })));
+});
+
+test("a retry may stand on its own earlier finalize commit, recorded in the run dir, and on nothing else", () => {
+  const fx = prFixture();
+  sh(fx.wt, "remote", "set-url", "origin", join(tmp("pipe-gone-"), "missing.git"));
+  assert.throws(() => l.finalizeRun(fx.opts()), /push/i);
+  const own = head(fx.wt);
+  assert.notEqual(own, fx.gated);
+  sh(fx.wt, "remote", "set-url", "origin", fx.origin);
+
+  const forged = fx.opts();
+  writeFileSync(
+    join(fx.runDir, "finalize-commit.json"),
+    JSON.stringify({ expectedHead: fx.gated, commit: "a".repeat(40) }),
+  );
+  assert.throws(() => l.finalizeRun(forged), /HEAD is .* not the gated commit/);
+  assert.equal(remoteRef(fx), fx.gated);
+
+  writeFileSync(
+    join(fx.runDir, "finalize-commit.json"),
+    JSON.stringify({ expectedHead: "b".repeat(40), commit: own }),
+  );
+  assert.throws(() => l.finalizeRun(fx.opts()), /HEAD is .* not the gated commit/);
+
+  writeFileSync(
+    join(fx.runDir, "finalize-commit.json"),
+    JSON.stringify({ expectedHead: fx.gated, commit: own }),
+  );
+  const again = l.finalizeRun(fx.opts());
+  assert.equal(again.pushed, true);
+  assert.equal(remoteRef(fx), own);
 });
