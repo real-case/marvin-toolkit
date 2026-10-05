@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { isAbsolute, join, posix, resolve } from "node:path";
 
-export type Severity = "blocker" | "major" | "minor";
+export const SEVERITIES = ["blocker", "major", "minor"] as const;
+export type Severity = (typeof SEVERITIES)[number];
 export interface GateCommand {
   name: string;
   command: string;
@@ -340,7 +341,7 @@ const nul = (s: string) => s.split("\0").filter(Boolean);
 
 const NESTED_REPO = "nested-repo";
 
-type IsolatedGit = {
+export type IsolatedGit = {
   text: (...args: string[]) => string;
   bytes: (...args: string[]) => Buffer;
 };
@@ -349,12 +350,18 @@ type IsolatedGit = {
  * Git pinned to one repository: `GIT_DIR` and `GIT_WORK_TREE` are passed explicitly and every
  * other `GIT_*` variable is dropped, so neither the worktree's `.git` pointer (which a child
  * can rewrite) nor an inherited `GIT_INDEX_FILE` decides which repository is judged.
+ * `extraEnv` is added to the environment but can never repoint either variable.
  */
-function isolatedGit(worktree: string, gitDir: string): IsolatedGit {
+export function isolatedGit(
+  worktree: string,
+  gitDir: string,
+  extraEnv: Readonly<Record<string, string>> = {},
+): IsolatedGit {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith("GIT_") || key === "GIT_EXEC_PATH") env[key] = value;
   }
+  Object.assign(env, extraEnv);
   env.GIT_DIR = gitDir;
   env.GIT_WORK_TREE = worktree;
   const run = (args: string[]) =>

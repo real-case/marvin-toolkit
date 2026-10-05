@@ -18,6 +18,9 @@ const FOREIGN_PLACEHOLDERS = ["{name}", "{ref}", "{path}"];
 /** Syntax in which a substituted word is not one word: a heredoc body, a comment, a substitution. */
 const NOT_ONE_WORD = /[`\r\n]|\$\(|<<|#/;
 
+/** One shell word: `word` in single quotes, a quote inside it closed, escaped and reopened. */
+export const shellQuote = (word: string): string => `'${word.replaceAll("'", "'\\''")}'`;
+
 /**
  * True when a `{file}` in `template` sits inside a quoted span or behind a backslash. The
  * substituted path is single-quoted by `formatTestOne`, which inside another quote would be a
@@ -81,7 +84,7 @@ export function formatTestOne(template: string, path: string): string {
   if (placeholderIsQuoted(template)) {
     throw new Error("gates.test_one must not quote {file}: the engine quotes the path itself");
   }
-  const quoted = `'${path.replaceAll("'", "'\\''")}'`;
+  const quoted = shellQuote(path);
   return template.replaceAll(FILE, () => quoted);
 }
 
