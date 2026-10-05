@@ -652,25 +652,165 @@ test("gates.extra accepts the allowed name characters", () => {
   );
 });
 
-test("a hand-edited config with a bad gates.extra falls back to defaults with a warning", () => {
+/** Write `json` as a project config in a fresh temp dir, hand it to `fn`, then clean up. */
+async function withConfigFile(json, fn) {
   const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
   try {
-    const configPath = join(dir, "config.json");
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        base_branch: "main",
-        gates: { extra: [{ name: "oracle:AC1", command: "x" }] },
-      }),
-    );
-    const { config, warning } = loadConfig(configPath);
-    assert.match(warning, /failed schema validation/);
-    assert.match(warning, /reserved/i);
-    assert.equal(config.base_branch, "dev", "the whole file falls back, as for any schema error");
-    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS);
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    const configPath = join(dir, ".marvin", "config.json");
+    writeFileSync(configPath, JSON.stringify(json, null, 2));
+    return await fn(configPath, dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+const SURVIVORS = {
+  base_branch: "main",
+  statuses: CUSTOM_STATUSES,
+  gates: { test: "npm test" },
+};
+
+test("a bad gates.extra entry drops the extras alone and the rest of the config stands", async () => {
+  const bad = {
+    ...SURVIVORS,
+    gates: { test: "npm test", extra: [{ name: "oracle:AC1", command: "x" }] },
+  };
+  await withConfigFile(bad, (configPath) => {
+    const { config, warning, settingWarnings, pipelineIssues } = loadConfig(configPath);
+    assert.equal(warning, null, "no whole-file fallback");
+    assert.equal(config.base_branch, "main");
+    assert.deepEqual(config.statuses, CUSTOM_STATUSES);
+    assert.equal(config.gates.test, "npm test");
+    assert.deepEqual(config.gates.extra, []);
+    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS);
+    assert.equal(pipelineIssues.length, 1);
+    assert.match(pipelineIssues[0], /`gates\.extra` is ignored/);
+    assert.match(pipelineIssues[0], /gates\.extra\.0\.name/);
+    assert.match(pipelineIssues[0], /reserved/);
+    assert.deepEqual(settingWarnings, [], "the tracker's per-setting list stays about the tracker");
+  });
+});
+
+test("a bad pipeline value resets the pipeline block alone and records the issue", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0, bootstrap: "npm ci" } };
+  await withConfigFile(bad, (configPath) => {
+    const { config, warning, pipelineIssues } = loadConfig(configPath);
+    assert.equal(warning, null);
+    assert.equal(config.base_branch, "main");
+    assert.deepEqual(config.statuses, CUSTOM_STATUSES);
+    assert.equal(config.gates.test, "npm test");
+    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS, "the whole block resets, valid keys too");
+    assert.equal(pipelineIssues.length, 1);
+    assert.match(pipelineIssues[0], /`pipeline` is ignored/);
+    assert.match(pipelineIssues[0], /pipeline\.stall_minutes/);
+  });
+});
+
+test("both subtrees can fail at once, one issue each, and a valid config records none", async () => {
+  const bad = {
+    ...SURVIVORS,
+    gates: { extra: [{ name: "test", command: "x" }] },
+    pipeline: { allowed_commands: ["git", "npm run(x)"] },
+  };
+  await withConfigFile(bad, (configPath) => {
+    const { config, pipelineIssues } = loadConfig(configPath);
+    assert.equal(pipelineIssues.length, 2);
+    assert.match(pipelineIssues.join("\n"), /gates\.extra\.0\.name.*standard gate/);
+    assert.match(pipelineIssues.join("\n"), /pipeline\.allowed_commands\.1/);
+    assert.equal(config.base_branch, "main");
+  });
+  await withConfigFile({ ...SURVIVORS, pipeline: { stall_minutes: 30 } }, (configPath) => {
+    const loaded = loadConfig(configPath);
+    assert.deepEqual(loaded.pipelineIssues, []);
+    assert.equal(loaded.config.pipeline.stall_minutes, 30);
+  });
+  assert.deepEqual(loadConfig(join(tmpdir(), "marvin-no-such-config.json")).pipelineIssues, []);
+});
+
+test("an unrelated schema error still falls back as a whole, bad pipeline or not", async () => {
+  await withConfigFile({ base_branch: 7, pipeline: { stall_minutes: 0 } }, (configPath) => {
+    const { config, warning } = loadConfig(configPath);
+    assert.match(warning, /failed schema validation/);
+    assert.equal(config.base_branch, "dev");
+  });
+});
+
+test("the config view and the dashboard name an ignored pipeline subtree", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0 } };
+  await withConfigFile(bad, async (_configPath, dir) => {
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config" } },
+      { name: "dashboard", arguments: {} },
+    ]);
+    const [view, dashboard] = results;
+    assert.match(textOf(view), /⚠ `pipeline` is ignored — pipeline\.stall_minutes/);
+    assert.match(textOf(view), /- \*\*base_branch:\*\* `main` _\(from config\)_/);
+    assert.match(textOf(dashboard), /⚠ config: `pipeline` is ignored/);
+  });
+});
+
+test("a config update works while the pipeline block is invalid and leaves it as written", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0 } };
+  await withConfigFile(bad, async (configPath, dir) => {
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", base_branch: "release" } },
+    ]);
+    assert.notEqual(results[0].isError, true, textOf(results[0]));
+    const onDisk = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.equal(onDisk.base_branch, "release");
+    assert.deepEqual(onDisk.pipeline, bad.pipeline, "the invalid block is not rewritten");
+    assert.deepEqual(onDisk.statuses, CUSTOM_STATUSES);
+  });
+});
+
+test("the regex fields must compile, and the issue names the field", () => {
+  const issue = (pipeline) => {
+    const parsed = Config.safeParse({ pipeline });
+    assert.equal(parsed.success, false, JSON.stringify(pipeline));
+    return parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | ");
+  };
+  assert.match(
+    issue({ test_path_pattern: "(unclosed" }),
+    /pipeline\.test_path_pattern: test_path_pattern is not a valid regular expression/,
+  );
+  assert.match(
+    issue({ scope_exempt_pattern: "[" }),
+    /pipeline\.scope_exempt_pattern: scope_exempt_pattern is not a valid regular expression/,
+  );
+  const ok = Config.parse({
+    pipeline: { test_path_pattern: "\\.test\\.", scope_exempt_pattern: "^specs/" },
+  });
+  assert.equal(ok.pipeline.scope_exempt_pattern, "^specs/");
+  assert.equal(
+    Config.parse({ pipeline: { scope_exempt_pattern: null } }).pipeline.scope_exempt_pattern,
+    null,
+  );
+});
+
+test("allowed_commands entries must be usable prefixes at config load", () => {
+  const issue = (allowed_commands) => {
+    const parsed = Config.safeParse({ pipeline: { allowed_commands } });
+    assert.equal(parsed.success, false, JSON.stringify(allowed_commands));
+    return parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | ");
+  };
+  for (const bad of [
+    "npm run(x)",
+    "a)",
+    "a,b",
+    "git *",
+    "a[0]",
+    "line\nbreak",
+    "  npm run  ",
+    "",
+  ]) {
+    assert.match(issue(["git", bad]), /pipeline\.allowed_commands\.1/, JSON.stringify(bad));
+  }
+  assert.match(issue(["a,b"]), /invalid allowlist prefix/);
+  const ok = Config.parse({
+    pipeline: { allowed_commands: ["git", "npm run test:run", "npx --no"] },
+  });
+  assert.deepEqual(ok.pipeline.allowed_commands, ["git", "npm run test:run", "npx --no"]);
 });
 
 test("an update leaves a hand-written pipeline block and gates.extra exactly as written", async () => {

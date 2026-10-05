@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validatePrefix } from "../pipeline/command.js";
 
 export const TaskType = z.enum(["bug", "feature", "chore", "spike"]);
 export type TaskType = z.infer<typeof TaskType>;
@@ -156,7 +157,8 @@ export const GateExtra = z
   });
 export type GateExtra = z.infer<typeof GateExtra>;
 
-function uniqueExtraNames(extra: GateExtra[], ctx: z.RefinementCtx): void {
+/** The whole `gates.extra` list: every entry valid and no name used twice. */
+export const GateExtraList = z.array(GateExtra).superRefine((extra, ctx) => {
   const seen = new Set<string>();
   for (const gate of extra) {
     const name = gate.name.toLowerCase();
@@ -165,7 +167,7 @@ function uniqueExtraNames(extra: GateExtra[], ctx: z.RefinementCtx): void {
     }
     seen.add(name);
   }
-}
+});
 
 /**
  * Per-gate command overrides for the `verify` tool, declared once per project
@@ -200,7 +202,7 @@ export const GateCommands = z.object({
    * the stack, and `verify`'s `only` and explicit per-call `gates` leave them out: the project
    * names them and `verify` runs them last. Entries are checked by `GateExtra`.
    */
-  extra: z.array(GateExtra).superRefine(uniqueExtraNames).default([]),
+  extra: GateExtraList.default([]),
 });
 export type GateCommands = z.infer<typeof GateCommands>;
 
@@ -274,6 +276,23 @@ export const UsageConfig = z.object({
 });
 export type UsageConfig = z.infer<typeof UsageConfig>;
 
+/** A string that must also compile as a JavaScript regular expression; the issue names the field. */
+const regexField = (field: string) =>
+  z
+    .string()
+    .min(1)
+    .superRefine((value, ctx) => {
+      try {
+        new RegExp(value);
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${field} is not a valid regular expression: ${why}`,
+        });
+      }
+    });
+
 /**
  * Settings of the autopilot pipeline (`marvin-pipe`), read from the BASE commit's
  * `.marvin/config.json`, never from a run worktree. Every key has a default, so an absent
@@ -304,19 +323,32 @@ export const PipelineConfig = z.object({
   /** Seconds between CI status polls. */
   ci_poll_seconds: z.number().int().min(1).default(60),
   /** JavaScript regex over repo-relative paths: which files are tests (the test-author writes only these). */
-  test_path_pattern: z
-    .string()
-    .min(1)
-    .default("(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"),
+  test_path_pattern: regexField("test_path_pattern").default(
+    "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)",
+  ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
-  scope_exempt_pattern: z.string().min(1).nullable().default(null),
+  scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: z.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
   conventions: z.string().default(""),
   /** Bash command prefixes the writing roles (planner, test-author, executor) may run. */
   allowed_commands: z
-    .array(z.string().min(1))
+    .array(z.string())
+    .superRefine((list, ctx) => {
+      list.forEach((prefix, i) => {
+        try {
+          validatePrefix(prefix);
+        } catch (err) {
+          const why = err instanceof Error ? err.message : String(err);
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `allowed_commands entry is not usable: ${why}`,
+            path: [i],
+          });
+        }
+      });
+    })
     .default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"]),
 });
 export type PipelineConfig = z.infer<typeof PipelineConfig>;

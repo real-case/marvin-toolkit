@@ -28921,6 +28921,17 @@ function loadEnv(env2 = process.env) {
     metricsDir
   };
 }
+function validatePrefix(prefix) {
+  if (prefix !== prefix.trim()) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (prefix.length === 0) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (/[(),[*\n]/.test(prefix)) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+}
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
@@ -28997,7 +29008,7 @@ var GateExtra = external_exports.object({
   const problem = RESERVED_GATE_PREFIXES.some((p) => name.startsWith(p)) ? `gate name "${gate.name}" is reserved: names starting with ${RESERVED_GATE_PREFIXES.join(" or ")} belong to the pipeline's gate stage` : STANDARD_GATE_NAMES.includes(name) ? `gate name "${gate.name}" is a standard gate (${STANDARD_GATE_NAMES.join(", ")}); extra gates need their own name` : /^[a-z0-9][a-z0-9_.-]*$/i.test(gate.name) ? null : `gate name "${gate.name}" must start with a letter or digit and use only letters, digits, "_", "." and "-"`;
   if (problem) ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: problem, path: ["name"] });
 });
-function uniqueExtraNames(extra, ctx) {
+var GateExtraList = external_exports.array(GateExtra).superRefine((extra, ctx) => {
   const seen = /* @__PURE__ */ new Set();
   for (const gate of extra) {
     const name = gate.name.toLowerCase();
@@ -29006,7 +29017,7 @@ function uniqueExtraNames(extra, ctx) {
     }
     seen.add(name);
   }
-}
+});
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
@@ -29035,7 +29046,7 @@ var GateCommands = external_exports.object({
    * the stack, and `verify`'s `only` and explicit per-call `gates` leave them out: the project
    * names them and `verify` runs them last. Entries are checked by `GateExtra`.
    */
-  extra: external_exports.array(GateExtra).superRefine(uniqueExtraNames).default([])
+  extra: GateExtraList.default([])
 });
 var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
@@ -29049,6 +29060,17 @@ var ScopeConfig = external_exports.object({
 });
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
+});
+var regexField = (field) => external_exports.string().min(1).superRefine((value, ctx) => {
+  try {
+    new RegExp(value);
+  } catch (err3) {
+    const why = err3 instanceof Error ? err3.message : String(err3);
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `${field} is not a valid regular expression: ${why}`
+    });
+  }
 });
 var PipelineConfig = external_exports.object({
   /** Run branch name; placeholders `{tracker}` and `{slug}`. */
@@ -29072,15 +29094,30 @@ var PipelineConfig = external_exports.object({
   /** Seconds between CI status polls. */
   ci_poll_seconds: external_exports.number().int().min(1).default(60),
   /** JavaScript regex over repo-relative paths: which files are tests (the test-author writes only these). */
-  test_path_pattern: external_exports.string().min(1).default("(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"),
+  test_path_pattern: regexField("test_path_pattern").default(
+    "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"
+  ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
-  scope_exempt_pattern: external_exports.string().min(1).nullable().default(null),
+  scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: external_exports.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
   conventions: external_exports.string().default(""),
   /** Bash command prefixes the writing roles (planner, test-author, executor) may run. */
-  allowed_commands: external_exports.array(external_exports.string().min(1)).default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"])
+  allowed_commands: external_exports.array(external_exports.string()).superRefine((list, ctx) => {
+    list.forEach((prefix, i) => {
+      try {
+        validatePrefix(prefix);
+      } catch (err3) {
+        const why = err3 instanceof Error ? err3.message : String(err3);
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `allowed_commands entry is not usable: ${why}`,
+          path: [i]
+        });
+      }
+    });
+  }).default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"])
 });
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
@@ -29376,10 +29413,22 @@ function loadConfig(configPath, projectDir) {
       const detected = defaultBranchFromOrigin(projectDir);
       if (detected) {
         config2.base_branch = detected;
-        return { config: config2, warning: null, settingWarnings: [], base_branch_source: "origin/HEAD" };
+        return {
+          config: config2,
+          warning: null,
+          settingWarnings: [],
+          pipelineIssues: [],
+          base_branch_source: "origin/HEAD"
+        };
       }
     }
-    return { config: config2, warning: null, settingWarnings: [], base_branch_source: "default" };
+    return {
+      config: config2,
+      warning: null,
+      settingWarnings: [],
+      pipelineIssues: [],
+      base_branch_source: "default"
+    };
   }
   let raw;
   try {
@@ -29390,6 +29439,7 @@ function loadConfig(configPath, projectDir) {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
@@ -29402,15 +29452,18 @@ function loadConfig(configPath, projectDir) {
       config: Config.parse({}),
       warning: `config.json is not valid JSON: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
-  const parsed = Config.safeParse(json);
+  const { json: usable, issues: pipelineIssues } = isolatePipelineSettings(json);
+  const parsed = Config.safeParse(usable);
   if (!parsed.success) {
     return {
       config: Config.parse({}),
       warning: `config.json failed schema validation: ${parsed.error.message}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
@@ -29419,8 +29472,37 @@ function loadConfig(configPath, projectDir) {
     config: parsed.data,
     warning: null,
     settingWarnings: neutraliseUnusableSettings(parsed.data),
+    pipelineIssues,
     base_branch_source: hasOwnBase ? "config" : "default"
   };
+}
+var isPlainObject3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var issuesAt = (error2, prefix) => error2.issues.map((i) => `${[prefix, ...i.path].join(".")}: ${i.message}`).join("; ");
+function isolatePipelineSettings(json) {
+  if (!isPlainObject3(json)) return { json, issues: [] };
+  let out = json;
+  const issues = [];
+  if (Object.hasOwn(out, "pipeline")) {
+    const parsed = PipelineConfig.safeParse(out.pipeline);
+    if (!parsed.success) {
+      const { pipeline: _dropped, ...rest } = out;
+      out = rest;
+      issues.push(
+        `\`pipeline\` is ignored \u2014 ${issuesAt(parsed.error, "pipeline")}. The pipeline will not start until it is fixed; its defaults are in force (\`/marvin:track-config\`).`
+      );
+    }
+  }
+  if (isPlainObject3(out.gates) && Object.hasOwn(out.gates, "extra")) {
+    const parsed = GateExtraList.safeParse(out.gates.extra);
+    if (!parsed.success) {
+      const { extra: _dropped, ...gates } = out.gates;
+      out = { ...out, gates };
+      issues.push(
+        `\`gates.extra\` is ignored \u2014 ${issuesAt(parsed.error, "gates.extra")}. No extra gate runs, and the pipeline will not start, until it is fixed.`
+      );
+    }
+  }
+  return { json: out, issues };
 }
 function neutraliseUnusableSettings(config2) {
   const warnings = [];
@@ -29507,7 +29589,7 @@ function updateConfigFile(configPath, patch) {
     if (Object.keys(scope).length === 0) delete raw.scope;
     else raw.scope = scope;
   }
-  const merged = Config.safeParse(raw);
+  const merged = Config.safeParse(isolatePipelineSettings(raw).json);
   if (!merged.success) {
     return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
   }
@@ -32299,14 +32381,16 @@ Mark where a task's id goes with \`{tracker_id}\`, e.g. \`https://acme.atlassian
   return ok(lines.join("\n"));
 }
 function renderConfigView(env2, loaded) {
-  const { config: config2, warning, settingWarnings, base_branch_source } = loaded;
+  const { config: config2, warning, settingWarnings, pipelineIssues, base_branch_source } = loaded;
   const fileExists = existsSync(env2.configPath);
   const sourceLabel = base_branch_source === "config" ? "from config" : base_branch_source === "origin/HEAD" ? "auto-detected from origin/HEAD" : "default";
   const lines = [];
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
-  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2)]) lines.push(`\u26A0 ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2), ...pipelineIssues]) {
+    lines.push(`\u26A0 ${w}`, "");
+  }
   lines.push(`- **Project:** \`${env2.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
@@ -34438,7 +34522,7 @@ function buildDashboardTool(env2, version2) {
   });
 }
 function renderDashboard(env2, loaded, version2, input) {
-  const { config: config2, warning: configWarning, settingWarnings } = loaded;
+  const { config: config2, warning: configWarning, settingWarnings, pipelineIssues } = loaded;
   const board = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const verification = verificationFreshness(env2.projectDir);
@@ -34471,7 +34555,9 @@ function renderDashboard(env2, loaded, version2, input) {
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : [],
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...[...settingWarnings, ...scopeExemptWarnings(config2)].map((w) => `- \u26A0 config: ${w}`)
+      ...[...settingWarnings, ...scopeExemptWarnings(config2), ...pipelineIssues].map(
+        (w) => `- \u26A0 config: ${w}`
+      )
     ],
     board: [
       "## Board",
@@ -35745,9 +35831,13 @@ var VerifyInput = external_exports.object({
   execution: external_exports.enum(["parallel", "sequential", "fail-fast"]).default("parallel").describe(
     "parallel: all gates concurrently (default). sequential: one at a time, all run (verdict parity with parallel). fail-fast: one at a time, stop at first failure (resource-constrained / fast feedback)."
   ),
-  only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe("Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix)."),
+  only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe(
+    "Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix). Leaves out the project's `gates.extra`."
+  ),
   stack: external_exports.string().optional().describe("Pre-detected stack id (e.g. 'go', 'dotnet') to skip detection in a chained run."),
-  gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
+  gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe(
+    "Explicit gate commands, bypassing stack detection (project override / testing). Leaves out the project's `gates.extra`."
+  ),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
   write: external_exports.boolean().default(true).describe(
     "Write verification.md to <projectRoot>/.marvin/task/. That location is deliberately independent of where specs live: a spec is a project document and stays host-adaptive (ADR-0005), while everything marvin generates about a run is a service file pinned under .marvin/ (ADR-0007), so this path does not follow `spec.dir` (ADR-0037)."
@@ -35775,14 +35865,18 @@ var VerifyInput = external_exports.object({
 function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
-    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.`,
+    description: 'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env2)
   });
 }
 async function runVerify(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  const { config: config2, warning: configWarning } = loadConfig(projectConfigPath(env2, projectRoot));
+  const {
+    config: config2,
+    warning: configWarning,
+    pipelineIssues
+  } = loadConfig(projectConfigPath(env2, projectRoot));
   if (input.action === "gate") {
     return deliverGate(projectRoot, {
       specSlug: input.specSlug,
@@ -35795,7 +35889,9 @@ async function runVerify(input, env2) {
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
   const configGates = gateSpecsFromConfig(config2.gates);
   const detected = resolvePlan(input, projectRoot, configGates);
-  const extraGates = input.gates?.length || input.only ? [] : extraGateSpecs(config2.gates);
+  const usesExtras = !(input.gates?.length || input.only);
+  const extraGates = usesExtras ? extraGateSpecs(config2.gates) : [];
+  const extraIssues = usesExtras ? pipelineIssues.filter((i) => i.startsWith("`gates.extra`")) : [];
   if (detected.gates.length === 0 && extraGates.length === 0) {
     return ok3(
       `No quality gates detected for \`${projectRoot}\`.
@@ -35814,9 +35910,12 @@ Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), t
   const stacks = extraGates.length > 0 && !detected.stacks.includes(CONFIG_STACK) ? [...detected.stacks, CONFIG_STACK] : detected.stacks;
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
-    const warn2 = configWarning ? `
+    const warn2 = [
+      ...configWarning ? [`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`] : [],
+      ...extraIssues.map((i) => `\`.marvin/config.json\`: ${i}`)
+    ].map((w) => `
 
-> \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
+> \u26A0\uFE0F ${w}`).join("");
     return ok3(
       `# Verify Plan (dry run)
 
@@ -35835,6 +35934,7 @@ ${plan}${warn2}`
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`);
   }
+  for (const issue2 of extraIssues) warnings.push(`\`.marvin/config.json\`: ${issue2}`);
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
   }

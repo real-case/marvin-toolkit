@@ -1,7 +1,14 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import type { z } from "zod";
-import { Config, Statuses, type Config as ConfigType, type StatusDef } from "./schema.js";
+import {
+  Config,
+  GateExtraList,
+  PipelineConfig,
+  Statuses,
+  type Config as ConfigType,
+  type StatusDef,
+} from "./schema.js";
 import { defaultBranchFromOrigin, hasGit, inGitRepo } from "../lib/git.js";
 import { exemptPatternIssue } from "../lib/scope.js";
 
@@ -19,6 +26,15 @@ export interface LoadedConfig {
    * defaults are in force everywhere.
    */
   settingWarnings: string[];
+  /**
+   * Why the autopilot pipeline's settings (`pipeline`, `gates.extra`) were reset to their
+   * defaults, one entry per ignored subtree; empty when both are usable. Kept apart from
+   * `settingWarnings` for the reason `scopeExemptWarnings` is, and apart from `warning`
+   * because only the bad subtree is lost — the rest of the file stands. The pipeline fails
+   * closed on a non-empty list (its engine refuses to start); every other tool carries on
+   * with the defaults. A whole-file failure is reported by `warning` instead, never here.
+   */
+  pipelineIssues: string[];
   base_branch_source: BaseBranchSource;
 }
 
@@ -40,10 +56,22 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
       const detected = defaultBranchFromOrigin(projectDir);
       if (detected) {
         config.base_branch = detected;
-        return { config, warning: null, settingWarnings: [], base_branch_source: "origin/HEAD" };
+        return {
+          config,
+          warning: null,
+          settingWarnings: [],
+          pipelineIssues: [],
+          base_branch_source: "origin/HEAD",
+        };
       }
     }
-    return { config, warning: null, settingWarnings: [], base_branch_source: "default" };
+    return {
+      config,
+      warning: null,
+      settingWarnings: [],
+      pipelineIssues: [],
+      base_branch_source: "default",
+    };
   }
   let raw: string;
   try {
@@ -54,6 +82,7 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default",
     };
   }
@@ -66,15 +95,18 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
       config: Config.parse({}),
       warning: `config.json is not valid JSON: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default",
     };
   }
-  const parsed = Config.safeParse(json);
+  const { json: usable, issues: pipelineIssues } = isolatePipelineSettings(json);
+  const parsed = Config.safeParse(usable);
   if (!parsed.success) {
     return {
       config: Config.parse({}),
       warning: `config.json failed schema validation: ${parsed.error.message}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default",
     };
   }
@@ -84,8 +116,53 @@ export function loadConfig(configPath: string, projectDir?: string): LoadedConfi
     config: parsed.data,
     warning: null,
     settingWarnings: neutraliseUnusableSettings(parsed.data),
+    pipelineIssues,
     base_branch_source: hasOwnBase ? "config" : "default",
   };
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const issuesAt = (error: z.ZodError, prefix: string): string =>
+  error.issues.map((i) => `${[prefix, ...i.path].join(".")}: ${i.message}`).join("; ");
+
+/**
+ * Take the autopilot pipeline's two subtrees out of a raw config when they would not parse, so
+ * a typo in one cannot reset `statuses`, `base_branch` and `gates` for every marvin tool (the
+ * `trackerTemplateIssue` precedent, applied per subtree). Returns the object to hand to
+ * `Config` — an unusable `pipeline` and an unusable `gates.extra` removed, which the schema then
+ * fills with their defaults — and one issue per subtree removed. The file on disk is untouched.
+ * An input that is not an object, or whose `gates` is not one, is returned as it came: that is
+ * an ordinary schema error and `Config` reports it for the whole file.
+ */
+export function isolatePipelineSettings(json: unknown): { json: unknown; issues: string[] } {
+  if (!isPlainObject(json)) return { json, issues: [] };
+  let out = json;
+  const issues: string[] = [];
+
+  if (Object.hasOwn(out, "pipeline")) {
+    const parsed = PipelineConfig.safeParse(out.pipeline);
+    if (!parsed.success) {
+      const { pipeline: _dropped, ...rest } = out;
+      out = rest;
+      issues.push(
+        `\`pipeline\` is ignored — ${issuesAt(parsed.error, "pipeline")}. The pipeline will not start until it is fixed; its defaults are in force (\`/marvin:track-config\`).`,
+      );
+    }
+  }
+
+  if (isPlainObject(out.gates) && Object.hasOwn(out.gates, "extra")) {
+    const parsed = GateExtraList.safeParse(out.gates.extra);
+    if (!parsed.success) {
+      const { extra: _dropped, ...gates } = out.gates;
+      out = { ...out, gates };
+      issues.push(
+        `\`gates.extra\` is ignored — ${issuesAt(parsed.error, "gates.extra")}. No extra gate runs, and the pipeline will not start, until it is fixed.`,
+      );
+    }
+  }
+  return { json: out, issues };
 }
 
 /**
@@ -270,7 +347,7 @@ export function updateConfigFile(configPath: string, patch: ConfigPatch): Config
     else raw.scope = scope;
   }
 
-  const merged = Config.safeParse(raw);
+  const merged = Config.safeParse(isolatePipelineSettings(raw).json);
   if (!merged.success) {
     return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
   }

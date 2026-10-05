@@ -13,7 +13,7 @@ import {
   mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { callTool } from "./_driver.mjs";
+import { callTool, listTools } from "./_driver.mjs";
 
 /**
  * Drive the live stdio server: initialize, then a single tools/call for
@@ -248,14 +248,39 @@ test("a malformed .marvin/config.json warns and falls back to detection", async 
 
 // ── `gates.extra`: project gates that run after the four standard ones ──
 
-const EXTRA_GATES = {
-  test: "sleep 0.4 && echo test >> order.log",
-  lint: "echo lint >> order.log",
+const STANDARD_AND_EXTRA = ["test", "lint", "typecheck", "build", "css-types", "format"];
+
+/** Four passing standard gates and two passing extras; the tests that are not about order use it. */
+const PLAIN_GATES = {
+  test: "true",
+  lint: "true",
   typecheck: "true",
   build: "true",
   extra: [
-    { name: "css-types", command: "sleep 0.3 && echo css-types >> order.log" },
-    { name: "format", command: "echo format >> order.log" },
+    { name: "css-types", command: "true" },
+    { name: "format", command: "true" },
+  ],
+};
+
+/**
+ * Ordering is decided by what is on disk, never by how long anything took. Each gate appends its
+ * name to `order.log` and leaves a `<name>.done` marker; an extra starts with a `test -f` on the
+ * markers of everything that must already have finished, so a gate that ran too early exits 1
+ * and fails the verdict. The `sleep`s only widen the window in which a wrongly concurrent extra
+ * would find a marker missing: a correct run passes however slowly the machine goes.
+ */
+const finished = (...names) => names.map((n) => `test -f ${n}.done`).join(" && ");
+const ORDERED_GATES = {
+  test: "sleep 0.3 && echo test >> order.log && touch test.done",
+  lint: "echo lint >> order.log && touch lint.done",
+  typecheck: "touch typecheck.done",
+  build: "touch build.done",
+  extra: [
+    {
+      name: "css-types",
+      command: `${finished("test", "lint", "typecheck", "build")} && sleep 0.3 && echo css-types >> order.log && touch css-types.done`,
+    },
+    { name: "format", command: `${finished("css-types")} && echo format >> order.log` },
   ],
 };
 
@@ -269,23 +294,41 @@ async function withExtraGates(gates, fn) {
   }
 }
 
+const orderLog = (dir) => readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
+
 test("gates.extra run after the four standard gates, one at a time, in declaration order", async () => {
-  await withExtraGates(EXTRA_GATES, async (dir) => {
+  await withExtraGates(ORDERED_GATES, async (dir) => {
     const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "PASS", "an extra that started early would have exited 1");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      STANDARD_AND_EXTRA,
+    );
+    // The standard gates overlap, so only their set is fixed; the extras follow, in order.
+    const order = orderLog(dir);
+    assert.deepEqual(order.slice(0, 2).sort(), ["lint", "test"]);
+    assert.deepEqual(order.slice(2), ["css-types", "format"]);
+  });
+});
+
+test("sequential execution runs the extras after the standard gates too", async () => {
+  await withExtraGates(ORDERED_GATES, async (dir) => {
+    const { parsed } = await callVerify({
+      projectRoot: dir,
+      write: false,
+      execution: "sequential",
+    });
     assert.equal(parsed.verdict, "PASS");
     assert.deepEqual(
       parsed.gates.map((g) => g.name),
-      ["test", "lint", "typecheck", "build", "css-types", "format"],
+      STANDARD_AND_EXTRA,
     );
-    // The slow `test` gate finishes after `lint` (they overlap), and both extras follow it:
-    // `css-types` sleeps, yet `format` still comes second because the extras do not overlap.
-    const order = readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
-    assert.deepEqual(order, ["lint", "test", "css-types", "format"]);
+    assert.deepEqual(orderLog(dir), ["test", "lint", "css-types", "format"]);
   });
 });
 
 test("a failing extra gate fails the verdict and names itself in the report", async () => {
-  const gates = { ...EXTRA_GATES, extra: [{ name: "css-types", command: "echo broken; exit 3" }] };
+  const gates = { ...PLAIN_GATES, extra: [{ name: "css-types", command: "echo broken; exit 3" }] };
   await withExtraGates(gates, async (dir) => {
     const { parsed, isError, text } = await callVerify({ projectRoot: dir, write: false });
     assert.equal(parsed.verdict, "FAIL");
@@ -299,13 +342,13 @@ test("a failing extra gate fails the verdict and names itself in the report", as
 });
 
 test("extra gates still run after a failed standard gate, except under fail-fast", async () => {
-  const gates = { ...EXTRA_GATES, lint: "exit 1" };
+  const gates = { ...PLAIN_GATES, lint: "exit 1" };
   await withExtraGates(gates, async (dir) => {
     const all = (await callVerify({ projectRoot: dir, write: false })).parsed;
     assert.equal(all.verdict, "FAIL");
     assert.deepEqual(
       all.gates.map((g) => g.name),
-      ["test", "lint", "typecheck", "build", "css-types", "format"],
+      STANDARD_AND_EXTRA,
     );
     const fast = (await callVerify({ projectRoot: dir, write: false, execution: "fail-fast" }))
       .parsed;
@@ -316,29 +359,20 @@ test("extra gates still run after a failed standard gate, except under fail-fast
   });
 });
 
-test("sequential execution runs the extras after the standard gates too", async () => {
-  await withExtraGates(EXTRA_GATES, async (dir) => {
-    const { parsed } = await callVerify({
-      projectRoot: dir,
-      write: false,
-      execution: "sequential",
-    });
-    assert.deepEqual(
-      parsed.gates.map((g) => g.name),
-      ["test", "lint", "typecheck", "build", "css-types", "format"],
-    );
-    const order = readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
-    assert.deepEqual(order, ["test", "lint", "css-types", "format"]);
-  });
-});
-
 test("the dry-run plan lists the extras after the standard gates", async () => {
-  await withExtraGates(EXTRA_GATES, async (dir) => {
+  const gates = {
+    ...PLAIN_GATES,
+    extra: [
+      { name: "css-types", command: "npm run css-types:check" },
+      { name: "format", command: "npm run format:check" },
+    ],
+  };
+  await withExtraGates(gates, async (dir) => {
     const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
     const at = (s) => res.indexOf(s);
     assert.ok(at("**build**") > -1 && at("**css-types**") > at("**build**"));
     assert.ok(at("**format**") > at("**css-types**"));
-    assert.match(res, /sleep 0\.3 && echo css-types/);
+    assert.match(res, /npm run css-types:check/);
     assert.match(res, /\.marvin\/config\.json/);
   });
 });
@@ -363,7 +397,7 @@ test("extra gates alone make a plan for a stack nothing detects", async () => {
 });
 
 test("`only` and explicit per-call gates leave the extras out", async () => {
-  await withExtraGates(EXTRA_GATES, async (dir) => {
+  await withExtraGates(PLAIN_GATES, async (dir) => {
     const only = (await callVerify({ projectRoot: dir, write: false, only: ["lint"] })).parsed;
     assert.deepEqual(
       only.gates.map((g) => g.name),
@@ -381,6 +415,34 @@ test("`only` and explicit per-call gates leave the extras out", async () => {
       ["test"],
     );
   });
+});
+
+test("an unusable gates.extra is named in the verdict instead of silently dropped", async () => {
+  const gates = { ...PLAIN_GATES, extra: [{ name: "prepare:deps", command: "true" }] };
+  await withExtraGates(gates, async (dir) => {
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["test", "lint", "typecheck", "build"],
+      "the standard gates still run",
+    );
+    assert.ok(
+      parsed.warnings.some((w) => /gates\.extra.*ignored.*reserved/.test(w)),
+      parsed.warnings.join(" | "),
+    );
+    const plan = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(plan, /gates\.extra.*ignored/);
+  });
+});
+
+test("the verify descriptions say that extras are excluded by `only` and explicit gates", async () => {
+  const { tools } = await listTools();
+  const verify = tools.find((t) => t.name === "verify");
+  assert.match(verify.description, /gates\.extra/);
+  const props = verify.inputSchema.properties;
+  assert.match(props.only.description, /gates\.extra/);
+  assert.match(props.gates.description, /gates\.extra/);
 });
 
 // ── built-in stack detection: top-10 ecosystems emit canonical gates ──

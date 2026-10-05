@@ -59,7 +59,8 @@ export const READ_BASE_TOOLS = [
   "Bash(gh pr diff:*)",
 ] as const;
 
-function validatePrefix(prefix: string): void {
+/** Throws unless `prefix` can stand in a `Bash(<prefix>:*)` allowlist entry. */
+export function validatePrefix(prefix: string): void {
   if (prefix !== prefix.trim()) {
     throw new Error(`invalid allowlist prefix: ${prefix}`);
   }

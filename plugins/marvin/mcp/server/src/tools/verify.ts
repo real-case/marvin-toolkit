@@ -207,7 +207,9 @@ const VerifyInput = z.object({
   only: z
     .array(z.enum(GATE_NAMES))
     .optional()
-    .describe("Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix)."),
+    .describe(
+      "Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix). Leaves out the project's `gates.extra`.",
+    ),
   stack: z
     .string()
     .optional()
@@ -215,7 +217,9 @@ const VerifyInput = z.object({
   gates: z
     .array(z.object({ name: z.enum(GATE_NAMES), command: z.string().min(1) }))
     .optional()
-    .describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
+    .describe(
+      "Explicit gate commands, bypassing stack detection (project override / testing). Leaves out the project's `gates.extra`.",
+    ),
   projectRoot: z
     .string()
     .optional()
@@ -274,7 +278,7 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "verify",
     description:
-      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.',
+      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env),
   });
@@ -288,7 +292,11 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   // it moved above the two early returns — the `spec.dir` tier all three spec
   // lookups on this path resolve through (ADR-0037). It is read per call rather
   // than per server, so a `task config` edit applies without a restart.
-  const { config, warning: configWarning } = loadConfig(projectConfigPath(env, projectRoot));
+  const {
+    config,
+    warning: configWarning,
+    pipelineIssues,
+  } = loadConfig(projectConfigPath(env, projectRoot));
 
   // Delivery gate: read the prior verification.md verdict, run nothing.
   if (input.action === "gate") {
@@ -311,7 +319,11 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   // `gates.extra` is a config-declared addition to the standard plan, so a caller that names
   // its own gates (explicit `gates`) or selects some (`only`, which can only name standard
   // gates) gets exactly those and none of the project's extras.
-  const extraGates = input.gates?.length || input.only ? [] : extraGateSpecs(config.gates);
+  const usesExtras = !(input.gates?.length || input.only);
+  const extraGates = usesExtras ? extraGateSpecs(config.gates) : [];
+  // An unusable `gates.extra` is dropped at load; say so here, or its gates would vanish
+  // from the verdict without a trace.
+  const extraIssues = usesExtras ? pipelineIssues.filter((i) => i.startsWith("`gates.extra`")) : [];
   if (detected.gates.length === 0 && extraGates.length === 0) {
     return ok(
       `No quality gates detected for \`${projectRoot}\`.\n` +
@@ -338,9 +350,14 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
 
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
-    const warn = configWarning
-      ? `\n\n> ⚠️ \`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`
-      : "";
+    const warn = [
+      ...(configWarning
+        ? [`\`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`]
+        : []),
+      ...extraIssues.map((i) => `\`.marvin/config.json\`: ${i}`),
+    ]
+      .map((w) => `\n\n> ⚠️ ${w}`)
+      .join("");
     return ok(
       `# Verify Plan (dry run)\n\n**Stacks:** ${stacks.join(", ") || "explicit"}\n**Execution:** ${input.execution}\n\n${plan}${warn}`,
     );
@@ -362,6 +379,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} — using auto-detected gates.`);
   }
+  for (const issue of extraIssues) warnings.push(`\`.marvin/config.json\`: ${issue}`);
   // A gate whose binary was absent is loud but not fatal: one warning each, which
   // is what degrades an otherwise-green plan to PASS WITH WARNINGS. That is a
   // VISIBILITY measure — PASS WITH WARNINGS delivers. The refusal that closes the
