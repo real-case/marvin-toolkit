@@ -300,6 +300,7 @@ const unspecified = (source: keyof typeof UNSPECIFIED_CLAIM): Finding => ({
   id: `${source}-unspecified`,
   severity: "blocker",
   category: "gate",
+  criterion: `unspecified-${source}`,
   claim: UNSPECIFIED_CLAIM[source],
   evidence: `the ${source} verdict is a rejection and names no blocking finding`,
   expected: `the ${source} names what failed`,
@@ -432,8 +433,18 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
    * the cap halts. The halted run records the spawn it would have made as the last spawn of the
    * test-author, so that a retry carries this feedback rather than the previous attempt's.
    */
-  const reopenTests = (r: Run, feedback: string, reason: string, detail: unknown): Decision => {
-    const counted: Run = { ...r, testAuthorAttempts: r.testAuthorAttempts + 1 };
+  const reopenTests = (
+    r: Run,
+    feedback: string,
+    reason: string,
+    detail: unknown,
+    findings?: Finding[],
+  ): Decision => {
+    const counted: Run = {
+      ...r,
+      testAuthorAttempts: r.testAuthorAttempts + 1,
+      ...(findings ? { previousFindings: asRecords(findings) } : {}),
+    };
     const reopened =
       r.stage === "test_authoring"
         ? counted
@@ -667,7 +678,22 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         return { run: r, actions: [spawn(r, role, { message: `ANSWERS:\n${a.text}` }, true)] };
       }
       if (a.kind === "revise_tests" && role === "executor") {
-        return reopenTests(run, a.text, "the sealed tests were revised too often", [a.text]);
+        return reopenTests(
+          run,
+          a.text,
+          "the sealed tests were revised too often",
+          [a.text],
+          [
+            {
+              id: "T-revise",
+              severity: "major",
+              category: "test-quality",
+              claim: `the sealed tests were reopened at the orchestrator's request: ${a.text}`,
+              evidence: "the orchestrator answered the executor's dispute with revise_tests",
+              expected: "sealed tests that match the request",
+            },
+          ],
+        );
       }
       break;
     }
@@ -850,6 +876,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           findingsText(testFaults),
           "the verifier faulted the sealed tests",
           testFaults,
+          testFaults,
         );
       }
       if (blockers.length) return reject(base, "verifier", blockers);
@@ -919,6 +946,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
               id: `CI-${name}`,
               severity: "blocker",
               category: "gate",
+              file: name,
               claim: `CI job ${name} failed`,
               evidence: "see the PR checks",
               expected: `${name} green`,

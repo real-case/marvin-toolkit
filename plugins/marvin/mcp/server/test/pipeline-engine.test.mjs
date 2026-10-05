@@ -1063,7 +1063,7 @@ test("a failed gate report without a blocking finding is a rejection with one sy
     );
     assert.equal(d.run.previousFindings[0].claim, "gate failed without a blocking finding");
     assert.match(spawnOf(d).context.findings, /gate failed without a blocking finding/);
-    assert.deepEqual(d.run.rejections[0].fingerprints, ["gate||"]);
+    assert.deepEqual(d.run.rejections[0].fingerprints, ["gate||unspecified-gate"]);
   }
 });
 
@@ -1586,4 +1586,119 @@ test("fix 7: a halt retry after the cap re-spawns the executor and the rounds ar
   assert.equal(spawnOf(retried).role, "executor");
   assert.equal(retried.run.executorQuestionRounds, 3);
   assert.equal(judgmentOf(go(retried.run, askExecutor())), "halt");
+});
+
+const authored = child("test-author", {
+  status: "done",
+  tests: [{ path: "src/a.test.ts", criteria: ["AC1"] }],
+});
+const sealOk = { kind: "seal", ok: true, reasons: [], sealed: [sealedTest()] };
+const testFault = child(
+  "verifier",
+  verdict("FAIL", [
+    finding({
+      id: "T1",
+      category: "test-quality",
+      file: "src/a.test.ts",
+      claim: "asserts nothing",
+    }),
+  ]),
+);
+const lintFailure = finding({
+  id: "G-lint",
+  severity: "blocker",
+  category: "gate",
+  file: undefined,
+  criterion: undefined,
+  claim: "lint fails",
+});
+
+test("fix 8 (P13): after a re-seal the executor gets the test fault, not the finding of an older rejection", () => {
+  let d = go(at("gating", { iteration: 1, sealed: [sealedTest()] }), {
+    kind: "gate",
+    report: report(false),
+    findings: [lintFailure],
+  });
+  assert.match(spawnOf(d).context.findings, /lint fails/);
+  d = go(d.run, child("executor", executorDone()));
+  d = go(d.run, { kind: "gate", report: report(true), findings: [] });
+  assert.equal(d.run.stage, "verifying");
+  d = go(d.run, testFault);
+  assert.equal(d.run.stage, "test_authoring");
+  d = go(d.run, authored);
+  d = go(d.run, sealOk);
+  assert.deepEqual(
+    [d.run.stage, spawnOf(d).role, spawnOf(d).iteration],
+    ["executing", "executor", 3],
+  );
+  assert.match(spawnOf(d).context.findings, /asserts nothing/);
+  assert.doesNotMatch(spawnOf(d).context.findings, /lint fails/);
+});
+
+test("fix 8: a failed seal in between keeps the test fault that reopened authoring", () => {
+  const roomy = loadRubric(DEFAULT, "caps: { test_author_attempts: 3 }\n");
+  let d = go(at("verifying", { iteration: 2, sealed: [sealedTest()] }), testFault, roomy);
+  d = go(d.run, authored, roomy);
+  const failed = { kind: "seal", ok: false, reasons: ["passes before implementation"], sealed: [] };
+  d = go(d.run, failed, roomy);
+  assert.equal(spawnOf(d).role, "test-author");
+  d = go(d.run, authored, roomy);
+  d = go(d.run, sealOk, roomy);
+  assert.match(spawnOf(d).context.findings, /asserts nothing/);
+});
+
+test("fix 8: the first seal hands the executor no findings, and revise_tests hands it the request", () => {
+  let d = go(at("test_authoring"), sealOk);
+  assert.equal(spawnOf(d).context.findings, "(none)");
+  const asked = go(at("executing", { iteration: 1 }), {
+    ...child(
+      "executor",
+      { status: "needs_input", summary: "s", questions: [question] },
+      "needs_input",
+    ),
+  });
+  d = go(
+    asked.run,
+    answer("executor_questions", { kind: "revise_tests", text: "AC1 expects a 404" }),
+  );
+  assert.equal(d.run.stage, "test_authoring");
+  d = go(d.run, authored);
+  d = go(d.run, sealOk);
+  assert.match(spawnOf(d).context.findings, /AC1 expects a 404/);
+});
+
+const stepRubric = loadRubric(
+  DEFAULT,
+  "escalation: [effort+1, effort+1, 'model:opus', halt]\ncaps: { rejections: 5 }\n",
+);
+const ciRed = (...failing) => ({ kind: "ci", state: "red", failing });
+
+test("fix 9 (P9): two different failing CI jobs are not a repeated finding; the same job twice is", () => {
+  const first = go(at("ci_wait", { iteration: 1 }), ciRed("build"), stepRubric);
+  assert.equal(first.run.rung, 1);
+  const back = { ...first.run, stage: "ci_wait" };
+  const other = go(back, ciRed("lint"), stepRubric);
+  assert.equal(other.run.rung, 2);
+  assert.notDeepEqual(other.run.rejections[0].fingerprints, other.run.rejections[1].fingerprints);
+  const same = go(back, ciRed("build"), stepRubric);
+  assert.equal(same.run.rung, 3);
+  assert.match(spawnOf(other).context.findings, /CI job lint failed/);
+});
+
+test("fix 9: an unspecified gate failure followed by a CI conflict is not a repeated finding", () => {
+  const first = go(
+    at("gating", { iteration: 1 }),
+    { kind: "gate", report: report(false), findings: [] },
+    stepRubric,
+  );
+  assert.deepEqual(first.run.rejections[0].fingerprints, ["gate||unspecified-gate"]);
+  const conflict = go(
+    { ...first.run, stage: "ci_wait" },
+    { kind: "ci", state: "conflict", failing: [] },
+    stepRubric,
+  );
+  assert.equal(conflict.run.rung, 2);
+  const unnamed = go({ ...first.run, stage: "ci_wait" }, ciRed(), stepRubric);
+  assert.deepEqual(unnamed.run.rejections[1].fingerprints, ["gate||unspecified-ci"]);
+  assert.equal(unnamed.run.rung, 2);
 });
