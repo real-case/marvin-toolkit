@@ -12,6 +12,7 @@ import {
   tierFor,
 } from "./assess.js";
 import type { CiState } from "./ci.js";
+import { parseRetro } from "./learning.js";
 import {
   type Finding,
   type GateReport,
@@ -197,8 +198,23 @@ export const VerifierOutput = z.object({
   findings: z.array(FindingShape),
 });
 
-/** The retro's output is validated where it is applied (`applyRetro`); only its status is read here. */
-export const RetroOutput = z.object({ status: z.literal("done") }).passthrough();
+/**
+ * The retro's status is all the engine reads, but the whole output is checked here with the
+ * parser finalize applies it with (`parseRetro`), so that output finalize would refuse is
+ * invalid output like any other role's: it costs one retry, and then the run finalizes without a
+ * retro, instead of throwing inside finalize.
+ */
+export const RetroOutput = z
+  .object({ status: z.literal("done") })
+  .passthrough()
+  .superRefine((out, ctx) => {
+    try {
+      parseRetro(out);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  });
 
 export const ChildOutputSchemas = {
   planner: PlannerOutput,

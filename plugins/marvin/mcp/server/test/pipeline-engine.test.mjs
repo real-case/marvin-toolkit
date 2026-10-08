@@ -486,14 +486,21 @@ test("a retro that fails twice, or hits a usage limit, still finalizes without a
   assert.deepEqual(second.actions, [{ kind: "work", work: "finalize", data: { retro: null } }]);
   const limited = go(retro, child("retro", null, "limited"));
   assert.equal(limited.run.stage, "finalizing");
-  const done = go(retro, child("retro", { status: "done", summary: "s", lessons: [] }));
-  assert.deepEqual(done.actions, [
-    {
-      kind: "work",
-      work: "finalize",
-      data: { retro: { status: "done", summary: "s", lessons: [] } },
-    },
-  ]);
+  const out = { status: "done", summary: "s", checks: [], proposals: [], lessons: [], prune: [] };
+  const done = go(retro, child("retro", out));
+  assert.deepEqual(done.actions, [{ kind: "work", work: "finalize", data: { retro: out } }]);
+});
+
+test("a retro whose output finalize would refuse costs a retry, then finalizes without one", () => {
+  // Validated where it arrives, like every other role's output, rather than thrown at finalize.
+  const retro = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run;
+  const bad = child("retro", { status: "done", summary: "s", lessons: [] });
+  const first = go(retro, bad);
+  assert.equal(spawnOf(first).role, "retro");
+  assert.equal(first.run.retries.retro, 1);
+  const second = go(first.run, bad);
+  assert.equal(second.run.stage, "finalizing");
+  assert.deepEqual(second.actions, [{ kind: "work", work: "finalize", data: { retro: null } }]);
 });
 
 test("every spawn action decide emits is recorded as the run's last spawn for its role", () => {

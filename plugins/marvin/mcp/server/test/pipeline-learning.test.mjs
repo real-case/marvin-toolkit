@@ -1298,6 +1298,29 @@ test("a run with no PR keeps its retro output in the run dir: nothing is committ
   assert.match(readFileSync(join(fx.runDir, "proposals", "1-marvin.md"), "utf8"), /SKILL\.md/);
 });
 
+test("a retro that produced nothing finalizes as an empty one, with or without a PR", () => {
+  // decide() hands finalize `retro: null` when the retro faulted past its retry, hit a usage
+  // limit or was cancelled. The run still closes, and the spec still ships with its PR.
+  const fx = prFixture();
+  const noPr = makeRun({ ...fx.run, prUrl: null });
+  l.finalizeRun(fx.opts({ run: noPr, retro: null }));
+  assert.deepEqual(JSON.parse(readFileSync(join(fx.runDir, "retro-output.json"), "utf8")), {
+    checks: [],
+    proposals: [],
+    lessons: [],
+    prune: [],
+  });
+
+  const withPr = prFixture();
+  const out = withPr.opts({ retro: null });
+  const shipped = l.finalizeRun({ ...out, addLesson: () => assert.fail("no lessons to add") });
+  assert.equal(shipped.shipped, true);
+  assert.deepEqual(
+    [...shipped.written].sort(),
+    [".marvin/pipeline/calibration.jsonl", SPEC_PATH].sort(),
+  );
+});
+
 test("a run with no PR still refuses a retro that does not validate", () => {
   const fx = prFixture();
   const noPr = makeRun({ ...fx.run, prUrl: null });

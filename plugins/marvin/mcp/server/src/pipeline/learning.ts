@@ -384,6 +384,9 @@ const RetroSchema = z.object({
 export type RetroOutput = z.infer<typeof RetroSchema>;
 export type RetroLesson = RetroOutput["lessons"][number];
 
+/** What a run that has no retro output applies: nothing. */
+const NO_RETRO: RetroOutput = { checks: [], proposals: [], lessons: [], prune: [] };
+
 /**
  * The retro child reads other children's output, so what it returns is untrusted: this is the
  * only way in, and it throws on the first violation, before anything is written.
@@ -808,7 +811,11 @@ export interface FinalizeOptions {
    * HEAD. Not needed for a run without a PR, which touches no git.
    */
   expectedHead: string;
-  /** The retro child's output; untrusted, validated here. */
+  /**
+   * The retro child's output; untrusted, validated here. `null` is the engine's word for a
+   * retro that produced nothing (a fault past its retry, a usage limit, a cancel during the
+   * retro): the run still finalizes, having learned nothing.
+   */
   retro: unknown;
   events: readonly PipelineEvent[];
   /** Ids of the lessons the engine put into the children's prompts. */
@@ -1031,7 +1038,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const { run } = o;
   if (!PLAIN_TOKEN.test(run.id))
     throw new Error(`run id is not a plain token: ${JSON.stringify(run.id)}`);
-  const retro = parseRetro(o.retro);
+  const retro = o.retro === null ? NO_RETRO : parseRetro(o.retro);
   const record = calibrationRecord(run, aggregate(run, o.events), o.exposedLessons);
 
   if (run.prUrl === null) {
