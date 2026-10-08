@@ -315,6 +315,16 @@ export function scanChecks(
   return hits;
 }
 
+/**
+ * The records marvin's own tools write for the task in hand: the spec and its `runs/` journals,
+ * the metrics record task-deliver commits, and the critic receipts. The interactive scope gate
+ * (`spec action: "scope"`) never counts `.marvin/` at all, and without this a pipeline run on
+ * the default config would be rejected for the metrics record its own delivery commits. The rest
+ * of `.marvin/` still counts: the lessons store reaches later children's prompts, so only the
+ * retro writes it, and the config and `pipeline/` are protected paths besides.
+ */
+const MARVIN_RECORDS = /^\.marvin\/(?:task|metrics|critique)\//;
+
 export function undeclaredFiles(
   changed: readonly string[],
   declared: readonly string[],
@@ -322,7 +332,9 @@ export function undeclaredFiles(
 ): string[] {
   const known = new Set(declared);
   const exempt = exemptPattern ? new RegExp(exemptPattern) : null;
-  return [...new Set(changed)].filter((f) => !known.has(f) && !exempt?.test(f));
+  return [...new Set(changed)].filter(
+    (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f),
+  );
 }
 
 /**

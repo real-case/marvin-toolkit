@@ -517,6 +517,39 @@ test("the gate stage passes a declared, clean, committed change", () => {
   assert.deepEqual(g.reportFindings(report), []);
 });
 
+test("the records marvin's own tools write for the task are not undeclared", () => {
+  // task-deliver commits the metrics record, task-implement flips the spec's status and journals
+  // into its runs/ directory, and the planner leaves critic receipts. The interactive scope gate
+  // never counts them either.
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.write(".marvin/metrics/001-demo.md", "record\n");
+  w.write(".marvin/task/001-demo.md", "spec\n");
+  w.write(".marvin/task/runs/demo.progress.md", "journal\n");
+  w.write(".marvin/critique/001-demo.md", "receipt\n");
+  w.commit();
+  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+  assert.deepEqual(report.undeclared, []);
+  assert.equal(report.passed, true);
+});
+
+test("the rest of .marvin/ stays undeclared: the lessons store and every protected path", () => {
+  // Lessons reach later children's prompts, so only the retro writes them, through finalize.
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.write(".marvin/memory/planted.md", "lesson\n");
+  w.write(".marvin/config.json", "{}\n");
+  w.write(".marvin/task-notes.md", "not the task directory\n");
+  w.commit();
+  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+  assert.deepEqual(report.undeclared, [
+    ".marvin/config.json",
+    ".marvin/memory/planted.md",
+    ".marvin/task-notes.md",
+  ]);
+  assert.equal(report.passed, false);
+});
+
 test("the gate stage finds committed protected paths with awkward names", () => {
   const w = runWorktree();
   w.write(".husky/pré-commit", "echo ok\n");
