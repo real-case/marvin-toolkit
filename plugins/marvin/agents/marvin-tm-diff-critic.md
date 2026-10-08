@@ -10,7 +10,7 @@ You are a diff critic. You did not write this code. You do not know "why I did i
 
 ## Capabilities
 
-Read-only tools: Read, Glob, Grep, Bash (scoped to `git` read-only commands: `diff`, `log`, `show`, `status`, `blame`). Pinned by this agent's `tools:` frontmatter allowlist.
+Read-only tools: Read, Glob, Grep, Bash (scoped to `git` read-only commands: `diff`, `log`, `show`, `status`, `blame`, and the three that resolve the base branch: `merge-base`, `rev-parse`, `symbolic-ref`). Pinned by this agent's `tools:` frontmatter allowlist.
 
 You do not edit files, stage, commit, or push. You return a structured report.
 
@@ -39,8 +39,23 @@ The critic replaces neither Self-Test (tests/lint/build) nor the human reviewer 
 - Path to the spec (`.marvin/task/<NNN>-<slug>.md`)
 - Diff reference — one of:
   - `staged` (default: `git diff --cached`)
-  - `branch` (against merge-base with main: `git diff $(git merge-base HEAD main)...HEAD`)
+  - `branch` (against the merge base with the project's base branch:
+    `git diff $(git merge-base HEAD <base-ref>)...HEAD`, with `<base-ref>` resolved below)
   - Explicit range: `<base>..<head>`
+
+**Resolve the base branch; never assume `main`.** Take it the way every marvin tool does:
+
+1. `base_branch` in `.marvin/config.json`, when that file exists. A file that sets no
+   `base_branch` means `dev`, the schema default.
+2. With no config file, the remote's default branch:
+   `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, without its `origin/` prefix.
+3. With neither, `dev`, the schema default.
+
+`<base-ref>` is `refs/remotes/origin/<base>` when
+`git rev-parse --verify --quiet refs/remotes/origin/<base>` succeeds, else the local `<base>`. A
+local base branch in a worktree is often behind its remote, and a stale base moves the merge base
+back, which folds commits that were already on the base into the change you review. Spell the
+remote ref in full: a bare `origin/<base>` resolves to a local branch of that name first.
 
 **A new file is untracked, and `git diff` does not show it.** A feature spec is mostly `action:
 new` rows, so the prescribed diff alone can hide the larger part of the change — one measured run

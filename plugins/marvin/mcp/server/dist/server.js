@@ -32820,18 +32820,32 @@ function firstHeading2(text) {
 function errText(err3) {
   return (err3 instanceof Error ? err3.message : String(err3)).split("\n")[0].slice(0, 120);
 }
-function nextSpecNumber(corpus) {
+function specFilenameId(filename) {
+  if (!filename.endsWith(".md") || filename === "verification.md") return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[1] ?? null;
+}
+function specFilenameNumber(filename) {
+  const id = specFilenameId(filename);
+  return id === null ? null : Number(id);
+}
+function specFilenameSlug(filename) {
+  if (specFilenameId(filename) === null) return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[2] ?? null;
+}
+function nextSpecNumber(corpus, elsewhere = []) {
   const numbers = [
     ...corpus.records.map((r) => r.number),
-    ...corpus.malformed.map((m) => m.number)
+    ...corpus.malformed.map((m) => m.number),
+    ...elsewhere.map(specFilenameNumber)
   ].filter((n) => n !== null);
   return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
 }
-function specIdWidth(corpus) {
-  const observed = (filename) => SPEC_PREFIX_RE.exec(filename.replace(/\.md$/, ""))?.[1]?.length ?? 0;
+function specIdWidth(corpus, elsewhere = []) {
+  const observed = (filename) => specFilenameId(filename)?.length ?? 0;
   const widths = [
     ...corpus.records.map((r) => r.id?.length ?? 0),
-    ...corpus.malformed.map((m) => observed(m.filename))
+    ...corpus.malformed.map((m) => observed(m.filename)),
+    ...elsewhere.map(observed)
   ];
   return Math.max(3, ...widths);
 }
@@ -36742,7 +36756,7 @@ var SpecInput = external_exports.object({
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   ),
   action: external_exports.enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"]).optional().describe(
-    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
+    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision; numbers the base branch already holds (origin/<base_branch>, as last fetched) are counted too, and a local draft whose number or slug the base holds under another filename is reported (next.base.taken, next.base.collision). list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
   ),
   mode: external_exports.enum(["dor", "seal", "scope"]).optional().describe(
     "Deprecated synonym for `action`, kept so shipped callers keep working. Same three values; `action` wins when both are passed and they agree, and a disagreeing pair is rejected rather than answered for."
@@ -36779,7 +36793,7 @@ var SpecInputStrict = SpecInput.strict(
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision; a number already taken on the base branch counts as taken, and a draft whose number or slug the base branch claimed meanwhile is reported) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -36899,7 +36913,10 @@ function readCorpus(action, input, env2, projectRoot) {
       `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
     );
   }
-  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  const { config: config2 } = loadConfig(
+    specConfigPath(env2, projectRoot),
+    action === "next" ? projectRoot : void 0
+  );
   const dir = resolveSpecDir(projectRoot, config2.spec);
   const corpus = readSpecCorpus(dir);
   const payload = { action, dir: { rel: dir.rel, source: dir.source } };
@@ -36909,11 +36926,14 @@ function readCorpus(action, input, env2, projectRoot) {
     `**Directory:** \`${dir.rel}\` (${dir.source})`
   ];
   if (action === "next") {
-    const width = specIdWidth(corpus);
-    const number3 = nextSpecNumber(corpus);
+    const base = specFilenamesOnBase(projectRoot, dir, config2.base_branch);
+    const elsewhere = base?.filenames ?? [];
+    const width = specIdWidth(corpus, elsewhere);
+    const number3 = nextSpecNumber(corpus, elsewhere);
     const id = formatSpecId(number3, width);
     const filename = slug ? `${id}-${slug}.md` : null;
     const collision = slug ? corpus.records.find((r) => r.slug === slug) ?? null : null;
+    const claims = base ? baseClaims(corpus, base.filenames, slug) : null;
     payload.next = {
       number: number3,
       id,
@@ -36924,10 +36944,25 @@ function readCorpus(action, input, env2, projectRoot) {
         filename: collision.filename,
         path: collision.path,
         status: collision.status
-      } : null
+      } : null,
+      // Null means the base branch was NOT read (no repository, no origin, no
+      // such ref) and the number is the local directory's alone — never "the
+      // base holds nothing", which is `highest: null` on a ref that was read.
+      base: base ? { ref: base.ref, highest: base.highest, ...claims } : null
     };
     lines.push(
       `**Next number:** ${number3} \u2192 \`${id}\` (width ${width})`,
+      ...base ? [
+        `**Base branch:** \`${base.ref}\` as last fetched \u2014 ` + (base.highest === null ? "no numbered spec there" : `highest there \`${formatSpecId(base.highest, width)}\``)
+      ] : [],
+      ...base && claims ? [
+        ...claims.taken.map(
+          (t) => `\u26A0\uFE0F Number \`${formatSpecId(t.number, width)}\` is already taken on \`${base.ref}\` by \`${t.filename}\` (local \`${t.local}\`): renumber this draft before it merges.`
+        ),
+        ...claims.collision ? [
+          `\u26A0\uFE0F **Slug collision on the base branch** \u2014 \`${base.ref}\` holds \`${claims.collision.filename}\`, which this checkout does not have yet. Choose a different slug, or supersede that spec once it is merged here.`
+        ] : []
+      ] : [],
       ...filename ? [`**Filename:** \`${dir.rel}/${filename}\``] : [],
       ...collision ? [
         "",
@@ -36952,6 +36987,35 @@ function readCorpus(action, input, env2, projectRoot) {
     );
   }
   return corpusResult(lines, payload);
+}
+function specFilenamesOnBase(projectRoot, dir, baseBranch) {
+  const ref = `origin/${baseBranch}`;
+  const rel = relative(projectRoot, dir.abs).split(sep).join(posix.sep) || ".";
+  const listing = git(["ls-tree", "-z", `refs/remotes/${ref}`, "--", `${rel}/`], projectRoot);
+  if (!listing.ok) return null;
+  const filenames = [];
+  for (const entry of listing.value.split("\0")) {
+    const tab = entry.indexOf("	");
+    if (tab < 0 || !entry.startsWith("100")) continue;
+    filenames.push(posix.basename(entry.slice(tab + 1)));
+  }
+  const numbers = filenames.map(specFilenameNumber).filter((n) => n !== null);
+  return { ref, filenames, highest: numbers.length > 0 ? Math.max(...numbers) : null };
+}
+function baseClaims(corpus, onBase, slug) {
+  const baseNames = new Set(onBase);
+  const local = [...corpus.records, ...corpus.malformed];
+  const drafts = local.filter((f) => f.number !== null && !baseNames.has(f.filename));
+  const taken = onBase.flatMap((filename) => {
+    const number3 = specFilenameNumber(filename);
+    if (number3 === null) return [];
+    return drafts.filter((f) => f.number === number3).map((f) => ({ number: number3, filename, local: f.filename }));
+  }).sort(
+    (a, b) => a.number - b.number || a.filename.localeCompare(b.filename) || a.local.localeCompare(b.local)
+  );
+  const localNames = new Set(local.map((f) => f.filename));
+  const claimed = slug ? onBase.find((f) => !localNames.has(f) && specFilenameSlug(f) === slug) : void 0;
+  return { taken, collision: claimed ? { filename: claimed } : null };
 }
 function specConfigPath(env2, projectRoot) {
   return projectRoot === env2.projectDir ? env2.configPath : join(projectRoot, ".marvin", "config.json");
@@ -38625,29 +38689,35 @@ var LessonsInput = external_exports.object({
   limit: external_exports.number().int().positive().max(50).optional(),
   // prune
   slug: external_exports.string().optional().describe("prune: the lesson to delete \u2014 a slug from the candidate list"),
-  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form")
+  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form"),
+  // every action
+  projectRoot: external_exports.string().optional().describe(
+    "Project root whose .marvin/memory store this call reads or writes. Defaults to CLAUDE_PROJECT_DIR / cwd."
+  )
 });
 function buildLessonsTool(server, env2) {
   return defineTool({
     name: "lessons",
-    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation. Every action takes an optional projectRoot \u2014 a session working in a git worktree passes its own root, or it reads and writes the store of the checkout the server was started in.",
     inputSchema: LessonsInput,
     handler: (input) => dispatch2(server, env2, input)
   });
 }
 async function dispatch2(server, env2, input) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
+  const memoryDir = projectScopedDir(env2, projectRoot, env2.memoryDir, "memory");
   switch (input.action) {
     case "add":
-      return runAdd(env2, input);
+      return runAdd(memoryDir, input);
     case "search":
-      return runSearch(env2, input);
+      return runSearch(memoryDir, input);
     case "stats":
-      return runStats(env2);
+      return runStats(memoryDir);
     case "prune":
-      return runPrune(server, env2, input);
+      return runPrune(server, memoryDir, input);
   }
 }
-function runAdd(env2, input) {
+function runAdd(memoryDir, input) {
   const missing = [];
   if (!input.type) missing.push("type");
   if (!input.title?.trim()) missing.push("title");
@@ -38658,7 +38728,7 @@ function runAdd(env2, input) {
     );
   }
   if (!input.force) {
-    const dup = findNearDuplicate(env2.memoryDir, input.title.trim());
+    const dup = findNearDuplicate(memoryDir, input.title.trim());
     if (dup) {
       return err2(
         `Near-duplicate of existing lesson **${dup.slug}** \u2014 "${dup.title}" (\`${dup.type}\`, ${dup.created}). Nothing written. Extend that lesson instead, or pass \`force: true\` to add this one anyway.`
@@ -38666,7 +38736,7 @@ function runAdd(env2, input) {
     }
   }
   const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
-  const { slug, path } = addLesson(env2.memoryDir, {
+  const { slug, path } = addLesson(memoryDir, {
     type: input.type,
     title: input.title.trim(),
     body: input.body,
@@ -38679,8 +38749,8 @@ File: \`${path}\`
 Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
   );
 }
-function runSearch(env2, input) {
-  const lessons = searchLessons(env2.memoryDir, {
+function runSearch(memoryDir, input) {
+  const lessons = searchLessons(memoryDir, {
     ...input.query ? { query: input.query } : {},
     ...input.type ? { type: input.type } : {},
     ...input.limit ? { limit: input.limit } : {}
@@ -38693,8 +38763,8 @@ function runSearch(env2, input) {
   }
   return ok4(renderLessons(lessons));
 }
-function runStats(env2) {
-  const stats = lessonsStats(env2.memoryDir);
+function runStats(memoryDir) {
+  const stats = lessonsStats(memoryDir);
   if (stats.total === 0) {
     return {
       content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
@@ -38717,13 +38787,13 @@ function runStats(env2) {
     structuredContent: stats
   };
 }
-async function runPrune(server, env2, input) {
+async function runPrune(server, memoryDir, input) {
   if (!input.slug) {
-    const total = readAllLessons(env2.memoryDir).length;
+    const total = readAllLessons(memoryDir).length;
     if (total === 0) {
       return ok4("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
     }
-    const { stale, duplicates } = pruneCandidates(env2.memoryDir);
+    const { stale, duplicates } = pruneCandidates(memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok4(
         `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS2} days) or duplicated.`
@@ -38747,7 +38817,7 @@ async function runPrune(server, env2, input) {
     );
     return ok4(out.join("\n").trimEnd());
   }
-  const target = readAllLessons(env2.memoryDir).find((l) => l.slug === input.slug);
+  const target = readAllLessons(memoryDir).find((l) => l.slug === input.slug);
   if (!target) {
     return err2(
       `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. Call \`action: "prune"\` with no slug to list the candidates.`
@@ -38766,7 +38836,7 @@ async function runPrune(server, env2, input) {
     );
     if (answer?.delete !== "yes") return ok4("Cancelled \u2014 no changes made.");
   }
-  const deleted = deleteLesson(env2.memoryDir, target.slug);
+  const deleted = deleteLesson(memoryDir, target.slug);
   if (!deleted) return err2(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
   return ok4(
     `Deleted lesson **${target.slug}** ("${target.title}").
@@ -38902,12 +38972,11 @@ function runSummary(env2, input) {
   );
   const gates = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config2.base_branch);
-  const lessons = searchLessons(env2.memoryDir, { query: slug, limit: 10 }).map(
-    (l) => ({
-      id: l.slug,
-      title: l.title
-    })
-  );
+  const memoryDir = projectScopedDir(env2, projectRoot, env2.memoryDir, "memory");
+  const lessons = searchLessons(memoryDir, { query: slug, limit: 10 }).map((l) => ({
+    id: l.slug,
+    title: l.title
+  }));
   const links = buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings);
   const summary = {
     slug,
@@ -39060,7 +39129,7 @@ var CRITIC_LABELS = {
   "marvin-tm-diff-critic": "diff critic"
 };
 function critiqueDirFor(env2, projectRoot) {
-  return projectRoot === env2.projectDir ? env2.critiqueDir : join(projectRoot, ".marvin", "critique");
+  return projectScopedDir(env2, projectRoot, env2.critiqueDir, "critique");
 }
 function critiqueLinks(env2, projectRoot, slug) {
   const dir = critiqueDirFor(env2, projectRoot);

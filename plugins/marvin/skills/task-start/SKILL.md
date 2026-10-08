@@ -551,9 +551,12 @@ Three rules make the receipt trustworthy:
 4. **Re-check the collision, and skip the draft this run created.** Call `action: "next"` once more
    with the same slug and match its reported collision against the draft's exact filename: a run
    that does not skip the draft this run created collides with itself, every time. A collision on
-   any *other* file means a parallel session claimed the slug or the number while intake was
-   running — renumber or rename the draft, then record the new path in the journal
-   (`action: "progress"`, with the new `draftPath`).
+   any *other* file means a parallel session claimed the slug while intake was running, and so does
+   a `next.base.collision`, a file of that slug the base branch holds and this checkout lacks. A
+   `next.base.taken` entry whose `local` is the draft's filename means the base branch claimed the
+   draft's number. Either way, renumber or rename the draft (the same answer's `next` is a free
+   number), then record the new path in the journal (`action: "progress"`, with the new
+   `draftPath`).
 
 5. **Write & seal.** This is an **edit of the file already on disk**, not a write of a new one.
    Confirm `created` is today and `tracker`/`supersedes` are recorded, then
@@ -676,8 +679,9 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
 2. **The directory and the collision** — both settled at step 1.5. Re-check the collision once with
    `action: "next"`, and **skip the draft this run created**, matched by its exact filename; a
-   collision on any other file means a parallel session claimed the slug while intake ran, so
-   renumber or rename and record the new path in the journal.
+   collision on any other file, or a `next.base.collision`, means a parallel session claimed the
+   slug while intake ran, and a `next.base.taken` entry whose `local` is the draft's filename means
+   the base branch claimed its number, so renumber or rename and record the new path in the journal.
 3. **The number** — allocated at step 1.5. The draft already carries it; do not allocate a second one.
 4. **Write & seal** — **same as 9F item 5**: an in-place edit of the draft that must
    **flip `status: draft` to `status: ready`**, re-running the `spec` tool on the written file

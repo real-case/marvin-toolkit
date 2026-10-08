@@ -7,7 +7,7 @@ import {
   type ToolResult,
 } from "@marvin-toolkit/mcp-shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ServerEnv } from "../lib/env.js";
+import { projectScopedDir, type ServerEnv } from "../lib/env.js";
 import {
   addLesson,
   deleteLesson,
@@ -46,6 +46,13 @@ const LessonsInput = z.object({
     .boolean()
     .optional()
     .describe("prune: confirm the deletion without an interactive form"),
+  // every action
+  projectRoot: z
+    .string()
+    .optional()
+    .describe(
+      "Project root whose .marvin/memory store this call reads or writes. Defaults to CLAUDE_PROJECT_DIR / cwd.",
+    ),
 });
 
 type LessonsInput = z.infer<typeof LessonsInput>;
@@ -59,30 +66,50 @@ export function buildLessonsTool(server: McpServer, env: ServerEnv): AnyToolDef 
       "review pass, or debug session — guarded against near-duplicate titles (override with force:true); " +
       "action:'search' recalls relevant prior lessons (query and/or type) — call it before writing code " +
       "so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' " +
-      "lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
+      "lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation. " +
+      "Every action takes an optional projectRoot — a session working in a git worktree passes its own " +
+      "root, or it reads and writes the store of the checkout the server was started in.",
     inputSchema: LessonsInput,
     handler: (input) => dispatch(server, env, input),
   });
 }
 
+/**
+ * One resolution of the store per call, before any action reads it.
+ *
+ * The startup `memoryDir` is fixed from the directory the server was spawned in,
+ * and a session working in a git worktree talks to a server spawned for a
+ * different checkout: without a root of its own, every lesson it captured landed
+ * in, and every search read, the other tree's `.marvin/memory`. The order is the
+ * one `spec`, `verify`, `metrics` and `summary` already follow — `projectRoot`,
+ * else the startup root — and the directory is derived by the shared
+ * `projectScopedDir`, so an unchanged root keeps the startup directory and with
+ * it the `MARVIN_MEMORY_DIR` override.
+ *
+ * Resolving here rather than in each action is what makes `add` and its
+ * near-duplicate guard consult the same store: a guard that searched one tree
+ * while the write went to another would wave every duplicate through.
+ */
 async function dispatch(
   server: McpServer,
   env: ServerEnv,
   input: LessonsInput,
 ): Promise<ToolResult> {
+  const projectRoot = input.projectRoot ?? env.projectDir;
+  const memoryDir = projectScopedDir(env, projectRoot, env.memoryDir, "memory");
   switch (input.action) {
     case "add":
-      return runAdd(env, input);
+      return runAdd(memoryDir, input);
     case "search":
-      return runSearch(env, input);
+      return runSearch(memoryDir, input);
     case "stats":
-      return runStats(env);
+      return runStats(memoryDir);
     case "prune":
-      return runPrune(server, env, input);
+      return runPrune(server, memoryDir, input);
   }
 }
 
-function runAdd(env: ServerEnv, input: LessonsInput): ToolResult {
+function runAdd(memoryDir: string, input: LessonsInput): ToolResult {
   const missing: string[] = [];
   if (!input.type) missing.push("type");
   if (!input.title?.trim()) missing.push("title");
@@ -96,7 +123,7 @@ function runAdd(env: ServerEnv, input: LessonsInput): ToolResult {
   // Near-duplicate guard (ADR-0028): search before write, warn instead of
   // double-writing. `force: true` is the deliberate override.
   if (!input.force) {
-    const dup = findNearDuplicate(env.memoryDir, input.title!.trim());
+    const dup = findNearDuplicate(memoryDir, input.title!.trim());
     if (dup) {
       return err(
         `Near-duplicate of existing lesson **${dup.slug}** — "${dup.title}" (\`${dup.type}\`, ${dup.created}). ` +
@@ -112,7 +139,7 @@ function runAdd(env: ServerEnv, input: LessonsInput): ToolResult {
         .filter(Boolean)
     : [];
 
-  const { slug, path } = addLesson(env.memoryDir, {
+  const { slug, path } = addLesson(memoryDir, {
     type: input.type as LessonType,
     title: input.title!.trim(),
     body: input.body!,
@@ -127,8 +154,8 @@ function runAdd(env: ServerEnv, input: LessonsInput): ToolResult {
   );
 }
 
-function runSearch(env: ServerEnv, input: LessonsInput): ToolResult {
-  const lessons = searchLessons(env.memoryDir, {
+function runSearch(memoryDir: string, input: LessonsInput): ToolResult {
+  const lessons = searchLessons(memoryDir, {
     ...(input.query ? { query: input.query } : {}),
     ...(input.type ? { type: input.type } : {}),
     ...(input.limit ? { limit: input.limit } : {}),
@@ -149,8 +176,8 @@ function runSearch(env: ServerEnv, input: LessonsInput): ToolResult {
 /** Counts by type and tag — a dashboard feed (ADR-0028), so the payload is
  * also emitted as `structuredContent` conforming to the `LessonsStats`
  * contract (ADR-0024). */
-function runStats(env: ServerEnv): ToolResult {
-  const stats = lessonsStats(env.memoryDir);
+function runStats(memoryDir: string): ToolResult {
+  const stats = lessonsStats(memoryDir);
   if (stats.total === 0) {
     return {
       content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
@@ -189,15 +216,15 @@ function runStats(env: ServerEnv): ToolResult {
  */
 async function runPrune(
   server: McpServer,
-  env: ServerEnv,
+  memoryDir: string,
   input: LessonsInput,
 ): Promise<ToolResult> {
   if (!input.slug) {
-    const total = readAllLessons(env.memoryDir).length;
+    const total = readAllLessons(memoryDir).length;
     if (total === 0) {
       return ok("No lessons captured yet in `.marvin/memory` — nothing to prune.");
     }
-    const { stale, duplicates } = pruneCandidates(env.memoryDir);
+    const { stale, duplicates } = pruneCandidates(memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok(
         `No prune candidates — none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS} days) or duplicated.`,
@@ -224,7 +251,7 @@ async function runPrune(
     return ok(out.join("\n").trimEnd());
   }
 
-  const target = readAllLessons(env.memoryDir).find((l) => l.slug === input.slug);
+  const target = readAllLessons(memoryDir).find((l) => l.slug === input.slug);
   if (!target) {
     return err(
       `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. ` +
@@ -247,7 +274,7 @@ async function runPrune(
     if (answer?.delete !== "yes") return ok("Cancelled — no changes made.");
   }
 
-  const deleted = deleteLesson(env.memoryDir, target.slug);
+  const deleted = deleteLesson(memoryDir, target.slug);
   if (!deleted) return err(`Lesson \`${target.slug}\` disappeared before deletion — nothing done.`);
   return ok(
     `Deleted lesson **${target.slug}** ("${target.title}").\n` +
