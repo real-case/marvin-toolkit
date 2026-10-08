@@ -76,7 +76,13 @@ export function classify(i: {
   const status = String(structured.status ?? "");
   if (!STRUCTURED.has(status))
     return { ...meta, structured, outcome: "crashed", detail: `unknown status "${status}"` };
-  return { ...meta, structured, outcome: status as Outcome, detail: "" };
+  // A child that gives up says why in `failure`, and the halt raised from this result shows
+  // `detail` to the orchestrator, so it is the child's reason rather than nothing.
+  const failure =
+    status === "failed" && typeof structured.failure === "string"
+      ? structured.failure.trim().slice(0, 200)
+      : "";
+  return { ...meta, structured, outcome: status as Outcome, detail: failure };
 }
 
 export function readChildState(runDir: string, name: string, nowMs: number) {

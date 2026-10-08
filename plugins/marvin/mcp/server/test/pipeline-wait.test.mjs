@@ -47,6 +47,19 @@ test("classification covers every terminal state", () => {
   assert.equal(c(0, ok({ status: "done" })), "done");
 });
 
+test("a child's own failed status carries its stated reason, the one line a halt can show", () => {
+  const c = (structured) =>
+    wait.classify({ exitCode: 0, result: ok(structured), idleMs: 0, stallMs: 900_000 });
+  const stated = c({ status: "failed", summary: "s", failure: "  no spec tool\n" });
+  assert.deepEqual([stated.outcome, stated.detail], ["failed", "no spec tool"]);
+  assert.equal(c({ status: "failed", summary: "s", failure: "x".repeat(500) }).detail.length, 200);
+  // A reason that is not a string, or none at all, is no reason.
+  assert.equal(c({ status: "failed", summary: "s", failure: 7 }).detail, "");
+  assert.equal(c({ status: "failed", summary: "s" }).detail, "");
+  // Only a failure says why; every other status keeps its empty detail.
+  assert.equal(c({ status: "done", summary: "s", failure: "ignored" }).detail, "");
+});
+
 test("cache reads are reported for the D13 measurement", () => {
   assert.equal(
     wait.classify({ exitCode: 0, result: ok({ status: "done" }), idleMs: 0, stallMs: 1 })
