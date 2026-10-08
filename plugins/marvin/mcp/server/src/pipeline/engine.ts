@@ -233,7 +233,7 @@ function parseOutput<T extends { status: string }>(
   return { data: parsed.data };
 }
 
-function readOutput(role: Role, result: WaitResult): ChildOutput | { issue: string } {
+function readOutput(role: Role, result: WaitResult, run: Run): ChildOutput | { issue: string } {
   switch (role) {
     case "planner": {
       const r = parseOutput(PlannerOutput, result);
@@ -245,7 +245,14 @@ function readOutput(role: Role, result: WaitResult): ChildOutput | { issue: stri
     }
     case "executor": {
       const r = parseOutput(ExecutorOutput, result);
-      return "issue" in r ? r : { role, data: r.data };
+      if ("issue" in r) return r;
+      // The one rule the schema cannot state, because it depends on the run: the CI stage polls
+      // the run's pull request and has no other way to find one, so a `done` must leave the run
+      // with a PR. A later iteration pushes to the PR an earlier one opened and may omit it.
+      if (r.data.status === "done" && !r.data.pr_url && run.prUrl === null) {
+        return { issue: "pr_url: done without a pull request, and the run has none" };
+      }
+      return { role, data: r.data };
     }
     case "verifier": {
       const r = parseOutput(VerifierOutput, result);
@@ -366,6 +373,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
   const sealedList = (r: Run) =>
     r.sealed.map((s) => `- ${s.path} (${s.criteria.join(", ")})`).join("\n") || "(none)";
   const executorCtx = (r: Run, fs: readonly Finding[]) => ({
+    // The run id and tier go into the PR body's Pipeline section, written by pr-create.
+    run: r.id,
+    tier: r.tier ?? r.stageA,
     iteration: String(r.iteration),
     branch: r.branch ?? "",
     spec: r.specPath ?? "",
@@ -567,7 +577,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     if (CHILD_FAULTS.has(result.outcome)) {
       fault = { kind: result.outcome, reason: `${role} ${result.outcome}`, detail: result.detail };
     } else {
-      const read = readOutput(role, result);
+      const read = readOutput(role, result, run);
       if ("issue" in read) {
         fault = {
           kind: "invalid",

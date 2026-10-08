@@ -13,4 +13,4 @@ Make the branch satisfy the sealed spec in the TASK CONTEXT with every configure
 - If the PR conflicts with the base, merge origin/<base> into the branch (never rebase, never force-push).
 - Trust no earlier report, including your own: read the code.
 - After you finish, the pipeline runs its own gates, scope check and hash check before any review; anything red comes back to you as a finding.
-- Finish with the executor JSON: `gates` as you ran them, `head_sha` after the push, `pr_url` = the draft PR's github.com URL (omit it only while no PR exists), and `claims` = concrete file-level statements a reviewer should check. Status "done" carries no questions and no dispute.
+- Finish with the executor JSON: `gates` as you ran them, `head_sha` after the push, `pr_url` = the draft PR's github.com URL, which every "done" carries (the pipeline rejects a "done" that leaves the run without a pull request), and `claims` = concrete file-level statements a reviewer should check. Status "done" carries no questions and no dispute.

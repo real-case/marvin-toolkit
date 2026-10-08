@@ -181,6 +181,31 @@ test("sealing: success starts the executor, repeated rejection halts", () => {
   assert.equal(judgmentOf(halt), "halt");
 });
 
+test("an executor done that names no pull request is a fault while the run has none", () => {
+  // The CI stage reads the run's PR and has no other way to find one, so a `done` that leaves
+  // the run without a PR would reach fetchCi with nothing to poll. It costs a retry like any
+  // other invalid output, then halts.
+  retryThenHalt(
+    executingRun(),
+    child("executor", executorDone({ pr_url: undefined })),
+    "executor",
+    /done without a pull request/,
+  );
+  // A later iteration may push to the PR an earlier one opened and name it again or not.
+  const later = go(
+    at("executing", { iteration: 2, prUrl: PR }),
+    child("executor", executorDone({ pr_url: undefined })),
+  );
+  assert.equal(later.run.stage, "gating");
+  assert.equal(later.run.prUrl, PR);
+});
+
+test("an executor's context names its run and its tier", () => {
+  const ctx = spawnOf(approve(at("awaiting_approval", { tier: "light" }))).context;
+  assert.equal(ctx.run, "r1");
+  assert.equal(ctx.tier, "light");
+});
+
 test("executor done goes to the gate; a failed gate escalates the next executor", () => {
   const d = go(at("executing", { iteration: 1 }), child("executor", executorDone()));
   assert.equal(d.run.stage, "gating");

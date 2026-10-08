@@ -487,3 +487,106 @@ If you truly cannot proceed (missing dependency, broken environment, infrastruct
 1. Stop. Do not attempt `/marvin:task-verify` or `/marvin:task-deliver`.
 2. Summarize for the user: what you tried, what blocked you, what you recommend they do.
 3. Leave the working tree as-is so the user can inspect or continue manually.
+
+## Pipeline mode
+
+Active only when `MARVIN_PIPELINE=1` is set: this session is the executor child of the autopilot
+pipeline (`docs/proposals/autopilot-implementation-plan.md`), started headless by its engine, and
+the role prompt that launched it says so. Every step above applies except where this section
+overrides it. An interactive session never sets the variable, so none of this reaches one.
+
+No human watches this session, and a question reaches the orchestrator only as a `needs_input`
+result. Each place above that asks, confirms or hands back to the user resolves as follows; any
+other would-be question is decided the conservative way and recorded as a SPEC GAP. The session's
+last message is the executor object.
+
+- **Steps 1–2 — `$ARGUMENTS` alone, and no seal call.** Resolve the spec from the argument only,
+  never from the branch and never by prompting: the pipeline names the run branch, not
+  `task/<slug>`. An argument that resolves to no spec or to a `draft` ends the session with status
+  `failed`. Skip the `spec` seal call: the pipeline's guard refuses it to every role but the
+  planner. The planner sealed this spec before the orchestrator approved it, and that seal created
+  its metrics record. The contract is still checked: `verify` `action: "oracles"` refuses an
+  unsealed or tampered one before it runs anything, and that refusal also ends the session with
+  `failed`. Never edit the `spec-contract`.
+- **Step 2.5 — Resume, never Archive.** The planner's intake journals into this spec, so a journal
+  is the normal case. Take Resume without asking; an archive boundary would discard that record.
+- **Step 3 — no handshake.** Read the context as written and skip the summary: nobody confirms it.
+- **No hands-off dispatch.** This session is the pipeline's executor, so never dispatch
+  `marvin-tm-executor`, whatever the Guidelines above offer for hands-off work: that agent opens a
+  ready pull request rather than a draft and runs the diff critic the pipeline replaces. Do the
+  steps here yourself.
+- **Sealed acceptance tests are read-only.** The TASK CONTEXT lists them. Never edit, rename,
+  delete or regenerate one: a guard refuses the edit, and the pipeline hashes them and blocks on a
+  changed one. A sealed file a red-phase criterion names already exists and was proved red before
+  this session started, so record its run as written and do not write it. A sealed test you believe
+  wrong is a `dispute`, never a change.
+- **Step 6F / 9B — the scope gate's `allow`.** The pipeline's gate stage judges the committed diff
+  against three declared sets: the contract `files`, the sealed tests the TASK CONTEXT lists, and
+  the JavaScript regex `pipeline.scope_exempt_pattern` in `.marvin/config.json`. It reports any
+  other changed path as a major finding whatever a SPEC GAP says. The `spec` `action: "scope"` call
+  knows only the contract `files` and `scope.exempt`, so a FAIL naming a listed sealed test or a
+  path that regex matches is not scope creep: re-run it with `allow` set to exactly those paths, and
+  record no SPEC GAP for them. No other path goes into `allow`. Revert every path still outside; if
+  a criterion cannot be met without one, finish with status `needs_input` naming the file and the
+  criterion.
+- **Step 6F / 9B — the self-check.** Call the `verify` tool yourself rather than
+  `/marvin:task-verify`, with the spec's `specSlug`, `mode: feature` or `bug`, and
+  `execution: "sequential"`: parallel gates contend for the same cores and time out tests the
+  change never touched. On every full pass, pass neither `gates` nor `only`, because an explicit
+  `gates` list leaves `gates.extra` out. `verify` then runs the stack's detected gates, with a gate
+  `.marvin/config.json` declares replacing the detected one by name, plus `gates.extra`. That
+  covers every gate the pipeline's gate stage runs, which is the declared gates and the extras,
+  with the same commands. A standard gate the config leaves out still runs here with its detected
+  command although the stage never runs it; its red still fails the delivery gate, so fix it like
+  any other. The lint-first pass and a round's single-gate re-run keep their `only`. Then, for
+  either spec type, run every criterion's oracle: `action: "oracles"`, the `specSlug`,
+  `expect: "pass"` and no `criteria`. The gate stage runs all of them, so a red one found here is a
+  rejection saved. This is a self-check, and the engine re-runs everything after you.
+- **Step 6F / 9B — skip the critic dispatch.** `marvin-tm-diff-critic` does not run: the pipeline's
+  gate stage and an independent read-only verifier replace it, so there is no dispatch to record and
+  no receipt to write. The pull request reports the critic as skipped, which is true.
+- **The journal comes before the final verify.** Write every progress entry before the final full
+  `verify` run. When the spec lives outside `.marvin/`, in a host directory such as `specs/`, the
+  delivery gate's freshness digest counts the spec file and its `runs/` progress journal, so an
+  entry written after that run turns its PASS stale. Nothing under `.marvin/` counts.
+- **The fix cycle is unchanged:** three rounds per loop and `marvin-debugger` at round 3.
+- **Step 6B — a regression test that already passes.** Do not ask. Tighten a test you wrote until it
+  fails for the bug; if it cannot fail, or it is sealed, finish with status `needs_input`, a sealed
+  one as a `dispute`. Never apply a fix to a bug no test shows.
+- **At a loop's limit**, wherever the steps above stop and hand back, deliver without the delivery
+  gate: do not call `verify` `action: "gate"`, which would refuse the red run anyway. Commit the work
+  through `/marvin:commit`, then push and open the **draft** pull request through
+  `/marvin:pr-create`, both in their pipeline modes; its `## Verification` shows the red gates and
+  its `## Notes` carries each open item as its `Deferred:` or `Blocked:` line. Finish with status
+  `done`, the `pr_url`, the red gates as `fail` and the open items in `summary`. The pull request is
+  needed whatever the pipeline's gate stage decides next. That stage re-runs a failing gate once and
+  runs only the declared gates, so it can pass a tree this session saw red and send it on to the
+  verifier and CI, which read the pull request. If it rejects the tree instead, a fresh executor
+  starts on its findings one escalation rung up, whereas `failed` would only repeat this attempt
+  unchanged.
+- **A by-product SPEC GAP** names its pattern in the gap line instead of pointing anyone at
+  `/marvin:track-config`; the run's retro reads the gaps.
+- **The Blocker protocol** finishes with status `failed` and a `failure` that says what you tried and
+  what blocked you. Leave the working tree as it is.
+- **Steps 7F / 10B** invoke `/marvin:task-deliver`, which has a pipeline mode of its own.
+- **Progress** goes to the orchestrator in the heartbeat reports the role prompt describes, not as
+  narration of each step.
+
+**The executor object.** The output schema the pipeline passed decides its exact shape; these are
+the fields this skill fills:
+
+- `status` — `done` once the delivery ran or a loop reached its limit, both of which leave a pull
+  request; `needs_input` with `questions` (each an `id`, `text`, `recommendation` and
+  `why_blocking`) or a sealed-test `dispute` (`path`, `reason`, `evidence`); `failed` only for a
+  spec Steps 1–2 refuse, a contract the oracle run refuses, and the Blocker protocol, because the
+  pipeline treats it as a crash: it repeats the attempt once, then halts the run. A `done` carries
+  neither questions nor a dispute.
+- `summary` — at most five lines of facts.
+- `branch`, `head_sha` after the last commit and push, and `pr_url`: the GitHub URL `gh` printed.
+  Every `done` carries a `pr_url`, because the pipeline's CI stage reads that pull request and has
+  no other way to find it.
+- `gates` — each gate of the final full run as `pass`, `fail` or `not-run`; an `error` is a `fail`.
+- `claims` — concrete file-level statements a reviewer should check. The verifier treats them as
+  claims, not facts.
+
+Resumed with a message starting `ANSWERS:`, continue exactly where the turn stopped.

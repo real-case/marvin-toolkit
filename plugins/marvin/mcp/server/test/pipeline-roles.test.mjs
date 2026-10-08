@@ -49,7 +49,7 @@ const TEMPLATE_VARS = {
     runtime: [...ADDRESS, "lessons", "test_path_pattern"],
   },
   executor: {
-    engine: ["base", "branch", "findings", "iteration", "sealed", "spec"],
+    engine: ["base", "branch", "findings", "iteration", "run", "sealed", "spec", "tier"],
     runtime: [...ADDRESS, "lessons"],
   },
   verifier: {
@@ -920,6 +920,7 @@ const PROMPT_RULES = [
   ["planner", /`spec\.path` relative to the repo root/, "SpecPath is canonical and repo-relative"],
   ["executor", /Status "done" carries no questions and no dispute/, "ExecutorOutput refines"],
   ["executor", /status "needs_input" and fill `dispute`/, "needs_input takes a dispute alone"],
+  ["executor", /`pr_url` = the draft PR's github\.com URL, which every "done" carries/, "decide()"],
   // decide() accepts the recommendations of the turn that crosses the question cap once, then
   // halts on the next needs_input; the task-start Critic row takes the recommendation past it.
   [
