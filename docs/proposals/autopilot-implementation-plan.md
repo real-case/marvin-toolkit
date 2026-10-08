@@ -2812,6 +2812,14 @@ export function decide(run: Run, obs: Observation, rubric: Rubric, now: Date): D
 
 **Files:** create `S/src/pipeline/loop.ts`; test `S/test/pipeline-loop.test.mjs`.
 
+**As shipped (2026-10-09).** The code supersedes the snippets below wherever they differ:
+
+- `acquireLock` takes a numbered generation under `engine.lock/`. Creating the next one is exclusive, so of two starters that find a dead engine exactly one takes over, and a second live engine is refused.
+- Every decision is written to `engine.journal.json` before it is carried out. A restarted engine resumes at the journal's `next` step and repeats at most that one, telling the runtime so through `StepInfo { ref, replay }`, which `spawnChild` and `work` receive.
+- `EngineDeps` adds `signal`, which stops the engine at its next step or wait with the run left resumable. `prepare` must adopt what an earlier, interrupted call left behind. A `waitChild` result whose outcome is still `running` is waited on again.
+- `answerJudgment(runDir, id, answer, { rubric?, now? })` refuses, when given the rubric, any answer `decide` would refuse in the run's current state. An answer the engine still refuses is set aside, reported as `EVENT note answer to <id> refused: <reason>`, and the judgment is open again.
+- `awaitWork(runDir, { pollMs, deadlineMs, repeatMs?, signal? })` keeps a byte-offset cursor in `await.cursor`, so each event is printed once. A standing condition (`JUDGMENT`, `ENGINE down`) is printed when it is new, then again every `repeatMs` (default `REPEAT_MS`, 60 s) and at the deadline. With nothing to report, the result is `TIMEOUT rearm`.
+
 **Interfaces:**
 - **Consumes:** `decide` (Task 11), run store.
 - **Produces:**
@@ -3158,6 +3166,30 @@ export async function awaitWork(runDir: string, o: { pollMs: number; deadlineMs:
   | `assess --spec [--repo]` | dry-run tier |
 
 - MCP `pipeline` actions: `paths` → `{cli, roles, schemas, hooks, rubricDefault, checksDefault, stateRoot}`; `status {runDir}`.
+
+**Carried in from Tasks 12–17 (2026-10-09).** The reviews of the code those tasks landed left the following to this task. Each item is a requirement unless it says a decision is needed.
+
+- **Restart safety.**
+  - `prepare` is idempotent. When `<stateRoot>/worktrees/<repo>/<runId>` already exists, it adopts that worktree on branch `autopilot/<runId>`, because `createRunWorktree` throws `worktree path exists`. Bootstrap and `test-paths.json` must also be safe to repeat.
+  - `spawnChild` honours `StepInfo.replay`. It writes a marker keyed by `step.ref` before `launchDetached`, and on a replay it adopts the child already launched instead of starting a second one.
+  - Child names `<runId>-<role>-<iteration>` repeat for a crash retry of the same iteration, so log and exit files need a distinct key, such as the step ref, or they collide.
+  - `work` tolerates a replay of `seal` (the commit already made), `rename_branch` (the branch already renamed), `mark_ready` (the PR already ready) and `finalize`, whose own commit `finalizeRun` already recognises.
+- **Prompt variables.** `prompt.ts` or `runtime.ts` exports the per-role list of variables the runtime supplies:
+  - every role: `orchestrator` (`run.orchestratorName`), `child` (the `-n` name) and `lessons`;
+  - the test-author also gets `test_path_pattern`;
+  - the verifier also gets `conventions`;
+  - the retro also gets `aggregate`, `efficacy` and `lessons_index`.
+
+  `spawnChild` supplies exactly those on a fresh spawn and nothing on a resume, whose user prompt is the `message` alone. `test/pipeline-roles.test.mjs` imports the list in place of its declared `TEMPLATE_VARS.runtime` and drops its `test.todo`. The prompt test renders the five real `roles/*.context.md` through `composePrompts` with the variables `spawnChild` builds, so that a missing or unused variable fails. The engine already supplies `run` and `tier` to the executor.
+- **Sealing.** The seal work commits with the subject `test(<slug>): sealed acceptance tests`, because `roles/executor.md` finds the seal commit by that ending.
+- **Re-sealing after implementation (decision needed).** `reopenTests` sends a verifier test fault or a `revise_tests` answer back to the test-author after the executor has committed. `sealAuthoredTests` then red-runs the revision in that same worktree, and `redProblem` refuses any test that passes. A correct revision passes against a correct implementation, so the re-seal is refused until `test_author_attempts` halts the run. The fix is a decision for this task: for example, red-run a re-seal against the merge base (a temporary worktree at `baseSha` with the test files copied in). `roles/test-author.md` ("Every test must fail now") must then say which tree the red run uses.
+- **Scope.** `gate.ts` leaves `.marvin/task/`, `.marvin/metrics/` and `.marvin/critique/` out of the undeclared files itself. A spec configured to live elsewhere (`spec.dir`) must be declared by the runtime: pass `run.specPath` beside the contract files.
+- **Gate plan versus `verify` (decision needed, with Task 19).** The gate stage runs the config's gates plus `gates.extra`, while `verify` overlays the config on stack detection. A standard gate the config leaves out therefore runs only in the executor's self-check. Either resolve the stage's plan the way `verify` does, or require all four standard gates to be declared when `pipeline` is enabled.
+- **A halted run with a PR (decision needed).** `finalizeRun` does not read `haltReason`. Finalizing a run that halted after its PR opened would flip the spec to `shipped` and push. Decide whether such a run keeps its retro in the run dir, like a run without a PR, or commits its lessons without shipping the spec.
+- **CLI.**
+  - `judge` calls `answerJudgment(runDir, id, answer, { rubric })`, so that an answer `decide` would refuse is refused at answer time. The test "judge validates the answer against the judgment kind" must therefore build the state that raised the judgment: `run.json` at `awaiting_approval` with `pendingJudgment` set. Writing a request into a fresh `intake` run is no longer enough.
+  - `engine` connects SIGTERM and SIGINT to an `AbortController` passed as `deps.signal`.
+  - `await` calls `awaitWork(runDir, { pollMs, deadlineMs: deadlineMin * 60_000 })`, and may expose `repeatMs` as `--repeat-sec`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3630,6 +3662,7 @@ Each skill gets a short `## Pipeline mode` section:
 
 - `agents/marvin-tm-diff-critic.md:41`: diff against `base_branch`, not `main`.
 - `agents/marvin-tm-executor.md`: `gh pr create --base <base_branch>`. Its body becomes "run task-implement in pipeline mode", leaving one source of truth.
+  *As shipped:* the `--base` half only. The agent serves `task-implement`'s interactive hands-off dispatch, for which pipeline mode is wrong: a draft PR, no diff critic, and a structured result nobody reads. The pipeline never dispatches it, and `task-implement`'s pipeline mode forbids the dispatch, so one source of truth holds without the rewrite.
 - `S/src/tools/spec.ts` `next`: take the max over `git ls-tree --name-only origin/<base> <specdir>/` and the local tree (memory `marvin-artifact-numbers-collide-across-sessions`).
 - `S/src/tools/lessons.ts`: optional `projectRoot` on `add`/`search`/`prune` (memory `tools-resolve-project-root-from-launch-cwd`). The engine calls storage directly, but interactive sessions in worktrees need this too.
 
@@ -3663,6 +3696,13 @@ The skill specifies, in order:
    - `TIMEOUT rearm` → nothing.
    
    Then re-arm `await`, unless the stage is `ready` or `done`.
+
+   What the shipped `awaitWork` prints (Task 12) adds five rules to the list above:
+   - Each new judgment also prints `EVENT question judgment <id>`. That line is a milestone; the `JUDGMENT` line is the one to act on.
+   - `JUDGMENT` and `ENGINE down` are printed when new, then again every 60 s and at each deadline. A repeat is handled without asking the user a second time. A session that resumes a run can wait up to 60 s for a judgment an earlier session was already shown.
+   - `ENGINE down` comes with `EVENT note engine stopped: <reason>`.
+   - `EVENT note answer to <id> refused: <reason>` means that judgment is open again. A fresh `JUDGMENT` line for it follows.
+   - Restarts are bounded. After three `ENGINE down` lines with no `EVENT` in between, stop restarting and tell the user, quoting the last `engine stopped:` note or `engine.log`.
 4. **On a cross-session message from a child:** one translated line, nothing else; `await` stays armed.
 5. **Judgment policy (`references/judgments.md`):**
    - **Questions:** answer autonomously when the task text, the code (read-only Explore subagent, never your own edits), the rubric or an earlier answer settles the point. Otherwise ask the user — one contested point per `AskUserQuestion`, in `lang`, with a `PushNotification`.
