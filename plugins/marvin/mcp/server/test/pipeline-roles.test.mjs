@@ -920,6 +920,18 @@ const PROMPT_RULES = [
   ["planner", /`spec\.path` relative to the repo root/, "SpecPath is canonical and repo-relative"],
   ["executor", /Status "done" carries no questions and no dispute/, "ExecutorOutput refines"],
   ["executor", /status "needs_input" and fill `dispute`/, "needs_input takes a dispute alone"],
+  // decide() accepts the recommendations of the turn that crosses the question cap once, then
+  // halts on the next needs_input; the task-start Critic row takes the recommendation past it.
+  [
+    "planner",
+    /marked "recommendation accepted: question cap reached", never return "needs_input" again/,
+    "the needs_input after a cap-accepted answer halts the run",
+  ],
+  [
+    "planner",
+    /ask while the question cap allows one, otherwise take your own recommendation/,
+    "a surviving critic blocker past the question cap is not a question",
+  ],
   ["retro", /backreference/, "regexHazard refuses a backreference and nested repetition"],
   ["retro", /never just the word "memory"/, "a title that slugs to the lesson index is refused"],
   // Charsets the schema states, repeated in prose so the retro gets them right first time.
