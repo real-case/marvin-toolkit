@@ -1,0 +1,26 @@
+[
+  {
+    "status": "done",
+    "verdict": "FAIL",
+    "summary": "clamp accepts an inverted range.",
+    "criteria": [{ "id": "AC1", "result": "met", "evidence": "test/clamp.test.mjs passes" }],
+    "findings": [
+      {
+        "id": "V-1",
+        "severity": "major",
+        "category": "correctness",
+        "file": "src/math.mjs",
+        "claim": "clamp(5, 10, 0) returns 0 instead of rejecting the inverted range",
+        "evidence": "src/math.mjs: Math.min(hi, Math.max(lo, x)) with lo > hi",
+        "expected": "a RangeError when lo > hi"
+      }
+    ]
+  },
+  {
+    "status": "done",
+    "verdict": "PASS",
+    "summary": "clamp bounds x and rejects an inverted range.",
+    "criteria": [{ "id": "AC1", "result": "met", "evidence": "test/clamp.test.mjs passes" }],
+    "findings": []
+  }
+]

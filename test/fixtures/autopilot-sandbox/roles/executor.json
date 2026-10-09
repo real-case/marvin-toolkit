@@ -1,0 +1,15 @@
+[
+  {
+    "status": "done",
+    "summary": "Implemented clamp.",
+    "pr_url": "https://github.com/sandbox/autopilot-sandbox/pull/1",
+    "claims": ["src/math.mjs exports clamp"]
+  },
+  {
+    "status": "done",
+    "summary": "clamp rejects an inverted range.",
+    "pr_url": "https://github.com/sandbox/autopilot-sandbox/pull/1",
+    "claims": ["src/math.mjs exports clamp", "clamp throws RangeError when lo > hi"],
+    "findings_addressed": [{ "id": "V-1", "resolution": "clamp throws RangeError when lo > hi" }]
+  }
+]

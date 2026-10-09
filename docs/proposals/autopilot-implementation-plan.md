@@ -3748,7 +3748,7 @@ The skill specifies, in order:
 - **The orchestrator name must match `^[\w.-]+$`** (`assertOrchestratorName`). A session title with spaces is refused by `init`, so the skill sets a one-word title (`set_session_title`) or asks the user for one.
 - **Calibration cost estimate** reads `<repo>/.marvin/pipeline/calibration.jsonl` as committed on the base. A record's cost is the sum of `aggregate.perRole[].costUsd`. With fewer than three records for the tier, there is no estimate.
 - **The skill is model-invocable**, not `disable-model-invocation`, so that the trigger eval measures it. Its description limits it to delegating the whole lifecycle; the dataset's near-misses are the in-session `task-start`, `task-implement` and `task-deliver`.
-- **Left for later stages.** Task 20 scenario 2 must check that the skill's status lines and final report are in the invocation language, and that `--answered-by` reaches `calibration.jsonl` through `aggregate`. No test drives the skill prose itself: the deterministic sandbox exercises the CLI with `MARVIN_PIPELINE_JUDGE=fixtures`, which never calls `judge`. Task 19 needs no skill change.
+- **Left for later stages.** Task 20 scenario 2 must check that the skill's status lines and final report are in the invocation language, and that `--answered-by` reaches `calibration.jsonl` through `aggregate`. No test drives the skill prose itself: the deterministic sandbox (Task 20 scenario 1, shipped as `test/autopilot-sandbox.test.mjs`) exercises the CLI with `MARVIN_PIPELINE_JUDGE=fixtures`, which never calls `judge`. Task 19 needs no skill change.
 
 ---
 
@@ -3798,7 +3798,7 @@ The skill specifies, in order:
 
 ### Task 20: End-to-end acceptance
 
-1. **Deterministic sandbox (M, CI-safe, no model).** The fixture is `M/test/fixtures/autopilot-sandbox/`: a 3-file Node project with `node --test`, a local bare origin, `MARVIN_PIPELINE_FAKE_<ROLE>` result fixtures, `MARVIN_PIPELINE_FAKE_CI`, and `MARVIN_PIPELINE_JUDGE=fixtures`. Script: verifier FAIL with one major, then PASS. It must:
+1. **Deterministic sandbox (M, CI-safe, no model). Done 2026-10-09.** The fixture is `M/test/fixtures/autopilot-sandbox/`: a 3-file Node project with `node --test`, a local bare origin, `MARVIN_PIPELINE_FAKE_<ROLE>` result fixtures, `MARVIN_PIPELINE_FAKE_CI`, and `MARVIN_PIPELINE_JUDGE=fixtures`. Script: verifier FAIL with one major, then PASS. It must:
    - reach `ready`;
    - spawn exactly 2 executors and 2 verifiers, each under a distinct name;
    - record rung 1 on the second executor;
@@ -3806,6 +3806,14 @@ The skill specifies, in order:
    - leave the tree snapshot unchanged around both verifiers.
    
    This runs in M's `npm test`.
+
+   **As shipped (2026-10-09).** `test/autopilot-sandbox.test.mjs` drives the committed bundle (`dist/marvin-pipe.js`): `init` with `--stage-a standard`, then `engine` in the foreground. It takes about 12 s, almost all of it the engine's 1 s poll between child looks. Where the shipped code and the list above differ:
+   - **One seam was added: `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT`** (`fakeScriptVariable` in `runtime.ts`). A fake child printed its fixture and did nothing else, so no spec, test file or commit could appear, and the seal, the gate's oracle and finalize had nothing real to judge. The variable names a node script the fake runs in the worktree before it prints its result, with the role's 1-based spawn number as its argument. It is read only for a role whose `MARVIN_PIPELINE_FAKE_<ROLE>` is set, so it changes what a fake does and cannot replace a real child; the model in the real argv is untouched, so the Fable guard is unaffected. A script that fails leaves no result, which reads as a crash. `<key>.command.json` records the script as `fakeScript`. `pipeline-runtime.test.mjs` pins all three behaviours.
+   - **The fixture's scripts do the children's file work.** The planner writes `.marvin/task/001-clamp.md` and computes its `contract_sha` at run time, so no formatter pass over the fixture can unseal a committed copy. The test-author writes `test/clamp.test.mjs`, which is red until `clamp` exists. Executor 1 implements `clamp` and commits it with the spec; executor 2 answers the major finding with a guard. The verifier and the retro have no script.
+   - **Tier and judge.** `risk: medium` makes stage B `standard`, so the test-author runs and the seal is real. The only judgment is `spec_approval`, answered by `judgments/spec_approval.json`.
+   - **Hermeticity.** The bare origin and the clone are made in a temp dir at test time; nothing bare is committed. The environment drops every inherited `MARVIN_*`, `GIT_*` and `NODE_TEST_CONTEXT` variable, sets `GIT_CONFIG_GLOBAL` to a temp file with a sandbox identity, and puts `claude` and `gh` stubs that exit 97 first on `PATH`. `MARVIN_PIPELINE_FAKE_CI=green` already skipped `gh` at `mark_ready`, so no GitHub seam was needed.
+   - **What is asserted beyond the five items.** Every child's `command.json` is a fake. The second executor's assignment is `sonnet/xhigh` against the first's `sonnet/high` (rung 1 = `effort+1`), with one `verifier` rejection recorded. The seal commit's parent is the base, its only file is the sealed test, its marker names it, and it is the parent of executor 1's commit. Both gate reports ran `oracle:AC1` and found the sealed hash intact. Neither verifier's result carries `mutated` or `leaked`, and the last snapshot's HEAD is executor 2's commit. Finalize pushed the run branch to the sandbox origin with the spec `shipped`, and the main checkout stayed clean.
+   - **For scenarios 2–4.** The same fixture serves scenario 2: drop the `FAKE_*` and `*_SCRIPT` variables and keep the bare origin, but a live executor's `gh pr create` needs a GitHub remote, so scenario 2 still needs a PR seam or a scratch GitHub repository. `MARVIN_PIPELINE_MODEL_OVERRIDE` and `MARVIN_PIPELINE_SANDBOX` do not exist yet.
 2. **Live sandbox (models, Haiku override).** The same fixture with real children (`MARVIN_PIPELINE_MODEL_OVERRIDE=haiku`, honoured only when `MARVIN_PIPELINE_SANDBOX=1`; Fable is still rejected) and the real orchestrator skill. Check:
    - a report in `events.jsonl` at least every 6 min of executor wall time;
    - orchestrator lines in the invocation language;

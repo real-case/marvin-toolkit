@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   utimesSync,
@@ -27,7 +28,8 @@ import { repoWithOrigin, sh } from "./_pipeline-git.mjs";
  * launch tests read.
  */
 
-const { createRuntime, childKey, fakeVariable } = await importTs("src/pipeline/runtime.ts");
+const { createRuntime, childKey, fakeScriptVariable, fakeVariable } =
+  await importTs("src/pipeline/runtime.ts");
 const rs = await importTs("src/pipeline/run-store.ts");
 const { loadRubric } = await importTs("src/pipeline/assess.ts");
 const { decide } = await importTs("src/pipeline/engine.ts");
@@ -46,6 +48,7 @@ const ROLES = ["planner", "test-author", "executor", "verifier", "retro"];
 
 for (const name of [
   ...ROLES.map(fakeVariable),
+  ...ROLES.map(fakeScriptVariable),
   "MARVIN_PIPELINE_FAKE_CI",
   "MARVIN_PIPELINE_PLUGIN_DIR",
 ]) {
@@ -663,6 +666,48 @@ test("a replayed spawn adopts the child already launched instead of starting ano
     const { obs } = await waitFor(s2.deps, relaunched);
     assert.equal(obs.result.outcome, "done");
   });
+});
+
+test("a fake's script runs in the worktree before its result, numbered by spawn; alone it does nothing", async () => {
+  const s = await prepared();
+  const run = { ...s.run, stage: "executing", iteration: 1 };
+  const script = join(s.runDir, "fake-script.mjs");
+  writeFileSync(
+    script,
+    'import { writeFileSync } from "node:fs";\nwriteFileSync(`spawn-${process.argv[2]}.txt`, process.cwd());\n',
+  );
+  process.env[fakeScriptVariable("executor")] = script;
+  try {
+    // Without its fake, the script variable changes nothing: the child is the real command
+    // (here the failing `claude` stub), and the script never runs.
+    const real = await waitFor(
+      s.deps,
+      s.deps.spawnChild(run, spawnAction("executor", 1, EXECUTOR_CONTEXT), step("real")),
+    );
+    assert.equal(command(s.runDir, "r1-executor-1").fake, null);
+    assert.equal(command(s.runDir, "r1-executor-1").fakeScript, undefined);
+    assert.notEqual(real.obs.result.outcome, "done");
+    assert.equal(existsSync(join(s.wt, "spawn-1.txt")), false);
+
+    await withFake(s.runDir, "executor", DONE, async () => {
+      const action = spawnAction("executor", 2, EXECUTOR_CONTEXT);
+      const done = await waitFor(s.deps, s.deps.spawnChild(real.run, action, step("fake")));
+      assert.equal(done.obs.result.outcome, "done");
+      assert.equal(command(s.runDir, "r1-executor-2").fakeScript, script);
+      // The second executor spawn of the run, run with the worktree as its cwd.
+      assert.equal(readFileSync(join(s.wt, "spawn-2.txt"), "utf8"), realpathSync(s.wt));
+    });
+
+    // A script that fails leaves no result, which reads as a crash.
+    writeFileSync(script, "process.exit(3);\n");
+    await withFake(s.runDir, "executor", DONE, async () => {
+      const action = spawnAction("executor", 3, EXECUTOR_CONTEXT);
+      const after = await waitFor(s.deps, s.deps.spawnChild(run, action, step("broken")));
+      assert.equal(after.obs.result.outcome, "crashed");
+    });
+  } finally {
+    delete process.env[fakeScriptVariable("executor")];
+  }
 });
 
 test("a crash retry of the same iteration writes files of its own", async () => {

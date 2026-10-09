@@ -201,6 +201,9 @@ export interface RuntimeOptions {
   runner?: Runner;
 }
 
+/** An absolute path for a non-empty value, else null. */
+const resolveOrNull = (value: string | undefined): string | null => (value ? resolve(value) : null);
+
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** Replaces a file whole: a reader (a guard, `await`, a restarted engine) never sees half of it. */
@@ -402,11 +405,29 @@ export const fakeVariable = (role: Role) =>
   `MARVIN_PIPELINE_FAKE_${role.toUpperCase().replace(/-/g, "_")}`;
 
 /**
+ * The environment variable naming a script a fake child runs before it prints its result
+ * (`test-author` → `MARVIN_PIPELINE_FAKE_TEST_AUTHOR_SCRIPT`). It is read only for a role whose
+ * `fakeVariable` is set, so it can change what a fake does and never turns a real child into
+ * anything else. It is how the deterministic sandbox (`test/autopilot-sandbox.test.mjs`) makes a
+ * fake planner write its spec, a fake test-author its tests and a fake executor its commits.
+ */
+export const fakeScriptVariable = (role: Role) => `${fakeVariable(role)}_SCRIPT`;
+
+/**
  * A fake child's argv: `node -e` printing one `result` event whose `structured_output` is the
  * fixture. A fixture holding an array answers the n-th spawn of the role with its n-th element,
- * and its last element after that, so a test can script a FAIL followed by a PASS.
+ * and its last element after that, so a test can script a FAIL followed by a PASS. With a
+ * `script`, the fake first runs it with node in its cwd (the run worktree), passing the 1-based
+ * spawn number of the role as its one argument; the script's stdout is discarded so that it
+ * cannot corrupt the log, and a script that fails leaves no result, which reads as a crash.
  */
-function fakeArgv(file: string, role: Role, run: Run, key: string): string[] {
+function fakeArgv(
+  file: string,
+  role: Role,
+  run: Run,
+  key: string,
+  script: string | null,
+): string[] {
   const fixture: unknown = JSON.parse(readFileSync(file, "utf8"));
   const earlier = run.children.filter((c) => c.role === role).length;
   const output = Array.isArray(fixture) ? fixture[Math.min(earlier, fixture.length - 1)] : fixture;
@@ -421,10 +442,13 @@ function fakeArgv(file: string, role: Role, run: Run, key: string): string[] {
     usage: { cache_read_input_tokens: 0 },
     structured_output: output,
   };
+  const before = script
+    ? `require("node:child_process").execFileSync(process.execPath, ${JSON.stringify([script, String(earlier + 1)])}, { stdio: ["ignore", "ignore", "inherit"] });`
+    : "";
   return [
     process.execPath,
     "-e",
-    `process.stdout.write(${JSON.stringify(`${JSON.stringify(event)}\n`)})`,
+    `${before}process.stdout.write(${JSON.stringify(`${JSON.stringify(event)}\n`)})`,
   ];
 }
 
@@ -904,12 +928,13 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       branch: run.branch,
     });
     const fakeFile = process.env[fakeVariable(role)] || null;
+    const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
     const cmd: ChildCommand = fakeFile
-      ? { ...real, argv: fakeArgv(fakeFile, role, run, key) }
+      ? { ...real, argv: fakeArgv(fakeFile, role, run, key, fakeScript) }
       : real;
     writeAtomic(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile }, null, 2)}\n`,
+      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile, ...(fakeScript ? { fakeScript } : {}) }, null, 2)}\n`,
     );
 
     // D19: the main checkout as it stood before this child, for the leak check after it. A

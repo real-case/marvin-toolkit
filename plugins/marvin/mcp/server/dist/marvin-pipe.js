@@ -16873,6 +16873,7 @@ var LESSON_LIMIT = 8;
 var GITLINK = "160000";
 var NESTED_REPO2 = "nested-repo";
 var CHILD_DEADLINE_MS = 110 * 6e4;
+var resolveOrNull = (value) => value ? resolve(value) : null;
 var errorText3 = (error) => error instanceof Error ? error.message : String(error);
 function writeAtomic2(path, text2) {
   mkdirSync(dirname(path), { recursive: true });
@@ -16996,7 +16997,8 @@ function orchestratorOf(runDir, run2) {
   return text2 === "" ? run2.orchestratorName : text2;
 }
 var fakeVariable = (role) => `MARVIN_PIPELINE_FAKE_${role.toUpperCase().replace(/-/g, "_")}`;
-function fakeArgv(file, role, run2, key) {
+var fakeScriptVariable = (role) => `${fakeVariable(role)}_SCRIPT`;
+function fakeArgv(file, role, run2, key, script) {
   const fixture = JSON.parse(readFileSync(file, "utf8"));
   const earlier = run2.children.filter((c) => c.role === role).length;
   const output = Array.isArray(fixture) ? fixture[Math.min(earlier, fixture.length - 1)] : fixture;
@@ -17011,10 +17013,11 @@ function fakeArgv(file, role, run2, key) {
     usage: { cache_read_input_tokens: 0 },
     structured_output: output
   };
+  const before = script ? `require("node:child_process").execFileSync(process.execPath, ${JSON.stringify([script, String(earlier + 1)])}, { stdio: ["ignore", "ignore", "inherit"] });` : "";
   return [
     process.execPath,
     "-e",
-    `process.stdout.write(${JSON.stringify(`${JSON.stringify(event)}
+    `${before}process.stdout.write(${JSON.stringify(`${JSON.stringify(event)}
 `)})`
   ];
 }
@@ -17370,10 +17373,11 @@ ${tail}`);
       branch: run2.branch
     });
     const fakeFile = process.env[fakeVariable(role)] || null;
-    const cmd = fakeFile ? { ...real, argv: fakeArgv(fakeFile, role, run2, key) } : real;
+    const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
+    const cmd = fakeFile ? { ...real, argv: fakeArgv(fakeFile, role, run2, key, fakeScript) } : real;
     writeAtomic2(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile }, null, 2)}
+      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile, ...fakeScript ? { fakeScript } : {} }, null, 2)}
 `
     );
     const mainBefore = at(`${key}.main-before.txt`);

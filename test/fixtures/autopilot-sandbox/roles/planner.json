@@ -1,0 +1,14 @@
+{
+  "status": "spec_ready",
+  "summary": "Spec for clamp written and sealed.",
+  "spec": {
+    "path": ".marvin/task/001-clamp.md",
+    "slug": "clamp",
+    "risk": "medium",
+    "files": 2,
+    "criteria": 1,
+    "sealed": true,
+    "critic": "PASS"
+  },
+  "assumptions": []
+}

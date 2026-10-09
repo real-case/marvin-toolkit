@@ -1,0 +1,10 @@
+{
+  "base_branch": "dev",
+  "gates": {
+    "test": "node --test",
+    "test_one": "node --test {file}"
+  },
+  "pipeline": {
+    "tracker_default": "SANDBOX"
+  }
+}
