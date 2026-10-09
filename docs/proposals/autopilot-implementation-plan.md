@@ -3734,6 +3734,22 @@ The skill specifies, in order:
 
 **Acceptance:** Task 20 scenarios 2–3.
 
+- [x] `skills/autopilot/SKILL.md` and `references/{judgments,report-formats,recovery}.md`
+- [x] `commands/autopilot.md` wrapper, `prompts/index.ts` entry, help-content maps, regenerated site catalog, counts (59 → 60 prompts, bare 17 → 18)
+- [x] trigger-eval dataset `evals/trigger/datasets/autopilot.json`; `lint:skills` and `eval:trigger` (mock) green
+- [ ] Acceptance: Task 20 scenarios 2–3 (live runs; not part of this task)
+
+**As shipped (2026-10-09).** Where the shipped code and the list above differ, the skill follows the code:
+
+- **`answeredBy` needed a CLI flag.** `judge` had no note, and every answer schema is closed, so nothing could record who answered. `judge` gained `--answered-by orchestrator|user`. After the answer is written, it appends an `answer` event with `data.answeredBy`, without a notify flag, which is the field `aggregate` counts. A refused answer records nothing. The skill passes the flag on every `planner_questions` and `executor_questions` answer. If the engine later sets an accepted answer aside, the event stays and is counted once too often; that path is rare because `judge` already tries the answer against `decide`.
+- **A sixth judgment kind, `unverified`** (a verifier PASS that verified nothing, or skipped sealed criteria), is handled in `judgments.md`: retry, proceed with a required reason on the user's explicit word only, or cancel.
+- **`CHILD …` lines** arrive as `EVENT report CHILD <name> outcome=… cost=… dur=… session=…`. **`STAGE done`** (halted, cancelled, or `no_ci` proceed after finalize) gets the closed-run form of the final report, not just `STAGE ready`.
+- **"Change tier" is an approval.** `approve` with `tier` and `reason` approves at the new tier in one answer, so the skill confirms the change, showing that tier's assignments from the rubric, before it sends the answer.
+- **The orchestrator name must match `^[\w.-]+$`** (`assertOrchestratorName`). A session title with spaces is refused by `init`, so the skill sets a one-word title (`set_session_title`) or asks the user for one.
+- **Calibration cost estimate** reads `<repo>/.marvin/pipeline/calibration.jsonl` as committed on the base. A record's cost is the sum of `aggregate.perRole[].costUsd`. With fewer than three records for the tier, there is no estimate.
+- **The skill is model-invocable**, not `disable-model-invocation`, so that the trigger eval measures it. Its description limits it to delegating the whole lifecycle; the dataset's near-misses are the in-session `task-start`, `task-implement` and `task-deliver`.
+- **Left for later stages.** Task 20 scenario 2 must check that the skill's status lines and final report are in the invocation language, and that `--answered-by` reaches `calibration.jsonl` through `aggregate`. No test drives the skill prose itself: the deterministic sandbox exercises the CLI with `MARVIN_PIPELINE_JUDGE=fixtures`, which never calls `judge`. Task 19 needs no skill change.
+
 ---
 
 ## 12. Phase 4 — Enablement and acceptance

@@ -1,0 +1,217 @@
+{
+  "skill": "autopilot",
+  "target": "autopilot",
+  "note": "autopilot starts or resumes a run of the autonomous pipeline and orchestrates it: the engine drives detached child sessions to a merge-ready PR and this session handles judgments and translates progress. Its near neighbours are the interactive pipeline commands the user drives in-session (task-start for intake, task-implement for implementation, task-deliver/pr-create for delivery) and read-only views (dashboard, task-summary). The distinction to measure is delegating the whole lifecycle to the unattended pipeline versus doing one phase in this session. 'Pipeline' in the CI sense is a trap. mock_rate encodes the IDEAL outcome; real deciders ignore it and measure the description.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "autopilot this: add a tag filter to the chat list and get me a PR",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "run this task autonomously end to end — I'll only approve the spec",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "доведи задачу до PR сам: добавить фильтр по тегам в список чатов",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "hand this ticket to the pipeline and ping me when the PR is ready to merge",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "resume the autopilot run from yesterday, the engine seems to have stopped",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "/marvin:autopilot fix the pagination bug in the orders table",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "I don't want to drive each step — plan it, test it, implement it, review it and open the PR on your own",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "запусти автопилот на эту задачу и сообщай только когда нужно моё решение",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "take over the pipeline run that's waiting for spec approval",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "deliver this feature as a merge-ready PR with the autonomous planner/executor/verifier loop",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "implement the spec in .marvin/task/012-tag-filter.md here in this session",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "interactive implementation of a ready spec in the current session -> task-implement"
+    },
+    {
+      "id": "neg-2",
+      "text": "let's write a spec for the tag filter together, ask me the questions",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "an interactive spec dialogue the user drives -> task-start"
+    },
+    {
+      "id": "neg-3",
+      "text": "commit these changes and open a PR",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "delivery of work already done in this session -> task-deliver / pr-create"
+    },
+    {
+      "id": "neg-4",
+      "text": "run the quality gates — tests, lint, typecheck",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the gate runner alone -> task-verify"
+    },
+    {
+      "id": "neg-5",
+      "text": "what's the state of the board and the specs in flight?",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a read-only state report -> dashboard; nothing is delegated"
+    },
+    {
+      "id": "neg-6",
+      "text": "set up a CI pipeline in GitHub Actions for this repo",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "'pipeline' in the CI sense; authoring workflow files is ordinary coding, not this skill"
+    },
+    {
+      "id": "neg-7",
+      "text": "review PR #214 and post comments",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "reviewing an existing PR -> pr-review"
+    },
+    {
+      "id": "neg-8",
+      "text": "merge the PR the autopilot opened",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "merging stays human and is pr-merge; the autopilot never merges"
+    },
+    {
+      "id": "neg-9",
+      "text": "explain how the marvin-pipe engine decides the next stage",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a question about the engine's internals -> explain, not a run"
+    },
+    {
+      "id": "neg-10",
+      "text": "summarise what the last delivered task shipped",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "a delivery digest of a finished task -> task-summary"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "take this task from description to a ready pull request without me babysitting each phase",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "autopilot",
+      "mock_rate": 1,
+      "note": "shares 'take this task' with task-start, but the ask is the whole unattended lifecycle, which is the orchestrator"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "start work on this ticket and carry it all the way to a PR on your own, just ask me to approve the spec",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "autopilot",
+      "mock_rate": 1,
+      "note": "'start work on' is task-start vocabulary, but 'all the way to a PR on your own' with only spec approval is the autopilot contract"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "start a task: gather requirements and produce a spec, I want to review the questions myself",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "task-start",
+      "mock_rate": 0,
+      "note": "the user wants to drive intake interactively and stop at the spec -> task-start"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "the spec is sealed, implement it now in this chat and hand off for verify",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "task-implement",
+      "mock_rate": 0,
+      "note": "implementation in the current session, not a delegated run -> task-implement"
+    }
+  ]
+}

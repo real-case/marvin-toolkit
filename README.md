@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **59 prompts, 15 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **60 prompts, 15 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -60,12 +60,12 @@ them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or expor
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 59
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 60
 prompts divide into eight groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 17 |
+| _(bare)_ | Core developer tools | 18 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
 | `task-*` | Spec-driven task pipeline | 7 |
@@ -102,6 +102,7 @@ auto-triggers these, you invoke them yourself.
 | `/marvin:reports` | Browse every generated `.marvin/` report, newest first, with freshness. |
 | `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
 | `/marvin:widget-preview` | Open a widget as a rendered panel with this project's data, on any host ([ADR-0034](./docs/adr/0034-widget-preview-door.md)). |
+| `/marvin:autopilot` | Deliver a task to a merge-ready PR through the autonomous pipeline; this session only answers its judgments. |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands. The plugin also registers two external MCP servers: `context7` for library docs

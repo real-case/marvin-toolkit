@@ -1,7 +1,7 @@
 {
   "version": "0.28.0",
   "counts": {
-    "prompts": 59,
+    "prompts": 60,
     "tools": 15,
     "agents": 10,
     "widgets": 9,
@@ -12,7 +12,7 @@
     {
       "key": "core",
       "blurb": "Everyday dev — commits, debugging, docs, ADRs, handoffs",
-      "count": 17
+      "count": 18
     },
     {
       "key": "adr",
@@ -315,6 +315,19 @@
         "marvin, why do I never see the widgets?"
       ],
       "example": "/marvin:widget-preview dashboard",
+      "human": false
+    },
+    {
+      "name": "autopilot",
+      "group": "core",
+      "blurb": "Deliver a task to a PR autonomously",
+      "description": "Orchestrate the autonomous pipeline: a detached engine drives a planner, sealed acceptance tests, an executor, deterministic gates, a read-only verifier, CI and a retro to a merge-ready PR, while this session answers its questions, gets the spec approved, and reports in your language.",
+      "phrases": [
+        "marvin, autopilot this task to a PR",
+        "marvin, deliver this end to end without me",
+        "marvin, resume the autopilot run"
+      ],
+      "example": "/marvin:autopilot add a tag filter to the chat list",
       "human": false
     },
     {

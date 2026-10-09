@@ -139,6 +139,80 @@ test("judge validates the answer against the judgment kind and the run's state",
   );
 });
 
+test("judge --answered-by records who settled the judgment, and only once it is written", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const { runDir } = initIn(home, "/x/r", { lang: "en", stageA: "light" });
+  const id = "001-planner_questions";
+  mkdirSync(join(runDir, "judgments"));
+  const questions = [{ id: "Q1", text: "?", recommendation: "a", why_blocking: "b" }];
+  writeFileSync(
+    join(runDir, "judgments", `${id}.request.json`),
+    JSON.stringify({ id, kind: "planner_questions", payload: { questions } }),
+  );
+  const run = rs.loadRun(runDir);
+  rs.saveRun(runDir, {
+    ...run,
+    stage: "awaiting_answer",
+    worktree: "/x/wt",
+    branch: "autopilot/r",
+    awaitingRole: "planner",
+    pendingJudgment: { id, kind: "planner_questions" },
+  });
+  const answer = join(home, "a.json");
+  writeFileSync(answer, JSON.stringify({ kind: "answers", text: "Q1: a", count: 1 }));
+  const answered = () =>
+    rs.readEvents(runDir).filter((e) => e.kind === "answer" && e.data?.answeredBy);
+
+  assert.match(
+    pipeFails(
+      home,
+      "judge",
+      "--run",
+      runDir,
+      "--id",
+      id,
+      "--answer-file",
+      answer,
+      "--answered-by",
+      "bot",
+    ),
+    /--answered-by must be one of orchestrator, user/,
+  );
+  assert.equal(existsSync(join(runDir, "judgments", `${id}.answer.json`)), false);
+  assert.equal(answered().length, 0);
+
+  pipe(
+    home,
+    "judge",
+    "--run",
+    runDir,
+    "--id",
+    id,
+    "--answer-file",
+    answer,
+    "--answered-by",
+    "user",
+  );
+  const events = answered();
+  assert.equal(events.length, 1);
+  assert.deepEqual(events[0].data, { id, answeredBy: "user" });
+  assert.notEqual(events[0].data.notify, true);
+
+  pipeFails(
+    home,
+    "judge",
+    "--run",
+    runDir,
+    "--id",
+    id,
+    "--answer-file",
+    answer,
+    "--answered-by",
+    "user",
+  );
+  assert.equal(answered().length, 1);
+});
+
 test("await reports a pending judgment, and a deadline with nothing to say is a rearm", () => {
   const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
   const { runDir } = initIn(home, "/x/r");

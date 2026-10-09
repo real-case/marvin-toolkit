@@ -28659,6 +28659,14 @@ var PROMPTS = [
     description: "Open a marvin widget as a rendered panel with this project's own data \u2014 renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
     skill: "widget-preview"
   },
+  {
+    // Skill-backed (three doors) — the orchestrator of the autopilot pipeline. The
+    // skill acts on a run only through the marvin-pipe CLI, which it locates with the
+    // `pipeline` tool's `paths` action; the engine, not this prompt, drives the run.
+    name: "autopilot",
+    description: "Hand a task to marvin's autonomous pipeline and orchestrate it to a merge-ready PR \u2014 a detached engine drives English-only child sessions (planner, sealed acceptance tests, executor, deterministic gates, read-only verifier, CI, retro); this session answers the engine's judgments, asks the user only what nothing else settles, and reports in the user's language. Pass the task, or `resume [run-id]`.",
+    skill: "autopilot"
+  },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
     name: "adr-review",
@@ -33026,6 +33034,7 @@ var COMMAND_BLURBS = {
   reports: "Unified viewer over all reports",
   "report-export": "Export a report to PDF / MD",
   "widget-preview": "Open a widget as a rendered panel",
+  autopilot: "Deliver a task to a PR autonomously",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -33095,6 +33104,7 @@ var COMMAND_DETAILS = {
   reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 newest first, with per-report freshness.",
   "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   "widget-preview": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it \u2014 the way to see a widget on a host that cannot render them, including the terminal.",
+  autopilot: "Orchestrate the autonomous pipeline: a detached engine drives a planner, sealed acceptance tests, an executor, deterministic gates, a read-only verifier, CI and a retro to a merge-ready PR, while this session answers its questions, gets the spec approved, and reports in your language.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -33158,6 +33168,7 @@ var COMMAND_EXAMPLES = {
   lessons: "/marvin:lessons search dist staleness",
   help: "/marvin:help sec",
   "widget-preview": "/marvin:widget-preview dashboard",
+  autopilot: "/marvin:autopilot add a tag filter to the chat list",
   // adr
   "adr-review": "/marvin:adr-review 31",
   "adr-accept": "/marvin:adr-accept 31",
@@ -33268,6 +33279,11 @@ var COMMAND_PROMPTS = {
     "marvin, show me the help widget",
     "marvin, open the dashboard as a panel",
     "marvin, why do I never see the widgets?"
+  ],
+  autopilot: [
+    "marvin, autopilot this task to a PR",
+    "marvin, deliver this end to end without me",
+    "marvin, resume the autopilot run"
   ],
   // adr
   "adr-review": [

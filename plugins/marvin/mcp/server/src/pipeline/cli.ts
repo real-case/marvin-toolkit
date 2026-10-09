@@ -22,6 +22,7 @@ import {
 import {
   ROLES,
   TIERS,
+  appendEvent,
   initRun,
   loadRun,
   newRunId,
@@ -168,16 +169,38 @@ async function awaitCommand(flags: Flags): Promise<void> {
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-/** Writes an answer, refused when its kind's schema or the run's state would refuse it. */
+/** Who settled a judgment's questions; the retro and the calibration record count both. */
+const ANSWERERS = ["orchestrator", "user"] as const;
+
+/**
+ * Writes an answer, refused when its kind's schema or the run's state would refuse it. With
+ * `--answered-by`, an `answer` event records who settled it (`data.answeredBy`), which is what
+ * the retro aggregate counts as questions answered by the orchestrator or by the user. The event
+ * is appended only after the answer is written, so a refused answer records nothing; it carries
+ * no notify flag, so `await` never prints it.
+ */
 function judge(flags: Flags): void {
   const runDir = runDirOf(flags);
   const id = flag(flags, "id");
+  const by = optional(flags, "answered-by");
+  if (by !== undefined && !(ANSWERERS as readonly string[]).includes(by)) {
+    throw new Error(`--answered-by must be one of ${ANSWERERS.join(", ")}, not ${by}`);
+  }
   const run = loadRun(runDir);
   const raw: unknown = JSON.parse(readFileSync(flag(flags, "answer-file"), "utf8"));
   const answer = answerJudgment(runDir, id, raw, {
     rubric: rubricFor(PLUGIN_ROOT, run.repoRoot),
   });
-  print({ id, answer });
+  if (by !== undefined) {
+    appendEvent(runDir, {
+      ts: new Date().toISOString(),
+      kind: "answer",
+      actor: "orchestrator",
+      text: `${id} answered by ${by}`,
+      data: { id, answeredBy: by },
+    });
+  }
+  print({ id, answer, ...(by !== undefined ? { answeredBy: by } : {}) });
 }
 
 function status(flags: Flags): void {
@@ -287,6 +310,7 @@ const OPTIONS = {
   run: { type: "string" },
   id: { type: "string" },
   "answer-file": { type: "string" },
+  "answered-by": { type: "string" },
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
   spec: { type: "string" },

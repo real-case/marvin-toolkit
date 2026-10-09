@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { spawn, execFileSync, execSync, spawnSync } from 'child_process';
-import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, appendFileSync, mkdtempSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
+import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, appendFileSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, mkdtempSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
 import { resolve, posix, basename, join, dirname, sep, isAbsolute, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { parseArgs, isDeepStrictEqual } from 'util';
@@ -18118,15 +18118,29 @@ async function awaitCommand(flags) {
   process.stdout.write(`${lines.join("\n")}
 `);
 }
+var ANSWERERS = ["orchestrator", "user"];
 function judge(flags) {
   const runDir = runDirOf(flags);
   const id = flag(flags, "id");
+  const by = optional(flags, "answered-by");
+  if (by !== void 0 && !ANSWERERS.includes(by)) {
+    throw new Error(`--answered-by must be one of ${ANSWERERS.join(", ")}, not ${by}`);
+  }
   const run2 = loadRun(runDir);
   const raw = JSON.parse(readFileSync(flag(flags, "answer-file"), "utf8"));
   const answer = answerJudgment(runDir, id, raw, {
     rubric: rubricFor(PLUGIN_ROOT, run2.repoRoot)
   });
-  print({ id, answer });
+  if (by !== void 0) {
+    appendEvent(runDir, {
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      kind: "answer",
+      actor: "orchestrator",
+      text: `${id} answered by ${by}`,
+      data: { id, answeredBy: by }
+    });
+  }
+  print({ id, answer, ...by !== void 0 ? { answeredBy: by } : {} });
 }
 function status(flags) {
   const runDir = runDirOf(flags);
@@ -18224,6 +18238,7 @@ var OPTIONS = {
   run: { type: "string" },
   id: { type: "string" },
   "answer-file": { type: "string" },
+  "answered-by": { type: "string" },
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
   spec: { type: "string" }
