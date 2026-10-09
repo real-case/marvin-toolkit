@@ -3191,6 +3191,14 @@ export async function awaitWork(runDir: string, o: { pollMs: number; deadlineMs:
   - `engine` connects SIGTERM and SIGINT to an `AbortController` passed as `deps.signal`.
   - `await` calls `awaitWork(runDir, { pollMs, deadlineMs: deadlineMin * 60_000 })`, and may expose `repeatMs` as `--repeat-sec`.
 
+**As shipped (2026-10-09).** The three decisions above were taken as follows.
+
+- **Re-sealing.** A re-seal red-runs the revised tests against the run's base commit: a temporary checkout of `baseSha` with the installed dependencies and the listed test files copied in. A first seal still red-runs in the worktree. `roles/test-author.md` says which tree the red run uses, and that a revised test may not rely on any other file the branch added or changed.
+- **Gate plan.** The stage and `verify` resolve their gates through one function, `resolveGatePlan` in `lib/gate-plan.ts`, extracted from `verify`. The stage reads `.marvin/config.json` as the run's base commit holds it (`runConfig`), which is the file every child's own `verify` reads, so the two plan the same gates.
+- **A halted run with a PR.** `finalize` ships the spec only when the run has a PR and no `haltReason`. A run halted after its PR opened keeps its retro in the run dir, like a run without a PR.
+
+One addition the table above did not foresee: `attach` writes the new orchestrator name to `<runDir>/orchestrator.txt` instead of `run.json`, because the engine is the only writer of `run.json` and may be running. The runtime (`orchestratorOf`) and the heartbeat hook read the file first. A child already running keeps the name it was launched with in its environment, but its heartbeat names the new orchestrator. `status` and `list` report the effective name.
+
 - [ ] **Step 1: Write the failing tests**
 
 `S/test/pipeline-prompt.test.mjs`:
