@@ -311,6 +311,11 @@ const blocking = (f: Finding) => f.severity !== "minor";
 const asFindings = (xs: Record<string, unknown>[]) => xs as unknown as Finding[];
 const asRecords = (fs: readonly Finding[]) => fs as unknown as Record<string, unknown>[];
 const unique = (xs: readonly string[]) => [...new Set(xs)];
+/**
+ * How a halted run's closing notify names its PR (D-HALTPR). It says only what the engine did,
+ * since the halt may have closed the PR, left it a draft or come after its finalize commit.
+ */
+const notReady = (prUrl: string) => `PR not marked ready: ${prUrl}`;
 
 const UNSPECIFIED_CLAIM = {
   gate: "gate failed without a blocking finding",
@@ -419,8 +424,11 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       throw new Error(`no rule for stage ${r.stage} and cancel`);
     }
     if (r.stage === "finalizing") {
+      // The run closes here without the `finalized` notify, and its PR is never marked ready:
+      // this notify is the one that names it (D-HALTPR).
       const closed = { ...go(r, "done"), haltReason: r.haltReason ?? reason };
-      return { run: closed, actions: [{ kind: "notify", text: `halted: ${reason}` }] };
+      const pr = r.prUrl ? `; ${notReady(r.prUrl)}` : "";
+      return { run: closed, actions: [{ kind: "notify", text: `halted: ${reason}${pr}` }] };
     }
     if (r.stage === "retro") {
       const fin = go({ ...r, haltReason: r.haltReason ?? reason }, "finalizing");
@@ -1007,11 +1015,14 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         break;
       }
       if (obs.kind === "finalized") {
+        // A halted run, with a PR or without one, kept its retro in the run dir (D16, D-HALTPR):
+        // there is no finalize commit for CI to judge, and its PR is never marked ready. The
+        // closing notify names the PR, the one thing of the run the orchestrator must report.
         if (run.haltReason) {
-          return {
-            run: go(run, "done"),
-            actions: [{ kind: "notify", text: "halted run closed; retro saved" }],
-          };
+          const text = run.prUrl
+            ? `halted run closed; retro saved; ${notReady(run.prUrl)}`
+            : "halted run closed; retro saved";
+          return { run: go(run, "done"), actions: [{ kind: "notify", text }] };
         }
         return {
           run: startClock({ ...run, finalized: true }),

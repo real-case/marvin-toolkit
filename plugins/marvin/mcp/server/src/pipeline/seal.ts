@@ -1,5 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { lstatSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   HARDENED_GIT_OPTIONS,
@@ -7,8 +16,10 @@ import {
   isCanonicalPath,
   type Runner,
   type SealedFile,
+  sha256Bytes,
   sha256File,
 } from "./gate.js";
+import { BaseTreeError, withBaseWorktree } from "./worktree.js";
 
 export interface AuthoredTest {
   path: string;
@@ -19,6 +30,27 @@ export interface SealVerdict {
   reasons: string[];
   sealed: SealedFile[];
 }
+
+/**
+ * Where a re-seal red-runs its tests: the commit the run branched from, as the runtime recorded
+ * it when it made the run worktree (`createRunWorktree`'s `baseSha`), and that worktree's private
+ * git dir (its `gitDir`). See `isReseal`.
+ */
+export interface SealBase {
+  sha: string;
+  gitDir: string;
+}
+
+/**
+ * Whether the seal of `run` is a re-seal, whose red run uses the base tree (D-RESEAL). The first
+ * seal moves the run to iteration 1, and after it only an executor's start raises the iteration,
+ * so a run still at iteration 0 has no implementation yet and red-runs in its own worktree, as
+ * every seal did before. Every later seal, after a verifier fault in a sealed test, a
+ * `revise_tests` answer or a refused re-seal, comes after an executor that may have committed,
+ * and a correct revision run against a correct implementation passes, which the red check
+ * refuses.
+ */
+export const isReseal = (run: { iteration: number }): boolean => run.iteration > 0;
 
 const FILE = "{file}";
 const FOREIGN_PLACEHOLDERS = ["{name}", "{ref}", "{path}"];
@@ -564,6 +596,56 @@ interface Candidate {
   abs: string;
   criteria: string[];
   before: string;
+  /** The bytes hashed into `before`, which a re-seal copies into the base tree. */
+  bytes: Buffer;
+}
+
+/** A directory the red runs execute in, under the spelling it was given and its real path. */
+interface Tree {
+  root: string;
+  realRoot: string;
+}
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * Writes a candidate's bytes at `path` in the base tree, or says why it cannot. Every directory
+ * on the way must be one the base commit holds or one made here, and the file itself absent or a
+ * regular file: the base commit may hold a link where the run now has a directory, and a write
+ * through it would land outside the tree.
+ */
+function placeCopy(root: string, path: string, bytes: Buffer): string | null {
+  const parts = path.split("/");
+  let current = root;
+  for (let i = 0; i < parts.length; i += 1) {
+    current = join(current, parts[i] as string);
+    const where = parts.slice(0, i + 1).join("/");
+    const last = i === parts.length - 1;
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        return `${where} cannot be inspected (${errorCode(error) ?? errorText(error)})`;
+      }
+      if (last) break;
+      try {
+        mkdirSync(current);
+      } catch (made) {
+        return `${where} cannot be made (${errorCode(made) ?? errorText(made)})`;
+      }
+      continue;
+    }
+    if (stat.isSymbolicLink()) return `${where} is a symbolic link`;
+    if (!last && !stat.isDirectory()) return `${where} is not a directory`;
+    if (last && !stat.isFile()) return `${where} is not a regular file`;
+  }
+  try {
+    writeFileSync(current, bytes);
+  } catch (error) {
+    return `${path} cannot be written (${errorCode(error) ?? errorText(error)})`;
+  }
+  return null;
 }
 
 /**
@@ -612,7 +694,22 @@ interface Candidate {
  * file is hashed before the first run and again after the last, and one that changed while the
  * runs executed is refused: what was seen failing must be what gets sealed.
  *
- * Throws only on a misconfigured call (pattern, template, timeout, worktree); anything a
+ * A re-seal (`base` given; see `isReseal`) red-runs on the code before this task's
+ * implementation (D-RESEAL). By then an executor may have committed to the worktree, and there a
+ * correct revision run against a correct implementation passes, which the red check refuses. The
+ * candidates are judged in the worktree as above up to the static readings. Their bytes, read and
+ * hashed once, are then copied into a temporary detached worktree at `base.sha` that has the
+ * run's dependencies by link (`withBaseWorktree`), and the symlinked-directory check, the static
+ * readings and the red runs all happen there, against the siblings the base tree holds, since
+ * that is where the command runs. A path the base tree reaches through a link is refused rather
+ * than written through. After the runs, the copy and the worktree's file must both still hold the
+ * hashed bytes, and the worktree's file must pass the worktree checks again. The base worktree is
+ * removed whatever happens. Only the files being sealed are copied: a revised test cannot lean on
+ * a helper, a fixture or anything else that only the run's branch holds. A base tree that cannot
+ * be prepared from what the run left (`BaseTreeError`: an entry of the run's `node_modules` that
+ * cannot be linked, say) is a reason, and nothing runs.
+ *
+ * Throws only on a misconfigured call (pattern, template, timeout, worktree, base); anything a
  * test-author can influence comes back as a reason.
  */
 export function sealAuthoredTests(o: {
@@ -622,6 +719,8 @@ export function sealAuthoredTests(o: {
   testOne: string;
   run: Runner;
   timeoutMs: number;
+  /** Set for a re-seal only: the red runs then use the base tree, not the worktree. */
+  base?: SealBase;
 }): SealVerdict {
   const isTest = compilePattern(o.testPathPattern);
   formatTestOne(o.testOne, "probe.test.ts");
@@ -629,7 +728,17 @@ export function sealAuthoredTests(o: {
     throw new Error("timeoutMs must be a positive finite number");
   }
   if (!isAbsolute(o.worktree)) throw new Error("worktree must be an absolute path");
+  const { base } = o;
+  if (base !== undefined) {
+    if (typeof base.sha !== "string" || !FULL_SHA.test(base.sha)) {
+      throw new Error("base.sha must be the 40-hex SHA of the run's base commit");
+    }
+    if (typeof base.gitDir !== "string" || !isAbsolute(base.gitDir)) {
+      throw new Error("base.gitDir must be an absolute path");
+    }
+  }
   const realRoot = realpathSync(o.worktree);
+  const worktree: Tree = { root: o.worktree, realRoot };
 
   const reasons: string[] = [];
   if (o.tests.length === 0) reasons.push("no tests were authored");
@@ -637,13 +746,13 @@ export function sealAuthoredTests(o: {
   let files: Listed[] | undefined;
   const isListed = (path: string, list: readonly Listed[]): boolean =>
     list.some((f) => f.exact && f.path === path);
-  /** Why the single-test command may select a file other than `path`, or null if it cannot. */
-  const selection = (path: string, abs: string, walked: Walked): string | null => {
+  /** Why the single-test command, run in `tree`, may select a file other than `path`, or null. */
+  const selection = (tree: Tree, path: string, walked: Walked): string | null => {
     if (walked.problem !== null) {
       return `cannot tell what the single-test command may also select (${walked.problem})`;
     }
-    const self = lstatSync(abs, { bigint: true });
-    const selects = selectedBy(path, [...new Set([o.worktree, realRoot])]);
+    const self = lstatSync(join(tree.root, path), { bigint: true });
+    const selects = selectedBy(path, [...new Set([tree.root, tree.realRoot])]);
     const own = fold(path);
     const other = walked.siblings
       .filter((s) => !(s.dev === self.dev && s.ino === self.ino && fold(s.path) === own))
@@ -667,7 +776,7 @@ export function sealAuthoredTests(o: {
   let walked: Walked | undefined;
 
   const seen = new Set<string>();
-  const accepted: Omit<Candidate, "before">[] = [];
+  const accepted: Omit<Candidate, "before" | "bytes">[] = [];
   for (const t of o.tests) {
     const path: unknown = t?.path;
     if (!isCanonicalPath(path)) {
@@ -716,12 +825,15 @@ export function sealAuthoredTests(o: {
       reasons.push(`${path}: ${REWRITE}`);
       continue;
     }
-    walked ??= walkTestFiles(o.worktree, realRoot, isTest);
-    outsideLinks(walked, path);
-    const selected = selection(path, abs, walked);
-    if (selected !== null) {
-      reasons.push(`${path}: ${selected}`);
-      continue;
+    // What else the command may select is judged where it runs; for a re-seal, the base tree.
+    if (base === undefined) {
+      walked ??= walkTestFiles(o.worktree, realRoot, isTest);
+      outsideLinks(walked, path);
+      const selected = selection(worktree, path, walked);
+      if (selected !== null) {
+        reasons.push(`${path}: ${selected}`);
+        continue;
+      }
     }
     accepted.push({ path, abs, criteria: [...(criteria as string[])] });
   }
@@ -729,75 +841,130 @@ export function sealAuthoredTests(o: {
   const candidates: Candidate[] = [];
   for (const a of accepted) {
     try {
-      candidates.push({ ...a, before: sha256File(a.abs) });
+      const bytes = readFileSync(a.abs);
+      candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
     } catch (error) {
       reasons.push(`${a.path}: cannot be read (${errorText(error)})`);
     }
   }
+  const verdict = (sealed: SealedFile[]): SealVerdict =>
+    reasons.length > 0 ? { ok: false, reasons, sealed: [] } : { ok: true, reasons: [], sealed };
+  const changed = (path: string) =>
+    `${path}: changed while its red run executed, so what ran is not what is sealed`;
 
-  const failed = new Set<string>();
-  for (const c of candidates) {
-    let problem: string | null;
-    try {
-      const namesCandidate = (quoted: string): boolean =>
-        [o.worktree, realRoot].some((root) => resolve(root, quoted) === resolve(root, c.path));
-      problem = redProblem(
-        o.run(formatTestOne(o.testOne, c.path), o.worktree, o.timeoutMs),
-        namesCandidate,
-      );
-    } catch (error) {
-      problem = `test command did not run (${errorText(error)})`;
+  /**
+   * The red runs in `red`, and the checks after them. `red` is the worktree itself for a first
+   * seal; for a re-seal it is the base tree, into which each candidate is copied first and in
+   * which the static readings are made.
+   */
+  const redRuns = (red: Tree): SealVerdict => {
+    const copied = red !== worktree;
+    const failed = new Set<string>();
+    if (copied) {
+      for (const c of candidates) {
+        const problem = placeCopy(red.root, c.path, c.bytes);
+        if (problem !== null) {
+          failed.add(c.path);
+          reasons.push(`${c.path}: cannot be placed in the base tree (${problem})`);
+        }
+      }
+      const walkedBase = walkTestFiles(red.root, red.realRoot, isTest);
+      for (const c of candidates) {
+        if (failed.has(c.path)) continue;
+        outsideLinks(walkedBase, c.path);
+        const selected = selection(red, c.path, walkedBase);
+        if (selected !== null) {
+          failed.add(c.path);
+          reasons.push(`${c.path}: ${selected}`);
+        }
+      }
     }
-    if (problem !== null) {
-      failed.add(c.path);
-      reasons.push(`${c.path}: ${problem}`);
+
+    for (const c of candidates) {
+      if (failed.has(c.path)) continue;
+      let problem: string | null;
+      try {
+        const namesCandidate = (quoted: string): boolean =>
+          [red.root, red.realRoot].some((root) => resolve(root, quoted) === resolve(root, c.path));
+        problem = redProblem(
+          o.run(formatTestOne(o.testOne, c.path), red.root, o.timeoutMs),
+          namesCandidate,
+        );
+      } catch (error) {
+        problem = `test command did not run (${errorText(error)})`;
+      }
+      if (problem !== null) {
+        failed.add(c.path);
+        reasons.push(`${c.path}: ${problem}`);
+      }
     }
+
+    const afterRuns = candidates.length > 0 ? listFiles(o.worktree) : [];
+    const walkedAfter =
+      candidates.length > 0 ? walkTestFiles(red.root, red.realRoot, isTest) : undefined;
+    if (walkedAfter !== undefined) for (const c of candidates) outsideLinks(walkedAfter, c.path);
+    const sealed: SealedFile[] = [];
+    for (const c of candidates) {
+      if (failed.has(c.path)) continue;
+      const problem = fileProblem(c.abs, realRoot, c.path);
+      if (problem !== null) {
+        reasons.push(`${c.path}: after its red run, it ${problem}`);
+        continue;
+      }
+      if (!isListed(c.path, afterRuns)) {
+        reasons.push(`${c.path}: after the red runs, not listed by git under this exact spelling`);
+        continue;
+      }
+      if (gitWouldRewrite(o.worktree, c.path)) {
+        reasons.push(`${c.path}: after the red runs, ${REWRITE}`);
+        continue;
+      }
+      const copy = join(red.root, c.path);
+      const moved = copied ? fileProblem(copy, red.realRoot, c.path) : null;
+      if (moved !== null) {
+        reasons.push(`${c.path}: after its red run, its copy in the base tree ${moved}`);
+        continue;
+      }
+      const selected = walkedAfter === undefined ? null : selection(red, c.path, walkedAfter);
+      if (selected !== null) {
+        reasons.push(`${c.path}: after the red runs, ${selected}`);
+        continue;
+      }
+      let after: string;
+      try {
+        if (copied && sha256File(copy) !== c.before) {
+          reasons.push(changed(c.path));
+          continue;
+        }
+        after = sha256File(c.abs);
+      } catch (error) {
+        reasons.push(`${c.path}: cannot be read (${errorText(error)})`);
+        continue;
+      }
+      if (after !== c.before) {
+        reasons.push(changed(c.path));
+        continue;
+      }
+      sealed.push({ path: c.path, criteria: c.criteria, sha256: after });
+    }
+    return verdict(sealed);
+  };
+
+  if (base === undefined) return redRuns(worktree);
+  // Every candidate was refused before anything ran: there is nothing to run on the base tree.
+  if (candidates.length === 0) return verdict([]);
+  try {
+    return withBaseWorktree(
+      { worktree: o.worktree, gitDir: base.gitDir, commit: base.sha },
+      (root) => redRuns({ root, realRoot: realpathSync(root) }),
+    );
+  } catch (error) {
+    // What the run left around the base tree, nothing that ran in it: the seal work replays on a
+    // restart, and a throw would end every replay the same way.
+    if (!(error instanceof BaseTreeError)) throw error;
+    reasons.push(`cannot prepare the base tree: ${error.message}`);
+    return verdict([]);
   }
-
-  const afterRuns = candidates.length > 0 ? listFiles(o.worktree) : [];
-  const walkedAfter =
-    candidates.length > 0 ? walkTestFiles(o.worktree, realRoot, isTest) : undefined;
-  if (walkedAfter !== undefined) for (const c of candidates) outsideLinks(walkedAfter, c.path);
-  const sealed: SealedFile[] = [];
-  for (const c of candidates) {
-    if (failed.has(c.path)) continue;
-    const problem = fileProblem(c.abs, realRoot, c.path);
-    if (problem !== null) {
-      reasons.push(`${c.path}: after its red run, it ${problem}`);
-      continue;
-    }
-    if (!isListed(c.path, afterRuns)) {
-      reasons.push(`${c.path}: after the red runs, not listed by git under this exact spelling`);
-      continue;
-    }
-    if (gitWouldRewrite(o.worktree, c.path)) {
-      reasons.push(`${c.path}: after the red runs, ${REWRITE}`);
-      continue;
-    }
-    const selected = walkedAfter === undefined ? null : selection(c.path, c.abs, walkedAfter);
-    if (selected !== null) {
-      reasons.push(`${c.path}: after the red runs, ${selected}`);
-      continue;
-    }
-    let after: string;
-    try {
-      after = sha256File(c.abs);
-    } catch (error) {
-      reasons.push(`${c.path}: cannot be read (${errorText(error)})`);
-      continue;
-    }
-    if (after !== c.before) {
-      reasons.push(
-        `${c.path}: changed while its red run executed, so what ran is not what is sealed`,
-      );
-      continue;
-    }
-    sealed.push({ path: c.path, criteria: c.criteria, sha256: after });
-  }
-
-  return reasons.length > 0
-    ? { ok: false, reasons, sealed: [] }
-    : { ok: true, reasons: [], sealed };
 }
 
 /**

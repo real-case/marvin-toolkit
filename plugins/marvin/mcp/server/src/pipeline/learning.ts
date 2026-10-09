@@ -808,7 +808,8 @@ export interface FinalizeOptions {
   gitDir: string;
   /**
    * The commit the last gate approved, a 40-hex SHA. Finalize refuses to build on any other
-   * HEAD. Not needed for a run without a PR, which touches no git.
+   * HEAD. Not needed for a run that keeps its retro in the run dir (no PR, or halted), which
+   * touches no git.
    */
   expectedHead: string;
   /**
@@ -827,7 +828,7 @@ export interface FinalizeOptions {
 }
 
 export interface FinalizeResult {
-  /** False for a run without a PR, which keeps everything in the run dir. */
+  /** False for a run without a PR or a halted run, which keeps everything in the run dir. */
   shipped: boolean;
   /** The finalize commit, or null when there was nothing to commit. */
   commit: string | null;
@@ -1013,6 +1014,12 @@ const nulList = (text: string) => text.split("\0").filter(Boolean);
  * Without one (D16) nothing leaves the run dir: the worktree is not touched, nothing is
  * committed or pushed.
  *
+ * A halted run is finalized the same way even when its PR is open (D-HALTPR). It delivered
+ * nothing the gates, the verifier and CI all approved, so its spec must not read `shipped`, and
+ * lessons or checks committed to its branch would reach the base only by merging work that
+ * halted. Its PR stays a draft: the engine closes a halted run without the CI wait that ends in
+ * `mark_ready`, and its last notify names the PR for the orchestrator to report.
+ *
  * It builds on `expectedHead`, the commit the last gate approved, and only on what that commit
  * holds: `checks.yaml`, `calibration.jsonl`, the spec and the lesson store are read from the
  * commit, never from the working tree (lessons are added in a private copy of the committed
@@ -1041,7 +1048,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const retro = o.retro === null ? NO_RETRO : parseRetro(o.retro);
   const record = calibrationRecord(run, aggregate(run, o.events), o.exposedLessons);
 
-  if (run.prUrl === null) {
+  if (run.prUrl === null || run.haltReason !== null) {
     assertRunDirTargets(o.runDir, retro);
     assertPlain(o.runDir, "retro-output.json");
     assertPlain(o.runDir, "calibration.json");

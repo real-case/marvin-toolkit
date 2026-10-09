@@ -535,11 +535,11 @@ last message is the executor object.
   `execution: "sequential"`: parallel gates contend for the same cores and time out tests the
   change never touched. On every full pass, pass neither `gates` nor `only`, because an explicit
   `gates` list leaves `gates.extra` out. `verify` then runs the stack's detected gates, with a gate
-  `.marvin/config.json` declares replacing the detected one by name, plus `gates.extra`. That
-  covers every gate the pipeline's gate stage runs, which is the declared gates and the extras,
-  with the same commands. A standard gate the config leaves out still runs here with its detected
-  command although the stage never runs it; its red still fails the delivery gate, so fix it like
-  any other. The lint-first pass and a round's single-gate re-run keep their `only`. Then, for
+  `.marvin/config.json` declares replacing the detected one by name, plus `gates.extra`. A standard
+  gate the config leaves out runs with its detected command. The pipeline's gate stage resolves
+  its plan through the same function from the same committed config, so a full pass here runs
+  exactly the gates the stage will run, with the same commands, and a gate whose binary is absent
+  is `not-run` in both. The lint-first pass and a round's single-gate re-run keep their `only`. Then, for
   either spec type, run every criterion's oracle: `action: "oracles"`, the `specSlug`,
   `expect: "pass"` and no `criteria`. The gate stage runs all of them, so a red one found here is a
   rejection saved. This is a self-check, and the engine re-runs everything after you.

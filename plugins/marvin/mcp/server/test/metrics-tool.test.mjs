@@ -499,10 +499,11 @@ test("rollup on a bare project still writes a block whose sources are all absent
   }
 });
 
-test("the metrics tool is registered as the fourteenth tool, between spec and lessons", async () => {
+test("the metrics tool is registered between spec and lessons, text-only", async () => {
   const listed = await withSession({}, (s) => s.request("tools/list", {}));
   const names = listed.tools.map((t) => t.name);
-  assert.equal(names.length, 14);
+  // Fifteen since the autopilot pipeline's `pipeline` tool; pipeline-tool.test.mjs pins the list.
+  assert.equal(names.length, 15);
   assert.equal(names[names.indexOf("spec") + 1], "metrics");
   assert.equal(names[names.indexOf("metrics") + 1], "lessons");
   const tool = listed.tools.find((t) => t.name === "metrics");

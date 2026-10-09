@@ -10,9 +10,17 @@ try {
 const {
   MARVIN_PIPELINE_RUN: run,
   MARVIN_PIPELINE_CHILD: child,
-  MARVIN_PIPELINE_ORCH: orch,
+  MARVIN_PIPELINE_ORCH: launchedWith,
 } = process.env;
 if (!run || !child) process.exit(0);
+// A session that took the run over with `marvin-pipe attach` named itself in orchestrator.txt;
+// a child launched before it still reports to the new name.
+let orch = launchedWith;
+try {
+  orch = readFileSync(join(run, "orchestrator.txt"), "utf8").trim() || launchedWith;
+} catch {
+  /* no attach yet */
+}
 const interval = Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S ?? 300) * 1000;
 const file = join(run, `${child}.heartbeat`);
 const now = Date.now();

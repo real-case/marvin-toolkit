@@ -321,24 +321,21 @@ test("task-implement: the pipeline executor never hands the spec to marvin-tm-ex
 
 test("task-implement: the full self-check states how its plan relates to the gate stage's", () => {
   const rule = bullet(flat(pipelineSection("task-implement")), "Step 6F / 9B — the self-check");
-  assert.doesNotMatch(
-    rule,
-    /which is the plan the pipeline's gate stage runs/,
-    "the two plans are still claimed identical",
-  );
   assert.match(rule, /by name/i, "the per-name override is not stated");
   assert.match(rule, /`gates\.extra`/, "the extras are not stated");
   assert.match(rule, /config leaves out/i, "a standard gate only detection supplies is not stated");
+  assert.match(rule, /exactly the gates the stage will run/, "the shared plan is not stated");
 
-  // `verify` overlays config gates on detection one name at a time, keeps a detected gate
-  // the config omits, and adds the extras only when neither `gates` nor `only` is passed.
-  const verify = serverFile("tools", "verify.ts");
-  assert.match(verify, /const override = configGates\.find\(\(g\) => g\.name === name\);/);
+  // The claim holds because both sides resolve through the one function (D-GATEPLAN), which
+  // overlays config gates on detection one name at a time and adds the extras only when neither
+  // explicit gates nor `only` is passed.
+  assert.match(serverFile("tools", "verify.ts"), /resolveGatePlan\(\{/);
   assert.match(
-    verify,
-    /else gates\.push\(\.\.\.base\.gates\.filter\(\(g\) => g\.name === name\)\);/,
+    serverFile("pipeline", "runtime.ts"),
+    /const \{ gates \} = resolveGatePlan\(\{ projectRoot, gates: config\.gates \}\);/,
   );
-  assert.match(verify, /const usesExtras = !\(input\.gates\?\.length \|\| input\.only\);/);
+  const plan = serverFile("lib", "gate-plan.ts");
+  assert.match(plan, /const usesExtras = !\(input\.explicit\?\.length \|\| input\.only\);/);
 });
 
 test("the write-before-verify rules state what the freshness digest actually counts", () => {

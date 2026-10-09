@@ -1321,6 +1321,43 @@ test("a retro that produced nothing finalizes as an empty one, with or without a
   );
 });
 
+test("D-HALTPR: a run that halted after its PR opened is finalized like one without a PR", () => {
+  // The retro stays in the run dir; nothing is committed or pushed and the spec is not shipped.
+  // Finalize builds nothing on the branch, so it needs no gated commit to build on.
+  const kept = (fx, run) => {
+    const headBefore = head(fx.wt);
+    const remoteBefore = sh(fx.origin, "for-each-ref", "--format=%(refname) %(objectname)");
+    const out = l.finalizeRun(fx.opts({ run, expectedHead: undefined }));
+    assert.deepEqual([out.shipped, out.commit, out.pushed, out.written], [false, null, false, []]);
+    assert.equal(head(fx.wt), headBefore);
+    assert.equal(status(fx.wt), "");
+    assert.equal(readFileSync(join(fx.wt, SPEC_PATH), "utf8"), SPEC, "the spec is not shipped");
+    assert.equal(
+      sh(fx.origin, "for-each-ref", "--format=%(refname) %(objectname)"),
+      remoteBefore,
+      "nothing is pushed",
+    );
+    assert.deepEqual(readdirSync(fx.runDir).sort(), [
+      "calibration.json",
+      "proposals",
+      "retro-output.json",
+    ]);
+    const saved = JSON.parse(readFileSync(join(fx.runDir, "retro-output.json"), "utf8"));
+    assert.equal(saved.lessons[0].title, "T");
+    const calibration = JSON.parse(readFileSync(join(fx.runDir, "calibration.json"), "utf8"));
+    assert.equal(calibration.aggregate.halted, run.haltReason);
+    assert.match(readFileSync(join(fx.runDir, "proposals", "1-marvin.md"), "utf8"), /SKILL\.md/);
+  };
+  const withPr = prFixture();
+  const reason = "rejected 3 times (last: verifier)";
+  kept(withPr, makeRun({ ...withPr.run, stage: "finalizing", haltReason: reason }));
+  const withoutPr = prFixture();
+  kept(
+    withoutPr,
+    makeRun({ ...withoutPr.run, prUrl: null, stage: "finalizing", haltReason: "user cancelled" }),
+  );
+});
+
 test("a run with no PR still refuses a retro that does not validate", () => {
   const fx = prFixture();
   const noPr = makeRun({ ...fx.run, prUrl: null });

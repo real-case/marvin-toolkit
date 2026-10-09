@@ -17,12 +17,15 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { importTs } from "./_tsload.mjs";
+import { runWorktree } from "./_gate-fixture.mjs";
+import { repoWithOrigin, sh } from "./_pipeline-git.mjs";
 
 const s = await importTs("src/pipeline/seal.ts");
 const g = await importTs("src/pipeline/gate.ts");
+const wtm = await importTs("src/pipeline/worktree.ts");
 const hooks = fileURLToPath(new URL("../../../pipeline/hooks/", import.meta.url));
 const PATTERN = "\\.(test|spec)\\.[cm]?[jt]sx?$";
 
@@ -1267,6 +1270,11 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     const v = verdict(output);
     assert.equal(v.ok, true, `a failure, not node's line for this file: ${JSON.stringify(output)}`);
   }
+  // A run that executes the file starts node twice (the runner, then the file in its own process),
+  // a run whose candidate the runner cannot find starts it once, and starting node can take
+  // seconds on a loaded machine. The budget is a ceiling on a run that ends by itself, so it is
+  // the jest test's two minutes rather than a 30 s that a loaded machine overran: a run cut short
+  // reports exit 124, which the seal reads as a test that did not run.
   const real = (candidate, body, testOne = "node --test {file}") => {
     const dir = tmp();
     gitInit(dir);
@@ -1274,7 +1282,7 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
     const context = process.env.NODE_TEST_CONTEXT;
     delete process.env.NODE_TEST_CONTEXT;
     try {
-      return seal(dir, [authored(candidate)], { testOne, run: g.shellRunner, timeoutMs: 30000 });
+      return seal(dir, [authored(candidate)], { testOne, run: g.shellRunner, timeoutMs: 120000 });
     } finally {
       if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
     }
@@ -1603,6 +1611,315 @@ test("a red run that changes a candidate is not what gets sealed", () => {
   const x = seal(swapped, [authored("a.test.ts")], { run: swaps });
   assert.equal(x.ok, false);
   assert.match(x.reasons[0], /a\.test\.ts: after its red run, it is a symbolic link/);
+});
+
+// ── a re-seal red-runs on the base tree (D-RESEAL) ──────────────────────────
+
+const CALC_BASE = "export const sub = (a, b) => a - b;\n";
+const CALC_DONE = `${CALC_BASE}export const add = (a, b) => a + b;\n`;
+const CALC = 'import * as calc from "./calc.mjs";';
+/** A node:test file: the imports in `header`, then one test per `[name, body]`. */
+const nodeTest = (header, ...cases) =>
+  [
+    'import { test } from "node:test";',
+    'import assert from "node:assert/strict";',
+    header,
+    ...cases.map(([name, body]) => `test(${JSON.stringify(name)}, () => { ${body} });`),
+    "",
+  ].join("\n");
+const ADDS = ["add adds", "assert.equal(calc.add?.(1, 2), 3);"];
+const ADDS_NEGATIVES = ["add adds negatives", "assert.equal(calc.add?.(-1, -2), -3);"];
+const SUBTRACTS = ["sub subtracts", "assert.equal(calc.sub(3, 1), 2);"];
+const passesOnBase = (path) => `${path}: passes before implementation, so it proves nothing`;
+
+/**
+ * `sealAuthoredTests` with node's own runner, recording the directory each red run executed in.
+ * The budget is the one the other real runs use: a ceiling on a run that ends by itself.
+ */
+function nodeSeal(worktree, tests, over = {}, cwds = []) {
+  const context = process.env.NODE_TEST_CONTEXT;
+  delete process.env.NODE_TEST_CONTEXT;
+  try {
+    return s.sealAuthoredTests({
+      worktree,
+      tests,
+      testPathPattern: PATTERN,
+      testOne: "node --test {file}",
+      run: (command, cwd, timeoutMs) => {
+        cwds.push(cwd);
+        return g.shellRunner(command, cwd, timeoutMs);
+      },
+      timeoutMs: 120000,
+      ...over,
+    });
+  } finally {
+    if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
+  }
+}
+const baseOf = (w) => ({ sha: w.baseSha, gitDir: w.gitDir });
+const worktreeCount = (w) =>
+  w
+    .git("worktree", "list", "--porcelain")
+    .split("\n")
+    .filter((line) => line.startsWith("worktree ")).length;
+const sha256Of = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+/**
+ * A run at the point of a re-seal: the test-author's `src/calc.test.mjs`, sealed red in the
+ * worktree before any implementation, is committed, and the executor's `add` after it.
+ */
+function implementedRun() {
+  const w = runWorktree({ ".gitignore": "node_modules/\n", "src/calc.mjs": CALC_BASE });
+  w.write("src/calc.test.mjs", nodeTest(CALC, ADDS));
+  const cwds = [];
+  const first = nodeSeal(w.path, [authored("src/calc.test.mjs")], {}, cwds);
+  assert.equal(first.ok, true, first.reasons.join("; "));
+  assert.deepEqual(cwds, [w.path], "a first seal red-runs in the worktree itself");
+  w.commit("test(calc): sealed acceptance tests");
+  w.write("src/calc.mjs", CALC_DONE);
+  w.commit("feat(calc): add");
+  return w;
+}
+
+test("D-RESEAL: a correct revision against a correct implementation re-seals on the base tree", () => {
+  const w = implementedRun();
+  const count = worktreeCount(w);
+  const head = w.git("rev-parse", "HEAD");
+  w.write("src/calc.test.mjs", nodeTest(CALC, ADDS, ADDS_NEGATIVES));
+  // Red-run in the implemented worktree, the correct revision passes and is refused.
+  const inPlace = nodeSeal(w.path, [authored("src/calc.test.mjs")]);
+  assert.deepEqual(inPlace.reasons, [passesOnBase("src/calc.test.mjs")]);
+
+  const cwds = [];
+  const v = nodeSeal(w.path, [authored("src/calc.test.mjs")], { base: baseOf(w) }, cwds);
+  assert.equal(v.ok, true, v.reasons.join("; "));
+  assert.deepEqual(v.sealed, [
+    {
+      path: "src/calc.test.mjs",
+      criteria: ["AC1"],
+      sha256: sha256Of(join(w.path, "src/calc.test.mjs")),
+    },
+  ]);
+  assert.equal(cwds.length, 1);
+  assert.ok(
+    relative(w.path, cwds[0]).startsWith(".."),
+    "the red run used a tree outside the run's",
+  );
+  assert.equal(existsSync(cwds[0]), false, "the base worktree is removed after the seal");
+  assert.equal(worktreeCount(w), count);
+  assert.equal(w.git("rev-parse", "HEAD"), head, "the run worktree is not touched");
+  assert.equal(readFileSync(join(w.path, "src/calc.mjs"), "utf8"), CALC_DONE);
+  assert.equal(w.git("status", "--porcelain"), "M src/calc.test.mjs");
+});
+
+test("D-RESEAL: a revision that passes on the base tree is refused, and the base worktree is removed", () => {
+  const w = implementedRun();
+  const count = worktreeCount(w);
+  w.write("src/calc.test.mjs", nodeTest(CALC, SUBTRACTS));
+  const cwds = [];
+  const v = nodeSeal(w.path, [authored("src/calc.test.mjs")], { base: baseOf(w) }, cwds);
+  assert.deepEqual([v.ok, v.reasons, v.sealed], [false, [passesOnBase("src/calc.test.mjs")], []]);
+  assert.equal(cwds.length, 1);
+  assert.equal(existsSync(cwds[0]), false);
+  assert.equal(worktreeCount(w), count);
+});
+
+test("D-RESEAL: a revised test the base commit already holds is run in its revised form", () => {
+  const w = runWorktree({
+    "src/calc.mjs": CALC_BASE,
+    "src/legacy.test.mjs": nodeTest(CALC, SUBTRACTS),
+  });
+  w.write("src/calc.mjs", CALC_DONE);
+  w.commit("feat(calc): add");
+  w.write("src/legacy.test.mjs", nodeTest(CALC, SUBTRACTS, ADDS));
+  const v = nodeSeal(w.path, [authored("src/legacy.test.mjs")], { base: baseOf(w) });
+  assert.equal(v.ok, true, v.reasons.join("; "));
+  assert.deepEqual(
+    v.sealed.map((x) => x.path),
+    ["src/legacy.test.mjs"],
+  );
+});
+
+test("D-RESEAL: a seal that throws while the base worktree exists still removes it", () => {
+  const w = implementedRun();
+  const count = worktreeCount(w);
+  w.write("src/calc.test.mjs", nodeTest(CALC, ADDS, ADDS_NEGATIVES));
+  const pointer = readFileSync(join(w.path, ".git"));
+  let tree;
+  // The run worktree loses its `.git` during the red run, so the listing after it throws.
+  const dropsPointer = (command, cwd) => {
+    tree = cwd;
+    rmSync(join(w.path, ".git"));
+    return RED;
+  };
+  try {
+    assert.throws(
+      () =>
+        s.sealAuthoredTests({
+          worktree: w.path,
+          tests: [authored("src/calc.test.mjs")],
+          testPathPattern: PATTERN,
+          testOne: "node --test {file}",
+          run: dropsPointer,
+          timeoutMs: 1000,
+          base: baseOf(w),
+        }),
+      /cannot list the worktree's files/,
+    );
+  } finally {
+    writeFileSync(join(w.path, ".git"), pointer);
+  }
+  assert.ok(tree !== undefined && tree !== w.path);
+  assert.equal(existsSync(tree), false);
+  assert.equal(worktreeCount(w), count);
+});
+
+test(
+  "D-RESEAL: a run node_modules the base tree cannot be given is a reason, not a throw that every restart replays",
+  { skip: typeof process.getuid === "function" && process.getuid() === 0 },
+  () => {
+    const w = implementedRun();
+    w.write("node_modules/@x/a/index.mjs", "export const a = 1;\n");
+    const scope = join(w.path, "node_modules/@x");
+    w.write("src/calc.test.mjs", nodeTest(CALC, ADDS, ADDS_NEGATIVES));
+    const count = worktreeCount(w);
+    const calls = [];
+    let v;
+    chmodSync(scope, 0);
+    try {
+      v = seal(w.path, [authored("src/calc.test.mjs")], {
+        run: scripted({}, calls),
+        base: baseOf(w),
+      });
+    } finally {
+      chmodSync(scope, 0o755);
+    }
+    // Skipping what cannot be linked would leave a dependency missing in the base tree, and a
+    // test failing on the missing module would be sealed as red.
+    assert.deepEqual(
+      [v.ok, v.reasons, v.sealed],
+      [false, ["cannot prepare the base tree: node_modules/@x cannot be listed (EACCES)"], []],
+    );
+    assert.deepEqual(calls, [], "nothing runs");
+    assert.equal(worktreeCount(w), count);
+  },
+);
+
+test("D-RESEAL: the red run sees the base commit's workspace package and the run's dependencies", () => {
+  const w = runWorktree({
+    ".gitignore": "node_modules/\n",
+    "packages/calc/package.json": '{ "name": "@w/calc", "main": "index.mjs" }\n',
+    "packages/calc/index.mjs": CALC_BASE,
+  });
+  // What an install leaves in the run worktree: the workspace link npm writes, and a dependency.
+  mkdirSync(join(w.path, "node_modules/@w"), { recursive: true });
+  symlinkSync("../../packages/calc", join(w.path, "node_modules/@w/calc"));
+  w.write("node_modules/two/package.json", '{ "name": "two", "main": "index.mjs" }\n');
+  w.write("node_modules/two/index.mjs", "export const two = 2;\n");
+  w.write("packages/calc/index.mjs", CALC_DONE);
+  w.commit("feat(calc): add");
+  const header = 'import * as calc from "@w/calc";\nimport { two } from "two";';
+  const path = "tests/calc.test.mjs";
+
+  // Through the workspace link, the base tree's package has no `add`: red, and sealed. Read
+  // through the run worktree's own node_modules it would be the implementation, and pass.
+  w.write(path, nodeTest(header, ["add adds two", "assert.equal(calc.add?.(1, two), 3);"]));
+  const red = nodeSeal(w.path, [authored(path)], { base: baseOf(w) });
+  assert.equal(red.ok, true, red.reasons.join("; "));
+  // A test of what the base already does passes there, which takes both imports resolving.
+  w.write(path, nodeTest(header, ["sub takes two", "assert.equal(calc.sub(3, two), 1);"]));
+  const green = nodeSeal(w.path, [authored(path)], { base: baseOf(w) });
+  assert.deepEqual(green.reasons, [passesOnBase(path)]);
+});
+
+test("D-RESEAL: which other files the command may select is judged in the base tree, where it runs", () => {
+  const w = runWorktree({ "calc.mjs": CALC_BASE, "xcalc.test.mjs": "// a red test at the base\n" });
+  rmSync(join(w.path, "xcalc.test.mjs"));
+  w.commit("the run removed xcalc.test.mjs");
+  w.write("calc.test.mjs", "// revised\n");
+  const count = worktreeCount(w);
+  const inRun = seal(w.path, [authored("calc.test.mjs")]);
+  assert.equal(inRun.ok, true, "the run worktree has no such sibling");
+  const calls = [];
+  const v = seal(w.path, [authored("calc.test.mjs")], {
+    run: scripted({}, calls),
+    base: baseOf(w),
+  });
+  assert.deepEqual(v.reasons, [
+    "calc.test.mjs: the single-test command may also select xcalc.test.mjs",
+  ]);
+  assert.deepEqual(calls, [], "nothing runs for a candidate that is refused");
+  assert.equal(worktreeCount(w), count);
+});
+
+test("D-RESEAL: a path the base tree reaches through a link is refused, and nothing is written through it", () => {
+  const repo = repoWithOrigin();
+  const outside = tmp();
+  symlinkSync(outside, join(repo, "t"));
+  sh(repo, "add", "t");
+  sh(repo, "commit", "-m", "t is a link at the base");
+  sh(repo, "push", "origin", "HEAD:dev");
+  const made = wtm.createRunWorktree({
+    repoRoot: repo,
+    base: "dev",
+    runId: "r1",
+    worktreesRoot: tmp("pipe-wts-"),
+  });
+  sh(made.path, "rm", "-q", "t");
+  mkdirSync(join(made.path, "t"));
+  writeFileSync(join(made.path, "t/a.test.mjs"), "// revised\n");
+  sh(made.path, "add", "-A");
+  sh(made.path, "commit", "-m", "t is a directory now");
+  const v = seal(made.path, [authored("t/a.test.mjs")], {
+    base: { sha: made.baseSha, gitDir: made.gitDir },
+  });
+  // The link is also what it is in the worktree check: a directory leading out of the tree the
+  // command runs in, behind which the runner could select anything.
+  assert.deepEqual(v.reasons, [
+    "t/a.test.mjs: cannot be placed in the base tree (t is a symbolic link)",
+    "t: symlinked directory points outside the worktree",
+  ]);
+  assert.deepEqual(readdirSync(outside), []);
+});
+
+test("D-RESEAL: a red run that changes the copy it runs, or the revised file, is not what gets sealed", () => {
+  const w = runWorktree({ "calc.mjs": CALC_BASE });
+  w.write("a.test.mjs", "// revised\n");
+  const rewritesCopy = (command, cwd) => {
+    writeFileSync(join(cwd, "a.test.mjs"), "// rewritten to pass\n");
+    return RED;
+  };
+  const copy = seal(w.path, [authored("a.test.mjs")], { run: rewritesCopy, base: baseOf(w) });
+  assert.deepEqual(copy.reasons, [
+    "a.test.mjs: changed while its red run executed, so what ran is not what is sealed",
+  ]);
+  const rewritesRevision = () => {
+    writeFileSync(join(w.path, "a.test.mjs"), "// rewritten to pass\n");
+    return RED;
+  };
+  const revision = seal(w.path, [authored("a.test.mjs")], {
+    run: rewritesRevision,
+    base: baseOf(w),
+  });
+  assert.deepEqual(revision.reasons, [
+    "a.test.mjs: changed while its red run executed, so what ran is not what is sealed",
+  ]);
+});
+
+test("D-RESEAL: a base that is not a full commit SHA, or a relative git dir, is a misconfigured call", () => {
+  const w = runWorktree();
+  w.write("a.test.mjs", "// revised\n");
+  const calls = [];
+  for (const [base, expected] of [
+    [{ sha: "HEAD", gitDir: w.gitDir }, /40-hex/],
+    [{ sha: w.baseSha, gitDir: "relative/.git" }, /absolute/],
+  ]) {
+    assert.throws(
+      () => seal(w.path, [authored("a.test.mjs")], { run: scripted({}, calls), base }),
+      expected,
+    );
+  }
+  assert.deepEqual(calls, []);
 });
 
 // ── writeSealManifest ───────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
   "version": "0.28.0",
   "counts": {
     "prompts": 59,
-    "tools": 14,
+    "tools": 15,
     "agents": 10,
     "widgets": 9,
     "version": "0.28.0",

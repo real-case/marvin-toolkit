@@ -14,6 +14,7 @@ const { initRun, ROLES } = await importTs("src/pipeline/run-store.ts");
 const { loadRubric } = await importTs("src/pipeline/assess.ts");
 const { scanChecks, SEVERITIES } = await importTs("src/pipeline/gate.ts");
 const { LESSON_TYPES } = await importTs("src/storage/lessons.ts");
+const { RUNTIME_VARS } = await importTs("src/pipeline/prompt.ts");
 
 const pipelineDir = fileURLToPath(new URL("../../../pipeline/", import.meta.url));
 const rolesDir = join(pipelineDir, "roles");
@@ -30,11 +31,11 @@ const PR = "https://github.com/tesari-ai/osint/pull/42";
 /**
  * The variables each role's context template uses, split by who supplies them. `engine` is what
  * `decide` puts into a fresh spawn's context, and a test below derives it from `decide` itself.
- * `runtime` is what Task 13's `spawnChild` is to add, and is only declared here: no runtime exists
- * yet to derive it from, so this half proves nothing about one. When Task 13 lands, the list moves
- * into `src/pipeline/`, this file imports it, and Task 13's prompt test renders these five
- * templates through `composePrompts` with what `spawnChild` builds (the todo at the end of this
- * file). A resumed spawn renders no template at all: it sends its `message` alone.
+ * `runtime` is `RUNTIME_VARS` from `src/pipeline/prompt.ts`, the list `spawnChild` builds its
+ * half from, so the two halves together must be exactly what each template names.
+ * `test/pipeline-prompt.test.mjs` renders the five templates through `composePrompts` with both
+ * halves, and `test/pipeline-runtime.test.mjs` through `spawnChild` itself. A resumed spawn
+ * renders no template at all: it sends its `message` alone.
  *
  * `orchestrator` and `child` are in every role's half because `common.md` sends progress reports
  * to the orchestrator the TASK CONTEXT names, signed with the child's own name. The heartbeat
@@ -42,35 +43,29 @@ const PR = "https://github.com/tesari-ai/osint/pull/42";
  * to report in its first minutes has no other way to learn either.
  */
 const ADDRESS = ["child", "orchestrator"];
-const TEMPLATE_VARS = {
-  planner: { engine: ["critic_cap", "task"], runtime: [...ADDRESS, "lessons"] },
-  "test-author": {
-    engine: ["feedback", "spec"],
-    runtime: [...ADDRESS, "lessons", "test_path_pattern"],
-  },
-  executor: {
-    engine: ["base", "branch", "findings", "iteration", "run", "sealed", "spec", "tier"],
-    runtime: [...ADDRESS, "lessons"],
-  },
-  verifier: {
-    engine: [
-      "base",
-      "branch",
-      "claims",
-      "gate_report",
-      "iteration",
-      "pr",
-      "previous",
-      "sealed",
-      "spec",
-    ],
-    runtime: [...ADDRESS, "conventions", "lessons"],
-  },
-  retro: {
-    engine: [],
-    runtime: [...ADDRESS, "aggregate", "efficacy", "lessons", "lessons_index"],
-  },
+const ENGINE_VARS = {
+  planner: ["critic_cap", "task"],
+  "test-author": ["feedback", "spec"],
+  executor: ["base", "branch", "findings", "iteration", "run", "sealed", "spec", "tier"],
+  verifier: [
+    "base",
+    "branch",
+    "claims",
+    "gate_report",
+    "iteration",
+    "pr",
+    "previous",
+    "sealed",
+    "spec",
+  ],
+  retro: [],
 };
+const TEMPLATE_VARS = Object.fromEntries(
+  Object.entries(ENGINE_VARS).map(([role, engine]) => [
+    role,
+    { engine, runtime: [...RUNTIME_VARS[role]] },
+  ]),
+);
 
 const schemaCache = new Map();
 const schemaOf = (role) => {
@@ -1167,8 +1162,3 @@ test("a dispute answered with revise_tests restarts the executor with no pull re
   assert.ok(probe, "executor.md names no probe for an existing pull request");
   assert.equal(childGitViolation(probe, RUN_BRANCH), null, probe);
 });
-
-test.todo(
-  "composePrompts renders each real context template with exactly the variables spawnChild " +
-    "supplies (owed by Task 13: its runtime list replaces the declared half of TEMPLATE_VARS)",
-);

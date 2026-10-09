@@ -6,6 +6,7 @@ import { importTs } from "./_tsload.mjs";
 
 const engine = await importTs("src/pipeline/engine.ts");
 const { decide } = engine;
+const { isReseal } = await importTs("src/pipeline/seal.ts");
 const { initRun } = await importTs("src/pipeline/run-store.ts");
 const gateModule = await importTs("src/pipeline/gate.ts");
 const { loadRubric } = await importTs("src/pipeline/assess.ts");
@@ -1774,4 +1775,117 @@ test("ruling: only a green CI result after finalize reaches ready; wait and canc
       ["retro", "retro", []],
     );
   }
+});
+
+// ── D-RESEAL: which seals red-run on the base tree ─────────────────────────────
+
+test("D-RESEAL: only a seal before any executor red-runs in the worktree; every later seal is a re-seal", () => {
+  // The runtime reads `isReseal` off the run that asks for the seal: the iteration decide keeps.
+  const authoring = approve(at("awaiting_approval")).run;
+  assert.deepEqual([authoring.stage, isReseal(authoring)], ["test_authoring", false]);
+  const refused = go(authoring, { kind: "seal", ok: false, reasons: ["x"], sealed: [] }).run;
+  assert.deepEqual([refused.stage, isReseal(refused)], ["test_authoring", false]);
+  const sealed = go(authoring, { kind: "seal", ok: true, reasons: [], sealed: [sealedTest()] });
+  assert.deepEqual(
+    [sealed.run.stage, spawnOf(sealed).role, isReseal(sealed.run)],
+    ["executing", "executor", true],
+  );
+
+  const fault = finding({ id: "V1", category: "test-quality", file: "src/a.test.ts" });
+  const faulted = go(
+    at("verifying", { iteration: 1, sealed: [sealedTest()] }),
+    child("verifier", verdict("FAIL", [fault])),
+  ).run;
+  assert.deepEqual([faulted.stage, isReseal(faulted)], ["test_authoring", true]);
+  const revised = go(
+    at("awaiting_answer", { awaitingRole: "executor", iteration: 2, sealed: [sealedTest()] }),
+    answer("executor_questions", { kind: "revise_tests", text: "AC1 expects a 404" }),
+  ).run;
+  assert.deepEqual([revised.stage, isReseal(revised)], ["test_authoring", true]);
+  // A refused re-seal that reaches the attempt cap, and the retry of that halt, stay re-seals.
+  const capped = go(faulted, { kind: "seal", ok: false, reasons: ["x"], sealed: [] });
+  assert.equal(judgmentOf(capped), "halt");
+  const retried = go(capped.run, answer("halt", { kind: "retry" })).run;
+  assert.deepEqual([retried.stage, isReseal(retried)], ["test_authoring", true]);
+});
+
+// ── D-HALTPR: a run that halted after its PR opened ─────────────────────────────
+
+const RETRO_OUT = {
+  status: "done",
+  summary: "s",
+  checks: [],
+  proposals: [],
+  lessons: [],
+  prune: [],
+};
+
+test("D-HALTPR: a halted run with a PR closes after finalize like one without, and names its PR", () => {
+  // The PR is closed under the run: the orchestrator cancels the halt, the retro runs, and
+  // finalize keeps everything in the run dir. Nothing on the way polls CI or readies the PR.
+  const decisions = [];
+  const step = (run, obs) => {
+    const d = go(run, obs);
+    decisions.push(d);
+    return d.run;
+  };
+  let run = at("ci_wait", { prUrl: PR, iteration: 2, ciSince: NOW.toISOString() });
+  run = step(run, { kind: "ci", state: "closed", failing: [] });
+  assert.equal(judgmentOf(decisions.at(-1)), "halt");
+  run = step(run, answer("halt", { kind: "cancel", reason: "the PR was closed by hand" }));
+  assert.deepEqual([run.stage, run.haltReason], ["retro", "the PR was closed by hand"]);
+  run = step(run, child("retro", RETRO_OUT));
+  assert.deepEqual(decisions.at(-1).actions, [
+    { kind: "work", work: "finalize", data: { retro: RETRO_OUT } },
+  ]);
+  run = step(run, { kind: "finalized" });
+  assert.deepEqual([run.stage, run.finalized, run.prUrl], ["done", false, PR]);
+  // Worded for every cause of a halt: this PR was closed, not left open as a draft.
+  assert.deepEqual(decisions.at(-1).actions, [
+    { kind: "notify", text: `halted run closed; retro saved; PR not marked ready: ${PR}` },
+  ]);
+  assert.deepEqual(
+    decisions.flatMap((d) => works(d)),
+    ["finalize"],
+    "no CI poll and no mark_ready once the run halted",
+  );
+});
+
+test("D-HALTPR: a run halted after its finalize names its PR when the halt is cancelled", () => {
+  // The finalize committed and pushed, CI then failed on the finalize commit, and the orchestrator
+  // cancels the halt: the run closes without the CI wait, so the PR is never marked ready.
+  const finalized = at("finalizing", {
+    prUrl: PR,
+    iteration: 2,
+    finalized: true,
+    ciSince: NOW.toISOString(),
+  });
+  const red = go(finalized, { kind: "ci", state: "red", failing: ["build"] });
+  assert.deepEqual([judgmentOf(red), red.run.stage], ["halt", "finalizing"]);
+  const cancelled = go(red.run, answer("halt", { kind: "cancel", reason: "give up" }));
+  assert.deepEqual([cancelled.run.stage, cancelled.run.haltReason], ["done", "give up"]);
+  assert.deepEqual(cancelled.actions, [
+    { kind: "notify", text: `halted: give up; PR not marked ready: ${PR}` },
+  ]);
+  // A no_ci cancel after finalize closes the same way; without a PR the notify is as before.
+  const noCi = go(finalized, answer("no_ci", { kind: "cancel", reason: "stop" }));
+  assert.deepEqual(noCi.actions, [
+    { kind: "notify", text: `halted: stop; PR not marked ready: ${PR}` },
+  ]);
+  const bare = go(at("finalizing"), answer("no_ci", { kind: "cancel", reason: "stop" }));
+  assert.deepEqual(bare.actions, [{ kind: "notify", text: "halted: stop" }]);
+});
+
+test("D-HALTPR: a halted run without a PR and the ready path are unchanged", () => {
+  const halted = go(at("finalizing", { haltReason: "user cancelled" }), { kind: "finalized" });
+  assert.equal(halted.run.stage, "done");
+  assert.deepEqual(halted.actions, [{ kind: "notify", text: "halted run closed; retro saved" }]);
+  const finalized = go(at("finalizing", { prUrl: PR }), { kind: "finalized" });
+  assert.deepEqual(
+    [finalized.run.stage, finalized.run.finalized, works(finalized)],
+    ["finalizing", true, ["ci"]],
+  );
+  const ready = go(finalized.run, { kind: "ci", state: "green", failing: [] });
+  assert.deepEqual([ready.run.stage, works(ready)], ["ready", ["mark_ready"]]);
+  assert.deepEqual(ready.actions.at(-1), { kind: "notify", text: "PR ready to merge" });
 });

@@ -24,7 +24,9 @@ if (!existsSync(new URL("node_modules", checkoutRoot))) {
 }
 
 export default defineConfig({
-  entry: ["src/server.ts"],
+  // The second entry is the autopilot pipeline's CLI, a separate process the server never loads:
+  // `node dist/marvin-pipe.js <command>`. No shebang and no exec bit; it is always run via node.
+  entry: { server: "src/server.ts", "marvin-pipe": "src/pipeline/cli.ts" },
   outDir: "dist",
   format: ["esm"],
   target: "node20",

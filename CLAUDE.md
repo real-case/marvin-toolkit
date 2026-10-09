@@ -39,7 +39,7 @@ plugins/marvin/
     │   ├── server.ts                 # entry: name "marvin"; registers prompts + tools + widget resources
     │   ├── prompts/
     │   │   └── index.ts              # 59 prompt entries (skill-backed + inline track)
-    │   ├── tools/                    # 14 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, metrics (task pipeline; one of three callers of the .marvin/metrics/ writer, ADR-0043/0044), lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer)
+    │   ├── tools/                    # 15 MCP tools: board task / task-detail / tracker (board + widget reads), help + dashboard (toolbox state), verify, spec, metrics (task pipeline; one of three callers of the .marvin/metrics/ writer, ADR-0043/0044), lessons, summary, handoff (task pipeline), adr (decision lifecycle), audit (sec-* structured findings), report (unified .marvin/ reports viewer), pipeline (read-only door to the autopilot marvin-pipe CLI)
     │   ├── resources/widgets.ts      # buildWidgetResources(packRoot): ui:// widget ResourceDefs (no ext-apps import; server stays SDK-free)
     │   ├── storage/ flows/ lib/      # board persistence + helpers
     └── dist/server.js                # COMMITTED build artefact
