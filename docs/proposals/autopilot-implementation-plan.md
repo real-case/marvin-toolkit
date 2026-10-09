@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | Proposed — Phase 0 done; Phase 1 next |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18) and Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09). Remaining: Task 19 (O configuration), Task 20 scenarios 2–4 (live runs), Task 21 (replay benchmark), Task 22 (conditional on benchmark evidence). Spike S8 is still half open: engine survival across a turn end and an app restart is unverified |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |

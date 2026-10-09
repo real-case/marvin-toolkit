@@ -249,7 +249,7 @@ The panel is additive, so a text-only host shows the same information as text.
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to fourteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to fifteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -269,6 +269,7 @@ but they are not typed as slash commands.
 | `adr` | The ADR-lifecycle mechanics — numbering, corpus list, lint, managed index, the accept gate, and paired supersede. |
 | `audit` | The structured `sec-*` findings recovered from `.marvin/security/`. |
 | `report` | The unified report list scanned from `.marvin/` — security, refactor, task, handoff, critique — plus the `triage` action that reconciles findings against the stored baseline. |
+| `pipeline` | The autopilot pipeline's read-only door — `paths` locates the `marvin-pipe` CLI and its assets, `status` reads one run back. Runs are driven by the CLI, never by this tool. |
 
 ## Agents
 
