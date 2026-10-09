@@ -4,6 +4,92 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.0] — 2026-10-09
+
+The autopilot pipeline (`docs/proposals/autopilot-implementation-plan.md`, Phases 0–3): a task
+description becomes a merge-ready pull request. A deterministic engine drives headless child
+sessions through planning, sealed acceptance tests, implementation, gates, a read-only verifier,
+CI and a retro, and the user talks only to an orchestrator session. Live runs against a real
+project (Task 20 scenarios 2–4), its configuration (Task 19) and the replay benchmark (Task 21)
+are not part of this release.
+
+### Added
+
+- **The `marvin-pipe` CLI** (`mcp/server/dist/marvin-pipe.js`, a second entry of the same tsup
+  build, run with `node`). Commands: `init`, `start`, `engine`, `attach`, `await`, `judge`,
+  `status`, `list` and `assess`. `engine` is a detached, restartable state machine and the only
+  writer of a run's `run.json`. A lock refuses a second live engine, and a restart resumes from
+  the stored state. Run state lives outside the repository, under `MARVIN_PIPELINE_HOME` (default
+  `~/.local/state/marvin-pipeline`).
+- **The engine.** A pure `decide()` with the escalation ladder, sealing and CI rules, plus the
+  loop that applies it. Each child is a headless `claude -p` process in one out-of-tree worktree
+  per run, launched detached and classified on exit as done, crashed, stalled or usage-limited. A
+  crash is retried once and then halts the run; nothing waits silently. The engine runs every
+  mechanical check itself: the gates with one flaky retry, the oracles, scope, leftover-pattern
+  checks, the sealed-test hashes, PR and CI state (including `conflict` and no CI), and finalize,
+  which builds its commit with git plumbing and verifies it before the push.
+- **Sealed acceptance tests.** The test-author writes the tests and the engine commits them
+  before the first executor runs. A red check proves that each test ran alone and failed. Edits
+  to a sealed test are denied by a hook, and a Bash edit is caught by the gate's hash check.
+- **Tiering and the learning loop.** A rubric (`pipeline/rubric.default.yaml`, overridable by a
+  project's `.marvin/pipeline/rubric.yaml`) maps task signals to a tier and each role to a model
+  and effort. Rejections climb an escalation ladder. Lessons are selected for each child. The
+  retro's output is applied as new checks in `.marvin/pipeline/checks.yaml`, lessons, and
+  proposals left in the run directory, and every run appends a calibration record to
+  `.marvin/pipeline/calibration.jsonl`.
+- **Role assets under `plugins/marvin/pipeline/`**: static system prompts and context templates
+  for the planner, test-author, executor, verifier and retro, a JSON result schema per role, and
+  the per-child hooks: `child-git-guard`, `child-mcp-guard`, `readonly-guard`, `sealed-guard`,
+  `test-path-guard`, `worktree-boundary-guard`, plus `heartbeat` and `message-log`. They are
+  installed per child through `--settings`, not through `hooks.json`, so they never run in a user
+  session.
+- **The `pipeline` MCP tool**, the fifteenth tool and the CLI's read-only door. `paths` returns
+  where the bundle and its assets are, resolved from the installed plugin rather than the cwd.
+  `status` reads one run back and refuses a run directory outside the state root. Its input is
+  `.strict()`.
+- **`/marvin:autopilot`**, the orchestrator skill. It starts or resumes a run, translates progress
+  into the user's language while everything sent to the engine stays English, and answers the
+  engine's judgments: planner and executor questions, spec approval with a role-by-role model
+  table and a calibration cost estimate, halts, `no_ci` and `unverified`. It never edits code,
+  runs gates or touches `run.json`. `judge` gained `--answered-by orchestrator|user` so that
+  calibration counts who answered.
+- **Pipeline mode** in `task-start`, `task-implement`, `task-deliver`, `commit` and `pr-create`,
+  active only with `MARVIN_PIPELINE=1`. Each skill gains one section that replaces every step that
+  would wait on a human. The planner turns its open questions into a capped `needs_input` turn,
+  and `pr-create` opens one draft PR against the run's base.
+- **Config: `gates.extra` and the `pipeline` block.** `gates.extra` lists project gates that
+  `verify` runs after the four standard ones. `pipeline` holds the branch template, bootstrap,
+  GitHub token command, timeouts, test-path and scope-exempt patterns, formatter, conventions and
+  the command allowlist for the writing roles. An invalid subtree resets to its default for every
+  other tool, while the pipeline refuses to start. See `docs/configuration.md`.
+- **A deterministic sandbox test** (`test/autopilot-sandbox.test.mjs`, Task 20 scenario 1). It
+  drives the committed `marvin-pipe` bundle end to end with fake children and fake CI through a
+  verifier FAIL and a PASS to `ready`, in CI and without a model. The
+  `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT` seam lets a fake child do its file work in the worktree,
+  and it is read only for a role that is already faked.
+
+### Changed
+
+- **`verify` and the pipeline's gate stage share one gate plan** (`resolveGatePlan`) and one
+  oracle parser (`lib/oracles.ts`, extracted from `tools/verify.ts`), so the two cannot resolve a
+  criterion differently.
+- **`verify-dist` checks both committed bundles**, `server.js` and `marvin-pipe.js`.
+
+### Fixed
+
+- **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
+  `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
+- **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.
+- **`spec` `action: "next"` counts the specs on `origin/<base_branch>`**, so two sessions no
+  longer mint the same number. It also reports a local draft whose number the base already holds
+  (`next.base.taken`) and a slug the base holds in a file this checkout lacks
+  (`next.base.collision`), and `task-start`'s pre-seal check acts on both.
+- **`lessons` takes an optional `projectRoot`** on every action, so a session in a worktree reads
+  and writes that worktree's store. `summary`'s lessons join follows the same rule.
+- **The blocking hooks run when launched through a symlinked path.** `bypass-guard` and
+  `secret-guard` compared the unresolved `argv[1]` against the resolved `import.meta.url`, so
+  through a symlinked plugin directory their bodies were skipped and every call was allowed.
+
 ## [0.28.0] — 2026-09-27
 
 Changes 2–8 of `docs/proposals/pipeline-stage-efficiency.md`: the pipeline stages the host
