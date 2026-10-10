@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | In progress — Phases 0–3 implemented (Tasks 1–18) and Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09). Remaining: Task 19 (O configuration), Task 20 scenarios 2–4 (live runs), Task 21 (replay benchmark), Task 22 (conditional on benchmark evidence). Spike S8 is still half open: engine survival across a turn end and an app restart is unverified |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18) and Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09), and scenario 2's headless half (live sandbox on Haiku, 2026-10-10). Remaining: Task 19 (O configuration), Task 20 scenario 2's interactive half and scenarios 3–4 (live runs), Task 21 (replay benchmark), Task 22 (conditional on benchmark evidence). Spike S8 is still half open: engine survival across a turn end and an app restart is unverified |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |
@@ -3820,6 +3820,13 @@ The skill specifies, in order:
    - every child log English;
    - push notifications at approval and at ready;
    - `cacheReadTokens > 0` on iteration 2's system prompt (the D13 measurement).
+
+   **As shipped (2026-10-10), headless half.** Results are in `autopilot-spikes.md` under "Acceptance"; the accepted run reached `ready` on Haiku for $0.90 in 5.9 min. Where the shipped code and the list above differ:
+   - **The switches** live in `pipeline/sandbox.ts`. `MARVIN_PIPELINE_MODEL_OVERRIDE` outside `MARVIN_PIPELINE_SANDBOX=1` is refused, not ignored: the engine stops at start, and `marvin-pipe start` reports why. A Fable override is refused in both modes, through the same `modelFamily` as every rubric model. The child row, the assignment event and the argv name the overriding model; `<key>.command.json` keeps the rubric's under `sandbox.planned`. A subagent that pins its own model keeps it (the spec critic ran on Opus), so F8 stays deferred.
+   - **The PR seam is a `gh` shim**, not a scratch repository. In sandbox mode the runtime writes it to `<runDir>/sandbox-bin/` and puts that directory first on every child's PATH; outside sandbox mode it is never written. It plays one draft PR at `https://github.com/sandbox/sandbox/pull/1` (which fits `PR_URL_PATTERN`) through `pr create|view|list|edit|ready|diff|checks`, with its state in `<runDir>/sandbox-gh.json`. Sandbox mode requires `MARVIN_PIPELINE_FAKE_CI`, so the engine's own `gh` calls (CI, mark ready) never meet the fake PR.
+   - **The runner** is `scripts/autopilot-live-sandbox.mjs`, gated by `MARVIN_LIVE=1` and outside `npm test`. It aborts a run past `--max-usd` (5) or `--max-min` (60). It approves the spec without `--answered-by`, as the skill does for an approval, and answers questions under `--answered-by orchestrator`.
+   - **Seven pipeline bugs** surfaced and are fixed, each with a regression test; the list is in the spikes file. The two that stopped every live run were the missing MCP server (`--strict-mcp-config` drops the plugin's servers) and the plugin-relative `skills/…` paths a child in a foreign worktree could not read.
+   - **Still open for a human-driven run:** orchestrator lines in the invocation language, push notifications at approval and at ready, `--answered-by` reaching `calibration.jsonl`, a standard-tier run that seals tests live, and a run long enough for the heartbeat.
 3. **O light task (real).** The user picks it. Pass criteria:
    - no interaction except spec approval;
    - merge-ready PR (gate green, verifier PASS, CI green, finalize CI green, PR marked ready);

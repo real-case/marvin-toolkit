@@ -156,3 +156,82 @@ Child in W with a PreToolUse `Edit|Write` hook from `--settings`.
 | Sonnet `--effort low`, 6-turn read of two files plus a ~40k-token system prompt | $0.345 |
 
 The fixed per-spawn overhead is dominated by the system prompt, which is what D13 targets.
+
+## Acceptance
+
+The first calibration baseline (plan Task 20). Scenarios 3 and 4, real tasks in the host project,
+have not run yet.
+
+### Scenario 2 — live sandbox, headless half (2026-10-10)
+
+`MARVIN_LIVE=1 node scripts/autopilot-live-sandbox.mjs`: the Task 20 sandbox fixture (a 3-file
+Node project, a local bare origin) with real `claude -p` children, all on Haiku 4.5 through
+`MARVIN_PIPELINE_MODEL_OVERRIDE=haiku` under `MARVIN_PIPELINE_SANDBOX=1`, the `gh` shim for the
+PR, `MARVIN_PIPELINE_FAKE_CI=green`, and the script standing in for the orchestrator (it approves
+the spec and answers child questions with their own recommendations). Claude Code CLI 2.1.286.
+The task was given in Russian with `--lang ru` and an English translation, and the stage-A guess
+was `standard`.
+
+**Outcome of the accepted run** (`r20261010-1058-cf23`): `ready` in one executor iteration, verifier
+PASS on iteration 1, the run branch `feature/SANDBOX--add-clamp-function` pushed to the sandbox
+origin with the shipped spec, the calibration record and two code files, and the PR (the shim's)
+left a draft because CI is fake. The planner set `risk: low`, so the tier came out `light` and the
+test-author was skipped: no sealed tests were written in this run.
+
+| Role | Model | Cost | Wall time | cache_read (total) | cache_read (first request) |
+|------|-------|------|-----------|--------------------|----------------------------|
+| planner | Haiku 4.5, spec critic on Opus 5.5 | $0.50 (critic $0.12) | 3.1 min | 2,090,998 | 21,991 |
+| executor 1 | Haiku 4.5 | $0.22 | 1.3 min | 1,016,111 | 22,116 |
+| verifier 1 | Haiku 4.5 | $0.10 | 0.5 min | 69,389 | 0 |
+| retro | Haiku 4.5 | $0.08 | 0.9 min | 355,526 | 23,141 |
+| **run** | | **$0.90** | **5.9 min** | | |
+
+**Checks.**
+
+| Check | Result |
+|-------|--------|
+| Reaches `ready` | yes |
+| A report in `events.jsonl` at least every 6 min of executor wall time | vacuously yes: the only executor ran 1.3 min and sent no report, so the heartbeat (300 s) never fired |
+| Every child log English | yes: no Cyrillic in any assistant text, although the task text was Russian |
+| No Fable model anywhere | yes |
+| `cacheReadTokens > 0` on iteration 2's system prompt (D13) | not measurable in the accepted run (one iteration). Measured in the earlier run `r20261010-1044-9dec`: executor 2's first request read 27,499 cached tokens against executor 1's 0 (33,453 written), and executor 3's 27,499. D13 holds on Haiku |
+
+**Spend to get there.** Five earlier runs halted or were stopped on the pipeline bugs below; with
+the probes, the session spent about $3.60 in total. The longest run took 14 min.
+
+**Bugs the live runs exposed, all fixed with a regression test** (CHANGELOG 0.29.0, Fixed):
+
+1. `--strict-mcp-config` with no `--mcp-config` leaves a child with no MCP server, the plugin's
+   included, so the planner never reached `spec` and wrote a spec with no contract (two planner
+   crashes, then a halt). The runtime now hands the marvin server back as `plugin_marvin_marvin`.
+2. The command wrappers say "Read `skills/<name>/SKILL.md`", a path relative to the plugin that a
+   child in a foreign worktree cannot resolve, and a read outside the worktree is denied with
+   prompts off. The planner and executor contexts now name the plugin root, and writing roles get
+   `Read(/<plugin>/**)`.
+3. The DoR passed an oracle ref `test/math.test.mjs::clamp throws RangeError when lo > hi`, which
+   every gate then refused as `unsafe-ref`; the executor, unable to fix a sealed spec, edited it
+   and tripped the tamper check. The DoR now FAILs such a ref (`oracle-ref`).
+4. `marvin-pipe start` returned before the engine took its lock, so the first `await` read
+   `ENGINE down` and the restart was refused. `start` now waits for the lock.
+5. `tracker: none` produced the branch `feature/none--<slug>`.
+6. Nothing told the executor to commit the sealed spec, which the gate requires; the role now
+   says `git add -f <spec>` and nothing else under `.marvin/` but the metrics record. The fixture
+   gained the host-style `.gitignore` (`.marvin/*`, `!.marvin/config.json`, `!.marvin/metrics/`)
+   without which every `.marvin/` service file read as uncommitted work.
+7. The retro answered `failed` for a halted run, describing the run rather than itself, which
+   cost a retry; the role now says its status reports its own work.
+
+**Observed, not changed.**
+
+- `MARVIN_PIPELINE_MODEL_OVERRIDE` does not reach a subagent whose definition pins a model: the
+  spec critic ran on Opus 5.5 (2 turns, $0.12). Setting `CLAUDE_CODE_SUBAGENT_MODEL` did not
+  change that, so the runtime does not set it. Plan F8 stays deferred.
+- The Haiku executor's PR body carried no `## Pipeline` section, which `pr-create`'s pipeline
+  mode asks for. Nothing checks it.
+
+**Still open for a human-driven run in the Code tab:** orchestrator lines in the invocation
+language, the push notifications at approval and at ready, the skill's own spec-approval
+presentation, and `--answered-by` reaching `calibration.jsonl` through `aggregate` (the accepted
+run raised no question; the one answered under `--answered-by orchestrator` was in a run stopped
+before its retro). A run that reaches the standard tier, so that sealed tests are exercised live,
+and one long enough for the 6-minute heartbeat to fire are also still owed.
