@@ -12372,11 +12372,20 @@ var GIT_ENV_KEPT = /* @__PURE__ */ new Set([
   "GIT_SSH",
   "GIT_SSH_COMMAND",
   "GIT_SSH_VARIANT",
-  "GIT_TERMINAL_PROMPT"
+  "GIT_TERMINAL_PROMPT",
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_AUTHOR_DATE",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "GIT_COMMITTER_DATE",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_NOSYSTEM"
 ]);
-function hardenedGitEnv(extraEnv = {}) {
+function hardenedGitEnv(extraEnv = {}, inherited = process.env) {
   const env = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(inherited)) {
     if (!key.startsWith("GIT_") || GIT_ENV_KEPT.has(key)) env[key] = value;
   }
   Object.assign(env, extraEnv);

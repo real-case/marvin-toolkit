@@ -973,7 +973,7 @@ test("the engine's git ignores replace refs, hooks and fsmonitor whatever the co
   assert.equal(engine.text("config", "--get", "core.fsmonitor").trim(), "false");
   assert.match(engine.text("ls-tree", "-r", "--name-only", real), /\.husky\/pre-commit/);
   assert.equal(engine.text("rev-parse", "HEAD").trim(), real);
-  const hardened = g.hardenedGitEnv();
+  const hardened = g.hardenedGitEnv({}, { PATH: "/bin", GIT_DIR: "/elsewhere" });
   assert.equal(hardened.GIT_NO_REPLACE_OBJECTS, "1");
   assert.deepEqual(
     Object.keys(hardened).filter((key) => key.startsWith("GIT_")),

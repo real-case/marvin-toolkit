@@ -444,23 +444,54 @@ export const HARDENED_GIT_OPTIONS: readonly string[] = [
   "core.fsmonitor=false",
 ];
 
-/** The `GIT_*` variables that are the engine's own and carry no repository: git's helpers and its credentials. */
-const GIT_ENV_KEPT = new Set([
+/**
+ * The inherited `GIT_*` variables git still sees; every other one is dropped. An allowlist, so a
+ * variable git adds later is dropped until someone decides it is safe. Three kinds are kept, none
+ * of which can name a repository, an index or an object store, nor turn hooks, fsmonitor or object
+ * replacement back on (the `-c` options in `HARDENED_GIT_OPTIONS` outrank every config file):
+ *
+ * - git's helpers and its credentials;
+ * - the identity a commit is made under, which the seal and finalize commits need on a host that
+ *   supplies it through the environment (a CI runner, a container);
+ * - where the global and system config files live. Git reads a global config whatever happens, so
+ *   dropping `GIT_CONFIG_GLOBAL` never kept a file out: it only swapped the one the host named for
+ *   `$HOME/.gitconfig`, which on a CI runner holds no identity and on a developer's machine is
+ *   the developer's own.
+ *
+ * Dropped on purpose, among the rest: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`,
+ * `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_COMMON_DIR`, `GIT_NAMESPACE`,
+ * `GIT_CEILING_DIRECTORIES`, `GIT_DISCOVERY_ACROSS_FILESYSTEM`, `GIT_REPLACE_REF_BASE`, and the
+ * config injectors `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`
+ * and `GIT_CONFIG_VALUE_<n>`, which set keys at command-line scope rather than name a file.
+ */
+export const GIT_ENV_KEPT: ReadonlySet<string> = new Set([
   "GIT_EXEC_PATH",
   "GIT_ASKPASS",
   "GIT_SSH",
   "GIT_SSH_COMMAND",
   "GIT_SSH_VARIANT",
   "GIT_TERMINAL_PROMPT",
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_AUTHOR_DATE",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "GIT_COMMITTER_DATE",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_NOSYSTEM",
 ]);
 
 /**
- * The environment git runs in: every inherited `GIT_*` variable that could name a repository, an
- * index or a config dropped, `extraEnv` added, and object replacement turned off for good.
+ * The environment git runs in: every inherited `GIT_*` variable outside `GIT_ENV_KEPT` dropped,
+ * `extraEnv` added, and object replacement turned off for good.
  */
-export function hardenedGitEnv(extraEnv: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+export function hardenedGitEnv(
+  extraEnv: Readonly<Record<string, string>> = {},
+  inherited: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(inherited)) {
     if (!key.startsWith("GIT_") || GIT_ENV_KEPT.has(key)) env[key] = value;
   }
   Object.assign(env, extraEnv);
@@ -470,10 +501,10 @@ export function hardenedGitEnv(extraEnv: Readonly<Record<string, string>> = {}):
 
 /**
  * Git pinned to one repository: `GIT_DIR` and `GIT_WORK_TREE` are passed explicitly and every
- * other `GIT_*` variable is dropped, so neither the worktree's `.git` pointer (which a child
- * can rewrite) nor an inherited `GIT_INDEX_FILE` decides which repository is judged. Every call
- * carries `HARDENED_GIT_OPTIONS`. `extraEnv` is added to the environment but can never repoint
- * `GIT_DIR` or `GIT_WORK_TREE`, nor turn object replacement back on.
+ * other `GIT_*` variable outside `GIT_ENV_KEPT` is dropped, so neither the worktree's `.git`
+ * pointer (which a child can rewrite) nor an inherited `GIT_INDEX_FILE` decides which repository
+ * is judged. Every call carries `HARDENED_GIT_OPTIONS`. `extraEnv` is added to the environment but
+ * can never repoint `GIT_DIR` or `GIT_WORK_TREE`, nor turn object replacement back on.
  */
 export function isolatedGit(
   worktree: string,

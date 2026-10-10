@@ -122,6 +122,14 @@ are not part of this release.
   existing templates keep working. `{name}` and `{ref}` get the same treatment in the oracle
   path; the seal stage still refuses them, since it runs a whole file
   ([ADR-0048](../../docs/adr/0048-shell-quoted-test-one-placeholders.md), amending ADR-0036).
+- **The autopilot engine's git keeps the host's commit identity and config location.** Its
+  hardened git environment dropped every inherited `GIT_*` variable, so a host that supplies the
+  identity through `GIT_AUTHOR_*`/`GIT_COMMITTER_*` or `GIT_CONFIG_GLOBAL` (a CI runner, a
+  container) could not make the seal commit, and on a developer's machine the engine fell back to
+  `$HOME/.gitconfig` instead of the config the host named. The environment is now an allowlist:
+  identity, `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`/`GIT_CONFIG_NOSYSTEM`, and git's helpers are
+  kept; everything that can name a repository, an index or an object store, or inject config at
+  command-line scope (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_CONFIG_PARAMETERS`, …), is still dropped.
 - **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
   `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
 - **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.
