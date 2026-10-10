@@ -26,6 +26,7 @@ import { repoWithOrigin, sh } from "./_pipeline-git.mjs";
 const s = await importTs("src/pipeline/seal.ts");
 const g = await importTs("src/pipeline/gate.ts");
 const wtm = await importTs("src/pipeline/worktree.ts");
+const { resolveOracleCommand } = await importTs("src/storage/oracles.ts");
 const hooks = fileURLToPath(new URL("../../../pipeline/hooks/", import.meta.url));
 const PATTERN = "\\.(test|spec)\\.[cm]?[jt]sx?$";
 
@@ -256,6 +257,84 @@ test("a hostile path reaches the shell as one literal argument", () => {
     assert.equal(viaRunner.output, `<${path}>`, JSON.stringify(path));
     assert.equal(existsSync(join(dir, "pwned")), false, `${JSON.stringify(path)} ran a command`);
   }
+});
+
+// ── one gates.test_one, two readers ─────────────────────────────────────────
+
+/** Paths a Next.js app and a careless author produce, none of which the oracle screen refuses. */
+const ROUTE_PATHS = [
+  "src/app/(dashboard)/page.test.ts",
+  "src/app/(dashboard)/users/[id]/page.test.tsx",
+  "src/app/my dir/a b.test.ts",
+  "src/$HOME/$x.test.ts",
+  "src/it's/a.test.ts",
+  "src/app/(group)/[...slug]/it's $x (2).test.ts",
+];
+
+const oracleFor = (ref) => ({
+  id: "AC1",
+  statement: "it works",
+  implemented_by: ["F1"],
+  oracle: { kind: "test", ref },
+});
+
+const printed = (command, cwd) => {
+  const r = spawnSync("/bin/sh", ["-c", command], { cwd, encoding: "utf8" });
+  assert.equal(r.status, 0, `${command}\n${r.stderr}`);
+  return r.stdout;
+};
+
+test("one unquoted test_one serves the seal stage and the oracle resolver alike", () => {
+  const dir = tmp();
+  for (const path of ROUTE_PATHS) {
+    const template = "printf '<%s>' {file}";
+    const sealed = s.formatTestOne(template, path);
+    const resolved = resolveOracleCommand(oracleFor(`${path}::renders`), {
+      testOne: template,
+      projectRoot: dir,
+    });
+    assert.equal(resolved.source, "config.test_one", path);
+    assert.equal(resolved.command, sealed, `both readers build one command for ${path}`);
+    assert.equal(printed(sealed, dir), `<${path}>`, path);
+    assert.equal(g.shellRunner(sealed, dir, 10000).output, `<${path}>`, path);
+  }
+  assert.equal(
+    s.formatTestOne("npx vitest run {file}", ROUTE_PATHS[0]),
+    "npx vitest run 'src/app/(dashboard)/page.test.ts'",
+  );
+});
+
+test("the oracle resolver keeps every placeholder literal in every quoting context", () => {
+  const dir = tmp();
+  // A backtick, `$(` and the other metacharacters are refused as unsafe-ref before any of this.
+  const name = 'renders it\'s $HOME (ok) "quoted" [id] a\\b';
+  for (const path of ROUTE_PATHS) {
+    for (const template of [
+      "printf '<%s|%s>' {file} {name}",
+      'printf \'<%s|%s>\' "{file}" "{name}"',
+      "printf '<%s|%s>' '{file}' '{name}'",
+      "printf '<%s|%s>' --x={file} -t{name}",
+    ]) {
+      const resolved = resolveOracleCommand(oracleFor(`${path}::${name}`), {
+        testOne: template,
+        projectRoot: dir,
+      });
+      const expected = template.startsWith("printf '<%s|%s>' --x=")
+        ? `<--x=${path}|-t${name}>`
+        : `<${path}|${name}>`;
+      assert.equal(printed(resolved.command, dir), expected, `${template} with ${path}`);
+    }
+    const whole = resolveOracleCommand(oracleFor(`${path}::${name}`), {
+      testOne: "printf '<%s>' {ref}",
+      projectRoot: dir,
+    });
+    assert.equal(printed(whole.command, dir), `<${path}::${name}>`, path);
+  }
+});
+
+test("the seal stage still refuses {name} and a quoted {file}", () => {
+  assert.throws(() => s.formatTestOne("npx vitest run {file} -t {name}", "a.test.ts"), /\{name\}/);
+  assert.throws(() => s.formatTestOne('npx vitest run "{file}"', "a.test.ts"), /quote/);
 });
 
 // ── sealAuthoredTests: path validation ──────────────────────────────────────

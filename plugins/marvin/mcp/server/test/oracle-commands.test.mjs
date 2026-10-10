@@ -49,7 +49,7 @@ test("each runnable criterion gets the command a human wrote, and an unresolved 
 test("a test criterion resolves through the project's single-test template", () => {
   assert.deepEqual(resolveOracles(SPEC, { testOne: "node --test {file} -t '{name}'" }), [
     { criterion: "AC1", command: "npm run lint && npm run build", reason: null },
-    { criterion: "AC2", command: "node --test src/a.test.ts -t 'does a thing'", reason: null },
+    { criterion: "AC2", command: "node --test 'src/a.test.ts' -t 'does a thing'", reason: null },
     { criterion: "AC3", command: "node --test src/b.test.ts", reason: null },
     { criterion: "AC6", command: null, reason: "no-ref" },
   ]);

@@ -35061,6 +35061,64 @@ function detectMakefile(projectRoot) {
 
 // src/lib/oracles.ts
 var import_yaml2 = __toESM(require_dist2());
+
+// src/lib/shell-quote.ts
+var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
+function encodeForContext(value, context) {
+  switch (context) {
+    case "unquoted":
+      return shellQuote(value);
+    case "single":
+      return value.replaceAll("'", "'\\''");
+    case "double":
+      return value.replace(/[\\"$`]/g, "\\$&");
+    case "escaped":
+      return value;
+  }
+}
+function substitutePlaceholders(template, placeholders, replace) {
+  let out = "";
+  let quote = null;
+  const at = (i) => placeholders.find((p) => template.startsWith(p, i));
+  for (let i = 0; i < template.length; i += 1) {
+    const found = at(i);
+    if (found) {
+      out += replace(found, quote === "'" ? "single" : quote === '"' ? "double" : "unquoted");
+      i += found.length - 1;
+      continue;
+    }
+    const ch = template[i] ?? "";
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      out += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      const escaped = at(i + 1);
+      if (escaped && quote === null) {
+        out += ch + replace(escaped, "escaped");
+        i += escaped.length;
+        continue;
+      }
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    }
+    if (ch === '"') quote = quote === null ? '"' : null;
+    else if (ch === "'" && quote === null) quote = "'";
+    out += ch;
+  }
+  return out;
+}
+function fillShellTemplate(template, values) {
+  return substitutePlaceholders(
+    template,
+    Object.keys(values),
+    (placeholder, context) => encodeForContext(values[placeholder] ?? "", context)
+  );
+}
+
+// src/storage/oracles.ts
 var SHELL_METACHARACTERS2 = /[;|&`\n<>]|\$\(/;
 function splitRef(ref) {
   const i = ref.indexOf("::");
@@ -35096,7 +35154,11 @@ function resolveOracleCommand(criterion, opts) {
   const parts = splitRef(ref);
   if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
   if (opts.testOne?.trim()) {
-    const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
+    const command = fillShellTemplate(opts.testOne, {
+      "{file}": parts.file,
+      "{name}": parts.name,
+      "{ref}": ref
+    }).trim();
     return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
   }
   const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;

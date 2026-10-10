@@ -419,15 +419,25 @@ Three placeholders are substituted, all taken from the criterion's `oracle.ref` 
 | `{name}` | the test-name half |
 | `{ref}` | the whole ref, unsplit |
 
-**Substitution is literal, and the quoting is yours.** `"pytest -k '{name}'"` keeps a test name
-with spaces intact; `"pytest -k {name}"` does not. Marvin will not add quotes, because the
-placeholder usually sits inside a flag you already quoted and re-quoting it produces a command
-that fails for a reason nobody can read. What it does instead is refuse: a ref carrying a shell
-metacharacter (`;`, `|`, `&`, a backtick, `$(`, a redirection, a newline) is never substituted at
-all — the run records `not-run` with the reason `unsafe-ref` and no child process is started.
+**Every substituted value reaches the shell as literal text.** Write the placeholders unquoted:
+`"npx vitest run {file} -t {name}"`. Marvin single-quotes each value it substitutes, so a path
+such as `src/app/(dashboard)/[id]/page.test.tsx`, a space, a `$` or a single quote stays one
+argument. A placeholder you have already quoted is escaped for that quote instead of being quoted
+again, so templates written before marvin quoted keep working: `"pytest -k '{name}'"` and
+`"vitest run \"{file}\""` produce the same arguments as their unquoted forms. Before any of
+this, a ref carrying a shell metacharacter (`;`, `|`, `&`, a backtick, `$(`, a redirection, a
+newline) is refused rather than substituted: the run records `not-run` with the reason
+`unsafe-ref` and no child process is started.
+
+The [autopilot pipeline](#pipeline)'s seal stage reads the same template to run one whole
+test file, so it accepts a narrower form: `{file}` only, unquoted. It refuses `{name}` and
+`{ref}`, because it runs every test in the file, and a quoted `{file}`. A template that serves
+both is `"npx vitest run {file}"`; one that adds `-t {name}` serves `verify` and the oracles
+but not the seal stage.
 
 `test_one` is **not a gate**. It is never scheduled, its exit code never enters a verdict, and it
-never appears in `verification.md`. Only `verify`'s `action: "oracles"` reads it.
+never appears in `verification.md`. Only `verify`'s `action: "oracles"` and the autopilot
+pipeline read it.
 
 **Without it, nothing is guessed.** Resolution walks a fixed chain — the per-call command, then
 the criterion's own `oracle.run`, then a `kind: command` oracle's `ref` verbatim, then this

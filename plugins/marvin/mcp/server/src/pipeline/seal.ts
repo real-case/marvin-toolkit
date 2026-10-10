@@ -19,6 +19,7 @@ import {
   sha256Bytes,
   sha256File,
 } from "./gate.js";
+import { fillShellTemplate, shellQuote, substitutePlaceholders } from "../lib/shell-quote.js";
 import { BaseTreeError, withBaseWorktree } from "./worktree.js";
 
 export interface AuthoredTest {
@@ -57,36 +58,20 @@ const FOREIGN_PLACEHOLDERS = ["{name}", "{ref}", "{path}"];
 /** Syntax in which a substituted word is not one word: a heredoc body, a comment, a substitution. */
 const NOT_ONE_WORD = /[`\r\n]|\$\(|<<|#/;
 
-/** One shell word: `word` in single quotes, a quote inside it closed, escaped and reopened. */
-export const shellQuote = (word: string): string => `'${word.replaceAll("'", "'\\''")}'`;
+export { shellQuote };
 
 /**
- * True when a `{file}` in `template` sits inside a quoted span or behind a backslash. The
- * substituted path is single-quoted by `formatTestOne`, which inside another quote would be a
- * literal character and behind a backslash would be an escaped one.
+ * True when a `{file}` in `template` sits inside a quoted span or behind a backslash. The seal
+ * stage accepts only the unquoted form, where the shared encoder single-quotes the path; the
+ * oracle resolver also accepts the quoted forms, for templates written before it quoted.
  */
 function placeholderIsQuoted(template: string): boolean {
-  let quote: "'" | '"' | null = null;
-  for (let i = 0; i < template.length; i += 1) {
-    if (template.startsWith(FILE, i)) {
-      if (quote !== null) return true;
-      i += FILE.length - 1;
-      continue;
-    }
-    const ch = template[i];
-    if (quote === "'") {
-      if (ch === "'") quote = null;
-      continue;
-    }
-    if (ch === "\\") {
-      if (template.startsWith(FILE, i + 1)) return true;
-      i += 1;
-      continue;
-    }
-    if (ch === '"') quote = quote === null ? '"' : null;
-    else if (ch === "'" && quote === null) quote = "'";
-  }
-  return false;
+  let quoted = false;
+  substitutePlaceholders(template, [FILE], (placeholder, context) => {
+    if (context !== "unquoted") quoted = true;
+    return placeholder;
+  });
+  return quoted;
 }
 
 /**
@@ -123,8 +108,7 @@ export function formatTestOne(template: string, path: string): string {
   if (placeholderIsQuoted(template)) {
     throw new Error("gates.test_one must not quote {file}: the engine quotes the path itself");
   }
-  const quoted = shellQuote(path);
-  return template.replaceAll(FILE, () => quoted);
+  return fillShellTemplate(template, { [FILE]: path });
 }
 
 const isInside = (root: string, target: string): boolean => {

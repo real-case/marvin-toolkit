@@ -173,13 +173,14 @@ test("resolution follows call, run, ref, test_one, stack default, then not-run",
       { command: "npm run smoke", source: "oracle.ref" },
     );
 
-    // 4. the project's template, with {file} / {name} / {ref} substituted
+    // 4. the project's template, with {file} / {name} / {ref} substituted: the unquoted
+    // {file} is single-quoted, the already-quoted {name} is not quoted again
     const viaConfig = resolveOracleCommand(
       criterion({ kind: "test", ref: "pkg/test_thing.py::test_works" }),
       opts,
     );
     assert.deepEqual(viaConfig, {
-      command: "vitest -t 'test_works' pkg/test_thing.py",
+      command: "vitest -t 'test_works' 'pkg/test_thing.py'",
       source: "config.test_one",
     });
 

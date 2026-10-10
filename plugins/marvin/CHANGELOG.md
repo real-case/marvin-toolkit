@@ -113,6 +113,14 @@ are not part of this release.
   the retry. A small Node supervisor now starts the shell detached (its own session and group)
   and signals that group with TERM, then KILL; it stays in the engine's group, so stopping the
   engine still ends a running gate. Output and exit code are passed through unchanged.
+- **`gates.test_one` quotes what it substitutes, for both of its readers.** The oracle resolver
+  (`verify`'s oracles and the gate stage) inserted `{file}` literally, so `npx vitest run {file}`
+  failed with a shell syntax error on a Next.js path such as `src/app/(dashboard)/x.test.ts`,
+  while the autopilot seal stage single-quoted it and refused a quoted `{file}`. Both now encode
+  through one helper (`lib/shell-quote.ts`): an unquoted placeholder is single-quoted, and one the
+  template already quoted (`-k '{name}'`, `"{file}"`) is escaped for that quote instead, so
+  existing templates keep working. `{name}` and `{ref}` get the same treatment in the oracle
+  path; the seal stage still refuses them, since it runs a whole file.
 - **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
   `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
 - **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.
