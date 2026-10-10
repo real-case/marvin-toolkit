@@ -2,7 +2,7 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
+| Status        | **Accepted** |
 | Date          | 2026-10-10 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
