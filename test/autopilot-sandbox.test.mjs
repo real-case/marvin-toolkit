@@ -48,6 +48,10 @@ function sandboxEnv(home, stubBin) {
   return {
     ...env,
     PATH: `${stubBin}:${process.env.PATH}`,
+    // No process of the run may read the caller's own ~/.gitconfig: the identity is the one
+    // below, or none, exactly as on a CI runner with an empty home.
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, "xdg"),
     GIT_CONFIG_GLOBAL: join(home, "gitconfig"),
     GIT_CONFIG_NOSYSTEM: "1",
     MARVIN_PIPELINE_HOME: join(home, "state"),
@@ -73,6 +77,9 @@ function sandboxRepo(home, env) {
   const git = (cwd, ...args) =>
     execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   writeFileSync(env.GIT_CONFIG_GLOBAL, "[user]\n\temail = sandbox@example.com\n\tname = Sandbox\n");
+  // Read only by a git that lost GIT_CONFIG_GLOBAL on the way: it then refuses to guess an
+  // identity from the host, as a CI runner's git does, instead of passing on a developer's Mac.
+  writeFileSync(join(home, ".gitconfig"), "[user]\n\tuseConfigOnly = true\n");
   const origin = join(home, "origin.git");
   git(home, "init", "-q", "--bare", "-b", "dev", origin);
   const repo = join(home, "autopilot-sandbox");

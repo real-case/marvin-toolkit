@@ -72,6 +72,8 @@ test("the gh shim plays one draft PR through view, create, edit, diff and ready"
   const home = mkdtempSync(join(tmpdir(), "pipe-sandbox-"));
   const env = {
     ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, "xdg"),
     GIT_CONFIG_GLOBAL: join(home, "gitconfig"),
     GIT_CONFIG_NOSYSTEM: "1",
   };
