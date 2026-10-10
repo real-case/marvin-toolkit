@@ -51,6 +51,8 @@ for (const name of [
   ...ROLES.map(fakeScriptVariable),
   "MARVIN_PIPELINE_FAKE_CI",
   "MARVIN_PIPELINE_PLUGIN_DIR",
+  "MARVIN_PIPELINE_SANDBOX",
+  "MARVIN_PIPELINE_MODEL_OVERRIDE",
 ]) {
   delete process.env[name];
 }
@@ -708,6 +710,95 @@ test("a fake's script runs in the worktree before its result, numbered by spawn;
   } finally {
     delete process.env[fakeScriptVariable("executor")];
   }
+});
+
+/** Sets the sandbox switches for the duration of `fn`; `undefined` leaves a variable unset. */
+async function withSandbox(vars, fn) {
+  const names = [
+    "MARVIN_PIPELINE_SANDBOX",
+    "MARVIN_PIPELINE_MODEL_OVERRIDE",
+    "MARVIN_PIPELINE_FAKE_CI",
+  ];
+  for (const name of names) {
+    if (vars[name] === undefined) delete process.env[name];
+    else process.env[name] = vars[name];
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const name of names) delete process.env[name];
+  }
+}
+
+test("in the sandbox a real child runs on the override's model and finds the gh shim first", async () => {
+  const s = await prepared();
+  const sandbox = {
+    MARVIN_PIPELINE_SANDBOX: "1",
+    MARVIN_PIPELINE_MODEL_OVERRIDE: "haiku",
+    MARVIN_PIPELINE_FAKE_CI: "green",
+  };
+  await withSandbox(sandbox, async () => {
+    const deps = createRuntime({ runDir: s.runDir, pluginRoot, rubric, pollMs: 20 });
+    const run = { ...s.run, stage: "executing", iteration: 1 };
+    const planned = { model: "opus", effort: "high" };
+    // A real child: the `claude` on PATH is this file's failing stub, so nothing is launched.
+    const spawned = deps.spawnChild(
+      run,
+      spawnAction("executor", 1, EXECUTOR_CONTEXT, false, planned),
+      step("sbx"),
+    );
+    const cmd = command(s.runDir, "r1-executor-1");
+    assert.equal(after(cmd.argv, "--model"), "haiku");
+    assert.equal(after(cmd.argv, "--effort"), "high", "the rubric's effort stays");
+    assert.deepEqual(spawned.children[0].assignment, { model: "haiku", effort: "high" });
+    assert.deepEqual(cmd.sandbox, { modelOverride: "haiku", planned });
+    const bin = join(s.runDir, "sandbox-bin");
+    assert.equal(cmd.env.PATH.split(":")[0], bin);
+    assert.ok(existsSync(join(bin, "gh")));
+    assert.ok(
+      events(s.runDir).some((e) => e.text === "r1-executor-1 started on haiku/high"),
+      "the event names the model the child runs on",
+    );
+    await waitFor(deps, spawned);
+  });
+});
+
+test("outside the sandbox a model override is refused, and no shim is written", async () => {
+  const s = await prepared();
+  await withSandbox({ MARVIN_PIPELINE_MODEL_OVERRIDE: "haiku" }, () => {
+    assert.throws(
+      () => createRuntime({ runDir: s.runDir, pluginRoot, rubric }),
+      /MODEL_OVERRIDE is honoured only with MARVIN_PIPELINE_SANDBOX=1/,
+    );
+  });
+  await withSandbox(
+    { MARVIN_PIPELINE_SANDBOX: "1", MARVIN_PIPELINE_MODEL_OVERRIDE: "fable" },
+    () => {
+      assert.throws(
+        () => createRuntime({ runDir: s.runDir, pluginRoot, rubric }),
+        /Fable is not allowed/,
+      );
+    },
+  );
+  await withSandbox({ MARVIN_PIPELINE_SANDBOX: "1" }, () => {
+    assert.throws(
+      () => createRuntime({ runDir: s.runDir, pluginRoot, rubric }),
+      /needs MARVIN_PIPELINE_FAKE_CI/,
+    );
+  });
+  // The plain runtime: the rubric's model, the role's own environment, no shim on disk.
+  const run = { ...s.run, stage: "executing", iteration: 1 };
+  const spawned = s.deps.spawnChild(
+    run,
+    spawnAction("executor", 1, EXECUTOR_CONTEXT),
+    step("plain"),
+  );
+  const cmd = command(s.runDir, "r1-executor-1");
+  assert.equal(after(cmd.argv, "--model"), "sonnet");
+  assert.equal(cmd.env.PATH, undefined);
+  assert.equal(cmd.sandbox, undefined);
+  assert.equal(existsSync(join(s.runDir, "sandbox-bin")), false);
+  await waitFor(s.deps, spawned);
 });
 
 test("a crash retry of the same iteration writes files of its own", async () => {

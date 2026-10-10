@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { spawn, execFileSync, execSync, spawnSync } from 'child_process';
-import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, appendFileSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, mkdtempSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
+import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, appendFileSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, mkdtempSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
 import { resolve, posix, basename, join, dirname, sep, isAbsolute, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { parseArgs, isDeepStrictEqual } from 'util';
@@ -16691,6 +16691,199 @@ function launchDetached(cmd, runDir, name) {
   }
   return { pid: child.pid, logPath, errPath, exitPath };
 }
+var SANDBOX_VARIABLE = "MARVIN_PIPELINE_SANDBOX";
+var MODEL_OVERRIDE_VARIABLE = "MARVIN_PIPELINE_MODEL_OVERRIDE";
+var SANDBOX_PR_URL = "https://github.com/sandbox/sandbox/pull/1";
+function sandboxSettings(env = process.env) {
+  const raw = env[SANDBOX_VARIABLE];
+  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${SANDBOX_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const override = env[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
+  if (override !== null) {
+    modelFamily(override);
+    if (!enabled) {
+      throw new Error(
+        `${MODEL_OVERRIDE_VARIABLE} is honoured only with ${SANDBOX_VARIABLE}=1; unset it, or run in the sandbox`
+      );
+    }
+  }
+  if (enabled && !env.MARVIN_PIPELINE_FAKE_CI) {
+    throw new Error(
+      `${SANDBOX_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI: the sandbox pull request does not exist on GitHub`
+    );
+  }
+  return { enabled, modelOverride: override };
+}
+function effectiveAssignment(a, s) {
+  return s.enabled && s.modelOverride !== null ? { ...a, model: s.modelOverride } : a;
+}
+var SHIM = String.raw`
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const STATE = process.env.MARVIN_SANDBOX_GH_STATE;
+const URL = process.env.MARVIN_SANDBOX_GH_URL;
+const args = process.argv.slice(2);
+const git = (...a) => {
+  try {
+    return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+};
+const fail = (text) => {
+  process.stderr.write(text + "\n");
+  process.exit(1);
+};
+const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
+const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
+const value = (long, short) => {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === long || (short && a === short)) return args[i + 1] ?? "";
+    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
+  }
+  return null;
+};
+const has = (name) => args.includes(name);
+const body = () => {
+  const file = value("--body-file", "-F");
+  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
+  return value("--body", "-b");
+};
+const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
+const fields = (pr) => ({
+  url: pr.url,
+  number: 1,
+  state: pr.state,
+  isDraft: pr.isDraft,
+  title: pr.title,
+  body: pr.body,
+  baseRefName: pr.base,
+  headRefName: pr.head,
+  headRefOid: git("rev-parse", "HEAD"),
+  mergeable: "MERGEABLE",
+  mergeStateStatus: "CLEAN",
+  reviewDecision: "",
+  statusCheckRollup: [],
+  comments: [],
+  reviews: [],
+});
+const emit = (pr) => {
+  const json = value("--json");
+  if (json === null) {
+    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
+    return;
+  }
+  const all = fields(pr);
+  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
+  const jq = value("--jq", "-q");
+  if (jq !== null) {
+    const m = /^\.(\w+)$/.exec(jq.trim());
+    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
+    const v = picked[m[1]];
+    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
+    return;
+  }
+  process.stdout.write(JSON.stringify(picked) + "\n");
+};
+const current = () => {
+  const pr = load();
+  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
+  return pr;
+};
+
+const sub = (args[0] ?? "") + " " + (args[1] ?? "");
+switch (sub) {
+  case "pr create": {
+    const existing = load();
+    if (existing && existing.head === branch()) {
+      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
+    }
+    const base = value("--base", "-B");
+    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
+    const pr = {
+      url: URL,
+      state: "OPEN",
+      isDraft: has("--draft") || has("-d"),
+      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
+      body: body() ?? "",
+      base,
+      head: value("--head", "-H") ?? branch(),
+    };
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr view":
+    emit(current());
+    break;
+  case "pr list": {
+    const pr = load();
+    const mine = pr && pr.head === branch() ? [pr] : [];
+    if (value("--json") === null) {
+      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
+    } else {
+      const keys = value("--json").split(",").map((k) => k.trim());
+      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
+      process.stdout.write(JSON.stringify(rows) + "\n");
+    }
+    break;
+  }
+  case "pr edit": {
+    const pr = current();
+    const title = value("--title", "-t");
+    const text = body();
+    if (title !== null) pr.title = title;
+    if (text !== null) pr.body = text;
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr ready": {
+    const pr = current();
+    pr.isDraft = false;
+    save(pr);
+    break;
+  }
+  case "pr diff": {
+    const pr = current();
+    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
+    break;
+  }
+  case "pr checks":
+    current();
+    fail('no checks reported on the "' + branch() + '" branch');
+    break;
+  case "run list":
+    process.stdout.write(value("--json") === null ? "" : "[]\n");
+    break;
+  default:
+    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
+}
+`;
+function installSandboxGh(runDir, nodePath = process.execPath) {
+  const bin = join(runDir, "sandbox-bin");
+  mkdirSync(bin, { recursive: true });
+  const script = join(bin, "gh-shim.mjs");
+  writeFileSync(script, SHIM.trimStart());
+  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const gh = join(bin, "gh");
+  writeFileSync(gh, `#!/bin/sh
+exec ${quote(nodePath)} ${quote(script)} "$@"
+`);
+  chmodSync(gh, 493);
+  return {
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
+    MARVIN_SANDBOX_GH_URL: SANDBOX_PR_URL
+  };
+}
+function sandboxChildEnv(runDir, s) {
+  return s.enabled ? installSandboxGh(runDir) : {};
+}
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
@@ -17034,6 +17227,7 @@ function createRuntime(o) {
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const at = (name) => join(runDir, name);
   const now = () => (/* @__PURE__ */ new Date()).toISOString();
+  const sandbox = sandboxSettings();
   const note = (text2, data = {}) => appendEvent(runDir, { ts: now(), kind: "note", actor: "engine", text: text2, data });
   const noteOnce = (ref, text2) => {
     if (readEventsTolerant(runDir).some((e) => e.data?.ref === ref)) return;
@@ -17319,7 +17513,11 @@ ${tail}`);
     };
     return { ...run2, children: [...run2.children, child] };
   };
-  const spawnChild = (run2, action, step2) => {
+  const spawnChild = (run2, planned, step2) => {
+    const action = {
+      ...planned,
+      assignment: effectiveAssignment(planned.assignment, sandbox)
+    };
     const config = configFor(run2);
     const { role } = action;
     if (run2.worktree === null) throw new Error(`cannot spawn ${role}: the run has no worktree`);
@@ -17372,12 +17570,15 @@ ${tail}`);
       pluginDir: resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot),
       branch: run2.branch
     });
+    const sandboxEnv = sandboxChildEnv(runDir, sandbox);
+    const live = { ...real, env: { ...real.env, ...sandboxEnv } };
     const fakeFile = process.env[fakeVariable(role)] || null;
     const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
-    const cmd = fakeFile ? { ...real, argv: fakeArgv(fakeFile, role, run2, key, fakeScript) } : real;
+    const cmd = fakeFile ? { ...live, argv: fakeArgv(fakeFile, role, run2, key, fakeScript) } : live;
+    const sandboxed = sandbox.enabled ? { sandbox: { modelOverride: sandbox.modelOverride, planned: planned.assignment } } : {};
     writeAtomic2(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile, ...fakeScript ? { fakeScript } : {} }, null, 2)}
+      `${JSON.stringify({ argv: live.argv, env: live.env, cwd: live.cwd, fake: fakeFile, ...fakeScript ? { fakeScript } : {}, ...sandboxed }, null, 2)}
 `
     );
     const mainBefore = at(`${key}.main-before.txt`);

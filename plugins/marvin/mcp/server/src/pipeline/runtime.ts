@@ -54,6 +54,7 @@ import {
   snapshotProtected,
 } from "./gate.js";
 import { launchDetached } from "./launch.js";
+import { effectiveAssignment, sandboxChildEnv, sandboxSettings } from "./sandbox.js";
 import {
   aggregate,
   efficacy,
@@ -468,6 +469,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const at = (name: string) => join(runDir, name);
   const now = () => new Date().toISOString();
+  // Read once, before any work: a refused combination stops the engine at its start (sandbox.ts).
+  const sandbox = sandboxSettings();
 
   const note = (text: string, data: Record<string, unknown> = {}) =>
     appendEvent(runDir, { ts: now(), kind: "note", actor: "engine", text, data });
@@ -861,7 +864,13 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     return { ...run, children: [...run.children, child] };
   };
 
-  const spawnChild = (run: Run, action: SpawnAction, step: StepInfo): Run => {
+  const spawnChild = (run: Run, planned: SpawnAction, step: StepInfo): Run => {
+    // In the sandbox, the override's model replaces the rubric's, and the child row, the event
+    // and the argv all name the model the child really runs on.
+    const action: SpawnAction = {
+      ...planned,
+      assignment: effectiveAssignment(planned.assignment, sandbox),
+    };
     const config = configFor(run);
     const { role } = action;
     if (run.worktree === null) throw new Error(`cannot spawn ${role}: the run has no worktree`);
@@ -927,14 +936,19 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       pluginDir: resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot),
       branch: run.branch,
     });
+    const sandboxEnv = sandboxChildEnv(runDir, sandbox);
+    const live = { ...real, env: { ...real.env, ...sandboxEnv } };
     const fakeFile = process.env[fakeVariable(role)] || null;
     const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
     const cmd: ChildCommand = fakeFile
-      ? { ...real, argv: fakeArgv(fakeFile, role, run, key, fakeScript) }
-      : real;
+      ? { ...live, argv: fakeArgv(fakeFile, role, run, key, fakeScript) }
+      : live;
+    const sandboxed = sandbox.enabled
+      ? { sandbox: { modelOverride: sandbox.modelOverride, planned: planned.assignment } }
+      : {};
     writeAtomic(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: real.argv, env: real.env, cwd: real.cwd, fake: fakeFile, ...(fakeScript ? { fakeScript } : {}) }, null, 2)}\n`,
+      `${JSON.stringify({ argv: live.argv, env: live.env, cwd: live.cwd, fake: fakeFile, ...(fakeScript ? { fakeScript } : {}), ...sandboxed }, null, 2)}\n`,
     );
 
     // D19: the main checkout as it stood before this child, for the leak check after it. A

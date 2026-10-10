@@ -67,6 +67,15 @@ are not part of this release.
   verifier FAIL and a PASS to `ready`, in CI and without a model. The
   `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT` seam lets a fake child do its file work in the worktree,
   and it is read only for a role that is already faked.
+- **Sandbox mode for live acceptance runs** (`MARVIN_PIPELINE_SANDBOX=1`, Task 20 scenario 2).
+  `MARVIN_PIPELINE_MODEL_OVERRIDE=<model>` replaces every role's model, so a run's children go
+  out on Haiku; a subagent that pins its own model (the spec critic) keeps it. A `gh` shim placed
+  first on each child's PATH plays one draft PR (`https://github.com/sandbox/sandbox/pull/1`), so
+  a live executor can deliver to a local bare origin. Sandbox mode requires
+  `MARVIN_PIPELINE_FAKE_CI`. Outside it, an override stops the engine at start rather than being
+  ignored, and a Fable override is refused in either mode. `scripts/autopilot-live-sandbox.mjs`
+  (opt-in through `MARVIN_LIVE=1`, not part of `npm test`) drives the sandbox fixture with real
+  `claude -p` children and prints cost, wall time, cache reads and the headless checks.
 
 ### Changed
 
@@ -135,7 +144,7 @@ waits for five specs written in the ADR-0046 shape, as the proposal orders.
 
 - **The `oracle-filter` detail stated the wrong consequence.** A test-name filter that starts with
   `-` is parsed as an option, and the runner exits with an error (vitest 4: `CACError: Unknown
-  option`), so the oracle can never pass. The check was correct; the detail and the 0.25.0 entry
+option`), so the oracle can never pass. The check was correct; the detail and the 0.25.0 entry
   below said it selected nothing and passed.
 
 ## [0.27.0] — 2026-09-27
@@ -490,7 +499,7 @@ that need it are present from the first record in the series rather than absent 
 ## [0.19.0] — 2026-09-03
 
 An instrumented end-to-end run of the pipeline (one feature task, 74.8 minutes) put **67% of the
-wall clock inside the two critic agents**, and 97% of *that* into generating their reports rather
+wall clock inside the two critic agents**, and 97% of _that_ into generating their reports rather
 than investigating: 211 tool calls, 79.6 seconds of execution, 3,026 seconds of wall clock. This
 release attacks the cost without changing what is checked. Recorded as ADR-0042.
 
@@ -514,7 +523,7 @@ release attacks the cost without changing what is checked. Recorded as ADR-0042.
   `marvin-tm-executor` §3). The critic is dispatched once, against a green tree. This reverses P2 of
   `docs/proposals/task-workflow-latency-optimization.md`: the overlap saved 76 seconds and cost the
   393-second re-review that the stale-review guard mandates when a verify fix moves the tree under
-  the critic. The guard becomes a stale-*verify* guard — any change after the green run, including
+  the critic. The guard becomes a stale-_verify_ guard — any change after the green run, including
   one made for a critic blocker, needs the affected gate re-run and a final full pass.
 - **The diff critic is no longer dispatched blind to new files.** It now receives
   `git status --porcelain --untracked-files=all` beside `git diff`, and its own workflow enumerates
@@ -558,7 +567,7 @@ release attacks the cost without changing what is checked. Recorded as ADR-0042.
 
 - **A host that renders widgets no longer also prints the panel as markdown.** Nine of marvin's
   tools bind a `ui://` widget. On a client that advertises the MCP Apps UI extension the host drew
-  the widget *and* the model rebuilt the same panel in text, so the user saw one dashboard twice.
+  the widget _and_ the model rebuilt the same panel in text, so the user saw one dashboard twice.
   A widget-bound tool's result is now gated on the calling client's advertised capabilities: such a
   client receives a one-line digest naming the widget, plus a `_rendered` key in the payload telling
   the model the content is already on screen. A client that advertises nothing — every terminal,
@@ -647,7 +656,7 @@ than skipping a check — and each was found by spawning the shipped guard, not 
 ### Fixed
 
 - **The ADR readiness gate read a record's own content as unfilled template residue.** Its
-  code-stripper matched a fenced-block marker that appeared *inside* an inline code span — the
+  code-stripper matched a fenced-block marker that appeared _inside_ an inline code span — the
   shipped example is a record describing the ` ```json oracle-run ` block it writes — and consumed
   everything up to the next fence in the document. The resulting odd backtick run re-paired every
   span after it, exposing their contents to a lint that is supposed to ignore code. ADR-0036 was
@@ -665,7 +674,7 @@ than skipping a check — and each was found by spawning the shipped guard, not 
 - **Every ADR is now `accepted`.** The eight that stood at `proposed` — 0033 and 0034, whose
   features shipped some time ago, and 0035 through 0040 from the workflow-hardening plan — were
   ratified by the owner. Both index tables were corrected with them: `check-docs-drift` verifies
-  that an ADR is *linked* from each, never that the status it prints is the status the record
+  that an ADR is _linked_ from each, never that the status it prints is the status the record
   carries, so they had gone on saying `Proposed` after each acceptance.
 
 ## [0.17.0] — 2026-08-15
@@ -788,7 +797,7 @@ stops losing its answers. ADR-0037 accompanies it, `proposed`.
   deliberately unbounded for legacy tolerance. Measured on a two-file corpus, the message reached
   1,000,033 bytes; it is now capped at ten listed ids plus a count, and measures 169.
 - **A file with no identity was reported as malformed.** The guard that skips such a file ran
-  *after* the channel it was meant to protect.
+  _after_ the channel it was meant to protect.
 - **`verify action: "oracles"` could not see a configured spec directory**, while every other
   reader could — so a project setting `spec.dir` outside the conventional candidates worked
   everywhere except the oracle runner. `/marvin:help` and `/marvin:dashboard` likewise printed
@@ -812,7 +821,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
 - **Provenance on every verification run** (`head_sha`, `branch`, `dirty`, `worktree_digest`,
   `generated_at`), carried in the `verify-result` block and read by the delivery gate. The
   decisive field is `worktree_digest`: in marvin's own process both verification and delivery run
-  on a dirty tree *before* the commit, so `head_sha` and `dirty` are identical either side of an
+  on a dirty tree _before_ the commit, so `head_sha` and `dirty` are identical either side of an
   edit and would almost never catch a stale proof. It hashes a structural path list — changed
   paths plus untracked paths plus one `git hash-object` pass — rather than patch text, so the
   cost is O(paths) and the computation cannot be defeated by a large diff. `decision` stays
@@ -837,13 +846,13 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
 ### Fixed
 
 - **`task-summary` was over-claiming, not being conservative.** It reported `pass` for every
-  test-backed or command-backed criterion whenever the *run* verdict was green — asserting
+  test-backed or command-backed criterion whenever the _run_ verdict was green — asserting
   per-criterion proofs it never had. A criterion whose oracle did not run now reports `unknown`,
   even on a PASS verdict. `AcOutcome` keeps its three values.
 - **The delivery gate could be bypassed by an unrunnable test gate.** Making a missing binary
   `not-run` would, on its own, have turned `"test": "nonexistent-runner"` from a hard block into a
   delivery. The gate now refuses when every recorded `test` gate is `not-run`, or when every gate
-  is, with no input waiving it — while a missing *optional* scanner still delivers with a warning,
+  is, with no input waiving it — while a missing _optional_ scanner still delivers with a warning,
   which is the whole reason `not-run` exists.
 - **`task-deliver` could skip the gate entirely.** Two clauses licensed reusing a verdict from
   conversation context and hand-reading the artifact when the tool was unavailable. A verdict
@@ -860,6 +869,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
   inside `runGate` serialised gates that ADR-0002 made concurrent on purpose, and the repository's
   own latency test caught it — parallel 1094ms against sequential 973ms. Probes now run once per
   token before the clock starts; the margin is back to roughly 215ms against 640ms.
+
 ## [0.14.1] — 2026-08-13
 
 ### Fixed
@@ -874,7 +884,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
   prompt ever passed the argument, so nothing that worked before stops working.
 - **`registerTool` now passes the input schema itself rather than its raw `.shape`** — without
   which the fix above could not work at all. Handed a raw shape, the MCP SDK rebuilds it with a
-  plain, non-strict `z.object()` and strips unknown keys *before* the handler and before the
+  plain, non-strict `z.object()` and strips unknown keys _before_ the handler and before the
   shared `safeParse` ever see them, so a `.strict()` schema could never reject anything. Strict
   schemas now fail loudly; non-strict schemas keep stripping exactly as before. The advertised
   JSON Schema is unchanged for 12 of the 13 tools — and 12 already published
@@ -909,7 +919,7 @@ CLAUDE.md asserts become machine-checked, and the first session gets a front doo
   Five of the six pass on the current tree with no content edits — they are regression fences,
   not repairs, and the module says so.
 - **`plugins/marvin/commands/{lessons,dashboard,reports}.md`** (decision **D3**). Beyond
-  uniformity, this is what lets the wrapper check pin a *rule* rather than a list: the
+  uniformity, this is what lets the wrapper check pin a _rule_ rather than a list: the
   wrapper-less set was ten prompts — those three plus the seven `track-*` — and is now exactly
   the `track-*` group, which is what CLAUDE.md already asserted.
 - **`scripts/usage-surface.mjs`** — compares the declared registry against the names actually
@@ -976,7 +986,7 @@ pipeline gets a routed entrance and a bounded intake.
 - **A question budget.** Intake is capped at six questions for a feature and four for a
   bugfix, in priority order — scope and boundaries, security and data, interface and
   contract, the rest — with up to three numbered independent questions per turn. Three sweep
-  rows are relabelled as answered by *reading* rather than asking: reverse dependencies by
+  rows are relabelled as answered by _reading_ rather than asking: reverse dependencies by
   grep, the test environment from CI configuration, merge obligations from CLAUDE.md. A
   do-not-ask list names the default each item assumes, and every accepted default must be
   recorded in `## Assumptions` as "assumed X because Y; correct now if wrong".
@@ -1378,7 +1388,7 @@ Registry unchanged: 52 prompts, 13 tools, 9 widgets.
   report section is now `board` (`## Board`).
 - The curated help content for `track-tracker` and `track-status` now matches what the
   commands actually do (the read-only tracked-tasks list and the branch + WIP report);
-  both previously described status/link *mutations*.
+  both previously described status/link _mutations_.
 
 ## [0.5.0] — 2026-07-12
 
