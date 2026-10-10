@@ -3788,7 +3788,7 @@ The skill specifies, in order:
 ```
 
 - `npm run lint` is not a gate, because it auto-fixes; `npx eslint .` only reads.
-- `test_one` uses the placeholder that Task 8 settled on, unquoted. Both readers encode it through one helper (`lib/shell-quote.ts`): the seal stage and the oracle resolver single-quote the path, so `npx vitest run {file}` runs `src/app/(dashboard)/…` test files from both. A `${VAR:-{file}}` indirection is not needed. The seal stage refuses `{name}`, so `-t {name}` stays out of this template.
+- `test_one` uses the placeholder that Task 8 settled on, unquoted. Both readers encode it through one helper (`lib/shell-quote.ts`): the seal stage and the oracle resolver single-quote the path, so `npx vitest run {file}` runs `src/app/(dashboard)/…` test files from both. A `${VAR:-{file}}` indirection is not needed. The seal stage refuses `{name}`, so `-t {name}` stays out of this template. The rule is recorded in ADR-0048, which amends ADR-0036.
 - `O/.marvin/pipeline/rubric.yaml`:
   - `sensitive_paths` (regexes): `^src/app/\(dashboard\)/_payments/`, `^src/app/\(admin\)/`, `^src/shared/api/client\.ts$`, `websocket`, `^src/app/_theme/`, `^src/app/globals\.css$`, `^src/ui/frost/css-vars\.ts$`, plus every path the `auth-rbac` skill names.
   - `cross_repo_markers`: `datasourceIds`, `order_number`, `PUT /chats/order`, `orderIndex`, `researchType`, `passwordTemporary`, `feature-flags`, `/api/v1/`.

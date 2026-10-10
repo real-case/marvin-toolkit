@@ -120,7 +120,8 @@ are not part of this release.
   through one helper (`lib/shell-quote.ts`): an unquoted placeholder is single-quoted, and one the
   template already quoted (`-k '{name}'`, `"{file}"`) is escaped for that quote instead, so
   existing templates keep working. `{name}` and `{ref}` get the same treatment in the oracle
-  path; the seal stage still refuses them, since it runs a whole file.
+  path; the seal stage still refuses them, since it runs a whole file
+  ([ADR-0048](../../docs/adr/0048-shell-quoted-test-one-placeholders.md), amending ADR-0036).
 - **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
   `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
 - **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.

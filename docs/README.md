@@ -69,6 +69,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0045](./adr/0045-scope-byproduct-exemptions.md) | By-product files are exempted from a task's scope by project configuration | Accepted |
 | [0046](./adr/0046-lean-spec-shape.md) | A spec keeps only the sections a reader uses, and states each fact once | Accepted |
 | [0047](./adr/0047-feature-red-phase.md) | A feature records one red phase, and the delivery gate reads it | Accepted |
+| [0048](./adr/0048-shell-quoted-test-one-placeholders.md) | A `test_one` placeholder is shell-quoted by marvin, not by the template author | Proposed |
 
 ## Work in progress
 

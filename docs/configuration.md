@@ -427,7 +427,8 @@ again, so templates written before marvin quoted keep working: `"pytest -k '{nam
 `"vitest run \"{file}\""` produce the same arguments as their unquoted forms. Before any of
 this, a ref carrying a shell metacharacter (`;`, `|`, `&`, a backtick, `$(`, a redirection, a
 newline) is refused rather than substituted: the run records `not-run` with the reason
-`unsafe-ref` and no child process is started.
+`unsafe-ref` and no child process is started. The rule and its history are recorded in
+[ADR-0048](./adr/0048-shell-quoted-test-one-placeholders.md).
 
 The [autopilot pipeline](#pipeline)'s seal stage reads the same template to run one whole
 test file, so it accepts a narrower form: `{file}` only, unquoted. It refuses `{name}` and
