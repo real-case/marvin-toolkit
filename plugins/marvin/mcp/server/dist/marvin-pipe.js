@@ -12132,19 +12132,30 @@ function findNearDuplicate(memoryDir, title) {
 }
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
-var RUNNER_WRAPPER = [
-  "set -m",
-  "exec 3>&2 2>/dev/null",
-  '/bin/sh -c "$1" 2>&3 3>&- &',
-  "pid=$!",
-  `trap 'kill -TERM -"$pid" 2>/dev/null; sleep 1; kill -KILL -"$pid" 2>/dev/null' TERM INT`,
-  'wait "$pid"',
-  "code=$?",
-  'exit "$code"'
-].join("\n");
+var SUPERVISOR = `
+const { spawn } = require("node:child_process");
+const { constants } = require("node:os");
+const child = spawn("/bin/sh", ["-c", process.argv[1]], { detached: true, stdio: "inherit" });
+let stopping = false;
+const signalGroup = (sig) => { try { process.kill(-child.pid, sig); } catch {} };
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  signalGroup("SIGTERM");
+  setTimeout(() => { signalGroup("SIGKILL"); process.exit(124); }, 1000).unref();
+};
+process.on("SIGTERM", stop);
+process.on("SIGINT", stop);
+process.on("SIGHUP", stop);
+child.on("error", (e) => { process.stderr.write("error: " + e.message + "\\n"); process.exit(127); });
+child.on("exit", (code, signal) => {
+  if (stopping) signalGroup("SIGKILL");
+  process.exit(code ?? 128 + (constants.signals[signal] ?? 0));
+});
+`;
 var shellRunner = (command, cwd, timeoutMs) => {
   const started = Date.now();
-  const r = spawnSync("/bin/sh", ["-c", RUNNER_WRAPPER, "sh", command], {
+  const r = spawnSync(process.execPath, ["-e", SUPERVISOR, "--", command], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

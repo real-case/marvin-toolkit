@@ -92,27 +92,47 @@ export type Runner = (
 const MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
- * The command is `$1` of a wrapper that runs it as a background job under `set -m`, so it
- * gets its own process group, and that group is what a TERM or INT to the wrapper kills
- * (KILL a second later for a command that ignores TERM). Killing only `/bin/sh` on a
- * timeout would leave the suite running next to its own retry, and writing to the worktree.
- * The wrapper's own stderr goes to /dev/null so the shell's job notices (`[1]+ Done`) stay
- * out of the output; the command gets the real stderr back through fd 3.
+ * The command runs under a small Node supervisor, spawned non-detached so that it stays in the
+ * caller's process group (a TERM to the engine's group reaches it, as does `spawnSync`'s
+ * timeout signal). The supervisor starts `/bin/sh -c <command>` detached, which puts the shell
+ * in its own session and process group, and on TERM or INT it signals that whole group: TERM,
+ * then KILL a second later for a command that ignores TERM. Killing only the shell on a timeout
+ * would leave the suite running next to its own retry, and writing to the worktree.
+ *
+ * This replaced a `set -m` shell wrapper. `set -m` gives a background job its own process
+ * group only where the shell grants job control without a terminal: bash does, dash (Debian
+ * and Ubuntu's `/bin/sh`) does not, so on Linux the wrapper printed `can't access tty; job
+ * control turned off` into every gate's output and a timeout left the command's tree alive.
+ * Plain POSIX sh has no other way to make a process group; Node's `detached` (setsid) does.
+ *
+ * The supervisor writes nothing: the command's stdout and stderr are inherited byte for byte,
+ * and its exit code is passed through (128 + n for a command ended by signal n).
  */
-const RUNNER_WRAPPER = [
-  "set -m",
-  "exec 3>&2 2>/dev/null",
-  '/bin/sh -c "$1" 2>&3 3>&- &',
-  "pid=$!",
-  `trap 'kill -TERM -"$pid" 2>/dev/null; sleep 1; kill -KILL -"$pid" 2>/dev/null' TERM INT`,
-  'wait "$pid"',
-  "code=$?",
-  'exit "$code"',
-].join("\n");
+const SUPERVISOR = `
+const { spawn } = require("node:child_process");
+const { constants } = require("node:os");
+const child = spawn("/bin/sh", ["-c", process.argv[1]], { detached: true, stdio: "inherit" });
+let stopping = false;
+const signalGroup = (sig) => { try { process.kill(-child.pid, sig); } catch {} };
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  signalGroup("SIGTERM");
+  setTimeout(() => { signalGroup("SIGKILL"); process.exit(124); }, 1000).unref();
+};
+process.on("SIGTERM", stop);
+process.on("SIGINT", stop);
+process.on("SIGHUP", stop);
+child.on("error", (e) => { process.stderr.write("error: " + e.message + "\\n"); process.exit(127); });
+child.on("exit", (code, signal) => {
+  if (stopping) signalGroup("SIGKILL");
+  process.exit(code ?? 128 + (constants.signals[signal] ?? 0));
+});
+`;
 
 export const shellRunner: Runner = (command, cwd, timeoutMs) => {
   const started = Date.now();
-  const r = spawnSync("/bin/sh", ["-c", RUNNER_WRAPPER, "sh", command], {
+  const r = spawnSync(process.execPath, ["-e", SUPERVISOR, "--", command], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

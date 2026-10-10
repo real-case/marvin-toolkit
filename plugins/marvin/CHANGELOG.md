@@ -106,6 +106,13 @@ are not part of this release.
   - The executor role now commits the sealed spec with `git add -f` and no other `.marvin/`
     service file, and the retro reports `done` for a halted run instead of `failed`, which had
     cost a retry and lost the retro.
+- **A gate timeout ends the command's whole process tree on Linux too.** The gate runner put the
+  command in its own process group with a `set -m` shell wrapper, which only bash honours without
+  a terminal: dash, Debian's and Ubuntu's `/bin/sh`, printed `can't access tty; job control
+  turned off` into every gate's output, and a timed-out gate left its processes running beside
+  the retry. A small Node supervisor now starts the shell detached (its own session and group)
+  and signals that group with TERM, then KILL; it stays in the engine's group, so stopping the
+  engine still ends a running gate. Output and exit code are passed through unchanged.
 - **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
   `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
 - **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.

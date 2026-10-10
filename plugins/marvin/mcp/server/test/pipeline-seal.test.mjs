@@ -1290,9 +1290,16 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
   const red =
     'import { test } from "node:test";\ntest("red", () => { throw new Error("red"); });\n';
   const green = 'import { test } from "node:test";\ntest("ok", () => {});\n';
+  // `node --test` reads its arguments as globs from Node 21 on, so a candidate with glob
+  // characters matches no file there; Node 20 takes the argument as a path and runs the file,
+  // which is a genuine red run of exactly that file.
+  const globbing = Number(process.versions.node.split(".")[0]) >= 21;
+  const foundNothing = (v, candidate, label) =>
+    globbing
+      ? assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], label)
+      : assert.equal(v.ok, true, `${label}: ${v.reasons.join("; ")}`);
   for (const candidate of ["x{a,b}.test.mjs", "x{},y}.test.mjs", "x[y].test.mjs"]) {
-    const v = real(candidate, red);
-    assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], candidate);
+    foundNothing(real(candidate, red), candidate, candidate);
   }
   const genuine = real("plain.test.mjs", red);
   assert.equal(genuine.ok, true, genuine.reasons.join("; "));
@@ -1305,8 +1312,7 @@ test("node's own 'Could not find' counts as no test, with the real runner too", 
   assert.match(passing.reasons[0], /passes before implementation/);
   const dotted = "node --test ./{file}";
   for (const candidate of ["x{a,b}.test.mjs", "x[y].test.mjs"]) {
-    const v = real(candidate, red, dotted);
-    assert.deepEqual(v.reasons, [`${candidate}: the runner found no test in it`], `./${candidate}`);
+    foundNothing(real(candidate, red, dotted), candidate, `./${candidate}`);
   }
   const dottedRed = real("plain.test.mjs", red, dotted);
   assert.equal(dottedRed.ok, true, dottedRed.reasons.join("; "));

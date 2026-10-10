@@ -122,6 +122,12 @@ test("the shell runner hands the command over unmangled and keeps its exit code"
   assert.equal(out.output, "q'uote|$HOME");
 });
 
+test("the shell runner adds nothing to the output and reports a signal as 128 + n", () => {
+  const out = g.shellRunner("printf ok; kill -TERM $$", tmpdir(), 5000);
+  assert.equal(out.code, 143);
+  assert.equal(out.output, "ok");
+});
+
 test("added lines carry their new-file line numbers", () => {
   const diff = [
     "diff --git a/src/a.ts b/src/a.ts",
