@@ -9,9 +9,10 @@ follows semver independently of the surrounding marketplace.
 The autopilot pipeline (`docs/proposals/autopilot-implementation-plan.md`, Phases 0–3): a task
 description becomes a merge-ready pull request. A deterministic engine drives headless child
 sessions through planning, sealed acceptance tests, implementation, gates, a read-only verifier,
-CI and a retro, and the user talks only to an orchestrator session. Live runs against a real
-project (Task 20 scenarios 2–4), its configuration (Task 19) and the replay benchmark (Task 21)
-are not part of this release.
+CI and a retro, and the user talks only to an orchestrator session. The replay benchmark that
+gates changes to the pipeline's own process (Task 21) ships with a synthetic suite. Live runs
+against a real project (Task 20 scenarios 3–4, and scenario 2's interactive half) and its
+configuration (Task 19) are not part of this release.
 
 ### Added
 
@@ -76,6 +77,25 @@ are not part of this release.
   ignored, and a Fable override is refused in either mode. `scripts/autopilot-live-sandbox.mjs`
   (opt-in through `MARVIN_LIVE=1`, not part of `npm test`) drives the sandbox fixture with real
   `claude -p` children and prints cost, wall time, cache reads and the headless checks.
+
+- **The replay benchmark and the L3 gate** (Task 21, D5). `marvin-pipe bench --suite --variant
+  [--rubric] [--roles-dir] [--repeat 2] [--baseline]` replays every task of a suite through the
+  whole pipeline and judges it by hidden tests the pipeline never saw, copied from the task's
+  reference commit and run through `gates.test_one` with the seal stage's quoting. Each run
+  records its outcome, assigned against expected tier, hidden-test ratio, gates, iterations,
+  rejections by source, questions, per-role notional cost and cache reads, and wall time, into
+  `evals/autopilot/results/<date>-<variant>.json` and `.md`. The questions go to a simulated
+  user, a tool-less headless `claude -p` given the task's ground truth (`--judge llm`, Opus at
+  effort medium, or the sandbox model override), which also approves the spec and cancels a halted
+  run. `l3Gate` accepts a variant only when the hidden pass rate does not fall, no task regresses
+  in every repeat, and the notional cost stays within 1.15 × the baseline or the pass rate rose;
+  with fewer than two repeats or an incomplete run it is inconclusive. `bench-compare` applies it
+  to two result files. The shipped suite, `evals/autopilot/suites/sandbox.yaml`, replays four
+  tasks (two light, two standard) over a repository generated at bench time from a committed
+  fixture, because historic marvin-toolkit commits carry no pipeline configuration and its gates
+  take about 20 minutes (`evals/autopilot/README.md`). Bench mode (`MARVIN_PIPELINE_BENCH=1`)
+  rides on sandbox mode with green fake CI and adds only `MARVIN_PIPELINE_ROLES_DIR`, which the
+  engine refuses outside it. A usage limit stops the bench with the run recorded `limited`.
 
 ### Changed
 

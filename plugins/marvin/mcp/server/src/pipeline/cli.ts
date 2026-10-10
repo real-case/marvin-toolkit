@@ -7,12 +7,14 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  writeFileSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { assignmentFor, loadRubric, readSignals, tierFor, type Rubric } from "./assess.js";
+import { l3Gate, readResult, renderComparisonMarkdown, runBench, writeResult } from "./bench.js";
 import { answerJudgment, awaitWork, engineAlive, lockHolderPid, runEngine } from "./loop.js";
 import {
   assertOrchestratorName,
@@ -321,6 +323,63 @@ function assess(flags: Flags): void {
   print({ spec: specPath, tier, reasons, signals, assignments });
 }
 
+/**
+ * The replay benchmark (plan Task 21): every selected task of `--suite`, `--repeat` times, through
+ * the whole pipeline in bench mode, then its hidden tests. Writes `<date>-<variant>.json` and `.md`
+ * under `--out` (default: the suite's `../results/`); with `--baseline`, the markdown carries the
+ * L3 comparison against that earlier result. Prints the paths, the summary and the verdict.
+ */
+async function bench(flags: Flags): Promise<void> {
+  const suiteFile = resolve(flag(flags, "suite"));
+  const judge = optional(flags, "judge") ?? "llm";
+  if (judge !== "llm" && judge !== "auto")
+    throw new Error(`--judge must be llm or auto, not ${judge}`);
+  const repeat = positive(flags, "repeat") ?? 2;
+  const tasks = optional(flags, "tasks")
+    ?.split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const baselineFile = optional(flags, "baseline");
+  const baseline = baselineFile ? readResult(resolve(baselineFile)) : null;
+  const rubric = optional(flags, "rubric");
+  const rolesDir = optional(flags, "roles-dir");
+  const workDir = optional(flags, "work-dir");
+  const maxMin = positive(flags, "max-min");
+  const maxUsd = positive(flags, "max-usd");
+  const result = await runBench({
+    cliPath: SELF,
+    suiteFile,
+    variant: flag(flags, "variant"),
+    repeat,
+    judge,
+    ...(tasks ? { tasks } : {}),
+    ...(rubric ? { rubricFile: rubric } : {}),
+    ...(rolesDir ? { rolesDir } : {}),
+    ...(workDir ? { workDir: resolve(workDir) } : {}),
+    ...(maxMin !== undefined ? { maxMinutesPerRun: maxMin } : {}),
+    ...(maxUsd !== undefined ? { maxUsdPerRun: maxUsd } : {}),
+  });
+  const verdict = baseline ? l3Gate(baseline, result) : null;
+  const out = resolve(optional(flags, "out") ?? join(dirname(suiteFile), "..", "results"));
+  const files = writeResult(
+    out,
+    result,
+    baseline && verdict ? renderComparisonMarkdown(baseline, result, verdict) : undefined,
+  );
+  print({ ...files, summary: result.summary, stopped: result.stopped, verdict });
+}
+
+/** The L3 gate over two result files; the comparison markdown goes to stdout or `--out`. */
+function benchCompare(flags: Flags): void {
+  const baseline = readResult(resolve(flag(flags, "baseline")));
+  const candidate = readResult(resolve(flag(flags, "candidate")));
+  const verdict = l3Gate(baseline, candidate);
+  const md = renderComparisonMarkdown(baseline, candidate, verdict);
+  const out = optional(flags, "out");
+  if (out) writeFileSync(resolve(out), md);
+  print({ verdict, ...(out ? { out: resolve(out) } : { markdown: md }) });
+}
+
 const COMMANDS: Record<string, (flags: Flags) => void | Promise<void>> = {
   init,
   start,
@@ -331,6 +390,8 @@ const COMMANDS: Record<string, (flags: Flags) => void | Promise<void>> = {
   status,
   list,
   assess,
+  bench,
+  "bench-compare": benchCompare,
 };
 
 const OPTIONS = {
@@ -348,6 +409,19 @@ const OPTIONS = {
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
   spec: { type: "string" },
+  suite: { type: "string" },
+  variant: { type: "string" },
+  rubric: { type: "string" },
+  "roles-dir": { type: "string" },
+  repeat: { type: "string" },
+  tasks: { type: "string" },
+  baseline: { type: "string" },
+  candidate: { type: "string" },
+  judge: { type: "string" },
+  out: { type: "string" },
+  "work-dir": { type: "string" },
+  "max-min": { type: "string" },
+  "max-usd": { type: "string" },
 } as const;
 
 export async function main(argv: readonly string[]): Promise<number> {

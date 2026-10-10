@@ -1,5 +1,5 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { modelFamily } from "./command.js";
 import type { Assignment } from "./run-store.js";
 
@@ -56,6 +56,57 @@ export function sandboxSettings(env: NodeJS.ProcessEnv = process.env): SandboxSe
     );
   }
   return { enabled, modelOverride: override };
+}
+
+/**
+ * Bench mode (plan Task 21, D5): sandbox mode as the replay benchmark runs it, plus the one seam a
+ * benchmark variant needs that the sandbox lacks. `MARVIN_PIPELINE_BENCH=1` is honoured only on
+ * top of sandbox mode with `MARVIN_PIPELINE_FAKE_CI=green`, so it adds no delivery mechanism of
+ * its own: the sandbox's `gh` shim and local bare origin already keep a run's push and pull
+ * request off GitHub, and green fake CI is the plan's "the engine stubs CI to green". What it adds
+ * is `MARVIN_PIPELINE_ROLES_DIR`, the role prompts a variant replaces (`bench --roles-dir`); a
+ * rubric variant needs no seam, because the bench writes it as the replay repository's own
+ * `.marvin/pipeline/rubric.yaml`, which `rubricFor` already merges.
+ *
+ * Outside bench mode a roles directory is refused rather than ignored, for the reason an override
+ * outside sandbox mode is: a production run must never quietly run on prompts nobody reviewed.
+ */
+export const BENCH_VARIABLE = "MARVIN_PIPELINE_BENCH";
+export const ROLES_DIR_VARIABLE = "MARVIN_PIPELINE_ROLES_DIR";
+
+export interface BenchSettings {
+  enabled: boolean;
+  /** The role prompts directory a variant runs on, or null for the plugin's own. */
+  rolesDir: string | null;
+}
+
+/** Reads and checks the bench switches; throws on a combination the pipeline refuses. */
+export function benchSettings(env: NodeJS.ProcessEnv = process.env): BenchSettings {
+  const raw = env[BENCH_VARIABLE];
+  if (raw !== undefined && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${BENCH_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const rolesDir = env[ROLES_DIR_VARIABLE]?.trim() || null;
+  if (enabled) {
+    if (!sandboxSettings(env).enabled) {
+      throw new Error(`${BENCH_VARIABLE}=1 is honoured only with ${SANDBOX_VARIABLE}=1`);
+    }
+    if (env.MARVIN_PIPELINE_FAKE_CI !== "green") {
+      throw new Error(`${BENCH_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI=green`);
+    }
+  }
+  if (rolesDir !== null) {
+    if (!enabled) {
+      throw new Error(`${ROLES_DIR_VARIABLE} is honoured only with ${BENCH_VARIABLE}=1`);
+    }
+    if (!isAbsolute(rolesDir) || !existsSync(join(rolesDir, "common.md"))) {
+      throw new Error(
+        `${ROLES_DIR_VARIABLE} must be an absolute directory holding common.md: ${rolesDir}`,
+      );
+    }
+  }
+  return { enabled, rolesDir };
 }
 
 /** The assignment a child actually runs with: the override's model, the rubric's effort. */

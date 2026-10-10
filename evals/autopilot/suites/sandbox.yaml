@@ -1,0 +1,85 @@
+# The autopilot replay benchmark's synthetic suite (plan Task 21). See evals/autopilot/README.md.
+#
+# Every revision below resolves inside the replay repository `marvin-pipe bench` builds from
+# `replay` at run time: the base project as the root commit, then one reference commit per task,
+# in the order listed, each applying `tasks/<id>/reference/` over its parent. The builder tags
+# `bench/<id>/base` (the parent) and `bench/<id>/reference`, which is what `base_sha` and
+# `reference` name; a run's origin receives the base's history only, so no child can see a
+# reference commit or a hidden test.
+version: 1
+name: sandbox
+replay: ../replay/sandbox
+tasks:
+  - id: clamp
+    base_sha: bench/clamp/base
+    reference: bench/clamp/reference
+    tier_expected: light
+    reference_spec: tasks/clamp/spec.md
+    hidden_tests: [test/clamp.test.mjs]
+    task_text: >-
+      Add an exported function clamp(x, lo, hi) to src/math.mjs. It returns x limited to the
+      closed range [lo, hi], and it throws a RangeError when lo > hi. Cover it with tests.
+    ground_truth: >-
+      The reference change adds clamp to src/math.mjs as Math.min(hi, Math.max(lo, x)) behind a
+      guard that throws a RangeError when lo > hi; equal bounds are allowed (clamp(7, 7, 7) is 7).
+      It adds test/clamp.test.mjs. Nothing else changes; no new dependency.
+
+  - id: slugify
+    base_sha: bench/slugify/base
+    reference: bench/slugify/reference
+    tier_expected: light
+    reference_spec: tasks/slugify/spec.md
+    hidden_tests: [test/slugify.test.mjs]
+    task_text: >-
+      Add an exported function slugify(text) to src/strings.mjs. It lower-cases the text,
+      replaces every run of characters other than a-z and 0-9 with a single hyphen, and strips
+      leading and trailing hyphens, so slugify("  Hello, World! ") returns "hello-world". Cover
+      it with tests.
+    ground_truth: >-
+      The reference change adds slugify to src/strings.mjs: lower-case, replace /[^a-z0-9]+/g
+      with "-", then strip leading and trailing hyphens. Accented and other non-ASCII letters are
+      separators like punctuation (no transliteration). A string with no letters or digits yields
+      the empty string. It adds test/slugify.test.mjs.
+
+  - id: csv-quotes
+    base_sha: bench/csv-quotes/base
+    reference: bench/csv-quotes/reference
+    tier_expected: standard
+    reference_spec: tasks/csv-quotes/spec.md
+    hidden_tests: [test/csv.test.mjs, test/report-quoted.test.mjs]
+    task_text: >-
+      parseCsv in src/csv.mjs must support RFC 4180 quoting: a field enclosed in double quotes
+      may contain commas, newlines and doubled quotes ("" stands for one "). Unquoted input must
+      keep parsing exactly as before, and a quoted field left unterminated at the end of the input
+      must throw a SyntaxError. totals() in src/report.mjs, which is built on parseCsv, must keep
+      working when rows hold quoted fields. Cover the change with tests.
+    ground_truth: >-
+      The reference change rewrites parseCsv in src/csv.mjs as a character scanner: a double
+      quote opens a quoted field only at the start of a field, "" inside a quoted field is one ",
+      and a quote still open at the end of the input throws a SyntaxError. Rows still end at "\n",
+      a trailing newline adds no row, and an empty field stays "". src/report.mjs is unchanged
+      because it only calls parseCsv. It adds test/csv.test.mjs and test/report-quoted.test.mjs.
+      CRLF line endings are out of scope.
+
+  - id: duration
+    base_sha: bench/duration/base
+    reference: bench/duration/reference
+    tier_expected: standard
+    reference_spec: tasks/duration/spec.md
+    hidden_tests: [test/duration.test.mjs, test/duration-cli.test.mjs]
+    task_text: >-
+      Add a module src/duration.mjs exporting parseDuration(text) and formatDuration(ms).
+      parseDuration accepts one or more <integer><unit> groups with the units h, m, s and ms in
+      that order, each at most once (for example "1h30m", "45s", "2m500ms"), returns
+      milliseconds, and throws a TypeError for anything else, the empty string included.
+      formatDuration(ms) is the inverse for non-negative integers: it omits zero units and returns
+      "0ms" for 0. Re-export both from src/index.mjs, add a command-line script bin/duration.mjs
+      that prints the milliseconds of its only argument and exits with code 2 on a bad one,
+      document all of it in README.md, and cover the module and the script with tests.
+    ground_truth: >-
+      The reference change adds src/duration.mjs (a single anchored regular expression over the
+      four unit groups; whitespace, decimals, out-of-order or repeated units are TypeErrors;
+      formatDuration throws a TypeError on a negative or non-integer input), re-exports both from
+      src/index.mjs, adds bin/duration.mjs (prints the number and a newline on stdout; on a bad
+      argument prints the error message on stderr and sets exit code 2), appends a "Durations"
+      section to README.md, and adds test/duration.test.mjs and test/duration-cli.test.mjs.

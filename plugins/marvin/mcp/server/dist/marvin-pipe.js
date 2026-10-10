@@ -1,12 +1,12 @@
 import { createRequire } from 'node:module';
-import { spawn, execFileSync, execSync, spawnSync } from 'child_process';
-import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, appendFileSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, mkdtempSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
-import { resolve, posix, basename, join, dirname, sep, isAbsolute, relative } from 'path';
+import { spawn, spawnSync, execFileSync, execSync } from 'child_process';
+import { writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, appendFileSync, renameSync, cpSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
+import { isAbsolute, resolve, posix, join, dirname, basename, sep, normalize, relative } from 'path';
 import { fileURLToPath } from 'url';
-import { setTimeout } from 'timers/promises';
+import { setTimeout as setTimeout$1 } from 'timers/promises';
 import { parseArgs, isDeepStrictEqual } from 'util';
 import { randomBytes, randomUUID, createHash } from 'crypto';
-import { homedir, tmpdir } from 'os';
+import { tmpdir, homedir } from 'os';
 import { Script, createContext } from 'vm';
 
 const require$1 = createRequire(import.meta.url);
@@ -3959,10 +3959,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep5, value } = collItem;
+        const { start: start2, key, sep: sep6, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3976,7 +3976,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep5) {
+          if (!keyProps.anchor && !keyProps.tag && !sep6) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4000,7 +4000,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4016,7 +4016,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep5, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4105,7 +4105,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep5 = "";
+        let sep6 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4119,13 +4119,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep5 + cb;
-              sep5 = "";
+                comment += sep6 + cb;
+              sep6 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep5 += source;
+                sep6 += source;
               hasSpace = true;
               break;
             default:
@@ -4167,18 +4167,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start: start2, key, sep: sep5, value } = collItem;
+        const { start: start2, key, sep: sep6, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep5 && !value) {
+          if (!props.anchor && !props.tag && !sep6 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4232,8 +4232,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep5 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep5, null, props, onError);
+        if (!isMap && !sep6 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4245,7 +4245,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4256,8 +4256,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep5)
-                for (const st of sep5) {
+              if (sep6)
+                for (const st of sep6) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4274,7 +4274,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4452,7 +4452,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep5 = "";
+      let sep6 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4469,24 +4469,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep5 === " ")
-            sep5 = "\n";
-          else if (!prevMoreIndented && sep5 === "\n")
-            sep5 = "\n\n";
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          if (sep6 === " ")
+            sep6 = "\n";
+          else if (!prevMoreIndented && sep6 === "\n")
+            sep6 = "\n\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep5 === "\n")
+          if (sep6 === "\n")
             value += "\n";
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          value += sep5 + content;
-          sep5 = " ";
+          value += sep6 + content;
+          sep6 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4667,25 +4667,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep5 = " ";
+      let sep6 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep5 === "\n")
-            res += sep5;
+          if (sep6 === "\n")
+            res += sep6;
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          res += sep5 + match[1];
-          sep5 = " ";
+          res += sep6 + match[1];
+          sep6 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep5 + (match?.[1] ?? "");
+      return res + sep6 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5488,14 +5488,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep5, value }) {
+    function stringifyItem({ start: start2, key, sep: sep6, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep5)
-        for (const st of sep5)
+      if (sep6)
+        for (const st of sep6)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6657,18 +6657,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep5;
+          let sep6;
           if (scalar.end) {
-            sep5 = scalar.end;
-            sep5.push(this.sourceToken);
+            sep6 = scalar.end;
+            sep6.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep5 = [this.sourceToken];
+            sep6 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep5 }]
+            items: [{ start: start2, key: scalar, sep: sep6 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6821,15 +6821,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep5 = it.sep;
-                  sep5.push(this.sourceToken);
+                  const sep6 = it.sep;
+                  sep6.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep5 }]
+                    items: [{ start: start3, key, sep: sep6 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -7023,13 +7023,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep5 = fc.end.splice(1, fc.end.length);
-            sep5.push(this.sourceToken);
+            const sep6 = fc.end.splice(1, fc.end.length);
+            sep6.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep5 }]
+              items: [{ start: start2, key: fc, sep: sep6 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -12011,125 +12011,8 @@ function previewAssignments(run2, r) {
   };
 }
 
-// src/pipeline/learning.ts
+// src/pipeline/bench.ts
 var import_yaml3 = __toESM(require_dist());
-
-// src/storage/slug.ts
-function slugify(title, maxLen = 40) {
-  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-  if (base.length <= maxLen) return base;
-  const cut = base.slice(0, maxLen);
-  const lastHyphen = cut.lastIndexOf("-");
-  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
-}
-function isSafeBranchRef(name) {
-  if (!name || name === "@") return false;
-  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
-  if (name.endsWith(".")) return false;
-  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
-  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
-  for (const segment of name.split("/")) {
-    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
-  }
-  return true;
-}
-
-// src/storage/lessons.ts
-var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
-var INDEX_FILE = "MEMORY.md";
-var INDEX_HEADER = [
-  "# Marvin lessons",
-  "",
-  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
-  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
-  "in the linked file. Recalled at task intake.",
-  ""
-].join("\n");
-function uniqueSlug(memoryDir, base) {
-  const root = base || "lesson";
-  let slug = root;
-  let n = 2;
-  while (existsSync(join(memoryDir, `${slug}.md`))) {
-    slug = `${root}-${n}`;
-    n += 1;
-  }
-  return slug;
-}
-function addLesson(memoryDir, input) {
-  mkdirSync(memoryDir, { recursive: true });
-  const slug = uniqueSlug(memoryDir, slugify(input.title));
-  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
-  const frontmatter = {
-    id: slug,
-    type: input.type,
-    title: input.title,
-    created,
-    tags: tags.length ? tags.join(", ") : void 0,
-    source: input.source?.trim() || "manual"
-  };
-  const body = input.body.trim() ? `
-${input.body.trim()}
-` : "\n";
-  const path = join(memoryDir, `${slug}.md`);
-  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
-  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
-  return { slug, path };
-}
-function appendIndex(memoryDir, entry) {
-  const indexPath = join(memoryDir, INDEX_FILE);
-  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
-  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
-  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
-  if (!content.endsWith("\n")) content += "\n";
-  writeFileSync(indexPath, `${content}${line}
-`);
-}
-function readAllLessons(memoryDir) {
-  if (!existsSync(memoryDir)) return [];
-  const lessons = [];
-  for (const filename of readdirSync(memoryDir).sort()) {
-    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
-    const raw = readFileSync(join(memoryDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    if (!frontmatter.title) continue;
-    lessons.push({
-      slug: filename.replace(/\.md$/, ""),
-      type: frontmatter.type ?? "process",
-      title: frontmatter.title,
-      created: frontmatter.created ?? "",
-      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-      source: frontmatter.source ?? "manual",
-      body: body.trim()
-    });
-  }
-  return lessons;
-}
-function titleWords(title) {
-  return new Set(
-    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
-  );
-}
-function titleSimilarity(a, b) {
-  const wa = titleWords(a);
-  const wb = titleWords(b);
-  if (wa.size === 0 || wb.size === 0) return 0;
-  let hits = 0;
-  for (const w of wa) if (wb.has(w)) hits += 1;
-  return hits / (wa.size + wb.size - hits);
-}
-var NEAR_DUPLICATE_THRESHOLD = 0.5;
-function findNearDuplicate(memoryDir, title) {
-  const slug = slugify(title);
-  let best = null;
-  for (const l of readAllLessons(memoryDir)) {
-    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
-    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
-      best = { lesson: l, score };
-    }
-  }
-  return best?.lesson ?? null;
-}
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
 var SUPERVISOR = `
@@ -12858,6 +12741,228 @@ function runGateStage(o) {
     sealed,
     blockers
   });
+}
+var SANDBOX_VARIABLE = "MARVIN_PIPELINE_SANDBOX";
+var MODEL_OVERRIDE_VARIABLE = "MARVIN_PIPELINE_MODEL_OVERRIDE";
+var SANDBOX_PR_URL = "https://github.com/sandbox/sandbox/pull/1";
+function sandboxSettings(env = process.env) {
+  const raw = env[SANDBOX_VARIABLE];
+  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${SANDBOX_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const override = env[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
+  if (override !== null) {
+    modelFamily(override);
+    if (!enabled) {
+      throw new Error(
+        `${MODEL_OVERRIDE_VARIABLE} is honoured only with ${SANDBOX_VARIABLE}=1; unset it, or run in the sandbox`
+      );
+    }
+  }
+  if (enabled && !env.MARVIN_PIPELINE_FAKE_CI) {
+    throw new Error(
+      `${SANDBOX_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI: the sandbox pull request does not exist on GitHub`
+    );
+  }
+  return { enabled, modelOverride: override };
+}
+var BENCH_VARIABLE = "MARVIN_PIPELINE_BENCH";
+var ROLES_DIR_VARIABLE = "MARVIN_PIPELINE_ROLES_DIR";
+function benchSettings(env = process.env) {
+  const raw = env[BENCH_VARIABLE];
+  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${BENCH_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const rolesDir = env[ROLES_DIR_VARIABLE]?.trim() || null;
+  if (enabled) {
+    if (!sandboxSettings(env).enabled) {
+      throw new Error(`${BENCH_VARIABLE}=1 is honoured only with ${SANDBOX_VARIABLE}=1`);
+    }
+    if (env.MARVIN_PIPELINE_FAKE_CI !== "green") {
+      throw new Error(`${BENCH_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI=green`);
+    }
+  }
+  if (rolesDir !== null) {
+    if (!enabled) {
+      throw new Error(`${ROLES_DIR_VARIABLE} is honoured only with ${BENCH_VARIABLE}=1`);
+    }
+    if (!isAbsolute(rolesDir) || !existsSync(join(rolesDir, "common.md"))) {
+      throw new Error(
+        `${ROLES_DIR_VARIABLE} must be an absolute directory holding common.md: ${rolesDir}`
+      );
+    }
+  }
+  return { enabled, rolesDir };
+}
+function effectiveAssignment(a, s) {
+  return s.enabled && s.modelOverride !== null ? { ...a, model: s.modelOverride } : a;
+}
+var SHIM = String.raw`
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const STATE = process.env.MARVIN_SANDBOX_GH_STATE;
+const URL = process.env.MARVIN_SANDBOX_GH_URL;
+const args = process.argv.slice(2);
+const git = (...a) => {
+  try {
+    return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+};
+const fail = (text) => {
+  process.stderr.write(text + "\n");
+  process.exit(1);
+};
+const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
+const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
+const value = (long, short) => {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === long || (short && a === short)) return args[i + 1] ?? "";
+    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
+  }
+  return null;
+};
+const has = (name) => args.includes(name);
+const body = () => {
+  const file = value("--body-file", "-F");
+  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
+  return value("--body", "-b");
+};
+const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
+const fields = (pr) => ({
+  url: pr.url,
+  number: 1,
+  state: pr.state,
+  isDraft: pr.isDraft,
+  title: pr.title,
+  body: pr.body,
+  baseRefName: pr.base,
+  headRefName: pr.head,
+  headRefOid: git("rev-parse", "HEAD"),
+  mergeable: "MERGEABLE",
+  mergeStateStatus: "CLEAN",
+  reviewDecision: "",
+  statusCheckRollup: [],
+  comments: [],
+  reviews: [],
+});
+const emit = (pr) => {
+  const json = value("--json");
+  if (json === null) {
+    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
+    return;
+  }
+  const all = fields(pr);
+  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
+  const jq = value("--jq", "-q");
+  if (jq !== null) {
+    const m = /^\.(\w+)$/.exec(jq.trim());
+    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
+    const v = picked[m[1]];
+    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
+    return;
+  }
+  process.stdout.write(JSON.stringify(picked) + "\n");
+};
+const current = () => {
+  const pr = load();
+  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
+  return pr;
+};
+
+const sub = (args[0] ?? "") + " " + (args[1] ?? "");
+switch (sub) {
+  case "pr create": {
+    const existing = load();
+    if (existing && existing.head === branch()) {
+      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
+    }
+    const base = value("--base", "-B");
+    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
+    const pr = {
+      url: URL,
+      state: "OPEN",
+      isDraft: has("--draft") || has("-d"),
+      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
+      body: body() ?? "",
+      base,
+      head: value("--head", "-H") ?? branch(),
+    };
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr view":
+    emit(current());
+    break;
+  case "pr list": {
+    const pr = load();
+    const mine = pr && pr.head === branch() ? [pr] : [];
+    if (value("--json") === null) {
+      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
+    } else {
+      const keys = value("--json").split(",").map((k) => k.trim());
+      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
+      process.stdout.write(JSON.stringify(rows) + "\n");
+    }
+    break;
+  }
+  case "pr edit": {
+    const pr = current();
+    const title = value("--title", "-t");
+    const text = body();
+    if (title !== null) pr.title = title;
+    if (text !== null) pr.body = text;
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr ready": {
+    const pr = current();
+    pr.isDraft = false;
+    save(pr);
+    break;
+  }
+  case "pr diff": {
+    const pr = current();
+    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
+    break;
+  }
+  case "pr checks":
+    current();
+    fail('no checks reported on the "' + branch() + '" branch');
+    break;
+  case "run list":
+    process.stdout.write(value("--json") === null ? "" : "[]\n");
+    break;
+  default:
+    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
+}
+`;
+function installSandboxGh(runDir, nodePath = process.execPath) {
+  const bin = join(runDir, "sandbox-bin");
+  mkdirSync(bin, { recursive: true });
+  const script = join(bin, "gh-shim.mjs");
+  writeFileSync(script, SHIM.trimStart());
+  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const gh = join(bin, "gh");
+  writeFileSync(gh, `#!/bin/sh
+exec ${quote(nodePath)} ${quote(script)} "$@"
+`);
+  chmodSync(gh, 493);
+  return {
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
+    MARVIN_SANDBOX_GH_URL: SANDBOX_PR_URL
+  };
+}
+function sandboxChildEnv(runDir, s) {
+  return s.enabled ? installSandboxGh(runDir) : {};
 }
 
 // src/lib/shell-quote.ts
@@ -13756,6 +13861,1044 @@ function writeSealManifest(runDir, sealed) {
   renameSync(tmp, target);
 }
 
+// src/pipeline/bench.ts
+var RelPath = external_exports.string().min(1).refine((p) => !isAbsolute(p) && !p.split("/").includes("..") && !p.includes("\\"), {
+  message: "must be a relative POSIX path inside the repository"
+});
+var SuiteTask = external_exports.object({
+  id: external_exports.string().regex(/^[a-z0-9][a-z0-9-]*$/, "a kebab-case id"),
+  base_sha: external_exports.string().min(1),
+  reference: external_exports.string().min(1),
+  tier_expected: external_exports.enum(TIERS),
+  stage_a: external_exports.enum(TIERS).default("standard"),
+  reference_spec: RelPath.optional(),
+  hidden_tests: external_exports.array(RelPath).min(1),
+  task_text: external_exports.string().trim().min(1),
+  ground_truth: external_exports.string().trim().min(1)
+}).strict();
+var Suite = external_exports.object({
+  version: external_exports.literal(1),
+  name: external_exports.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  replay: external_exports.string().min(1),
+  tasks: external_exports.array(SuiteTask).min(1)
+}).strict().superRefine((s, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const t of s.tasks) {
+    if (seen.has(t.id)) ctx.addIssue({ code: "custom", message: `duplicate task id ${t.id}` });
+    seen.add(t.id);
+  }
+});
+function loadSuite(file) {
+  const suiteFile = resolve(file);
+  const parsed = Suite.safeParse((0, import_yaml3.parse)(readFileSync(suiteFile, "utf8")));
+  if (!parsed.success) throw new Error(`${suiteFile}: ${parsed.error.message}`);
+  const replayDir = resolve(dirname(suiteFile), parsed.data.replay);
+  if (!existsSync(join(replayDir, "project"))) {
+    throw new Error(`${suiteFile}: replay ${replayDir} has no project/ directory`);
+  }
+  for (const t of parsed.data.tasks) {
+    if (!existsSync(join(replayDir, "tasks", t.id, "reference"))) {
+      throw new Error(`${suiteFile}: task ${t.id} has no tasks/${t.id}/reference/ overlay`);
+    }
+    if (t.reference_spec && !existsSync(join(replayDir, t.reference_spec))) {
+      throw new Error(`${suiteFile}: task ${t.id} names a missing reference_spec`);
+    }
+  }
+  return { suite: parsed.data, suiteFile, replayDir };
+}
+function selectTasks(suite, names) {
+  if (!names || names.length === 0) return suite.tasks;
+  const unknown = names.filter((n) => !suite.tasks.some((t) => t.id === n));
+  if (unknown.length > 0) throw new Error(`no such task in ${suite.name}: ${unknown.join(", ")}`);
+  return suite.tasks.filter((t) => names.includes(t.id));
+}
+var REPLAY_IDENTITY = {
+  GIT_AUTHOR_NAME: "Bench Replay",
+  GIT_AUTHOR_EMAIL: "bench@example.invalid",
+  GIT_COMMITTER_NAME: "Bench Replay",
+  GIT_COMMITTER_EMAIL: "bench@example.invalid"
+};
+var benchGit = (cwd, args, extra = {}) => execFileSync("git", [...HARDENED_GIT_OPTIONS, "-c", "commit.gpgsign=false", ...args], {
+  cwd,
+  env: hardenedGitEnv({ ...REPLAY_IDENTITY, ...extra }),
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+}).trim();
+var commitAt = (repo, message, n) => {
+  const date = new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString();
+  benchGit(repo, ["add", "-A"]);
+  benchGit(repo, ["commit", "-q", "--allow-empty", "-m", message], {
+    GIT_AUTHOR_DATE: date,
+    GIT_COMMITTER_DATE: date
+  });
+};
+var baseTag = (id) => `bench/${id}/base`;
+var referenceTag = (id) => `bench/${id}/reference`;
+function buildReplayRepo(loaded, dir) {
+  const repo = join(dir, "replay");
+  mkdirSync(repo, { recursive: true });
+  benchGit(repo, ["init", "-q", "-b", "dev"]);
+  cpSync(join(loaded.replayDir, "project"), repo, { recursive: true });
+  commitAt(repo, "chore: replay base project", 0);
+  loaded.suite.tasks.forEach((t, i) => {
+    benchGit(repo, ["tag", baseTag(t.id)]);
+    cpSync(join(loaded.replayDir, "tasks", t.id, "reference"), repo, { recursive: true });
+    commitAt(repo, `feat(${t.id}): reference change`, i + 1);
+    benchGit(repo, ["tag", referenceTag(t.id)]);
+  });
+  for (const t of loaded.suite.tasks) {
+    const base = resolveRevision(repo, t.base_sha);
+    const reference = resolveRevision(repo, t.reference);
+    if (base === reference) throw new Error(`task ${t.id}: base and reference are one commit`);
+    for (const path of t.hidden_tests) {
+      try {
+        benchGit(repo, ["cat-file", "-e", `${reference}:${path}`]);
+      } catch {
+        throw new Error(`task ${t.id}: hidden test ${path} is not in its reference commit`);
+      }
+    }
+  }
+  return repo;
+}
+function resolveRevision(repo, revision) {
+  try {
+    return benchGit(repo, ["rev-parse", "--verify", "--end-of-options", `${revision}^{commit}`]);
+  } catch {
+    throw new Error(`revision ${revision} does not resolve in the replay repository`);
+  }
+}
+function prepareTaskRepo(replayRepo, baseSha, dir) {
+  mkdirSync(dir, { recursive: true });
+  const origin = join(dir, "origin.git");
+  benchGit(dir, ["init", "-q", "--bare", "-b", "dev", origin]);
+  benchGit(replayRepo, ["push", "-q", "--no-tags", origin, `${baseSha}:refs/heads/dev`]);
+  const repo = join(dir, "bench-sandbox");
+  benchGit(dir, ["clone", "-q", "--no-tags", origin, repo]);
+  return { origin, repo };
+}
+function testOneTemplate(replayRepo, baseSha) {
+  const text2 = benchGit(replayRepo, ["show", `${baseSha}:.marvin/config.json`]);
+  const template = JSON.parse(text2).gates?.test_one;
+  if (typeof template !== "string" || template.trim() === "") {
+    throw new Error(`the base ${baseSha.slice(0, 12)} has no gates.test_one`);
+  }
+  return template;
+}
+var insideRoot = (root, rel) => {
+  const full = normalize(join(root, rel));
+  if (!full.startsWith(root + sep)) throw new Error(`hidden test ${rel} leaves the worktree`);
+  return full;
+};
+function runHiddenTests(o) {
+  const total = o.paths.length;
+  if (o.worktree === null || !existsSync(o.worktree)) {
+    return {
+      passed: 0,
+      total,
+      ratio: 0,
+      files: o.paths.map((path) => ({ path, passed: false, exitCode: null })),
+      skipped: "the run left no worktree"
+    };
+  }
+  const root = resolve(o.worktree);
+  for (const path of o.paths) {
+    const target = insideRoot(root, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, benchGit(o.replayRepo, ["show", `${o.reference}:${path}`]) + "\n");
+  }
+  const env = { ...o.env ?? process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const files = o.paths.map((path) => {
+    const r = spawnSync("sh", ["-c", formatTestOne(o.testOne, path)], {
+      cwd: root,
+      env,
+      encoding: "utf8",
+      timeout: o.timeoutMs ?? 3e5
+    });
+    const passed2 = r.status === 0;
+    const tail = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim().split("\n").slice(-6).join("\n");
+    return { path, passed: passed2, exitCode: r.status, ...passed2 ? {} : { detail: tail.slice(0, 600) } };
+  });
+  const passed = files.filter((f) => f.passed).length;
+  return { passed, total, ratio: total === 0 ? 0 : passed / total, files };
+}
+var autoJudge = {
+  name: "auto",
+  model: null,
+  async answer({ questions }) {
+    if (questions.length === 0) {
+      return {
+        answer: {
+          kind: "answers",
+          text: "The sealed test stands: it asserts what the spec says. Make it pass.",
+          count: 0
+        },
+        costUsd: 0
+      };
+    }
+    const text2 = questions.map((q) => `${q.id}: ${q.recommendation ?? "Use your best judgment."}`).join("\n");
+    return { answer: { kind: "answers", text: text2, count: questions.length }, costUsd: 0 };
+  }
+};
+function judgeModel(env = process.env) {
+  const model = sandboxSettings(env).modelOverride ?? "opus";
+  modelFamily(model);
+  return model;
+}
+var JUDGE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["decision", "answers"],
+  properties: {
+    decision: { type: "string", enum: ["answers", "revise_tests"] },
+    answers: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "answer"],
+        properties: { id: { type: "string" }, answer: { type: "string", minLength: 1 } }
+      }
+    },
+    revise_text: { type: "string" }
+  }
+};
+var JudgeOutput = external_exports.object({
+  decision: external_exports.enum(["answers", "revise_tests"]),
+  answers: external_exports.array(external_exports.object({ id: external_exports.string(), answer: external_exports.string().trim().min(1) })),
+  revise_text: external_exports.string().optional()
+});
+var ClaudeResult = external_exports.object({
+  is_error: external_exports.boolean().optional(),
+  subtype: external_exports.string().optional(),
+  result: external_exports.string().optional(),
+  structured_output: external_exports.unknown().optional(),
+  total_cost_usd: external_exports.number().optional()
+}).passthrough();
+var spawnClaude = (argv, cwd) => new Promise((resolvePromise, reject) => {
+  const [cmd = "claude", ...args] = argv;
+  const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (d) => out += d);
+  child.stderr.on("data", (d) => err += d);
+  child.once("error", reject);
+  child.once("close", (code) => {
+    if (code === 0 || out.trim() !== "") resolvePromise(out);
+    else reject(new Error(`claude exited ${code}: ${err.trim().slice(0, 300)}`));
+  });
+});
+var UsageLimitError = class extends Error {
+};
+var LIMIT_TEXT = /usage limit|rate limit|limit reached|out of extra usage/i;
+function llmJudge(o) {
+  modelFamily(o.model);
+  const run2 = o.runClaude ?? spawnClaude;
+  let calls = 0;
+  return {
+    name: "llm",
+    model: o.model,
+    async answer({ kind, questions, dispute, task }) {
+      calls += 1;
+      const prompt = [
+        "You are the developer who asked for the change below. An automated pipeline is",
+        "implementing it and has questions for you. Answer them as that developer would, from",
+        "the ground truth: what the finished change actually is. Be short and decisive; answer",
+        "every question by its id; never ask anything back. Do not mention a ground truth or a",
+        "reference change; speak as the requester. English only.",
+        "",
+        "## Task as you wrote it",
+        task.task_text,
+        "",
+        "## Ground truth (what the finished change is)",
+        task.ground_truth,
+        "",
+        `## Questions from the ${kind === "planner_questions" ? "planner" : "executor"}`,
+        JSON.stringify(questions, null, 2),
+        ...dispute ? [
+          "",
+          "## Dispute about a sealed acceptance test",
+          JSON.stringify(dispute, null, 2),
+          "",
+          'Set decision to "revise_tests" with revise_text only if the sealed test',
+          'contradicts the ground truth; otherwise decision is "answers" and you say why the',
+          "test stands."
+        ] : ["", 'Set decision to "answers".']
+      ].join("\n");
+      const argv = [
+        "claude",
+        "-p",
+        prompt,
+        "-n",
+        `bench-judge-${task.id}-${calls}`,
+        "--model",
+        o.model,
+        "--effort",
+        o.effort ?? "medium",
+        "--output-format",
+        "json",
+        "--json-schema",
+        JSON.stringify(JUDGE_SCHEMA),
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--strict-mcp-config",
+        "--setting-sources",
+        "project",
+        "--disallowedTools",
+        "Bash",
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write",
+        "WebFetch",
+        "WebSearch",
+        "Agent"
+      ];
+      mkdirSync(o.workDir, { recursive: true });
+      const stdout = await run2(argv, o.workDir);
+      const line = stdout.trim().split("\n").filter(Boolean).at(-1) ?? "";
+      let result;
+      try {
+        result = ClaudeResult.parse(JSON.parse(line));
+      } catch {
+        if (LIMIT_TEXT.test(stdout)) throw new UsageLimitError(stdout.trim().slice(0, 200));
+        throw new Error(`the judge printed no result: ${stdout.trim().slice(0, 200)}`);
+      }
+      const costUsd = result.total_cost_usd ?? 0;
+      if (result.is_error || result.structured_output === void 0) {
+        const text3 = `${result.subtype ?? ""} ${result.result ?? ""}`;
+        if (LIMIT_TEXT.test(text3)) throw new UsageLimitError(text3.trim().slice(0, 200));
+        throw new Error(`the judge failed: ${text3.trim().slice(0, 200)}`);
+      }
+      const out = JudgeOutput.parse(result.structured_output);
+      if (out.decision === "revise_tests" && kind === "executor_questions" && out.revise_text) {
+        return { answer: { kind: "revise_tests", text: out.revise_text }, costUsd };
+      }
+      const byId = new Map(out.answers.map((a) => [a.id, a.answer]));
+      const lines = questions.map(
+        (q) => `${q.id}: ${byId.get(q.id) ?? q.recommendation ?? "Use your best judgment."}`
+      );
+      const text2 = lines.length > 0 ? lines.join("\n") : out.answers[0]?.answer ?? "The sealed test stands. Make it pass.";
+      return { answer: { kind: "answers", text: text2, count: questions.length }, costUsd };
+    }
+  };
+}
+async function decideJudgment(kind, payload, ctx) {
+  const seen = (ctx.seen.get(kind) ?? 0) + 1;
+  ctx.seen.set(kind, seen);
+  switch (kind) {
+    case "spec_approval":
+      return { answer: { kind: "approve" }, costUsd: 0 };
+    case "halt":
+      return {
+        answer: { kind: "cancel", reason: `bench: ${String(payload.reason ?? "halted")}` },
+        costUsd: 0
+      };
+    case "no_ci":
+      return { answer: { kind: "proceed", reason: "the bench has no CI" }, costUsd: 0 };
+    case "unverified":
+      return {
+        answer: seen > 1 ? { kind: "cancel", reason: "bench: unverified twice" } : { kind: "retry" },
+        costUsd: 0
+      };
+    case "planner_questions":
+    case "executor_questions": {
+      const questions = Array.isArray(payload.questions) ? payload.questions : [];
+      const by = ctx.judge.model === null ? "orchestrator" : "user";
+      try {
+        const { answer, costUsd } = await ctx.judge.answer({
+          kind,
+          questions,
+          dispute: payload.dispute ?? null,
+          task: ctx.task
+        });
+        return { answer, answeredBy: by, costUsd };
+      } catch (error) {
+        if (error instanceof UsageLimitError) throw error;
+        const { answer } = await autoJudge.answer({
+          kind,
+          questions,
+          dispute: payload.dispute ?? null,
+          task: ctx.task
+        });
+        return {
+          answer,
+          answeredBy: "orchestrator",
+          costUsd: 0,
+          fallback: error instanceof Error ? error.message : String(error)
+        };
+      }
+    }
+    default:
+      return {
+        answer: { kind: "cancel", reason: `bench: unhandled judgment ${kind}` },
+        costUsd: 0
+      };
+  }
+}
+function runMetrics(run2) {
+  const perRole = {};
+  for (const role of ROLES) perRole[role] = { children: 0, costUsd: 0, cacheReadTokens: 0 };
+  for (const c of run2.children) {
+    const m = perRole[c.role] ?? { children: 0, costUsd: 0, cacheReadTokens: 0 };
+    m.children += 1;
+    m.costUsd += c.costUsd ?? 0;
+    m.cacheReadTokens += c.cacheReadTokens ?? 0;
+    perRole[c.role] = m;
+  }
+  const count = (source) => run2.rejections.filter((r) => r.source === source).length;
+  const executors = new Set(
+    run2.children.filter((c) => c.role === "executor").map((c) => c.iteration)
+  );
+  return {
+    stage: run2.stage,
+    haltReason: run2.haltReason,
+    tierAssigned: run2.tier,
+    gatesGreen: run2.gateReport?.passed === true,
+    rejections: {
+      total: run2.rejections.length,
+      gate: count("gate"),
+      verifier: count("verifier"),
+      ci: count("ci")
+    },
+    iterations: executors.size,
+    perRole,
+    totalCostUsd: round4(Object.values(perRole).reduce((s, m) => s + m.costUsd, 0)),
+    cacheReadTokens: Object.values(perRole).reduce((s, m) => s + m.cacheReadTokens, 0),
+    limited: run2.children.some((c) => c.status === "limited")
+  };
+}
+var round4 = (n) => Math.round(n * 1e4) / 1e4;
+function summarize(tasks) {
+  const runs = tasks.flatMap((t) => t.runs);
+  const hiddenPassed = runs.reduce((s, r) => s + r.hidden.passed, 0);
+  const hiddenTotal = runs.reduce((s, r) => s + r.hidden.total, 0);
+  return {
+    runs: runs.length,
+    readyRuns: runs.filter((r) => r.outcome === "ready").length,
+    incompleteRuns: runs.filter((r) => isIncomplete(r)).length,
+    hiddenPassed,
+    hiddenTotal,
+    hiddenPassRate: hiddenTotal === 0 ? 0 : round4(hiddenPassed / hiddenTotal),
+    tierMatches: runs.filter((r) => r.tierMatch).length,
+    totalCostUsd: round4(runs.reduce((s, r) => s + r.totalCostUsd, 0)),
+    judgeCostUsd: round4(runs.reduce((s, r) => s + r.judgeCostUsd, 0)),
+    wallMs: runs.reduce((s, r) => s + r.wallMs, 0)
+  };
+}
+var isIncomplete = (r) => r.outcome === "limited" || r.outcome === "aborted" || r.outcome === "error";
+function l3Gate(baseline, candidate, o = {}) {
+  const minRepeats = o.minRepeats ?? 2;
+  const costFactor = o.costFactor ?? 1.15;
+  const b = summarize(baseline.tasks);
+  const c = summarize(candidate.tasks);
+  const reasons = [];
+  const inconclusive = [];
+  if (baseline.suite !== candidate.suite) {
+    inconclusive.push(`different suites: ${baseline.suite} vs ${candidate.suite}`);
+  }
+  const ids = (r) => r.tasks.map((t) => t.id).sort().join(",");
+  if (ids(baseline) !== ids(candidate)) {
+    inconclusive.push(`different task sets: [${ids(baseline)}] vs [${ids(candidate)}]`);
+  }
+  for (const [label, r] of [
+    ["baseline", baseline],
+    ["candidate", candidate]
+  ]) {
+    for (const t of r.tasks) {
+      if (t.runs.length < minRepeats) {
+        inconclusive.push(`${label} ran ${t.id} ${t.runs.length}\xD7 (needs ${minRepeats})`);
+      }
+      const bad = t.runs.filter(isIncomplete);
+      if (bad.length > 0) {
+        inconclusive.push(
+          `${label} has ${bad.length} incomplete run(s) of ${t.id} (${bad.map((x) => x.outcome).join(", ")})`
+        );
+      }
+    }
+  }
+  const passRateHeld = c.hiddenPassRate >= b.hiddenPassRate - 1e-9;
+  const passRateRose = c.hiddenPassRate > b.hiddenPassRate + 1e-9;
+  const costWithinBound = c.totalCostUsd <= b.totalCostUsd * costFactor + 1e-9;
+  const regressedInEveryRepeat = [];
+  for (const t of candidate.tasks) {
+    const base = baseline.tasks.find((x) => x.id === t.id);
+    if (!base || base.runs.length === 0 || t.runs.length === 0) continue;
+    const mean = base.runs.reduce((s, r) => s + r.hidden.ratio, 0) / base.runs.length;
+    if (t.runs.every((r) => r.hidden.ratio < mean - 1e-9)) regressedInEveryRepeat.push(t.id);
+  }
+  if (!passRateHeld) {
+    reasons.push(`hidden pass rate fell: ${pct(b.hiddenPassRate)} \u2192 ${pct(c.hiddenPassRate)}`);
+  }
+  if (regressedInEveryRepeat.length > 0) {
+    reasons.push(`regressed in every repeat: ${regressedInEveryRepeat.join(", ")}`);
+  }
+  if (!costWithinBound && !passRateRose) {
+    reasons.push(
+      `notional cost ${usd(c.totalCostUsd)} exceeds ${costFactor} \xD7 baseline ${usd(b.totalCostUsd)} without a higher pass rate`
+    );
+  }
+  const decision = inconclusive.length > 0 ? "inconclusive" : reasons.length > 0 ? "reject" : "accept";
+  return {
+    decision,
+    reasons: [...inconclusive, ...reasons],
+    baseline: { passRate: b.hiddenPassRate, costUsd: b.totalCostUsd },
+    candidate: { passRate: c.hiddenPassRate, costUsd: c.totalCostUsd },
+    checks: { passRateHeld, regressedInEveryRepeat, costWithinBound, passRateRose }
+  };
+}
+var pct = (n) => `${(n * 100).toFixed(1)}%`;
+var usd = (n) => `$${n.toFixed(2)}`;
+var minutes = (ms) => `${(ms / 6e4).toFixed(1)} min`;
+function renderResultMarkdown(r) {
+  const s = r.summary;
+  const lines = [
+    `# Bench ${r.suite} \u2014 ${r.variant} (${r.date})`,
+    "",
+    `Costs are the Claude Code CLI's \`total_cost_usd\`: a **notional** API-price figure, not money`,
+    "billed. Runs on a subscription are not charged per token.",
+    "",
+    `- Tasks: ${r.settings.tasks.join(", ")}; repeats: ${r.settings.repeat}`,
+    `- Model override: ${r.settings.modelOverride ?? "none (the rubric's models)"}; judge: ${r.settings.judge}${r.settings.judgeModel ? ` on ${r.settings.judgeModel}` : ""}`,
+    `- Rubric variant: ${r.settings.rubric ?? "none"}; roles variant: ${r.settings.rolesDir ?? "none"}`,
+    `- Hidden pass rate: **${pct(s.hiddenPassRate)}** (${s.hiddenPassed}/${s.hiddenTotal} files); ready ${s.readyRuns}/${s.runs}; tier as expected ${s.tierMatches}/${s.runs}`,
+    `- Notional cost: **${usd(s.totalCostUsd)}** (judge ${usd(s.judgeCostUsd)}); wall time ${minutes(s.wallMs)}`,
+    ...r.stopped ? [`- **Stopped early:** ${r.stopped}`] : [],
+    "",
+    "| Task | # | Outcome | Tier (assigned / expected) | Hidden | Gates | Iter. | Rejections (g/v/ci) | Questions | Cost | Cache reads | Wall |",
+    "|------|---|---------|----------------------------|--------|-------|-------|---------------------|-----------|------|-------------|------|"
+  ];
+  for (const t of r.tasks) {
+    for (const m of t.runs) {
+      const outcome = m.outcome === "done" && m.haltReason ? `done (${m.haltReason})` : m.abortReason ? `${m.outcome} (${m.abortReason})` : m.outcome;
+      lines.push(
+        `| ${t.id} | ${m.repeat} | ${outcome} | ${m.tierAssigned ?? "\u2014"} / ${m.tierExpected}${m.tierMatch ? "" : " \u2717"} | ${m.hidden.passed}/${m.hidden.total} | ${m.gatesGreen ? "green" : "not green"} | ${m.iterations} | ${m.rejections.total} (${m.rejections.gate}/${m.rejections.verifier}/${m.rejections.ci}) | ${m.questions.asked} in ${m.questions.judgments} | ${usd(m.totalCostUsd)} | ${m.cacheReadTokens.toLocaleString("en-US")} | ${minutes(m.wallMs)} |`
+      );
+    }
+  }
+  lines.push(
+    "",
+    "## Cost per role (notional)",
+    "",
+    "| Task | # | " + ROLES.join(" | ") + " |",
+    "|------|---|" + ROLES.map(() => "---").join("|") + "|"
+  );
+  for (const t of r.tasks) {
+    for (const m of t.runs) {
+      lines.push(
+        `| ${t.id} | ${m.repeat} | ${ROLES.map((role) => {
+          const x = m.perRole[role];
+          return x && x.children > 0 ? `${usd(x.costUsd)} (${x.children})` : "\u2014";
+        }).join(" | ")} |`
+      );
+    }
+  }
+  const failing = r.tasks.flatMap(
+    (t) => t.runs.flatMap(
+      (m) => m.hidden.files.filter((f) => !f.passed).map(
+        (f) => `- ${t.id} #${m.repeat}: \`${f.path}\` failed${m.hidden.skipped ? ` (${m.hidden.skipped})` : ""}`
+      )
+    )
+  );
+  if (failing.length > 0) lines.push("", "## Failing hidden tests", "", ...failing);
+  return `${lines.join("\n")}
+`;
+}
+function renderComparisonMarkdown(baseline, candidate, verdict) {
+  const lines = [
+    `## L3 comparison: ${candidate.variant} against ${baseline.variant}`,
+    "",
+    `**Decision: ${verdict.decision}.**`,
+    "",
+    "| | Baseline | Candidate |",
+    "|---|---|---|",
+    `| Variant | ${baseline.variant} (${baseline.date}) | ${candidate.variant} (${candidate.date}) |`,
+    `| Hidden pass rate | ${pct(verdict.baseline.passRate)} | ${pct(verdict.candidate.passRate)} |`,
+    `| Notional cost | ${usd(verdict.baseline.costUsd)} | ${usd(verdict.candidate.costUsd)} |`,
+    `| Repeats | ${baseline.settings.repeat} | ${candidate.settings.repeat} |`,
+    "",
+    "| Task | Baseline hidden ratios | Candidate hidden ratios |",
+    "|------|------------------------|-------------------------|"
+  ];
+  for (const t of candidate.tasks) {
+    const base = baseline.tasks.find((x) => x.id === t.id);
+    const ratios = (runs) => runs && runs.length > 0 ? runs.map((m) => `${m.hidden.passed}/${m.hidden.total}`).join(", ") : "\u2014";
+    lines.push(`| ${t.id} | ${ratios(base?.runs)} | ${ratios(t.runs)} |`);
+  }
+  lines.push(
+    "",
+    `- Pass rate held: ${verdict.checks.passRateHeld ? "yes" : "no"}; rose: ${verdict.checks.passRateRose ? "yes" : "no"}`,
+    `- Regressed in every repeat: ${verdict.checks.regressedInEveryRepeat.join(", ") || "none"}`,
+    `- Cost within 1.15 \xD7 baseline: ${verdict.checks.costWithinBound ? "yes" : "no"}`,
+    ...verdict.reasons.length > 0 ? ["", "Reasons:", ...verdict.reasons.map((x) => `- ${x}`)] : []
+  );
+  return `${lines.join("\n")}
+`;
+}
+function writeResult(dir, result, comparison) {
+  mkdirSync(dir, { recursive: true });
+  const taken = new Set(readdirSync(dir));
+  let stem = `${result.date}-${result.variant}`;
+  for (let n = 2; taken.has(`${stem}.json`) || taken.has(`${stem}.md`); n += 1) {
+    stem = `${result.date}-${result.variant}-${n}`;
+  }
+  const json = join(dir, `${stem}.json`);
+  const md = join(dir, `${stem}.md`);
+  writeFileSync(json, `${JSON.stringify(result, null, 2)}
+`);
+  writeFileSync(md, renderResultMarkdown(result) + (comparison ? `
+${comparison}` : ""));
+  return { json, md };
+}
+function readResult(file) {
+  const raw = JSON.parse(readFileSync(file, "utf8"));
+  if (raw.version !== 1 || !Array.isArray(raw.tasks))
+    throw new Error(`${file} is not a bench result`);
+  return raw;
+}
+function benchEnv(base, o) {
+  const env = {};
+  const keptGit = /* @__PURE__ */ new Set(["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"]);
+  for (const [k, v] of Object.entries(base)) {
+    if (k === "NODE_TEST_CONTEXT") continue;
+    if (k === "MARVIN_PIPELINE_JUDGE" || k === "MARVIN_PIPELINE_FIXTURES") continue;
+    if (k.startsWith("MARVIN_TASKS_") || k === "MARVIN_PIPELINE_HOME") continue;
+    if (k.startsWith("GIT_") && !keptGit.has(k)) continue;
+    env[k] = v;
+  }
+  Object.assign(env, {
+    PATH: `${o.stubBin}:${base.PATH ?? ""}`,
+    MARVIN_PIPELINE_HOME: o.stateHome,
+    MARVIN_PIPELINE_SANDBOX: "1",
+    MARVIN_PIPELINE_BENCH: "1",
+    MARVIN_PIPELINE_FAKE_CI: "green"
+  });
+  if (o.rolesDir) env.MARVIN_PIPELINE_ROLES_DIR = o.rolesDir;
+  else delete env.MARVIN_PIPELINE_ROLES_DIR;
+  return env;
+}
+async function runBench(o) {
+  const now = o.now ?? (() => /* @__PURE__ */ new Date());
+  const log = o.log ?? ((line) => process.stderr.write(`[bench] ${line}
+`));
+  const loaded = loadSuite(o.suiteFile);
+  const tasks = selectTasks(loaded.suite, o.tasks);
+  if (!/^[a-z0-9][a-z0-9.-]*$/.test(o.variant)) {
+    throw new Error(`--variant must be kebab-case: ${o.variant}`);
+  }
+  if (!Number.isInteger(o.repeat) || o.repeat < 1) throw new Error("--repeat must be at least 1");
+  const rolesDir = o.rolesDir ? resolve(o.rolesDir) : void 0;
+  const rubricText = o.rubricFile ? readFileSync(resolve(o.rubricFile), "utf8") : null;
+  const work = o.workDir ?? mkdtempSync(join(tmpdir(), "marvin-bench-"));
+  mkdirSync(work, { recursive: true });
+  const stubBin = join(work, "bin");
+  mkdirSync(stubBin, { recursive: true });
+  writeFileSync(join(stubBin, "gh"), "#!/bin/sh\necho 'gh: bench stub' >&2\nexit 97\n", {
+    mode: 493
+  });
+  const callerEnv = o.env ?? process.env;
+  const modelOverride = callerEnv[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
+  const probe = benchEnv(callerEnv, {
+    stateHome: join(work, "state"),
+    stubBin,
+    ...rolesDir ? { rolesDir } : {}
+  });
+  sandboxSettings(probe);
+  const judge2 = o.judge === "auto" ? autoJudge : o.judge === "llm" ? llmJudge({ model: judgeModel(probe), workDir: join(work, "judge") }) : o.judge;
+  const replayRepo = buildReplayRepo(loaded, work);
+  log(`replay repository ${replayRepo}; work dir ${work}`);
+  const startedAt = now();
+  const results = tasks.map((t) => ({
+    id: t.id,
+    tierExpected: t.tier_expected,
+    runs: []
+  }));
+  let stopped = null;
+  outer: for (let repeat = 1; repeat <= o.repeat; repeat += 1) {
+    for (const [i, task] of tasks.entries()) {
+      const metrics = await runOne({
+        o,
+        task,
+        repeat,
+        replayRepo,
+        dir: join(work, "runs", `${task.id}-${repeat}`),
+        env: benchEnv(callerEnv, {
+          stateHome: join(work, "state", `${task.id}-${repeat}`),
+          stubBin,
+          ...rolesDir ? { rolesDir } : {}
+        }),
+        rubricText,
+        judge: judge2,
+        log
+      });
+      results[i]?.runs.push(metrics);
+      log(
+        `${task.id} #${repeat}: ${metrics.outcome}, hidden ${metrics.hidden.passed}/${metrics.hidden.total}, tier ${metrics.tierAssigned ?? "\u2014"}/${metrics.tierExpected}, $${metrics.totalCostUsd.toFixed(2)}, ${minutes(metrics.wallMs)}`
+      );
+      if (metrics.outcome === "limited") {
+        stopped = `usage limit reached in ${task.id} #${repeat}; the remaining runs were not made`;
+        break outer;
+      }
+    }
+  }
+  const finishedAt = now();
+  return {
+    version: 1,
+    suite: loaded.suite.name,
+    variant: o.variant,
+    date: startedAt.toISOString().slice(0, 10),
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    costIsNotional: true,
+    settings: {
+      repeat: o.repeat,
+      tasks: tasks.map((t) => t.id),
+      modelOverride,
+      judge: judge2.name,
+      judgeModel: judge2.model,
+      rubric: o.rubricFile ?? null,
+      rolesDir: o.rolesDir ?? null
+    },
+    stopped,
+    tasks: results,
+    summary: summarize(results)
+  };
+}
+async function runOne(x) {
+  const { o, task, repeat, env, log } = x;
+  const baseSha = resolveRevision(x.replayRepo, task.base_sha);
+  const reference = resolveRevision(x.replayRepo, task.reference);
+  const empty = (outcome2, abortReason2) => ({
+    task: task.id,
+    repeat,
+    runId: null,
+    outcome: outcome2,
+    stage: null,
+    haltReason: null,
+    abortReason: abortReason2,
+    tierExpected: task.tier_expected,
+    tierAssigned: null,
+    tierMatch: false,
+    hidden: {
+      passed: 0,
+      total: task.hidden_tests.length,
+      ratio: 0,
+      files: task.hidden_tests.map((path) => ({ path, passed: false, exitCode: null })),
+      skipped: abortReason2
+    },
+    gatesGreen: false,
+    rejections: { total: 0, gate: 0, verifier: 0, ci: 0 },
+    iterations: 0,
+    questions: { judgments: 0, asked: 0, fallbacks: 0 },
+    perRole: {},
+    totalCostUsd: 0,
+    cacheReadTokens: 0,
+    judgeCostUsd: 0,
+    wallMs: 0
+  });
+  const { repo } = prepareTaskRepo(x.replayRepo, baseSha, x.dir);
+  if (x.rubricText !== null) {
+    mkdirSync(join(repo, ".marvin", "pipeline"), { recursive: true });
+    writeFileSync(join(repo, ".marvin", "pipeline", "rubric.yaml"), x.rubricText);
+  }
+  const taskFile = join(x.dir, "task.txt");
+  writeFileSync(taskFile, `${task.task_text}
+`);
+  const pipe = (...args) => {
+    const r = spawnSync(process.execPath, [o.cliPath, ...args], { env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`marvin-pipe ${args[0]}: ${(r.stderr ?? "").trim()}`);
+    return r.stdout;
+  };
+  let runDir;
+  let enginePid;
+  try {
+    ({ runDir } = JSON.parse(
+      pipe(
+        "init",
+        "--repo",
+        repo,
+        "--base",
+        "dev",
+        "--lang",
+        "en",
+        "--orch",
+        "Bench",
+        "--stage-a",
+        task.stage_a,
+        "--task-file",
+        taskFile,
+        "--task-en-file",
+        taskFile
+      )
+    ));
+    ({ pid: enginePid } = JSON.parse(pipe("start", "--run", runDir)));
+  } catch (error) {
+    return empty("error", error instanceof Error ? error.message : String(error));
+  }
+  log(`${task.id} #${repeat}: run ${runDir}`);
+  const started = Date.now();
+  const maxMs = (o.maxMinutesPerRun ?? 60) * 6e4;
+  const maxUsd = o.maxUsdPerRun ?? 5;
+  const answered = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Map();
+  let judgments = 0;
+  let asked = 0;
+  let fallbacks = 0;
+  let judgeCost = 0;
+  let abortReason = null;
+  let limited = false;
+  let restarts = 0;
+  const readRun = () => loadRun(runDir);
+  const spent = (run3) => run3.children.reduce((s, c) => s + (c.costUsd ?? 0), 0);
+  const killAll = (reason2) => {
+    abortReason = reason2;
+    log(`${task.id} #${repeat}: aborting: ${reason2}`);
+    try {
+      process.kill(enginePid, "SIGTERM");
+    } catch {
+    }
+    for (const c of readRun().children) {
+      if (c.status === "running" && c.pid) {
+        try {
+          process.kill(-c.pid, "SIGTERM");
+        } catch {
+        }
+      }
+    }
+  };
+  loop: for (; ; ) {
+    const r = spawnSync(
+      process.execPath,
+      [o.cliPath, "await", "--run", runDir, "--deadline-min", String(o.awaitDeadlineMin ?? 3)],
+      { env, encoding: "utf8" }
+    );
+    if (r.status !== 0) {
+      killAll(`await failed: ${(r.stderr ?? "").trim().slice(0, 200)}`);
+      break;
+    }
+    for (const line of r.stdout.split("\n").filter(Boolean)) {
+      const [head, ...rest] = line.split(" ");
+      if (head === "JUDGMENT") {
+        const [id = "", kind = ""] = rest;
+        if (answered.has(id)) continue;
+        const path = rest.slice(2).join(" ");
+        const request = JSON.parse(readFileSync(path, "utf8"));
+        let decision;
+        try {
+          decision = await decideJudgment(kind, request.payload, { judge: x.judge, task, seen });
+        } catch (error) {
+          if (error instanceof UsageLimitError) {
+            limited = true;
+            killAll(`the judge hit the usage limit: ${error.message}`);
+            break loop;
+          }
+          throw error;
+        }
+        if (kind === "planner_questions" || kind === "executor_questions") {
+          judgments += 1;
+          asked += Array.isArray(request.payload.questions) ? request.payload.questions.length : 0;
+          if (decision.fallback) fallbacks += 1;
+        }
+        judgeCost += decision.costUsd;
+        const file = join(x.dir, `answer-${id}.json`);
+        writeFileSync(file, JSON.stringify(decision.answer));
+        const args = ["judge", "--run", runDir, "--id", id, "--answer-file", file];
+        if (decision.answeredBy) args.push("--answered-by", decision.answeredBy);
+        try {
+          pipe(...args);
+          answered.add(id);
+        } catch (error) {
+          log(`${task.id} #${repeat}: answer to ${id} refused: ${error.message}`);
+        }
+      }
+      if (head === "STAGE" && (rest[0] === "ready" || rest[0] === "done")) break loop;
+      if (head === "ENGINE" && rest[0] === "down") {
+        const run4 = readRun();
+        if (run4.stage === "ready" || run4.stage === "done") break loop;
+        if (++restarts > 3) {
+          killAll("the engine kept failing");
+          break loop;
+        }
+        try {
+          pipe("start", "--run", runDir);
+        } catch (error) {
+          log(`${task.id} #${repeat}: restart failed: ${error.message}`);
+        }
+      }
+    }
+    const run3 = readRun();
+    if (run3.stage === "ready" || run3.stage === "done") break;
+    if (spent(run3) > maxUsd) {
+      killAll(`notional cost ${usd(spent(run3))} over the ${usd(maxUsd)} cap`);
+      break;
+    }
+    if (Date.now() - started > maxMs) {
+      killAll(`wall time over ${o.maxMinutesPerRun ?? 60} min`);
+      break;
+    }
+  }
+  const wallMs = Date.now() - started;
+  if (abortReason !== null) await new Promise((r) => setTimeout(r, 1e3));
+  const run2 = readRun();
+  const m = runMetrics(run2);
+  const outcome = limited || m.limited ? "limited" : abortReason !== null ? "aborted" : run2.stage === "ready" ? "ready" : run2.stage === "done" ? "done" : "error";
+  const hidden = runHiddenTests({
+    worktree: run2.worktree,
+    replayRepo: x.replayRepo,
+    reference,
+    paths: task.hidden_tests,
+    testOne: testOneTemplate(x.replayRepo, baseSha),
+    env
+  });
+  return {
+    task: task.id,
+    repeat,
+    runId: run2.id,
+    outcome,
+    stage: m.stage,
+    haltReason: m.haltReason,
+    abortReason,
+    tierExpected: task.tier_expected,
+    tierAssigned: m.tierAssigned,
+    tierMatch: m.tierAssigned === task.tier_expected,
+    hidden,
+    gatesGreen: m.gatesGreen,
+    rejections: m.rejections,
+    iterations: m.iterations,
+    questions: { judgments, asked, fallbacks },
+    perRole: m.perRole,
+    totalCostUsd: m.totalCostUsd,
+    cacheReadTokens: m.cacheReadTokens,
+    judgeCostUsd: round4(judgeCost),
+    wallMs
+  };
+}
+
+// src/pipeline/learning.ts
+var import_yaml4 = __toESM(require_dist());
+
+// src/storage/slug.ts
+function slugify(title, maxLen = 40) {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+  if (base.length <= maxLen) return base;
+  const cut = base.slice(0, maxLen);
+  const lastHyphen = cut.lastIndexOf("-");
+  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
+}
+function isSafeBranchRef(name) {
+  if (!name || name === "@") return false;
+  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
+  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
+  for (const segment of name.split("/")) {
+    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
+  }
+  return true;
+}
+
+// src/storage/lessons.ts
+var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
+var INDEX_FILE = "MEMORY.md";
+var INDEX_HEADER = [
+  "# Marvin lessons",
+  "",
+  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
+  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
+  "in the linked file. Recalled at task intake.",
+  ""
+].join("\n");
+function uniqueSlug(memoryDir, base) {
+  const root = base || "lesson";
+  let slug = root;
+  let n = 2;
+  while (existsSync(join(memoryDir, `${slug}.md`))) {
+    slug = `${root}-${n}`;
+    n += 1;
+  }
+  return slug;
+}
+function addLesson(memoryDir, input) {
+  mkdirSync(memoryDir, { recursive: true });
+  const slug = uniqueSlug(memoryDir, slugify(input.title));
+  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const frontmatter = {
+    id: slug,
+    type: input.type,
+    title: input.title,
+    created,
+    tags: tags.length ? tags.join(", ") : void 0,
+    source: input.source?.trim() || "manual"
+  };
+  const body = input.body.trim() ? `
+${input.body.trim()}
+` : "\n";
+  const path = join(memoryDir, `${slug}.md`);
+  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
+  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
+  return { slug, path };
+}
+function appendIndex(memoryDir, entry) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
+  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
+  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(indexPath, `${content}${line}
+`);
+}
+function readAllLessons(memoryDir) {
+  if (!existsSync(memoryDir)) return [];
+  const lessons = [];
+  for (const filename of readdirSync(memoryDir).sort()) {
+    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
+    const raw = readFileSync(join(memoryDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (!frontmatter.title) continue;
+    lessons.push({
+      slug: filename.replace(/\.md$/, ""),
+      type: frontmatter.type ?? "process",
+      title: frontmatter.title,
+      created: frontmatter.created ?? "",
+      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      source: frontmatter.source ?? "manual",
+      body: body.trim()
+    });
+  }
+  return lessons;
+}
+function titleWords(title) {
+  return new Set(
+    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
+  );
+}
+function titleSimilarity(a, b) {
+  const wa = titleWords(a);
+  const wb = titleWords(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let hits = 0;
+  for (const w of wa) if (wb.has(w)) hits += 1;
+  return hits / (wa.size + wb.size - hits);
+}
+var NEAR_DUPLICATE_THRESHOLD = 0.5;
+function findNearDuplicate(memoryDir, title) {
+  const slug = slugify(title);
+  let best = null;
+  for (const l of readAllLessons(memoryDir)) {
+    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
+    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
+      best = { lesson: l, score };
+    }
+  }
+  return best?.lesson ?? null;
+}
+
 // src/pipeline/learning.ts
 var CHECKS_PATH = ".marvin/pipeline/checks.yaml";
 var CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
@@ -14061,7 +15204,7 @@ function parseExistingChecks(text2, where) {
   if (text2 === null) return [];
   let doc;
   try {
-    doc = (0, import_yaml3.parse)(text2);
+    doc = (0, import_yaml4.parse)(text2);
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error);
     throw new Error(`${where} is not valid YAML: ${why}`, { cause: error });
@@ -14081,8 +15224,8 @@ function mergeChecks(existing, retro) {
     fresh.push(rule);
   }
   if (!fresh.length) return null;
-  const text2 = (0, import_yaml3.stringify)([...existing, ...fresh], { lineWidth: 0 });
-  return { text: text2, rules: (0, import_yaml3.parse)(text2) };
+  const text2 = (0, import_yaml4.stringify)([...existing, ...fresh], { lineWidth: 0 });
+  return { text: text2, rules: (0, import_yaml4.parse)(text2) };
 }
 var proposalText = (n, p) => `# Proposal ${n} (${p.target})
 
@@ -14298,7 +15441,7 @@ function verifyContents(contents, expected, who) {
   if (expected.rules !== void 0 && checks !== void 0) {
     let rules;
     try {
-      rules = (0, import_yaml3.parse)(checks.toString("utf8"));
+      rules = (0, import_yaml4.parse)(checks.toString("utf8"));
     } catch {
       rules = void 0;
     }
@@ -14762,7 +15905,7 @@ function step(run2, obs, rubric, now) {
     run: r,
     actions: [{ kind: "judgment", judgment, payload }]
   });
-  const spawn3 = (r, role, context, resume2 = false) => {
+  const spawn4 = (r, role, context, resume2 = false) => {
     const tier = r.tier ?? r.stageA;
     const own = assignmentFor(tier, role, role === "executor" ? r.rung : 0, rubric);
     if (own === "skip") throw new Error(`${role} is skipped on tier ${tier}`);
@@ -14812,7 +15955,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(go({ ...r, awaitingRole: null }, "halted", reason2), "retro");
     return {
       run: retro,
-      actions: [spawn3(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
+      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
     };
   };
   const pollCi = (r) => {
@@ -14832,7 +15975,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(r, "retro");
     return {
       run: retro,
-      actions: [spawn3(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
+      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
     };
   };
   const reopenTests = (r, feedback, reason2, detail2, findings) => {
@@ -14842,7 +15985,7 @@ function step(run2, obs, rubric, now) {
       ...findings ? { previousFindings: asRecords(findings) } : {}
     };
     const reopened = r.stage === "test_authoring" ? counted : go({ ...counted, awaitingRole: null }, "test_authoring");
-    const action = spawn3(reopened, "test-author", testAuthorCtx(reopened, feedback));
+    const action = spawn4(reopened, "test-author", testAuthorCtx(reopened, feedback));
     if (counted.testAuthorAttempts >= rubric.caps.test_author_attempts) {
       return ask(
         {
@@ -14880,7 +16023,7 @@ function step(run2, obs, rubric, now) {
       return {
         run: exec,
         actions: [
-          spawn3(exec, "executor", executorCtx(exec, fs)),
+          spawn4(exec, "executor", executorCtx(exec, fs)),
           {
             kind: "notify",
             text: `${source} rejected iteration ${r.iteration} (${fs.length} blocking); executor ${exec.iteration} started on rung ${rung}`
@@ -14915,7 +16058,7 @@ function step(run2, obs, rubric, now) {
       );
       return {
         run: exec,
-        actions: [spawn3(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
+        actions: [spawn4(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
       };
     }
     if (role === "test-author") {
@@ -14992,7 +16135,7 @@ function step(run2, obs, rubric, now) {
         return {
           run: r,
           actions: [
-            spawn3(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
+            spawn4(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
           ]
         };
       }
@@ -15019,7 +16162,7 @@ function step(run2, obs, rubric, now) {
           };
           return {
             run: r2,
-            actions: [spawn3(r2, "planner", { message: `ANSWERS:
+            actions: [spawn4(r2, "planner", { message: `ANSWERS:
 ${lines.join("\n")}` }, true)]
           };
         }
@@ -15056,7 +16199,7 @@ ${lines.join("\n")}` }, true)]
           { ...run2, awaitingRole: null, questionsAnswered: run2.questionsAnswered + a.count },
           role === "planner" ? "planning" : "executing"
         );
-        return { run: r, actions: [spawn3(r, role, { message: `ANSWERS:
+        return { run: r, actions: [spawn4(r, role, { message: `ANSWERS:
 ${a.text}` }, true)] };
       }
       if (a.kind === "revise_tests" && role === "executor") {
@@ -15087,7 +16230,7 @@ ${a.text}` }, true)] };
         const r = go(run2, "planning");
         return {
           run: r,
-          actions: [spawn3(r, "planner", { message: `CHANGES REQUESTED:
+          actions: [spawn4(r, "planner", { message: `CHANGES REQUESTED:
 ${a.text}` }, true)]
         };
       }
@@ -15100,10 +16243,10 @@ ${a.text}` }, true)]
         const rename = { kind: "work", work: "rename_branch" };
         if (shouldAuthorTests(tiered, rubric)) {
           const r2 = go(tiered, "test_authoring");
-          return { run: r2, actions: [rename, spawn3(r2, "test-author", testAuthorCtx(r2, ""))] };
+          return { run: r2, actions: [rename, spawn4(r2, "test-author", testAuthorCtx(r2, ""))] };
         }
         const r = go({ ...tiered, iteration: 1 }, "executing");
-        return { run: r, actions: [rename, spawn3(r, "executor", executorCtx(r, []))] };
+        return { run: r, actions: [rename, spawn4(r, "executor", executorCtx(r, []))] };
       }
       break;
     }
@@ -15122,7 +16265,7 @@ ${a.text}` }, true)]
           );
           return {
             run: r,
-            actions: [spawn3(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
+            actions: [spawn4(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
           };
         }
         const reasons = obs.reasons.length ? obs.reasons : [obs.ok ? "seal reported success but sealed no tests" : "seal failed without a reason"];
@@ -15177,7 +16320,7 @@ ${a.text}` }, true)]
       );
       return {
         run: r,
-        actions: [{ kind: "work", work: "snapshot" }, spawn3(r, "verifier", verifierCtx(r))]
+        actions: [{ kind: "work", work: "snapshot" }, spawn4(r, "verifier", verifierCtx(r))]
       };
     }
     case "verifying": {
@@ -15207,7 +16350,7 @@ ${a.text}` }, true)]
           };
           return {
             run: r2,
-            actions: [{ kind: "work", work: "snapshot" }, spawn3(r2, "verifier", verifierCtx(r2))]
+            actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
           };
         }
         break;
@@ -15265,7 +16408,7 @@ ${a.text}` }, true)]
         const r2 = { ...base, retries: { ...base.retries, verifier: tries + 1 } };
         return {
           run: r2,
-          actions: [{ kind: "work", work: "snapshot" }, spawn3(r2, "verifier", verifierCtx(r2))]
+          actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
         };
       }
       const named = new Set(v.criteria.map((c) => c.id));
@@ -15770,7 +16913,7 @@ async function awaitAnswer(runDir, id, kind, deps) {
     } catch (error) {
       refuseAnswer(runDir, id, errorText2(error));
     }
-    await setTimeout(pollMsOf(deps), void 0, { signal: deps.signal });
+    await setTimeout$1(pollMsOf(deps), void 0, { signal: deps.signal });
   }
 }
 async function observe(runDir, run2, deps) {
@@ -15973,12 +17116,12 @@ async function awaitWork(runDir, o) {
       const lines = [...fresh, ...report.map((s) => s.line)];
       return lines.length > 0 ? lines : ["TIMEOUT rearm"];
     }
-    await setTimeout(pollMsOf(o), void 0, { signal: o.signal });
+    await setTimeout$1(pollMsOf(o), void 0, { signal: o.signal });
   }
 }
 
 // src/pipeline/runtime.ts
-var import_yaml5 = __toESM(require_dist());
+var import_yaml6 = __toESM(require_dist());
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 var CONFIG_STACK = ".marvin/config.json";
 function hasFile(root, ...names) {
@@ -16228,7 +17371,7 @@ function detectMakefile(projectRoot) {
 }
 
 // src/lib/oracles.ts
-var import_yaml4 = __toESM(require_dist());
+var import_yaml5 = __toESM(require_dist());
 var SHELL_METACHARACTERS2 = /[;|&`\n<>]|\$\(/;
 function splitRef(ref) {
   const i = ref.indexOf("::");
@@ -16305,7 +17448,7 @@ external_exports.object({
 function parseContractCriteria(blockText) {
   let parsed;
   try {
-    parsed = SpecContract.safeParse((0, import_yaml4.parse)(blockText));
+    parsed = SpecContract.safeParse((0, import_yaml5.parse)(blockText));
   } catch (err) {
     return {
       error: `spec-contract block is not valid YAML: ${err instanceof Error ? err.message : err}`
@@ -16791,199 +17934,6 @@ function launchDetached(cmd, runDir, name) {
   }
   return { pid: child.pid, logPath, errPath, exitPath };
 }
-var SANDBOX_VARIABLE = "MARVIN_PIPELINE_SANDBOX";
-var MODEL_OVERRIDE_VARIABLE = "MARVIN_PIPELINE_MODEL_OVERRIDE";
-var SANDBOX_PR_URL = "https://github.com/sandbox/sandbox/pull/1";
-function sandboxSettings(env = process.env) {
-  const raw = env[SANDBOX_VARIABLE];
-  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
-    throw new Error(`${SANDBOX_VARIABLE} must be 1 or 0: ${raw}`);
-  }
-  const enabled = raw === "1";
-  const override = env[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
-  if (override !== null) {
-    modelFamily(override);
-    if (!enabled) {
-      throw new Error(
-        `${MODEL_OVERRIDE_VARIABLE} is honoured only with ${SANDBOX_VARIABLE}=1; unset it, or run in the sandbox`
-      );
-    }
-  }
-  if (enabled && !env.MARVIN_PIPELINE_FAKE_CI) {
-    throw new Error(
-      `${SANDBOX_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI: the sandbox pull request does not exist on GitHub`
-    );
-  }
-  return { enabled, modelOverride: override };
-}
-function effectiveAssignment(a, s) {
-  return s.enabled && s.modelOverride !== null ? { ...a, model: s.modelOverride } : a;
-}
-var SHIM = String.raw`
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-
-const STATE = process.env.MARVIN_SANDBOX_GH_STATE;
-const URL = process.env.MARVIN_SANDBOX_GH_URL;
-const args = process.argv.slice(2);
-const git = (...a) => {
-  try {
-    return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return "";
-  }
-};
-const fail = (text) => {
-  process.stderr.write(text + "\n");
-  process.exit(1);
-};
-const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
-const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
-const value = (long, short) => {
-  for (let i = 0; i < args.length; i += 1) {
-    const a = args[i];
-    if (a === long || (short && a === short)) return args[i + 1] ?? "";
-    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
-  }
-  return null;
-};
-const has = (name) => args.includes(name);
-const body = () => {
-  const file = value("--body-file", "-F");
-  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
-  return value("--body", "-b");
-};
-const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
-const fields = (pr) => ({
-  url: pr.url,
-  number: 1,
-  state: pr.state,
-  isDraft: pr.isDraft,
-  title: pr.title,
-  body: pr.body,
-  baseRefName: pr.base,
-  headRefName: pr.head,
-  headRefOid: git("rev-parse", "HEAD"),
-  mergeable: "MERGEABLE",
-  mergeStateStatus: "CLEAN",
-  reviewDecision: "",
-  statusCheckRollup: [],
-  comments: [],
-  reviews: [],
-});
-const emit = (pr) => {
-  const json = value("--json");
-  if (json === null) {
-    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
-    return;
-  }
-  const all = fields(pr);
-  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
-  const jq = value("--jq", "-q");
-  if (jq !== null) {
-    const m = /^\.(\w+)$/.exec(jq.trim());
-    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
-    const v = picked[m[1]];
-    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
-    return;
-  }
-  process.stdout.write(JSON.stringify(picked) + "\n");
-};
-const current = () => {
-  const pr = load();
-  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
-  return pr;
-};
-
-const sub = (args[0] ?? "") + " " + (args[1] ?? "");
-switch (sub) {
-  case "pr create": {
-    const existing = load();
-    if (existing && existing.head === branch()) {
-      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
-    }
-    const base = value("--base", "-B");
-    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
-    const pr = {
-      url: URL,
-      state: "OPEN",
-      isDraft: has("--draft") || has("-d"),
-      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
-      body: body() ?? "",
-      base,
-      head: value("--head", "-H") ?? branch(),
-    };
-    save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
-  }
-  case "pr view":
-    emit(current());
-    break;
-  case "pr list": {
-    const pr = load();
-    const mine = pr && pr.head === branch() ? [pr] : [];
-    if (value("--json") === null) {
-      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
-    } else {
-      const keys = value("--json").split(",").map((k) => k.trim());
-      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
-      process.stdout.write(JSON.stringify(rows) + "\n");
-    }
-    break;
-  }
-  case "pr edit": {
-    const pr = current();
-    const title = value("--title", "-t");
-    const text = body();
-    if (title !== null) pr.title = title;
-    if (text !== null) pr.body = text;
-    save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
-  }
-  case "pr ready": {
-    const pr = current();
-    pr.isDraft = false;
-    save(pr);
-    break;
-  }
-  case "pr diff": {
-    const pr = current();
-    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
-    break;
-  }
-  case "pr checks":
-    current();
-    fail('no checks reported on the "' + branch() + '" branch');
-    break;
-  case "run list":
-    process.stdout.write(value("--json") === null ? "" : "[]\n");
-    break;
-  default:
-    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
-}
-`;
-function installSandboxGh(runDir, nodePath = process.execPath) {
-  const bin = join(runDir, "sandbox-bin");
-  mkdirSync(bin, { recursive: true });
-  const script = join(bin, "gh-shim.mjs");
-  writeFileSync(script, SHIM.trimStart());
-  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-  const gh = join(bin, "gh");
-  writeFileSync(gh, `#!/bin/sh
-exec ${quote(nodePath)} ${quote(script)} "$@"
-`);
-  chmodSync(gh, 493);
-  return {
-    PATH: `${bin}:${process.env.PATH ?? ""}`,
-    MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
-    MARVIN_SANDBOX_GH_URL: SANDBOX_PR_URL
-  };
-}
-function sandboxChildEnv(runDir, s) {
-  return s.enabled ? installSandboxGh(runDir) : {};
-}
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
@@ -17319,7 +18269,7 @@ function createRuntime(o) {
   const runDir = resolve(o.runDir);
   const pluginRoot = resolve(o.pluginRoot);
   const pipelineDir = join(pluginRoot, "pipeline");
-  const rolesDir = join(pipelineDir, "roles");
+  const rolesDir = benchSettings().rolesDir ?? join(pipelineDir, "roles");
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
@@ -17750,7 +18700,7 @@ ${tail}`);
     for (; ; ) {
       result = classify({ ...readChildState(runDir, key, Date.now()), stallMs });
       if (result.outcome !== "running" || Date.now() - started >= childDeadlineMs) break;
-      await setTimeout(pollMs, void 0, { signal: signal ?? deps.signal });
+      await setTimeout$1(pollMs, void 0, { signal: signal ?? deps.signal });
     }
     if (result.outcome === "running") {
       return { run: run2, obs: { kind: "child", role: child.role, result } };
@@ -17881,7 +18831,7 @@ ${tail}`);
   };
   const parseChecks = (text2, where) => {
     if (text2 === null) return [];
-    const doc = (0, import_yaml5.parse)(text2);
+    const doc = (0, import_yaml6.parse)(text2);
     if (doc === null || doc === void 0) return [];
     const parsed = external_exports.array(CheckRuleShape).safeParse(doc);
     if (!parsed.success) {
@@ -18181,7 +19131,7 @@ ${tail}`);
     const poll = { stage: run2.stage, ciSince: run2.ciSince };
     const last = readJson(at("ci-poll.json"), CiPoll);
     if (last?.stage === poll.stage && last.ciSince === poll.ciSince) {
-      await setTimeout(config.pipeline.ci_poll_seconds * 1e3, void 0, { signal: deps.signal });
+      await setTimeout$1(config.pipeline.ci_poll_seconds * 1e3, void 0, { signal: deps.signal });
     }
     writeAtomic2(at("ci-poll.json"), `${JSON.stringify(poll)}
 `);
@@ -18413,7 +19363,7 @@ async function start(flags) {
         `the engine (pid ${pid}) did not take the run within ${START_WAIT_MS / 1e3} s; see ${logFile}`
       );
     }
-    await setTimeout(50);
+    await setTimeout$1(50);
   }
   print({ pid });
 }
@@ -18549,6 +19499,51 @@ function assess(flags) {
   );
   print({ spec: specPath, tier, reasons, signals, assignments });
 }
+async function bench(flags) {
+  const suiteFile = resolve(flag(flags, "suite"));
+  const judge2 = optional(flags, "judge") ?? "llm";
+  if (judge2 !== "llm" && judge2 !== "auto")
+    throw new Error(`--judge must be llm or auto, not ${judge2}`);
+  const repeat = positive(flags, "repeat") ?? 2;
+  const tasks = optional(flags, "tasks")?.split(",").map((t) => t.trim()).filter(Boolean);
+  const baselineFile = optional(flags, "baseline");
+  const baseline = baselineFile ? readResult(resolve(baselineFile)) : null;
+  const rubric = optional(flags, "rubric");
+  const rolesDir = optional(flags, "roles-dir");
+  const workDir = optional(flags, "work-dir");
+  const maxMin = positive(flags, "max-min");
+  const maxUsd = positive(flags, "max-usd");
+  const result = await runBench({
+    cliPath: SELF,
+    suiteFile,
+    variant: flag(flags, "variant"),
+    repeat,
+    judge: judge2,
+    ...tasks ? { tasks } : {},
+    ...rubric ? { rubricFile: rubric } : {},
+    ...rolesDir ? { rolesDir } : {},
+    ...workDir ? { workDir: resolve(workDir) } : {},
+    ...maxMin !== void 0 ? { maxMinutesPerRun: maxMin } : {},
+    ...maxUsd !== void 0 ? { maxUsdPerRun: maxUsd } : {}
+  });
+  const verdict = baseline ? l3Gate(baseline, result) : null;
+  const out = resolve(optional(flags, "out") ?? join(dirname(suiteFile), "..", "results"));
+  const files = writeResult(
+    out,
+    result,
+    baseline && verdict ? renderComparisonMarkdown(baseline, result, verdict) : void 0
+  );
+  print({ ...files, summary: result.summary, stopped: result.stopped, verdict });
+}
+function benchCompare(flags) {
+  const baseline = readResult(resolve(flag(flags, "baseline")));
+  const candidate = readResult(resolve(flag(flags, "candidate")));
+  const verdict = l3Gate(baseline, candidate);
+  const md = renderComparisonMarkdown(baseline, candidate, verdict);
+  const out = optional(flags, "out");
+  if (out) writeFileSync(resolve(out), md);
+  print({ verdict, ...out ? { out: resolve(out) } : { markdown: md } });
+}
 var COMMANDS = {
   init,
   start,
@@ -18558,7 +19553,9 @@ var COMMANDS = {
   judge,
   status,
   list,
-  assess
+  assess,
+  bench,
+  "bench-compare": benchCompare
 };
 var OPTIONS = {
   repo: { type: "string" },
@@ -18574,7 +19571,20 @@ var OPTIONS = {
   "answered-by": { type: "string" },
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
-  spec: { type: "string" }
+  spec: { type: "string" },
+  suite: { type: "string" },
+  variant: { type: "string" },
+  rubric: { type: "string" },
+  "roles-dir": { type: "string" },
+  repeat: { type: "string" },
+  tasks: { type: "string" },
+  baseline: { type: "string" },
+  candidate: { type: "string" },
+  judge: { type: "string" },
+  out: { type: "string" },
+  "work-dir": { type: "string" },
+  "max-min": { type: "string" },
+  "max-usd": { type: "string" }
 };
 async function main(argv) {
   const [command, ...rest] = argv;

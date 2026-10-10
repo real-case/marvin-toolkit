@@ -54,7 +54,7 @@ import {
   snapshotProtected,
 } from "./gate.js";
 import { launchDetached } from "./launch.js";
-import { effectiveAssignment, sandboxChildEnv, sandboxSettings } from "./sandbox.js";
+import { benchSettings, effectiveAssignment, sandboxChildEnv, sandboxSettings } from "./sandbox.js";
 import {
   aggregate,
   efficacy,
@@ -461,7 +461,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const runDir = resolve(o.runDir);
   const pluginRoot = resolve(o.pluginRoot);
   const pipelineDir = join(pluginRoot, "pipeline");
-  const rolesDir = join(pipelineDir, "roles");
+  // Read once, before any work, like the sandbox switches below: a roles directory outside bench
+  // mode stops the engine at its start (sandbox.ts).
+  const rolesDir = benchSettings().rolesDir ?? join(pipelineDir, "roles");
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
