@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "suite": "sandbox",
+  "variant": "haiku-baseline",
+  "date": "2026-10-10",
+  "startedAt": "2026-10-10T18:59:14.869Z",
+  "finishedAt": "2026-10-10T19:20:13.867Z",
+  "costIsNotional": true,
+  "settings": {
+    "repeat": 1,
+    "tasks": [
+      "clamp",
+      "csv-quotes"
+    ],
+    "modelOverride": "haiku",
+    "judge": "llm",
+    "judgeModel": "haiku",
+    "rubric": null,
+    "rolesDir": null
+  },
+  "stopped": null,
+  "tasks": [
+    {
+      "id": "clamp",
+      "tierExpected": "light",
+      "runs": [
+        {
+          "task": "clamp",
+          "repeat": 1,
+          "runId": "r20261010-1859-e6f9",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "light",
+          "tierAssigned": "light",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 1,
+            "total": 1,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/clamp.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.7154824000000001,
+              "cacheReadTokens": 2820398
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.3968045,
+              "cacheReadTokens": 1928285
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.1273437,
+              "cacheReadTokens": 221507
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.07517299999999999,
+              "cacheReadTokens": 0
+            }
+          },
+          "totalCostUsd": 1.3148,
+          "cacheReadTokens": 4970190,
+          "judgeCostUsd": 0,
+          "wallMs": 560273
+        }
+      ]
+    },
+    {
+      "id": "csv-quotes",
+      "tierExpected": "standard",
+      "runs": [
+        {
+          "task": "csv-quotes",
+          "repeat": 1,
+          "runId": "r20261010-1908-3449",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "standard",
+          "tierAssigned": "light",
+          "tierMatch": false,
+          "hidden": {
+            "passed": 2,
+            "total": 2,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/csv.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              },
+              {
+                "path": "test/report-quoted.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 1,
+            "gate": 1,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 2,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 2,
+              "costUsd": 0.5960459000000002,
+              "cacheReadTokens": 2960149
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 2,
+              "costUsd": 0.6562910000000001,
+              "cacheReadTokens": 3833390
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.1947106,
+              "cacheReadTokens": 689416
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.09142819999999999,
+              "cacheReadTokens": 324382
+            }
+          },
+          "totalCostUsd": 1.5385,
+          "cacheReadTokens": 7807337,
+          "judgeCostUsd": 0,
+          "wallMs": 695775
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "runs": 2,
+    "readyRuns": 2,
+    "incompleteRuns": 0,
+    "hiddenPassed": 3,
+    "hiddenTotal": 3,
+    "hiddenPassRate": 1,
+    "tierMatches": 1,
+    "totalCostUsd": 2.8533,
+    "judgeCostUsd": 0,
+    "wallMs": 1256048
+  }
+}
