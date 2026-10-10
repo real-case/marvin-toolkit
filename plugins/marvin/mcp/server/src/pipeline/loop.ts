@@ -199,6 +199,11 @@ function releaseLock(dir: string, generation: number, token: string): void {
   writeAtomic(generationFile(dir, generation), `${JSON.stringify(released)}\n`);
 }
 
+/** The pid named by the newest lock generation, released or not, or null before any engine took it. */
+export function lockHolderPid(runDir: string): number | null {
+  return lockState(runDir).holder?.pid ?? null;
+}
+
 export function engineAlive(runDir: string): boolean {
   return lockState(runDir).alive;
 }

@@ -762,6 +762,26 @@ test("the roles and schemas directories hold exactly what the runtime composes, 
   }
 });
 
+test("the executor commits the sealed spec with git add -f and no other .marvin service file", () => {
+  // The gate blocks a branch whose spec is not committed (finalize ships it), and the live
+  // sandbox executor, never told so, left it untracked under an ignored .marvin/.
+  const text = roleText("executor");
+  assert.match(text, /stage it in your first commit with `git add -f <spec>`/);
+  assert.match(text, /Commit no other file under `\.marvin\/` except the metrics record/);
+  assert.match(text, /deleted right after the PR exists, never committed/);
+});
+
+test("the retro reports its own work: a halted run still gets a done retro", () => {
+  // The live sandbox run (2026-10-10) halted on a planner crash, and its Haiku retro answered
+  // "failed" twice, describing the run rather than itself, which cost a retry and lost the retro.
+  const text = roleText("retro");
+  assert.match(text, /`status` reports your own work, not the run's/);
+  assert.match(
+    text,
+    /halted, crashed or cancelled run is evidence to analyse, and its retro is still "done"/,
+  );
+});
+
 test("the static role prompts hold no template variable, so a role's system prompt never varies", () => {
   for (const name of ["common", ...ROLES]) {
     const text = readFileSync(join(rolesDir, `${name}.md`), "utf8");

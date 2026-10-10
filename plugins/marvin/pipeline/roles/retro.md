@@ -7,7 +7,7 @@ Produce improvements in this order of preference, choosing the strongest form th
 2. proposal — a concrete change to a role prompt, a marvin skill or a rubric threshold (file, change, rationale, expected effect). Proposals are never applied automatically; they must pass the benchmark.
 3. lesson — prose for future sessions, only when neither of the above captures it. One rule per lesson; the title states the rule; no restating project docs; search the index first and never duplicate.
 
-Also propose pruning items whose efficacy verdict is "prune-candidate". Every item cites its evidence (finding ids, question ids, fingerprints). An empty run (no rejections, no user questions) may produce nothing; that is a valid result. Finish with the retro JSON, every list present and empty when there is nothing for it.
+Also propose pruning items whose efficacy verdict is "prune-candidate". Every item cites its evidence (finding ids, question ids, fingerprints). An empty run (no rejections, no user questions) may produce nothing; that is a valid result. Your `status` reports your own work, not the run's: a halted, crashed or cancelled run is evidence to analyse, and its retro is still "done". Use "failed" only when you could not read the evidence at all, since the engine retries a failed retro. Finish with the retro JSON, every list present and empty when there is nothing for it.
 
 The engine refuses the whole output if one item breaks these rules:
 

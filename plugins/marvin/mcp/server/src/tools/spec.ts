@@ -5,6 +5,7 @@ import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { SpecAuditFinding, SpecAuditPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { parseFrontmatter } from "../storage/frontmatter.js";
+import { isUnsafeOracleRef } from "../storage/oracles.js";
 import type { SpecConfig } from "../storage/schema.js";
 import {
   SpecContract,
@@ -2360,6 +2361,10 @@ function readOracle(cmd: string, projectRoot: string, plannedPaths: string[]): O
  *  - `oracle-filter` (FAIL): a test runner's name filter whose value starts
  *    with `-` is parsed as an option, and the runner exits with an error
  *    (vitest 4: `CACError: Unknown option`), so the oracle can never pass.
+ *  - `oracle-ref` (FAIL): a `kind: test` ref holding a shell metacharacter
+ *    (`; | & \` < >`, a newline, `$(`). The oracle runner refuses to substitute
+ *    it into `gates.test_one` (`unsafe-ref`), so every gate would report the
+ *    criterion as having no runnable oracle.
  *  - `oracle-narrow` (WARN): a project-wide gate or bare runner that names no
  *    file, directory, quoted pattern, URL or test filter — `npm test`, `bun run
  *    build`, `npm run e2e`. It proves the suite is green, not that this
@@ -2375,11 +2380,13 @@ function checkOracles(c: SpecContract, projectRoot: string): Check[] {
   const flagFilters: string[] = [];
   const broad: string[] = [];
   const noFailure: string[] = [];
+  const unsafeRefs: string[] = [];
   let commands = 0;
 
   for (const cr of c.criteria) {
     if (cr.oracle.kind === "prose-review") continue;
     if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    if (isUnsafeOracleRef(cr)) unsafeRefs.push(`${cr.id}: ${cr.oracle.ref?.trim()}`);
     const cmd = oracleCommand(cr);
     if (!cmd) continue;
     commands += 1;
@@ -2419,6 +2426,15 @@ function checkOracles(c: SpecContract, projectRoot: string): Check[] {
         "oracle-filter",
         "Oracles",
         `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} — drop the leading dashes from the pattern`,
+      ),
+    );
+  }
+  if (unsafeRefs.length) {
+    checks.push(
+      fail(
+        "oracle-ref",
+        "Oracles",
+        `test ref(s) holding a shell metacharacter are refused by the oracle runner (unsafe-ref), so the criterion has no runnable oracle at any gate: ${listed(unsafeRefs)} — rename the test without ; | & \` < > or $(, or give the criterion an explicit \`run\``,
       ),
     );
   }

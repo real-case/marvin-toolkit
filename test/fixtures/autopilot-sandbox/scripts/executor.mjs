@@ -12,7 +12,8 @@ if (spawn === 1) {
     "src/math.mjs",
     `${source}\n/** Bounds x to [lo, hi]. */\nexport function clamp(x, lo, hi) {\n  return Math.min(hi, Math.max(lo, x));\n}\n`,
   );
-  git("add", "--", "src/math.mjs", ".marvin/task/001-clamp.md");
+  // The spec sits under the ignored .marvin/, as in a host project, so it is added with -f.
+  git("add", "-f", "--", "src/math.mjs", ".marvin/task/001-clamp.md");
   git("commit", "-q", "-m", "feat(clamp): add clamp");
 } else {
   writeFileSync(

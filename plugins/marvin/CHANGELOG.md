@@ -86,6 +86,26 @@ are not part of this release.
 
 ### Fixed
 
+- **Found by the first live sandbox run** (Task 20 scenario 2), each pinned by a regression test:
+  - Writing pipeline children had no MCP server at all: `--strict-mcp-config` also drops the
+    plugin's own servers, so the planner could not reach `spec` nor the executor `verify`. The
+    marvin server is now handed back through `--mcp-config` under the name that keeps the
+    `mcp__plugin_marvin_marvin__*` tool names.
+  - Writing children could not read marvin's own skills: the command wrappers name
+    `skills/<name>/SKILL.md` relative to the plugin, and a read outside the worktree is denied
+    with prompts off. The planner and executor prompts now name the plugin root, and writing
+    roles may read under it.
+  - The DoR gate passed a `kind: test` oracle ref holding a shell metacharacter (a test named
+    `throws when lo > hi`) that every later gate refused to run as `unsafe-ref`. It now FAILs
+    such a spec (`oracle-ref`).
+  - `marvin-pipe start` returned before its engine held the run's lock, so an `await` armed right
+    after it read the engine as down, and the restart the skill then tried was refused. `start`
+    now waits for the lock and fails with the engine's own reason when it exits first.
+  - A spec with `tracker: none` named the run branch `feature/none--<slug>`; `none` now falls
+    back to `pipeline.tracker_default`, as `pr-create`'s pipeline mode already did.
+  - The executor role now commits the sealed spec with `git add -f` and no other `.marvin/`
+    service file, and the retro reports `done` for a halted run instead of `failed`, which had
+    cost a retry and lost the retro.
 - **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
   `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
 - **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.

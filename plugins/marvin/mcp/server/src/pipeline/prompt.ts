@@ -21,13 +21,15 @@ import type { Role } from "./run-store.js";
  * engine's context carries. Every role is told the orchestrator its progress reports go to, its
  * own name to sign them with, and the lessons ranked for it. The test-author also gets the test
  * path pattern its guard enforces, the verifier the project's conventions, and the retro the
- * run's aggregate, the efficacy report and the lessons index. A resumed spawn gets none of
+ * run's aggregate, the efficacy report and the lessons index. The planner and the executor, which
+ * run marvin's skills, get the plugin root: a command wrapper says "Read `skills/<name>/SKILL.md`",
+ * a path relative to the plugin that the child, sitting in a foreign worktree, cannot resolve. A resumed spawn gets none of
  * them: its user prompt is the engine's `message` alone.
  */
 export const RUNTIME_VARS = {
-  planner: ["orchestrator", "child", "lessons"],
+  planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
-  executor: ["orchestrator", "child", "lessons"],
+  executor: ["orchestrator", "child", "lessons", "plugin"],
   verifier: ["orchestrator", "child", "lessons", "conventions"],
   retro: ["orchestrator", "child", "lessons", "aggregate", "efficacy", "lessons_index"],
 } as const satisfies Record<Role, readonly string[]>;

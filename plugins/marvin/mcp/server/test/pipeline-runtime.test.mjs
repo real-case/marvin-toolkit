@@ -408,6 +408,13 @@ test("a fake executor is launched with a static system prompt and its result is 
     );
     const prompt = readFileSync(join(s.runDir, "r1-executor-1.prompt.md"), "utf8");
     assert.match(prompt, /Orchestrator: Autopilot · your name: r1-executor-1/);
+    // A command wrapper's `skills/<name>/SKILL.md` is relative to the plugin, which a child in a
+    // foreign worktree cannot resolve on its own (the live sandbox planner never found task-start).
+    assert.ok(
+      prompt.includes(`Marvin plugin: ${resolve(pluginRoot)} · `) &&
+        prompt.includes(`means \`${resolve(pluginRoot)}/skills/<name>/…\``),
+      prompt,
+    );
     assert.match(
       prompt,
       /Lessons:\n\(none\)/,
@@ -1052,6 +1059,17 @@ test("rename_branch names the branch from the spec, tolerates a replay, and step
   );
   assert.equal(taken.run.branch, "feature/TBD--tag-filter-r1");
   assert.ok(events(t.runDir).some((e) => /is taken/.test(e.text) && e.data.notify));
+
+  // `tracker: none` is task-start's "no tracker", so the default stands in, as in pr-create.
+  const u = await prepared({ config: { pipeline: { tracker_default: "SANDBOX" } } });
+  write(u.wt, spec, specText({ tracker: "none" }));
+  const none = await u.deps.work(
+    { ...u.run, specPath: spec },
+    "rename_branch",
+    undefined,
+    step("none"),
+  );
+  assert.equal(none.run.branch, "feature/SANDBOX--tag-filter");
 });
 
 test("ci reads MARVIN_PIPELINE_FAKE_CI, and mark_ready leaves a fake PR alone", async () => {

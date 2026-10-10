@@ -5,6 +5,7 @@
     "test_one": "node --test {file}"
   },
   "pipeline": {
-    "tracker_default": "SANDBOX"
+    "tracker_default": "SANDBOX",
+    "allowed_commands": ["git", "gh pr create", "gh pr view", "gh pr edit", "node --test"]
   }
 }

@@ -71,6 +71,34 @@ test("every role is isolated from user/local settings and foreign MCP servers", 
   }
 });
 
+test("a writing role gets the marvin server back under the plugin's tool names and may read the plugin; a read-only one neither", () => {
+  // --strict-mcp-config also drops the plugin's own servers, so without --mcp-config the planner
+  // has no `spec` and the executor no `verify` (found by the live sandbox run).
+  for (const [role, allowedTools] of Object.entries(ROLE_TOOLS)) {
+    const { argv } = cmd.buildChildCommand({ ...base, role, allowedTools });
+    if (role === "verifier" || role === "retro") {
+      assert.ok(!argv.includes("--mcp-config"), role);
+      assert.ok(!argv.some((a) => a.startsWith("Read(")), role);
+      continue;
+    }
+    const config = JSON.parse(after(argv, "--mcp-config"));
+    assert.deepEqual(Object.keys(config.mcpServers), ["plugin_marvin_marvin"], role);
+    const server = config.mcpServers.plugin_marvin_marvin;
+    assert.deepEqual(server, {
+      command: "node",
+      args: ["/m/plugins/marvin/mcp/server/dist/server.js"],
+      env: {
+        MARVIN_TASKS_DIR: "/wt/.marvin/track",
+        MARVIN_TASKS_CONFIG: "/wt/.marvin/config.json",
+      },
+    });
+    // It may read marvin's own files, which its skills name by plugin path.
+    assert.ok(argv.includes("Read(//m/plugins/marvin/**)"), role);
+    // The server name normalises to the prefix every writing allowlist grants.
+    assert.ok(allowedTools.includes(`mcp__${cmd.MARVIN_MCP_SERVER}`), role);
+  }
+});
+
 test("the plugin dir is required, non-empty and absolute", () => {
   for (const pluginDir of [undefined, "", "plugins/marvin"]) {
     assert.throws(

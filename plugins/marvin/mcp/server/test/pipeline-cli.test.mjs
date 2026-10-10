@@ -10,6 +10,7 @@ import { importTs } from "./_tsload.mjs";
 // The CLI runs as the bundle, the way an orchestrator invokes it, so `npm run build` comes first.
 const cli = fileURLToPath(new URL("../dist/marvin-pipe.js", import.meta.url));
 const rs = await importTs("src/pipeline/run-store.ts");
+const { lockHolderPid } = await importTs("src/pipeline/loop.ts");
 
 const envFor = (home) => ({ ...process.env, MARVIN_PIPELINE_HOME: home });
 const pipe = (home, ...args) =>
@@ -235,6 +236,8 @@ test("start detaches an engine whose output goes to engine.log, and it releases 
   const { runDir } = initIn(home, join(home, "no-such-repo"));
   const { pid } = JSON.parse(pipe(home, "start", "--run", runDir));
   assert.ok(pid > 0);
+  // start returns only once its engine took the run, so an await armed next never reads it as down.
+  assert.equal(lockHolderPid(runDir), pid);
   const log = join(runDir, "engine.log");
   const deadline = Date.now() + 30_000;
   while (
@@ -245,6 +248,22 @@ test("start detaches an engine whose output goes to engine.log, and it releases 
   }
   assert.match(readFileSync(log, "utf8"), /marvin-pipe engine: /);
   assert.equal(JSON.parse(pipe(home, "status", "--run", runDir)).engineAlive, false);
+});
+
+test("start fails, with the engine's own reason, when the engine exits before it takes the run", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const { runDir } = initIn(home, join(home, "no-such-repo"));
+  // A model override outside the sandbox stops the engine before it touches the lock.
+  const r = spawnSync(process.execPath, [cli, "start", "--run", runDir], {
+    env: { ...envFor(home), MARVIN_PIPELINE_MODEL_OVERRIDE: "haiku", MARVIN_PIPELINE_SANDBOX: "" },
+    encoding: "utf8",
+  });
+  assert.equal(r.status, 1);
+  assert.match(
+    r.stderr,
+    /exited before it took the run: .*honoured only with MARVIN_PIPELINE_SANDBOX=1/,
+  );
+  assert.equal(lockHolderPid(runDir), null);
 });
 
 test("assess prints a spec's tier, its reasons and every role's assignment", () => {

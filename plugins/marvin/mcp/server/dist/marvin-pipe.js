@@ -3,10 +3,10 @@ import { spawn, execFileSync, execSync, spawnSync } from 'child_process';
 import { readFileSync, openSync, closeSync, existsSync, mkdirSync, readdirSync, appendFileSync, writeFileSync, renameSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, mkdtempSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
 import { resolve, posix, basename, join, dirname, sep, isAbsolute, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { setTimeout } from 'timers/promises';
 import { parseArgs, isDeepStrictEqual } from 'util';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 import { homedir, tmpdir } from 'os';
-import { setTimeout } from 'timers/promises';
 import { Script, createContext } from 'vm';
 
 const require$1 = createRequire(import.meta.url);
@@ -11498,6 +11498,26 @@ function modelFamily(model) {
   if (!family) throw new Error(`model not allowed: ${model}`);
   return family;
 }
+var MARVIN_MCP_SERVER = "plugin_marvin_marvin";
+function marvinMcpConfig(pluginDir, projectDir) {
+  return JSON.stringify({
+    mcpServers: {
+      [MARVIN_MCP_SERVER]: {
+        command: "node",
+        args: [`${pluginDir}/mcp/server/dist/server.js`],
+        env: {
+          MARVIN_TASKS_DIR: `${projectDir}/.marvin/track`,
+          MARVIN_TASKS_CONFIG: `${projectDir}/.marvin/config.json`
+        }
+      }
+    }
+  });
+}
+function pluginReadRule(pluginDir) {
+  if (/[()\n]/.test(pluginDir))
+    throw new Error(`pluginDir cannot stand in a permission rule: ${pluginDir}`);
+  return `Read(/${pluginDir}/**)`;
+}
 function buildChildCommand(s) {
   if (!READ_ONLY_ROLES.has(s.role) && !WRITING_ROLES.has(s.role)) {
     throw new Error(`unknown role: ${s.role}`);
@@ -11529,6 +11549,8 @@ function buildChildCommand(s) {
     "--setting-sources",
     "project",
     "--strict-mcp-config",
+    // Read-only roles get no MCP server: none of their allowlists names one (spike S2).
+    ...WRITING_ROLES.has(s.role) ? ["--mcp-config", marvinMcpConfig(s.pluginDir, s.cwd)] : [],
     "--plugin-dir",
     s.pluginDir,
     "--output-format",
@@ -11551,7 +11573,13 @@ function buildChildCommand(s) {
       ...READ_ONLY_DISALLOWED_TOOLS
     );
   } else {
-    argv.push("--permission-mode", "acceptEdits", "--allowedTools", ...s.allowedTools);
+    argv.push(
+      "--permission-mode",
+      "acceptEdits",
+      "--allowedTools",
+      ...s.allowedTools,
+      pluginReadRule(s.pluginDir)
+    );
   }
   if (s.resumeSessionId) argv.push("--resume", s.resumeSessionId);
   const env = {
@@ -15391,6 +15419,9 @@ function releaseLock(dir, generation, token) {
   writeAtomic(generationFile(dir, generation), `${JSON.stringify(released)}
 `);
 }
+function lockHolderPid(runDir) {
+  return lockState(runDir).holder?.pid ?? null;
+}
 function engineAlive(runDir) {
   return lockState(runDir).alive;
 }
@@ -16153,6 +16184,14 @@ var STACK_DEFAULTS = {
   go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
   rust: ({ name }) => `cargo test ${name}`
 };
+function isUnsafeOracleRef(criterion) {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name);
+}
 function resolveOracleCommand(criterion, opts) {
   const oracle = criterion.oracle;
   if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
@@ -16164,9 +16203,7 @@ function resolveOracleCommand(criterion, opts) {
   if (!ref) return { command: null, source: null, reason: "no-ref" };
   if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
   const parts = splitRef(ref);
-  if (SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name)) {
-    return { command: null, source: null, reason: "unsafe-ref" };
-  }
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
   if (opts.testOne?.trim()) {
     const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
     return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
@@ -16885,9 +16922,9 @@ function sandboxChildEnv(runDir, s) {
   return s.enabled ? installSandboxGh(runDir) : {};
 }
 var RUNTIME_VARS = {
-  planner: ["orchestrator", "child", "lessons"],
+  planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
-  executor: ["orchestrator", "child", "lessons"],
+  executor: ["orchestrator", "child", "lessons", "plugin"],
   verifier: ["orchestrator", "child", "lessons", "conventions"],
   retro: ["orchestrator", "child", "lessons", "aggregate", "efficacy", "lessons_index"]
 };
@@ -17227,6 +17264,7 @@ function createRuntime(o) {
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const at = (name) => join(runDir, name);
   const now = () => (/* @__PURE__ */ new Date()).toISOString();
+  const childPluginDir = () => resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot);
   const sandbox = sandboxSettings();
   const note = (text2, data = {}) => appendEvent(runDir, { ts: now(), kind: "note", actor: "engine", text: text2, data });
   const noteOnce = (ref, text2) => {
@@ -17477,7 +17515,8 @@ ${tail}`);
       conventions: () => config.pipeline.conventions.trim() || "(none)",
       aggregate: () => JSON.stringify(aggregate(run2, readEventsTolerant(runDir)), null, 2),
       efficacy: () => efficacyText(run2),
-      lessons_index: () => lessonsMarkdown(allLessons(run2))
+      lessons_index: () => lessonsMarkdown(allLessons(run2)),
+      plugin: () => childPluginDir()
     };
     const vars = Object.fromEntries(RUNTIME_VARS[role].map((v) => [v, supply[v]()]));
     recordExposure(ranked.map((l) => l.id));
@@ -17567,7 +17606,7 @@ ${tail}`);
       ...resumeSessionId ? { resumeSessionId } : {},
       allowedTools,
       ...role === "test-author" ? { testPathPattern: config.pipeline.test_path_pattern } : {},
-      pluginDir: resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot),
+      pluginDir: childPluginDir(),
       branch: run2.branch
     });
     const sandboxEnv = sandboxChildEnv(runDir, sandbox);
@@ -17974,7 +18013,8 @@ ${tail}`);
     const fm = text2 === null ? {} : parseFrontmatter(text2.replace(/\r\n?/g, "\n")).frontmatter;
     const fromName = run2.specPath ? basename(run2.specPath, ".md").replace(/^\d+-/, "") : void 0;
     const slug = [fm.slug, fromName].find((s) => s !== void 0 && PLAIN_TOKEN2.test(s)) ?? "spec";
-    const tracker = (fm.tracker ?? fm.tracker_id ?? "").trim() || null;
+    const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
+    const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
   };
   const mergeSealed2 = (old, fresh) => {
@@ -18273,21 +18313,46 @@ function init(flags) {
   saveRun(runDir, run2);
   print({ runId: id, runDir });
 }
-function start(flags) {
+var START_WAIT_MS = 15e3;
+async function start(flags) {
   const runDir = runDirOf(flags);
   if (engineAlive(runDir)) throw new Error(`an engine already holds ${runDir}`);
-  const log = openSync(join(runDir, "engine.log"), "a");
+  const logFile = join(runDir, "engine.log");
+  const log = openSync(logFile, "a");
+  let pid;
+  let exited = false;
   try {
     const child = spawn(process.execPath, [SELF, "engine", "--run", runDir], {
       detached: true,
       stdio: ["ignore", log, log],
       env: process.env
     });
+    child.once("exit", () => {
+      exited = true;
+    });
     child.unref();
-    print({ pid: child.pid });
+    pid = child.pid;
   } finally {
     closeSync(log);
   }
+  if (pid === void 0) throw new Error("the engine could not be launched");
+  const deadline = Date.now() + START_WAIT_MS;
+  for (; ; ) {
+    if (lockHolderPid(runDir) === pid) break;
+    if (exited) {
+      const tail = readFileSync(logFile, "utf8").trim().split("\n").slice(-3).join(" | ");
+      throw new Error(
+        `the engine exited before it took the run: ${tail || "(engine.log is empty)"}`
+      );
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the engine (pid ${pid}) did not take the run within ${START_WAIT_MS / 1e3} s; see ${logFile}`
+      );
+    }
+    await setTimeout(50);
+  }
+  print({ pid });
 }
 async function engine(flags) {
   const runDir = runDirOf(flags);

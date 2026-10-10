@@ -106,6 +106,45 @@ export function modelFamily(model: string): ModelFamily {
   return family as ModelFamily;
 }
 
+/**
+ * The marvin MCP server as a writing child sees it. `--strict-mcp-config` keeps the user's and
+ * the project's MCP servers out of a child, and it keeps the plugin's own servers out too: a
+ * child launched with it and no `--mcp-config` has no MCP server at all, so the planner cannot
+ * reach `spec` and the executor cannot reach `verify` (measured with Claude Code 2.1.286 in the
+ * live sandbox run, 2026-10-10). The server is therefore handed back explicitly, under the name
+ * that yields the plugin's tool names (`mcp__plugin_marvin_marvin__*`), so allowlists, guards and
+ * skill prose stay as they are. Its environment is the plugin's `.mcp.json` resolved for the
+ * child's project, which is its worktree.
+ */
+export const MARVIN_MCP_SERVER = "plugin_marvin_marvin";
+
+export function marvinMcpConfig(pluginDir: string, projectDir: string): string {
+  return JSON.stringify({
+    mcpServers: {
+      [MARVIN_MCP_SERVER]: {
+        command: "node",
+        args: [`${pluginDir}/mcp/server/dist/server.js`],
+        env: {
+          MARVIN_TASKS_DIR: `${projectDir}/.marvin/track`,
+          MARVIN_TASKS_CONFIG: `${projectDir}/.marvin/config.json`,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Lets a writing child read marvin's own files. A skill's prose names its references by plugin
+ * path, the plugin sits outside the child's worktree, and with prompts off a read outside the cwd
+ * is denied: the live sandbox planner could not open `skills/task-start/SKILL.md` and wrote a spec
+ * without a contract. A leading `//` makes the rule's path absolute.
+ */
+export function pluginReadRule(pluginDir: string): string {
+  if (/[()\n]/.test(pluginDir))
+    throw new Error(`pluginDir cannot stand in a permission rule: ${pluginDir}`);
+  return `Read(/${pluginDir}/**)`;
+}
+
 export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
   // Validate role (F3: fail-closed role handling)
   if (!READ_ONLY_ROLES.has(s.role) && !WRITING_ROLES.has(s.role)) {
@@ -151,6 +190,8 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
     "--setting-sources",
     "project",
     "--strict-mcp-config",
+    // Read-only roles get no MCP server: none of their allowlists names one (spike S2).
+    ...(WRITING_ROLES.has(s.role) ? ["--mcp-config", marvinMcpConfig(s.pluginDir, s.cwd)] : []),
     "--plugin-dir",
     s.pluginDir,
     "--output-format",
@@ -174,7 +215,13 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
       ...READ_ONLY_DISALLOWED_TOOLS,
     );
   } else {
-    argv.push("--permission-mode", "acceptEdits", "--allowedTools", ...s.allowedTools);
+    argv.push(
+      "--permission-mode",
+      "acceptEdits",
+      "--allowedTools",
+      ...s.allowedTools,
+      pluginReadRule(s.pluginDir),
+    );
   }
 
   if (s.resumeSessionId) argv.push("--resume", s.resumeSessionId);

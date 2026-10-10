@@ -35075,6 +35075,14 @@ var STACK_DEFAULTS = {
   go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
   rust: ({ name }) => `cargo test ${name}`
 };
+function isUnsafeOracleRef(criterion) {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name);
+}
 function resolveOracleCommand(criterion, opts) {
   const oracle = criterion.oracle;
   if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
@@ -35086,9 +35094,7 @@ function resolveOracleCommand(criterion, opts) {
   if (!ref) return { command: null, source: null, reason: "no-ref" };
   if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
   const parts = splitRef(ref);
-  if (SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name)) {
-    return { command: null, source: null, reason: "unsafe-ref" };
-  }
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
   if (opts.testOne?.trim()) {
     const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
     return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
@@ -38137,10 +38143,12 @@ function checkOracles(c, projectRoot) {
   const flagFilters = [];
   const broad = [];
   const noFailure = [];
+  const unsafeRefs = [];
   let commands = 0;
   for (const cr of c.criteria) {
     if (cr.oracle.kind === "prose-review") continue;
     if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    if (isUnsafeOracleRef(cr)) unsafeRefs.push(`${cr.id}: ${cr.oracle.ref?.trim()}`);
     const cmd = oracleCommand(cr);
     if (!cmd) continue;
     commands += 1;
@@ -38177,6 +38185,15 @@ function checkOracles(c, projectRoot) {
         "oracle-filter",
         "Oracles",
         `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
+      )
+    );
+  }
+  if (unsafeRefs.length) {
+    checks.push(
+      fail(
+        "oracle-ref",
+        "Oracles",
+        `test ref(s) holding a shell metacharacter are refused by the oracle runner (unsafe-ref), so the criterion has no runnable oracle at any gate: ${listed(unsafeRefs)} \u2014 rename the test without ; | & \` < > or $(, or give the criterion an explicit \`run\``
       )
     );
   }

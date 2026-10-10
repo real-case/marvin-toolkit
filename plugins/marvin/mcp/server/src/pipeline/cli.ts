@@ -10,9 +10,10 @@ import {
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { assignmentFor, loadRubric, readSignals, tierFor, type Rubric } from "./assess.js";
-import { answerJudgment, awaitWork, engineAlive, runEngine } from "./loop.js";
+import { answerJudgment, awaitWork, engineAlive, lockHolderPid, runEngine } from "./loop.js";
 import {
   assertOrchestratorName,
   createRuntime,
@@ -116,21 +117,54 @@ function init(flags: Flags): void {
   print({ runId: id, runDir });
 }
 
-function start(flags: Flags): void {
+/** How long `start` waits for the engine it launched to take the run's lock. */
+const START_WAIT_MS = 15_000;
+
+/**
+ * Launches a detached engine and returns once it holds the run's lock, so that an `await` armed
+ * right after it never reads the starting engine as down (and a restart, as the skill would then
+ * try, never meets "an engine already holds" from the engine it just started). An engine that
+ * exits before it took the lock is a failed start, reported with the tail of `engine.log`.
+ */
+async function start(flags: Flags): Promise<void> {
   const runDir = runDirOf(flags);
   if (engineAlive(runDir)) throw new Error(`an engine already holds ${runDir}`);
-  const log = openSync(join(runDir, "engine.log"), "a");
+  const logFile = join(runDir, "engine.log");
+  const log = openSync(logFile, "a");
+  let pid: number | undefined;
+  let exited = false;
   try {
     const child = spawn(process.execPath, [SELF, "engine", "--run", runDir], {
       detached: true,
       stdio: ["ignore", log, log],
       env: process.env,
     });
+    child.once("exit", () => {
+      exited = true;
+    });
     child.unref();
-    print({ pid: child.pid });
+    pid = child.pid;
   } finally {
     closeSync(log);
   }
+  if (pid === undefined) throw new Error("the engine could not be launched");
+  const deadline = Date.now() + START_WAIT_MS;
+  for (;;) {
+    if (lockHolderPid(runDir) === pid) break;
+    if (exited) {
+      const tail = readFileSync(logFile, "utf8").trim().split("\n").slice(-3).join(" | ");
+      throw new Error(
+        `the engine exited before it took the run: ${tail || "(engine.log is empty)"}`,
+      );
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the engine (pid ${pid}) did not take the run within ${START_WAIT_MS / 1000} s; see ${logFile}`,
+      );
+    }
+    await delay(50);
+  }
+  print({ pid });
 }
 
 async function engine(flags: Flags): Promise<void> {

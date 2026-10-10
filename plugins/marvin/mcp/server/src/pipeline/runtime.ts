@@ -469,6 +469,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const at = (name: string) => join(runDir, name);
   const now = () => new Date().toISOString();
+  /** The plugin a child loads with `--plugin-dir`, and whose skills its prompt points into. */
+  const childPluginDir = () => resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot);
   // Read once, before any work: a refused combination stops the engine at its start (sandbox.ts).
   const sandbox = sandboxSettings();
 
@@ -818,6 +820,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       aggregate: () => JSON.stringify(aggregate(run, readEventsTolerant(runDir)), null, 2),
       efficacy: () => efficacyText(run),
       lessons_index: () => lessonsMarkdown(allLessons(run)),
+      plugin: () => childPluginDir(),
     };
     const vars = Object.fromEntries(RUNTIME_VARS[role].map((v) => [v, supply[v]()]));
     recordExposure(ranked.map((l) => l.id));
@@ -933,7 +936,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       ...(resumeSessionId ? { resumeSessionId } : {}),
       allowedTools,
       ...(role === "test-author" ? { testPathPattern: config.pipeline.test_path_pattern } : {}),
-      pluginDir: resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot),
+      pluginDir: childPluginDir(),
       branch: run.branch,
     });
     const sandboxEnv = sandboxChildEnv(runDir, sandbox);
@@ -1441,7 +1444,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const fm = text === null ? {} : parseFrontmatter(text.replace(/\r\n?/g, "\n")).frontmatter;
     const fromName = run.specPath ? basename(run.specPath, ".md").replace(/^\d+-/, "") : undefined;
     const slug = [fm.slug, fromName].find((s) => s !== undefined && PLAIN_TOKEN.test(s)) ?? "spec";
-    const tracker = (fm.tracker ?? fm.tracker_id ?? "").trim() || null;
+    // `none` is how task-start writes "no tracker"; pr-create's pipeline mode then uses
+    // `tracker_default`, and the branch must agree (a live run was named `feature/none--…`).
+    const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
+    const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
   };
 

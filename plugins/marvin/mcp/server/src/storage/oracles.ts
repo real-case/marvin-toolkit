@@ -97,6 +97,26 @@ const STACK_DEFAULTS: Record<string, (parts: { file: string; name: string }) => 
 };
 
 /**
+ * Whether a criterion's ref will be refused as `unsafe-ref` once it is substituted into a
+ * template: a `kind: test` oracle with no `run`, whose ref (or either half of it) holds a shell
+ * metacharacter. Exported so that the Definition-of-Ready gate refuses the spec that the oracle
+ * runner, the gate stage and `verify` would later refuse to run — a test named `throws when
+ * lo > hi` passed the DoR and then failed every gate of a live sandbox run.
+ */
+export function isUnsafeOracleRef(criterion: Criterion): boolean {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return (
+    SHELL_METACHARACTERS.test(ref) ||
+    SHELL_METACHARACTERS.test(parts.file) ||
+    SHELL_METACHARACTERS.test(parts.name)
+  );
+}
+
+/**
  * Resolve one criterion's oracle to a command, in ADR-0009's precedence order
  * generalised from gates to criteria:
  *
@@ -137,13 +157,7 @@ export function resolveOracleCommand(criterion: Criterion, opts: ResolveOptions)
   // Rung 4 on: the ref is data. Screen the whole ref (`{ref}`) and both
   // substituted halves (`{file}`, `{name}`) — one refusal, one reason.
   const parts = splitRef(ref);
-  if (
-    SHELL_METACHARACTERS.test(ref) ||
-    SHELL_METACHARACTERS.test(parts.file) ||
-    SHELL_METACHARACTERS.test(parts.name)
-  ) {
-    return { command: null, source: null, reason: "unsafe-ref" };
-  }
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
 
   if (opts.testOne?.trim()) {
     const command = opts.testOne
