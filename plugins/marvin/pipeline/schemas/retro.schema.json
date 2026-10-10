@@ -1,0 +1,116 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "checks", "proposals", "lessons", "prune"],
+  "properties": {
+    "status": { "type": "string", "enum": ["done", "failed"] },
+    "summary": { "type": "string" },
+    "checks": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "pattern", "message", "severity", "category", "evidence"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "pattern": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "path_pattern": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "exclude_pattern": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "message": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor"] },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "evidence": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "file", "change", "rationale", "evidence"],
+        "properties": {
+          "target": { "type": "string", "enum": ["marvin", "project"] },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^(?=[^\\r\\n]*\\S)[^\\r\\n]+$"
+          },
+          "change": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "rationale": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "evidence": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
+    },
+    "lessons": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "title", "body", "tags", "target_category", "evidence"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["bug-pattern", "gotcha", "convention", "pitfall", "process"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^(?=[^\\r\\n]*\\S)[^\\r\\n\\[\\]]+$"
+          },
+          "body": { "type": "string", "minLength": 1, "maxLength": 4000, "pattern": "\\S" },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(?!\\s*[Tt][Aa][Rr][Gg][Ee][Tt]:)(?=[^\\r\\n]*\\S)[^,\\r\\n]+$"
+            }
+          },
+          "target_category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "evidence": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
+    },
+    "prune": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^(?=[^\\r\\n]*\\S)[^\\r\\n]+$"
+          },
+          "reason": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "failure": { "type": "string" }
+  }
+}

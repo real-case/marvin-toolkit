@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { withSession } from "./_driver.mjs";
+import { importTs } from "./_tsload.mjs";
+
+const { Config } = await importTs("src/storage/schema.ts");
+const { loadConfig } = await importTs("src/storage/config.ts");
 
 /** The D2 example vocabulary from the kanban-rework plan (ADR-0026). */
 const CUSTOM_STATUSES = [
@@ -527,6 +531,307 @@ test("a hand-edited unusable scope.exempt pattern is reported by the view, not b
       /scope\.exempt/,
       "the tracker only explains missing links",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── autopilot pipeline settings: `pipeline` and `gates.extra` ──
+
+const PIPELINE_DEFAULTS = {
+  branch_template: "feature/{tracker}--{slug}",
+  tracker_default: "TBD",
+  bootstrap: null,
+  lockfile: null,
+  github: { token_command: null },
+  stall_minutes: 15,
+  no_ci_minutes: 10,
+  gate_timeout_minutes: 20,
+  ci_poll_seconds: 60,
+  test_path_pattern: "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)",
+  scope_exempt_pattern: null,
+  format_command: null,
+  conventions: "",
+  allowed_commands: [
+    "git",
+    "gh pr create",
+    "gh pr view",
+    "gh pr edit",
+    "npm run",
+    "npm ci",
+    "npx --no",
+  ],
+};
+
+test("an empty config parses to every pipeline default, inner ones included", () => {
+  assert.deepEqual(Config.parse({}).pipeline, PIPELINE_DEFAULTS);
+});
+
+test("a partial pipeline block keeps the defaults of the keys it omits", () => {
+  const { pipeline } = Config.parse({
+    pipeline: { stall_minutes: 30, github: {}, bootstrap: "npm ci" },
+  });
+  assert.deepEqual(pipeline, {
+    ...PIPELINE_DEFAULTS,
+    stall_minutes: 30,
+    bootstrap: "npm ci",
+  });
+  const withToken = Config.parse({ pipeline: { github: { token_command: "gh auth token" } } });
+  assert.equal(withToken.pipeline.github.token_command, "gh auth token");
+  assert.equal(withToken.pipeline.ci_poll_seconds, 60);
+});
+
+test("the default test-path pattern matches test files and nothing else", () => {
+  const pattern = new RegExp(Config.parse({}).pipeline.test_path_pattern);
+  for (const p of ["src/a.test.ts", "a.spec.tsx", "src/__tests__/x.ts", "test/b.test.mjs"]) {
+    assert.ok(pattern.test(p), p);
+  }
+  for (const p of ["src/a.ts", "src/contest.ts", "src/latest/x.ts"]) {
+    assert.ok(!pattern.test(p), p);
+  }
+});
+
+test("a pipeline time or cadence below one is refused", () => {
+  for (const key of ["stall_minutes", "no_ci_minutes", "gate_timeout_minutes", "ci_poll_seconds"]) {
+    assert.equal(Config.safeParse({ pipeline: { [key]: 0 } }).success, false, key);
+    assert.equal(Config.safeParse({ pipeline: { [key]: 1.5 } }).success, false, key);
+  }
+});
+
+test("gates.extra defaults to empty and keeps declaration order", () => {
+  assert.deepEqual(Config.parse({ gates: {} }).gates.extra, []);
+  assert.equal(Config.parse({}).gates, undefined, "a config with no gates stays that way");
+  const extra = [
+    { name: "css-types", command: "npm run css-types:check" },
+    { name: "format", command: "npm run format:check" },
+    { name: "a11y", command: "npm run a11y" },
+  ];
+  assert.deepEqual(Config.parse({ gates: { test: "npm test", extra } }).gates.extra, extra);
+});
+
+test("gates.extra refuses each malformed entry, naming the problem", () => {
+  const problem = (extra) => {
+    const parsed = Config.safeParse({ gates: { extra } });
+    assert.equal(parsed.success, false, JSON.stringify(extra));
+    return parsed.error.issues.map((i) => i.message).join(" | ");
+  };
+  assert.match(problem([{ name: "", command: "x" }]), /name/);
+  assert.match(problem([{ name: "-lead", command: "x" }]), /name/);
+  assert.match(problem([{ name: "has space", command: "x" }]), /name/);
+  assert.match(problem([{ name: "slash/y", command: "x" }]), /name/);
+  assert.match(problem([{ name: "ok", command: "" }]), /command|at least 1/i);
+  assert.match(problem([{ name: "ok" }]), /command|required/i);
+  for (const name of ["test", "lint", "typecheck", "build", "Build", "TEST"]) {
+    assert.match(problem([{ name, command: "x" }]), /standard gate/i, name);
+  }
+  for (const name of ["prepare:deps", "oracle:AC1", "Prepare:x", "oracle:"]) {
+    assert.match(problem([{ name, command: "x" }]), /reserved/i, name);
+  }
+  assert.match(
+    problem([
+      { name: "fmt", command: "x" },
+      { name: "fmt", command: "y" },
+    ]),
+    /duplicate/i,
+  );
+  assert.match(
+    problem([
+      { name: "fmt", command: "x" },
+      { name: "FMT", command: "y" },
+    ]),
+    /duplicate/i,
+  );
+});
+
+test("gates.extra accepts the allowed name characters", () => {
+  const names = ["css-types", "a11y", "9lives", "check_1", "lint.docs", "X"];
+  const parsed = Config.parse({ gates: { extra: names.map((name) => ({ name, command: "x" })) } });
+  assert.deepEqual(
+    parsed.gates.extra.map((g) => g.name),
+    names,
+  );
+});
+
+/** Write `json` as a project config in a fresh temp dir, hand it to `fn`, then clean up. */
+async function withConfigFile(json, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    const configPath = join(dir, ".marvin", "config.json");
+    writeFileSync(configPath, JSON.stringify(json, null, 2));
+    return await fn(configPath, dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const SURVIVORS = {
+  base_branch: "main",
+  statuses: CUSTOM_STATUSES,
+  gates: { test: "npm test" },
+};
+
+test("a bad gates.extra entry drops the extras alone and the rest of the config stands", async () => {
+  const bad = {
+    ...SURVIVORS,
+    gates: { test: "npm test", extra: [{ name: "oracle:AC1", command: "x" }] },
+  };
+  await withConfigFile(bad, (configPath) => {
+    const { config, warning, settingWarnings, pipelineIssues } = loadConfig(configPath);
+    assert.equal(warning, null, "no whole-file fallback");
+    assert.equal(config.base_branch, "main");
+    assert.deepEqual(config.statuses, CUSTOM_STATUSES);
+    assert.equal(config.gates.test, "npm test");
+    assert.deepEqual(config.gates.extra, []);
+    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS);
+    assert.equal(pipelineIssues.length, 1);
+    assert.match(pipelineIssues[0], /`gates\.extra` is ignored/);
+    assert.match(pipelineIssues[0], /gates\.extra\.0\.name/);
+    assert.match(pipelineIssues[0], /reserved/);
+    assert.deepEqual(settingWarnings, [], "the tracker's per-setting list stays about the tracker");
+  });
+});
+
+test("a bad pipeline value resets the pipeline block alone and records the issue", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0, bootstrap: "npm ci" } };
+  await withConfigFile(bad, (configPath) => {
+    const { config, warning, pipelineIssues } = loadConfig(configPath);
+    assert.equal(warning, null);
+    assert.equal(config.base_branch, "main");
+    assert.deepEqual(config.statuses, CUSTOM_STATUSES);
+    assert.equal(config.gates.test, "npm test");
+    assert.deepEqual(config.pipeline, PIPELINE_DEFAULTS, "the whole block resets, valid keys too");
+    assert.equal(pipelineIssues.length, 1);
+    assert.match(pipelineIssues[0], /`pipeline` is ignored/);
+    assert.match(pipelineIssues[0], /pipeline\.stall_minutes/);
+  });
+});
+
+test("both subtrees can fail at once, one issue each, and a valid config records none", async () => {
+  const bad = {
+    ...SURVIVORS,
+    gates: { extra: [{ name: "test", command: "x" }] },
+    pipeline: { allowed_commands: ["git", "npm run(x)"] },
+  };
+  await withConfigFile(bad, (configPath) => {
+    const { config, pipelineIssues } = loadConfig(configPath);
+    assert.equal(pipelineIssues.length, 2);
+    assert.match(pipelineIssues.join("\n"), /gates\.extra\.0\.name.*standard gate/);
+    assert.match(pipelineIssues.join("\n"), /pipeline\.allowed_commands\.1/);
+    assert.equal(config.base_branch, "main");
+  });
+  await withConfigFile({ ...SURVIVORS, pipeline: { stall_minutes: 30 } }, (configPath) => {
+    const loaded = loadConfig(configPath);
+    assert.deepEqual(loaded.pipelineIssues, []);
+    assert.equal(loaded.config.pipeline.stall_minutes, 30);
+  });
+  assert.deepEqual(loadConfig(join(tmpdir(), "marvin-no-such-config.json")).pipelineIssues, []);
+});
+
+test("an unrelated schema error still falls back as a whole, bad pipeline or not", async () => {
+  await withConfigFile({ base_branch: 7, pipeline: { stall_minutes: 0 } }, (configPath) => {
+    const { config, warning } = loadConfig(configPath);
+    assert.match(warning, /failed schema validation/);
+    assert.equal(config.base_branch, "dev");
+  });
+});
+
+test("the config view and the dashboard name an ignored pipeline subtree", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0 } };
+  await withConfigFile(bad, async (_configPath, dir) => {
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config" } },
+      { name: "dashboard", arguments: {} },
+    ]);
+    const [view, dashboard] = results;
+    assert.match(textOf(view), /⚠ `pipeline` is ignored — pipeline\.stall_minutes/);
+    assert.match(textOf(view), /- \*\*base_branch:\*\* `main` _\(from config\)_/);
+    assert.match(textOf(dashboard), /⚠ config: `pipeline` is ignored/);
+  });
+});
+
+test("a config update works while the pipeline block is invalid and leaves it as written", async () => {
+  const bad = { ...SURVIVORS, pipeline: { stall_minutes: 0 } };
+  await withConfigFile(bad, async (configPath, dir) => {
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", base_branch: "release" } },
+    ]);
+    assert.notEqual(results[0].isError, true, textOf(results[0]));
+    const onDisk = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.equal(onDisk.base_branch, "release");
+    assert.deepEqual(onDisk.pipeline, bad.pipeline, "the invalid block is not rewritten");
+    assert.deepEqual(onDisk.statuses, CUSTOM_STATUSES);
+  });
+});
+
+test("the regex fields must compile, and the issue names the field", () => {
+  const issue = (pipeline) => {
+    const parsed = Config.safeParse({ pipeline });
+    assert.equal(parsed.success, false, JSON.stringify(pipeline));
+    return parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | ");
+  };
+  assert.match(
+    issue({ test_path_pattern: "(unclosed" }),
+    /pipeline\.test_path_pattern: test_path_pattern is not a valid regular expression/,
+  );
+  assert.match(
+    issue({ scope_exempt_pattern: "[" }),
+    /pipeline\.scope_exempt_pattern: scope_exempt_pattern is not a valid regular expression/,
+  );
+  const ok = Config.parse({
+    pipeline: { test_path_pattern: "\\.test\\.", scope_exempt_pattern: "^specs/" },
+  });
+  assert.equal(ok.pipeline.scope_exempt_pattern, "^specs/");
+  assert.equal(
+    Config.parse({ pipeline: { scope_exempt_pattern: null } }).pipeline.scope_exempt_pattern,
+    null,
+  );
+});
+
+test("allowed_commands entries must be usable prefixes at config load", () => {
+  const issue = (allowed_commands) => {
+    const parsed = Config.safeParse({ pipeline: { allowed_commands } });
+    assert.equal(parsed.success, false, JSON.stringify(allowed_commands));
+    return parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | ");
+  };
+  for (const bad of [
+    "npm run(x)",
+    "a)",
+    "a,b",
+    "git *",
+    "a[0]",
+    "line\nbreak",
+    "  npm run  ",
+    "",
+  ]) {
+    assert.match(issue(["git", bad]), /pipeline\.allowed_commands\.1/, JSON.stringify(bad));
+  }
+  assert.match(issue(["a,b"]), /invalid allowlist prefix/);
+  const ok = Config.parse({
+    pipeline: { allowed_commands: ["git", "npm run test:run", "npx --no"] },
+  });
+  assert.deepEqual(ok.pipeline.allowed_commands, ["git", "npm run test:run", "npx --no"]);
+});
+
+test("an update leaves a hand-written pipeline block and gates.extra exactly as written", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-config-"));
+  try {
+    mkdirSync(join(dir, ".marvin"), { recursive: true });
+    const configPath = join(dir, ".marvin", "config.json");
+    const seeded = {
+      base_branch: "dev",
+      gates: { test: "npm test", extra: [{ name: "format", command: "npm run format:check" }] },
+      pipeline: { bootstrap: "npm ci", github: { token_command: "gh auth token" } },
+    };
+    writeFileSync(configPath, JSON.stringify(seeded, null, 2));
+    const { results } = await drive({ CLAUDE_PROJECT_DIR: dir }, [
+      { name: "task", arguments: { action: "config", base_branch: "main" } },
+    ]);
+    assert.notEqual(results[0].isError, true, textOf(results[0]));
+    const onDisk = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.deepEqual(onDisk.gates, seeded.gates, "no default leaked into gates");
+    assert.deepEqual(onDisk.pipeline, seeded.pipeline, "no default leaked into pipeline");
+    assert.equal(onDisk.base_branch, "main");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

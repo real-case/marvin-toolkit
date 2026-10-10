@@ -24,6 +24,7 @@ human intent (Phase 1) and AI execution (Phase 2) — it must be specific enough
 - File path to an existing description
 
 If no arguments, ask the user what they want to build or fix.
+**Pipeline mode:** see *Input* below.
 
 ---
 
@@ -63,6 +64,8 @@ accepts:
 | `draft` | **Resume it, do not re-author it.** Read the draft, then call the `spec` tool with `action: "resume"` and its `specPath`. Show the recorded state — the last step reached, any decisions recorded — and continue intake from there. A draft holds answers the user has already given: falling through to Path C would ask for them again and then write over them. |
 | `shipped`, `superseded` | Fall through to **Path C** or **Path D** — that spec is history; the request in hand is new work. |
 
+**Pipeline mode:** see *Path A* below.
+
 ### Path B: no spec is warranted
 
 Route out and stop, naming the command:
@@ -76,11 +79,13 @@ Route out and stop, naming the command:
 Path B is **one-way**: it routes out only work that needs **no spec**. Work that arrives *from*
 `/marvin:refactor-plan` came here because that command judged it **spec-sized** — it is spec-sized by
 definition, so it takes Path C or D and is never handed back.
+**Pipeline mode:** see *Path B* below.
 
 ### Path C: one coherent spec
 
 State the scope in one sentence, get a one-line confirmation from the user, then continue to Step 1.
 This is also the default whenever the evidence is thin.
+**Pipeline mode:** see *Path C and D* below.
 
 ### Path D: several deliverables
 
@@ -88,6 +93,7 @@ Apply the one-PR test from `skills/task-start/references/routing.md`. Present th
 a numbered list and get explicit confirmation of the split before proceeding. Then spec the **first**
 slice here, create a board card for each remaining slice (mechanics in the same reference), and list
 them under `## Deferred slices` in the spec you are about to write.
+**Pipeline mode:** see *Path C and D* below.
 
 ## Step 1: Intake
 
@@ -95,11 +101,15 @@ Determine what the user wants and gather context.
 
 ### 1.1 Parse input
 
+**Pipeline mode:** see *Tracker* below.
+
 - **Text**: use as the raw requirement
 - **Tracker reference**: fetch content via `gh issue view` for GitHub issues, or ask the user to paste content for other trackers. **Record the reference** — it becomes the spec's `tracker` field.
 - **File path**: read the file
 
 ### 1.2 Determine task type
+
+**Pipeline mode:** see *Task type* below.
 
 Ask the user directly if unclear:
 - **Feature** — new functionality, enhancement, or refactoring
@@ -119,6 +129,7 @@ Read in parallel — go beyond the obvious files, because the spec must be engin
 - `VISION.md` if present — future direction (informs variant evaluation).
 - **Prior lessons** — call the `lessons` tool (`action: "search"`, keywords from the task) to recall lessons captured on past tasks and bug fixes in this repo (`.marvin/memory`). A relevant `bug-pattern` or `gotcha` becomes a constraint, a test to add, or an explicit non-goal — this is how the pipeline stops repeating mistakes (ADR-0021). If the tool is unavailable, skim `.marvin/memory/MEMORY.md` directly.
 - **Host conventions** — discover, don't assume: the ADR/RFC directory and style (`docs/adr/`, `docs/decisions/`, `rfcs/`; MADR vs Nygard), `CONTRIBUTING`, the PR template, `.pre-commit-config`. They live **once per project in `.marvin/config.json`**, never in a spec: `spec.dir` (ADR-0037), `adr.dir` (ADR-0027), `gates` (ADR-0009) and `merge_obligations` (a list of strings: what this host needs to merge, such as a version bump or a committed build artefact). Read the config first. When any of these keys is absent, **propose the missing ones once**, as one block, including a `gates.test_one` template that runs a single test (for example `npx vitest run {file} -t "{name}"`; the oracle runner substitutes `{file}` and `{name}`). Write them only after the user confirms, as a read-modify-write that keeps every other key. With `gates.test_one` configured, no criterion needs its own `oracle.run`. A spec written before this rule may still carry a `host-bindings` block; the gate keeps accepting it, but a new spec does not write one.
+  **Pipeline mode:** see *Host conventions* below.
 
 ### 1.4 Clarifying questions & dimension sweep
 
@@ -132,6 +143,7 @@ Bad: "Can you provide more details about the requirements?"
 whether it is asked alone or inside a batch; a follow-up that only clarifies an answer already given
 does not. The budget bounds what you may ask the **user** — it bounds nothing about what the spec
 must contain, and it is never a licence to dispatch on less.
+**Pipeline mode:** see *Questions* below.
 
 **Spend it in priority order:** scope and boundaries first, then security and data, then interface
 and contract, then everything else. A budget exhausted early is then exhausted on the dimensions
@@ -140,11 +152,13 @@ that most often invalidate a spec, not on whatever surfaced first.
 **Batch up to three questions per turn** — numbered, and only when they are genuinely
 **independent**, each answerable in short form (a number, a word, or "default"). A question whose
 wording depends on a previous answer stays sequential.
+**Pipeline mode:** see *Questions* below.
 
 **At the cap, nothing is dropped.** Remaining uncertainty that is a *decision* becomes a recorded
 assumption; remaining uncertainty that needs *investigation* sets `spike_required: true`. The budget
 is not a route past the Open Questions rule in the Guidelines — an unresolved question is still a
 reason to keep authoring.
+**Pipeline mode:** see *Unknowns* below.
 
 **First, identify the task archetype(s)** and ask its 2–3 must-pin questions **out of the budget, not on top of it**: they are the highest-priority scope questions, so they are asked first and what remains of the budget covers the general sweep below. Archetypes are not exclusive — a task can be several (an API route that also runs a migration) — and a second archetype buys no second allowance: pin only what it genuinely leaves open.
 
@@ -218,6 +232,7 @@ exists, so an intake interrupted at step 4 keeps the answers given at step 1.
    `action: "next"` so the number comes from the directory actually chosen. A **collision**: do not
    overwrite — ask whether this **supersedes** the existing spec (set `supersedes:` to the old slug
    and choose a new slug) or is a distinct task (choose a different slug).
+   **Pipeline mode:** see *Spec directory and slug* below.
 3. **Open the draft.** Copy the **whole template** for the task type — `feature-spec-template.md` or
    `bugfix-spec-template.md` under `skills/task-start/references/` — to `<dir>/<NNN>-{slug}.md`, and
    fill only the three facts known now: `slug`, `type`, and `created` (today, `date +%F`). Copy it
@@ -277,10 +292,12 @@ Analyze the codebase and present findings to the user:
 **Verify the stack.** From the dependency manifest read in 1.3, confirm whether the work is solvable with the current stack (→ `NATIVE`), needs a new dependency (→ `EXTENSION`, list it), or is non-standard (→ `EXPERIMENTAL`). The marker must reflect the manifest, not an assumption.
 
 **Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command` and the convention the executor follows; a non-obvious test design (a mutation to catch, a fixture the test needs) goes into the test file's `intent`. Knowing the command is not knowing the patterns. **Prefer the command the project declares** — a CI job, a `Makefile` target, a manifest script — over a guessed ecosystem default; for a stack you don't recognise, **ask the user** for the test command rather than guessing, since a wrong `test_command` poisons every downstream gate. If you cannot determine them, that is an Open Question — resolve it before DoR.
+**Pipeline mode:** see *Test harness* below.
 
 If `VISION.md` exists, note future-direction intent — it informs variant evaluation.
 
 Present the context map to the user. Let them correct if you're off target.
+**Pipeline mode:** see *Context map* below.
 
 ### Step 3F: Solution Variants
 
@@ -345,6 +362,8 @@ If `VISION.md` does not exist, skip future alignment markers entirely.
 
 ### Step 4F: Approach Selection
 
+**Pipeline mode:** see *Variants* below.
+
 Present the variants and wait for the user's decision. The user may:
 - **Select** a variant as-is
 - **Combine** elements from multiple variants
@@ -360,6 +379,7 @@ Before crystallizing, apply the one-PR test from `skills/task-start/references/r
 chosen approach. **A plan with more than 15 files or more than 12 criteria must present the split
 explicitly** even when the test seems to hold: the size does not decide the split, but it obliges
 you to show one and let the user reject it.
+**Pipeline mode:** see *Size gate* below.
 
 - If the test fails, or the size threshold is crossed, **stop and present the slices** as a
   numbered list, then let the user pick one of exactly two options. Proceed on neither without an
@@ -418,10 +438,12 @@ Fill the sections the draft keeps:
 dispatches the critic once rather than up to twice.
 
 Present the draft to the user. Iterate until they approve.
+**Pipeline mode:** see *Draft approval* below.
 
 ### Step 6F: Follow-ups
 
 Suggest follow-ups based on the dialogue (deliberately excluded scope), `VISION.md`, and edge cases discovered during context mapping. The user decides which to keep, and each one they keep becomes a board card through `/marvin:track-new` — never a spec section, because nothing reads a list of future work inside a sealed spec. Slices deferred at Step 4.5F are already cards and are listed under `## Deferred slices`.
+**Pipeline mode:** see *Follow-ups* below.
 
 ### Step 7F: Definition of Ready — mechanical gate (tool first)
 
@@ -434,6 +456,7 @@ Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `sp
 It also warns, never fails, on size: a spec over the budget (`spec-size`), a criterion `statement` over 40 words (`ac-length`), a file `intent` over 60 words (`intent-length`), and a `risk: high` spec with no Security / NFR section (`security-nfr`). Treat a size warning as a request to delete restatement, not to argue for the length.
 
 - If the `spec` tool is unavailable, self-check the same list manually and note the degradation in Assumptions.
+  **Pipeline mode:** see *Spec tool* below.
 
 **Record the call** (ADR-0043). After the gate answers — every time it answers, including each re-run the Step 8F sweep prescribes — call the `metrics` tool on the `marvin` server with `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7F"`, the spec's `slug`, its `verdict`, and `call` incremented per run (`1` for the first). Whether the gate passed on its first call is a metric that lives nowhere else once the session is compacted, and the call costs one tool round-trip.
 
@@ -465,6 +488,7 @@ again before any re-dispatch:
 - **Verdict `PASS`** — proceed to finalize.
 - **Verdict `NEEDS_CONTEXT`** — the critic could not judge yet and named the exact input it lacks (the spec content itself, a cited file that exists but it could not read, a listing that came back empty). Supply that input and re-dispatch the critic **once**, stating in the dispatch that this is the re-dispatch for the `NEEDS_CONTEXT` it raised — it enters with a fresh context and cannot see the earlier turn. A second `NEEDS_CONTEXT` is treated as `UNABLE`.
 - **Verdict `UNABLE`** — the critic could not judge and could not name what would fix that. It is **not** a pass. Record it verbatim as `UNABLE — <reason>` in **Critic Verdict & Overrides**, show the critic's Blocker / Attempted / Recommendation to the user, and let the user decide whether to proceed.
+  **Pipeline mode:** see *Critic* below.
 
 **Resolve a finding by editing the lines it names.** Do not add a paragraph that explains the fix,
 and do not park a warning in the spec: the receipt under `.marvin/critique/` already records how
@@ -486,6 +510,7 @@ comes from. Counted in dispatches, not in rounds, because that is the unit that 
   override in **Critic Verdict & Overrides** and proceed. A third dispatch against the same spec is
   banned — past the second it re-derives rather than converges, and the user's judgement is both
   faster and better informed than a third opinion.
+  **Pipeline mode:** see *Critic* below.
 - A `NEEDS_CONTEXT` re-dispatch does **not** spend the budget: it answers missing input rather than
   retrying a failed attempt, and keeps its own one-shot allowance.
 - **The light tier** (`risk: low` and at most five files) gets one dispatch. A `BLOCK` on it goes
@@ -526,9 +551,12 @@ Three rules make the receipt trustworthy:
 4. **Re-check the collision, and skip the draft this run created.** Call `action: "next"` once more
    with the same slug and match its reported collision against the draft's exact filename: a run
    that does not skip the draft this run created collides with itself, every time. A collision on
-   any *other* file means a parallel session claimed the slug or the number while intake was
-   running — renumber or rename the draft, then record the new path in the journal
-   (`action: "progress"`, with the new `draftPath`).
+   any *other* file means a parallel session claimed the slug while intake was running, and so does
+   a `next.base.collision`, a file of that slug the base branch holds and this checkout lacks. A
+   `next.base.taken` entry whose `local` is the draft's filename means the base branch claimed the
+   draft's number. Either way, renumber or rename the draft (the same answer's `next` is a free
+   number), then record the new path in the journal (`action: "progress"`, with the new
+   `draftPath`).
 
 5. **Write & seal.** This is an **edit of the file already on disk**, not a write of a new one.
    Confirm `created` is today and `tracker`/`supersedes` are recorded, then
@@ -538,6 +566,7 @@ Three rules make the receipt trustworthy:
    stamp `contract_sha:` from the result's `contractSha` into the frontmatter. This binds the written
    artifact to a passing gate and seals the immutable contract: later tampering of the block is
    caught by re-hashing. Append a final `kind: "step"` journal entry and confirm the path to the user.
+   **Pipeline mode:** see *Finalize* below.
 
 **Immutability.** After the DoR gate the spec's **content is immutable**. The only mutable parts are lifecycle metadata: `status` (advanced by later phases) and an appended `## Delivery` section (PR link, added at delivery). If content must change, create a **new** spec whose `supersedes:` points to this one. The stamped `contract_sha` makes this enforceable, not merely conventional: `/marvin:task-implement` re-verifies the seal via the `spec` tool (`action: "seal"`) on read and refuses a spec whose contract was edited after sealing.
 
@@ -552,6 +581,8 @@ never a credential, token or customer datum.
 
 ### Step 2B: Reproduction
 
+**Pipeline mode:** see *Reproduction* below.
+
 Help the user establish a reliable reproduction path:
 
 1. **What happens vs. what should happen** — get specifics, not "it crashes"
@@ -563,10 +594,13 @@ If the bug cannot be reproduced, gather logs and traces. Do not proceed to root 
 
 ### Step 3B: Root Cause Analysis
 
+**Pipeline mode:** see *Root cause* below.
+
 Dispatch the **`marvin-debugger`** agent (via Task-tool) with the reproduction from Step 2B and the symptom. It runs hypothesis-driven analysis in an isolated, evidence-first context and returns a structured report — **Evidence · Hypotheses · Root Cause (confirmed, at `file:line`) · Fix Approach · Regression Test · Siblings · Lesson** — that maps directly onto this spec's Root Cause Analysis, Fix Approach, and Regression Test Specification sections. (The full methodology lives in the agent; `/marvin:debug` is its other door — there is no third copy here to drift.)
 
 - **Root cause confirmed** → carry its findings into Step 6B; the confirmed mechanism drives the **File Change Plan**.
 - **UNCONFIRMED** → the agent returns its best-supported hypothesis and the exact next step. Resolve it first — an unconfirmed root cause is an **Open Question** (or `spike_required: true`), not a spec ready to dispatch.
+  **Pipeline mode:** see *Unknowns* below.
 - The agent captures a `bug-pattern` lesson on reflect, so the next task recalls it at intake (ADR-0021).
 
 If Task-tool is unavailable, run the analysis inline following the `marvin-debugger` methodology: read the execution path and callers, check history (`git log` / `git blame`), rank 2–3 evidence-backed hypotheses, verify the top one, and confirm the mechanism at specific files and lines.
@@ -592,6 +626,7 @@ Determine the fix:
 2. **Regression test specification** — what input triggers the bug, what the correct output is, where the test lives.
 3. **Sibling patterns** — search for the same bug pattern elsewhere (`git grep`, `rg`).
 4. If the fix is obvious, record it directly. If multiple valid approaches exist, present variants as in the feature flow (Step 3F).
+   **Pipeline mode:** see *Variants* and *Size gate* below.
 5. **One pull request** — apply the one-PR test from `skills/task-start/references/routing.md` to
    items 1–3 taken together. Sibling patterns (item 3) are the usual producer of slices: the
    root-cause fix is this spec, each sibling that fails the test is a board card listed under
@@ -604,6 +639,7 @@ Produce the full spec from the **bugfix-spec template** at `skills/task-start/re
 Fill every section the draft keeps, including frontmatter (`slug`, `created`, `tracker`, `supersedes`, verified `stack`, `severity`, discovered `test_command`), the **`spec-contract` block** (the `files` allowlist + `criteria`), and the prose sections. **One criterion MUST carry `regression: true`** — it asserts the regression test fails on pre-fix code and passes after; the test it names in its `oracle` must be a `files` entry.
 
 Present to user. Iterate until approved.
+**Pipeline mode:** see *Draft approval* below.
 
 ### Step 7B: Definition of Ready — mechanical gate (tool first)
 
@@ -612,6 +648,7 @@ Run the `spec` tool **before** the critic (same rationale as Step 7F). Pass the 
 - **FAIL** → show failing checks, loop back (usually 3B or 5B), fix, re-run. **Do not invoke the critic and do not write.**
 - **PASS / PASS WITH WARNINGS** → proceed to the critic.
 - Tool unavailable → self-check manually, note the degradation in Assumptions.
+  **Pipeline mode:** see *Spec tool* below.
 
 Record the call as Step 7F does: `metrics` tool, `action: "record"`, `kind: "gate-call"`, `gate: "dor"`, `source: "task-start"`, `step: "7B"`, the `slug`, the `verdict`, and `call` incremented per run.
 
@@ -624,6 +661,7 @@ On a shape-valid spec, invoke `marvin-tm-spec-critic` via Task-tool with the dra
 - `PASS` → proceed to finalize.
 - `NEEDS_CONTEXT` → supply the input the critic named and re-dispatch it **once**, stating that it is the re-dispatch; a second `NEEDS_CONTEXT` is treated as `UNABLE` (full definitions in Step 8F).
 - `UNABLE` → never a pass; record it verbatim as `UNABLE — <reason>` and let the user decide whether to proceed.
+  **Pipeline mode:** see *Critic* below.
 
 If Task-tool is unavailable, write "none — critic skipped" and carry it forward so `/marvin:task-deliver` renders it on the PR's **Spec critic** line. An `UNABLE` verdict is carried the same way.
 
@@ -641,8 +679,9 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
    If any item fails, loop back (and re-run Step 7B after editing). Do not write.
 2. **The directory and the collision** — both settled at step 1.5. Re-check the collision once with
    `action: "next"`, and **skip the draft this run created**, matched by its exact filename; a
-   collision on any other file means a parallel session claimed the slug while intake ran, so
-   renumber or rename and record the new path in the journal.
+   collision on any other file, or a `next.base.collision`, means a parallel session claimed the
+   slug while intake ran, and a `next.base.taken` entry whose `local` is the draft's filename means
+   the base branch claimed its number, so renumber or rename and record the new path in the journal.
 3. **The number** — allocated at step 1.5. The draft already carries it; do not allocate a second one.
 4. **Write & seal** — **same as 9F item 5**: an in-place edit of the draft that must
    **flip `status: draft` to `status: ready`**, re-running the `spec` tool on the written file
@@ -657,13 +696,99 @@ If Task-tool is unavailable, write "none — critic skipped" and carry it forwar
 ## Guidelines
 
 - **Ask within the budget.** Six questions for a feature, four for a bugfix, at most three per turn and only when independent (step 1.4). What the repository answers is read, not asked, and every default read that way is recorded in **Assumptions**.
+  **Pipeline mode:** see *Questions* below.
 - **Ground everything in the codebase.** Read actual code before suggesting patterns or constraints.
 - **Verify, don't guess.** Stack compliance and `test_command` come from the manifest and the test config you read — never assumed.
 - **The contract's `files` are the allowlist.** The executor may touch only listed files. If it's incomplete, the executor will either guess or stall — both are failures.
 - **Flag assumptions explicitly.** Put decisions-under-uncertainty in **Assumptions**; put anything unresolved in **Open Questions** — and Open Questions must be "none" before DoR passes. A genuine unknown that needs *investigation* (not a decision) is neither: set `spike_required: true` and resolve it first (e.g. a spike via `/marvin:track-new`). Do not launder unknowns into Assumptions to slip past the gate — the `spec` tool blocks on `spike_required: true` for exactly this reason.
+  **Pipeline mode:** see *Unknowns* below.
 - **Trace every criterion.** Each criterion names the `files` ids that implement it (`implemented_by`) and a typed `oracle`; each file names the criteria it serves (`satisfies`). Those are one graph written twice, and the gate transposes them: a file that declares a `satisfies` list must name every criterion whose `implemented_by` names it, or the DoR FAILs. A row with no `satisfies` at all (infra rows) declares no index and is exempt. A `kind: test` oracle's path must be an allowlisted `files` entry. This closed graph is what lets Phase 2 execute without inferring the mapping.
 - **The user decides.** Present trade-offs and let the user choose. Never select a variant unilaterally.
+  **Pipeline mode:** see *Variants* below.
 - **Reject untestable criteria.** "It should be intuitive" → what specific behavior, proven by what test?
 - **Keep it conversational.** This is a dialogue, not a form. Adapt to the user's communication style.
 - **No generic filler.** Every section kept must contain specific, actionable content; an optional section that does not apply is deleted, not filled with "N/A".
 - **One fact, one place.** A decision is written once, where its reader looks for it, and referred to by id everywhere else. A restatement is not emphasis: it is a second copy that drifts from the contract the first time either is edited.
+
+## Pipeline mode
+
+Active only when `MARVIN_PIPELINE=1` is set: this session is the planner child of the autopilot
+pipeline, started headless by its engine, and the role prompt that launched it says so. Every step
+above applies except where this section overrides it, and each `Pipeline mode:` line above names
+the row here that replaces that step's question. An interactive session never sets the variable,
+so none of this reaches one.
+
+The "user" of the steps above is the orchestrator, and the only way to reach it is to end the turn
+with status `needs_input`. The session is then resumed with a message starting `ANSWERS:`, or with
+one starting `CHANGES REQUESTED:` once the orchestrator has read the sealed spec, and continues
+exactly where the turn stopped. A place above that asks, confirms or presents and that no row below
+names is decided the conservative way and recorded under Assumptions. Progress goes to the
+orchestrator in the heartbeat reports the role prompt describes, not as narration of each step. The
+session's last message is the planner object.
+
+**What this session writes.** The spec, its evidence sidecar and the critic receipts, plus the
+files the marvin tools write for this spec on their own: the progress journal and the metrics
+record. No code, no test, no configuration and no commit. Before ending any turn, run
+`git status --short` and delete every other path this session or one of its agents created, a
+debugger's throwaway reproducer included. A stray file reaches either the executor's commit, where
+the pipeline's gate stage reports it outside the contract `files`, or the gate stage's check for
+uncommitted work, and either way it costs the executor a rejection it could not have avoided.
+
+**Questions.** Step 1.4's budget of six and four, and its batches of three, do not apply here. One
+cap replaces them:
+
+- A question is one entry of a `needs_input` turn, at most four per turn and only when they are
+  independent. Ask only what the task text, the code and the earlier answers leave open, in the
+  priority order of step 1.4: scope and boundaries, then security and data, then interface and
+  contract.
+- The engine counts every question the planner asks against one cap for the whole run, whoever
+  answers it. The orchestrator answers most questions itself, and those count too. The cap is
+  `caps.planner_questions` in the pipeline rubric, eight by default. Keep part of it for the points
+  a later step routes to a question: the variant pick, a split, a surviving critic blocker.
+- A turn whose questions would cross the cap never reaches the orchestrator. The engine answers
+  each of its questions with that question's own `recommendation`, marked
+  `recommendation accepted: question cap reached`, and halts the run on the next `needs_input`.
+  Write every `recommendation` so that it can stand as the answer on its own.
+- **Once any answer arrives marked `recommendation accepted: question cap reached`, never end a
+  turn with `needs_input` again**, also when the same answers arrive a second time because the
+  orchestrator retried a halt. From then on every point a row below routes to a question, Variants,
+  Size gate and Critic included, takes your own recommendation unless the row says otherwise, and
+  each such decision is one line under Assumptions.
+
+| Point | Pipeline behaviour |
+|-------|--------------------|
+| *Input* | The task is the TASK CONTEXT's task text, whether or not `$ARGUMENTS` repeats it. Never ask for it. With no task text at all, finish with status `failed`. |
+| *Path A* | A found spec is never handed over: nothing here can run `/marvin:task-implement`. A `ready` spec that `action: "list"` reports sealed, and whose `action: "seal"` check then reads intact, is reused as it is: finish with `spec_ready` naming it, and record the reuse under Assumptions. A `ready` spec that is unsealed, or whose seal reads TAMPERED, cannot be executed: author anew on Path C under a distinct slug with `supersedes:` naming it, and record that under Assumptions. Do not run the seal check on an unsealed spec, because it passes with a warning and creates a metrics record this run never uses. Whether this run takes over an `in-progress` spec, which may be another session's live work, is a question while the question cap allows one. A `draft` resumes as the Path A table says. |
+| *Path B* | Not taken: the run exists to produce a spec, and nothing here can route it to another command. Author it on Path C instead (a symptom with no confirmed cause takes the Bugfix Flow, whose Step 3B dispatches the debugger), and record the router's judgement under Assumptions so that the orchestrator sees it at approval. |
+| *Path C and D* | The confirmation is not asked. On Path C, the scope sentence is the first line under Assumptions. On Path D, spec the first slice the one-PR test gives and list the rest under `## Deferred slices` with no board card, since the `task` tool is refused to every pipeline child; record the split under Assumptions so that the orchestrator can create the cards. |
+| *Tracker* | A tracker reference is always a question while the question cap allows one, unless the task text already carries the issue's content: every pipeline child is refused `gh issue view`, and no other fetch is on its allowlist. Ask for the content, and record the reference as `tracker` either way. Past the cap, author from the task text alone and record that under Assumptions. |
+| *Task type* | Decide from the task text: something broken is a bugfix, everything else a feature. Record the choice under Assumptions. |
+| *Host conventions* | Never write `.marvin/config.json`, which a guard refuses, and never propose its missing keys: use what the repository shows, and record each detected value under Assumptions. Without `gates.test_one`, give every `kind: test` criterion its own `oracle.run`. The pipeline's gate stage resolves each criterion that is not `prose-review` to a command through the chain `verify` uses, and one it cannot resolve is a gate blocker that no executor can clear, because nobody may edit a sealed spec. A `ref` holding a shell metacharacter resolves to nothing even with `gates.test_one`. |
+| *Unknowns* | An unknown that needs investigation is investigated in this session (read the code, run an existing test or a one-off command, dispatch the debugger again on the next step it named) or asked as a question while the question cap allows one. Never set `spike_required: true` and never turn it into a spike card: the DoR gate blocks on the flag and the `task` tool is refused, so either way the run ends without a spec. An unknown that neither settles ends the session with status `failed`, the unknown as its `failure`. |
+| *Spec directory and slug* | Take the directory `action: "next"` resolves and do not ask. On a collision, never overwrite and never supersede: choose a distinct slug, re-run `action: "next"` with it, and record the choice under Assumptions. |
+| *Test harness* | A test command the repository does not declare is a question while the question cap allows one; never guess one. Past the cap, finish with status `failed` and the missing command as the `failure`, because a guessed `test_command` poisons every gate after it. |
+| *Context map* | Not presented: it lands in the spec's Context, which the orchestrator reads at approval. |
+| *Variants* | The variant pick is a question while the question cap allows one: the variants as `options`, each with its effort, risk and stack marker, and your pick as the `recommendation`. Past the cap the pick is yours, recorded under Assumptions; the Step 4F journal entry records it either way. This row overrides the Guidelines' "never select a variant unilaterally". |
+| *Size gate* | A question only when the one-PR test fails or the size threshold is crossed, with exactly the two options of Step 4.5F, and only while the question cap allows one; past the cap, take your recommendation. Slicing now defers the rest as Path D does, with no board card. A bugfix's Step 5B item 5 follows the same rule. |
+| *Criteria* | Give every criterion an automatable oracle wherever one exists. On the standard and heavy tiers an independent author writes sealed acceptance tests from the criteria before any implementation exists and never sees it, so each `statement` and `failure` says what to observe through the contract's surface, never through internals the implementer is free to choose. |
+| *Draft approval* | Not asked: the orchestrator approves the sealed spec after `spec_ready`, and asks for changes with `CHANGES REQUESTED:`. |
+| *Follow-ups* | Keep every one and create no card: list each under the planner object's `assumptions` as a line starting `follow-up (not implemented):`, never as a spec section. |
+| *Spec tool* | Required. Without the `spec` tool nothing can allocate, gate or seal the spec, so its absence ends the session with status `failed` instead of the manual self-check above. A `metrics` call that fails is skipped. |
+| *Critic* | The spec-critic cap is the one in the TASK CONTEXT, and it is enforced: never dispatch past it, nor when the `critic-dispatch` record answers with a Budget line reading `exceeded`. `PASS WITH WARNINGS` is accepted, with its override recorded in Critic Verdict & Overrides. `NEEDS_CONTEXT` is handled as Step 8F says. On `UNABLE`, or on `BLOCK` from the last dispatch the cap allows, stop revising and ask a question while the question cap allows one: the surviving blockers or the `UNABLE` reason as its `text`, and as its `recommendation` either the override or one more revision without a critic. Past the cap, take that recommendation yourself, recording the override in Critic Verdict & Overrides and the decision under Assumptions. A missing Task tool is handled as Step 8F says. |
+| *Root cause* | Dispatch `marvin-debugger` as Step 3B says, and tell it that this is a pipeline run: it reports its lesson in its report instead of calling `lessons` `action: "add"`, which the pipeline refuses, and it deletes any throwaway reproducer it wrote before it returns. The run's retro owns lessons. |
+| *Reproduction* | Reproduce the bug from the task text and the code without leaving a file behind: read the execution path, run an existing test or a one-off command, and describe the failing test in the Regression Test Specification and the contract, where the test-author or the executor writes it. A scratch test written to confirm the bug is deleted before the turn ends. A reproduction that needs a human (credentials, a device, production data) is a question while the question cap allows one, and past it an unknown as the *Unknowns* row says. |
+| *Finalize* | Steps 9F and 9B as written, except that a collision on the re-check renames without asking, and the path goes to the orchestrator in the `spec_ready` object instead of to a user. |
+| *Changes requested* | No executor has read the contract yet, so edit the same spec in place: re-run Step 7F or 7B, the critic within what remains of its cap, and Step 9F or 9B, and stamp the new `contract_sha`. Write no superseding spec. |
+| *Never* | Create a branch, a worktree or a board card; call the `task` or `tracker` tool; commit or push. The run's branch exists already, and guards refuse each of these. The `slices` field stays out of the planner object unless the TASK CONTEXT says slicing is enabled. |
+
+**The planner object.** The output schema the pipeline passed decides its exact shape; these are
+the fields this skill fills:
+
+| Field | Content |
+|-------|---------|
+| `status` | `needs_input` with `questions`, or `spec_ready` with `spec` and no questions. `failed` only where a row above says so: the pipeline treats it as a crash, repeats the turn once, then halts the run. |
+| `summary` | At most five lines of facts. |
+| `questions` | At most four, each with an `id` unique across the session (`Q1`, `Q2`, … continuing over turns), the `text`, a `recommendation` that can stand as the answer, `why_blocking`, and `options` when the answer is a choice. |
+| `spec` | `path` relative to the repository root, with no `./` and no absolute part; `slug`; `risk`; `files`, the contract's file count; `criteria`, its criterion count; `sealed: true`; and `critic` and `overrides` when there are any. |
+| `assumptions` | Every decision made without the orchestrator in the whole session, one line each. Give the full list on the `spec_ready` turn: the engine reads assumptions from that turn alone and drops any that a `needs_input` turn carried. |
+| `failure` | On `failed`, one line: what stopped the session. |

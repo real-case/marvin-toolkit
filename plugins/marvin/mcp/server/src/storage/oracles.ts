@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { fillShellTemplate } from "../lib/shell-quote.js";
 import type { Criterion } from "./spec.js";
 
 /**
@@ -46,10 +47,13 @@ export interface ResolveOptions {
  * Anything that would make a substituted value more than an argument: a chain, a
  * pipe, a background, a substitution, a redirection, a newline.
  *
- * Refusal, not sanitisation. Substitution is literal and the template author owns
- * the quoting — the placeholder commonly sits inside a flag they already quoted,
- * and quoting it again produces a command that fails for a reason nobody can
- * read. So a ref that would reach the shell as syntax is `not-run` instead.
+ * Refusal first. A substituted value is then encoded for the quoting context its
+ * placeholder sits in (`fillShellTemplate` in `lib/shell-quote.ts`, the encoder
+ * the seal stage uses too): an unquoted `{file}` is single-quoted, so a Next.js
+ * `src/app/(dashboard)/x.test.ts` reaches the shell as one word, and a
+ * placeholder the template already quoted (`-k '{name}'`, `"{file}"`) is
+ * escaped for that quote rather than quoted again. The screen stays, so a ref
+ * that reads as a chain or a substitution is `not-run` before any of that.
  *
  * **It screens substituted values only, and that boundary is load-bearing.** A
  * `kind: "command"` ref is not substituted into anything — it IS the command,
@@ -97,6 +101,26 @@ const STACK_DEFAULTS: Record<string, (parts: { file: string; name: string }) => 
 };
 
 /**
+ * Whether a criterion's ref will be refused as `unsafe-ref` once it is substituted into a
+ * template: a `kind: test` oracle with no `run`, whose ref (or either half of it) holds a shell
+ * metacharacter. Exported so that the Definition-of-Ready gate refuses the spec that the oracle
+ * runner, the gate stage and `verify` would later refuse to run — a test named `throws when
+ * lo > hi` passed the DoR and then failed every gate of a live sandbox run.
+ */
+export function isUnsafeOracleRef(criterion: Criterion): boolean {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return (
+    SHELL_METACHARACTERS.test(ref) ||
+    SHELL_METACHARACTERS.test(parts.file) ||
+    SHELL_METACHARACTERS.test(parts.name)
+  );
+}
+
+/**
  * Resolve one criterion's oracle to a command, in ADR-0009's precedence order
  * generalised from gates to criteria:
  *
@@ -114,6 +138,10 @@ const STACK_DEFAULTS: Record<string, (parts: { file: string; name: string }) => 
  * one. From (4) on, the ref is *data* being interpolated into a template, and
  * the metacharacter screen applies: to the whole ref (`{ref}`) and to each
  * substituted half (`{file}`, `{name}`), which is the pair the criterion names.
+ * Rung 4 then encodes each value for its placeholder's quoting context, so one
+ * unquoted template (`npx vitest run {file}`) serves this resolver, `verify` and
+ * the autopilot seal stage alike. Rung 5's rows are fixed strings and are not
+ * re-quoted.
  */
 export function resolveOracleCommand(criterion: Criterion, opts: ResolveOptions): Resolved {
   const oracle = criterion.oracle;
@@ -137,20 +165,14 @@ export function resolveOracleCommand(criterion: Criterion, opts: ResolveOptions)
   // Rung 4 on: the ref is data. Screen the whole ref (`{ref}`) and both
   // substituted halves (`{file}`, `{name}`) — one refusal, one reason.
   const parts = splitRef(ref);
-  if (
-    SHELL_METACHARACTERS.test(ref) ||
-    SHELL_METACHARACTERS.test(parts.file) ||
-    SHELL_METACHARACTERS.test(parts.name)
-  ) {
-    return { command: null, source: null, reason: "unsafe-ref" };
-  }
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
 
   if (opts.testOne?.trim()) {
-    const command = opts.testOne
-      .replaceAll("{file}", parts.file)
-      .replaceAll("{name}", parts.name)
-      .replaceAll("{ref}", ref)
-      .trim();
+    const command = fillShellTemplate(opts.testOne, {
+      "{file}": parts.file,
+      "{name}": parts.name,
+      "{ref}": ref,
+    }).trim();
     return command
       ? { command, source: "config.test_one" }
       : { command: null, source: null, reason: "empty-test_one" };

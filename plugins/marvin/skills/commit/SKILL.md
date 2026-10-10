@@ -156,3 +156,36 @@ chore(deps): upgrade TanStack Query to v5
 BREAKING CHANGE: queryClient.invalidateQueries API changed — all
 invalidation calls updated to new object syntax.
 ```
+
+## Pipeline mode
+
+Active only when `MARVIN_PIPELINE=1` is set: a child session of the autopilot pipeline, where nobody
+is present to confirm or to resolve anything. The workflow above applies except where this section
+overrides it. An interactive session never sets the variable, so none of this reaches one.
+
+- **No confirmation.** Skip step 5 and commit once the message is composed. The pipeline's own gate
+  stage and verifier review the commit, and nobody is there to answer the question.
+- **Stage everything the work produced**, still by name. The pipeline judges the committed HEAD, and
+  an uncommitted path it does not exempt is a blocker.
+- **A sensitive-name match is judged, not dropped on its name.** Step 2's grep matches `token`,
+  `secret` or `credentials` anywhere in a path, so it flags a `tokens.css` as readily as a key file,
+  and a work file left out is a blocker on every later attempt, because each one commits through
+  this skill. Unstage what it lists as step 2 says, then judge each path by the first rule that
+  fits:
+  - a contract `files` path or a sealed test from the TASK CONTEXT is the work the spec asked for:
+    stage it again;
+  - key material the contract does not name (an `.env`, `.pem`, `.key`, `.p12` or `.pfx` file,
+    `id_rsa`, `id_ed25519`, `.npmrc`, `.pypirc`) stays out, whatever it contains;
+  - any other path: read its added lines, and stage it again unless they carry a credential value.
+
+  Commit without what stays out and name each such path in the caller's final report: nobody here
+  can resolve it, and the pipeline's gate keeps reporting it as uncommitted until someone does.
+
+  marvin's `secret-guard` hook backs this up: it scans the added lines when `git commit` runs and
+  refuses a credential-shaped one, whichever way the path was judged. When it refuses, unstage the
+  file it names, leave it out as above and commit again.
+- **The message follows the project's own commit rules** (`CLAUDE.md`, a commitlint config, a
+  commit-message hook) and Conventional Commits where they are silent. A hook that refuses the
+  message is a hook failure under step 7: read its reason, fix the message and commit again.
+- **No AI attribution**, unchanged from the Rules: no trailer and no mention, whatever a default
+  commit instruction proposes.

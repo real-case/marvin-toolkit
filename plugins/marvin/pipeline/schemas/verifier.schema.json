@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "verdict", "summary", "criteria", "findings"],
+  "properties": {
+    "status": { "type": "string", "enum": ["done", "failed"] },
+    "verdict": { "type": "string", "enum": ["PASS", "FAIL"] },
+    "summary": { "type": "string", "maxLength": 800 },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "result", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "result": { "type": "string", "enum": ["met", "unmet", "unverifiable"] },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "category", "claim", "evidence", "expected"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor"] },
+          "category": {
+            "type": "string",
+            "enum": [
+              "criterion",
+              "regression",
+              "scope",
+              "gate",
+              "test-quality",
+              "convention",
+              "security",
+              "spec-drift"
+            ]
+          },
+          "criterion": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "claim": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "expected": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "previous_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "state"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "state": { "type": "string", "enum": ["fixed", "still-open", "regressed"] }
+        }
+      }
+    },
+    "failure": { "type": "string" }
+  }
+}

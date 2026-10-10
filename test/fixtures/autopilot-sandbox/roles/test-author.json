@@ -1,0 +1,5 @@
+{
+  "status": "done",
+  "summary": "One acceptance test for AC1.",
+  "tests": [{ "path": "test/clamp.test.mjs", "criteria": ["AC1"] }]
+}

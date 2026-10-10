@@ -34,28 +34,38 @@ if (packs.length === 0) {
 
 let failures = 0;
 
+// Every bundle a pack's server build emits: the MCP server and, beside it, the autopilot
+// pipeline's `marvin-pipe` CLI. One build produces both, so each is checked against that build.
+const BUNDLES = ["server.js", "marvin-pipe.js"];
+
 for (const pack of packs) {
   const serverDir = join(pluginsDir, pack, "mcp", "server");
-  const distFile = join(serverDir, "dist", "server.js");
-  const rel = gitPath(repoRoot, distFile);
+  const bundles = BUNDLES.map((name) => {
+    const distFile = join(serverDir, "dist", name);
+    return { name, distFile, rel: gitPath(repoRoot, distFile) };
+  });
 
-  if (!existsSync(distFile)) {
-    console.error(`FAIL [${pack}]: dist/server.js missing — run npm run build`);
-    failures += 1;
+  const missing = bundles.filter((b) => !existsSync(b.distFile));
+  if (missing.length > 0) {
+    for (const b of missing) {
+      console.error(`FAIL [${pack}]: dist/${b.name} missing — run npm run build`);
+    }
+    failures += missing.length;
     continue;
   }
 
-  // Diagnostics only — in CI a prior build step has already overwritten this.
-  const worktreeBefore = hashFile(distFile);
-
-  const { bytes: committedBytes, reason } = readCommittedBytes(repoRoot, distFile);
-  if (!committedBytes) {
-    console.warn(
-      `NOTE [${pack}]: ${rel} is not readable at HEAD (${reason}) — ` +
-        "falling back to the working-tree copy as the baseline",
-    );
+  for (const b of bundles) {
+    // Diagnostics only — in CI a prior build step has already overwritten this.
+    b.worktreeBefore = hashFile(b.distFile);
+    const { bytes: committedBytes, reason } = readCommittedBytes(repoRoot, b.distFile);
+    if (!committedBytes) {
+      console.warn(
+        `NOTE [${pack}]: ${b.rel} is not readable at HEAD (${reason}) — ` +
+          "falling back to the working-tree copy as the baseline",
+      );
+    }
+    b.baseline = committedBytes ? hashBytes(committedBytes) : b.worktreeBefore;
   }
-  const baseline = committedBytes ? hashBytes(committedBytes) : worktreeBefore;
 
   try {
     execSync("npm run build --silent", { cwd: serverDir, stdio: "inherit" });
@@ -64,32 +74,38 @@ for (const pack of packs) {
     failures += 1;
     continue;
   }
-  const rebuilt = hashFile(distFile);
 
-  const { ok, kind } = classifyRebuild({ baseline, worktreeBefore, rebuilt });
-  if (ok) {
-    console.log(`OK   [${pack}]: dist/server.js in sync`);
-    continue;
+  for (const b of bundles) {
+    const rebuilt = hashFile(b.distFile);
+    const { ok, kind } = classifyRebuild({
+      baseline: b.baseline,
+      worktreeBefore: b.worktreeBefore,
+      rebuilt,
+    });
+    if (ok) {
+      console.log(`OK   [${pack}]: dist/${b.name} in sync`);
+      continue;
+    }
+
+    failures += 1;
+    const detail =
+      kind === "uncommitted"
+        ? `  the working tree already holds this exact build — only the commit is behind.\n` +
+          `  fix: git add ${b.rel}`
+        : `  fix: cd ${serverDir} && npm run build && git add dist/\n` +
+          `  if the bundle only differs in module-path comments, it was built outside the\n` +
+          `  main checkout (a git worktree resolves node_modules further up) — rebuild there.`;
+    console.error(
+      `FAIL [${pack}]: committed dist/${b.name} differs from fresh build.\n` +
+        `  committed (HEAD): ${b.baseline}\n` +
+        `  rebuilt:          ${rebuilt}\n` +
+        detail,
+    );
   }
-
-  failures += 1;
-  const detail =
-    kind === "uncommitted"
-      ? `  the working tree already holds this exact build — only the commit is behind.\n` +
-        `  fix: git add ${rel}`
-      : `  fix: cd ${serverDir} && npm run build && git add dist/\n` +
-        `  if the bundle only differs in module-path comments, it was built outside the\n` +
-        `  main checkout (a git worktree resolves node_modules further up) — rebuild there.`;
-  console.error(
-    `FAIL [${pack}]: committed dist/server.js differs from fresh build.\n` +
-      `  committed (HEAD): ${baseline}\n` +
-      `  rebuilt:          ${rebuilt}\n` +
-      detail,
-  );
 }
 
 if (failures > 0) {
-  console.error(`\nverify-dist: ${failures} pack(s) out of sync`);
+  console.error(`\nverify-dist: ${failures} failure(s) across ${packs.length} pack(s)`);
   process.exit(1);
 }
 console.log(`\nverify-dist: all ${packs.length} pack(s) in sync`);

@@ -230,10 +230,23 @@ EOF
 git push -u origin HEAD
 ```
 
+**Resolve the base branch** the PR targets: the branch this task forked from, never whatever
+`gh` would pick. Take it the way every marvin tool does:
+
+1. `base_branch` in `.marvin/config.json`, when that file exists. A file that sets no
+   `base_branch` means `dev`, the schema default.
+2. With no config file, the remote's default branch:
+   `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, without its `origin/` prefix.
+3. With neither, `dev`, the schema default.
+
+Pass it as `--base "<base>"` to every `gh pr create`, the draft ones included. Without it the PR
+targets the repository's default branch on GitHub, which on a project that integrates on `dev` is
+the release branch.
+
 Create PR with structured description:
 
 ```bash
-gh pr create --title "<short imperative title>" --body "$(cat <<'EOF'
+gh pr create --base "<base>" --title "<short imperative title>" --body "$(cat <<'EOF'
 ## Summary
 <from spec goal/problem statement>
 
@@ -274,7 +287,7 @@ EOF
 
 If self-test failed and couldn't be fixed, create as **draft PR**:
 ```bash
-gh pr create --draft --title "..." --body "..."
+gh pr create --draft --base "<base>" --title "..." --body "..."
 ```
 Include the failure details in the Self-Review Notes section.
 
@@ -439,7 +452,8 @@ A file the scope gate reports as **exempted** (it matched the project's `scope.e
 
 If you cannot proceed (missing dependency, build environment broken, test infrastructure unavailable):
 
-1. Create a **draft PR** with whatever changes you have
+1. Create a **draft PR** with whatever changes you have:
+   `gh pr create --draft --base "<base>"`, with the base resolved as in §5.2
 2. In the PR description, add:
 
 ```

@@ -863,7 +863,7 @@ async function runConfig(server: McpServer, env: ServerEnv, input: TaskInput): P
 
 /** The effective configuration as markdown — the `config` action's read side. */
 function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>): string {
-  const { config, warning, settingWarnings, base_branch_source } = loaded;
+  const { config, warning, settingWarnings, pipelineIssues, base_branch_source } = loaded;
   const fileExists = existsSync(env.configPath);
   const sourceLabel =
     base_branch_source === "config"
@@ -878,7 +878,9 @@ function renderConfigView(env: ServerEnv, loaded: ReturnType<typeof loadConfig>)
   if (warning) lines.push(`⚠ ${warning} — showing defaults.`, "");
   // Per-setting fallbacks: the file holds a value, the effective setting below
   // reads "not set", and this is the only place that explains the gap.
-  for (const w of [...settingWarnings, ...scopeExemptWarnings(config)]) lines.push(`⚠ ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config), ...pipelineIssues]) {
+    lines.push(`⚠ ${w}`, "");
+  }
   lines.push(`- **Project:** \`${env.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env.tasksDir}\``);
   lines.push(

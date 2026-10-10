@@ -5,6 +5,7 @@ import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { SpecAuditFinding, SpecAuditPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { parseFrontmatter } from "../storage/frontmatter.js";
+import { isUnsafeOracleRef } from "../storage/oracles.js";
 import type { SpecConfig } from "../storage/schema.js";
 import {
   SpecContract,
@@ -17,6 +18,8 @@ import {
   readSpecCorpus,
   resolveSpecBySlug,
   resolveSpecDir,
+  specFilenameNumber,
+  specFilenameSlug,
   specIdWidth,
   specSearchDirs,
   specSizeBudget,
@@ -148,7 +151,7 @@ const SpecInput = z.object({
     .enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"])
     .optional()
     .describe(
-      "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec — the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to.",
+      "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec — the resolved directory, the padded id, the composed filename and any slug collision; numbers the base branch already holds (origin/<base_branch>, as last fetched) are counted too, and a local draft whose number or slug the base holds under another filename is reported (next.base.taken, next.base.collision). list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency — duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to.",
     ),
   mode: z
     .enum(["dor", "seal", "scope"])
@@ -233,7 +236,7 @@ export function buildSpecTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "spec",
     description:
-      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
+      'Validate a task spec against the Definition of Ready mechanically — identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC⇄files⇄tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, ≥1 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded — the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision; a number already taken on the base branch counts as taken, and a draft whose number or slug the base branch claimed meanwhile is reported) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole — duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs — and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done — it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env),
   });
@@ -484,10 +487,15 @@ const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  * ".marvin", "config.json")`, so absent that override it is derived from
  * `env.projectDir` — and this tool accepts a foreign `projectRoot`, so reading
  * the env path would apply one project's spec directory to another project's
- * tree. `loadConfig` is called with ONE argument on purpose: the two-argument
- * form shells out to git to detect `base_branch` whenever the file is absent —
- * the common case on a fresh project, and exactly the case `next` is called in —
- * and branch detection has nothing to do with resolving `spec.dir`.
+ * tree.
+ *
+ * `list` calls `loadConfig` with ONE argument: the two-argument form shells out
+ * to git to detect `base_branch` whenever the file is absent, and an enumeration
+ * of the specs on disk has no use for a branch. `next` passes the root, because
+ * it does use one: the number it allocates must also clear every number the base
+ * branch already holds ({@link specFilenamesOnBase}), and the base is resolved
+ * exactly as every branch-aware tool resolves it — the configured `base_branch`,
+ * else `origin/HEAD` on a config-less project, else the schema default.
  */
 function readCorpus(
   action: "next" | "list",
@@ -504,7 +512,10 @@ function readCorpus(
     );
   }
 
-  const { config } = loadConfig(specConfigPath(env, projectRoot));
+  const { config } = loadConfig(
+    specConfigPath(env, projectRoot),
+    action === "next" ? projectRoot : undefined,
+  );
   const dir = resolveSpecDir(projectRoot, config.spec);
   const corpus = readSpecCorpus(dir);
 
@@ -516,11 +527,14 @@ function readCorpus(
   ];
 
   if (action === "next") {
-    const width = specIdWidth(corpus);
-    const number = nextSpecNumber(corpus);
+    const base = specFilenamesOnBase(projectRoot, dir, config.base_branch);
+    const elsewhere = base?.filenames ?? [];
+    const width = specIdWidth(corpus, elsewhere);
+    const number = nextSpecNumber(corpus, elsewhere);
     const id = formatSpecId(number, width);
     const filename = slug ? `${id}-${slug}.md` : null;
     const collision = slug ? (corpus.records.find((r) => r.slug === slug) ?? null) : null;
+    const claims = base ? baseClaims(corpus, base.filenames, slug) : null;
     payload.next = {
       number,
       id,
@@ -534,9 +548,37 @@ function readCorpus(
             status: collision.status,
           }
         : null,
+      // Null means the base branch was NOT read (no repository, no origin, no
+      // such ref) and the number is the local directory's alone — never "the
+      // base holds nothing", which is `highest: null` on a ref that was read.
+      base: base ? { ref: base.ref, highest: base.highest, ...claims } : null,
     };
     lines.push(
       `**Next number:** ${number} → \`${id}\` (width ${width})`,
+      ...(base
+        ? [
+            `**Base branch:** \`${base.ref}\` as last fetched — ` +
+              (base.highest === null
+                ? "no numbered spec there"
+                : `highest there \`${formatSpecId(base.highest, width)}\``),
+          ]
+        : []),
+      ...(base && claims
+        ? [
+            ...claims.taken.map(
+              (t) =>
+                `⚠️ Number \`${formatSpecId(t.number, width)}\` is already taken on \`${base.ref}\` ` +
+                `by \`${t.filename}\` (local \`${t.local}\`): renumber this draft before it merges.`,
+            ),
+            ...(claims.collision
+              ? [
+                  `⚠️ **Slug collision on the base branch** — \`${base.ref}\` holds ` +
+                    `\`${claims.collision.filename}\`, which this checkout does not have yet. ` +
+                    `Choose a different slug, or supersede that spec once it is merged here.`,
+                ]
+              : []),
+          ]
+        : []),
       ...(filename ? [`**Filename:** \`${dir.rel}/${filename}\``] : []),
       ...(collision
         ? [
@@ -571,6 +613,105 @@ function readCorpus(
   }
 
   return corpusResult(lines, payload);
+}
+
+/**
+ * The spec filenames `origin/<baseBranch>` holds in this corpus's directory, or
+ * null when that tree could not be read.
+ *
+ * A number taken on the base branch is taken: a parallel session's spec reaches
+ * the base before it reaches this checkout, and allocating from the checkout
+ * alone mints the same `NNN` twice. One `git ls-tree` answers it, and it fails
+ * OPEN — no git binary, no repository, no `origin`, no such ref, a directory
+ * outside the repository all leave the local answer exactly as it was, because a
+ * number allocator that refuses to answer blocks every intake to guard against a
+ * collision that is merely possible.
+ *
+ * The remote-tracking ref is read as last fetched. Fetching here would put a
+ * network round trip, and its failure modes, inside a read the pipeline calls at
+ * every intake; a run that wants it current fetches first, which the autopilot
+ * engine does when it cuts the run's worktree.
+ *
+ * The ref is spelled in full, as the engine's worktree code spells it: a bare
+ * `origin/<base>` resolves to a LOCAL branch of that name before the
+ * remote-tracking ref, and a branch someone once created as `origin/dev` would
+ * then answer for the base. The full spelling also starts with `refs/`, so no
+ * configured value can be read as an option.
+ *
+ * The path is relative to `projectRoot`, which is also the command's cwd: git
+ * resolves a pathspec against the cwd, so a project root below the repository's
+ * top level (a monorepo package) lists its own directory. `-z` keeps names
+ * unquoted, and only regular files count, as {@link readSpecCorpus} counts only
+ * regular files on disk; the `runs/` subdirectory is a tree and is never listed
+ * past its own name.
+ */
+function specFilenamesOnBase(
+  projectRoot: string,
+  dir: SpecDirResolution,
+  baseBranch: string,
+): { ref: string; filenames: string[]; highest: number | null } | null {
+  const ref = `origin/${baseBranch}`;
+  const rel = relative(projectRoot, dir.abs).split(sep).join(posix.sep) || ".";
+  const listing = git(["ls-tree", "-z", `refs/remotes/${ref}`, "--", `${rel}/`], projectRoot);
+  if (!listing.ok) return null;
+  const filenames: string[] = [];
+  for (const entry of listing.value.split("\0")) {
+    // `<mode> SP <type> SP <object> TAB <path>`; 100644 / 100755 are regular files.
+    const tab = entry.indexOf("\t");
+    if (tab < 0 || !entry.startsWith("100")) continue;
+    filenames.push(posix.basename(entry.slice(tab + 1)));
+  }
+  const numbers = filenames.map(specFilenameNumber).filter((n): n is number => n !== null);
+  return { ref, filenames, highest: numbers.length > 0 ? Math.max(...numbers) : null };
+}
+
+/**
+ * What the base branch already claims that a file only this checkout holds
+ * claims too: the number, or the slug.
+ *
+ * Raising the next number past the base's highest protects only the specs not
+ * yet opened. A draft opened before a parallel session's spec merged keeps the
+ * number it was allocated, and the re-check `task-start` runs before sealing has
+ * to be told that the number went to someone else in the meantime: `taken`
+ * pairs each base filename with every local file of the same number that the
+ * base does not hold. A local file the base holds too is merged work, never this
+ * session's draft, so two files that share a number on both sides are the
+ * corpus audit's finding rather than a claim against anyone.
+ *
+ * `collision` is the slug half: a base file named `<NNN>-<slug>.md` that this
+ * checkout lacks. The local collision above is matched on frontmatter, which a
+ * listing cannot read, so this one is matched on the filename alone.
+ */
+function baseClaims(
+  corpus: SpecCorpus,
+  onBase: readonly string[],
+  slug: string | undefined,
+): {
+  taken: { number: number; filename: string; local: string }[];
+  collision: { filename: string } | null;
+} {
+  const baseNames = new Set(onBase);
+  const local = [...corpus.records, ...corpus.malformed];
+  const drafts = local.filter((f) => f.number !== null && !baseNames.has(f.filename));
+  const taken = onBase
+    .flatMap((filename) => {
+      const number = specFilenameNumber(filename);
+      if (number === null) return [];
+      return drafts
+        .filter((f) => f.number === number)
+        .map((f) => ({ number, filename, local: f.filename }));
+    })
+    .sort(
+      (a, b) =>
+        a.number - b.number ||
+        a.filename.localeCompare(b.filename) ||
+        a.local.localeCompare(b.local),
+    );
+  const localNames = new Set(local.map((f) => f.filename));
+  const claimed = slug
+    ? onBase.find((f) => !localNames.has(f) && specFilenameSlug(f) === slug)
+    : undefined;
+  return { taken, collision: claimed ? { filename: claimed } : null };
 }
 
 /** The config file that governs THIS call's project root (see `readCorpus`). */
@@ -2220,6 +2361,10 @@ function readOracle(cmd: string, projectRoot: string, plannedPaths: string[]): O
  *  - `oracle-filter` (FAIL): a test runner's name filter whose value starts
  *    with `-` is parsed as an option, and the runner exits with an error
  *    (vitest 4: `CACError: Unknown option`), so the oracle can never pass.
+ *  - `oracle-ref` (FAIL): a `kind: test` ref holding a shell metacharacter
+ *    (`; | & \` < >`, a newline, `$(`). The oracle runner refuses to substitute
+ *    it into `gates.test_one` (`unsafe-ref`), so every gate would report the
+ *    criterion as having no runnable oracle.
  *  - `oracle-narrow` (WARN): a project-wide gate or bare runner that names no
  *    file, directory, quoted pattern, URL or test filter — `npm test`, `bun run
  *    build`, `npm run e2e`. It proves the suite is green, not that this
@@ -2235,11 +2380,13 @@ function checkOracles(c: SpecContract, projectRoot: string): Check[] {
   const flagFilters: string[] = [];
   const broad: string[] = [];
   const noFailure: string[] = [];
+  const unsafeRefs: string[] = [];
   let commands = 0;
 
   for (const cr of c.criteria) {
     if (cr.oracle.kind === "prose-review") continue;
     if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    if (isUnsafeOracleRef(cr)) unsafeRefs.push(`${cr.id}: ${cr.oracle.ref?.trim()}`);
     const cmd = oracleCommand(cr);
     if (!cmd) continue;
     commands += 1;
@@ -2279,6 +2426,15 @@ function checkOracles(c: SpecContract, projectRoot: string): Check[] {
         "oracle-filter",
         "Oracles",
         `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} — drop the leading dashes from the pattern`,
+      ),
+    );
+  }
+  if (unsafeRefs.length) {
+    checks.push(
+      fail(
+        "oracle-ref",
+        "Oracles",
+        `test ref(s) holding a shell metacharacter are refused by the oracle runner (unsafe-ref), so the criterion has no runnable oracle at any gate: ${listed(unsafeRefs)} — rename the test without ; | & \` < > or $(, or give the criterion an explicit \`run\``,
       ),
     );
   }

@@ -448,6 +448,29 @@ test("a test-name filter starting with a dash blocks, only for a test runner", a
   assert.equal(find(docker.parsed, "oracle-filter"), undefined);
 });
 
+test("a test ref the oracle runner would refuse as unsafe-ref blocks; a command ref does not", async () => {
+  // A live sandbox spec passed the DoR with `::clamp throws RangeError when lo > hi`, and every
+  // gate after it reported the criterion as having no runnable oracle.
+  const { parsed } = await callSpec({
+    specContent: VALID_FEATURE.replace(
+      "ref: test/sample.test.mjs::exists",
+      'ref: "test/sample.test.mjs::throws when lo > hi"',
+    ),
+    projectRoot: repoRoot,
+  });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "oracle-ref");
+  assert.equal(check.status, "fail");
+  assert.match(check.detail, /AC1: test\/sample\.test\.mjs::throws when lo > hi/);
+
+  // A `kind: command` ref is the command itself and is never screened (storage/oracles.ts).
+  const chained = await callSpec({
+    specContent: withAc2Oracle("grep -q sample docs/sample-new.md && grep -q x docs/sample-new.md"),
+    projectRoot: repoRoot,
+  });
+  assert.equal(find(chained.parsed, "oracle-ref"), undefined);
+});
+
 test("an oracle naming a file that neither exists nor is planned blocks", async () => {
   const { parsed } = await callSpec({
     specContent: withAc2Oracle("node scripts/does-not-exist.mjs --check"),
