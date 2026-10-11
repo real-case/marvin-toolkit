@@ -102,7 +102,8 @@ project the pipeline is configured for is marvin-toolkit itself (Task 19); live 
   and `.gitignore` re-includes both, so autopilot can run against marvin-toolkit itself. Its
   `gates.test_one` is `scripts/test-one.mjs`, which runs one test file under the runner, and from
   the directory, of the workspace that owns it (`node --test` or vitest), rebuilds the shared
-  library first for that library's importers, and exits 127 for a path no test script selects.
+  library first for that library's importers (server, shared-library and widget tests), and exits
+  127 for a path no test script selects.
   `project-config.test.mjs` loads the three files through the engine's loaders and fails on a
   stripped key, a reset subtree or an ignored pattern.
 

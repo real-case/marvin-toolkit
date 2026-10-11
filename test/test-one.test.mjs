@@ -61,7 +61,7 @@ test("a widget test runs under vitest from the widgets workspace, at any depth u
     dir: "packages/marvin-widgets",
     rel: "src/lib/actions.test.ts",
     runner: "vitest",
-    shared: false,
+    shared: true,
   });
   assert.equal(
     routeTestFile("packages/marvin-widgets/src/widgets/dashboard/DashboardWidget.test.tsx").rel,
@@ -115,8 +115,36 @@ test("the routes select what each workspace's own test script selects", () => {
     ROUTES.filter((r) => r.shared)
       .map((r) => r.dir)
       .sort(),
-    ["packages/marvin-mcp-shared", "plugins/marvin/mcp/server"],
+    ["packages/marvin-mcp-shared", "packages/marvin-widgets", "plugins/marvin/mcp/server"],
   );
+});
+
+test("a route whose tests import the shared library at run time rebuilds it first", () => {
+  // The library's package exports point only at its git-ignored dist/. A route that skips the
+  // rebuild runs its importers against whatever build is on disk, and in a re-seal's base tree
+  // against none: the import fails, the runner reports one failed file, and the seal stage takes
+  // that for the test's red. The server's tests reach the library through the modules they load
+  // rather than an import of their own, so this direction is the one a file scan can hold.
+  const manifest = readJson("packages", "marvin-mcp-shared", "package.json");
+  assert.ok(
+    Object.values(manifest.exports).every((target) => target.default.startsWith("./dist/")),
+    "the shared library is consumed from its build output",
+  );
+  const valueImport = /^\s*import\s+(?!type\b)[^;]*?\bfrom\s+["']@marvin-toolkit\/mcp-shared\b/m;
+  // No inherited GIT_* variable, so an ambient GIT_DIR cannot choose the repository listed.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
+  );
+  const tracked = spawnSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8", env })
+    .stdout.split("\0")
+    .filter(Boolean);
+  const importers = tracked.filter(
+    (f) => !routeTestFile(f).refused && valueImport.test(readFileSync(join(repoRoot, f), "utf8")),
+  );
+  assert.ok(importers.length > 0, "some routed test imports the shared library");
+  for (const file of importers) {
+    assert.equal(routeTestFile(file).shared, true, `${file} imports the shared library`);
+  }
 });
 
 test("the environment a test sees is the clean shell's", () => {

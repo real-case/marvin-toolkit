@@ -317,7 +317,8 @@ acceptance oracle, the autopilot seal stage and the pipeline verifier all resolv
 criterion to it. It runs the file under the runner, and from the directory, of the workspace that
 owns it: `node --test` for a top-level `test/*.test.mjs` of the root, the server, the shared
 library or the site, and vitest for a widget `src/**/*.test.{ts,tsx}`. It rebuilds the shared
-library first for that library's importers, and exits 127 ("nothing ran") for any other path. A
+library first for that library's importers (server, shared-library and widget tests, which reach
+its git-ignored `dist/`), and exits 127 ("nothing ran") for any other path. A
 site e2e spec is refused, because Playwright needs a fresh site build and port 4321, which a
 running dev server takes over; a criterion it proves carries its own `oracle.run` or is a
 `kind: command` oracle.

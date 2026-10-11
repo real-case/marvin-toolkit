@@ -327,12 +327,32 @@ test("the checks let a version bump through and catch what they exist for", () =
     'test("x", { skip: true }, () => {});',
     'describe("x", { todo: "later" }, () => {});',
     'test("x", { skip: process.platform === "win32" }, () => {});',
+    't.test("x", { timeout: 5000, todo: true }, () => {});',
+    "test(name, { skip: !hasGit }, async () => {",
+    // A wrapped call puts its options alone on a line, as Prettier does.
+    '  { skip: process.platform !== "darwin" },',
+    '  { skip: canWrite ? false : "cannot simulate an unwritable dir here" },',
     't.skip("flaky");',
     'it.todo("later");',
   ]) {
     assert.deepEqual(hits("test/a.test.mjs", line), ["test-skip-option:major"], line);
   }
-  assert.deepEqual(hits("test/a.test.mjs", 'test("x", { skip: false }, () => {});'), []);
+  // `todo` is a status role in marvin's board, dashboard and task-list domain, so its roll-ups
+  // (`counts`, `role_counts`, `board_counts`, `board_role_counts`) are written `{ todo: N, ... }`
+  // throughout the tests, and so are other role-keyed maps. None is a test option.
+  for (const line of [
+    'test("x", { skip: false }, () => {});',
+    "board_counts: { todo: 1, wip: 0, done: 2 },",
+    "assert.deepEqual(res.structuredContent.role_counts, { todo: 2, wip: 1 });",
+    "const payload = { tasks: [], counts: { todo: 0, wip: 1 } };",
+    "  { todo: 2, wip: 1 },",
+    'const tones = { todo: "neutral", wip: "info" };',
+    "const byRole = { todo: TOKENS.bd2, wip: TOKENS.acc };",
+    'test("counts", () => assert.deepEqual(c, { todo: 2 }));',
+    "const page = list(all, { skip: 10, limit: 5 });",
+  ]) {
+    assert.deepEqual(hits("test/a.test.mjs", line), [], line);
+  }
   // Server stdout and browser SDKs, and the pipeline CLI that prints JSON by design.
   assert.deepEqual(hits("plugins/marvin/mcp/server/src/tools/x.ts", 'console.log("x");'), [
     "server-stdout:major",
@@ -368,6 +388,40 @@ test("the checks let a version bump through and catch what they exist for", () =
   // A file that decides what a gate sees is flagged for the verifier, never rejected.
   assert.deepEqual(hits(".prettierignore", "packages/"), ["gate-definition-edit:minor"]);
   assert.deepEqual(hits("packages/site/.gitignore", "dist/"), ["gate-definition-edit:minor"]);
+});
+
+test("over the tracked tests, the skip rule finds the skipped tests and no role roll-up", () => {
+  // The added-line form of every tracked test file: what the rule meets when a run rewrites one.
+  const rule = RULES.filter((r) => r.id === "test-skip-option");
+  const only = new RegExp(rule[0].path_pattern);
+  const lines = tracked
+    .filter((f) => only.test(f) && f !== "plugins/marvin/mcp/server/test/project-config.test.mjs")
+    .flatMap((file) =>
+      read(file)
+        .split("\n")
+        .map((text, i) => ({ file, line: i + 1, text })),
+    );
+  const found = scanChecks(lines, rule, 10_000);
+  assert.ok(
+    found.every((h) => !h.timedOut),
+    "the rule scans the whole corpus within its budget",
+  );
+  const roleRollUp = /\btodo\s*:\s*\d/;
+  assert.deepEqual(
+    found.filter((h) => roleRollUp.test(h.text)).map((h) => `${h.file}:${h.line}`),
+    [],
+  );
+  // The corpus's own conditional skips sit on the options line of a wrapped call.
+  for (const file of [
+    "plugins/marvin/mcp/server/test/pipeline-seal.test.mjs",
+    "plugins/marvin/mcp/server/test/pipeline-worktree.test.mjs",
+    "plugins/marvin/mcp/server/test/usage-log.test.mjs",
+  ]) {
+    assert.ok(
+      found.some((h) => h.file === file),
+      `${file} holds a conditional skip the rule sees`,
+    );
+  }
 });
 
 test("git versions the project settings, keeps the local spec corpus out, and unions the calibration log", () => {

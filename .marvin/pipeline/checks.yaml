@@ -24,9 +24,9 @@
   severity: minor
   category: gate-integrity
 - id: test-skip-option
-  pattern: '[{,]\s*(?:skip|todo)\s*:(?!\s*false\b)|\b(?:t|test|it|describe)\.todo\(|\bt\.skip\('
+  pattern: '\b(?:test|it|describe|suite)(?:\.\w+)?\(\s*(?:"[^"]*"|''[^'']*''|`[^`]*`|[\w$.]+)\s*,\s*\{(?:[^}]*,)?\s*(?:skip|todo)\s*:(?!\s*(?:false\b|\d))|^\s*\{(?:[^}]*,)?\s*(?:skip|todo)\s*:(?!\s*(?:false\b|\d))|\b(?:t|test|it|describe)\.todo\(|\bt\.skip\('
   path_pattern: '\.test\.[cm]?[jt]sx?$'
-  message: "skipped or todo test added (a skip or todo option, t.skip() or .todo()); a todo test's failure does not fail the run"
+  message: "skipped or todo test added (a skip or todo option of a test call, t.skip() or .todo()); a todo test's failure does not fail the run"
   severity: major
   category: test-quality
 - id: server-stdout

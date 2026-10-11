@@ -28,10 +28,13 @@
 //     this way on purpose: it needs a fresh site build and port 4321, which a running dev server
 //     silently takes over, so a criterion it proves names its own `oracle.run` or is a
 //     `kind: command` oracle.
-//   - Server and shared-library tests import the shared library's build output, which git
-//     ignores. It is rebuilt first (about two seconds), so the test judges the current source:
-//     nothing else rebuilds it before an oracle, and a re-seal's base tree has none at all. A
-//     library that does not build exits 127 too, since the test itself never started.
+//   - Server, shared-library and widget tests import the shared library's build output, which
+//     git ignores: the package exports point only at `dist/`, and the widgets' vite.config.ts
+//     has no alias to `src/`. It is rebuilt first (about two seconds), so the test judges the
+//     current source: nothing else rebuilds it before an oracle, and a re-seal's base tree has
+//     none at all. There a widget test that imports a contract fails to resolve it, vitest counts
+//     one failed file, and the seal stage would take that failure as the test's red. A library
+//     that does not build exits 127 instead, since the test itself never started.
 //   - The environment is hermetic in the sense test/_driver.mjs gives the word: every `MARVIN_*`
 //     variable except `MARVIN_TEST_TIMEOUT_MS` (a knob the tests themselves read), and
 //     `CLAUDE_PROJECT_DIR`, are dropped, so a run started from an MCP server or a pipeline child
@@ -83,7 +86,7 @@ export const ROUTES = [
     pattern: /^packages\/marvin-widgets\/src\/(?:[^/]+\/)*[^/]+\.test\.tsx?$/,
     dir: WIDGETS_DIR,
     runner: "vitest",
-    shared: false,
+    shared: true,
   },
 ];
 
