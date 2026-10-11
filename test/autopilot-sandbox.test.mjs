@@ -123,13 +123,17 @@ const trailOf = (runDir) =>
     : "";
 const readRun = (runDir) => JSON.parse(readFileSync(join(runDir, "run.json"), "utf8"));
 
-/** One `marvin-pipe` command, as the orchestrator runs it; its stdout. */
+/**
+ * One `marvin-pipe` command, as the orchestrator runs it; its stdout. Bounded, so an engine that
+ * regressed to holding the launcher's stdio fails the test instead of blocking it for good:
+ * a synchronous call waits for the pipe, and no test timeout can interrupt it.
+ */
 const pipe = (env, ...args) =>
-  execFileSync(process.execPath, [cli, ...args], { env, encoding: "utf8" });
+  execFileSync(process.execPath, [cli, ...args], { env, encoding: "utf8", timeout: 60_000 });
 
 /** One `marvin-pipe` command that must fail; its stderr. */
 function pipeFails(env, ...args) {
-  const r = spawnSync(process.execPath, [cli, ...args], { env, encoding: "utf8" });
+  const r = spawnSync(process.execPath, [cli, ...args], { env, encoding: "utf8", timeout: 60_000 });
   assert.notEqual(r.status, 0, `expected marvin-pipe ${args[0]} to fail; stdout: ${r.stdout}`);
   return r.stderr;
 }

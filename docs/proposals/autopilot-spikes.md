@@ -127,11 +127,11 @@ rests on a running child while the test acts on it.
 
 | Verified | Test |
 |----------|------|
-| The engine `start` launches leads a session and a process group of its own, and leaves the launching shell's process tree once `start` exits. | "S8: the engine outlives the process group of the shell that started it …" |
+| The engine `start` launches leads a process group of its own, and leaves the launching shell's process tree once `start` exits. | "S8: the engine outlives the process group of the shell that started it …" |
 | A shell runs `node <cli> start --run <runDir>` as SKILL.md does. SIGKILL to the shell's whole process group, plus closing the pipes its output was read through, leaves the engine running. The same engine then drives the run to `ready` and writes its last line to `engine.log`. | same |
 | While that engine lives, a second `start` is refused (`an engine already holds`), and so is a bare `engine` (`engine already running (pid N)`). Neither writes to `run.json` or `events.jsonl`. | same |
-| SIGKILL to the engine's process group mid-run leaves its lock held and no `engine stopped` note, and `await` prints `ENGINE down`. The running child survives, since it leads a group of its own. | "S8: an engine killed mid-run is reported down …" |
-| The resume path of SKILL.md section 2 and `recovery.md` (`list`, `attach`, `start`) restarts the run. A second engine, killed while waiting on the same child, is reported down again. A third picks up the child that finished while no engine ran. The run reaches `ready` with the planner launched once, and every child spawned after `attach` reports to the new orchestrator. | same |
+| SIGKILL to the engine's process group mid-run leaves no `engine stopped` note, and `await` prints `ENGINE down`. The running child survives, since it leads a group of its own. | "S8: an engine killed mid-run is reported down …" |
+| The resume path of SKILL.md section 2 and `recovery.md` (`list`, `attach`, `start`) restarts the run. A second engine, killed in turn, is reported down again. A third picks up the child that finished while no engine ran. The run reaches `ready` with the planner launched once, and every child spawned after `attach` reports to the new orchestrator. | same |
 
 Each test was checked against the defect it targets, by mutating the source and rebuilding the
 bundle:
