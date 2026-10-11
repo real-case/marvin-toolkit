@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), and Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10). Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit), a two-repeat baseline for the L3 gate, Task 22 (conditional on benchmark evidence). Spike S8 is still half open: engine survival across a turn end and an app restart is unverified |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), a candidate that passes the L3 gate against the baseline (see "Benchmark iterations" under Task 21), Task 22 (conditional on benchmark evidence) |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |
@@ -3912,6 +3912,44 @@ Known bias: the real PR's tests may name internals the pipeline is free to choos
 - **Acceptance run** (`evals/autopilot/results/2026-10-10-haiku-baseline.{json,md}`): `clamp` and `csv-quotes`, `--repeat 1`, all children and the judge on Haiku. Both reached `ready` with every hidden test file passing (3/3). `clamp`: tier light as expected, one iteration, $1.31 notional, 9.3 min. `csv-quotes`: the planner chose `risk: low`, so tier light against the expected standard (no sealed tests), two iterations after one gate rejection (spec and metrics record left uncommitted), one planner crash retry, $1.54 notional, 11.6 min. No child asked a question, so the judge was not called. The comparison against itself is inconclusive by design (one repeat), with all three clauses holding. A two-repeat baseline, and a matrix variant run against it, remain to be made.
 
 ---
+
+**Benchmark iterations (2026-10-11).** Five two-repeat Haiku runs of the sandbox suite, each
+compared with the L3 gate against the baseline (`evals/autopilot/results/2026-10-11-*.md`):
+
+| Variant | Commit | Ready | Hidden | Notional cost | Wall | L3 |
+|---------|--------|-------|--------|---------------|------|----|
+| `haiku-baseline` | 5115cf6 | 7/8 | 100% | $13.53 | 99 min | baseline |
+| `haiku-seal-fix` | 0e6b6a2 | 5/8 | 75% | $11.38 | 87 min | reject |
+| `haiku-refusal-resume` | 3d4013b | 7/8 | 83.3% | $11.49 | 78 min | reject |
+| `haiku-integrated` | 80329b3 | 5/8 | 58.3% | $7.74 | 52 min | reject |
+| `haiku-engine-seal` | 19707ac | 7/8 | 83.3% | $9.11 | 64 min | reject |
+
+What each changed, and what it showed:
+
+- `0e6b6a2`: an unsealed spec no longer reaches approval, and a gate that finds the spec unsealed
+  halts instead of handing the executor a seal to forge (the baseline's slugify #1 executor
+  stamped a `contract_sha` with `shasum` and the gate judged it tampered three times).
+- `3d4013b`: a child whose finished turn the engine refuses for a stated reason is resumed in its
+  own session with the reason, rather than restarted blind.
+- `80329b3`: the engine commits the approved spec (see the note under §3.3), a `message-guard`
+  limits a child's `SendMessage` to its orchestrator and denies `ListAgents` (a bench executor
+  had listed the machine's sessions and reported into an unrelated one), and the S8 tests. Every
+  run that passed planning reached `ready` in one iteration with no gate rejection; the baseline
+  spent five extra iterations over uncommitted specs and records.
+- `19707ac`: the engine seals a spec its planner left unsealed once the DoR gate passes, and
+  flips a `draft` to `ready` (`readySpec` in `assess.ts`). The hints of the two commits before it
+  had told the planner to seal through `action: "seal"`, which only verifies, and never to write
+  `contract_sha`, the opposite of task-start's "Write & seal" step; across the five benches at
+  least nine of 40 runs had a planner return a spec that was unsealed or carried a hash it
+  computed itself. In this run the engine sealed two such specs, and both runs reached `ready`.
+
+Reading the last row against the baseline: both deliver 7 of 8 runs, at 33% lower notional cost
+and 35% less wall time. The pass rate differs because the hidden tests run on whatever a run left
+in its worktree: the baseline's halted run (slugify #1) had correct code from three executor
+iterations and scored 1/1, while the candidate's halted run (csv-quotes #2, a contract block the
+planner wrote as invalid YAML twice) stopped at planning with no code and scored 0/2. Whether
+the gate should score a run that did not deliver is the owner's decision; until then the rule
+stands and the candidate is rejected.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 
