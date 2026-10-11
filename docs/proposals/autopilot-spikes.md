@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                                         |
 | ---------- | --------------------------------------------------------------------------------------------- |
-| Status     | Phase 0 complete; D20 decided (a); S8 turn-end/app-restart half pending |
+| Status     | Phase 0 complete; D20 decided (a); S8 verified at the process level by tests (2026-10-11), a real turn end and desktop-app restart still owed |
 | Date       | 2026-10-04                                                                                    |
 | Plan       | `docs/proposals/autopilot-implementation-plan.md`                                             |
 | Setup      | Claude Code CLI 2.1.285, macOS, Haiku 4.5 for most probes, Sonnet 5.5 for S6; host repo = osint-chat-client |
@@ -116,11 +116,52 @@ Haiku, `acceptEdits`, ~3.7k-word `--append-system-prompt-file`, no tools.
 
 **Decision.** D13 confirmed: a byte-identical static system prompt per role makes later spawns' first request about 73% cheaper. Caching is best-effort, with an occasional miss. The engine records `cache_read_input_tokens` per child for calibration.
 
-## S8 — detached engine survival (partial)
+## S8 — detached engine survival
 
-A node process spawned with `detached: true` + `unref()` from a Code-tab Bash call: PPID 1, its own process group. It was alive across 20+ later tool calls and 10+ minutes (pid 68940, self-exits after 1 h).
+**2026-10-04, by hand.** A node process spawned with `detached: true` + `unref()` from a Code-tab Bash call: PPID 1, its own process group. It was alive across 20+ later tool calls and 10+ minutes (pid 68940, self-exits after 1 h).
 
-**Pending.** Survival across this session's turn end and a desktop-app restart needs the user, or a check in a later turn.
+**2026-10-11, by test.** The process-level half is pinned by two hermetic tests in
+`test/autopilot-sandbox.test.mjs`. They drive the committed `marvin-pipe` bundle over the
+deterministic sandbox's fake children, with the fake planner held mid-turn, so that the engine
+rests on a running child while the test acts on it.
+
+| Verified | Test |
+|----------|------|
+| The engine `start` launches leads a session and a process group of its own, and leaves the launching shell's process tree once `start` exits. | "S8: the engine outlives the process group of the shell that started it …" |
+| A shell runs `node <cli> start --run <runDir>` as SKILL.md does. SIGKILL to the shell's whole process group, plus closing the pipes its output was read through, leaves the engine running. The same engine then drives the run to `ready` and writes its last line to `engine.log`. | same |
+| While that engine lives, a second `start` is refused (`an engine already holds`), and so is a bare `engine` (`engine already running (pid N)`). Neither writes to `run.json` or `events.jsonl`. | same |
+| SIGKILL to the engine's process group mid-run leaves its lock held and no `engine stopped` note, and `await` prints `ENGINE down`. The running child survives, since it leads a group of its own. | "S8: an engine killed mid-run is reported down …" |
+| The resume path of SKILL.md section 2 and `recovery.md` (`list`, `attach`, `start`) restarts the run. A second engine, killed while waiting on the same child, is reported down again. A third picks up the child that finished while no engine ran. The run reaches `ready` with the planner launched once, and every child spawned after `attach` reports to the new orchestrator. | same |
+
+Each test was checked against the defect it targets, by mutating the source and rebuilding the
+bundle:
+
+- `start` without `detached`: the first test fails, since the engine shares the launcher's process group and dies with it;
+- `start` with inherited stdio: the first test fails at `engine.log`. The run still reaches `ready`, but the engine's last line went to the dead pipe;
+- child wrappers launched without `detached`: the second test fails, since the planner dies with the engine's group.
+
+**Already pinned at the module level** (plan Task 12), with scripted dependencies or a lock taken
+in-process:
+
+- the takeover of a dead holder's lock and its compare-and-swap (`pipeline-loop`: "a lock left by an engine that died is taken over", "starters racing over a dead engine's lock");
+- a restart while a child runs, after an interrupted spawn, during interrupted work, and on a pending judgment (`pipeline-loop`);
+- a replayed spawn adopting the child already launched (`pipeline-runtime`: "a replayed spawn adopts the child already launched").
+
+The new tests add the real processes.
+
+**Supporting evidence.** In all eight runs of the 2026-10-11 Haiku baseline, a `start` that exited
+at once launched the engine. Each engine drove its run to a terminal stage alone, under a single
+lock generation.
+
+**Still owed to a human.**
+
+- **A real desktop-app restart** with a run in flight: quit and relaunch, and an update relaunch. Afterwards the engine's pid and a running child's wrapper must be alive, and `/marvin:autopilot resume` must reattach. The tests show the engine is outside the launching shell's process group and tree, which is what a tool call's or a session's teardown can reach. What macOS does to an application's other descendants on quit is not observable from a test.
+- **A real Code-tab turn end.** The test kills the process group of a shell it made itself; how the Bash tool tears down its shell (group, tree, or a pty hangup) was not observed. A hangup cannot reach the engine, which has no controlling terminal, but that is inferred, not observed.
+
+**Observed, not changed.**
+
+- The lock holder's liveness is `kill(pid, 0)`, which any live process with that pid satisfies (`pipeline-loop`: "a holder the OS refuses to signal is alive, not stale"). An engine that died, and whose pid was later reused, most plausibly after a reboot, would read as alive. `start` would then refuse the run, and `await` would never print `ENGINE down`. Comparing the process's start time with the holder's `startedAt`, or its command line as `stopStalled` does for a child's wrapper, would close this.
+- A child whose wrapper died without writing an exit file (a reboot, not an engine death) reads as running until `stall_minutes` (default 15). It is then halted as stalled; nothing checks the wrapper's pid sooner.
 
 ## S9 — hook payload and denial
 
