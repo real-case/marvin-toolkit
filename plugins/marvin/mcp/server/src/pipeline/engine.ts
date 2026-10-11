@@ -314,6 +314,20 @@ const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
  */
 const SEAL_LOST = new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 
+/** What a resumed child is told when the engine refused the turn it finished. */
+const refusalMessage = (role: Role, detail: string) =>
+  [
+    `OUTPUT REFUSED: ${detail}`,
+    ...(role === "planner"
+      ? [
+          'Validate and seal the spec with the marvin `spec` tool (action "dor", then "seal").',
+          "Never write contract_sha by hand.",
+        ]
+      : []),
+    ...(role === "executor" ? ["A question or a dispute needs status needs_input."] : []),
+    "Correct it, then finish again with output your role's schema accepts.",
+  ].join("\n");
+
 const blocking = (f: Finding) => f.severity !== "minor";
 const asFindings = (xs: Record<string, unknown>[]) => xs as unknown as Finding[];
 const asRecords = (fs: readonly Finding[]) => fs as unknown as Record<string, unknown>[];
@@ -635,9 +649,22 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           detail: fault.detail,
         });
       }
+      const r = { ...run, retries: { ...run.retries, [role]: tries + 1 } };
+      // A child that finished its turn and was refused for a stated reason hears the reason in
+      // its own session: started afresh, it repeated the same mistake in the 2026-10-11 bench.
+      // One that died without a result has no turn worth resuming and starts again.
+      const refused =
+        (fault.kind === "invalid" || fault.kind === "crashed") &&
+        result.structured !== null &&
+        result.sessionId !== null &&
+        fault.detail !== "";
       return {
-        run: { ...run, retries: { ...run.retries, [role]: tries + 1 } },
-        actions: [lastSpawnOf(run, role)],
+        run: r,
+        actions: [
+          refused
+            ? spawn(r, role, { message: refusalMessage(role, fault.detail) }, true)
+            : lastSpawnOf(run, role),
+        ],
       };
     }
   }

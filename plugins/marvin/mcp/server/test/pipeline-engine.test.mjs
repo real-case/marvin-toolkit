@@ -439,6 +439,45 @@ const retryThenHalt = (run, obs, role, pattern) => {
   assert.equal(second.run.haltRole, role);
 };
 
+test("a refused turn is retried in the child's own session with the reason; a dead child starts afresh", () => {
+  // The 2026-10-11 bench: an executor returned done with a dispute, a fresh executor did the
+  // same, and the run halted; a planner whose spec had no contract block was restarted blind
+  // and wrote the same spec again.
+  const disputed = go(
+    executingRun(),
+    child("executor", executorDone({ dispute: { path: "t.mjs", reason: "r", evidence: "e" } })),
+  );
+  assert.equal(judgmentOf(disputed), undefined);
+  assert.deepEqual([spawnOf(disputed).role, spawnOf(disputed).resume], ["executor", true]);
+  assert.match(spawnOf(disputed).context.message, /^OUTPUT REFUSED: dispute: /);
+  assert.match(spawnOf(disputed).context.message, /needs status needs_input/);
+  assert.equal(spawnOf(disputed).iteration, 1);
+
+  const unreadable = go(planningRun(), {
+    ...child(
+      "planner",
+      { status: "spec_ready", summary: "s", spec: { path: "specs/1-x.md" } },
+      "crashed",
+    ),
+    result: {
+      ...child("planner", { status: "spec_ready", summary: "s" }, "crashed").result,
+      detail:
+        "spec_ready names specs/1-x.md, which the engine cannot read: spec has no spec-contract block",
+    },
+  });
+  assert.equal(spawnOf(unreadable).resume, true);
+  assert.match(spawnOf(unreadable).context.message, /no spec-contract block/);
+  assert.match(spawnOf(unreadable).context.message, /action "dor", then "seal"/);
+  assert.equal(unreadable.run.retries.planner, 1);
+  // The cap still holds: a second refusal halts.
+  assert.equal(judgmentOf(go(unreadable.run, child("planner", null, "crashed"))), "halt");
+
+  // A child that died leaves no turn to resume: the last spawn repeats as it was.
+  const died = go(executingRun(), child("executor", null, "crashed"));
+  assert.equal(spawnOf(died).resume, false);
+  assert.equal(spawnOf(died).context.message, undefined);
+});
+
 test("a planner spec path that escapes the repo is a malformed result: retried once, then halted", () => {
   const bad = {
     ...child(

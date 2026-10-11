@@ -15866,6 +15866,15 @@ var STAGE_OF = {
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
+var refusalMessage = (role, detail) => [
+  `OUTPUT REFUSED: ${detail}`,
+  ...role === "planner" ? [
+    'Validate and seal the spec with the marvin `spec` tool (action "dor", then "seal").',
+    "Never write contract_sha by hand."
+  ] : [],
+  ...role === "executor" ? ["A question or a dispute needs status needs_input."] : [],
+  "Correct it, then finish again with output your role's schema accepts."
+].join("\n");
 var blocking = (f) => f.severity !== "minor";
 var asFindings = (xs) => xs;
 var asRecords = (fs) => fs;
@@ -16128,9 +16137,13 @@ function step(run2, obs, rubric, now) {
           detail: fault.detail
         });
       }
+      const r = { ...run2, retries: { ...run2.retries, [role]: tries + 1 } };
+      const refused = (fault.kind === "invalid" || fault.kind === "crashed") && result.structured !== null && result.sessionId !== null && fault.detail !== "";
       return {
-        run: { ...run2, retries: { ...run2.retries, [role]: tries + 1 } },
-        actions: [lastSpawnOf(run2, role)]
+        run: r,
+        actions: [
+          refused ? spawn4(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
+        ]
       };
     }
   }
