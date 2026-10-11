@@ -36043,6 +36043,13 @@ function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
   const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
   return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
 }
+function recordSlugForSpec(declared, specPath) {
+  const own = (declared ?? "").trim();
+  const slug = own || slugOfRecord(specPath);
+  if (!SLUG_RE.test(slug)) return null;
+  if (!own && /^\d+-/.test(slug)) return null;
+  return slug;
+}
 function metricsDirFor(env2, projectRoot) {
   return projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
 }
@@ -36980,10 +36987,8 @@ function verifySeal(raw, env2, projectRoot, diskPath) {
 }
 function ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict) {
   if (!diskPath || verdict === "FAIL") return;
-  const declared = (frontmatter.slug ?? "").trim();
-  const slug = declared || slugOfRecord(diskPath);
-  if (!SLUG_RE3.test(slug)) return;
-  if (!declared && /^\d+-/.test(slug)) return;
+  const slug = recordSlugForSpec(frontmatter.slug, diskPath);
+  if (slug === null) return;
   try {
     ensureRecordForSpec(env2, projectRoot, slug, diskPath);
   } catch {
@@ -39487,6 +39492,12 @@ var Run = external_exports.object({
   worktree: external_exports.string().nullable(),
   branch: external_exports.string().nullable(),
   specPath: external_exports.string().nullable(),
+  /**
+   * The commit in which the engine put the approved spec, and its metrics record unless git
+   * ignores it, on the run branch; null until the approval. Absent from runs written before it
+   * existed.
+   */
+  specCommit: external_exports.string().nullable().default(null),
   tier: external_exports.enum(TIERS).nullable(),
   tierReasons: external_exports.array(external_exports.string()),
   prUrl: external_exports.string().nullable(),

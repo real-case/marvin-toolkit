@@ -3959,10 +3959,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep6, value } = collItem;
+        const { start: start2, key, sep: sep7, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3976,7 +3976,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep6) {
+          if (!keyProps.anchor && !keyProps.tag && !sep7) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4000,7 +4000,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep7 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4016,7 +4016,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep7, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4105,7 +4105,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep6 = "";
+        let sep7 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4119,13 +4119,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep6 + cb;
-              sep6 = "";
+                comment += sep7 + cb;
+              sep7 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep6 += source;
+                sep7 += source;
               hasSpace = true;
               break;
             default:
@@ -4167,18 +4167,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start: start2, key, sep: sep6, value } = collItem;
+        const { start: start2, key, sep: sep7, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep6 && !value) {
+          if (!props.anchor && !props.tag && !sep7 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4232,8 +4232,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep6 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
+        if (!isMap && !sep7 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep7, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4245,7 +4245,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep7 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4256,8 +4256,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep6)
-                for (const st of sep6) {
+              if (sep7)
+                for (const st of sep7) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4274,7 +4274,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep7, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4452,7 +4452,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep6 = "";
+      let sep7 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4469,24 +4469,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep6 === " ")
-            sep6 = "\n";
-          else if (!prevMoreIndented && sep6 === "\n")
-            sep6 = "\n\n";
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          if (sep7 === " ")
+            sep7 = "\n";
+          else if (!prevMoreIndented && sep7 === "\n")
+            sep7 = "\n\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep6 === "\n")
+          if (sep7 === "\n")
             value += "\n";
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          value += sep6 + content;
-          sep6 = " ";
+          value += sep7 + content;
+          sep7 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4667,25 +4667,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep6 = " ";
+      let sep7 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep6 === "\n")
-            res += sep6;
+          if (sep7 === "\n")
+            res += sep7;
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          res += sep6 + match[1];
-          sep6 = " ";
+          res += sep7 + match[1];
+          sep7 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep6 + (match?.[1] ?? "");
+      return res + sep7 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5488,14 +5488,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep6, value }) {
+    function stringifyItem({ start: start2, key, sep: sep7, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep6)
-        for (const st of sep6)
+      if (sep7)
+        for (const st of sep7)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6657,18 +6657,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep6;
+          let sep7;
           if (scalar.end) {
-            sep6 = scalar.end;
-            sep6.push(this.sourceToken);
+            sep7 = scalar.end;
+            sep7.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep6 = [this.sourceToken];
+            sep7 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep6 }]
+            items: [{ start: start2, key: scalar, sep: sep7 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6821,15 +6821,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep6 = it.sep;
-                  sep6.push(this.sourceToken);
+                  const sep7 = it.sep;
+                  sep7.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep6 }]
+                    items: [{ start: start3, key, sep: sep7 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -7023,13 +7023,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep6 = fc.end.splice(1, fc.end.length);
-            sep6.push(this.sourceToken);
+            const sep7 = fc.end.splice(1, fc.end.length);
+            sep7.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep6 }]
+              items: [{ start: start2, key: fc, sep: sep7 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -11437,6 +11437,40 @@ function extractContractBlock(body) {
 function contractHash(blockText) {
   return createHash("sha256").update(blockText.trim()).digest("hex").slice(0, 16);
 }
+var SPEC_DIRS = [".marvin/task", "specs", "docs/specs", "docs/rfcs", "rfcs"];
+function resolveSpecBySlug(dir, slug, projectRoot) {
+  const abs = isAbsolute(dir) ? dir : join(projectRoot, dir);
+  if (!existsSync(abs)) return null;
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of readdirSync(abs).sort()) {
+    if (entry === exact) return join(abs, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(abs, entry);
+  }
+  return fallback;
+}
+var DEFAULT_SPEC_DIR = SPEC_DIRS[0];
+function resolveSpecDir(projectDir, specConfig) {
+  for (const rel of SPEC_DIRS) {
+    const abs = join(projectDir, rel);
+    try {
+      if (existsSync(abs) && statSync(abs).isDirectory()) return { abs, rel, source: "detected" };
+    } catch {
+      continue;
+    }
+  }
+  return { abs: join(projectDir, DEFAULT_SPEC_DIR), rel: DEFAULT_SPEC_DIR, source: "default" };
+}
+function specSearchDirs(projectDir, specConfig, hostSpecLocation) {
+  const resolved = resolveSpecDir(projectDir);
+  const candidates = [
+    ...[],
+    resolved.abs,
+    ...SPEC_DIRS
+  ].map((d) => isAbsolute(d) ? d : join(projectDir, d));
+  return [...new Set(candidates)];
+}
 var READ_ONLY_ROLES = /* @__PURE__ */ new Set(["verifier", "retro"]);
 var WRITING_ROLES = /* @__PURE__ */ new Set([
   "planner",
@@ -11455,7 +11489,6 @@ var READ_BASE_TOOLS = [
   "Grep",
   "Glob",
   "SendMessage",
-  "ListAgents",
   "Bash(git diff:*)",
   "Bash(git log:*)",
   "Bash(git show:*)",
@@ -11481,11 +11514,7 @@ function readOnlyAllowedTools(probePrefixes) {
   probePrefixes.forEach((p) => validatePrefix(p));
   return [...READ_BASE_TOOLS, ...probePrefixes.map((p) => `Bash(${p}:*)`)];
 }
-var WRITING_BASE_TOOLS = [
-  "mcp__plugin_marvin_marvin",
-  "SendMessage",
-  "ListAgents"
-];
+var WRITING_BASE_TOOLS = ["mcp__plugin_marvin_marvin", "SendMessage"];
 function writingAllowedTools(commandPrefixes) {
   commandPrefixes.forEach((p) => validatePrefix(p));
   return [...WRITING_BASE_TOOLS, ...commandPrefixes.map((p) => `Bash(${p}:*)`)];
@@ -11657,6 +11686,12 @@ var Run = external_exports.object({
   worktree: external_exports.string().nullable(),
   branch: external_exports.string().nullable(),
   specPath: external_exports.string().nullable(),
+  /**
+   * The commit in which the engine put the approved spec, and its metrics record unless git
+   * ignores it, on the run branch; null until the approval. Absent from runs written before it
+   * existed.
+   */
+  specCommit: external_exports.string().nullable().default(null),
   tier: external_exports.enum(TIERS).nullable(),
   tierReasons: external_exports.array(external_exports.string()),
   prUrl: external_exports.string().nullable(),
@@ -11737,6 +11772,7 @@ function initRun(o) {
     worktree: null,
     branch: null,
     specPath: null,
+    specCommit: null,
     tier: null,
     tierReasons: [],
     prUrl: null,
@@ -12512,9 +12548,9 @@ function runGateStage(o) {
     evidence: "git lists the directory and does not look inside it",
     expected: "no embedded git repository beyond those present when the run started"
   });
-  const headSha = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   git4.text("cat-file", "-e", `${o.baseSha}^{commit}`);
-  const range = `${o.baseSha}...${headSha}`;
+  const range = `${o.baseSha}...${headSha2}`;
   const pointerBefore = pointerProblem(o.worktree, o.gitDir);
   if (pointerBefore !== null) {
     blockers.push({
@@ -12584,7 +12620,7 @@ function runGateStage(o) {
     try {
       return {
         path: s.path,
-        ok: sha256Bytes(git4.bytes("cat-file", "blob", `${headSha}:${s.path}`)) === s.sha256
+        ok: sha256Bytes(git4.bytes("cat-file", "blob", `${headSha2}:${s.path}`)) === s.sha256
       };
     } catch {
       return { path: s.path, ok: false };
@@ -12674,11 +12710,11 @@ function runGateStage(o) {
     ...runGates(o.gates, o.worktree, o.run, o.timeoutMs)
   ];
   const headAfter = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-  if (headAfter !== headSha) {
+  if (headAfter !== headSha2) {
     blockers.push({
       category: "scope",
       claim: "HEAD moved during gates",
-      evidence: `${headSha} -> ${headAfter}`,
+      evidence: `${headSha2} -> ${headAfter}`,
       expected: "the gates leave the committed HEAD alone"
     });
   }
@@ -12959,11 +12995,11 @@ function installSandboxGh(runDir, nodePath = process.execPath) {
   const script = join(bin, "gh-shim.mjs");
   writeFileSync(script, SHIM.trimStart());
   const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-  const gh = join(bin, "gh");
-  writeFileSync(gh, `#!/bin/sh
+  const gh2 = join(bin, "gh");
+  writeFileSync(gh2, `#!/bin/sh
 exec ${quote(nodePath)} ${quote(script)} "$@"
 `);
-  chmodSync(gh, 493);
+  chmodSync(gh2, 493);
   return {
     PATH: `${bin}:${process.env.PATH ?? ""}`,
     MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
@@ -14166,7 +14202,10 @@ function llmJudge(o) {
         "Write",
         "WebFetch",
         "WebSearch",
-        "Agent"
+        "Agent",
+        // The judge answers on stdout; it has no one to message and no peers to list.
+        "SendMessage",
+        "ListAgents"
       ];
       mkdirSync(o.workDir, { recursive: true });
       const stdout = await run2(argv, o.workDir);
@@ -15291,15 +15330,15 @@ var FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 var STATUS_KEY = /^status[ \t]*:/;
 function proseLines(lines, from) {
   const prose = lines.map(() => false);
-  let fence = null;
+  let fence2 = null;
   for (let i = from; i < lines.length; i += 1) {
     const m = FENCE.exec(lines[i]);
-    if (fence === null) {
+    if (fence2 === null) {
       const opens = m && !(m[1][0] === "`" && m[2].includes("`"));
-      if (opens) fence = { char: m[1][0], length: m[1].length };
+      if (opens) fence2 = { char: m[1][0], length: m[1].length };
       else prose[i] = true;
-    } else if (m && m[1][0] === fence.char && m[1].length >= fence.length && m[2].trim() === "") {
-      fence = null;
+    } else if (m && m[1][0] === fence2.char && m[1].length >= fence2.length && m[2].trim() === "") {
+      fence2 = null;
     }
   }
   return prose;
@@ -15436,11 +15475,11 @@ function assertCommittedTargets(git4, targets) {
     );
   }
 }
-function isOwnFinalizeCommit(git4, runDir, headSha, expectedHead) {
+function isOwnFinalizeCommit(git4, runDir, headSha2, expectedHead) {
   try {
     assertPlain(runDir, FINALIZE_RECORD);
     const record = JSON.parse(readFileSync(join(runDir, FINALIZE_RECORD), "utf8"));
-    return record.expectedHead === expectedHead && record.commit === headSha && git4.text("rev-parse", "--verify", `${headSha}^`).trim() === expectedHead;
+    return record.expectedHead === expectedHead && record.commit === headSha2 && git4.text("rev-parse", "--verify", `${headSha2}^`).trim() === expectedHead;
   } catch {
     return false;
   }
@@ -15524,9 +15563,9 @@ function finalizeRun(o) {
   assertPlain(o.runDir, FINALIZE_RECORD);
   for (const rel of targets) assertNotHardLinked(worktree, rel);
   const git4 = isolatedGit(worktree, o.gitDir, { HUSKY: "0" });
-  const headSha = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-  if (headSha !== o.expectedHead && !isOwnFinalizeCommit(git4, o.runDir, headSha, o.expectedHead)) {
-    throw new Error(`HEAD is ${headSha}, not the gated commit ${o.expectedHead}`);
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  if (headSha2 !== o.expectedHead && !isOwnFinalizeCommit(git4, o.runDir, headSha2, o.expectedHead)) {
+    throw new Error(`HEAD is ${headSha2}, not the gated commit ${o.expectedHead}`);
   }
   let onBranch;
   try {
@@ -15538,8 +15577,8 @@ function finalizeRun(o) {
     throw new Error(`the worktree is on branch ${onBranch}, not the run branch ${branch}`);
   }
   assertCommittedTargets(git4, [specPath, ".marvin/pipeline", MEMORY_DIR]);
-  const specBase = committedFile(git4, headSha, specPath);
-  if (specBase === null) throw new Error(`spec ${specPath} is not committed at ${headSha}`);
+  const specBase = committedFile(git4, headSha2, specPath);
+  if (specBase === null) throw new Error(`spec ${specPath} is not committed at ${headSha2}`);
   const specText = specBase.toString("utf8");
   const shipped = finalizeSpec(specText, {
     pr: run2.prUrl,
@@ -15547,14 +15586,14 @@ function finalizeRun(o) {
     runId: run2.id
   });
   const slug = specSlug(parseFrontmatter(specText).frontmatter.slug, specPath);
-  const checksBase = committedFile(git4, headSha, CHECKS_PATH)?.toString("utf8") ?? null;
+  const checksBase = committedFile(git4, headSha2, CHECKS_PATH)?.toString("utf8") ?? null;
   const merged = mergeChecks(parseExistingChecks(checksBase, CHECKS_PATH), retro);
-  const calibrationBase = committedFile(git4, headSha, CALIBRATION_PATH)?.toString("utf8") ?? null;
+  const calibrationBase = committedFile(git4, headSha2, CALIBRATION_PATH)?.toString("utf8") ?? null;
   const calibration = calibrationText(calibrationBase, record);
   const expected = { rules: merged?.rules, records: jsonLines(calibration) };
   const written = /* @__PURE__ */ new Set();
   const restoreFromCommit = (rel) => {
-    const base = committedFile(git4, headSha, rel);
+    const base = committedFile(git4, headSha2, rel);
     if (base === null) removePlain(worktree, rel);
     else writeWhole(worktree, rel, base);
   };
@@ -15563,8 +15602,8 @@ function finalizeRun(o) {
   let newCommit = null;
   try {
     const memoryBase = /* @__PURE__ */ new Map();
-    for (const entry of treeEntries(git4, headSha, MEMORY_DIR, true)) {
-      const content = blobOf(git4, headSha, entry);
+    for (const entry of treeEntries(git4, headSha2, MEMORY_DIR, true)) {
+      const content = blobOf(git4, headSha2, entry);
       memoryBase.set(entry.path, content);
       mkdirSync(dirname(join(scratch, entry.path)), { recursive: true });
       writeFileSync(join(scratch, entry.path), content);
@@ -15601,9 +15640,9 @@ function finalizeRun(o) {
       }
     }
     const headNow = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-    if (headNow !== headSha) {
+    if (headNow !== headSha2) {
       throw new Error(
-        `HEAD moved from ${headSha} to ${headNow} while finalize ran: the format command must not commit`
+        `HEAD moved from ${headSha2} to ${headNow} while finalize ran: the format command must not commit`
       );
     }
     const branchNow = git4.text("symbolic-ref", "--short", "HEAD").trim();
@@ -15617,12 +15656,12 @@ function finalizeRun(o) {
       HUSKY: "0",
       GIT_INDEX_FILE: join(scratch, "index")
     });
-    plumbing.text("read-tree", headSha);
+    plumbing.text("read-tree", headSha2);
     const changed = [];
     let indexInfo = "";
     for (const [rel, bytes] of contents) {
       const oid = git4.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
-      const committedEntry = treeEntries(git4, headSha, rel, false).find((e) => e.path === rel);
+      const committedEntry = treeEntries(git4, headSha2, rel, false).find((e) => e.path === rel);
       if (committedEntry?.oid === oid) continue;
       changed.push(rel);
       indexInfo += `${committedEntry?.mode ?? "100644"} ${oid}	${rel}\0`;
@@ -15631,17 +15670,17 @@ function finalizeRun(o) {
       plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
       const tree = plumbing.text("write-tree").trim();
       const subject = `chore(${slug}): ship spec; lessons and calibration from run ${run2.id}`;
-      newCommit = git4.text("commit-tree", tree, "-p", headSha, "-m", subject, "-m", COMMIT_TRAILER).trim();
-      git4.text("update-ref", branchRef, newCommit, headSha);
+      newCommit = git4.text("commit-tree", tree, "-p", headSha2, "-m", subject, "-m", COMMIT_TRAILER).trim();
+      git4.text("update-ref", branchRef, newCommit, headSha2);
       git4.text("reset", "-q", "--", ...changed);
       const parents = git4.text("rev-list", "--parents", "-n", "1", newCommit).trim().split(" ");
-      if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== newCommit || parents.length !== 2 || parents[1] !== headSha) {
+      if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== newCommit || parents.length !== 2 || parents[1] !== headSha2) {
         throw new Error(
-          `the finalize commit ${newCommit} is not the one HEAD names, on top of ${headSha}`
+          `the finalize commit ${newCommit} is not the one HEAD names, on top of ${headSha2}`
         );
       }
       const listed = nulList(
-        git4.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headSha, newCommit)
+        git4.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headSha2, newCommit)
       ).sort();
       if (!isDeepStrictEqual(listed, [...changed].sort())) {
         throw new Error(
@@ -15661,7 +15700,7 @@ function finalizeRun(o) {
   } catch (error) {
     try {
       const current = git4.text("rev-parse", "--verify", branchRef).trim();
-      if (current !== headSha) git4.text("update-ref", branchRef, headSha, current);
+      if (current !== headSha2) git4.text("update-ref", branchRef, headSha2, current);
     } catch {
     }
     for (const rel of written) {
@@ -15687,7 +15726,7 @@ function finalizeRun(o) {
     );
   }
   try {
-    git4.text("push", "origin", `${newCommit ?? headSha}:${branchRef}`);
+    git4.text("push", "origin", `${newCommit ?? headSha2}:${branchRef}`);
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error);
     throw new Error(`push of ${branch} failed; the finalize commit stays in the worktree: ${why}`, {
@@ -15865,6 +15904,7 @@ var STAGE_OF = {
   retro: "retro"
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
+var FULL_SHA4 = /^[0-9a-f]{40}$/;
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var refusalMessage = (role, detail) => [
   `OUTPUT REFUSED: ${detail}`,
@@ -16068,6 +16108,11 @@ function step(run2, obs, rubric, now) {
       if (r.stage === "gating") {
         throw new Error("a spec that lost its seal cannot be retried: cancel the run");
       }
+      if (r.stage === "awaiting_approval") {
+        throw new Error(
+          "an approved spec the engine would not commit cannot be retried: cancel the run"
+        );
+      }
       throw new Error(`nothing to retry in stage ${r.stage}`);
     }
     if (r.stage === STAGE_OF[role]) return { run: cleared, actions: [lastSpawnOf(r, role)] };
@@ -16265,6 +16310,23 @@ ${a.text}` }, true)] };
       break;
     }
     case "awaiting_approval": {
+      if (obs.kind === "spec_commit") {
+        const commit = obs.commit ?? "";
+        if (!obs.ok || obs.reason !== null || !FULL_SHA4.test(commit)) {
+          return ask({ ...run2, haltRole: null }, "halt", {
+            reason: "the approved spec was not committed",
+            detail: obs.reason ?? (obs.ok ? "the spec commit reported success without a commit" : "the spec commit failed without a reason")
+          });
+        }
+        const committed = { ...run2, specCommit: commit };
+        const rename = { kind: "work", work: "rename_branch" };
+        if (shouldAuthorTests(committed, rubric)) {
+          const r2 = go(committed, "test_authoring");
+          return { run: r2, actions: [rename, spawn4(r2, "test-author", testAuthorCtx(r2, ""))] };
+        }
+        const r = go({ ...committed, iteration: 1 }, "executing");
+        return { run: r, actions: [rename, spawn4(r, "executor", executorCtx(r, []))] };
+      }
       if (obs.kind !== "answer" || obs.judgment !== "spec_approval") break;
       const a = obs.answer;
       if (a.kind === "cancel") return cancel2(run2, a.reason);
@@ -16282,13 +16344,7 @@ ${a.text}` }, true)]
           tier: a.tier,
           tierReasons: [...run2.tierReasons, `override: ${a.reason ?? "orchestrator"}`]
         } : run2;
-        const rename = { kind: "work", work: "rename_branch" };
-        if (shouldAuthorTests(tiered, rubric)) {
-          const r2 = go(tiered, "test_authoring");
-          return { run: r2, actions: [rename, spawn4(r2, "test-author", testAuthorCtx(r2, ""))] };
-        }
-        const r = go({ ...tiered, iteration: 1 }, "executing");
-        return { run: r, actions: [rename, spawn4(r, "executor", executorCtx(r, []))] };
+        return { run: tiered, actions: [{ kind: "work", work: "commit_spec" }] };
       }
       break;
     }
@@ -17170,7 +17226,7 @@ async function awaitWork(runDir, o) {
 }
 
 // src/pipeline/runtime.ts
-var import_yaml6 = __toESM(require_dist());
+var import_yaml7 = __toESM(require_dist());
 var GATE_NAMES = ["test", "lint", "typecheck", "build"];
 var CONFIG_STACK = ".marvin/config.json";
 function hasFile(root, ...names) {
@@ -17418,9 +17474,256 @@ function detectMakefile(projectRoot) {
   }
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
+function run(cmd, args, cwd, opts) {
+  const result = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    ...{},
+    ...{}
+  });
+  if (result.error) {
+    return { ok: false, code: -1, stderr: result.error.message };
+  }
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      code: result.status ?? -1,
+      stderr: (result.stderr || result.stdout || "").trim()
+    };
+  }
+  return { ok: true, value: (result.stdout || "").trim() };
+}
+function git2(args, cwd, opts) {
+  return run("git", args, cwd);
+}
+function inGitRepo(cwd) {
+  return git2(["rev-parse", "--is-inside-work-tree"], cwd).ok;
+}
+function hasGit() {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function defaultBranchFromOrigin(cwd) {
+  const r = git2(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
 
-// src/lib/oracles.ts
-var import_yaml5 = __toESM(require_dist());
+// src/lib/metrics-collect.ts
+__toESM(require_dist());
+var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest",
+  // ADR-0038: `sec-gate` and `sec-fix` emit blocks too. Widening the contract
+  // without widening this mirror makes both reports parse as `invalid` and
+  // vanish from all three readers with only a skip-note.
+  "gate",
+  "fix"
+]);
+external_exports.enum(["new", "persisting", "regressed"]);
+var LinkRefSchema = external_exports.object({
+  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+var FindingSchema = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity,
+  title: external_exports.string().min(1),
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRefSchema).optional()
+});
+external_exports.object({
+  kind: AuditKind,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(FindingSchema)
+});
+var TerminalVerdictSchema = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
+var AxisVerdictSchema = external_exports.object({
+  verdict: TerminalVerdictSchema,
+  blockers: external_exports.number().int().nonnegative(),
+  warnings: external_exports.number().int().nonnegative()
+});
+external_exports.object({
+  critic: external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]),
+  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
+  judged_at: external_exports.string().datetime(),
+  compliance: AxisVerdictSchema,
+  quality: AxisVerdictSchema,
+  inability: external_exports.object({
+    blocker: external_exports.string().min(1),
+    attempted: external_exports.string().min(1),
+    recommendation: external_exports.string().min(1)
+  }).optional()
+}).superRefine((value, ctx) => {
+  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
+  if (unable && !value.inability) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["inability"],
+      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
+    });
+  }
+});
+external_exports.object({
+  name: external_exports.string(),
+  status: external_exports.string().optional(),
+  code: external_exports.number().nullable().optional().catch(null),
+  durationMs: external_exports.number().optional().catch(void 0)
+});
+var ProvenanceSchema = external_exports.object({
+  head_sha: external_exports.string().nullable(),
+  branch: external_exports.string().nullable(),
+  dirty: external_exports.boolean().nullable(),
+  worktree_digest: external_exports.string().nullable(),
+  generated_at: external_exports.string()
+});
+external_exports.object({
+  verdict: external_exports.string().optional().catch(void 0),
+  gates: external_exports.array(external_exports.unknown()).optional().catch(void 0),
+  detectedStacks: external_exports.array(external_exports.string()).optional().catch(void 0),
+  warnings: external_exports.array(external_exports.string()).optional().catch(void 0),
+  wallClockMs: external_exports.number().optional().catch(void 0),
+  sumOfGatesMs: external_exports.number().optional().catch(void 0),
+  artifactPath: external_exports.string().nullable().optional().catch(null),
+  // Optional on read so every artifact written before ADR-0035 still parses, and
+  // `.catch(undefined)` like every other member so a corrupt provenance degrades
+  // alone — a freshness field must never cost a reader the verdict it came for.
+  provenance: ProvenanceSchema.optional().catch(void 0)
+});
+var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var METRIC_EVENT_KINDS = [
+  "fix-round",
+  "spec-gap",
+  "open-item",
+  "critic-dispatch",
+  "critic-verdict",
+  "gate-call"
+];
+var METRIC_EVENT_SOURCES = [
+  "task-start",
+  "task-implement",
+  "task-deliver",
+  "marvin-tm-executor"
+];
+var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
+var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
+var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
+var METRIC_GATES = ["dor"];
+var TERMINAL_VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
+var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
+var REQUIRED_EVENT_FIELDS = {
+  "fix-round": ["loop", "round"],
+  "spec-gap": ["detail"],
+  "open-item": ["classification", "detail"],
+  "critic-dispatch": ["critic", "pass"],
+  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
+  "gate-call": ["gate", "call", "verdict"]
+};
+var MetricEventShape = external_exports.object({
+  slug: external_exports.string().min(1).regex(SLUG_RE, "slug must be kebab-case"),
+  source: external_exports.enum(METRIC_EVENT_SOURCES),
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(METRIC_EVENT_KINDS),
+  contract_sha: external_exports.string().nullable().optional(),
+  at: external_exports.string().datetime(),
+  detail: external_exports.string().min(1).optional(),
+  loop: external_exports.enum(FIX_LOOPS).optional(),
+  round: external_exports.number().int().positive().optional(),
+  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
+  critic: external_exports.enum(METRIC_CRITICS).optional(),
+  pass: external_exports.number().int().positive().optional(),
+  verdict: external_exports.string().min(1).optional(),
+  blockers: external_exports.number().int().nonnegative().optional(),
+  warnings: external_exports.number().int().nonnegative().optional(),
+  gate: external_exports.enum(METRIC_GATES).optional(),
+  call: external_exports.number().int().positive().optional()
+});
+MetricEventShape.superRefine((value, ctx) => {
+  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
+    const v = value[field];
+    if (v === void 0 || v === null) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [field],
+        message: `a ${value.kind} event requires ${field}`
+      });
+    }
+  }
+  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
+    if (!TERMINAL_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+  if (value.kind === "gate-call" && value.verdict !== void 0) {
+    if (!DOR_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+});
+external_exports.object({
+  slug: external_exports.string().min(1),
+  rolled_up_at: external_exports.string().min(1),
+  base_branch: external_exports.string().min(1),
+  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
+  time: external_exports.object({}).passthrough(),
+  quality: external_exports.object({}).passthrough(),
+  rework: external_exports.object({}).passthrough(),
+  notes: external_exports.array(external_exports.string())
+}).passthrough();
+function metricsRecordPath(dir, specBasename) {
+  return join(dir, `${specBasename}.md`);
+}
+function recordBasenameForSpec(specPath) {
+  return basename(specPath).replace(/\.md$/, "");
+}
+function slugOfRecord(filename) {
+  return basename(filename).replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findRecord(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of entries) {
+    if (entry === exact) return join(dir, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
+  }
+  return fallback;
+}
 var SHELL_METACHARACTERS2 = /[;|&`\n<>]|\$\(/;
 function splitRef(ref) {
   const i = ref.indexOf("::");
@@ -17492,12 +17795,97 @@ external_exports.object({
   durationMs: external_exports.number().optional(),
   ran_at: external_exports.string()
 });
+var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
+external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /**
+   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
+   * is the headless implementation path, which numbers its steps `§1`–`§5`.
+   */
+  source: external_exports.enum(PROGRESS_SOURCES),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
+  /** One line of position and choice. Never a credential, token or customer datum. */
+  detail: external_exports.string(),
+  /** The acceptance-criterion id, when `kind` is `criterion`. */
+  criterion: external_exports.string().nullable().optional(),
+  /** The draft/spec path, recorded once when the draft is opened. */
+  path: external_exports.string().nullable().optional(),
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601. */
+  at: external_exports.string()
+});
+var JournalGate = external_exports.object({
+  name: external_exports.string().min(1),
+  status: external_exports.string().min(1),
+  durationMs: external_exports.number()
+});
+var RunEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("run"),
+  /** ISO 8601, stamped by the tool. */
+  at: external_exports.string(),
+  /** `PASS` | `PASS WITH WARNINGS` | `FAIL`, as the run computed it. */
+  verdict: external_exports.string().min(1),
+  mode: external_exports.string().min(1),
+  execution: external_exports.string().min(1),
+  /** The gate subset a targeted retry asked for, or null for a full run. */
+  only: external_exports.array(external_exports.string()).nullable(),
+  gates: external_exports.array(JournalGate),
+  wallClockMs: external_exports.number(),
+  sumOfGatesMs: external_exports.number(),
+  /** The commit the run proved, from the run's own provenance; null outside git. */
+  head_sha: external_exports.string().nullable()
+});
+var GateEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("gate"),
+  at: external_exports.string(),
+  decision: external_exports.enum(["ALLOW", "BLOCK"]),
+  /** The verdict the gate read off the artifact, null when it found none. */
+  verdict: external_exports.string().nullable(),
+  staleness: external_exports.enum(["fresh", "stale", "unknown"]),
+  allowStale: external_exports.boolean(),
+  red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /** The artifact the gate judged, project-relative. */
+  artifact: external_exports.string().min(1)
+});
+external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
+
+// src/lib/metrics-collect.ts
+function findSpecBySlug(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+
+// src/lib/metrics-record.ts
+function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
+  const existing = findRecord(dir, slug);
+  if (existing) return existing;
+  const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot);
+  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+}
+function recordSlugForSpec(declared, specPath) {
+  const own = (declared ?? "").trim();
+  const slug = own || slugOfRecord(specPath);
+  if (!SLUG_RE.test(slug)) return null;
+  if (!own && /^\d+-/.test(slug)) return null;
+  return slug;
+}
 
 // src/lib/oracles.ts
+var import_yaml6 = __toESM(require_dist());
 function parseContractCriteria(blockText) {
   let parsed;
   try {
-    parsed = SpecContract.safeParse((0, import_yaml5.parse)(blockText));
+    parsed = SpecContract.safeParse((0, import_yaml6.parse)(blockText));
   } catch (err) {
     return {
       error: `spec-contract block is not valid YAML: ${err instanceof Error ? err.message : err}`
@@ -17753,45 +18141,6 @@ var Config = external_exports.object({
   /** Autopilot pipeline settings; absent means every default. */
   pipeline: PipelineConfig.default({})
 });
-function run(cmd, args, cwd, opts) {
-  const result = spawnSync(cmd, args, {
-    cwd,
-    encoding: "utf8",
-    ...{},
-    ...{}
-  });
-  if (result.error) {
-    return { ok: false, code: -1, stderr: result.error.message };
-  }
-  if (result.status !== 0) {
-    return {
-      ok: false,
-      code: result.status ?? -1,
-      stderr: (result.stderr || result.stdout || "").trim()
-    };
-  }
-  return { ok: true, value: (result.stdout || "").trim() };
-}
-function git2(args, cwd, opts) {
-  return run("git", args, cwd);
-}
-function inGitRepo(cwd) {
-  return git2(["rev-parse", "--is-inside-work-tree"], cwd).ok;
-}
-function hasGit() {
-  try {
-    execFileSync("git", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function defaultBranchFromOrigin(cwd) {
-  const r = git2(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
-  if (!r.ok || !r.value) return null;
-  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
-  return name && name !== r.value ? name : null;
-}
 
 // src/storage/config.ts
 function loadConfig(configPath, projectDir) {
@@ -17938,12 +18287,12 @@ function fetchCi(o) {
       GH_TOKEN: execSync(o.tokenCommand, { encoding: "utf8" }).trim()
     } : {}
   };
-  const gh = (...args) => execFileSync("gh", args, { cwd: o.worktree, env, encoding: "utf8" });
+  const gh2 = (...args) => execFileSync("gh", args, { cwd: o.worktree, env, encoding: "utf8" });
   const pr = JSON.parse(
-    gh("pr", "view", o.prUrl, "--json", "state,mergeable,mergeStateStatus,headRefOid,headRefName")
+    gh2("pr", "view", o.prUrl, "--json", "state,mergeable,mergeStateStatus,headRefOid,headRefName")
   );
   const runs = JSON.parse(
-    gh(
+    gh2(
       "api",
       `repos/{owner}/{repo}/actions/runs?branch=${encodeURIComponent(pr.headRefName)}&per_page=50`,
       "--jq",
@@ -18023,7 +18372,8 @@ function buildRoleSettings(role, hooksDir) {
     {
       matcher: "mcp__.*marvin.*__(task|tracker|spec|adr|lessons|verify|report)$",
       hooks: [hook("child-mcp-guard.mjs")]
-    }
+    },
+    { matcher: "SendMessage|ListAgents", hooks: [hook("message-guard.mjs")] }
   ];
   if (role === "verifier" || role === "retro")
     pre.push({ matcher: "Bash", hooks: [hook("readonly-guard.mjs")] });
@@ -18135,6 +18485,13 @@ var SealMarker = external_exports.object({
   sealed: external_exports.array(SealedEntry),
   commit: external_exports.string().optional()
 });
+var CommitSha = external_exports.string().regex(/^[0-9a-f]{40}$/);
+var SpecCommitMarker = external_exports.object({
+  phase: external_exports.enum(["verified", "committed"]),
+  headBefore: CommitSha,
+  files: external_exports.array(external_exports.object({ path: external_exports.string(), sha256: external_exports.string() })).min(1),
+  commit: CommitSha.optional()
+});
 var GatedHead = external_exports.object({ head: external_exports.string(), iteration: external_exports.number().int(), passed: external_exports.boolean() });
 var CiPoll = external_exports.object({ stage: external_exports.string(), ciSince: external_exports.string().nullable() });
 var RegexSource = external_exports.string().min(1).refine((source) => {
@@ -18155,9 +18512,11 @@ var CheckRuleShape = external_exports.object({
   category: external_exports.string().min(1).optional()
 });
 var CI_STATES = ["green", "red", "pending", "conflict", "no_ci", "closed"];
-var FULL_SHA4 = /^[0-9a-f]{40}$/;
+var FULL_SHA5 = /^[0-9a-f]{40}$/;
 var PLAIN_TOKEN2 = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var CONFIG_PATH = ".marvin/config.json";
+var METRICS_DIR = ".marvin/metrics";
+var SPEC_COMMIT_MARKER = "spec-commit.json";
 var CHECKS_PATH2 = ".marvin/pipeline/checks.yaml";
 var CALIBRATION_PATH2 = ".marvin/pipeline/calibration.jsonl";
 var MEMORY_DIR2 = ".marvin/memory";
@@ -18884,7 +19243,7 @@ ${tail}`);
   };
   const parseChecks = (text2, where) => {
     if (text2 === null) return [];
-    const doc = (0, import_yaml6.parse)(text2);
+    const doc = (0, import_yaml7.parse)(text2);
     if (doc === null || doc === void 0) return [];
     const parsed = external_exports.array(CheckRuleShape).safeParse(doc);
     if (!parsed.success) {
@@ -18895,6 +19254,7 @@ ${tail}`);
   };
   const gateSpec = (run2, wt, head) => {
     const findings = [];
+    const restore = (path2) => `git checkout ${run2.specCommit} -- ${path2}, then commit it`;
     const finding = (id, claim, evidence, expected) => ({
       id: `SPEC-${id}`,
       severity: "blocker",
@@ -18918,13 +19278,13 @@ ${tail}`);
     }
     let text2 = committedText(wt, head, path);
     if (text2 === null) {
-      text2 = specOnDisk(run2);
+      text2 = specOnDisk(run2) ?? (run2.specCommit === null ? null : committedText(wt, run2.specCommit, path));
       findings.push(
         finding(
           "uncommitted",
           `the spec ${path} is not committed on the run branch`,
           `git cat-file blob HEAD:${path} fails`,
-          `commit ${path} on the run branch (git add -f ${path} where it is ignored): finalize ships the committed spec`
+          run2.specCommit === null ? `commit ${path} on the run branch (git add -f ${path} where it is ignored): finalize ships the committed spec` : `the spec as the pipeline committed it: ${restore(path)}; finalize ships the committed spec`
         )
       );
     }
@@ -18966,7 +19326,7 @@ ${tail}`);
           "tampered",
           `the spec ${path} was edited after it was sealed`,
           `contract_sha ${stamped}, the block hashes to ${contractHash(block)}`,
-          `the contract as sealed: git checkout <seal commit> -- ${path}`
+          run2.specCommit === null ? "the contract as the planner sealed it" : `the contract as sealed: ${restore(path)}`
         )
       );
     }
@@ -19163,6 +19523,159 @@ ${tail}`);
     const obs = { kind: "seal", ok: true, reasons: [], sealed: marker.sealed };
     return { run: run2, obs };
   };
+  const plainFile = (root, rel) => {
+    const problem = physicalProblem(root, rel);
+    if (problem !== null) return { problem };
+    try {
+      if (!lstatSync(join(root, rel)).isFile()) return { problem: "it is not a regular file" };
+      return { bytes: readFileSync(join(root, rel)) };
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      return { problem: errorText3(error) };
+    }
+  };
+  const specCommitFiles = (run2, wt) => {
+    const path = run2.specPath;
+    if (path === null || !isCanonicalPath(path)) {
+      return { refused: `the run's spec path is not a repo-relative path: ${String(path)}` };
+    }
+    const spec = plainFile(wt.path, path);
+    if (spec === null) return { refused: `${path} is not in the run worktree` };
+    if ("problem" in spec) return { refused: `${path} cannot be committed: ${spec.problem}` };
+    const text2 = spec.bytes.toString("utf8");
+    const issue = sealIssue(text2);
+    if (issue !== null) return { refused: `${path} no longer matches its seal: ${issue}` };
+    const files = [{ path, bytes: spec.bytes }];
+    const { frontmatter } = parseFrontmatter(text2.replace(/\r\n?/g, "\n"));
+    const slug = recordSlugForSpec(frontmatter.slug, path);
+    if (slug === null) return { files };
+    const dir = join(wt.path, METRICS_DIR);
+    const record = relative(
+      wt.path,
+      recordPathFor(dir, slug, wt.path, void 0, join(wt.path, path))
+    ).split(sep).join("/");
+    const found = plainFile(wt.path, record);
+    if (found === null) return { files };
+    if ("problem" in found) {
+      return { refused: `the metrics record ${record} cannot be committed: ${found.problem}` };
+    }
+    const ignored = isolatedGit(wt.path, wt.gitDir, { GIT_LITERAL_PATHSPECS: "1" }).text(
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--",
+      record
+    );
+    if (ignored !== "") return { files };
+    return { files: [...files, { path: record, bytes: found.bytes }] };
+  };
+  const commitApprovedSpec = (run2, wt, marker) => {
+    const { headBefore, files } = marker;
+    const env = { HUSKY: "0", GIT_LITERAL_PATHSPECS: "1" };
+    const g = isolatedGit(wt.path, wt.gitDir, env);
+    const branch = run2.branch;
+    if (branch === null || !isSafeBranchRef(branch)) {
+      throw new Error(`the run branch is not a safe ref: ${String(branch)}`);
+    }
+    const onBranch = g.text("symbolic-ref", "--short", "HEAD").trim();
+    if (onBranch !== branch) {
+      throw new Error(`the worktree is on ${onBranch}, not the run branch ${branch}`);
+    }
+    const subject = `chore(${specIdentity(run2).slug}): approved spec`;
+    const paths = files.map((f) => f.path);
+    const verify = (commit) => {
+      const parents = g.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+      if (parents.length !== 2 || parents[1] !== headBefore) {
+        throw new Error(`the spec commit ${commit} is not one commit on top of ${headBefore}`);
+      }
+      const strays = g.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headBefore, commit).split("\0").filter((p) => p !== "" && !paths.includes(p));
+      if (strays.length > 0) throw new Error(`the spec commit also holds ${strays.join(", ")}`);
+      for (const f of files) {
+        if (sha256Bytes(g.bytes("cat-file", "blob", `${commit}:${f.path}`)) !== f.sha256) {
+          throw new Error(`${f.path} as committed in ${commit} is not the file that was verified`);
+        }
+      }
+    };
+    const settle2 = (commit) => {
+      g.text("reset", "-q", "--", ...paths);
+      return commit;
+    };
+    const head = g.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (head !== headBefore) {
+      const parent = g.text("rev-parse", "--verify", `${head}^`).trim();
+      const message = g.text("log", "-1", "--format=%s", head).trim();
+      if (parent !== headBefore || message !== subject) {
+        throw new Error(`HEAD moved from ${headBefore} to ${head} while the spec was committed`);
+      }
+      verify(head);
+      return settle2(head);
+    }
+    const contents = files.map((f) => {
+      const found = plainFile(wt.path, f.path);
+      if (found === null || "problem" in found || sha256Bytes(found.bytes) !== f.sha256) {
+        throw new Error(`${f.path} changed after its seal was checked`);
+      }
+      return { path: f.path, bytes: found.bytes };
+    });
+    const scratch = mkdtempSync(join(tmpdir(), "marvin-spec-commit-"));
+    try {
+      const plumbing = isolatedGit(wt.path, wt.gitDir, {
+        ...env,
+        GIT_INDEX_FILE: join(scratch, "index")
+      });
+      plumbing.text("read-tree", headBefore);
+      let indexInfo = "";
+      for (const { path, bytes } of contents) {
+        const oid = g.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
+        const [entry] = g.text("ls-tree", "-z", "--full-tree", headBefore, "--", path).split("\0");
+        const listed = /^(\d+) \w+ ([0-9a-f]+)\t([\s\S]+)$/.exec(entry ?? "");
+        const committed = listed?.[3] === path ? listed : null;
+        const mode = committed?.[1] === "100755" ? "100755" : "100644";
+        if (committed?.[1] === mode && committed[2] === oid) continue;
+        indexInfo += `${mode} ${oid}	${path}\0`;
+      }
+      if (indexInfo === "") return settle2(headBefore);
+      plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
+      const tree = plumbing.text("write-tree").trim();
+      const commit = g.text("commit-tree", tree, "-p", headBefore, "-m", subject).trim();
+      g.text("update-ref", `refs/heads/${branch}`, commit, headBefore);
+      verify(commit);
+      return settle2(commit);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  };
+  const commitSpecWork = (run2) => {
+    const wt = worktreeRecord(run2);
+    const markerFile = at(SPEC_COMMIT_MARKER);
+    const headNow = () => isolatedGit(wt.path, wt.gitDir).text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    let marker = readJson(markerFile, SpecCommitMarker);
+    let commit = marker?.phase === "committed" ? marker.commit : void 0;
+    if (commit === void 0) {
+      if (marker === null || headNow() === marker.headBefore) {
+        const found = specCommitFiles(run2, wt);
+        if ("refused" in found) {
+          const obs = {
+            kind: "spec_commit",
+            ok: false,
+            commit: null,
+            reason: found.refused
+          };
+          return { run: run2, obs };
+        }
+        const files = found.files.map(({ path, bytes }) => ({ path, sha256: sha256Bytes(bytes) }));
+        marker = { phase: "verified", headBefore: headNow(), files };
+        writeAtomic2(markerFile, `${JSON.stringify(marker)}
+`);
+      }
+      commit = commitApprovedSpec(run2, wt, marker);
+      writeAtomic2(markerFile, `${JSON.stringify({ ...marker, phase: "committed", commit })}
+`);
+    }
+    return { run: run2, obs: { kind: "spec_commit", ok: true, commit, reason: null } };
+  };
   const ghEnv = (config) => {
     const command = config.pipeline.github.token_command;
     return command ? { ...process.env, GH_TOKEN: execSync(command, { encoding: "utf8" }).trim() } : { ...process.env };
@@ -19220,7 +19733,7 @@ ${tail}`);
     const wt = worktreeRecord(run2);
     const gated = readJson(at("gated-head.json"), GatedHead);
     const ships = run2.prUrl !== null && run2.haltReason === null;
-    if (ships && (!gated?.passed || !FULL_SHA4.test(gated.head))) {
+    if (ships && (!gated?.passed || !FULL_SHA5.test(gated.head))) {
       throw new Error("finalize needs the commit a passing gate approved, and none is recorded");
     }
     finalizeRun({
@@ -19246,14 +19759,14 @@ ${tail}`);
     const config = configFor(run2);
     const wt = worktreeRecord(run2);
     const env = ghEnv(config);
-    const gh = (...args) => execFileSync("gh", args, {
+    const gh2 = (...args) => execFileSync("gh", args, {
       cwd: wt.path,
       env,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
     });
-    const view = external_exports.object({ isDraft: external_exports.boolean() }).parse(JSON.parse(gh("pr", "view", run2.prUrl, "--json", "isDraft")));
-    if (view.isDraft) gh("pr", "ready", run2.prUrl);
+    const view = external_exports.object({ isDraft: external_exports.boolean() }).parse(JSON.parse(gh2("pr", "view", run2.prUrl, "--json", "isDraft")));
+    if (view.isDraft) gh2("pr", "ready", run2.prUrl);
     return { run: run2 };
   };
   const renameBranch = (run2, step2) => {
@@ -19285,6 +19798,8 @@ ${tail}`);
   };
   const work = async (run2, kind, data, step2) => {
     switch (kind) {
+      case "commit_spec":
+        return commitSpecWork(run2);
       case "gate":
         return gateWork(run2);
       case "seal":
