@@ -23,6 +23,7 @@ export function buildRoleSettings(role: Role, hooksDir: string): Record<string, 
       matcher: "mcp__.*marvin.*__(task|tracker|spec|adr|lessons|verify|report)$",
       hooks: [hook("child-mcp-guard.mjs")],
     },
+    { matcher: "SendMessage|ListAgents", hooks: [hook("message-guard.mjs")] },
   ];
   if (role === "verifier" || role === "retro")
     pre.push({ matcher: "Bash", hooks: [hook("readonly-guard.mjs")] });

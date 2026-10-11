@@ -128,3 +128,49 @@ test("message log records the report and resets the timer", () => {
     Date.now() - Number(readFileSync(join(run, "r1-executor-1.heartbeat"), "utf8")) < 5_000,
   );
 });
+
+test("message guard: a child reports to its orchestrator only, and cannot list the peers", () => {
+  const run = mkdtempSync(join(tmpdir(), "pipe-"));
+  const env = {
+    ...process.env,
+    MARVIN_PIPELINE_RUN: run,
+    MARVIN_PIPELINE_CHILD: "r1-executor-1",
+    MARVIN_PIPELINE_ORCH: "Bench",
+  };
+  const call = (tool_name, tool_input) =>
+    spawnSync(process.execPath, [join(hooks, "message-guard.mjs")], {
+      input: JSON.stringify({ tool_name, tool_input }),
+      env,
+      encoding: "utf8",
+    });
+  assert.equal(
+    call("SendMessage", { to: "Bench", message: "[r1-executor-1] done: AC1" }).status,
+    0,
+  );
+  // The 2026-10-11 bench: "Bench" was no session, the child listed the peers and wrote to one.
+  const listed = call("ListAgents", {});
+  assert.equal(listed.status, 2);
+  assert.match(listed.stderr, /message-guard: BLOCKED/);
+  const stray = call("SendMessage", {
+    to: "Marvin Autopilot [ea65d6]",
+    message: "[r1-executor-1] done: AC2",
+  });
+  assert.equal(stray.status, 2);
+  assert.match(stray.stderr, /orchestrator "Bench" only/);
+  assert.match(stray.stderr, /recorded in the run's log/);
+  const events = readFileSync(join(run, "events.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  assert.deepEqual(
+    events.map((e) => [e.kind, e.text, e.data.to, e.data.refused]),
+    [["report", "[r1-executor-1] done: AC2", "Marvin Autopilot [ea65d6]", true]],
+  );
+  assert.ok(
+    Date.now() - Number(readFileSync(join(run, "r1-executor-1.heartbeat"), "utf8")) < 5_000,
+  );
+  // An attached session renamed the orchestrator; the guard follows it, as the heartbeat does.
+  writeFileSync(join(run, "orchestrator.txt"), "Autopilot 2\n");
+  assert.equal(call("SendMessage", { to: "Autopilot 2", message: "m" }).status, 0);
+  assert.equal(call("SendMessage", { to: "Bench", message: "m" }).status, 2);
+});

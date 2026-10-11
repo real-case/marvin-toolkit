@@ -23,6 +23,8 @@ test("every role gets heartbeat, message log and the child guards", () => {
     assert.match(commands(s, "PostToolUse"), /message-log\.mjs/);
     assert.match(commands(s, "PreToolUse"), /child-git-guard\.mjs/);
     assert.match(commands(s, "PreToolUse"), /child-mcp-guard\.mjs/);
+    const messages = s.hooks.PreToolUse.find((m) => /message-guard\.mjs/.test(m.hooks[0].command));
+    assert.equal(messages?.matcher, "SendMessage|ListAgents", role);
     assert.equal(s.outputStyle, "default");
   }
 });

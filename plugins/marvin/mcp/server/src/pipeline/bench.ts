@@ -474,6 +474,9 @@ export function llmJudge(o: {
         "WebFetch",
         "WebSearch",
         "Agent",
+        // The judge answers on stdout; it has no one to message and no peers to list.
+        "SendMessage",
+        "ListAgents",
       ];
       mkdirSync(o.workDir, { recursive: true });
       const stdout = await run(argv, o.workDir);

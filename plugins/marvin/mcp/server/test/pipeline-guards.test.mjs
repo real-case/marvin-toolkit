@@ -753,6 +753,7 @@ test("every pipeline guard still denies when it is launched through a symlink", 
     ),
     "sealed-guard.mjs": deny("Edit", { file_path: join(root, "a.test.ts") }),
     "test-path-guard.mjs": deny("Write", { file_path: join(root, "a.ts") }),
+    "message-guard.mjs": deny("ListAgents", {}),
   };
   assert.deepEqual(Object.keys(cases).sort(), [...guardFiles].sort(), "a guard has no case here");
   const dirLink = join(base, "hooks-link");

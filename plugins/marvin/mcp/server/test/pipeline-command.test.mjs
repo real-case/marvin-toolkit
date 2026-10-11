@@ -62,6 +62,14 @@ const ROLE_TOOLS = {
   retro: readOnly,
 };
 
+test("no role may list the machine's sessions; every role may report", () => {
+  // ListAgents lists every local session, which is how a bench child found an unrelated one.
+  for (const [role, allowedTools] of Object.entries(ROLE_TOOLS)) {
+    assert.ok(!allowedTools.includes("ListAgents"), role);
+    assert.ok(allowedTools.includes("SendMessage"), role);
+  }
+});
+
 test("every role is isolated from user/local settings and foreign MCP servers", () => {
   for (const [role, allowedTools] of Object.entries(ROLE_TOOLS)) {
     const { argv } = cmd.buildChildCommand({ ...base, role, allowedTools });

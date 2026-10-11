@@ -47,7 +47,6 @@ export const READ_BASE_TOOLS = [
   "Grep",
   "Glob",
   "SendMessage",
-  "ListAgents",
   "Bash(git diff:*)",
   "Bash(git log:*)",
   "Bash(git show:*)",
@@ -77,11 +76,7 @@ export function readOnlyAllowedTools(probePrefixes: readonly string[]): string[]
   return [...READ_BASE_TOOLS, ...probePrefixes.map((p) => `Bash(${p}:*)`)];
 }
 
-export const WRITING_BASE_TOOLS = [
-  "mcp__plugin_marvin_marvin",
-  "SendMessage",
-  "ListAgents",
-] as const;
+export const WRITING_BASE_TOOLS = ["mcp__plugin_marvin_marvin", "SendMessage"] as const;
 
 export function writingAllowedTools(commandPrefixes: readonly string[]): string[] {
   commandPrefixes.forEach((p) => validatePrefix(p));
