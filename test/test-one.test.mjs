@@ -227,6 +227,13 @@ test("in this repository, a shared-library test rebuilds the library first, and 
   assert.equal(shared.status, 0, shared.stdout + shared.stderr);
   const widget = cli(SCRIPT, repoRoot, ["packages/marvin-widgets/src/lib/actions.test.ts"]);
   assert.equal(widget.status, 0, widget.stdout + widget.stderr);
-  // The seal stage reads this count as its primary evidence that one file ran.
-  assert.match(widget.stdout, /^\s*Test Files\s+1 passed \(1\)\s*$/m);
+  // The seal stage reads this count as its primary evidence that one file ran, after stripping
+  // the escape sequences vitest colours it with where the environment asks for colour, as CI
+  // does (FORCE_COLOR); the same pattern as `ANSI` in src/pipeline/seal.ts.
+  const plain = widget.stdout.replace(
+    // eslint-disable-next-line no-control-regex
+    /\u001b(?:\[[0-?]*[ -/]*[@-~]|[\]PX^_][^\u0007\u001b\n]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g,
+    "",
+  );
+  assert.match(plain, /^\s*Test Files\s+1 passed \(1\)\s*$/m);
 });
