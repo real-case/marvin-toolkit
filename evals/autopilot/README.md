@@ -114,8 +114,8 @@ The plan's suite replayed six merged pull requests of the first consumer project
 out of scope here, and replaying marvin-toolkit's own history instead is impractical:
 
 - **The engine reads `.marvin/config.json` from the run's base commit** (`runConfig`), and
-  marvin-toolkit has never committed one: no historic commit carries `gates` or a `pipeline` block.
-  A run on such a base gets the defaults, so no bootstrap installs `node_modules` into the run
+  marvin-toolkit committed one only with plan Task 19 (2026-10): no earlier commit carries `gates`
+  or a `pipeline` block. A run on such a base gets the defaults, so no bootstrap installs `node_modules` into the run
   worktree and the writing roles get no command allowlist, and a main checkout whose ignored config
   holds those settings is refused at prepare, because the base does not hold them. Making a
   historic base runnable means rewriting it, which is no longer a replay.

@@ -352,7 +352,17 @@ A value the schema rejects, or an invalid `gates.extra`, resets **that subtree a
 default. The rest of the config is untouched and every other tool keeps working; the issue is
 named by `/marvin:track-config` and `/marvin:dashboard`. The pipeline fails closed instead: it
 refuses to start until the subtree is fixed, because running with defaults the project did not
-choose could do the wrong thing.
+choose could do the wrong thing. A key the schema does not know is a different case: it is
+stripped without a word, like a mistyped gate name.
+
+Under npm 11, options that follow `npx --no <tool>` are read by npm, not by the tool, so a
+`format_command` of `npx --no prettier --write` prints the formatted files and writes none. End
+npm's options with `--`: `npx --no -- prettier --write --ignore-unknown`. `--ignore-unknown` keeps
+Prettier from failing on `calibration.jsonl`, which finalize hands it with the rest.
+
+Marvin's own repository commits a complete example: `.marvin/config.json` and `.marvin/pipeline/`
+at its root, which `plugins/marvin/mcp/server/test/project-config.test.mjs` loads through the
+engine's own loaders and fails on a stripped key, a reset subtree or an ignored pattern.
 
 ## Environment variables
 
@@ -448,13 +458,22 @@ matches exactly one such runner). When no rung applies, the run is recorded `not
 reason. There is deliberately **no JavaScript or TypeScript default row**: a synthesized
 `node --test`-shaped command would run the wrong workspace's suite in any repository whose
 `npm test` fans out, and a green from a suite that never contained the test is worse than no
-answer. Marvin's own repository is that case, and starts at `not-run` for every one of its
-`kind: test` oracles until it declares a `test_one` of its own.
+answer. Marvin's own repository is that case.
 
-One template serves the whole project, which a polyglot repository outgrows — three workspaces
-with three runners cannot share one string. Such a project declares `run:` on the individual
-criteria instead, where the command is exact. A `test_one` keyed by path glob is recorded as
-future work in [ADR-0036](./adr/0036-oracle-execution-and-red-green.md).
+One template serves the whole project, which a polyglot repository outgrows: three workspaces
+with three runners cannot share one string. Such a project either declares `run:` on the
+individual criteria, where the command is exact, or points `test_one` at a small script of its
+own that routes a path to the right runner. A `test_one` keyed by path glob in marvin itself is
+recorded as future work in [ADR-0036](./adr/0036-oracle-execution-and-red-green.md).
+
+Marvin's own repository takes the second route. Its committed config declares
+`"test_one": "node scripts/test-one.mjs {file}"`, and `scripts/test-one.mjs` runs a top-level
+`test/*.test.mjs` of the root, the server, the shared library or the site under `node --test` from
+that workspace's directory, and a widget `src/**/*.test.{ts,tsx}` under vitest from the widgets
+workspace. Any other path exits 127, so the seal stage reads it as a test that did not run. The
+working directory matters as much as the runner: the server test driver starts the server in the
+test's directory, and from the repository root that server would read the repository's own
+committed `.marvin/config.json` instead of an empty project.
 
 ### Scanners as gates
 

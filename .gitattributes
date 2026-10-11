@@ -7,3 +7,8 @@
 # a theme token changes, so without this every regeneration invites git to render a diff of binary
 # content.
 *.png binary
+
+# The autopilot calibration log is append-only, one JSON record per line (plan Task 19). Two run
+# branches open at once both append at its end, and a branch that merges the base in to resolve a
+# conflict would otherwise stop on it; git's built-in union driver keeps both records instead.
+.marvin/pipeline/calibration.jsonl merge=union

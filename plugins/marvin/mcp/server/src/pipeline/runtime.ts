@@ -171,7 +171,12 @@ const RegexSource = z
       return false;
     }
   }, "is not a valid regular expression");
-const CheckRuleShape = z.object({
+/**
+ * One rule of `checks.yaml`, as the gate stage parses it. Exported for the test that pins a
+ * project's committed rules against it: the object is not strict, so a mistyped optional key
+ * (`path_patern`) is stripped here and the rule then applies to every path.
+ */
+export const CheckRuleShape = z.object({
   id: z.string().min(1),
   pattern: RegexSource,
   path_pattern: RegexSource.optional(),

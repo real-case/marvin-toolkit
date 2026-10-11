@@ -60,7 +60,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/refactor/` | `refactor-*` family | numbered findings-register reports `NNN-audit-<slug>.md` / `NNN-smells-<slug>.md` (`F<n>` id, severity, effort, evidence, direction — ADR-0029) + sequenced step plans `NNN-plan-<slug>.md` (one shared number sequence) |
 | `.marvin/audit/` | the `audit-*` family (`audit-plan`, `audit-run`, `audit-summary`) | the formal project-audit programme: the plan `A-00-plan-<slug>.md`, one report per audit `A-XX-<slug>.md` **plus its rendered `A-XX-<slug>.pdf`**, and the consolidation `A-99-summary-<slug>.md`. Each report carries a fixed frontmatter (commit, tool versions, `coverage`, `confidence`), the seven-section skeleton and one ` ```json findings ` block whose vocabulary is ASCII regardless of the report's `LANG` — that block is the ONLY interface `audit-summary` reads, which is what lets audits run in isolated sessions and still be joined. Not a report group of the `report` tool, and not written by any tool: the three commands are skill-backed prompts and every byte under `.marvin/audit/` is written by the calling session |
-| `.marvin/pipeline/` | the autopilot engine's finalize (a human writes `rubric.yaml`) | the host's pipeline learning state, committed through the run's PR: `rubric.yaml` (project tier overrides merged over `rubric.default.yaml`), `checks.yaml` (leftover-pattern checks the retro adds) and `calibration.jsonl` (one record per finished run, the orchestrator's cost estimate). The gate reads `checks.yaml` from the run's base commit, never from its worktree. The run state itself (`run.json`, `events.jsonl`, child logs, judgments) lives **outside** the repository under `MARVIN_PIPELINE_HOME`, default `~/.local/state/marvin-pipeline`, and `run.json` has one writer, the engine. Ignored in this repository by `.marvin/*` |
+| `.marvin/pipeline/` | the autopilot engine's finalize (a human writes `rubric.yaml`) | the host's pipeline learning state, committed through the run's PR: `rubric.yaml` (project tier overrides merged over `rubric.default.yaml`), `checks.yaml` (leftover-pattern checks the retro adds) and `calibration.jsonl` (one record per finished run, the orchestrator's cost estimate). The gate reads `checks.yaml` from the run's base commit, never from its worktree. The run state itself (`run.json`, `events.jsonl`, child logs, judgments) lives **outside** the repository under `MARVIN_PIPELINE_HOME`, default `~/.local/state/marvin-pipeline`, and `run.json` has one writer, the engine. `rubric.yaml` is the one file read from the main checkout's working tree when a run starts (`rubricFor`), not from the base commit. Committed in this repository (`!.marvin/pipeline/` in `.gitignore`, plan Task 19) |
 | `.marvin/track/` | `track-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
@@ -70,7 +70,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/report/` | `report` tool, `action: "triage"` with `snapshot: true` | the triage baseline `triage.json` — `{version: 1, updatedAt, findings: [{fingerprint, firstSeen, lastSeen, present}]}` — plus a self-written `.gitignore` = `*`, both created lazily and ONLY on the snapshot path (ADR-0038). **Not a report group at all**, despite sitting beside the five the tool scans (`security`, `refactor`, `task`, `handoff`, `critique`): it holds the tool's own state, is never enumerated by the viewer, and `MARVIN_REPORT_DIR` repoints it. `present: false` is what makes a `regressed` finding expressible — `nextBaseline` RETAINS a fingerprint that has left the live set rather than dropping it, and without that retention a reappearance would classify as `new` |
 | `.marvin/preview/` | `widget-preview` command (`mcp/server/bin/widget-preview.mjs`) | rendered widget panels `<widget>.html` — the committed `ui://` document plus the tool's live `structuredContent` and an inlined ~90-line postMessage host, in one self-contained file — plus a self-written `.gitignore` = `*`. The way to see a widget on a host that does not resolve `_meta.ui.resourceUri`, which the Claude Code CLI does not (ADR-0034) |
 | `.marvin/export/` | `report-export` skill (Claude fills the shipped template in-session — no server export code, ADR-0033) | shareable report exports `<group>-<source-basename>.<md\|html>` (print-ready HTML = the PDF path) + a self-written `.gitignore` = `*` — derived artifacts, never versioned |
-| `.marvin/config.json` | `track-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), the spec corpus location (`spec.dir`, ADR-0037), the by-product scope exemptions (`scope.exempt`, a list of path patterns the scope gate and the metrics roll-up do not count against a task's allowlist; no defaults ship, ADR-0045), the host's `merge_obligations` (a list of strings that replaced the per-spec `host-bindings` block, proposed once per project by `task-start`, ADR-0046), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:track-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write) |
+| `.marvin/config.json` | `track-*` tracker, `verify` | `base_branch` (auto-detected from `origin/HEAD` when absent), `tracker_url_template`, optional `branch_template`, the board's `statuses` vocabulary (`{key, role, tracker_status?}`, ADR-0026), `verify` gate overrides (`gates`, ADR-0009), the spec corpus location (`spec.dir`, ADR-0037), the by-product scope exemptions (`scope.exempt`, a list of path patterns the scope gate and the metrics roll-up do not count against a task's allowlist; no defaults ship, ADR-0045), the host's `merge_obligations` (a list of strings that replaced the per-spec `host-bindings` block, proposed once per project by `task-start`, ADR-0046), and the `usage` telemetry kill-switch (`{enabled}`, ADR-0030) — the `MARVIN_TASKS_CONFIG` default, shown/edited via `/marvin:track-config` (the `task` tool's `config` action; foreign keys survive the read-modify-write). Committed in this repository (`!.marvin/config.json` in `.gitignore`, plan Task 19): the autopilot engine reads it from a run's base commit, and its `gates`, `pipeline` block, `spec.dir` and `merge_obligations` are what let autopilot run against marvin-toolkit itself |
 
 Spec location stays **host-adaptive** (ADR-0005) and is now resolved by one function,
 `resolveSpecDir` in `storage/spec.ts` (ADR-0037): config `spec.dir` wins, else the first existing
@@ -297,6 +297,34 @@ diff <(git show HEAD:plugins/marvin/mcp/server/dist/server.js) "$TMP/server.js"
 
 Only intended lines differ, so build here and commit. Hundreds of `../../../../node_modules` comment
 lines differ, so use the main checkout.
+
+### This repository's gates and single-test command
+
+The repository commits its own `.marvin/config.json` (plan Task 19), and every marvin tool reads
+it, so `/marvin:task-verify` here runs the configured gates: `test` (which rebuilds the shared
+library and the server bundle, then runs `npm test`), `lint`, `build`, and seven extras that mirror
+CI (`lint:skills`, `lint:manifests`, `lint:docs`, `format:check`, `eval:self-test`, `eval:trigger`,
+`smoke`). Two consequences follow.
+
+- Verify with `execution: "sequential"`. In parallel the `test` and `build` gates both rewrite
+  `plugins/marvin/mcp/server/dist/` (tsup cleans its output first) while e2e tests spawn
+  `dist/server.js`, which fails tests the change never touched.
+- The drift guards are not gates. `verify-dist` and `verify-widgets` compare with `HEAD`, so before
+  a commit they fail on a correct rebuild. Run them after committing; CI runs them on every push.
+
+One test file runs with `node scripts/test-one.mjs <file>`, which is `gates.test_one`: an
+acceptance oracle, the autopilot seal stage and the pipeline verifier all resolve a `kind: test`
+criterion to it. It runs the file under the runner, and from the directory, of the workspace that
+owns it: `node --test` for a top-level `test/*.test.mjs` of the root, the server, the shared
+library or the site, and vitest for a widget `src/**/*.test.{ts,tsx}`. It rebuilds the shared
+library first for that library's importers, and exits 127 ("nothing ran") for any other path. A
+site e2e spec is refused, because Playwright needs a fresh site build and port 4321, which a
+running dev server takes over; a criterion it proves carries its own `oracle.run` or is a
+`kind: command` oracle.
+
+Under npm 11, `npx --no <tool> --flag` passes `--flag` to npm rather than to the tool, so
+`npx --no prettier --write <file>` writes nothing. Put `--` after `--no`:
+`npx --no -- prettier --write <file>`.
 
 ### Testing unreleased changes in a locally installed plugin
 

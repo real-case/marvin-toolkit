@@ -1,0 +1,50 @@
+- id: gate-script
+  pattern: '^\s*"(?:pre|post)?(?:test|lint|build|install|prepare|format:check|lint:manifests|lint:skills|lint:docs|eval:self-test|eval:trigger|smoke|check:catalog|gen|gen:catalog|gen:demos|gen:casts)"\s*:'
+  path_pattern: '(?:^|/)package\.json$'
+  exclude_pattern: "^(?:test/fixtures|evals/autopilot/replay)/"
+  message: "defines a package.json script that a gate runs, directly or as an npm lifecycle hook; gate definitions change in an interactive session, never in an autopilot run"
+  severity: major
+  category: gate-integrity
+- id: package-manifest-edit
+  pattern: '^\s*"(?!version")[^"]+"\s*:'
+  path_pattern: '^(?:package\.json|packages/[^/]+/package\.json|plugins/marvin/mcp/server/package\.json)$'
+  message: "changes a workspace package.json beyond its version line (a script, a dependency, workspaces or overrides); the file is scope-exempt for the version bump, so the change must be one the contract plans"
+  severity: minor
+  category: scope
+- id: manifest-edit
+  pattern: '^\s*"(?!version")[^"]+"\s*:'
+  path_pattern: '^(?:plugins/marvin/\.claude-plugin/plugin\.json|\.claude-plugin/marketplace\.json)$'
+  message: "changes a plugin manifest beyond its version; manifest edits are made in an interactive session"
+  severity: major
+  category: gate-integrity
+- id: gate-definition-edit
+  pattern: '\S'
+  path_pattern: '^(?:eslint\.config\.mjs|\.prettierrc\.json|\.prettierignore|tsconfig\.base\.json|scripts/(?:lint-skills|check-docs-drift|smoke-commands)\.mjs|scripts/lib/skill-datasets\.mjs|packages/marvin-widgets/vite\.config\.ts|packages/site/(?:tsconfig\.check\.json|playwright\.config\.ts))$|(?:^|/)\.gitignore$'
+  message: "edits a file that decides what a gate checks or which files it sees; confirm the edit does not weaken that gate"
+  severity: minor
+  category: gate-integrity
+- id: test-skip-option
+  pattern: '[{,]\s*(?:skip|todo)\s*:(?!\s*false\b)|\b(?:t|test|it|describe)\.todo\(|\bt\.skip\('
+  path_pattern: '\.test\.[cm]?[jt]sx?$'
+  message: "skipped or todo test added (a skip or todo option, t.skip() or .todo()); a todo test's failure does not fail the run"
+  severity: major
+  category: test-quality
+- id: server-stdout
+  pattern: '\bconsole\.(?:log|info|debug)\(|\bprocess\.stdout\.write\('
+  path_pattern: "^(?:plugins/marvin/mcp/server/src|packages/marvin-mcp-shared/src)/"
+  exclude_pattern: "^plugins/marvin/mcp/server/src/pipeline/"
+  message: "writes to stdout in MCP server code; stdout carries JSON-RPC, so log with console.error"
+  severity: major
+  category: convention
+- id: server-browser-sdk
+  pattern: '\bfrom\s+["''](?:@modelcontextprotocol/ext-apps|react|react-dom|preact)(?:/[^"'']*)?["'']|\bimport\(\s*["''](?:@modelcontextprotocol/ext-apps|react|react-dom|preact)'
+  path_pattern: "^(?:plugins/marvin/mcp/server/src|packages/marvin-mcp-shared/src)/"
+  message: "imports a browser SDK into the server bundle; the server stays free of ext-apps, React and Preact (ADR-0024)"
+  severity: major
+  category: convention
+- id: widget-inner-html
+  pattern: '\bdangerouslySetInnerHTML\s*[=:]'
+  path_pattern: "^packages/marvin-widgets/src/"
+  message: "dangerouslySetInnerHTML in a widget; widgets render through JSX, and the Markdown primitive never injects HTML"
+  severity: major
+  category: security

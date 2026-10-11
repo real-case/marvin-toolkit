@@ -10,9 +10,9 @@ The autopilot pipeline (`docs/proposals/autopilot-implementation-plan.md`, Phase
 description becomes a merge-ready pull request. A deterministic engine drives headless child
 sessions through planning, sealed acceptance tests, implementation, gates, a read-only verifier,
 CI and a retro, and the user talks only to an orchestrator session. The replay benchmark that
-gates changes to the pipeline's own process (Task 21) ships with a synthetic suite. Live runs
-against a real project (Task 20 scenarios 3–4, and scenario 2's interactive half) and its
-configuration (Task 19) are not part of this release.
+gates changes to the pipeline's own process (Task 21) ships with a synthetic suite. The first real
+project the pipeline is configured for is marvin-toolkit itself (Task 19); live runs against it
+(Task 20 scenarios 3–4, and scenario 2's interactive half) are not part of this release.
 
 ### Added
 
@@ -96,6 +96,15 @@ configuration (Task 19) are not part of this release.
   take about 20 minutes (`evals/autopilot/README.md`). Bench mode (`MARVIN_PIPELINE_BENCH=1`)
   rides on sandbox mode with green fake CI and adds only `MARVIN_PIPELINE_ROLES_DIR`, which the
   engine refuses outside it. A usage limit stops the bench with the run recorded `limited`.
+- **marvin-toolkit's own pipeline configuration** (Task 19). The repository commits
+  `.marvin/config.json` (gates and seven CI-mirroring extras, a `pipeline` block, `spec.dir`,
+  `merge_obligations` and `scope.exempt`) and `.marvin/pipeline/rubric.yaml` and `checks.yaml`,
+  and `.gitignore` re-includes both, so autopilot can run against marvin-toolkit itself. Its
+  `gates.test_one` is `scripts/test-one.mjs`, which runs one test file under the runner, and from
+  the directory, of the workspace that owns it (`node --test` or vitest), rebuilds the shared
+  library first for that library's importers, and exits 127 for a path no test script selects.
+  `project-config.test.mjs` loads the three files through the engine's loaders and fails on a
+  stripped key, a reset subtree or an ignored pattern.
 
 ### Changed
 

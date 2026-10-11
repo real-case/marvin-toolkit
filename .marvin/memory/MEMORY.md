@@ -32,3 +32,4 @@ in the linked file. Recalled at task intake.
 - [Don't let a feature PR be the first to track a tooling directory in a shared repo](don-t-let-a-feature-pr-be-the-first-to.md) — process · 2026-09-03 · pr-review, merge-conflicts, repo-hygiene, artefacts, naming
 - [The red phase of an oracle cannot be reconstructed after the code is green](the-red-phase-of-an-oracle-cannot-be.md) — process · 2026-09-05 · oracles, red-green, task-implement, verify, metrics, proof
 - [Validate the same canonical form the matcher compiles](validate-the-same-canonical-form-the.md) — bug-pattern · 2026-09-27 · validation, normalisation, scope, glob
+- [A sealed test is committed as written, so the pipeline test-author formats and lints it first](a-sealed-test-is-committed-as-written.md) — process · 2026-10-11 · pipeline, role:test-author, seal, prettier, eslint, format, lint, test, plugins, marvin, server, widgets
