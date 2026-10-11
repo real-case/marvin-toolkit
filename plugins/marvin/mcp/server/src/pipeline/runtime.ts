@@ -22,7 +22,7 @@ import { parseFrontmatter } from "../storage/frontmatter.js";
 import type { Config } from "../storage/schema.js";
 import { isSafeBranchRef } from "../storage/slug.js";
 import { contractHash, extractContractBlock } from "../storage/spec.js";
-import { readSignals, type Rubric } from "./assess.js";
+import { readSignals, sealIssue, type Rubric } from "./assess.js";
 import { type CiState, classifyCi, fetchCi } from "./ci.js";
 import {
   buildChildCommand,
@@ -978,13 +978,14 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
 
   /**
    * What the engine learns from a planner's `spec_ready` beyond its words: the signals of the
-   * spec it names. A spec the engine cannot read is a crash of the turn that named it, which
-   * costs a retry, never the engine.
+   * spec it names, and whether it is sealed. A spec the engine cannot read is a crash of the turn
+   * that named it, which costs a retry, never the engine. An unsealed one is readable; `decide`
+   * sends it back to the planner rather than on to approval.
    */
   const withSignals = (
     run: Run,
     result: WaitResult,
-  ): { result: WaitResult; signals?: ReturnType<typeof readSignals> } => {
+  ): { result: WaitResult; signals?: ReturnType<typeof readSignals>; sealIssue?: string } => {
     const spec = result.structured?.spec as { path?: unknown } | undefined;
     const path = spec?.path;
     // A path that is not canonical is left to `decide`, whose schema refuses it as invalid output.
@@ -992,7 +993,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     try {
       const abs = join(run.worktree, path);
       if (!physicallyInside(run.worktree, abs)) throw new Error("it leads out of the worktree");
-      return { result, signals: readSignals(readFileSync(abs, "utf8"), rubric) };
+      const text = readFileSync(abs, "utf8");
+      const signals = readSignals(text, rubric);
+      const issue = sealIssue(text);
+      return issue === null ? { result, signals } : { result, signals, sealIssue: issue };
     } catch (error) {
       const detail = `spec_ready names ${path}, which the engine cannot read: ${errorText(error)}`;
       return { result: { ...result, outcome: "crashed", detail: detail.slice(0, 300) } };
@@ -1064,6 +1068,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       const read = withSignals(run, result);
       obs.result = read.result;
       if (read.signals) obs.signals = read.signals;
+      if (read.sealIssue) obs.sealIssue = read.sealIssue;
     }
     // D19 and S10: anything new in the main checkout. It is shared with other sessions, so the
     // engine raises a halt the orchestrator judges rather than failing the child outright.

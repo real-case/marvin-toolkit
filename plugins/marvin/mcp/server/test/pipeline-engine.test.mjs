@@ -154,6 +154,30 @@ test("spec ready computes the tier and asks for approval", () => {
   assert.equal(judgmentOf(d), "spec_approval");
 });
 
+test("an unsealed spec goes back to the planner's session, then halts; it never reaches approval", () => {
+  const ready = {
+    ...child(
+      "planner",
+      { status: "spec_ready", summary: "s", spec: { path: "specs/1-x.md" } },
+      "spec_ready",
+    ),
+    signals: light,
+    sealIssue: "its front matter has no contract_sha",
+  };
+  const d = go(at("planning", { tier: null }), ready);
+  assert.equal(d.run.stage, "planning");
+  assert.equal(judgmentOf(d), undefined);
+  assert.equal(d.run.retries.planner, 1);
+  assert.equal(spawnOf(d).role, "planner");
+  assert.equal(spawnOf(d).resume, true);
+  assert.match(spawnOf(d).context.message, /SPEC NOT SEALED: specs\/1-x\.md: its front matter/);
+  assert.match(spawnOf(d).context.message, /action "seal"/);
+  const again = go(d.run, ready);
+  assert.equal(judgmentOf(again), "halt");
+  assert.equal(again.run.haltRole, "planner");
+  assert.match(payloadOf(again).reason, /unsealed spec/);
+});
+
 test("approval routes standard work through the test-author and light work straight to the executor", () => {
   const std = approve(at("awaiting_approval"));
   assert.equal(std.run.stage, "test_authoring");
@@ -220,6 +244,41 @@ test("executor done goes to the gate; a failed gate escalates the next executor"
   });
   assert.equal(rej.run.stage, "executing");
   assert.deepEqual([spawnOf(rej).iteration, spawnOf(rej).assignment.effort], [2, "xhigh"]);
+});
+
+test("a gate that finds the spec unsealed halts instead of handing the executor a seal to forge", () => {
+  for (const id of ["SPEC-unsealed", "SPEC-contract", "SPEC-unreadable", "SPEC-path"]) {
+    const d = go(at("gating", { iteration: 1 }), {
+      kind: "gate",
+      report: report(false),
+      findings: [
+        finding({ id, severity: "blocker", category: "spec", file: "specs/1-x.md" }),
+        finding({ id: "B-1", severity: "blocker", category: "scope", file: "PR_BODY.md" }),
+      ],
+    });
+    assert.equal(judgmentOf(d), "halt", id);
+    assert.equal(spawnOf(d), undefined, id);
+    assert.equal(d.run.haltRole, null, id);
+    assert.deepEqual(
+      payloadOf(d).findings.map((f) => f.id),
+      [id],
+      id,
+    );
+    assert.throws(
+      () => go(d.run, answer("halt", { kind: "retry" })),
+      /cannot be retried: cancel the run/,
+    );
+    assert.equal(go(d.run, answer("halt", { kind: "cancel", reason: "r" })).run.stage, "retro");
+  }
+  // An uncommitted or tampered spec is the executor's to fix: commit it, or check the seal out.
+  for (const id of ["SPEC-uncommitted", "SPEC-tampered"]) {
+    const d = go(at("gating", { iteration: 1 }), {
+      kind: "gate",
+      report: report(false),
+      findings: [finding({ id, severity: "blocker", category: "spec", file: "specs/1-x.md" })],
+    });
+    assert.equal(spawnOf(d).role, "executor", id);
+  }
 });
 
 test("a passed gate snapshots the tree and spawns a verifier no weaker than the executor", () => {

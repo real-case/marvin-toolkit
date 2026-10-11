@@ -49,6 +49,8 @@ export type Observation =
       role: Role;
       result: WaitResult;
       signals?: Signals;
+      /** Why the spec a planner's `spec_ready` names is not sealed, when it is not. */
+      sealIssue?: string;
       mutated?: string[];
       leaked?: string[];
     }
@@ -306,6 +308,11 @@ const STAGE_OF: Record<Role, Stage> = {
   retro: "retro",
 };
 const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
+/**
+ * Gate findings that leave the run with no sealed spec to restore. `SPEC-uncommitted` and
+ * `SPEC-tampered` stay with the executor: it can commit the spec, or check out the sealed one.
+ */
+const SEAL_LOST = new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 
 const blocking = (f: Finding) => f.severity !== "minor";
 const asFindings = (xs: Record<string, unknown>[]) => xs as unknown as Finding[];
@@ -555,6 +562,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       if (r.stage === "ci_wait" || r.stage === "finalizing") {
         return { run: startClock(cleared), actions: [{ kind: "work", work: "ci" }] };
       }
+      if (r.stage === "gating") {
+        throw new Error("a spec that lost its seal cannot be retried: cancel the run");
+      }
       throw new Error(`nothing to retry in stage ${r.stage}`);
     }
     if (r.stage === STAGE_OF[role]) return { run: cleared, actions: [lastSpawnOf(r, role)] };
@@ -681,6 +691,24 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           "planner_questions",
           { questions: out.questions },
         );
+      }
+      if (child?.sealIssue) {
+        // Only the planner can seal: a spec that reaches the executor unsealed invites it to
+        // stamp a contract_sha by hand, which the gate then judges tampered.
+        const tries = run.retries.planner ?? 0;
+        if (tries >= rubric.caps.child_retries) {
+          return ask({ ...run, haltRole: "planner" }, "halt", {
+            reason: "planner returned an unsealed spec",
+            detail: `${out.spec?.path}: ${child.sealIssue}`,
+          });
+        }
+        const r = { ...run, retries: { ...run.retries, planner: tries + 1 } };
+        const message = [
+          `SPEC NOT SEALED: ${out.spec?.path}: ${child.sealIssue}.`,
+          'Seal it with the marvin `spec` tool, action "seal", then finish with spec_ready again.',
+          "Never write contract_sha by hand.",
+        ].join("\n");
+        return { run: r, actions: [spawn(r, "planner", { message }, true)] };
       }
       if (!child?.signals) throw new Error("spec_ready observation carries no signals");
       const { tier, reasons } = tierFor(child.signals, rubric);
@@ -820,6 +848,15 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         ...reportFindings(obs.report).filter((f) => !supplied.has(f.id)),
       ];
       const blockers = found.filter(blocking);
+      // The executor cannot seal a spec, so these go to the orchestrator, never to another
+      // iteration: sent back as findings, they invite a hand-stamped contract_sha.
+      const lost = blockers.filter((f) => SEAL_LOST.has(f.id));
+      if (lost.length > 0) {
+        return ask({ ...run, haltRole: null }, "halt", {
+          reason: "the spec on the run branch is not the sealed spec, and an executor cannot seal",
+          findings: lost,
+        });
+      }
       if (obs.report.passed !== true || blockers.length > 0) return reject(run, "gate", blockers);
       const minors = asRecords(found);
       const r = go(

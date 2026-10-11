@@ -120,7 +120,8 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash or failure
 after its retry, a usage limit, a stalled child, a child that mutated the tree or wrote outside
-its worktree, a planner or executor past its question cap, the sealed tests revised too often, a
+its worktree, a planner or executor past its question cap, a planner that returned an unsealed spec twice,
+a gate that found the spec unsealed on the run branch, the sealed tests revised too often, a
 closed PR, or CI red after finalize.
 
 Explain in `lang`, with a `PushNotification`: what stopped the run, the findings or failing
@@ -140,6 +141,9 @@ Three halts deserve a look before you ask:
   child's; a write by the child is a real boundary breach, and the user should see it.
 - **`<role> mutated the tree`.** The read-only verifier changed the worktree. Recommend
   `cancel` unless the user wants to inspect it; a verifier that writes cannot be trusted.
+- **`the spec on the run branch is not the sealed spec`.** `findings` names what the gate saw:
+  no `contract_sha`, no contract block, or no readable spec. Only a planner can seal, so this
+  halt cannot be retried; recommend `cancel`.
 - **A usage limit** (`<role> limited`). A retry will hit the same limit until it resets; say
   when, if the detail names it, and suggest retrying then.
 

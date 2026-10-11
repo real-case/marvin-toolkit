@@ -618,6 +618,7 @@ test("a resume continues the role's last session with the message alone; spec_re
       [second.obs.signals.risk, second.obs.signals.files, second.obs.signals.paths],
       ["low", 1, ["src/a.mjs"]],
     );
+    assert.equal(second.obs.sealIssue, undefined);
     run = second.run;
   });
   // A spec the engine cannot read makes the turn a crash, which costs a retry, not the engine.
@@ -638,6 +639,22 @@ test("a resume continues the role's last session with the message alone; spec_re
       assert.match(obs.result.detail, /cannot read/);
     },
   );
+});
+
+test("spec_ready on a spec whose contract no longer matches its seal carries the seal issue", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  const s = await prepared({ files: { [spec]: specText({ tamper: true }) } });
+  const ready = { status: "spec_ready", summary: "sealed", spec: { path: spec } };
+  const run = { ...s.run, stage: "planning" };
+  await withFake(s.runDir, "planner", [ready], async () => {
+    const { obs } = await waitFor(
+      s.deps,
+      s.deps.spawnChild(run, spawnAction("planner", 0, { task: "t", critic_cap: "1" }), step("p1")),
+    );
+    assert.equal(obs.result.outcome, "spec_ready");
+    assert.equal(obs.signals.risk, "low");
+    assert.match(obs.sealIssue, /but the block hashes to/);
+  });
 });
 
 test("a replayed spawn adopts the child already launched instead of starting another", async () => {

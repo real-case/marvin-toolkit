@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { importTs } from "./_tsload.mjs";
 
 const a = await importTs("src/pipeline/assess.ts");
+const { contractHash } = await importTs("src/storage/spec.ts");
 const DEFAULT = readFileSync(
   fileURLToPath(new URL("../../../pipeline/rubric.default.yaml", import.meta.url)),
   "utf8",
@@ -598,5 +599,24 @@ test("the executor question cap defaults to 3, may be zero, and cannot be negati
   assert.throws(
     () => a.loadRubric(DEFAULT, "caps: { executor_questions: 1.5 }\n"),
     /executor_questions/,
+  );
+});
+
+test("sealIssue accepts a spec whose contract_sha hashes its block and names what is wrong otherwise", () => {
+  const block = "files:\n  - path: src/a.ts\n    action: modify\ncriteria:\n  - id: AC1";
+  const body = (b) => `# X\n\n\`\`\`yaml spec-contract\n${b}\n\`\`\`\n`;
+  const sealed = `---\nslug: x\ncontract_sha: ${contractHash(block)}\n---\n${body(block)}`;
+  assert.equal(a.sealIssue(sealed), null);
+  assert.equal(a.sealIssue(sealed.replace(/\n/g, "\r\n")), null);
+  assert.equal(
+    a.sealIssue(`---\nslug: x\n---\n${body(block)}`),
+    "its front matter has no contract_sha",
+  );
+  assert.match(a.sealIssue(sealed.replace("id: AC1", "id: AC2")), /but the block hashes to/);
+  // A hand-stamped sha256 of some lines is not the seal.
+  assert.match(a.sealIssue(sealed.replace(contractHash(block), "d8544315f42194de")), /hashes to/);
+  assert.equal(
+    a.sealIssue("---\nslug: x\ncontract_sha: abc\n---\n# X\n"),
+    "it has no spec-contract block",
   );
 });

@@ -1,7 +1,7 @@
 import { parse } from "yaml";
 import { z } from "zod";
 import { parseFrontmatter } from "../storage/frontmatter.js";
-import { extractContractBlock } from "../storage/spec.js";
+import { contractHash, extractContractBlock } from "../storage/spec.js";
 import { modelFamily, type ModelFamily } from "./command.js";
 import {
   type Assignment,
@@ -198,6 +198,21 @@ function readContract(specText: string): z.infer<typeof ContractShape> {
     throw new Error(`spec-contract block is invalid: ${describeIssues(parsed.error)}`);
   }
   return parsed.data;
+}
+
+/**
+ * Why a spec is not sealed, or null when it is: its front matter's `contract_sha` must be the
+ * hash of its spec-contract block, judged the way the gate's spec check judges it. A planner's
+ * `sealed: true` is a claim; this is what the engine believes before the spec reaches approval.
+ */
+export function sealIssue(specText: string): string | null {
+  const { frontmatter, body } = parseFrontmatter(specText.replace(/\r\n?/g, "\n"));
+  const block = extractContractBlock(body);
+  if (block === null) return "it has no spec-contract block";
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  if (!stamped) return "its front matter has no contract_sha";
+  const actual = contractHash(block);
+  return actual === stamped ? null : `contract_sha ${stamped}, but the block hashes to ${actual}`;
 }
 
 export function readSignals(specText: string, rubric: Rubric): Signals {

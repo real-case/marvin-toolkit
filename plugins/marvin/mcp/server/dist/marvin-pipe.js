@@ -11923,6 +11923,15 @@ function readContract(specText) {
   }
   return parsed.data;
 }
+function sealIssue(specText) {
+  const { frontmatter, body } = parseFrontmatter(specText.replace(/\r\n?/g, "\n"));
+  const block = extractContractBlock(body);
+  if (block === null) return "it has no spec-contract block";
+  const stamped = (frontmatter.contract_sha ?? "").trim();
+  if (!stamped) return "its front matter has no contract_sha";
+  const actual = contractHash(block);
+  return actual === stamped ? null : `contract_sha ${stamped}, but the block hashes to ${actual}`;
+}
 function readSignals(specText, rubric) {
   const text2 = specText.replace(/\r\n?/g, "\n");
   const { frontmatter } = parseFrontmatter(text2);
@@ -15856,6 +15865,7 @@ var STAGE_OF = {
   retro: "retro"
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
+var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var blocking = (f) => f.severity !== "minor";
 var asFindings = (xs) => xs;
 var asRecords = (fs) => fs;
@@ -16046,6 +16056,9 @@ function step(run2, obs, rubric, now) {
       if (r.stage === "ci_wait" || r.stage === "finalizing") {
         return { run: startClock(cleared), actions: [{ kind: "work", work: "ci" }] };
       }
+      if (r.stage === "gating") {
+        throw new Error("a spec that lost its seal cannot be retried: cancel the run");
+      }
       throw new Error(`nothing to retry in stage ${r.stage}`);
     }
     if (r.stage === STAGE_OF[role]) return { run: cleared, actions: [lastSpawnOf(r, role)] };
@@ -16171,6 +16184,22 @@ ${lines.join("\n")}` }, true)]
           "planner_questions",
           { questions: out.questions }
         );
+      }
+      if (child?.sealIssue) {
+        const tries = run2.retries.planner ?? 0;
+        if (tries >= rubric.caps.child_retries) {
+          return ask({ ...run2, haltRole: "planner" }, "halt", {
+            reason: "planner returned an unsealed spec",
+            detail: `${out.spec?.path}: ${child.sealIssue}`
+          });
+        }
+        const r2 = { ...run2, retries: { ...run2.retries, planner: tries + 1 } };
+        const message = [
+          `SPEC NOT SEALED: ${out.spec?.path}: ${child.sealIssue}.`,
+          'Seal it with the marvin `spec` tool, action "seal", then finish with spec_ready again.',
+          "Never write contract_sha by hand."
+        ].join("\n");
+        return { run: r2, actions: [spawn4(r2, "planner", { message }, true)] };
       }
       if (!child?.signals) throw new Error("spec_ready observation carries no signals");
       const { tier, reasons } = tierFor(child.signals, rubric);
@@ -16308,6 +16337,13 @@ ${a.text}` }, true)]
         ...reportFindings(obs.report).filter((f) => !supplied.has(f.id))
       ];
       const blockers = found.filter(blocking);
+      const lost = blockers.filter((f) => SEAL_LOST.has(f.id));
+      if (lost.length > 0) {
+        return ask({ ...run2, haltRole: null }, "halt", {
+          reason: "the spec on the run branch is not the sealed spec, and an executor cannot seal",
+          findings: lost
+        });
+      }
       if (obs.report.passed !== true || blockers.length > 0) return reject(run2, "gate", blockers);
       const minors = asRecords(found);
       const r = go(
@@ -18658,7 +18694,10 @@ ${tail}`);
     try {
       const abs = join(run2.worktree, path);
       if (!physicallyInside(run2.worktree, abs)) throw new Error("it leads out of the worktree");
-      return { result, signals: readSignals(readFileSync(abs, "utf8"), rubric) };
+      const text2 = readFileSync(abs, "utf8");
+      const signals = readSignals(text2, rubric);
+      const issue = sealIssue(text2);
+      return issue === null ? { result, signals } : { result, signals, sealIssue: issue };
     } catch (error) {
       const detail = `spec_ready names ${path}, which the engine cannot read: ${errorText3(error)}`;
       return { result: { ...result, outcome: "crashed", detail: detail.slice(0, 300) } };
@@ -18715,6 +18754,7 @@ ${tail}`);
       const read = withSignals(run2, result);
       obs.result = read.result;
       if (read.signals) obs.signals = read.signals;
+      if (read.sealIssue) obs.sealIssue = read.sealIssue;
     }
     const mainBefore = at(`${key}.main-before.txt`);
     if (existsSync(mainBefore)) {
