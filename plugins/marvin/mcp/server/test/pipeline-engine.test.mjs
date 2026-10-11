@@ -174,7 +174,7 @@ test("spec ready computes the tier and asks for approval", () => {
   assert.equal(payloadOf(sealedByEngine).engineSealed, true);
 });
 
-test("an unsealed spec that fails the Definition of Ready goes back to the planner's session, then halts", () => {
+test("an unsealed spec that fails the Definition of Ready goes back to the planner's session for its rounds, then halts", () => {
   const ready = {
     ...child(
       "planner",
@@ -183,21 +183,53 @@ test("an unsealed spec that fails the Definition of Ready goes back to the plann
     ),
     dorFailures: ["Required sections: missing ## Non-goals"],
   };
-  const d = go(at("planning", { tier: null }), ready);
-  assert.equal(d.run.stage, "planning");
-  assert.equal(judgmentOf(d), undefined);
-  assert.equal(d.run.retries.planner, 1);
-  assert.equal(spawnOf(d).role, "planner");
-  assert.equal(spawnOf(d).resume, true);
-  assert.match(spawnOf(d).context.message, /DEFINITION OF READY FAILED for specs\/1-x\.md:/);
-  assert.match(spawnOf(d).context.message, /- Required sections: missing ## Non-goals/);
-  assert.match(spawnOf(d).context.message, /action "dor", specPath/);
-  assert.doesNotMatch(spawnOf(d).context.message, /never write contract_sha/i);
-  const again = go(d.run, ready);
-  assert.equal(judgmentOf(again), "halt");
-  assert.equal(again.run.haltRole, "planner");
-  assert.match(payloadOf(again).reason, /fails the Definition of Ready/);
-  assert.deepEqual(payloadOf(again).detail.failures, ["Required sections: missing ## Non-goals"]);
+  // A crash retry spent earlier does not take a round away: the rounds have a count of their own.
+  let d = go(at("planning", { tier: null, retries: { planner: 1 } }), ready);
+  for (let round = 1; round <= rubric.caps.dor_rounds; round += 1) {
+    assert.equal(judgmentOf(d), undefined, `round ${round}`);
+    assert.equal(d.run.stage, "planning");
+    assert.deepEqual(d.run.retries, { planner: 1, "planner-dor": round });
+    assert.deepEqual([spawnOf(d).role, spawnOf(d).resume], ["planner", true]);
+    assert.match(spawnOf(d).context.message, /DEFINITION OF READY FAILED for specs\/1-x\.md:/);
+    assert.match(spawnOf(d).context.message, /- Required sections: missing ## Non-goals/);
+    assert.match(spawnOf(d).context.message, /action "dor", specPath/);
+    assert.doesNotMatch(spawnOf(d).context.message, /never write contract_sha/i);
+    d = go(d.run, ready);
+  }
+  assert.equal(rubric.caps.dor_rounds, 2);
+  assert.equal(judgmentOf(d), "halt");
+  assert.equal(d.run.haltRole, "planner");
+  assert.match(payloadOf(d).reason, /fails the Definition of Ready/);
+  assert.deepEqual(payloadOf(d).detail.failures, ["Required sections: missing ## Non-goals"]);
+  // A retry of that halt gives the planner its rounds back, with its crash retry.
+  const retried = go(d.run, answer("halt", { kind: "retry" }));
+  assert.deepEqual(retried.run.retries, {});
+  assert.equal(spawnOf(retried).role, "planner");
+});
+
+test("a revised spec gets its DoR rounds back, and dor_rounds: 0 halts at the first failure", () => {
+  const failing = {
+    ...child(
+      "planner",
+      { status: "spec_ready", summary: "s", spec: { path: "specs/1-x.md" } },
+      "spec_ready",
+    ),
+    dorFailures: ["Required sections: missing ## Non-goals"],
+  };
+  // The first draft used both rounds and then passed; the orchestrator asked for changes.
+  const changed = go(
+    at("awaiting_approval", { retries: { "planner-dor": 2, planner: 1 } }),
+    answer("spec_approval", { kind: "changes", text: "narrow AC2" }),
+  );
+  assert.deepEqual(changed.run.retries, { planner: 1 });
+  const revised = go(changed.run, failing);
+  assert.equal(judgmentOf(revised), undefined);
+  assert.equal(spawnOf(revised).resume, true);
+
+  const none = loadRubric(DEFAULT, "caps: { dor_rounds: 0 }\n");
+  const halted = go(at("planning", { tier: null }), failing, none);
+  assert.equal(judgmentOf(halted), "halt");
+  assert.equal(spawnOf(halted), undefined);
 });
 
 test("approval routes standard work through the test-author and light work straight to the executor", () => {

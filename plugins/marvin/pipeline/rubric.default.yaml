@@ -28,6 +28,7 @@ caps:
   planner_questions: 8
   test_author_attempts: 2
   child_retries: 1
+  dor_rounds: 2 # resumes a planner gets to fix a spec the DoR gate fails; its own count
   ci_wait_minutes: 60
   executor_questions: 3
   spec_critic: { light: 1, default: 2 }

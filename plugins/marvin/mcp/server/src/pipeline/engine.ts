@@ -320,6 +320,8 @@ const STAGE_OF: Record<Role, Stage> = {
   retro: "retro",
 };
 const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
+/** The `retries` key counting a planner's rounds against the Definition-of-Ready gate. */
+const DOR_ROUNDS = "planner-dor";
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /**
  * Gate findings that leave the run with no sealed spec to restore. `SPEC-uncommitted` and
@@ -582,7 +584,11 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     const role = r.haltRole;
     const cleared: Run = {
       ...r,
-      retries: Object.fromEntries(Object.entries(r.retries).filter(([name]) => name !== role)),
+      retries: Object.fromEntries(
+        Object.entries(r.retries).filter(
+          ([name]) => name !== role && !(role === "planner" && name === DOR_ROUNDS),
+        ),
+      ),
       haltRole: null,
     };
     if (role === null) {
@@ -739,15 +745,16 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       }
       if (child?.dorFailures) {
         // The engine seals an unsealed spec only once its Definition of Ready passes; a FAIL is the
-        // planner's to fix, in its own session.
-        const tries = run.retries.planner ?? 0;
-        if (tries >= rubric.caps.child_retries) {
+        // planner's to fix, in its own session. The rounds have a count of their own, so a crash
+        // retry spent earlier in the run does not leave the planner without one.
+        const tries = run.retries[DOR_ROUNDS] ?? 0;
+        if (tries >= rubric.caps.dor_rounds) {
           return ask({ ...run, haltRole: "planner" }, "halt", {
             reason: "planner's spec fails the Definition of Ready",
             detail: { spec: out.spec?.path, failures: child.dorFailures },
           });
         }
-        const r = { ...run, retries: { ...run.retries, planner: tries + 1 } };
+        const r = { ...run, retries: { ...run.retries, [DOR_ROUNDS]: tries + 1 } };
         const message = [
           `DEFINITION OF READY FAILED for ${out.spec?.path}:`,
           ...child.dorFailures.map((f) => `- ${f}`),
@@ -834,7 +841,9 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       const a = obs.answer;
       if (a.kind === "cancel") return cancel(run, a.reason);
       if (a.kind === "changes") {
-        const r = go(run, "planning");
+        // A revision is a new spec to the DoR gate: its rounds start again.
+        const { [DOR_ROUNDS]: _rounds, ...retries } = run.retries;
+        const r = go({ ...run, retries }, "planning");
         return {
           run: r,
           actions: [spawn(r, "planner", { message: `CHANGES REQUESTED:\n${a.text}` }, true)],

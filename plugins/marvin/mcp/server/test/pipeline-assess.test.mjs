@@ -176,6 +176,14 @@ test("light skips the test-author; caps come from the project rubric", () => {
   assert.equal(a.loadRubric(DEFAULT, null).caps.rejections, 3);
 });
 
+test("caps.dor_rounds defaults to 2, is overridable on its own, and refuses a bad value", () => {
+  assert.equal(a.loadRubric(DEFAULT, null).caps.dor_rounds, 2);
+  const r = a.loadRubric(DEFAULT, "caps: { dor_rounds: 3 }\n");
+  assert.deepEqual([r.caps.dor_rounds, r.caps.child_retries], [3, 1]);
+  for (const bad of ["-1", "1.5"])
+    assert.throws(() => a.loadRubric(DEFAULT, `caps: { dor_rounds: ${bad} }\n`));
+});
+
 test("a project rubric overrides one key and leaves its siblings at the default", () => {
   const r = a.loadRubric(DEFAULT, "caps: { planner_questions: 4 }\n");
   assert.equal(r.caps.rejections, 3);

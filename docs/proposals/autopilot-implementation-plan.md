@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), a candidate that passes the L3 gate against the baseline (see "Benchmark iterations" under Task 21), Task 22 (conditional on benchmark evidence) |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Two candidates pass the L3 gate against the baseline under the delivered-runs rule of 2026-10-11 ("Benchmark iterations" under Task 21). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), a bench of the `dor_rounds` change, Task 22 (conditional on benchmark evidence) |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |
@@ -3907,22 +3907,24 @@ Known bias: the real PR's tests may name internals the pipeline is free to choos
 - **The judge.** `bench` plays the orchestrator through `init`/`start`/`await`/`judge`. Its fixed policy: approve the spec, cancel a halt, proceed past `no_ci`, retry one `unverified` and cancel a second. Questions go to `--judge llm` (default): a headless `claude -p` with `--strict-mcp-config`, `dontAsk`, every tool disallowed, in an empty directory, given the task text and ground truth but never the hidden tests, on `opus/medium` or, under sandbox mode, `MARVIN_PIPELINE_MODEL_OVERRIDE`; Fable is refused through `modelFamily`. A failed judge call falls back to the children's recommendations and is counted; `--judge auto` runs no model. The judge's answers are recorded `--answered-by user`.
 - **Hidden tests** are copied from the reference commit into the run worktree after the run and each run through the base commit's `gates.test_one`, filled by the seal stage's `formatTestOne` (single-quoted through `lib/shell-quote.ts`); a file passes on exit 0, and the ratio is files passed over files.
 - **Costs are notional.** Every cost is the CLI's `total_cost_usd`; results carry `costIsNotional: true` and the markdown says so. A run with a child classified `limited` (or a judge refused for the usage limit) is recorded `limited`, and the bench stops there instead of retrying. Per-run caps `--max-min` (60) and `--max-usd` (5) stop a run as `aborted`.
-- **The L3 gate** is `l3Gate` in `bench.ts`: the pooled hidden pass rate must not fall, no task may regress in every repeat (a repeat regresses below the mean of that task's baseline ratios), and the notional cost must stay within 1.15 × baseline unless the pass rate rose. It answers `inconclusive`, never `accept`, when suites or task sets differ, a task ran fewer than twice on either side, or any run is incomplete. `bench --baseline` appends the comparison to the result markdown; `bench-compare` applies it to two files.
+- **The L3 gate** is `l3Gate` in `bench.ts`: the pooled hidden pass rate must not fall, no task may regress in every repeat (a repeat regresses below the mean of that task's baseline ratios), and the notional cost must stay within 1.15 × baseline unless the pass rate rose. (Superseded on 2026-10-11 by the delivered-runs rule; see "Benchmark iterations" below and `evals/autopilot/README.md`.) It answers `inconclusive`, never `accept`, when suites or task sets differ, a task ran fewer than twice on either side, or any run is incomplete. `bench --baseline` appends the comparison to the result markdown; `bench-compare` applies it to two files.
 - **Tests.** `plugins/marvin/mcp/server/test/pipeline-bench.test.mjs` (bench mode, the suite and replay repository, hidden tests with an awkward path, the judge with an injected `claude`, metrics, and the gate on synthetic results including "regresses in both repeats" and the cost clause both ways) and `test/autopilot-bench.test.mjs` (two `bench` invocations over the bundle with the sandbox's fake children and `--judge auto`, the second a `--roles-dir` variant compared against the first). Both are hermetic: a temp home, `useConfigOnly`, stubs for `claude` and `gh`.
 - **Acceptance run** (`evals/autopilot/results/2026-10-10-haiku-baseline.{json,md}`): `clamp` and `csv-quotes`, `--repeat 1`, all children and the judge on Haiku. Both reached `ready` with every hidden test file passing (3/3). `clamp`: tier light as expected, one iteration, $1.31 notional, 9.3 min. `csv-quotes`: the planner chose `risk: low`, so tier light against the expected standard (no sealed tests), two iterations after one gate rejection (spec and metrics record left uncommitted), one planner crash retry, $1.54 notional, 11.6 min. No child asked a question, so the judge was not called. The comparison against itself is inconclusive by design (one repeat), with all three clauses holding. A two-repeat baseline, and a matrix variant run against it, remain to be made.
 
 ---
 
 **Benchmark iterations (2026-10-11).** Five two-repeat Haiku runs of the sandbox suite, each
-compared with the L3 gate against the baseline (`evals/autopilot/results/2026-10-11-*.md`):
+compared with the L3 gate against the baseline (`evals/autopilot/results/2026-10-11-*.md`). "Hidden"
+is the all-runs rate the result files report; the last two columns are the gate as each run was
+judged, and as `bench-compare` judges the same files under the delivered-runs rule adopted below.
 
-| Variant | Commit | Ready | Hidden | Notional cost | Wall | L3 |
-|---------|--------|-------|--------|---------------|------|----|
-| `haiku-baseline` | 5115cf6 | 7/8 | 100% | $13.53 | 99 min | baseline |
-| `haiku-seal-fix` | 0e6b6a2 | 5/8 | 75% | $11.38 | 87 min | reject |
-| `haiku-refusal-resume` | 3d4013b | 7/8 | 83.3% | $11.49 | 78 min | reject |
-| `haiku-integrated` | 80329b3 | 5/8 | 58.3% | $7.74 | 52 min | reject |
-| `haiku-engine-seal` | 19707ac | 7/8 | 83.3% | $9.11 | 64 min | reject |
+| Variant | Commit | Ready | Hidden | Notional cost | Wall | L3, all runs | L3, delivered |
+|---------|--------|-------|--------|---------------|------|--------------|---------------|
+| `haiku-baseline` | 5115cf6 | 7/8 | 100% | $13.53 | 99 min | baseline | baseline |
+| `haiku-seal-fix` | 0e6b6a2 | 5/8 | 75% | $11.38 | 87 min | reject | reject |
+| `haiku-refusal-resume` | 3d4013b | 7/8 | 83.3% | $11.49 | 78 min | reject | accept |
+| `haiku-integrated` | 80329b3 | 5/8 | 58.3% | $7.74 | 52 min | reject | reject |
+| `haiku-engine-seal` | 19707ac | 7/8 | 83.3% | $9.11 | 64 min | reject | accept |
 
 What each changed, and what it showed:
 
@@ -3947,9 +3949,16 @@ Reading the last row against the baseline: both deliver 7 of 8 runs, at 33% lowe
 and 35% less wall time. The pass rate differs because the hidden tests run on whatever a run left
 in its worktree: the baseline's halted run (slugify #1) had correct code from three executor
 iterations and scored 1/1, while the candidate's halted run (csv-quotes #2, a contract block the
-planner wrote as invalid YAML twice) stopped at planning with no code and scored 0/2. Whether
-the gate should score a run that did not deliver is the owner's decision; until then the rule
-stands and the candidate is rejected.
+planner wrote as invalid YAML twice) stopped at planning with no code and scored 0/2. The owner
+decided the same day that the gate scores delivered runs only, with a clause that the share of runs
+delivered must not fall, and with "the rate rose" judged task by task so that it cannot waive the
+cost clause through which runs delivered (`evals/autopilot/README.md`). Under that rule
+`haiku-refusal-resume` and `haiku-engine-seal` are accepted, and the two candidates that delivered
+5 of 8 stay rejected. The same day a planner's rounds against the DoR gate got a count of their own
+(`caps.dor_rounds`, 2, reset when the spec is revised), so a crash retry spent earlier no longer
+leaves it without one. That raises the planner's DoR budget from one resume (the shared
+`child_retries`) to two; the accepted `haiku-engine-seal` run predates it, so it is benched
+separately before the branch is promoted.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 

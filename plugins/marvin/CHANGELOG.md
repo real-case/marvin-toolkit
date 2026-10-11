@@ -87,9 +87,14 @@ project the pipeline is configured for is marvin-toolkit itself (Task 19); live 
   `evals/autopilot/results/<date>-<variant>.json` and `.md`. The questions go to a simulated
   user, a tool-less headless `claude -p` given the task's ground truth (`--judge llm`, Opus at
   effort medium, or the sandbox model override), which also approves the spec and cancels a halted
-  run. `l3Gate` accepts a variant only when the hidden pass rate does not fall, no task regresses
-  in every repeat, and the notional cost stays within 1.15 × the baseline or the pass rate rose;
-  with fewer than two repeats or an incomplete run it is inconclusive. `bench-compare` applies it
+  run. `l3Gate` accepts a variant only when the hidden pass rate over delivered runs does not
+  fall, the share of runs delivered does not fall, no task regresses in every repeat (an
+  undelivered repeat counts as one), and the notional cost stays within 1.15 × the baseline or
+  every task delivered on both sides holds its mean delivered ratio and one raises it; with fewer
+  than two repeats, an incomplete run or a baseline that delivered nothing it is inconclusive. A
+  planner whose spec fails the DoR gate is resumed with the failing checks up to `caps.dor_rounds`
+  (2) times, counted apart from crash retries and reset when the spec is revised; the engine
+  stamps the seal of a spec the planner left unsealed once that gate passes. `bench-compare` applies it
   to two result files. The shipped suite, `evals/autopilot/suites/sandbox.yaml`, replays four
   tasks (two light, two standard) over a repository generated at bench time from a committed
   fixture, because historic marvin-toolkit commits carry no pipeline configuration and its gates

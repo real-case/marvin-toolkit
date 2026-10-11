@@ -123,7 +123,7 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash or failure
 after its retry, a usage limit, a stalled child, a child that mutated the tree or wrote outside
-its worktree, a planner or executor past its question cap, a planner whose spec failed the Definition of Ready twice,
+its worktree, a planner or executor past its question cap, a planner whose spec still failed the Definition of Ready after its rounds (`caps.dor_rounds`),
 an approved spec the engine would not commit, a gate that found the spec unsealed on the run
 branch, the sealed tests revised too often, a closed PR, or CI red after finalize.
 

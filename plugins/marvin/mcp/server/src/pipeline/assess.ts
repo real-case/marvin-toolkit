@@ -61,6 +61,7 @@ export const Rubric = z
         planner_questions: z.number().int().min(0),
         test_author_attempts: z.number().int().min(1),
         child_retries: z.number().int().min(0),
+        dor_rounds: z.number().int().min(0),
         ci_wait_minutes: z.number().int().min(1),
         executor_questions: z.number().int().min(0),
         spec_critic: z
