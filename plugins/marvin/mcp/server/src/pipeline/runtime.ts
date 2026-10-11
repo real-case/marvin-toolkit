@@ -1614,9 +1614,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
 
   /**
    * What the spec commit holds: the spec, whose seal is checked on the very bytes committed, and
-   * its metrics record when the planner's seal created one, found by the rule every writer of a
-   * record follows (`recordPathFor`). Anything wrong with either is a refusal, never a thrown
-   * error, since a restarted engine would only meet it again.
+   * its metrics record when the planner's seal created one and git does not ignore it, found by
+   * the rule every writer of a record follows (`recordPathFor`). Anything wrong with either is a
+   * refusal, never a thrown error, since a restarted engine would only meet it again.
    */
   const specCommitFiles = (
     run: Run,
@@ -1648,6 +1648,19 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     if ("problem" in found) {
       return { refused: `the metrics record ${record} cannot be committed: ${found.problem}` };
     }
+    // A record the host's ignore rules keep out stays uncommitted (ADR-0043): the delivery gate
+    // reports it, and only a committed record makes the gate's status count every later append
+    // as uncommitted work. The spec goes in regardless, since finalize ships it.
+    const ignored = isolatedGit(wt.path, wt.gitDir, { GIT_LITERAL_PATHSPECS: "1" }).text(
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--",
+      record,
+    );
+    if (ignored !== "") return { files };
     return { files: [...files, { path: record, bytes: found.bytes }] };
   };
 

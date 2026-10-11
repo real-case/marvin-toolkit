@@ -145,7 +145,8 @@ These halts deserve a look before you ask:
   no `contract_sha`, no contract block, or no readable spec. Only a planner can seal, so this
   halt cannot be retried; recommend `cancel`.
 - **`the approved spec was not committed`.** Right after an approval the engine commits the spec,
-  with its metrics record, on the run branch before any child starts. `detail` says why it
+  with its metrics record unless git ignores it, on the run branch before any child starts.
+  `detail` says why it
   refused, usually a contract that no longer hashes to its `contract_sha` because the spec was
   edited after the planner sealed it. Only a planner can seal, so this halt cannot be retried;
   recommend `cancel`.

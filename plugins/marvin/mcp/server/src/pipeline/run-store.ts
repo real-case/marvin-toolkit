@@ -80,8 +80,9 @@ export const Run = z.object({
   branch: z.string().nullable(),
   specPath: z.string().nullable(),
   /**
-   * The commit in which the engine put the approved spec, and its metrics record, on the run
-   * branch; null until the approval. Absent from runs written before it existed.
+   * The commit in which the engine put the approved spec, and its metrics record unless git
+   * ignores it, on the run branch; null until the approval. Absent from runs written before it
+   * existed.
    */
   specCommit: z.string().nullable().default(null),
   tier: z.enum(TIERS).nullable(),

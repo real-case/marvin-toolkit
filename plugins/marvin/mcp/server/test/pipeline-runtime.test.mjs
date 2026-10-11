@@ -949,10 +949,10 @@ const RECORD_TEXT = "# Metrics — tag-filter\n\nAppend-only.\n";
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const approvedRun = (s) => ({ ...s.run, stage: "awaiting_approval", specPath: SPEC });
 
-test("commit_spec commits the approved spec and its metrics record, ignored or not, and nothing else", async () => {
-  // The host ignores .marvin/ whole: the commit is built from plumbing, so no ignore rule, hook
-  // or `git add -f` decides what goes in.
-  const s = await prepared({ files: { ".gitignore": ".marvin/\n" } });
+test("commit_spec commits the approved spec, ignored or not, and its metrics record, and nothing else", async () => {
+  // The host ignores .marvin/ but for the series, as ADR-0043 asks: the commit is built from
+  // plumbing, so no ignore rule, hook or `git add -f` keeps the spec out.
+  const s = await prepared({ files: { ".gitignore": ".marvin/*\n!.marvin/metrics/\n" } });
   const base = sh(s.wt, "rev-parse", "HEAD");
   write(s.wt, SPEC, specText());
   write(s.wt, RECORD, RECORD_TEXT);
@@ -993,6 +993,27 @@ test("commit_spec commits the approved spec and its metrics record, ignored or n
   await t.deps.work(approvedRun(t), "commit_spec", undefined, step("slug"));
   assert.deepEqual(sh(t.wt, "show", "--name-only", "--format=", "HEAD").split("\n"), [
     ".marvin/metrics/tag-filter.md",
+    SPEC,
+  ]);
+
+  // A host that ignores .marvin/ whole never commits its series (ADR-0043), and the engine does
+  // not force the record in: once tracked, every append the metrics tool or the delivery gate
+  // makes would show in the gate's status as uncommitted work. The spec still goes in.
+  const i = await prepared({ files: { ".gitignore": ".marvin/\n" } });
+  write(i.wt, SPEC, specText());
+  write(i.wt, RECORD, RECORD_TEXT);
+  await i.deps.work(approvedRun(i), "commit_spec", undefined, step("ignored"));
+  assert.equal(sh(i.wt, "show", "--name-only", "--format=", "HEAD"), SPEC);
+  write(i.wt, RECORD, `${RECORD_TEXT}\nappended\n`);
+  assert.equal(sh(i.wt, "status", "--porcelain", "--untracked-files=all"), "");
+  // A record the branch already tracks shows its changes whatever the ignore rules say, so it
+  // is committed with the spec.
+  const k = await prepared({ files: { ".gitignore": ".marvin/\n", [RECORD]: RECORD_TEXT } });
+  write(k.wt, SPEC, specText());
+  write(k.wt, RECORD, `${RECORD_TEXT}\nappended\n`);
+  await k.deps.work(approvedRun(k), "commit_spec", undefined, step("tracked"));
+  assert.deepEqual(sh(k.wt, "show", "--name-only", "--format=", "HEAD").split("\n"), [
+    RECORD,
     SPEC,
   ]);
 
