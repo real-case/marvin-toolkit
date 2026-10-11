@@ -294,6 +294,9 @@ Analyze the codebase and present findings to the user:
 **Discover the test harness.** Determine how this project runs tests (the command) and where tests live (the directory/naming convention). Then **read one or two neighboring tests** for the affected area to capture fixture/mocking/setup conventions — these become the spec's `test_command` and the convention the executor follows; a non-obvious test design (a mutation to catch, a fixture the test needs) goes into the test file's `intent`. Knowing the command is not knowing the patterns. **Prefer the command the project declares** — a CI job, a `Makefile` target, a manifest script — over a guessed ecosystem default; for a stack you don't recognise, **ask the user** for the test command rather than guessing, since a wrong `test_command` poisons every downstream gate. If you cannot determine them, that is an Open Question — resolve it before DoR.
 **Pipeline mode:** see *Test harness* below.
 
+**A command-line script gets a test file of its own.** Its tests run it as a process, so they are a
+`files` row beside its module's test file, never a section inside that file.
+
 If `VISION.md` exists, note future-direction intent — it informs variant evaluation.
 
 Present the context map to the user. Let them correct if you're off target.
@@ -371,7 +374,8 @@ Present the variants and wait for the user's decision. The user may:
 
 If two variants are tied on all practical dimensions and VISION.md exists, use future alignment as the tiebreaker. If a future-aligned variant costs significantly more, flag it but do not select it automatically.
 
-Record the selected approach and the carried-forward `risk` rating for the spec frontmatter.
+Record the selected approach. The variant's risk rating compares variants; the spec's `risk` is set
+at Step 5F from what the change does to existing behaviour.
 
 ### Step 4.5F: Scope & Size Gate
 
@@ -421,7 +425,7 @@ rules:
   do not write "N/A".
 
 Fill the sections the draft keeps:
-- **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk`, `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
+- **Frontmatter** — `slug`, `created` (today, `date +%F`), `tracker`, `supersedes`, verified `stack` (comma-separated if polyglot), `risk` (judged as below), `breaking` (true|false — public-surface impact), `spike_required` (false unless a genuine unknown remains), discovered `test_command`
 - **Goal** — one or two sentences
 - **Context** — pointers from context mapping, including callers and the evidence sidecar; optional on the light tier (below)
 - **Spec Contract** (the ` ```yaml spec-contract ` block) — the machine-validated heart of the spec, parsed and schema-checked by the gate:
@@ -433,6 +437,13 @@ Fill the sections the draft keeps:
 - **Chosen Approach** — the rules above
 - **Non-goals** — explicit scope boundaries discussed during dialogue, as a short list
 - **Assumptions** — defaults taken instead of asking, limited to those the contract does not show
+
+**Risk follows existing behaviour, not size.** `low` is purely additive: new functions, modules,
+scripts, tests and documentation, with nothing that exists behaving differently. A new export beside
+existing ones, its re-export from an index and a new README section stay `low`. A change to how
+existing code behaves for anything that already calls or reads it (a caller found in Step 2F, a
+public export, a file format) is at least `medium`, and so is every `breaking: true` change. A
+bugfix carries its severity instead (Step 4B).
 
 **The light tier.** A spec with `risk: low` and at most five files may omit Context, and Step 8F
 dispatches the critic once rather than up to twice.
