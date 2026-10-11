@@ -163,5 +163,6 @@ test("bench replays a suite task, judges it by its hidden tests and compares two
     ),
   );
   assert.equal(compared.verdict.decision, "inconclusive");
-  assert.match(compared.markdown, /Hidden pass rate \| 100\.0% \| 100\.0%/);
+  assert.match(compared.markdown, /Hidden pass rate, delivered runs \| 100\.0% \| 100\.0%/);
+  assert.match(compared.markdown, /\| Delivered runs \| 1\/1 \| 1\/1 \|/);
 });

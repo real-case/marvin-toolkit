@@ -736,25 +736,59 @@ const isIncomplete = (r: RunMetrics) =>
 export interface L3Verdict {
   decision: "accept" | "reject" | "inconclusive";
   reasons: string[];
-  baseline: { passRate: number; costUsd: number };
-  candidate: { passRate: number; costUsd: number };
+  /** `passRate` is over delivered runs only, null when none delivered; `delivered` of `runs`. */
+  baseline: { passRate: number | null; costUsd: number; delivered: number; runs: number };
+  candidate: { passRate: number | null; costUsd: number; delivered: number; runs: number };
   checks: {
     passRateHeld: boolean;
-    /** Tasks whose hidden ratio fell below the baseline's in every candidate repeat. */
+    /** The candidate delivered (reached `ready`) at least the baseline's share of its runs. */
+    deliveriesHeld: boolean;
+    /** Tasks whose every candidate repeat was undelivered or fell below the baseline's ratio. */
     regressedInEveryRepeat: string[];
     costWithinBound: boolean;
     passRateRose: boolean;
   };
 }
 
+/** A run that delivered: it reached `ready`, so its PR stood for merge. */
+const isDelivered = (r: RunMetrics) => r.outcome === "ready";
+
+/** Hidden files passed over files run, over the delivered runs only; null when none delivered. */
+function deliveredPassRate(tasks: readonly TaskResult[]): number | null {
+  const runs = tasks.flatMap((t) => t.runs).filter(isDelivered);
+  const total = runs.reduce((s, r) => s + r.hidden.total, 0);
+  return total === 0 ? null : round4(runs.reduce((s, r) => s + r.hidden.passed, 0) / total);
+}
+
+/** The mean hidden ratio of a task's delivered runs, or null when none delivered. */
+function deliveredMean(runs: readonly RunMetrics[] | undefined): number | null {
+  const delivered = (runs ?? []).filter(isDelivered);
+  return delivered.length === 0
+    ? null
+    : delivered.reduce((s, r) => s + r.hidden.ratio, 0) / delivered.length;
+}
+
 /**
  * The L3 gate (plan D5, Task 21). A candidate variant is accepted against the baseline on the same
  * suite when, with every task run at least `minRepeats` times on both sides:
  *
- * 1. the hidden pass rate (files passed over files run, all runs) does not fall;
- * 2. no task regresses in every repeat, a repeat regressing when its hidden ratio is below the
- *    mean of that task's baseline ratios; and
- * 3. the total notional cost is at most baseline × `costFactor` (1.15), or the pass rate rose.
+ * 1. the hidden pass rate does not fall. It is counted over DELIVERED runs only (owner's decision,
+ *    2026-10-11): the hidden tests run on whatever a run left in its worktree, so a run that halted
+ *    after three executor iterations scored its code while one that halted at planning scored
+ *    zero, and the rate measured where a run stopped rather than what it delivered;
+ * 2. the share of runs delivered does not fall, which keeps 1 from rewarding a candidate that
+ *    delivers less (a share, so that sides with different repeat counts compare);
+ * 3. no task regresses in every repeat, a repeat regressing when it was not delivered (and the
+ *    baseline delivered that task at least once) or its hidden ratio is below the mean of that
+ *    task's delivered baseline ratios; and
+ * 4. the total notional cost of all runs is at most baseline × `costFactor` (1.15), or the pass
+ *    rate rose. "Rose" is judged task by task, never on the pooled rate: the pooled rate's
+ *    denominator is whichever runs delivered, so moving deliveries from a task with low ratios to
+ *    one with high ratios would raise it with no task's code any better, and waive the cost clause
+ *    for nothing. Every task delivered on both sides must hold its mean delivered ratio, and one
+ *    must raise it.
+ *
+ * A baseline that delivered no run gives the rate nothing to compare against: inconclusive.
  *
  * It is inconclusive, never an accept, when the suites or task sets differ, a task has too few
  * repeats, or any run is incomplete (a usage limit, a cap, a bench fault): such a run measured the
@@ -799,26 +833,43 @@ export function l3Gate(
     }
   }
 
-  const passRateHeld = c.hiddenPassRate >= b.hiddenPassRate - 1e-9;
-  const passRateRose = c.hiddenPassRate > b.hiddenPassRate + 1e-9;
+  const bRate = deliveredPassRate(baseline.tasks);
+  const cRate = deliveredPassRate(candidate.tasks);
+  if (bRate === null) inconclusive.push("the baseline delivered no run");
+  const passRateHeld = bRate === null || (cRate !== null && cRate >= bRate - 1e-9);
+  const both = candidate.tasks.flatMap((t) => {
+    const cm = deliveredMean(t.runs);
+    const bm = deliveredMean(baseline.tasks.find((x) => x.id === t.id)?.runs);
+    return cm === null || bm === null ? [] : [{ cm, bm }];
+  });
+  const passRateRose =
+    both.length > 0 &&
+    both.every((x) => x.cm >= x.bm - 1e-9) &&
+    both.some((x) => x.cm > x.bm + 1e-9);
+  const share = (s: BenchSummary) => (s.runs === 0 ? 0 : s.readyRuns / s.runs);
+  const deliveriesHeld = share(c) >= share(b) - 1e-9;
   const costWithinBound = c.totalCostUsd <= b.totalCostUsd * costFactor + 1e-9;
   const regressedInEveryRepeat: string[] = [];
   for (const t of candidate.tasks) {
-    const base = baseline.tasks.find((x) => x.id === t.id);
-    if (!base || base.runs.length === 0 || t.runs.length === 0) continue;
-    const mean = base.runs.reduce((s, r) => s + r.hidden.ratio, 0) / base.runs.length;
-    if (t.runs.every((r) => r.hidden.ratio < mean - 1e-9)) regressedInEveryRepeat.push(t.id);
+    const mean = deliveredMean(baseline.tasks.find((x) => x.id === t.id)?.runs);
+    if (mean === null || t.runs.length === 0) continue;
+    if (t.runs.every((r) => !isDelivered(r) || r.hidden.ratio < mean - 1e-9)) {
+      regressedInEveryRepeat.push(t.id);
+    }
   }
 
   if (!passRateHeld) {
-    reasons.push(`hidden pass rate fell: ${pct(b.hiddenPassRate)} → ${pct(c.hiddenPassRate)}`);
+    reasons.push(`hidden pass rate over delivered runs fell: ${rate(bRate)} → ${rate(cRate)}`);
+  }
+  if (!deliveriesHeld) {
+    reasons.push(`delivered runs fell: ${b.readyRuns}/${b.runs} → ${c.readyRuns}/${c.runs}`);
   }
   if (regressedInEveryRepeat.length > 0) {
     reasons.push(`regressed in every repeat: ${regressedInEveryRepeat.join(", ")}`);
   }
   if (!costWithinBound && !passRateRose) {
     reasons.push(
-      `notional cost ${usd(c.totalCostUsd)} exceeds ${costFactor} × baseline ${usd(b.totalCostUsd)} without a higher pass rate`,
+      `notional cost ${usd(c.totalCostUsd)} exceeds ${costFactor} × baseline ${usd(b.totalCostUsd)} without a task delivering better`,
     );
   }
   const decision =
@@ -826,13 +877,20 @@ export function l3Gate(
   return {
     decision,
     reasons: [...inconclusive, ...reasons],
-    baseline: { passRate: b.hiddenPassRate, costUsd: b.totalCostUsd },
-    candidate: { passRate: c.hiddenPassRate, costUsd: c.totalCostUsd },
-    checks: { passRateHeld, regressedInEveryRepeat, costWithinBound, passRateRose },
+    baseline: { passRate: bRate, costUsd: b.totalCostUsd, delivered: b.readyRuns, runs: b.runs },
+    candidate: { passRate: cRate, costUsd: c.totalCostUsd, delivered: c.readyRuns, runs: c.runs },
+    checks: {
+      passRateHeld,
+      deliveriesHeld,
+      regressedInEveryRepeat,
+      costWithinBound,
+      passRateRose,
+    },
   };
 }
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+const rate = (n: number | null) => (n === null ? "—" : pct(n));
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const minutes = (ms: number) => `${(ms / 60_000).toFixed(1)} min`;
 
@@ -849,7 +907,7 @@ export function renderResultMarkdown(r: BenchResult): string {
     `- Tasks: ${r.settings.tasks.join(", ")}; repeats: ${r.settings.repeat}`,
     `- Model override: ${r.settings.modelOverride ?? "none (the rubric's models)"}; judge: ${r.settings.judge}${r.settings.judgeModel ? ` on ${r.settings.judgeModel}` : ""}`,
     `- Rubric variant: ${r.settings.rubric ?? "none"}; roles variant: ${r.settings.rolesDir ?? "none"}`,
-    `- Hidden pass rate: **${pct(s.hiddenPassRate)}** (${s.hiddenPassed}/${s.hiddenTotal} files); ready ${s.readyRuns}/${s.runs}; tier as expected ${s.tierMatches}/${s.runs}`,
+    `- Hidden pass rate, all runs: **${pct(s.hiddenPassRate)}** (${s.hiddenPassed}/${s.hiddenTotal} files); ready ${s.readyRuns}/${s.runs}; tier as expected ${s.tierMatches}/${s.runs}`,
     `- Notional cost: **${usd(s.totalCostUsd)}** (judge ${usd(s.judgeCostUsd)}); wall time ${minutes(s.wallMs)}`,
     ...(r.stopped ? [`- **Stopped early:** ${r.stopped}`] : []),
     "",
@@ -913,7 +971,8 @@ export function renderComparisonMarkdown(
     "| | Baseline | Candidate |",
     "|---|---|---|",
     `| Variant | ${baseline.variant} (${baseline.date}) | ${candidate.variant} (${candidate.date}) |`,
-    `| Hidden pass rate | ${pct(verdict.baseline.passRate)} | ${pct(verdict.candidate.passRate)} |`,
+    `| Delivered runs | ${verdict.baseline.delivered}/${verdict.baseline.runs} | ${verdict.candidate.delivered}/${verdict.candidate.runs} |`,
+    `| Hidden pass rate, delivered runs | ${rate(verdict.baseline.passRate)} | ${rate(verdict.candidate.passRate)} |`,
     `| Notional cost | ${usd(verdict.baseline.costUsd)} | ${usd(verdict.candidate.costUsd)} |`,
     `| Repeats | ${baseline.settings.repeat} | ${candidate.settings.repeat} |`,
     "",
@@ -924,13 +983,19 @@ export function renderComparisonMarkdown(
     const base = baseline.tasks.find((x) => x.id === t.id);
     const ratios = (runs: readonly RunMetrics[] | undefined) =>
       runs && runs.length > 0
-        ? runs.map((m) => `${m.hidden.passed}/${m.hidden.total}`).join(", ")
+        ? runs
+            .map(
+              (m) =>
+                `${m.hidden.passed}/${m.hidden.total}${isDelivered(m) ? "" : " (not delivered)"}`,
+            )
+            .join(", ")
         : "—";
     lines.push(`| ${t.id} | ${ratios(base?.runs)} | ${ratios(t.runs)} |`);
   }
   lines.push(
     "",
-    `- Pass rate held: ${verdict.checks.passRateHeld ? "yes" : "no"}; rose: ${verdict.checks.passRateRose ? "yes" : "no"}`,
+    `- Pass rate held: ${verdict.checks.passRateHeld ? "yes" : "no"}; rose, task by task: ${verdict.checks.passRateRose ? "yes" : "no"}`,
+    `- Deliveries held: ${verdict.checks.deliveriesHeld ? "yes" : "no"}`,
     `- Regressed in every repeat: ${verdict.checks.regressedInEveryRepeat.join(", ") || "none"}`,
     `- Cost within 1.15 × baseline: ${verdict.checks.costWithinBound ? "yes" : "no"}`,
     ...(verdict.reasons.length > 0

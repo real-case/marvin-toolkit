@@ -78,8 +78,9 @@ Per run: outcome (`ready`, `done` with the halt reason, `aborted`, `limited`, `e
 assigned tier against `tier_expected`, hidden test files passed over run, gates green, executor
 iterations, rejections by source (gate, verifier, CI), question judgments and the questions in
 them, notional cost and cache reads per role and in total, the judge's notional cost, and wall time.
-Per result: the pooled hidden pass rate (files passed over files run, every run of every task),
-ready runs, tier matches, total notional cost and wall time.
+Per result: the pooled hidden pass rate over every run of every task (files passed over files run;
+the result file's summary line, labelled "all runs"), ready runs, tier matches, total notional cost
+and wall time. The L3 gate below scores delivered runs only.
 
 **Cost is notional.** Every cost figure is the Claude Code CLI's `total_cost_usd`, which prices the
 tokens at API rates. On a subscription nothing is billed per token, so the figure is a comparable
@@ -92,12 +93,25 @@ and the result says so under `stopped`.
 ## The L3 gate
 
 `l3Gate(baseline, candidate)` in `src/pipeline/bench.ts`, a pure function. With every task run at
-least twice on both sides, the candidate is **accepted** when all three hold:
+least twice on both sides, the candidate is **accepted** when all four hold:
 
-1. the hidden pass rate does not fall;
-2. no task regresses in every repeat, a repeat regressing when its hidden ratio is below the mean
-   of that task's baseline ratios; and
-3. the total notional cost is at most baseline × 1.15, or the pass rate rose.
+1. the hidden pass rate over **delivered** runs (outcome `ready`) does not fall;
+2. the share of runs delivered does not fall;
+3. no task regresses in every repeat, a repeat regressing when it was not delivered (and the
+   baseline delivered that task at least once) or its hidden ratio is below the mean of that
+   task's delivered baseline ratios; and
+4. the total notional cost of all runs is at most baseline × 1.15, or the pass rate rose. "Rose"
+   is judged task by task: every task delivered on both sides holds its mean delivered ratio and
+   one raises it. The pooled rate cannot waive the cost, because its denominator is whichever runs
+   delivered, and moving deliveries between tasks moves it with no code any better.
+
+Clause 1 counts delivered runs only by the owner's decision of 2026-10-11. The hidden tests run on
+whatever a run left in its worktree, so under the earlier rule (every run scored) a run that halted
+after three executor iterations scored its code, while one that halted at planning scored zero:
+the rate measured where a run stopped, not what it delivered. Clause 2 keeps clause 1 from
+rewarding a candidate that delivers less; it compares shares so that sides with different repeat
+counts still compare. A baseline that delivered no run gives clause 1 nothing to compare against,
+so the comparison is inconclusive. The result files keep the all-runs rate in their summary.
 
 Otherwise it is **rejected**, with the failing clauses as reasons. It is **inconclusive**, never
 accepted, when the suites or task sets differ, a task ran fewer than twice on either side, or any

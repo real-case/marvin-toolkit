@@ -500,8 +500,9 @@ test("L3: an equal pass rate within 1.15 × the cost is accepted", () => {
   assert.equal(v.checks.costWithinBound, true);
 });
 
-test("L3: a task that regresses in both repeats is rejected even when the pass rate rose", () => {
-  // b has four hidden files, so its gain outweighs a's loss in the pooled rate (8/12 → 10/12).
+test("L3: a task that regresses in both repeats is rejected even when the pooled rate rose", () => {
+  // b has four hidden files, so its gain outweighs a's loss in the pooled rate (8/12 → 10/12); a
+  // task whose delivered ratio fell also means the rate did not rise task by task.
   const base = result("baseline", {
     a: [
       [2, 2, 1.0],
@@ -525,7 +526,8 @@ test("L3: a task that regresses in both repeats is rejected even when the pass r
       ],
     }),
   );
-  assert.equal(v.checks.passRateRose, true);
+  assert.equal(v.candidate.passRate > v.baseline.passRate, true);
+  assert.equal(v.checks.passRateRose, false);
   assert.deepEqual(v.checks.regressedInEveryRepeat, ["a"]);
   assert.equal(v.decision, "reject");
   assert.match(v.reasons.join("; "), /regressed in every repeat: a/);
@@ -633,6 +635,150 @@ test("L3: one repeat, a different task set or an incomplete run is inconclusive,
   assert.match(v3.reasons.join("; "), /incomplete run\(s\) of a \(limited\)/);
 });
 
+test("L3: the pass rate counts delivered runs only, and a candidate that delivers less is rejected", () => {
+  // The 2026-10-11 benches: the baseline's halted slugify run kept correct code and scored 1/1,
+  // the candidate's halted run stopped at planning and scored 0/2. Neither delivered.
+  const base = result("baseline", {
+    a: [
+      [1, 1, 1.0, "done"],
+      [1, 1, 1.0],
+    ],
+    b: [
+      [2, 2, 1.0],
+      [2, 2, 1.0],
+    ],
+  });
+  const cand = result("cand", {
+    a: [
+      [1, 1, 0.8],
+      [1, 1, 0.8],
+    ],
+    b: [
+      [2, 2, 0.8],
+      [0, 2, 0.4, "done"],
+    ],
+  });
+  const v = bench.l3Gate(base, cand);
+  assert.equal(v.baseline.passRate, 1);
+  assert.equal(v.candidate.passRate, 1);
+  assert.deepEqual([v.baseline.delivered, v.candidate.delivered], [3, 3]);
+  assert.equal(v.checks.deliveriesHeld, true);
+  assert.deepEqual(v.checks.regressedInEveryRepeat, []);
+  assert.equal(v.decision, "accept", v.reasons.join("; "));
+  // Under the old rule (every run scored) this was 4/6 against 6/6: a rejection.
+  assert.equal(cand.summary.hiddenPassRate < base.summary.hiddenPassRate, true);
+
+  // Fewer deliveries is a rejection even at a perfect rate over the ones left.
+  const fewer = result("cand", {
+    a: [
+      [1, 1, 0.8],
+      [0, 1, 0.4, "done"],
+    ],
+    b: [
+      [2, 2, 0.8],
+      [0, 2, 0.4, "done"],
+    ],
+  });
+  const v2 = bench.l3Gate(base, fewer);
+  assert.equal(v2.checks.passRateHeld, true);
+  assert.equal(v2.checks.deliveriesHeld, false);
+  assert.equal(v2.decision, "reject");
+  assert.match(v2.reasons.join("; "), /delivered runs fell: 3\/4 → 2\/4/);
+
+  // A task none of whose repeats delivered regresses in every repeat.
+  const lost = result("cand", {
+    a: [
+      [1, 1, 0.8],
+      [1, 1, 0.8],
+    ],
+    b: [
+      [2, 2, 0.8, "done"],
+      [0, 2, 0.4, "done"],
+    ],
+  });
+  assert.deepEqual(bench.l3Gate(base, lost).checks.regressedInEveryRepeat, ["b"]);
+});
+
+test("L3: a rise from which runs delivered does not waive the cost clause", () => {
+  // Per task nothing improved (e 1 → 1, h's delivered mean 0.75 → 0.75), but the pooled
+  // delivered rate rose (7/9 → 5/6) because h, the task with lower ratios, delivered less.
+  const base = result("baseline", {
+    e: [
+      [1, 1, 1.0],
+      [0, 1, 1.0, "done"],
+    ],
+    h: [
+      [4, 4, 1.0],
+      [2, 4, 1.0],
+    ],
+  });
+  const cand = result("cand", {
+    e: [
+      [1, 1, 3.0],
+      [1, 1, 3.0],
+    ],
+    h: [
+      [3, 4, 3.0],
+      [0, 4, 3.0, "done"],
+    ],
+  });
+  const v = bench.l3Gate(base, cand);
+  assert.equal(v.candidate.passRate > v.baseline.passRate, true);
+  assert.deepEqual([v.checks.passRateRose, v.checks.costWithinBound], [false, false]);
+  assert.equal(v.decision, "reject");
+  assert.match(v.reasons.join("; "), /exceeds 1\.15 × baseline/);
+});
+
+test("L3: the regression mean is over the baseline's delivered runs; a task it never delivered is exempt", () => {
+  const base = result("baseline", {
+    a: [
+      [0, 2, 1.0, "done"],
+      [2, 2, 1.0],
+    ],
+    b: [
+      [0, 2, 1.0, "done"],
+      [0, 2, 1.0, "done"],
+    ],
+  });
+  const cand = result("cand", {
+    a: [
+      [1, 2, 1.0],
+      [1, 2, 1.0],
+    ],
+    b: [
+      [0, 2, 1.0, "done"],
+      [0, 2, 1.0, "done"],
+    ],
+  });
+  // a's baseline mean is 1 (its delivered run), not 0.5 (both runs): 1/2 twice regresses.
+  assert.deepEqual(bench.l3Gate(base, cand).checks.regressedInEveryRepeat, ["a"]);
+  const md = bench.renderComparisonMarkdown(base, cand, bench.l3Gate(base, cand));
+  assert.match(md, /\| b \| 0\/2 \(not delivered\), 0\/2 \(not delivered\) \|/);
+});
+
+test("L3: a baseline that delivered nothing is inconclusive, and its rate shows as —", () => {
+  const none = result("baseline", {
+    a: [
+      [0, 2, 1.0, "done"],
+      [0, 2, 1.0, "done"],
+    ],
+  });
+  const cand = result("cand", {
+    a: [
+      [1, 2, 5.0],
+      [1, 2, 5.0],
+    ],
+  });
+  const v = bench.l3Gate(none, cand);
+  assert.equal(v.baseline.passRate, null);
+  assert.equal(v.decision, "inconclusive");
+  assert.match(v.reasons.join("; "), /the baseline delivered no run/);
+  assert.match(
+    bench.renderComparisonMarkdown(none, cand, v),
+    /\| Hidden pass rate, delivered runs \| — \| 50\.0% \|/,
+  );
+});
+
 test("the comparison markdown states the decision, both rates and both costs", () => {
   const cand = result("cand", {
     a: [
@@ -646,7 +792,9 @@ test("the comparison markdown states the decision, both rates and both costs", (
   });
   const md = bench.renderComparisonMarkdown(baseline, cand, bench.l3Gate(baseline, cand));
   assert.match(md, /\*\*Decision: accept\.\*\*/);
-  assert.match(md, /\| Hidden pass rate \| 87\.5% \| 100\.0% \|/);
+  assert.match(md, /\| Delivered runs \| 4\/4 \| 4\/4 \|/);
+  assert.match(md, /\| Hidden pass rate, delivered runs \| 87\.5% \| 100\.0% \|/);
+  assert.match(md, /- Deliveries held: yes/);
   assert.match(md, /\| Notional cost \| \$4\.00 \| \$4\.00 \|/);
   assert.match(md, /\| b \| 1\/2, 2\/2 \| 2\/2, 2\/2 \|/);
 });
