@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Two candidates pass the L3 gate against the baseline under the delivered-runs rule of 2026-10-11 ("Benchmark iterations" under Task 21). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), a bench of the `dor_rounds` change, Task 22 (conditional on benchmark evidence) |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Three candidates pass the L3 gate against the baseline under the delivered-runs rule of 2026-10-11, the last (`haiku-dor-rounds`, b9cf905) delivering 8 of 8 ("Benchmark iterations" under Task 21). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), Task 22 (conditional on benchmark evidence) |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |
@@ -3925,6 +3925,7 @@ judged, and as `bench-compare` judges the same files under the delivered-runs ru
 | `haiku-refusal-resume` | 3d4013b | 7/8 | 83.3% | $11.49 | 78 min | reject | accept |
 | `haiku-integrated` | 80329b3 | 5/8 | 58.3% | $7.74 | 52 min | reject | reject |
 | `haiku-engine-seal` | 19707ac | 7/8 | 83.3% | $9.11 | 64 min | reject | accept |
+| `haiku-dor-rounds` | b9cf905 | 8/8 | 100% | $10.75 | 79 min | — | accept |
 
 What each changed, and what it showed:
 
@@ -3957,8 +3958,10 @@ cost clause through which runs delivered (`evals/autopilot/README.md`). Under th
 5 of 8 stay rejected. The same day a planner's rounds against the DoR gate got a count of their own
 (`caps.dor_rounds`, 2, reset when the spec is revised), so a crash retry spent earlier no longer
 leaves it without one. That raises the planner's DoR budget from one resume (the shared
-`child_retries`) to two; the accepted `haiku-engine-seal` run predates it, so it is benched
-separately before the branch is promoted.
+`child_retries`) to two. `haiku-dor-rounds` (b9cf905, the delivered-runs gate and the rounds)
+benched it: 8 of 8 delivered, every hidden file passing, no gate rejection in any run, $10.75 (21%
+under the baseline). One planner needed a DoR round and one spec was sealed by the engine; the
+tier still missed the suite in 3 of 8 runs, the subject of the separate tier-guidance proposal.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 
