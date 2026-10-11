@@ -215,6 +215,102 @@ export function sealIssue(specText: string): string | null {
   return actual === stamped ? null : `contract_sha ${stamped}, but the block hashes to ${actual}`;
 }
 
+/**
+ * The spec with one front-matter key set to `value`, replacing every line of that key there or,
+ * failing one, appending it before the closing `---`. The front matter is the block between the
+ * opening `---` and the next line that is exactly `---`, as `finalizeSpec` reads it; a caller
+ * that needs the result to parse as it meant checks it with `parseFrontmatter`. Line endings come
+ * back as LF.
+ */
+function withFrontmatterKey(specText: string, key: string, value: string): string {
+  const lines = specText.replace(/\r\n?/g, "\n").split("\n");
+  if (lines[0] !== "---") throw new Error("spec has no front matter: it must start with ---");
+  const end = lines.indexOf("---", 1);
+  if (end === -1) throw new Error("spec front matter is not closed by a --- line");
+  const own = new RegExp(`^${key}[ \\t]*:`);
+  const head = lines.slice(1, end);
+  const at = head.findIndex((l) => own.test(l));
+  const kept = head.filter((l, n) => n === at || !own.test(l));
+  if (at === -1) kept.push(`${key}: ${value}`);
+  else kept[kept.findIndex((l) => own.test(l))] = `${key}: ${value}`;
+  return ["---", ...kept, ...lines.slice(end)].join("\n");
+}
+
+/** The spec with `contract_sha: <sha>` in its front matter (see `withFrontmatterKey`). */
+export function stampContractSha(specText: string, sha: string): string {
+  if (!/^[0-9a-f]+$/.test(sha)) throw new Error(`not a contract hash: ${sha}`);
+  return withFrontmatterKey(specText, "contract_sha", sha);
+}
+
+/** What the Definition-of-Ready gate answers for a spec's text (`specReadiness` in tools/spec.ts). */
+export interface Readiness {
+  verdict: string;
+  checks: { label: string; status: string; detail: string }[];
+  contractSha: string | null;
+}
+
+/**
+ * The spec a planner's `spec_ready` names, made ready for approval, or the failures that send it
+ * back to the planner.
+ *
+ * - A `shipped` or `superseded` spec is work that is over; the `spec` tool's seal refuses it.
+ * - A spec the planner sealed is taken as it is. One it left unsealed, or sealed with a hash its
+ *   contract does not have, is sealed here with the hash `gate` computes, and only when `gate`
+ *   passes it: the seal still follows the Definition of Ready.
+ * - A `draft` becomes `ready`, the half of task-start's "Write & seal" step that comes before the
+ *   stamp: an executor refuses a draft, and nothing outside the contract block is hashed.
+ * - The text is normalised to LF before the gate reads it, so the hash it returns is the hash of
+ *   the file written. The result is checked before it is returned: it must read as sealed, and its
+ *   front matter must differ from the planner's only in `contract_sha` and `status`. A spec whose
+ *   front matter this cannot edit safely goes back to the planner instead.
+ */
+export function readySpec(
+  specText: string,
+  gate: (text: string) => Readiness,
+): { text: string; sealed: boolean; flipped: boolean } | { failures: string[] } {
+  const norm = specText.replace(/\r\n?/g, "\n");
+  const before = parseFrontmatter(norm).frontmatter;
+  const status = (before.status ?? "").trim();
+  if (status === "shipped" || status === "superseded") {
+    return {
+      failures: [
+        `Lifecycle status: the spec is \`${status}\`, so its lifecycle is over; write a new spec`,
+      ],
+    };
+  }
+  let text = specText;
+  let sealed = false;
+  if (sealIssue(norm) !== null) {
+    const ready = gate(norm);
+    if (ready.verdict === "FAIL" || ready.contractSha === null) {
+      const failures = ready.checks
+        .filter((c) => c.status === "fail")
+        .map((c) => `${c.label}: ${c.detail}`);
+      return { failures: failures.length > 0 ? failures : ["no spec-contract block"] };
+    }
+    text = stampContractSha(norm, ready.contractSha);
+    sealed = true;
+  }
+  const flipped = status === "draft";
+  if (flipped) text = withFrontmatterKey(sealed ? text : norm, "status", "ready");
+  if (!sealed && !flipped) return { text, sealed, flipped };
+  const issue = sealIssue(text);
+  const rest = (fm: Record<string, string>) =>
+    JSON.stringify(
+      Object.entries(fm)
+        .filter(([k]) => k !== "contract_sha" && k !== "status")
+        .sort(([a], [b]) => a.localeCompare(b)),
+    );
+  if (issue !== null || rest(parseFrontmatter(text).frontmatter) !== rest(before)) {
+    return {
+      failures: [
+        `the engine could not ${sealed ? "stamp contract_sha into" : "set status in"} this front matter safely${issue ? ` (${issue})` : ""}; ${sealed ? "stamp the contractSha the spec tool's gate returns yourself" : "set status: ready yourself"}`,
+      ],
+    };
+  }
+  return { text, sealed, flipped };
+}
+
 export function readSignals(specText: string, rubric: Rubric): Signals {
   const text = specText.replace(/\r\n?/g, "\n");
   const { frontmatter } = parseFrontmatter(text);

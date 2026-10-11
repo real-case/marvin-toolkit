@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { importTs } from "./_tsload.mjs";
 
 const a = await importTs("src/pipeline/assess.ts");
-const { contractHash } = await importTs("src/storage/spec.ts");
+const { contractHash, extractContractBlock } = await importTs("src/storage/spec.ts");
+const { parseFrontmatter } = await importTs("src/storage/frontmatter.ts");
 const DEFAULT = readFileSync(
   fileURLToPath(new URL("../../../pipeline/rubric.default.yaml", import.meta.url)),
   "utf8",
@@ -619,4 +620,70 @@ test("sealIssue accepts a spec whose contract_sha hashes its block and names wha
     a.sealIssue("---\nslug: x\ncontract_sha: abc\n---\n# X\n"),
     "it has no spec-contract block",
   );
+});
+
+test("readySpec seals an unsealed spec only on a passing gate, flips a draft, and refuses what it cannot edit safely", () => {
+  const block = "files:\n  - path: src/a.ts\n    action: modify\ncriteria:\n  - id: AC1";
+  const doc = (head, b = block) =>
+    `---\n${head}---\n# X\n\n\`\`\`yaml spec-contract\n${b}\n\`\`\`\n`;
+  const seen = [];
+  const gate = (text) => {
+    seen.push(text);
+    const b = extractContractBlock(parseFrontmatter(text).body);
+    return {
+      verdict: "PASS WITH WARNINGS",
+      checks: [],
+      contractSha: b === null ? null : contractHash(b),
+    };
+  };
+  const failing = () => ({
+    verdict: "FAIL",
+    checks: [{ label: "Required sections", status: "fail", detail: "missing ## Non-goals" }],
+    contractSha: "abc",
+  });
+
+  // Unsealed, ready: stamped with the gate's hash; the front matter otherwise unchanged.
+  const unsealed = doc("slug: x\nstatus: ready\n");
+  const r1 = a.readySpec(unsealed, gate);
+  assert.deepEqual([r1.sealed, r1.flipped], [true, false]);
+  assert.equal(a.sealIssue(r1.text), null);
+  assert.match(r1.text, new RegExp(`^contract_sha: ${contractHash(block)}$`, "m"));
+  // A gate FAIL writes nothing and names the failing checks.
+  assert.deepEqual(a.readySpec(unsealed, failing), {
+    failures: ["Required sections: missing ## Non-goals"],
+  });
+
+  // A draft is flipped, sealed by the planner or not; the planner's own seal is kept.
+  const draft = a.readySpec(doc("slug: x\nstatus: draft\n"), gate);
+  assert.deepEqual([draft.sealed, draft.flipped], [true, true]);
+  assert.match(draft.text, /^status: ready$/m);
+  const sealedDraft = doc(`slug: x\nstatus: draft\ncontract_sha: ${contractHash(block)}\n`);
+  seen.length = 0;
+  const kept = a.readySpec(sealedDraft, gate);
+  assert.deepEqual([kept.sealed, kept.flipped, seen.length], [false, true, 0]);
+  assert.equal(a.sealIssue(kept.text), null);
+  // A sealed ready spec is returned untouched, without consulting the gate.
+  const done = doc(`slug: x\nstatus: ready\ncontract_sha: ${contractHash(block)}\n`);
+  assert.deepEqual(a.readySpec(done, gate), { text: done, sealed: false, flipped: false });
+  assert.equal(seen.length, 0);
+
+  // Work that is over is refused whatever its seal.
+  for (const status of ["shipped", "superseded"])
+    assert.match(
+      a.readySpec(done.replace("status: ready", `status: ${status}`), gate).failures[0],
+      /lifecycle is over/,
+    );
+
+  // Mixed line endings: the gate reads the normalised text, so the stamp holds on the file written.
+  const mixed = doc("slug: x\nstatus: ready\n", block.replace(/\n/g, "\r\n"));
+  const r2 = a.readySpec(mixed, gate);
+  assert.equal(r2.sealed, true);
+  assert.equal(a.sealIssue(r2.text), null);
+  assert.ok(!r2.text.includes("\r"));
+
+  // Front matter the stamp cannot edit safely goes back to the planner rather than to approval.
+  const closer = unsealed.replace(/\n---\n# X/, "\n--- \n# X\n\n---\n");
+  assert.match(a.readySpec(closer, gate).failures?.[0] ?? "", /could not stamp contract_sha/);
+  const multiline = doc("slug: x\nstatus: ready\ncontract_sha:\n  deadbeef\n");
+  assert.match(a.readySpec(multiline, gate).failures?.[0] ?? "", /could not stamp contract_sha/);
 });

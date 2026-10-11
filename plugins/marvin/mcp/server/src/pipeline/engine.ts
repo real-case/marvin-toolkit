@@ -49,8 +49,10 @@ export type Observation =
       role: Role;
       result: WaitResult;
       signals?: Signals;
-      /** Why the spec a planner's `spec_ready` names is not sealed, when it is not. */
-      sealIssue?: string;
+      /** The failing Definition-of-Ready checks of an unsealed spec a planner's `spec_ready` names. */
+      dorFailures?: string[];
+      /** The engine, not the planner, stamped the seal of the spec a `spec_ready` names. */
+      engineSealed?: boolean;
       mutated?: string[];
       leaked?: string[];
     }
@@ -331,8 +333,8 @@ const refusalMessage = (role: Role, detail: string) =>
     `OUTPUT REFUSED: ${detail}`,
     ...(role === "planner"
       ? [
-          'Validate and seal the spec with the marvin `spec` tool (action "dor", then "seal").',
-          "Never write contract_sha by hand.",
+          'Re-run the marvin `spec` tool (action "dor", specPath) on the spec until it passes; the',
+          "engine stamps contract_sha from the same gate.",
         ]
       : []),
     ...(role === "executor" ? ["A question or a dispute needs status needs_input."] : []),
@@ -735,21 +737,22 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           { questions: out.questions },
         );
       }
-      if (child?.sealIssue) {
-        // Only the planner can seal: a spec that reaches the executor unsealed invites it to
-        // stamp a contract_sha by hand, which the gate then judges tampered.
+      if (child?.dorFailures) {
+        // The engine seals an unsealed spec only once its Definition of Ready passes; a FAIL is the
+        // planner's to fix, in its own session.
         const tries = run.retries.planner ?? 0;
         if (tries >= rubric.caps.child_retries) {
           return ask({ ...run, haltRole: "planner" }, "halt", {
-            reason: "planner returned an unsealed spec",
-            detail: `${out.spec?.path}: ${child.sealIssue}`,
+            reason: "planner's spec fails the Definition of Ready",
+            detail: { spec: out.spec?.path, failures: child.dorFailures },
           });
         }
         const r = { ...run, retries: { ...run.retries, planner: tries + 1 } };
         const message = [
-          `SPEC NOT SEALED: ${out.spec?.path}: ${child.sealIssue}.`,
-          'Seal it with the marvin `spec` tool, action "seal", then finish with spec_ready again.',
-          "Never write contract_sha by hand.",
+          `DEFINITION OF READY FAILED for ${out.spec?.path}:`,
+          ...child.dorFailures.map((f) => `- ${f}`),
+          'Fix each check, re-run the marvin `spec` tool (action "dor", specPath) until it passes,',
+          "then finish with spec_ready again. The engine stamps contract_sha from the same gate.",
         ].join("\n");
         return { run: r, actions: [spawn(r, "planner", { message }, true)] };
       }
@@ -762,6 +765,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       );
       return ask(r, "spec_approval", {
         spec: out.spec,
+        engineSealed: child.engineSealed === true,
         summary: out.summary,
         tier,
         reasons,

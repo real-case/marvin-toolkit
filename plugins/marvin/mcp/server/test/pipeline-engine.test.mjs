@@ -161,17 +161,27 @@ test("spec ready computes the tier and asks for approval", () => {
   assert.equal(d.run.stage, "awaiting_approval");
   assert.equal(d.run.tier, "light");
   assert.equal(judgmentOf(d), "spec_approval");
-});
-
-test("an unsealed spec goes back to the planner's session, then halts; it never reaches approval", () => {
-  const ready = {
+  assert.equal(payloadOf(d).engineSealed, false);
+  const sealedByEngine = go(at("planning", { tier: null }), {
     ...child(
       "planner",
       { status: "spec_ready", summary: "s", spec: { path: "specs/1-x.md" } },
       "spec_ready",
     ),
     signals: light,
-    sealIssue: "its front matter has no contract_sha",
+    engineSealed: true,
+  });
+  assert.equal(payloadOf(sealedByEngine).engineSealed, true);
+});
+
+test("an unsealed spec that fails the Definition of Ready goes back to the planner's session, then halts", () => {
+  const ready = {
+    ...child(
+      "planner",
+      { status: "spec_ready", summary: "s", spec: { path: "specs/1-x.md" } },
+      "spec_ready",
+    ),
+    dorFailures: ["Required sections: missing ## Non-goals"],
   };
   const d = go(at("planning", { tier: null }), ready);
   assert.equal(d.run.stage, "planning");
@@ -179,12 +189,15 @@ test("an unsealed spec goes back to the planner's session, then halts; it never 
   assert.equal(d.run.retries.planner, 1);
   assert.equal(spawnOf(d).role, "planner");
   assert.equal(spawnOf(d).resume, true);
-  assert.match(spawnOf(d).context.message, /SPEC NOT SEALED: specs\/1-x\.md: its front matter/);
-  assert.match(spawnOf(d).context.message, /action "seal"/);
+  assert.match(spawnOf(d).context.message, /DEFINITION OF READY FAILED for specs\/1-x\.md:/);
+  assert.match(spawnOf(d).context.message, /- Required sections: missing ## Non-goals/);
+  assert.match(spawnOf(d).context.message, /action "dor", specPath/);
+  assert.doesNotMatch(spawnOf(d).context.message, /never write contract_sha/i);
   const again = go(d.run, ready);
   assert.equal(judgmentOf(again), "halt");
   assert.equal(again.run.haltRole, "planner");
-  assert.match(payloadOf(again).reason, /unsealed spec/);
+  assert.match(payloadOf(again).reason, /fails the Definition of Ready/);
+  assert.deepEqual(payloadOf(again).detail.failures, ["Required sections: missing ## Non-goals"]);
 });
 
 test("approval routes standard work through the test-author and light work straight to the executor", () => {
@@ -548,7 +561,7 @@ test("a refused turn is retried in the child's own session with the reason; a de
   });
   assert.equal(spawnOf(unreadable).resume, true);
   assert.match(spawnOf(unreadable).context.message, /no spec-contract block/);
-  assert.match(spawnOf(unreadable).context.message, /action "dor", then "seal"/);
+  assert.match(spawnOf(unreadable).context.message, /action "dor", specPath/);
   assert.equal(unreadable.run.retries.planner, 1);
   // The cap still holds: a second refusal halts.
   assert.equal(judgmentOf(go(unreadable.run, child("planner", null, "crashed"))), "halt");

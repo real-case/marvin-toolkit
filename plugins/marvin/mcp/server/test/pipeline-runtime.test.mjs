@@ -620,7 +620,8 @@ test("a resume continues the role's last session with the message alone; spec_re
       [second.obs.signals.risk, second.obs.signals.files, second.obs.signals.paths],
       ["low", 1, ["src/a.mjs"]],
     );
-    assert.equal(second.obs.sealIssue, undefined);
+    // A sealed spec is taken as it is: the gate is not re-run, so this minimal spec still passes.
+    assert.equal(second.obs.dorFailures, undefined);
     run = second.run;
   });
   // A spec the engine cannot read makes the turn a crash, which costs a retry, not the engine.
@@ -643,9 +644,129 @@ test("a resume continues the role's last session with the message alone; spec_re
   );
 });
 
-test("spec_ready on a spec whose contract no longer matches its seal carries the seal issue", async () => {
+/** A feature spec the Definition-of-Ready gate passes in a worktree that holds CLAUDE.md. */
+const READY_SPEC = (frontmatterExtra = "") => `---
+slug: sample-ready
+type: feature
+status: ready
+created: 2026-10-11
+tracker: none
+supersedes: none
+stack: javascript
+risk: low
+breaking: false
+spike_required: false
+test_command: "node --test"
+${frontmatterExtra}---
+
+# Sample ready
+
+## Goal
+Add a sample doc.
+
+## Spec Contract
+
+\`\`\`yaml spec-contract
+files:
+  - id: F1
+    path: CLAUDE.md
+    action: edit
+    intent: link the sample
+    satisfies: [AC2, AC3]
+  - id: F2
+    path: docs/sample-new.md
+    action: new
+    intent: the sample doc
+    satisfies: [AC1]
+  - id: F3
+    path: test/sample.test.mjs
+    action: new
+    intent: tests for the criteria
+    satisfies: [AC1, AC2]
+build_order: [F2, F1, F3]
+contract:
+  kind: none
+criteria:
+  - id: AC1
+    statement: Given the repo, then the sample doc exists
+    implemented_by: [F2, F3]
+    oracle:
+      kind: test
+      ref: test/sample.test.mjs::exists
+    failure: file missing
+  - id: AC2
+    statement: Given CLAUDE.md, then it links the sample
+    implemented_by: [F1, F3]
+    oracle:
+      kind: command
+      ref: grep -q sample CLAUDE.md
+    failure: no link
+  - id: AC3
+    statement: Given the change, when reviewed, then it reads cleanly
+    implemented_by: [F1]
+    oracle:
+      kind: prose-review
+    failure: unclear
+\`\`\`
+
+## Chosen Approach
+Write the doc and link it.
+
+## Non-goals
+- No runtime change.
+
+## Open Questions
+none
+`;
+
+test("spec_ready on an unsealed spec: the engine stamps the seal once the Definition of Ready passes", async () => {
+  const spec = ".marvin/task/001-sample-ready.md";
+  // A planner that never ran the seal, one that hashed the block itself (full sha256), and one
+  // that stopped before "Write & seal" with the spec still a draft.
+  for (const extra of ["", "contract_sha: 4bf8bfcac18850a88e885c5fa83e16f8\n", "draft"]) {
+    const draft = extra === "draft";
+    const source = draft
+      ? READY_SPEC().replace("status: ready", "status: draft")
+      : READY_SPEC(extra);
+    const s = await prepared({ files: { [spec]: source, "CLAUDE.md": "# Repo\n" } });
+    const ready = { status: "spec_ready", summary: "s", spec: { path: spec } };
+    const run = { ...s.run, stage: "planning" };
+    await withFake(s.runDir, "planner", [ready], async () => {
+      const { obs } = await waitFor(
+        s.deps,
+        s.deps.spawnChild(
+          run,
+          spawnAction("planner", 0, { task: "t", critic_cap: "1" }),
+          step("p1"),
+        ),
+      );
+      assert.equal(obs.result.outcome, "spec_ready");
+      assert.equal(obs.dorFailures, undefined);
+      assert.equal(obs.signals.risk, "low");
+      const text = readFileSync(join(s.wt, spec), "utf8");
+      const block = text.match(/```yaml spec-contract\n([\s\S]*?)\n```/)[1];
+      assert.deepEqual(text.match(/^contract_sha: .*$/gm), [
+        `contract_sha: ${contractHash(block)}`,
+      ]);
+      assert.deepEqual(text.match(/^status: .*$/gm), ["status: ready"]);
+      assert.equal(obs.engineSealed, true);
+      assert.ok(existsSync(join(s.wt, ".marvin/metrics/001-sample-ready.md")));
+      assert.match(
+        events(s.runDir)
+          .map((e) => e.text)
+          .join("\n"),
+        draft
+          ? /the engine stamped contract_sha after its Definition of Ready passed and set status: ready in \.marvin\/task\/001-sample-ready\.md/
+          : /the engine stamped contract_sha after its Definition of Ready passed in \.marvin\/task\/001-sample-ready\.md/,
+      );
+    });
+  }
+});
+
+test("spec_ready on an unsealed spec that fails the Definition of Ready writes nothing and carries the failures", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
-  const s = await prepared({ files: { [spec]: specText({ tamper: true }) } });
+  const original = specText({ tamper: true });
+  const s = await prepared({ files: { [spec]: original } });
   const ready = { status: "spec_ready", summary: "sealed", spec: { path: spec } };
   const run = { ...s.run, stage: "planning" };
   await withFake(s.runDir, "planner", [ready], async () => {
@@ -654,8 +775,10 @@ test("spec_ready on a spec whose contract no longer matches its seal carries the
       s.deps.spawnChild(run, spawnAction("planner", 0, { task: "t", critic_cap: "1" }), step("p1")),
     );
     assert.equal(obs.result.outcome, "spec_ready");
-    assert.equal(obs.signals.risk, "low");
-    assert.match(obs.sealIssue, /but the block hashes to/);
+    assert.equal(obs.signals, undefined);
+    assert.ok(obs.dorFailures.length > 0);
+    assert.equal(readFileSync(join(s.wt, spec), "utf8"), original);
+    assert.ok(!existsSync(join(s.wt, ".marvin/metrics")));
   });
 });
 

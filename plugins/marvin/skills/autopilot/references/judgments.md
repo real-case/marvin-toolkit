@@ -84,9 +84,12 @@ judge the evidence rather than the executor's confidence:
 
 ## 4. `spec_approval`
 
-Payload: `{spec: {path, slug, risk, files, criteria, sealed, critic?, overrides?}, summary, tier,
-reasons, assumptions, assignments}`. `spec.path` is relative to the run worktree, which
-`node <cli> status --run <runDir>` gives as `worktree`.
+Payload: `{spec: {path, slug, risk, files, criteria, sealed, critic?, overrides?}, engineSealed,
+summary, tier, reasons, assumptions, assignments}`. `spec.path` is relative to the run worktree,
+which `node <cli> status --run <runDir>` gives as `worktree`. `spec.sealed` is the planner's
+claim; `engineSealed: true` means the planner left the spec unsealed and the engine stamped the
+seal itself after the Definition-of-Ready gate passed. Say so when you present the spec: a
+planner that stopped short of the seal may also have skipped the critic, so check `critic`.
 
 Spec approval by the user is mandatory. Never approve on your own, whatever the tier.
 
@@ -120,7 +123,7 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash or failure
 after its retry, a usage limit, a stalled child, a child that mutated the tree or wrote outside
-its worktree, a planner or executor past its question cap, a planner that returned an unsealed spec twice,
+its worktree, a planner or executor past its question cap, a planner whose spec failed the Definition of Ready twice,
 an approved spec the engine would not commit, a gate that found the spec unsealed on the run
 branch, the sealed tests revised too often, a closed PR, or CI red after finalize.
 
@@ -142,13 +145,14 @@ These halts deserve a look before you ask:
 - **`<role> mutated the tree`.** The read-only verifier changed the worktree. Recommend
   `cancel` unless the user wants to inspect it; a verifier that writes cannot be trusted.
 - **`the spec on the run branch is not the sealed spec`.** `findings` names what the gate saw:
-  no `contract_sha`, no contract block, or no readable spec. Only a planner can seal, so this
-  halt cannot be retried; recommend `cancel`.
+  no `contract_sha`, no contract block, or no readable spec. A spec is sealed before approval
+  (by its planner, or by the engine at `spec_ready`), so the branch lost the approved spec and
+  this halt cannot be retried; recommend `cancel`.
 - **`the approved spec was not committed`.** Right after an approval the engine commits the spec,
   with its metrics record unless git ignores it, on the run branch before any child starts.
   `detail` says why it
   refused, usually a contract that no longer hashes to its `contract_sha` because the spec was
-  edited after the planner sealed it. Only a planner can seal, so this halt cannot be retried;
+  edited after it was sealed. Sealing happens before approval, so this halt cannot be retried;
   recommend `cancel`.
 - **A usage limit** (`<role> limited`). A retry will hit the same limit until it resets; say
   when, if the detail names it, and suggest retrying then.

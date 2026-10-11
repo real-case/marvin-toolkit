@@ -70,14 +70,14 @@ import type { ServerEnv } from "../lib/env.js";
 
 type CheckStatus = "pass" | "fail" | "warn";
 
-interface Check {
+export interface Check {
   id: string;
   label: string;
   status: CheckStatus;
   detail: string;
 }
 
-type Verdict = "PASS" | "PASS WITH WARNINGS" | "FAIL";
+export type Verdict = "PASS" | "PASS WITH WARNINGS" | "FAIL";
 
 const STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"] as const;
 const RISK_VALUES = ["low", "medium", "high"] as const;
@@ -2662,6 +2662,19 @@ function errMessage(err: unknown): string {
 }
 
 // ── result construction ────────────────────────────────────────────────────
+
+/**
+ * The Definition-of-Ready verdict of a spec's text, exactly as `action: "dor"` reaches it, for the
+ * autopilot engine, which seals a spec its planner left unsealed only after this gate passes.
+ */
+export function specReadiness(
+  raw: string,
+  projectRoot: string,
+  specConfig?: SpecConfig,
+): { verdict: Verdict; checks: Check[]; contractSha: string | null } {
+  const { checks, contractSha } = validateSpec(raw, projectRoot, specConfig);
+  return { verdict: computeVerdict(checks), checks, contractSha };
+}
 
 function computeVerdict(checks: Check[]): Verdict {
   if (checks.some((c) => c.status === "fail")) return "FAIL";

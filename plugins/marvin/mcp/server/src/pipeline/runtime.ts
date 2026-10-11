@@ -25,7 +25,9 @@ import { parseFrontmatter } from "../storage/frontmatter.js";
 import type { Config } from "../storage/schema.js";
 import { isSafeBranchRef } from "../storage/slug.js";
 import { contractHash, extractContractBlock } from "../storage/spec.js";
-import { readSignals, sealIssue, type Rubric } from "./assess.js";
+import { ensureRecord } from "../storage/metrics.js";
+import { specReadiness } from "../tools/spec.js";
+import { readSignals, readySpec, sealIssue, type Rubric } from "./assess.js";
 import { type CiState, classifyCi, fetchCi } from "./ci.js";
 import {
   buildChildCommand,
@@ -997,25 +999,58 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
 
   /**
    * What the engine learns from a planner's `spec_ready` beyond its words: the signals of the
-   * spec it names, and whether it is sealed. A spec the engine cannot read is a crash of the turn
-   * that named it, which costs a retry, never the engine. An unsealed one is readable; `decide`
-   * sends it back to the planner rather than on to approval.
+   * spec it names, made ready for approval by `readySpec`. A spec the planner left unsealed is
+   * sealed here once the Definition-of-Ready gate its `spec` tool runs passes it, and a `draft`
+   * becomes `ready`; across the four 2026-10-11 benches seven of 32 runs ended with a planner spec
+   * that was unsealed or carried a hash the planner computed itself. Anything `readySpec` sends
+   * back reaches `decide` as `dorFailures`, which resumes the planner with them. The metrics record
+   * the tool's seal would create is created before the spec is written: a replay takes a sealed
+   * spec as it is and would never create it. A spec the engine cannot read is a crash of the turn
+   * that named it, which costs a retry, never the engine.
    */
   const withSignals = (
     run: Run,
     result: WaitResult,
-  ): { result: WaitResult; signals?: ReturnType<typeof readSignals>; sealIssue?: string } => {
+  ): {
+    result: WaitResult;
+    signals?: ReturnType<typeof readSignals>;
+    dorFailures?: string[];
+    engineSealed?: boolean;
+  } => {
     const spec = result.structured?.spec as { path?: unknown } | undefined;
     const path = spec?.path;
     // A path that is not canonical is left to `decide`, whose schema refuses it as invalid output.
     if (!isCanonicalPath(path) || run.worktree === null) return { result };
+    const wt = run.worktree;
     try {
-      const abs = join(run.worktree, path);
-      if (!physicallyInside(run.worktree, abs)) throw new Error("it leads out of the worktree");
-      const text = readFileSync(abs, "utf8");
-      const signals = readSignals(text, rubric);
-      const issue = sealIssue(text);
-      return issue === null ? { result, signals } : { result, signals, sealIssue: issue };
+      const abs = join(wt, path);
+      if (!physicallyInside(wt, abs)) throw new Error("it leads out of the worktree");
+      const original = readFileSync(abs, "utf8");
+      const ready = readySpec(original, (text) => specReadiness(text, wt, configFor(run).spec));
+      if ("failures" in ready) return { result, dorFailures: ready.failures };
+      if (ready.sealed) {
+        const slug = recordSlugForSpec(parseFrontmatter(ready.text).frontmatter.slug, abs);
+        if (slug !== null) {
+          try {
+            ensureRecord(recordPathFor(join(wt, METRICS_DIR), slug, wt, undefined, abs), slug);
+          } catch {
+            // fail-open, as the seal anchor is (ADR-0044)
+          }
+        }
+      }
+      if (ready.text !== original) {
+        writeAtomic(abs, ready.text);
+        const did = [
+          ...(ready.sealed ? ["stamped contract_sha after its Definition of Ready passed"] : []),
+          ...(ready.flipped ? ["set status: ready"] : []),
+        ];
+        note(`the engine ${did.join(" and ")} in ${path}`, { notify: true });
+      }
+      return {
+        result,
+        signals: readSignals(ready.text, rubric),
+        ...(ready.sealed ? { engineSealed: true } : {}),
+      };
     } catch (error) {
       const detail = `spec_ready names ${path}, which the engine cannot read: ${errorText(error)}`;
       return { result: { ...result, outcome: "crashed", detail: detail.slice(0, 300) } };
@@ -1087,7 +1122,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       const read = withSignals(run, result);
       obs.result = read.result;
       if (read.signals) obs.signals = read.signals;
-      if (read.sealIssue) obs.sealIssue = read.sealIssue;
+      if (read.dorFailures) obs.dorFailures = read.dorFailures;
+      if (read.engineSealed) obs.engineSealed = true;
     }
     // D19 and S10: anything new in the main checkout. It is shared with other sessions, so the
     // engine raises a halt the orchestrator judges rather than failing the child outright.
