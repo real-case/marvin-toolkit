@@ -18677,6 +18677,7 @@ var Rubric = external_exports.object({
     planner_questions: external_exports.number().int().min(0),
     test_author_attempts: external_exports.number().int().min(1),
     child_retries: external_exports.number().int().min(0),
+    dor_rounds: external_exports.number().int().min(0),
     ci_wait_minutes: external_exports.number().int().min(1),
     executor_questions: external_exports.number().int().min(0),
     spec_critic: external_exports.object({ light: external_exports.number().int().min(1), default: external_exports.number().int().min(1) }).strict()
@@ -21202,6 +21203,16 @@ function summarize(tasks) {
   };
 }
 var isIncomplete = (r) => r.outcome === "limited" || r.outcome === "aborted" || r.outcome === "error";
+var isDelivered = (r) => r.outcome === "ready";
+function deliveredPassRate(tasks) {
+  const runs = tasks.flatMap((t) => t.runs).filter(isDelivered);
+  const total = runs.reduce((s, r) => s + r.hidden.total, 0);
+  return total === 0 ? null : round4(runs.reduce((s, r) => s + r.hidden.passed, 0) / total);
+}
+function deliveredMean(runs) {
+  const delivered = (runs ?? []).filter(isDelivered);
+  return delivered.length === 0 ? null : delivered.reduce((s, r) => s + r.hidden.ratio, 0) / delivered.length;
+}
 function l3Gate(baseline, candidate, o = {}) {
   const minRepeats = o.minRepeats ?? 2;
   const costFactor = o.costFactor ?? 1.15;
@@ -21232,37 +21243,58 @@ function l3Gate(baseline, candidate, o = {}) {
       }
     }
   }
-  const passRateHeld = c.hiddenPassRate >= b.hiddenPassRate - 1e-9;
-  const passRateRose = c.hiddenPassRate > b.hiddenPassRate + 1e-9;
+  const bRate = deliveredPassRate(baseline.tasks);
+  const cRate = deliveredPassRate(candidate.tasks);
+  if (bRate === null) inconclusive.push("the baseline delivered no run");
+  const passRateHeld = bRate === null || cRate !== null && cRate >= bRate - 1e-9;
+  const both = candidate.tasks.flatMap((t) => {
+    const cm = deliveredMean(t.runs);
+    const bm = deliveredMean(baseline.tasks.find((x) => x.id === t.id)?.runs);
+    return cm === null || bm === null ? [] : [{ cm, bm }];
+  });
+  const passRateRose = both.length > 0 && both.every((x) => x.cm >= x.bm - 1e-9) && both.some((x) => x.cm > x.bm + 1e-9);
+  const share = (s) => s.runs === 0 ? 0 : s.readyRuns / s.runs;
+  const deliveriesHeld = share(c) >= share(b) - 1e-9;
   const costWithinBound = c.totalCostUsd <= b.totalCostUsd * costFactor + 1e-9;
   const regressedInEveryRepeat = [];
   for (const t of candidate.tasks) {
-    const base = baseline.tasks.find((x) => x.id === t.id);
-    if (!base || base.runs.length === 0 || t.runs.length === 0) continue;
-    const mean = base.runs.reduce((s, r) => s + r.hidden.ratio, 0) / base.runs.length;
-    if (t.runs.every((r) => r.hidden.ratio < mean - 1e-9)) regressedInEveryRepeat.push(t.id);
+    const mean = deliveredMean(baseline.tasks.find((x) => x.id === t.id)?.runs);
+    if (mean === null || t.runs.length === 0) continue;
+    if (t.runs.every((r) => !isDelivered(r) || r.hidden.ratio < mean - 1e-9)) {
+      regressedInEveryRepeat.push(t.id);
+    }
   }
   if (!passRateHeld) {
-    reasons.push(`hidden pass rate fell: ${pct(b.hiddenPassRate)} \u2192 ${pct(c.hiddenPassRate)}`);
+    reasons.push(`hidden pass rate over delivered runs fell: ${rate(bRate)} \u2192 ${rate(cRate)}`);
+  }
+  if (!deliveriesHeld) {
+    reasons.push(`delivered runs fell: ${b.readyRuns}/${b.runs} \u2192 ${c.readyRuns}/${c.runs}`);
   }
   if (regressedInEveryRepeat.length > 0) {
     reasons.push(`regressed in every repeat: ${regressedInEveryRepeat.join(", ")}`);
   }
   if (!costWithinBound && !passRateRose) {
     reasons.push(
-      `notional cost ${usd(c.totalCostUsd)} exceeds ${costFactor} \xD7 baseline ${usd(b.totalCostUsd)} without a higher pass rate`
+      `notional cost ${usd(c.totalCostUsd)} exceeds ${costFactor} \xD7 baseline ${usd(b.totalCostUsd)} without a task delivering better`
     );
   }
   const decision = inconclusive.length > 0 ? "inconclusive" : reasons.length > 0 ? "reject" : "accept";
   return {
     decision,
     reasons: [...inconclusive, ...reasons],
-    baseline: { passRate: b.hiddenPassRate, costUsd: b.totalCostUsd },
-    candidate: { passRate: c.hiddenPassRate, costUsd: c.totalCostUsd },
-    checks: { passRateHeld, regressedInEveryRepeat, costWithinBound, passRateRose }
+    baseline: { passRate: bRate, costUsd: b.totalCostUsd, delivered: b.readyRuns, runs: b.runs },
+    candidate: { passRate: cRate, costUsd: c.totalCostUsd, delivered: c.readyRuns, runs: c.runs },
+    checks: {
+      passRateHeld,
+      deliveriesHeld,
+      regressedInEveryRepeat,
+      costWithinBound,
+      passRateRose
+    }
   };
 }
 var pct = (n) => `${(n * 100).toFixed(1)}%`;
+var rate = (n) => n === null ? "\u2014" : pct(n);
 var usd = (n) => `$${n.toFixed(2)}`;
 var minutes = (ms) => `${(ms / 6e4).toFixed(1)} min`;
 function renderResultMarkdown(r) {
@@ -21276,7 +21308,7 @@ function renderResultMarkdown(r) {
     `- Tasks: ${r.settings.tasks.join(", ")}; repeats: ${r.settings.repeat}`,
     `- Model override: ${r.settings.modelOverride ?? "none (the rubric's models)"}; judge: ${r.settings.judge}${r.settings.judgeModel ? ` on ${r.settings.judgeModel}` : ""}`,
     `- Rubric variant: ${r.settings.rubric ?? "none"}; roles variant: ${r.settings.rolesDir ?? "none"}`,
-    `- Hidden pass rate: **${pct(s.hiddenPassRate)}** (${s.hiddenPassed}/${s.hiddenTotal} files); ready ${s.readyRuns}/${s.runs}; tier as expected ${s.tierMatches}/${s.runs}`,
+    `- Hidden pass rate, all runs: **${pct(s.hiddenPassRate)}** (${s.hiddenPassed}/${s.hiddenTotal} files); ready ${s.readyRuns}/${s.runs}; tier as expected ${s.tierMatches}/${s.runs}`,
     `- Notional cost: **${usd(s.totalCostUsd)}** (judge ${usd(s.judgeCostUsd)}); wall time ${minutes(s.wallMs)}`,
     ...r.stopped ? [`- **Stopped early:** ${r.stopped}`] : [],
     "",
@@ -21328,7 +21360,8 @@ function renderComparisonMarkdown(baseline, candidate, verdict) {
     "| | Baseline | Candidate |",
     "|---|---|---|",
     `| Variant | ${baseline.variant} (${baseline.date}) | ${candidate.variant} (${candidate.date}) |`,
-    `| Hidden pass rate | ${pct(verdict.baseline.passRate)} | ${pct(verdict.candidate.passRate)} |`,
+    `| Delivered runs | ${verdict.baseline.delivered}/${verdict.baseline.runs} | ${verdict.candidate.delivered}/${verdict.candidate.runs} |`,
+    `| Hidden pass rate, delivered runs | ${rate(verdict.baseline.passRate)} | ${rate(verdict.candidate.passRate)} |`,
     `| Notional cost | ${usd(verdict.baseline.costUsd)} | ${usd(verdict.candidate.costUsd)} |`,
     `| Repeats | ${baseline.settings.repeat} | ${candidate.settings.repeat} |`,
     "",
@@ -21337,12 +21370,15 @@ function renderComparisonMarkdown(baseline, candidate, verdict) {
   ];
   for (const t of candidate.tasks) {
     const base = baseline.tasks.find((x) => x.id === t.id);
-    const ratios = (runs) => runs && runs.length > 0 ? runs.map((m) => `${m.hidden.passed}/${m.hidden.total}`).join(", ") : "\u2014";
+    const ratios = (runs) => runs && runs.length > 0 ? runs.map(
+      (m) => `${m.hidden.passed}/${m.hidden.total}${isDelivered(m) ? "" : " (not delivered)"}`
+    ).join(", ") : "\u2014";
     lines.push(`| ${t.id} | ${ratios(base?.runs)} | ${ratios(t.runs)} |`);
   }
   lines.push(
     "",
-    `- Pass rate held: ${verdict.checks.passRateHeld ? "yes" : "no"}; rose: ${verdict.checks.passRateRose ? "yes" : "no"}`,
+    `- Pass rate held: ${verdict.checks.passRateHeld ? "yes" : "no"}; rose, task by task: ${verdict.checks.passRateRose ? "yes" : "no"}`,
+    `- Deliveries held: ${verdict.checks.deliveriesHeld ? "yes" : "no"}`,
     `- Regressed in every repeat: ${verdict.checks.regressedInEveryRepeat.join(", ") || "none"}`,
     `- Cost within 1.15 \xD7 baseline: ${verdict.checks.costWithinBound ? "yes" : "no"}`,
     ...verdict.reasons.length > 0 ? ["", "Reasons:", ...verdict.reasons.map((x) => `- ${x}`)] : []
@@ -21876,9 +21912,9 @@ function efficacy(records, items) {
     const after = ordered.filter(
       (r) => r.ts >= it.createdAt && (it.kind === "check" || r.exposedLessons.includes(it.id))
     );
-    const rate = (rs) => rs.length ? rs.filter((r) => r.findingCategories.includes(it.targetCategory)).length / rs.length : 0;
-    const verdict = before.length < MIN_RECORDS || after.length < MIN_RECORDS ? "too-early" : rate(after) >= rate(before) ? "prune-candidate" : "keep";
-    return { id: it.id, exposure: after.length, before: rate(before), after: rate(after), verdict };
+    const rate2 = (rs) => rs.length ? rs.filter((r) => r.findingCategories.includes(it.targetCategory)).length / rs.length : 0;
+    const verdict = before.length < MIN_RECORDS || after.length < MIN_RECORDS ? "too-early" : rate2(after) >= rate2(before) ? "prune-candidate" : "keep";
+    return { id: it.id, exposure: after.length, before: rate2(before), after: rate2(after), verdict };
   });
 }
 var MAX_PATTERN_LENGTH = 500;
@@ -22766,6 +22802,7 @@ var STAGE_OF = {
   retro: "retro"
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
+var DOR_ROUNDS = "planner-dor";
 var FULL_SHA4 = /^[0-9a-f]{40}$/;
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var refusalMessage = (role, detail) => [
@@ -22960,7 +22997,11 @@ function step(run2, obs, rubric, now) {
     const role = r.haltRole;
     const cleared = {
       ...r,
-      retries: Object.fromEntries(Object.entries(r.retries).filter(([name]) => name !== role)),
+      retries: Object.fromEntries(
+        Object.entries(r.retries).filter(
+          ([name]) => name !== role && !(role === "planner" && name === DOR_ROUNDS)
+        )
+      ),
       haltRole: null
     };
     if (role === null) {
@@ -23106,14 +23147,14 @@ ${lines.join("\n")}` }, true)]
         );
       }
       if (child?.dorFailures) {
-        const tries = run2.retries.planner ?? 0;
-        if (tries >= rubric.caps.child_retries) {
+        const tries = run2.retries[DOR_ROUNDS] ?? 0;
+        if (tries >= rubric.caps.dor_rounds) {
           return ask({ ...run2, haltRole: "planner" }, "halt", {
             reason: "planner's spec fails the Definition of Ready",
             detail: { spec: out.spec?.path, failures: child.dorFailures }
           });
         }
-        const r2 = { ...run2, retries: { ...run2.retries, planner: tries + 1 } };
+        const r2 = { ...run2, retries: { ...run2.retries, [DOR_ROUNDS]: tries + 1 } };
         const message = [
           `DEFINITION OF READY FAILED for ${out.spec?.path}:`,
           ...child.dorFailures.map((f) => `- ${f}`),
@@ -23195,7 +23236,8 @@ ${a.text}` }, true)] };
       const a = obs.answer;
       if (a.kind === "cancel") return cancel2(run2, a.reason);
       if (a.kind === "changes") {
-        const r = go(run2, "planning");
+        const { [DOR_ROUNDS]: _rounds, ...retries } = run2.retries;
+        const r = go({ ...run2, retries }, "planning");
         return {
           run: r,
           actions: [spawn4(r, "planner", { message: `CHANGES REQUESTED:
@@ -31966,9 +32008,9 @@ ${tail}`);
     });
     const results = efficacy(calibrationRecords(run2), items);
     if (results.length === 0) return "(none)";
-    const rate = (n) => n.toFixed(2);
+    const rate2 = (n) => n.toFixed(2);
     return results.map(
-      (r) => `- ${r.id} (lesson): ${r.verdict}; exposed in ${r.exposure} runs; target-category rate ${rate(r.before)} before, ${rate(r.after)} after`
+      (r) => `- ${r.id} (lesson): ${r.verdict}; exposed in ${r.exposure} runs; target-category rate ${rate2(r.before)} before, ${rate2(r.after)} after`
     ).join("\n");
   };
   const runtimeVars = (run2, action, name, config2) => {
