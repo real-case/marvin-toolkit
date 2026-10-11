@@ -11,6 +11,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -471,9 +472,10 @@ function engineContexts(run) {
   const sealed = { path: "test/a.test.mjs", criteria: ["AC1"], sha256: "0".repeat(64) };
   const decisions = [
     decide({ ...run, stage: "intake", worktree: null }, { kind: "start" }, rubric, now),
+    // An approval starts its first child once the spec is committed.
     decide(
       at("awaiting_approval"),
-      { kind: "answer", judgment: "spec_approval", answer: { kind: "approve" } },
+      { kind: "spec_commit", ok: true, commit: "c".repeat(40), reason: null },
       rubric,
       now,
     ),
@@ -940,6 +942,256 @@ test("lessons are ranked by the contract's paths and recorded as exposed", async
 });
 
 // ----------------------------------------------------------------------------------- work
+
+const SPEC = ".marvin/task/001-tag-filter.md";
+const RECORD = ".marvin/metrics/001-tag-filter.md";
+const RECORD_TEXT = "# Metrics — tag-filter\n\nAppend-only.\n";
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const approvedRun = (s) => ({ ...s.run, stage: "awaiting_approval", specPath: SPEC });
+
+test("commit_spec commits the approved spec and its metrics record, ignored or not, and nothing else", async () => {
+  // The host ignores .marvin/ whole: the commit is built from plumbing, so no ignore rule, hook
+  // or `git add -f` decides what goes in.
+  const s = await prepared({ files: { ".gitignore": ".marvin/\n" } });
+  const base = sh(s.wt, "rev-parse", "HEAD");
+  write(s.wt, SPEC, specText());
+  write(s.wt, RECORD, RECORD_TEXT);
+  write(s.wt, ".marvin/task/runs/tag-filter.progress.md", "journal\n");
+  write(s.wt, "src/stray.mjs", "export const s = 1;\n");
+  const run = approvedRun(s);
+  const { obs } = await s.deps.work(run, "commit_spec", undefined, step("spec"));
+  const head = sh(s.wt, "rev-parse", "HEAD");
+  assert.deepEqual(obs, { kind: "spec_commit", ok: true, commit: head, reason: null });
+  assert.equal(sh(s.wt, "rev-parse", "HEAD^"), base);
+  assert.equal(sh(s.wt, "branch", "--show-current"), "autopilot/r1");
+  assert.equal(sh(s.wt, "log", "-1", "--format=%s"), "chore(tag-filter): approved spec");
+  assert.deepEqual(sh(s.wt, "show", "--name-only", "--format=", "HEAD").split("\n"), [
+    RECORD,
+    SPEC,
+  ]);
+  for (const path of [SPEC, RECORD]) {
+    assert.equal(sh(s.wt, "show", `HEAD:${path}`), readFileSync(join(s.wt, path), "utf8").trim());
+  }
+  // The worktree's index took the commit, so the two read clean and the strays stay untouched.
+  assert.equal(sh(s.wt, "status", "--porcelain", "--untracked-files=all"), "?? src/stray.mjs");
+  const marker = JSON.parse(readFileSync(join(s.runDir, "spec-commit.json"), "utf8"));
+  assert.deepEqual([marker.phase, marker.headBefore, marker.commit], ["committed", base, head]);
+  // decide records the commit, and the first child starts only now.
+  const next = decide(run, obs, rubric, new Date());
+  assert.equal(next.run.specCommit, head);
+  assert.equal(next.run.stage, "executing");
+
+  // A replay after the marker said so commits nothing more.
+  const replay = await s.deps.work(run, "commit_spec", undefined, step("spec", true));
+  assert.deepEqual(replay.obs, obs);
+  assert.equal(sh(s.wt, "rev-parse", "HEAD"), head);
+
+  // A record filed under the bare slug, as one written against a draft is, is the one committed.
+  const t = await prepared();
+  write(t.wt, SPEC, specText());
+  write(t.wt, ".marvin/metrics/tag-filter.md", RECORD_TEXT);
+  await t.deps.work(approvedRun(t), "commit_spec", undefined, step("slug"));
+  assert.deepEqual(sh(t.wt, "show", "--name-only", "--format=", "HEAD").split("\n"), [
+    ".marvin/metrics/tag-filter.md",
+    SPEC,
+  ]);
+
+  // With no record, the commit holds the spec alone; a spec the base already holds as approved
+  // needs no commit at all, and the commit that holds it is the answer.
+  const u = await prepared();
+  write(u.wt, SPEC, specText());
+  await u.deps.work(approvedRun(u), "commit_spec", undefined, step("alone"));
+  assert.equal(sh(u.wt, "show", "--name-only", "--format=", "HEAD"), SPEC);
+  const v = await prepared({ files: { [SPEC]: specText() } });
+  const held = sh(v.wt, "rev-parse", "HEAD");
+  const reused = await v.deps.work(approvedRun(v), "commit_spec", undefined, step("held"));
+  assert.equal(reused.obs.commit, held);
+  assert.equal(sh(v.wt, "rev-parse", "HEAD"), held);
+});
+
+test("commit_spec refuses a spec whose contract no longer hashes to its seal, and commits nothing", async () => {
+  const s = await prepared();
+  const base = sh(s.wt, "rev-parse", "HEAD");
+  write(s.wt, SPEC, specText({ tamper: true }));
+  write(s.wt, RECORD, RECORD_TEXT);
+  const run = approvedRun(s);
+  const { obs } = await s.deps.work(run, "commit_spec", undefined, step("tampered"));
+  assert.equal(obs.ok, false);
+  assert.equal(obs.commit, null);
+  assert.match(
+    obs.reason,
+    /^\.marvin\/task\/001-tag-filter\.md no longer matches its seal: contract_sha [0-9a-f]+, but the block hashes to [0-9a-f]+$/,
+  );
+  assert.equal(sh(s.wt, "rev-parse", "HEAD"), base);
+  assert.equal(existsSync(join(s.runDir, "spec-commit.json")), false, "a refusal marks nothing");
+  const halted = decide(run, obs, rubric, new Date());
+  assert.equal(halted.actions[0].judgment, "halt");
+  assert.deepEqual(halted.actions[0].payload, {
+    reason: "the approved spec was not committed",
+    detail: obs.reason,
+  });
+
+  // An unsealed spec, a missing one and a record that is a link are refused the same way.
+  write(s.wt, SPEC, specText().replace(/contract_sha: .*\n/, ""));
+  const unsealed = await s.deps.work(run, "commit_spec", undefined, step("unsealed"));
+  assert.match(
+    unsealed.obs.reason,
+    /no longer matches its seal: its front matter has no contract_sha/,
+  );
+  rmSync(join(s.wt, SPEC));
+  const missing = await s.deps.work(run, "commit_spec", undefined, step("missing"));
+  assert.match(missing.obs.reason, /001-tag-filter\.md is not in the run worktree/);
+  write(s.wt, SPEC, specText());
+  rmSync(join(s.wt, RECORD));
+  symlinkSync(join(s.repo, "package-lock.json"), join(s.wt, RECORD));
+  const linked = await s.deps.work(run, "commit_spec", undefined, step("linked"));
+  assert.match(linked.obs.reason, /metrics record .* cannot be committed: .*symbolic link/);
+  assert.equal(sh(s.wt, "rev-parse", "HEAD"), base);
+});
+
+test("a commit_spec replay adopts the commit an engine made before it died, and repairs the index", async () => {
+  const s = await prepared();
+  const run = approvedRun(s);
+  const subject = "chore(tag-filter): approved spec";
+  write(s.wt, SPEC, specText());
+  write(s.wt, RECORD, RECORD_TEXT);
+  const headBefore = sh(s.wt, "rev-parse", "HEAD");
+  const files = [SPEC, RECORD].map((path) => ({
+    path,
+    sha256: sha256(readFileSync(join(s.wt, path))),
+  }));
+  // The engine died after `update-ref` and before its marker said `committed`, so the marker is
+  // still `verified` and the worktree's index never took the committed entries.
+  writeFileSync(
+    join(s.runDir, "spec-commit.json"),
+    JSON.stringify({ phase: "verified", headBefore, files }),
+  );
+  sh(s.wt, "add", "-f", SPEC, RECORD);
+  sh(s.wt, "commit", "-q", "-m", subject);
+  sh(s.wt, "rm", "-q", "--cached", SPEC, RECORD);
+  const commit = sh(s.wt, "rev-parse", "HEAD");
+  const { obs } = await s.deps.work(run, "commit_spec", undefined, step("adopt", true));
+  assert.deepEqual([obs.ok, obs.commit], [true, commit]);
+  assert.equal(sh(s.wt, "rev-parse", "HEAD"), commit, "nothing was committed a second time");
+  assert.equal(sh(s.wt, "status", "--porcelain", "--untracked-files=all"), "");
+  const marker = JSON.parse(readFileSync(join(s.runDir, "spec-commit.json"), "utf8"));
+  assert.deepEqual([marker.phase, marker.commit], ["committed", commit]);
+
+  // A commit under that subject that holds another file is not the engine's own.
+  const t = await prepared();
+  write(t.wt, SPEC, specText());
+  write(t.wt, "src/stray.mjs", "export const s = 1;\n");
+  const before = sh(t.wt, "rev-parse", "HEAD");
+  writeFileSync(
+    join(t.runDir, "spec-commit.json"),
+    JSON.stringify({
+      phase: "verified",
+      headBefore: before,
+      files: [{ path: SPEC, sha256: sha256(readFileSync(join(t.wt, SPEC))) }],
+    }),
+  );
+  sh(t.wt, "add", "-f", SPEC, "src/stray.mjs");
+  sh(t.wt, "commit", "-q", "-m", subject);
+  await assert.rejects(
+    t.deps.work(approvedRun(t), "commit_spec", undefined, step("stray", true)),
+    /the spec commit also holds src\/stray\.mjs/,
+  );
+  // Nor is any other commit on top of the base.
+  const u = await prepared();
+  write(u.wt, SPEC, specText());
+  writeFileSync(
+    join(u.runDir, "spec-commit.json"),
+    JSON.stringify({
+      phase: "verified",
+      headBefore: sh(u.wt, "rev-parse", "HEAD"),
+      files: [{ path: SPEC, sha256: sha256(readFileSync(join(u.wt, SPEC))) }],
+    }),
+  );
+  write(u.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(u.wt, "add", "src/a.mjs");
+  sh(u.wt, "commit", "-q", "-m", "feat: a");
+  await assert.rejects(
+    u.deps.work(approvedRun(u), "commit_spec", undefined, step("moved", true)),
+    /HEAD moved from [0-9a-f]{40} to [0-9a-f]{40} while the spec was committed/,
+  );
+
+  // A `verified` marker whose head never moved stands for no commit: the files are judged again
+  // as they are now, so an edit made while the engine was down is refused or committed, never
+  // a reason to stop the engine on every restart.
+  const w = await prepared();
+  writeFileSync(
+    join(w.runDir, "spec-commit.json"),
+    JSON.stringify({
+      phase: "verified",
+      headBefore: sh(w.wt, "rev-parse", "HEAD"),
+      files: [{ path: SPEC, sha256: "0".repeat(64) }],
+    }),
+  );
+  write(w.wt, SPEC, specText({ tamper: true }));
+  const rejudged = await w.deps.work(approvedRun(w), "commit_spec", undefined, step("w", true));
+  assert.match(rejudged.obs.reason, /no longer matches its seal/);
+  write(w.wt, SPEC, specText());
+  const again = await w.deps.work(approvedRun(w), "commit_spec", undefined, step("w", true));
+  assert.equal(again.obs.commit, sh(w.wt, "rev-parse", "HEAD"));
+  assert.equal(sh(w.wt, "show", `HEAD:${SPEC}`), specText().trim());
+});
+
+test("the gate's spec findings name the engine's spec commit, and the restore they advise clears them", async () => {
+  const s = await prepared({ config: { gates: { test: "true" } } });
+  write(s.wt, SPEC, specText());
+  const committed = await s.deps.work(approvedRun(s), "commit_spec", undefined, step("spec"));
+  const sha = committed.obs.commit;
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "src/a.mjs");
+  sh(s.wt, "commit", "-q", "-m", "work");
+  const run = {
+    ...s.run,
+    stage: "gating",
+    iteration: 1,
+    specPath: SPEC,
+    specCommit: sha,
+    prUrl: PR,
+  };
+  const restore = `git checkout ${sha} -- ${SPEC}`;
+  const gate = async (ref) => {
+    const { obs } = await s.deps.work(run, "gate", undefined, step(ref));
+    return { obs, spec: obs.findings.filter((f) => f.id.startsWith("SPEC-")) };
+  };
+  assert.deepEqual((await gate("clean")).spec, []);
+
+  // An executor that loosened the contract is told to check it out of that commit.
+  write(s.wt, SPEC, specText({ tamper: true }));
+  sh(s.wt, "commit", "-q", "-am", "loosen the contract");
+  const tampered = await gate("tampered");
+  assert.deepEqual(
+    tampered.spec.map((f) => [f.id, f.expected]),
+    [["SPEC-tampered", `the contract as sealed: ${restore}, then commit it`]],
+  );
+  assert.equal(decide(run, tampered.obs, rubric, new Date()).run.stage, "executing");
+  sh(s.wt, ...restore.split(" ").slice(1));
+  sh(s.wt, "commit", "-q", "-m", "restore the sealed spec");
+  assert.deepEqual((await gate("restored")).spec, []);
+
+  // So is one that reverted the commit, which leaves no spec at HEAD nor on disk: the gate judges
+  // the committed one, and the removal stays the executor's to undo rather than a halt.
+  sh(s.wt, "revert", "--no-edit", sha);
+  assert.equal(existsSync(join(s.wt, SPEC)), false);
+  const reverted = await gate("reverted");
+  assert.deepEqual(
+    reverted.spec.map((f) => [f.id, f.expected]),
+    [
+      [
+        "SPEC-uncommitted",
+        `the spec as the pipeline committed it: ${restore}, then commit it; finalize ships the committed spec`,
+      ],
+    ],
+  );
+  assert.ok(reverted.obs.report.gates.some((g) => g.name === "oracle:AC1"));
+  assert.equal(decide(run, reverted.obs, rubric, new Date()).run.stage, "executing");
+  sh(s.wt, ...restore.split(" ").slice(1));
+  sh(s.wt, "commit", "-q", "-m", "restore the spec");
+  assert.deepEqual((await gate("back")).spec, []);
+});
 
 test("seal commits only the sealed tests, under the subject executor.md looks for; a replay commits nothing more", async () => {
   const s = await prepared({ config: { gates: { test_one: "node --test {file}" } } });
@@ -1656,6 +1908,8 @@ test("the engine drives a light run to ready on this runtime, with fake children
       ),
     );
     assert.equal(final.branch, "feature/TBD--tag-filter");
+    // The base already held the spec as approved, so the commit that holds it is the spec commit.
+    assert.equal(final.specCommit, sh(s.repo, "rev-parse", "HEAD"));
     assert.deepEqual(
       final.children.map((c) => [c.role, c.status]),
       [

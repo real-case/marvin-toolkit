@@ -5,7 +5,8 @@
 //
 // - every child is a fake (`MARVIN_PIPELINE_FAKE_<ROLE>` names its result fixture), and the
 //   planner, the test-author and the executor do their file work through
-//   `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT`, so the seal, the gate and finalize run for real;
+//   `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT`, so the spec commit, the seal, the gate and finalize run
+//   for real;
 // - CI is `MARVIN_PIPELINE_FAKE_CI=green`, which also leaves the PR alone at `mark_ready`;
 // - the spec approval comes from `MARVIN_PIPELINE_JUDGE=fixtures`;
 // - origin is a bare repository made in a temp dir, and `claude` and `gh` on PATH are stubs
@@ -33,6 +34,7 @@ import { promisify } from "node:util";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = join(root, "test", "fixtures", "autopilot-sandbox");
 const cli = join(root, "plugins", "marvin", "mcp", "server", "dist", "marvin-pipe.js");
+const SPEC_SUBJECT = "chore(clamp): approved spec";
 const SEAL_SUBJECT = "test(clamp): sealed acceptance tests";
 const ROLES = { planner: "PLANNER", "test-author": "TEST_AUTHOR", executor: "EXECUTOR" };
 
@@ -187,16 +189,33 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
     trail,
   );
 
-  // The sealed-test commit comes first on the branch, before the first executor's commit.
+  // The engine's spec commit comes first on the branch, then the sealed-test commit, both before
+  // the first executor's commit.
   const branch = run.branch;
   const subjects = git(run.worktree, "log", "--reverse", "--format=%s", `${base}..HEAD`)
     .trim()
     .split("\n");
-  assert.equal(subjects[0], SEAL_SUBJECT, subjects.join("\n"));
-  assert.deepEqual(subjects.slice(1, 3), [
+  assert.deepEqual(subjects.slice(0, 2), [SPEC_SUBJECT, SEAL_SUBJECT], subjects.join("\n"));
+  assert.deepEqual(subjects.slice(2, 4), [
     "feat(clamp): add clamp",
     "fix(clamp): reject an inverted range",
   ]);
+  // The spec commit sits directly on the base and holds the approved spec and the metrics record
+  // the planner's seal created, which no executor committed; the run records it.
+  const specCommit = git(run.worktree, "log", "--format=%H", "--grep", SPEC_SUBJECT, "-F", "HEAD")
+    .trim()
+    .split("\n");
+  assert.equal(specCommit.length, 1);
+  assert.equal(run.specCommit, specCommit[0]);
+  assert.equal(git(run.worktree, "rev-parse", `${specCommit[0]}^`).trim(), base);
+  assert.deepEqual(
+    git(run.worktree, "diff-tree", "-r", "--no-commit-id", "--name-only", specCommit[0])
+      .trim()
+      .split("\n"),
+    [".marvin/metrics/001-clamp.md", ".marvin/task/001-clamp.md"],
+  );
+  const specMarker = JSON.parse(readFileSync(join(runDir, "spec-commit.json"), "utf8"));
+  assert.deepEqual([specMarker.phase, specMarker.commit], ["committed", specCommit[0]]);
   const seal = git(run.worktree, "log", "--format=%H", "--grep", SEAL_SUBJECT, "-F", "HEAD")
     .trim()
     .split("\n");
@@ -205,8 +224,8 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
     git(run.worktree, "diff-tree", "-r", "--no-commit-id", "--name-only", seal[0]).trim(),
     "test/clamp.test.mjs",
   );
-  // The seal commit sits directly on the base and is the parent of the first executor's commit,
-  // and the engine committed it before it launched that executor.
+  // The seal commit sits directly on the spec commit and is the parent of the first executor's
+  // commit, and the engine committed it before it launched that executor.
   const feat = git(
     run.worktree,
     "log",
@@ -216,7 +235,7 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
     "-F",
     "HEAD",
   ).trim();
-  assert.equal(git(run.worktree, "rev-parse", `${seal[0]}^`).trim(), base);
+  assert.equal(git(run.worktree, "rev-parse", `${seal[0]}^`).trim(), specCommit[0]);
   assert.equal(git(run.worktree, "rev-parse", `${feat}^`).trim(), seal[0]);
   const sealMarkers = readdirSync(runDir).filter((f) => /^seal-.*\.json$/.test(f));
   assert.equal(sealMarkers.length, 1);

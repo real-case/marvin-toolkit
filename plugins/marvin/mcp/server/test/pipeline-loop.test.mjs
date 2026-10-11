@@ -157,6 +157,7 @@ const REPORT = {
   blockers: [],
 };
 const WORK_OBSERVATION = {
+  commit_spec: { kind: "spec_commit", ok: true, commit: "c".repeat(40), reason: null },
   gate: { kind: "gate", report: REPORT, findings: [] },
   seal: {
     kind: "seal",
@@ -448,11 +449,12 @@ const at = (stage, patch = {}) =>
   baseRun({ stage, branch: "b", specPath: "specs/1-x.md", tier: "standard", ...patch });
 /** A light run whose executor crashed twice: a halt that can be retried or cancelled. */
 const executorHalt = () => {
-  const approved = go(at("awaiting_approval", { tier: "light" }), {
+  const asked = go(at("awaiting_approval", { tier: "light" }), {
     kind: "answer",
     judgment: "spec_approval",
     answer: { kind: "approve" },
   }).run;
+  const approved = go(asked, WORK_OBSERVATION.commit_spec).run;
   const crashed = {
     kind: "child",
     role: "executor",
@@ -746,6 +748,7 @@ test("the engine drives a standard run from intake to ready with scripted childr
   assert.equal(final.stage, "ready");
   assert.deepEqual(log.stages, ["planning", "test_authoring", "executing", "verifying", "retro"]);
   assert.deepEqual(log.works, [
+    "commit_spec",
     "rename_branch",
     "seal",
     "gate",
@@ -896,6 +899,24 @@ test("restart during work keeps the rest of that decision: the spawn after a sna
   assert.equal((await loop.runEngine(dir, second.deps)).stage, "ready");
   assert.deepEqual(second.log.works.slice(0, 1), ["snapshot"]);
   assert.deepEqual(second.log.spawns, ["verifier", "retro"]);
+});
+
+test("restart during the spec commit repeats it, still at approval, and asks for no second approval", async () => {
+  const dir = newRun();
+  const fixturesDir = fixturesWith({ "spec_approval.json": { kind: "approve" } });
+  const first = scripted({ fixturesDir, crash: { work: "commit_spec" } });
+  await assert.rejects(loop.runEngine(dir, first.deps), /engine killed during commit_spec/);
+  const run = rs.loadRun(dir);
+  assert.deepEqual([run.stage, run.pendingWork], ["awaiting_approval", { work: "commit_spec" }]);
+  assert.deepEqual(first.log.spawns, ["planner"]);
+  const second = scripted({ fixturesDir });
+  const final = await loop.runEngine(dir, second.deps);
+  assert.equal(final.stage, "ready");
+  assert.equal(final.specCommit, "c".repeat(40));
+  assert.deepEqual(second.log.works.slice(0, 2), ["commit_spec", "rename_branch"]);
+  assert.deepEqual(second.log.steps[0], { ref: first.log.steps.at(-1).ref, replay: true });
+  assert.deepEqual(second.log.spawns, ["test-author", "executor", "verifier", "retro"]);
+  assert.deepEqual(requests(dir), ["001-spec_approval"]);
 });
 
 test("an engine that dies marking the PR ready is reported down, not ready, and a restart finishes it", async () => {

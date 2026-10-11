@@ -415,7 +415,7 @@ export function parseRetro(raw: unknown): RetroOutput {
  * file where a directory belongs, is a problem; a component that does not exist yet is not. With
  * no link below `root`, everything under it is physically under `root`, whatever `root` is.
  */
-function physicalProblem(root: string, rel: string): string | null {
+export function physicalProblem(root: string, rel: string): string | null {
   const parts = rel.split("/");
   let current = root;
   for (const [i, part] of parts.entries()) {

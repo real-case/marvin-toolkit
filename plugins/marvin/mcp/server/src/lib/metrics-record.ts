@@ -11,6 +11,8 @@ import {
   metricsRecordPath,
   readRecord,
   recordBasenameForSpec,
+  SLUG_RE,
+  slugOfRecord,
 } from "../storage/metrics.js";
 
 /**
@@ -52,6 +54,29 @@ export function recordPathFor(
   if (existing) return existing;
   const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
   return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+}
+
+/**
+ * The slug a spec's record is filed under, or null where the seal anchor files none: the
+ * frontmatter `slug` first, else the filename with `.md` and any `NNN-` prefix stripped
+ * (`slugOfRecord`'s rule). The slug becomes a FILENAME, so it must be kebab-case.
+ *
+ * A filename fallback that still leads with a numeric group is refused as well. `slugOfRecord`
+ * strips one leading `<digits>-` group, which is the spec-number convention — but a date-named
+ * file (`2026-09-04-thing.md`) loses only its year and yields `09-04-thing`, a slug that is
+ * kebab-case and WRONG. A record under it would be joined by nothing, and the roll-up would
+ * later mint a second file under the real slug: writing nothing costs an `empty` row, writing the
+ * wrong name costs the join.
+ *
+ * The seal anchor creates a record under this slug, and the autopilot engine finds the record by
+ * it to commit it with the approved spec, so the two cannot look for different files.
+ */
+export function recordSlugForSpec(declared: string | undefined, specPath: string): string | null {
+  const own = (declared ?? "").trim();
+  const slug = own || slugOfRecord(specPath);
+  if (!SLUG_RE.test(slug)) return null;
+  if (!own && /^\d+-/.test(slug)) return null;
+  return slug;
 }
 
 /** The metrics directory that governs a call's own project root. */

@@ -108,7 +108,16 @@ const works = (d) => d.actions.filter((a) => a.kind === "work").map((a) => a.wor
 const judgmentOf = (d) => d.actions.find((a) => a.kind === "judgment")?.judgment;
 const payloadOf = (d) => d.actions.find((a) => a.kind === "judgment")?.payload;
 const go = (run, obs, r = rubric) => decide(run, obs, r, NOW);
-const approve = (run, r = rubric) => go(run, answer("spec_approval", { kind: "approve" }), r);
+const SPEC_COMMIT = "c".repeat(40);
+const specCommitted = (commit = SPEC_COMMIT) => ({
+  kind: "spec_commit",
+  ok: true,
+  commit,
+  reason: null,
+});
+/** An approval and the spec commit it asks for: the decision that starts the next child. */
+const approve = (run, r = rubric, a = { kind: "approve" }) =>
+  go(go(run, answer("spec_approval", a), r).run, specCommitted(), r);
 const deepFreeze = (o) => {
   if (o !== null && typeof o === "object" && !Object.isFrozen(o)) {
     Object.freeze(o);
@@ -186,6 +195,78 @@ test("approval routes standard work through the test-author and light work strai
   const lt = approve(at("awaiting_approval", { tier: "light" }));
   assert.equal(lt.run.stage, "executing");
   assert.deepEqual([spawnOf(lt).role, spawnOf(lt).iteration], ["executor", 1]);
+});
+
+test("an approval commits the spec first; the commit is recorded and only then is a child started", () => {
+  const asked = go(at("awaiting_approval"), answer("spec_approval", { kind: "approve" }));
+  // Nothing moves until the spec is on the run branch: not the stage, not the branch name.
+  assert.equal(asked.run.stage, "awaiting_approval");
+  assert.deepEqual(asked.actions, [{ kind: "work", work: "commit_spec" }]);
+  assert.equal(asked.run.specCommit, null);
+  const started = go(asked.run, specCommitted());
+  assert.equal(started.run.specCommit, SPEC_COMMIT);
+  assert.equal(started.run.stage, "test_authoring");
+  // The branch takes its name after the commit and before the first child, whose seal commit
+  // then lands on top of the spec commit.
+  assert.deepEqual(
+    started.actions.map((a) => (a.kind === "work" ? a.work : a.kind)),
+    ["rename_branch", "spawn"],
+  );
+  assert.equal(spawnOf(started).role, "test-author");
+  // The commit is kept through every later stage, which is where the gate names it from.
+  const sealed = go(started.run, {
+    kind: "seal",
+    ok: true,
+    reasons: [],
+    sealed: [sealedTest()],
+  });
+  assert.equal(sealed.run.specCommit, SPEC_COMMIT);
+});
+
+test("a spec the engine would not commit halts at approval; the halt is cancelled, never retried", () => {
+  const approved = go(at("awaiting_approval"), answer("spec_approval", { kind: "approve" })).run;
+  const why =
+    ".marvin/task/001-x.md no longer matches its seal: contract_sha a, but the block hashes to b";
+  const d = go(approved, { kind: "spec_commit", ok: false, commit: null, reason: why });
+  assert.equal(judgmentOf(d), "halt");
+  assert.equal(spawnOf(d), undefined);
+  assert.equal(d.run.stage, "awaiting_approval");
+  assert.equal(d.run.specCommit, null);
+  assert.equal(d.run.haltRole, null);
+  assert.deepEqual(payloadOf(d), { reason: "the approved spec was not committed", detail: why });
+  assert.throws(
+    () => go(d.run, answer("halt", { kind: "retry" })),
+    /approved spec the engine would not commit cannot be retried: cancel the run/,
+  );
+  const cancelled = go(d.run, answer("halt", { kind: "cancel", reason: "spec edited" }));
+  assert.deepEqual(
+    [cancelled.run.stage, cancelled.run.haltReason, spawnOf(cancelled).role],
+    ["retro", "spec edited", "retro"],
+  );
+});
+
+test("a spec commit result must be whole: success with a reason, or without a full sha, is a refusal", () => {
+  const approved = go(at("awaiting_approval"), answer("spec_approval", { kind: "approve" })).run;
+  for (const obs of [
+    { kind: "spec_commit", ok: true, commit: null, reason: null },
+    { kind: "spec_commit", ok: true, commit: "abc123", reason: null },
+    { kind: "spec_commit", ok: true, commit: SPEC_COMMIT, reason: "but" },
+    { kind: "spec_commit", ok: false, commit: SPEC_COMMIT, reason: null },
+  ]) {
+    const d = go(approved, obs);
+    assert.equal(judgmentOf(d), "halt", JSON.stringify(obs));
+    assert.equal(d.run.specCommit, null, JSON.stringify(obs));
+  }
+  assert.match(
+    payloadOf(go(approved, { kind: "spec_commit", ok: true, commit: null, reason: null })).detail,
+    /reported success without a commit/,
+  );
+  assert.match(
+    payloadOf(go(approved, { kind: "spec_commit", ok: false, commit: null, reason: null })).detail,
+    /failed without a reason/,
+  );
+  // Outside the approval the result has no rule, as any observation the stage does not expect.
+  assert.throws(() => go(at("executing", { iteration: 1 }), specCommitted()), /no rule/);
 });
 
 test("sealing: success starts the executor, repeated rejection halts", () => {
@@ -784,17 +865,21 @@ test("answers resume the asking child; changes send the spec back to the planner
 });
 
 test("an approval can override the tier, and the override is recorded", () => {
-  const d = go(
+  const asked = go(
     at("awaiting_approval"),
     answer("spec_approval", { kind: "approve", tier: "light" }),
   );
+  // Recorded with the approval, so the spec commit's result routes on the overriding tier.
+  assert.equal(asked.run.tier, "light");
+  const d = go(asked.run, specCommitted());
   assert.equal(d.run.tier, "light");
   assert.equal(d.run.stage, "executing");
   assert.match(d.run.tierReasons.join(" "), /override: orchestrator/);
-  const why = go(
-    at("awaiting_approval", { tier: "light" }),
-    answer("spec_approval", { kind: "approve", tier: "standard", reason: "touches billing" }),
-  );
+  const why = approve(at("awaiting_approval", { tier: "light" }), rubric, {
+    kind: "approve",
+    tier: "standard",
+    reason: "touches billing",
+  });
   assert.equal(why.run.stage, "test_authoring");
   assert.match(why.run.tierReasons.join(" "), /override: touches billing/);
 });
@@ -1075,6 +1160,8 @@ test("decide never mutates the run or the observation it is given", () => {
   const frozen = (run, obs, r = rubric) => decide(deepFreeze(run), deepFreeze(obs), r, NOW);
   frozen(at("intake", { tier: null }), { kind: "start" });
   frozen(at("awaiting_approval"), answer("spec_approval", { kind: "approve" }));
+  frozen(at("awaiting_approval"), specCommitted());
+  frozen(at("awaiting_approval"), { kind: "spec_commit", ok: false, commit: null, reason: "r" });
   frozen(at("test_authoring", { sealed }), {
     kind: "seal",
     ok: true,

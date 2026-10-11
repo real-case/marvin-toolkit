@@ -79,6 +79,11 @@ export const Run = z.object({
   worktree: z.string().nullable(),
   branch: z.string().nullable(),
   specPath: z.string().nullable(),
+  /**
+   * The commit in which the engine put the approved spec, and its metrics record, on the run
+   * branch; null until the approval. Absent from runs written before it existed.
+   */
+  specCommit: z.string().nullable().default(null),
   tier: z.enum(TIERS).nullable(),
   tierReasons: z.array(z.string()),
   prUrl: z.string().nullable(),
@@ -181,6 +186,7 @@ export function initRun(o: {
     worktree: null,
     branch: null,
     specPath: null,
+    specCommit: null,
     tier: null,
     tierReasons: [],
     prUrl: null,

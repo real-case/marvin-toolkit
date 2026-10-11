@@ -99,3 +99,14 @@ test("a run file written before ciSince and executorQuestionRounds existed still
     /executorQuestionRounds/,
   );
 });
+
+test("a run file written before the engine committed the spec loads with no spec commit", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-"));
+  const { specCommit, ...old } = fresh();
+  assert.equal(specCommit, null);
+  writeFileSync(join(dir, "run.json"), JSON.stringify(old));
+  assert.equal(rs.loadRun(dir).specCommit, null);
+  const sha = "a".repeat(40);
+  assert.equal(rs.Run.parse({ ...old, specCommit: sha }).specCommit, sha);
+  assert.throws(() => rs.Run.parse({ ...old, specCommit: 5 }), /specCommit/);
+});

@@ -57,6 +57,8 @@ export type Observation =
   | { kind: "answer"; judgment: JudgmentKind; answer: Answer }
   | { kind: "gate"; report: GateReport; findings: Finding[] }
   | { kind: "seal"; ok: boolean; reasons: string[]; sealed: Run["sealed"] }
+  /** The engine's commit of the approved spec, or why it refused to make one. */
+  | { kind: "spec_commit"; ok: boolean; commit: string | null; reason: string | null }
   | { kind: "ci"; state: CiState; failing: string[] }
   | { kind: "finalized" };
 export interface SpawnAction {
@@ -72,7 +74,15 @@ export type Action =
   | { kind: "judgment"; judgment: JudgmentKind; payload: Record<string, unknown> }
   | {
       kind: "work";
-      work: "gate" | "seal" | "ci" | "finalize" | "mark_ready" | "rename_branch" | "snapshot";
+      work:
+        | "commit_spec"
+        | "gate"
+        | "seal"
+        | "ci"
+        | "finalize"
+        | "mark_ready"
+        | "rename_branch"
+        | "snapshot";
       data?: Record<string, unknown>;
     }
   | { kind: "notify"; text: string };
@@ -308,9 +318,10 @@ const STAGE_OF: Record<Role, Stage> = {
   retro: "retro",
 };
 const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
+const FULL_SHA = /^[0-9a-f]{40}$/;
 /**
  * Gate findings that leave the run with no sealed spec to restore. `SPEC-uncommitted` and
- * `SPEC-tampered` stay with the executor: it can commit the spec, or check out the sealed one.
+ * `SPEC-tampered` stay with the executor: it can check the spec out of the engine's spec commit.
  */
 const SEAL_LOST = new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 
@@ -579,6 +590,11 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       if (r.stage === "gating") {
         throw new Error("a spec that lost its seal cannot be retried: cancel the run");
       }
+      if (r.stage === "awaiting_approval") {
+        throw new Error(
+          "an approved spec the engine would not commit cannot be retried: cancel the run",
+        );
+      }
       throw new Error(`nothing to retry in stage ${r.stage}`);
     }
     if (r.stage === STAGE_OF[role]) return { run: cleared, actions: [lastSpawnOf(r, role)] };
@@ -787,6 +803,29 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       break;
     }
     case "awaiting_approval": {
+      if (obs.kind === "spec_commit") {
+        // The approved spec is on the run branch before any child that could edit it starts, so
+        // no executor commits it by hand, and the gate can name this commit to restore it from.
+        const commit = obs.commit ?? "";
+        if (!obs.ok || obs.reason !== null || !FULL_SHA.test(commit)) {
+          return ask({ ...run, haltRole: null }, "halt", {
+            reason: "the approved spec was not committed",
+            detail:
+              obs.reason ??
+              (obs.ok
+                ? "the spec commit reported success without a commit"
+                : "the spec commit failed without a reason"),
+          });
+        }
+        const committed = { ...run, specCommit: commit };
+        const rename: Action = { kind: "work", work: "rename_branch" };
+        if (shouldAuthorTests(committed, rubric)) {
+          const r = go(committed, "test_authoring");
+          return { run: r, actions: [rename, spawn(r, "test-author", testAuthorCtx(r, ""))] };
+        }
+        const r = go({ ...committed, iteration: 1 }, "executing");
+        return { run: r, actions: [rename, spawn(r, "executor", executorCtx(r, []))] };
+      }
       if (obs.kind !== "answer" || obs.judgment !== "spec_approval") break;
       const a = obs.answer;
       if (a.kind === "cancel") return cancel(run, a.reason);
@@ -805,13 +844,8 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
               tierReasons: [...run.tierReasons, `override: ${a.reason ?? "orchestrator"}`],
             }
           : run;
-        const rename: Action = { kind: "work", work: "rename_branch" };
-        if (shouldAuthorTests(tiered, rubric)) {
-          const r = go(tiered, "test_authoring");
-          return { run: r, actions: [rename, spawn(r, "test-author", testAuthorCtx(r, ""))] };
-        }
-        const r = go({ ...tiered, iteration: 1 }, "executing");
-        return { run: r, actions: [rename, spawn(r, "executor", executorCtx(r, []))] };
+        // The stage changes once the spec is committed: a spec the engine refuses never leaves it.
+        return { run: tiered, actions: [{ kind: "work", work: "commit_spec" }] };
       }
       break;
     }

@@ -121,8 +121,8 @@ Pass no `--answered-by` on an approval: it is always the user's.
 Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash or failure
 after its retry, a usage limit, a stalled child, a child that mutated the tree or wrote outside
 its worktree, a planner or executor past its question cap, a planner that returned an unsealed spec twice,
-a gate that found the spec unsealed on the run branch, the sealed tests revised too often, a
-closed PR, or CI red after finalize.
+an approved spec the engine would not commit, a gate that found the spec unsealed on the run
+branch, the sealed tests revised too often, a closed PR, or CI red after finalize.
 
 Explain in `lang`, with a `PushNotification`: what stopped the run, the findings or failing
 jobs that led there, and what a retry would do. Then ask the user to retry or cancel:
@@ -132,7 +132,7 @@ jobs that led there, and what a retry would do. Then ask the user to retry or ca
 - `{ "kind": "cancel", "reason": "<why>" }` closes the run through the retro. A halted run never
   marks its PR ready and never ships its spec.
 
-Three halts deserve a look before you ask:
+These halts deserve a look before you ask:
 
 - **`<role> wrote outside its worktree`.** `detail` lists new entries in the main checkout's
   `git status`. The main checkout is shared with other sessions, so an entry may be someone
@@ -144,6 +144,11 @@ Three halts deserve a look before you ask:
 - **`the spec on the run branch is not the sealed spec`.** `findings` names what the gate saw:
   no `contract_sha`, no contract block, or no readable spec. Only a planner can seal, so this
   halt cannot be retried; recommend `cancel`.
+- **`the approved spec was not committed`.** Right after an approval the engine commits the spec,
+  with its metrics record, on the run branch before any child starts. `detail` says why it
+  refused, usually a contract that no longer hashes to its `contract_sha` because the spec was
+  edited after the planner sealed it. Only a planner can seal, so this halt cannot be retried;
+  recommend `cancel`.
 - **A usage limit** (`<role> limited`). A retry will hit the same limit until it resets; say
   when, if the detail names it, and suggest retrying then.
 

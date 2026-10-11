@@ -4,6 +4,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -11,11 +12,13 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { evidenceGap, planGates, resolveGatePlan, unambiguousStackId } from "../lib/gate-plan.js";
+import { recordPathFor, recordSlugForSpec } from "../lib/metrics-record.js";
 import { resolveOracles } from "../lib/oracles.js";
 import { type LoadedConfig, loadConfig } from "../storage/config.js";
 import { parseFrontmatter } from "../storage/frontmatter.js";
@@ -62,6 +65,7 @@ import {
   finalizeRun,
   type LessonDoc,
   lessonsMarkdown,
+  physicalProblem,
   rankLessons,
 } from "./learning.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
@@ -98,8 +102,8 @@ import {
  *   adopts the child already started rather than starting a second one beside it. Files are keyed
  *   by the child's name plus its attempt, so a crash retry of the same iteration, which reuses
  *   the name, writes its own log, exit and result files.
- * - `work` recognises the seal commit, the renamed branch, the ready PR and the finalize commit
- *   an interrupted call already made.
+ * - `work` recognises the spec commit, the seal commit, the renamed branch, the ready PR and the
+ *   finalize commit an interrupted call already made.
  */
 
 /**
@@ -138,6 +142,18 @@ const SealMarker = z.object({
   sealed: z.array(SealedEntry),
   commit: z.string().optional(),
 });
+const CommitSha = z.string().regex(/^[0-9a-f]{40}$/);
+/**
+ * The spec commit, made once per run: the files once the spec's seal was checked on their bytes,
+ * then the commit that holds them.
+ */
+const SpecCommitMarker = z.object({
+  phase: z.enum(["verified", "committed"]),
+  headBefore: CommitSha,
+  files: z.array(z.object({ path: z.string(), sha256: z.string() })).min(1),
+  commit: CommitSha.optional(),
+});
+type SpecCommitMarker = z.infer<typeof SpecCommitMarker>;
 
 const GatedHead = z.object({ head: z.string(), iteration: z.number().int(), passed: z.boolean() });
 const CiPoll = z.object({ stage: z.string(), ciSince: z.string().nullable() });
@@ -167,6 +183,9 @@ const CI_STATES: readonly CiState[] = ["green", "red", "pending", "conflict", "n
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CONFIG_PATH = ".marvin/config.json";
+/** Where a child's own marvin server keeps the metrics records: its project is the worktree. */
+const METRICS_DIR = ".marvin/metrics";
+const SPEC_COMMIT_MARKER = "spec-commit.json";
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
 const CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
 const MEMORY_DIR = ".marvin/memory";
@@ -1243,6 +1262,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
    * The spec as the gate judges it: as committed at HEAD, since finalize ships the committed
    * spec and refuses a run whose spec is not, and sealed, since nobody may edit a sealed
    * contract. What is wrong with it becomes a blocker for the executor, never a thrown error.
+   * The engine committed the approved spec itself (`commitSpecWork`), so a spec that is not
+   * committed or not sealed at HEAD is one the branch removed or edited, and both findings name
+   * that commit to restore it from: an executor told to find "the seal commit" once checked out
+   * a commit of its own.
    */
   const gateSpec = (
     run: Run,
@@ -1250,6 +1273,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     head: string,
   ): { text: string | null; findings: Finding[] } => {
     const findings: Finding[] = [];
+    const restore = (path: string) => `git checkout ${run.specCommit} -- ${path}, then commit it`;
     const finding = (id: string, claim: string, evidence: string, expected: string): Finding => ({
       id: `SPEC-${id}`,
       severity: "blocker",
@@ -1273,13 +1297,20 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
     let text = committedText(wt, head, path);
     if (text === null) {
-      text = specOnDisk(run);
+      // A spec the branch removed, or reverted with the commit that added it, is still the one
+      // the engine committed: it is judged from there, so its removal stays the executor's to undo
+      // rather than reading as a spec nobody can restore.
+      text =
+        specOnDisk(run) ??
+        (run.specCommit === null ? null : committedText(wt, run.specCommit, path));
       findings.push(
         finding(
           "uncommitted",
           `the spec ${path} is not committed on the run branch`,
           `git cat-file blob HEAD:${path} fails`,
-          `commit ${path} on the run branch (git add -f ${path} where it is ignored): finalize ships the committed spec`,
+          run.specCommit === null
+            ? `commit ${path} on the run branch (git add -f ${path} where it is ignored): finalize ships the committed spec`
+            : `the spec as the pipeline committed it: ${restore(path)}; finalize ships the committed spec`,
         ),
       );
     }
@@ -1321,7 +1352,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
           "tampered",
           `the spec ${path} was edited after it was sealed`,
           `contract_sha ${stamped}, the block hashes to ${contractHash(block)}`,
-          `the contract as sealed: git checkout <seal commit> -- ${path}`,
+          run.specCommit === null
+            ? "the contract as the planner sealed it"
+            : `the contract as sealed: ${restore(path)}`,
         ),
       );
     }
@@ -1564,6 +1597,192 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     return { run, obs };
   };
 
+  // ------------------------------------------------------------------------- spec commit
+
+  /** `rel` as a regular file's bytes, null where nothing is there, or why it cannot be one. */
+  const plainFile = (root: string, rel: string): { bytes: Buffer } | { problem: string } | null => {
+    const problem = physicalProblem(root, rel);
+    if (problem !== null) return { problem };
+    try {
+      if (!lstatSync(join(root, rel)).isFile()) return { problem: "it is not a regular file" };
+      return { bytes: readFileSync(join(root, rel)) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      return { problem: errorText(error) };
+    }
+  };
+
+  /**
+   * What the spec commit holds: the spec, whose seal is checked on the very bytes committed, and
+   * its metrics record when the planner's seal created one, found by the rule every writer of a
+   * record follows (`recordPathFor`). Anything wrong with either is a refusal, never a thrown
+   * error, since a restarted engine would only meet it again.
+   */
+  const specCommitFiles = (
+    run: Run,
+    wt: WorktreeRecord,
+  ): { files: { path: string; bytes: Buffer }[] } | { refused: string } => {
+    const path = run.specPath;
+    if (path === null || !isCanonicalPath(path)) {
+      return { refused: `the run's spec path is not a repo-relative path: ${String(path)}` };
+    }
+    const spec = plainFile(wt.path, path);
+    if (spec === null) return { refused: `${path} is not in the run worktree` };
+    if ("problem" in spec) return { refused: `${path} cannot be committed: ${spec.problem}` };
+    const text = spec.bytes.toString("utf8");
+    const issue = sealIssue(text);
+    if (issue !== null) return { refused: `${path} no longer matches its seal: ${issue}` };
+    const files = [{ path, bytes: spec.bytes }];
+    const { frontmatter } = parseFrontmatter(text.replace(/\r\n?/g, "\n"));
+    const slug = recordSlugForSpec(frontmatter.slug, path);
+    if (slug === null) return { files };
+    const dir = join(wt.path, METRICS_DIR);
+    const record = relative(
+      wt.path,
+      recordPathFor(dir, slug, wt.path, undefined, join(wt.path, path)),
+    )
+      .split(sep)
+      .join("/");
+    const found = plainFile(wt.path, record);
+    if (found === null) return { files };
+    if ("problem" in found) {
+      return { refused: `the metrics record ${record} cannot be committed: ${found.problem}` };
+    }
+    return { files: [...files, { path: record, bytes: found.bytes }] };
+  };
+
+  /**
+   * Commits the files the marker verified on the run branch, the way finalize builds its commit:
+   * from those bytes, with plumbing only, so no hook, filter or replace ref has a say, and
+   * `update-ref` moves the branch only while it still names `headBefore`. The commit is checked
+   * before it is trusted: one parent, `headBefore`; no file but the verified ones; each blob the
+   * bytes verified. An interrupted earlier call that already committed is recognised by its
+   * parent and subject, and adopted only if it passes the same check. A branch that already holds
+   * every file as verified needs no commit: `headBefore` holds the spec.
+   */
+  const commitApprovedSpec = (run: Run, wt: WorktreeRecord, marker: SpecCommitMarker): string => {
+    const { headBefore, files } = marker;
+    const env = { HUSKY: "0", GIT_LITERAL_PATHSPECS: "1" };
+    const g = isolatedGit(wt.path, wt.gitDir, env);
+    const branch = run.branch;
+    if (branch === null || !isSafeBranchRef(branch)) {
+      throw new Error(`the run branch is not a safe ref: ${String(branch)}`);
+    }
+    const onBranch = g.text("symbolic-ref", "--short", "HEAD").trim();
+    if (onBranch !== branch) {
+      throw new Error(`the worktree is on ${onBranch}, not the run branch ${branch}`);
+    }
+    const subject = `chore(${specIdentity(run).slug}): approved spec`;
+    const paths = files.map((f) => f.path);
+    const verify = (commit: string) => {
+      const parents = g.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+      if (parents.length !== 2 || parents[1] !== headBefore) {
+        throw new Error(`the spec commit ${commit} is not one commit on top of ${headBefore}`);
+      }
+      const strays = g
+        .text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headBefore, commit)
+        .split("\0")
+        .filter((p) => p !== "" && !paths.includes(p));
+      if (strays.length > 0) throw new Error(`the spec commit also holds ${strays.join(", ")}`);
+      for (const f of files) {
+        if (sha256Bytes(g.bytes("cat-file", "blob", `${commit}:${f.path}`)) !== f.sha256) {
+          throw new Error(`${f.path} as committed in ${commit} is not the file that was verified`);
+        }
+      }
+    };
+    // The worktree's own index takes the committed entries, so the tree reads clean. A replay
+    // does it again: the call it repeats may have died between `update-ref` and here.
+    const settle = (commit: string) => {
+      g.text("reset", "-q", "--", ...paths);
+      return commit;
+    };
+
+    const head = g.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (head !== headBefore) {
+      const parent = g.text("rev-parse", "--verify", `${head}^`).trim();
+      const message = g.text("log", "-1", "--format=%s", head).trim();
+      if (parent !== headBefore || message !== subject) {
+        throw new Error(`HEAD moved from ${headBefore} to ${head} while the spec was committed`);
+      }
+      verify(head);
+      return settle(head);
+    }
+    const contents = files.map((f) => {
+      const found = plainFile(wt.path, f.path);
+      if (found === null || "problem" in found || sha256Bytes(found.bytes) !== f.sha256) {
+        throw new Error(`${f.path} changed after its seal was checked`);
+      }
+      return { path: f.path, bytes: found.bytes };
+    });
+    const scratch = mkdtempSync(join(tmpdir(), "marvin-spec-commit-"));
+    try {
+      const plumbing = isolatedGit(wt.path, wt.gitDir, {
+        ...env,
+        GIT_INDEX_FILE: join(scratch, "index"),
+      });
+      plumbing.text("read-tree", headBefore);
+      let indexInfo = "";
+      for (const { path, bytes } of contents) {
+        const oid = g.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
+        const [entry] = g.text("ls-tree", "-z", "--full-tree", headBefore, "--", path).split("\0");
+        const listed = /^(\d+) \w+ ([0-9a-f]+)\t([\s\S]+)$/.exec(entry ?? "");
+        const committed = listed?.[3] === path ? listed : null;
+        const mode = committed?.[1] === "100755" ? "100755" : "100644";
+        if (committed?.[1] === mode && committed[2] === oid) continue;
+        indexInfo += `${mode} ${oid}\t${path}\0`;
+      }
+      if (indexInfo === "") return settle(headBefore);
+      plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
+      const tree = plumbing.text("write-tree").trim();
+      const commit = g.text("commit-tree", tree, "-p", headBefore, "-m", subject).trim();
+      g.text("update-ref", `refs/heads/${branch}`, commit, headBefore);
+      verify(commit);
+      return settle(commit);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  };
+
+  /**
+   * The approved spec, committed by the engine before any child that could edit it starts. In
+   * the first two-repeat benchmark the gate rejected five of eight first executor iterations over
+   * the spec or its metrics record alone, mostly one of them left uncommitted, each at the cost of
+   * a whole executor; an executor now commits only what it changes afterwards. A spec whose
+   * contract no longer hashes to its `contract_sha` is refused, and `decide` halts on it: only a
+   * planner can seal. The marker, written once the seal is checked and again once the commit
+   * exists, makes the step safe to repeat after the engine dies inside it.
+   */
+  const commitSpecWork = (run: Run): { run: Run; obs: Observation } => {
+    const wt = worktreeRecord(run);
+    const markerFile = at(SPEC_COMMIT_MARKER);
+    const headNow = () =>
+      isolatedGit(wt.path, wt.gitDir).text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    let marker = readJson(markerFile, SpecCommitMarker);
+    let commit = marker?.phase === "committed" ? marker.commit : undefined;
+    if (commit === undefined) {
+      // A `verified` marker whose head has not moved stands for no commit, so the files are
+      // judged again as they are now rather than trusted from before the engine died.
+      if (marker === null || headNow() === marker.headBefore) {
+        const found = specCommitFiles(run, wt);
+        if ("refused" in found) {
+          const obs: Observation = {
+            kind: "spec_commit",
+            ok: false,
+            commit: null,
+            reason: found.refused,
+          };
+          return { run, obs };
+        }
+        const files = found.files.map(({ path, bytes }) => ({ path, sha256: sha256Bytes(bytes) }));
+        marker = { phase: "verified", headBefore: headNow(), files };
+        writeAtomic(markerFile, `${JSON.stringify(marker)}\n`);
+      }
+      commit = commitApprovedSpec(run, wt, marker);
+      writeAtomic(markerFile, `${JSON.stringify({ ...marker, phase: "committed", commit })}\n`);
+    }
+    return { run, obs: { kind: "spec_commit", ok: true, commit, reason: null } };
+  };
+
   // ---------------------------------------------------------------------------------- ci
 
   const ghEnv = (config: Config): NodeJS.ProcessEnv => {
@@ -1734,6 +1953,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     step: StepInfo,
   ): Promise<{ run: Run; obs?: Observation }> => {
     switch (kind) {
+      case "commit_spec":
+        return commitSpecWork(run);
       case "gate":
         return gateWork(run);
       case "seal":

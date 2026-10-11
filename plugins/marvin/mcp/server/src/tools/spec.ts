@@ -37,8 +37,7 @@ import {
   resumeState,
   type ProgressEntry,
 } from "../storage/progress.js";
-import { ensureRecordForSpec } from "../lib/metrics-record.js";
-import { slugOfRecord } from "../storage/metrics.js";
+import { ensureRecordForSpec, recordSlugForSpec } from "../lib/metrics-record.js";
 import { loadConfig } from "../storage/config.js";
 import {
   changedFilesForScope,
@@ -389,7 +388,8 @@ function verifySeal(
  * 1. The spec was READ FROM DISK. An inline `specContent` names no spec, and a
  *    call carrying both keys reads the fragment while `specPath` stays truthy.
  * 2. A slug is resolvable — frontmatter first, else the filename with `.md` and
- *    any `NNN-` prefix stripped, which is `slugOfRecord`'s rule.
+ *    any `NNN-` prefix stripped, which is `slugOfRecord`'s rule
+ *    (`recordSlugForSpec`, which the autopilot engine shares).
  * 3. That slug is kebab-case. The slug becomes a FILENAME, so this fails closed
  *    exactly as the `metrics` tool does before joining a path. It also makes the
  *    step-1.5 skeleton unreachable rather than merely forbidden: an unfilled
@@ -410,18 +410,9 @@ function ensureMetricsRecord(
   verdict: string,
 ): void {
   if (!diskPath || verdict === "FAIL") return;
-  // Frontmatter first; the filename is the fallback. `slugOfRecord` strips one
-  // leading `<digits>-` group, which is the spec-number convention — but a
-  // date-named file (`2026-09-04-thing.md`) loses only its year and yields
-  // `09-04-thing`, a slug that is kebab-case and WRONG. A record under it would
-  // be joined by nothing, and the roll-up would later mint a second file under
-  // the real slug. So a fallback that still leads with a numeric group is
-  // refused: writing nothing here costs an `empty` row, writing the wrong name
-  // costs the join.
-  const declared = (frontmatter.slug ?? "").trim();
-  const slug = declared || slugOfRecord(diskPath);
-  if (!SLUG_RE.test(slug)) return;
-  if (!declared && /^\d+-/.test(slug)) return;
+  // Frontmatter first, the filename as the fallback; a date-named file's fallback is refused.
+  const slug = recordSlugForSpec(frontmatter.slug, diskPath);
+  if (slug === null) return;
   try {
     ensureRecordForSpec(env, projectRoot, slug, diskPath);
   } catch {

@@ -1,5 +1,6 @@
 // The fake executor's work, by spawn number (argv[2]): the first implements `clamp` and commits
-// it with the spec; the second answers the verifier's major finding with a guard and commits.
+// it; the second answers the verifier's major finding with a guard and commits. Neither commits
+// the spec or its metrics record: the engine committed both at approval.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -12,8 +13,7 @@ if (spawn === 1) {
     "src/math.mjs",
     `${source}\n/** Bounds x to [lo, hi]. */\nexport function clamp(x, lo, hi) {\n  return Math.min(hi, Math.max(lo, x));\n}\n`,
   );
-  // The spec sits under the ignored .marvin/, as in a host project, so it is added with -f.
-  git("add", "-f", "--", "src/math.mjs", ".marvin/task/001-clamp.md");
+  git("add", "--", "src/math.mjs");
   git("commit", "-q", "-m", "feat(clamp): add clamp");
 } else {
   writeFileSync(

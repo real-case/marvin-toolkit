@@ -641,14 +641,15 @@ const report = (passed) => ({
   sealed: [],
   blockers: [],
 });
-const approve = answer("spec_approval", { kind: "approve" });
+/** An approval starts its first child once the engine has committed the spec. */
+const specCommitted = { kind: "spec_commit", ok: true, commit: "c".repeat(40), reason: null };
 const sealedTest = { path: "src/a.test.ts", criteria: ["AC1"], sha256: "0".repeat(64) };
 
 /** One decision for every way `decide` spawns a child, fresh or resumed. */
 const SPAWNING = [
   ["intake", at("intake"), { kind: "start" }],
-  ["approval, standard tier", at("awaiting_approval"), approve],
-  ["approval, light tier", at("awaiting_approval", { tier: "light" }), approve],
+  ["approval, standard tier", at("awaiting_approval"), specCommitted],
+  ["approval, light tier", at("awaiting_approval", { tier: "light" }), specCommitted],
   [
     "changes requested",
     at("awaiting_approval"),
@@ -762,13 +763,18 @@ test("the roles and schemas directories hold exactly what the runtime composes, 
   }
 });
 
-test("the executor commits the sealed spec with git add -f and no other .marvin service file", () => {
-  // The gate blocks a branch whose spec is not committed (finalize ships it), and the live
-  // sandbox executor, never told so, left it untracked under an ignored .marvin/.
-  const text = roleText("executor");
-  assert.match(text, /stage it in your first commit with `git add -f <spec>`/);
-  assert.match(text, /Commit no other file under `\.marvin\/` except the metrics record/);
+test("the executor finds the spec committed, commits only its own changes to it, and no other .marvin service file", () => {
+  // The engine commits the approved spec and its metrics record at approval: executors told to
+  // commit them left one or the other untracked in five of eight benchmark runs. What an executor
+  // changes afterwards (the status, the record's appends) is still its own to commit.
+  const text = flat(roleText("executor"));
+  assert.match(text, /The pipeline committed the spec named in the TASK CONTEXT on this branch/);
+  assert.match(text, /together with its metrics record \(`\.marvin\/metrics\/`\)/);
+  assert.match(text, /Later changes to those two files are yours to commit with your work/);
+  assert.match(text, /`git add -f` where `\.marvin\/` is ignored/);
+  assert.match(text, /Commit no other file under `\.marvin\/`:/);
   assert.match(text, /deleted right after the PR exists, never committed/);
+  assert.doesNotMatch(text, /stage it in your first commit/);
 });
 
 test("the retro reports its own work: a halted run still gets a done retro", () => {

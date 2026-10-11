@@ -89,9 +89,10 @@ function engineContexts() {
   const sealed = { path: "src/a.test.ts", criteria: ["AC1"], sha256: "0".repeat(64) };
   const decisions = [
     decide(at("intake"), { kind: "start" }, rubric, NOW),
+    // An approval starts its first child once the spec is committed.
     decide(
       at("awaiting_approval"),
-      { kind: "answer", judgment: "spec_approval", answer: { kind: "approve" } },
+      { kind: "spec_commit", ok: true, commit: "c".repeat(40), reason: null },
       rubric,
       NOW,
     ),

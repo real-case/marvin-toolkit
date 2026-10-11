@@ -1,6 +1,8 @@
-// The fake planner's work: write the spec task-start would have written, sealed. It runs in the
-// run worktree (its cwd). The contract hash is computed here, as `contractHash` computes it
-// (`storage/spec.ts`), so that no formatter run over this fixture can unseal a committed copy.
+// The fake planner's work: write the spec task-start would have written, sealed, and the metrics
+// record its seal creates. It runs in the run worktree (its cwd) and commits nothing: the engine
+// commits both once the spec is approved. The contract hash is computed here, as `contractHash`
+// computes it (`storage/spec.ts`), so that no formatter run over this fixture can unseal a
+// committed copy.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 
@@ -36,3 +38,7 @@ const spec = [
 ].join("\n");
 mkdirSync(".marvin/task", { recursive: true });
 writeFileSync(".marvin/task/001-clamp.md", spec);
+// The project ignores .marvin/ except its metrics, as a host does, so a record nobody committed
+// would be uncommitted work at the gate.
+mkdirSync(".marvin/metrics", { recursive: true });
+writeFileSync(".marvin/metrics/001-clamp.md", "# Metrics — clamp\n\nAppend-only.\n");

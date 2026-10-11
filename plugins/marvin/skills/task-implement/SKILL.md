@@ -504,8 +504,10 @@ last message is the executor object.
   never from the branch and never by prompting: the pipeline names the run branch, not
   `task/<slug>`. An argument that resolves to no spec or to a `draft` ends the session with status
   `failed`. Skip the `spec` seal call: the pipeline's guard refuses it to every role but the
-  planner. The planner sealed this spec before the orchestrator approved it, and that seal created
-  its metrics record. The contract is still checked: `verify` `action: "oracles"` refuses an
+  planner. The planner sealed this spec before the orchestrator approved it, that seal created its
+  metrics record, and the pipeline committed both on the run branch before this session started;
+  what this session changes in either afterwards, the `status` flip and the record's appends, is
+  committed with the work. The contract is still checked: `verify` `action: "oracles"` refuses an
   unsealed or tampered one before it runs anything, and that refusal also ends the session with
   `failed`. Never edit the `spec-contract`.
 - **Step 2.5 — Resume, never Archive.** The planner's intake journals into this spec, so a journal
