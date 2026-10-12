@@ -3930,6 +3930,7 @@ judged, and as `bench-compare` judges the same files under the delivered-runs ru
 | `haiku-dor-rounds` | b9cf905 | 8/8 | 100% | $10.75 | 79 min | — | accept |
 | `haiku-tier-guidance` | bede40c | 8/8 | 100% | $11.97 | 92 min | — | accept |
 | `haiku-engine-metrics` | 0383ed9 | 7/8 | 75% | $11.35 | 73 min | — | reject (recorded; change kept) |
+| `haiku-risk-callers` | d7a796c | 8/8 | 91.7% | $11.29 | 85 min | — | reject (recorded; change dropped) |
 
 What each changed, and what it showed:
 
@@ -3997,6 +3998,18 @@ the record in the finalize commit. In four runs the Haiku executor never called 
 so there was nothing to carry. The owner kept the change on that reading (2026-10-12) and the
 result is recorded as a rejection; the next candidate is compared against `haiku-tier-guidance`,
 which stays the baseline.
+
+`d7a796c` (PR #227, not merged) added a DoR warning, `risk-callers`, for a `risk: low` feature
+whose `edit` rows touch a file that other tracked, non-test code imports, the decidable half of
+the tier guidance's "a caller found in Step 2F". `haiku-risk-callers`, compared against
+`haiku-tier-guidance`, is rejected: 8 of 8 delivered and the tier matching in 8 of 8, but 91.7%
+of hidden files passing over the delivered runs against 100% (duration #1 delivered code failing
+one of its two hidden files, in a run that never saw the warning). The warning did not earn its
+place either way. Both `csv-quotes` planners rated the parser rewrite `medium` on their own, so
+the warning, which fires only on `low`, never appeared where it was meant to; the one time it
+fired (clamp #2) it was a false alarm on a purely additive edit to `src/math.mjs`, which
+`src/index.mjs` re-exports, and the planner rightly kept `low`. The owner dropped the change
+(2026-10-12) and closed the PR; `haiku-tier-guidance` stays the baseline.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 
