@@ -464,7 +464,7 @@ Run the `spec` tool (`mcp__plugin_marvin_marvin__spec`), passing the draft's `sp
 
 - **FAIL** — show the failing checks, loop back to the relevant step (usually 2F, 3F, or 5F), fix, re-run. **Do not invoke the critic and do not write the spec.**
 - **PASS / PASS WITH WARNINGS** — proceed to the critic; address or consciously accept warnings.
-It also warns, never fails, on size: a spec over the budget (`spec-size`), a criterion `statement` over 40 words (`ac-length`), a file `intent` over 60 words (`intent-length`), and a `risk: high` spec with no Security / NFR section (`security-nfr`). Treat a size warning as a request to delete restatement, not to argue for the length.
+It also warns, never fails, on size: a spec over the budget (`spec-size`), a criterion `statement` over 40 words (`ac-length`), a file `intent` over 60 words (`intent-length`), and a `risk: high` spec with no Security / NFR section (`security-nfr`). Treat a size warning as a request to delete restatement, not to argue for the length. It also warns when a `risk: low` feature edits a file that other code imports (`risk-callers`, naming the importers): re-read the change against those callers and raise `risk` to `medium` if any of them would see different behaviour; keep `low` only for a purely additive edit, and say so under Assumptions.
 
 - If the `spec` tool is unavailable, self-check the same list manually and note the degradation in Assumptions.
   **Pipeline mode:** see *Spec tool* below.

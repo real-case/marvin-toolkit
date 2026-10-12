@@ -644,6 +644,39 @@ test("a risk: high spec with no Security / NFR warns; with one it passes", async
   assert.equal(find(low.parsed, "security-nfr"), undefined);
 });
 
+test("a risk: low feature that edits a file other code imports warns; medium says nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-spec-callers-"));
+  const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  try {
+    g("init", "-q", "-b", "main");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    mkdirSync(join(dir, "test"), { recursive: true });
+    writeFileSync(join(dir, "src", "csv.mjs"), "export function parseCsv() {}\n");
+    writeFileSync(join(dir, "src", "report.mjs"), 'import { parseCsv } from "./csv.mjs";\n');
+    writeFileSync(join(dir, "src", "alone.mjs"), "export const alone = 1;\n");
+    writeFileSync(join(dir, "test", "csv.test.mjs"), 'import "../src/csv.mjs";\n');
+    g("add", "-A");
+    const editing = (path) => VALID_FEATURE.replace("path: CLAUDE.md", `path: ${path}`);
+
+    const low = await callSpec({ specContent: editing("src/csv.mjs"), projectRoot: dir });
+    const hit = find(low.parsed, "risk-callers");
+    assert.equal(hit.status, "warn");
+    assert.match(hit.detail, /F1 edits src\/csv\.mjs, imported by src\/report\.mjs/);
+    assert.notEqual(low.parsed.verdict, "FAIL");
+
+    const alone = await callSpec({ specContent: editing("src/alone.mjs"), projectRoot: dir });
+    assert.equal(find(alone.parsed, "risk-callers").status, "pass");
+
+    const medium = await callSpec({
+      specContent: editing("src/csv.mjs").replace("risk: low", "risk: medium"),
+      projectRoot: dir,
+    });
+    assert.equal(find(medium.parsed, "risk-callers"), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a spec over the size budget warns and never fails", async () => {
   const within = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
   assert.equal(find(within.parsed, "spec-size").status, "pass");

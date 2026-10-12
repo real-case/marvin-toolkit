@@ -21998,12 +21998,12 @@ function renderComparisonMarkdown(baseline, candidate, verdict) {
 function writeResult(dir, result, comparison) {
   mkdirSync(dir, { recursive: true });
   const taken = new Set(readdirSync(dir));
-  let stem = `${result.date}-${result.variant}`;
-  for (let n = 2; taken.has(`${stem}.json`) || taken.has(`${stem}.md`); n += 1) {
-    stem = `${result.date}-${result.variant}-${n}`;
+  let stem2 = `${result.date}-${result.variant}`;
+  for (let n = 2; taken.has(`${stem2}.json`) || taken.has(`${stem2}.md`); n += 1) {
+    stem2 = `${result.date}-${result.variant}-${n}`;
   }
-  const json = join(dir, `${stem}.json`);
-  const md = join(dir, `${stem}.md`);
+  const json = join(dir, `${stem2}.json`);
+  const md = join(dir, `${stem2}.md`);
   writeFileSync(json, `${JSON.stringify(result, null, 2)}
 `);
   writeFileSync(md, renderResultMarkdown(result) + (comparison ? `
@@ -30588,6 +30588,55 @@ var McpZodTypeKind;
 (function(McpZodTypeKind2) {
   McpZodTypeKind2["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
+var TEST_PATH = [
+  /(^|\/)(tests?|__tests__|spec|specs)\//,
+  /\.(test|spec)\.[^/]+$/,
+  /(^|\/)test_[^/]+\.py$/,
+  /_test\.(py|go)$/
+];
+function isTestPath(path) {
+  return TEST_PATH.some((re) => re.test(path));
+}
+var JS_SPECIFIER = /(?:\b(?:import|export)\b[^'"`;]*?\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\1/g;
+var PY_IMPORT = /^[ \t]*(?:from[ \t]+([A-Za-z_][\w.]*)[ \t]+import\b|import[ \t]+([A-Za-z_][\w.]*))/gm;
+var CODE_EXT = /\.(?:[cm]?[jt]sx?|py)$/;
+var stem = (path) => path.replace(/\.[^./]+$/, "");
+function jsNames(from, spec, target) {
+  if (!spec.startsWith("./") && !spec.startsWith("../")) return false;
+  const resolved = posix.normalize(posix.join(posix.dirname(from), spec));
+  const want = stem(target);
+  return resolved === target || stem(resolved) === want || resolved === want || `${resolved}/index` === want;
+}
+function pyNames(name, target) {
+  if (!target.endsWith(".py")) return false;
+  const path = name.split(".").join("/");
+  const want = stem(target).replace(/\/__init__$/, "");
+  return want === path || want.endsWith(`/${path}`);
+}
+function importersOf(projectRoot, target, limit = 5) {
+  if (isTestPath(target) || !CODE_EXT.test(target)) return [];
+  const base = stem(posix.basename(target));
+  const name = base === "index" || base === "__init__" ? posix.basename(posix.dirname(target)) : base;
+  if (name === "" || name === ".") return [];
+  const listed2 = git(["grep", "-l", "-F", "-z", "-e", name, "--"], projectRoot, {
+    maxBuffer: 16 * 1024 * 1024
+  });
+  if (!listed2.ok) return [];
+  const callers = [];
+  for (const file of listed2.value.split("\0").filter(Boolean).sort()) {
+    if (file === target || isTestPath(file) || !CODE_EXT.test(file)) continue;
+    let text2;
+    try {
+      text2 = readFileSync(join(projectRoot, file), "utf8");
+    } catch {
+      continue;
+    }
+    const imports = file.endsWith(".py") ? [...text2.matchAll(PY_IMPORT)].some((m) => pyNames(m[1] ?? m[2], target)) : [...text2.matchAll(JS_SPECIFIER)].some((m) => jsNames(file, m[2], target));
+    if (imports) callers.push(file);
+    if (callers.length >= limit) break;
+  }
+  return callers;
+}
 
 // src/tools/spec.ts
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
@@ -30676,6 +30725,9 @@ function validateSpec(raw, projectRoot, specConfig) {
     checks.push(...checkSections(sections, required2, recommended));
     if (type === "feature" && (frontmatter.risk ?? "").trim() === "high") {
       checks.push(checkSecurityNfr(sections.get("security nfr")));
+    }
+    if (type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract) {
+      checks.push(checkRiskCallers(contract, projectRoot));
     }
     if (contract) checks.push(...checkSize(raw, contract));
     checks.push(checkOpenQuestions(sections.get("open questions")));
@@ -31152,6 +31204,21 @@ function checkSecurityNfr(section) {
     "Security / NFR",
     "risk: high but no Security / NFR section \u2014 state the concern and the criterion or file that addresses it"
   ) : pass("security-nfr", "Security / NFR", "present for a risk: high spec");
+}
+function checkRiskCallers(contract, projectRoot) {
+  const hits = [];
+  for (const row of contract.files) {
+    if (row.action !== "edit") continue;
+    const path = normalizeScopePath(row.path);
+    if (isAbsolute(path) || path.startsWith("../") || path.startsWith(".marvin/")) continue;
+    const callers = importersOf(projectRoot, path, 3);
+    if (callers.length > 0) hits.push(`${row.id} edits ${path}, imported by ${callers.join(", ")}`);
+  }
+  return hits.length > 0 ? warn(
+    "risk-callers",
+    "Frontmatter",
+    `risk: low, but ${hits.join("; ")} \u2014 low means nothing that exists behaves differently; rate it medium if any of these callers sees a change, or keep low and state under Assumptions why the edit is purely additive`
+  ) : pass("risk-callers", "Frontmatter", "no file the spec edits is imported by other code");
 }
 function stripFences(body) {
   const out = [];

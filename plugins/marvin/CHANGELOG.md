@@ -118,6 +118,13 @@ project the pipeline is configured for is marvin-toolkit itself (Task 19); live 
   oracle parser (`lib/oracles.ts`, extracted from `tools/verify.ts`), so the two cannot resolve a
   criterion differently.
 - **`verify-dist` checks both committed bundles**, `server.js` and `marvin-pipe.js`.
+- **The DoR gate warns when a `risk: low` feature edits a file other code imports**
+  (`risk-callers`). `low` means nothing that exists behaves differently (task-start Step 5F), and
+  a benchmark planner rated a rewrite of a parser that another module calls `low` after reading
+  that rule. The warning names each `edit` row whose file a tracked, non-test file imports, found
+  by `lib/callers.ts` from relative JavaScript/TypeScript specifiers and Python dotted imports,
+  never from package names or aliases. It never fails: a new export beside existing ones edits
+  such a file and stays `low`, which the spec then says under Assumptions.
 
 ### Fixed
 
