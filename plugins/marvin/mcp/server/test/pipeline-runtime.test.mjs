@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -1120,8 +1121,8 @@ test("commit_spec commits the approved spec, ignored or not, and its metrics rec
   ]);
 
   // A host that ignores .marvin/ whole never commits its series (ADR-0043), and the engine does
-  // not force the record in: once tracked, every append the metrics tool or the delivery gate
-  // makes would show in the gate's status as uncommitted work. The spec still goes in.
+  // not force the record in: the host chose not to version it, and an ignored record never shows
+  // in the gate's status, so nothing has to carry it. The spec still goes in.
   const i = await prepared({ files: { ".gitignore": ".marvin/\n" } });
   write(i.wt, SPEC, specText());
   write(i.wt, RECORD, RECORD_TEXT);
@@ -1445,6 +1446,43 @@ test("a spec the executor left uncommitted is a gate blocker, since finalize shi
   assert.ok(
     obs.report.gates.some((g) => g.name === "oracle:AC1"),
     "the oracles still ran from the worktree's copy",
+  );
+});
+
+test("the gate carries the run's metrics record: a tool-shaped append passes, a rewrite is uncommitted work", async () => {
+  // The record found from the spec the gate judged, by the rule the spec commit used. The real
+  // delivery gate appends the terminal block after the executor's last commit; the engine's gate
+  // must not send the executor back to commit it.
+  const s = await prepared({ config: { gates: { test: "true" } } });
+  write(s.wt, SPEC, specText());
+  write(s.wt, RECORD, RECORD_TEXT);
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "-f", "-A");
+  sh(s.wt, "commit", "-m", "work");
+  const block = {
+    slug: "tag-filter",
+    rolled_up_at: "2026-10-12T10:00:00.000Z",
+    base_branch: "dev",
+    sources: { spec: "present" },
+    time: {},
+    quality: {},
+    rework: {},
+    notes: [],
+  };
+  appendFileSync(
+    join(s.wt, RECORD),
+    `\`\`\`json task-metrics\n${JSON.stringify(block)}\n\`\`\`\n\n`,
+  );
+  const run = { ...s.run, stage: "gating", iteration: 1, specPath: SPEC, prUrl: PR };
+  const carried = await s.deps.work(run, "gate", undefined, step("gate-rec"));
+  assert.equal(carried.obs.report.passed, true, JSON.stringify(carried.obs.report.blockers));
+  assert.deepEqual(carried.obs.findings, []);
+
+  appendFileSync(join(s.wt, RECORD), "and a note by hand\n");
+  const rewritten = await s.deps.work(run, "gate", undefined, step("gate-rec-2"));
+  assert.ok(
+    rewritten.obs.findings.some((f) => f.claim === `uncommitted work: ${RECORD}`),
+    JSON.stringify(rewritten.obs.findings),
   );
 });
 
