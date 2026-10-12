@@ -766,16 +766,23 @@ test("the roles and schemas directories hold exactly what the runtime composes, 
 test("the executor finds the spec committed, commits only its own changes to it, and no other .marvin service file", () => {
   // The engine commits the approved spec and its metrics record at approval: executors told to
   // commit them left one or the other untracked in five of eight benchmark runs. What an executor
-  // changes afterwards (the status, the record's appends) is still its own to commit. A record
-  // the host ignores stays uncommitted (ADR-0043): forced in, every later append would read to
-  // the gate as uncommitted work.
+  // changes in the spec afterwards (the status) is still its own to commit; the record's appends
+  // are the engine's, in its finalize commit, since the delivery gate's terminal block names the
+  // executor's last commit and so lands after it (12 extra iterations in 56 benchmark runs before
+  // the engine carried it). A record the host ignores stays uncommitted (ADR-0043).
   const text = flat(roleText("executor"));
   assert.match(text, /The pipeline committed the spec named in the TASK CONTEXT on this branch/);
   assert.match(
     text,
     /together with its metrics record \(`\.marvin\/metrics\/`\) when the seal created one and git does not ignore it/,
   );
-  assert.match(text, /Later changes to those two files are yours to commit with your work/);
+  assert.match(text, /A later change to the spec, its `status`, is yours to commit with your work/);
+  assert.match(text, /are the pipeline's to commit, in its finalize commit/);
+  assert.match(
+    text,
+    /Leave those appends uncommitted; committing them with your work as well is harmless/,
+  );
+  assert.doesNotMatch(text, /Later changes to those two files are yours to commit/);
   assert.match(text, /A record git ignores stays uncommitted; never `git add -f` it/);
   assert.match(text, /Commit no other file under `\.marvin\/`:/);
   assert.match(text, /deleted right after the PR exists, never committed/);

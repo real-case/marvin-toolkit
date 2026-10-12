@@ -653,6 +653,55 @@ test("a gate that modifies a tracked file is a blocker; a tolerated exempt path 
   assert.deepEqual(claims(report), ["gates modified tracked file src/a.ts"]);
 });
 
+test("M1: the carried metrics record hides nothing behind its path: a directory, a linked parent, a sealed file", () => {
+  const RECORD = ".marvin/metrics/001-demo.md";
+  const header = "# Metrics — demo\n\nAppend-only.\n\n";
+  const metricsRecord = { path: RECORD, slug: "demo" };
+  const outside = mkdtempSync(join(tmpdir(), "adv-metrics-"));
+
+  // A directory standing where the record was, holding a file git now lists inside it.
+  const dir = runWorktree({ [RECORD]: header });
+  rmSync(join(dir.path, RECORD));
+  dir.write(`${RECORD}/payload.mjs`, "export default 1;\n");
+  assert.deepEqual(claims(gateStage(dir, { metricsRecord })), [
+    `uncommitted work: ${RECORD}`,
+    `uncommitted work: ${RECORD}/payload.mjs`,
+  ]);
+
+  // The record's directory swapped for a link to one outside the worktree.
+  const linked = runWorktree({ [RECORD]: header });
+  rmSync(join(linked.path, ".marvin", "metrics"), { recursive: true });
+  mkdirSync(join(outside, "metrics"));
+  writeFileSync(join(outside, "metrics", "001-demo.md"), header);
+  symlinkSync(join(outside, "metrics"), join(linked.path, ".marvin", "metrics"));
+  assert.ok(
+    claims(gateStage(linked, { metricsRecord })).some((c) => c.startsWith("uncommitted work")),
+  );
+
+  // A record path that is also sealed is judged as the sealed file it is, never carried, even
+  // when what was added is an append the metrics tool would write.
+  const event = {
+    slug: "demo",
+    source: "marvin-tm-executor",
+    step: "§3",
+    kind: "spec-gap",
+    at: "2026-10-12T10:00:00.000Z",
+    detail: "x",
+  };
+  const sealedRecord = runWorktree({ [RECORD]: header });
+  writeFileSync(
+    join(sealedRecord.path, RECORD),
+    `${header}\`\`\`json metric-event\n${JSON.stringify(event)}\n\`\`\`\n\n`,
+  );
+  assert.deepEqual(claims(gateStage(sealedRecord, { metricsRecord })), []);
+  const report = gateStage(sealedRecord, {
+    metricsRecord,
+    sealed: [{ path: RECORD, sha256: g.sha256Bytes(Buffer.from(header)), criteria: ["AC1"] }],
+  });
+  assert.ok(claims(report).includes(`uncommitted work: ${RECORD}`));
+  assert.equal(report.passed, false);
+});
+
 test("a gate that rewrites a sealed test and leaves it fails twice over", () => {
   const { w, sealed } = withSealedTest();
   const report = gateStage(w, {

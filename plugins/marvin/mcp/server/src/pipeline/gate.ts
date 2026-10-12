@@ -1,8 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { isAbsolute, join, posix, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { createContext, Script } from "node:vm";
+import { SLUG_RE } from "../storage/metrics.js";
+import { classifyRecord } from "./metrics-carry.js";
+import { isCanonicalPath } from "./plain-path.js";
+
+// Re-exported: callers across the engine import it from here, where it was first defined.
+export { isCanonicalPath };
 
 export const SEVERITIES = ["blocker", "major", "minor"] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -344,6 +350,8 @@ export function scanChecks(
  * retro writes it, and the config and `pipeline/` are protected paths besides.
  */
 const MARVIN_RECORDS = /^\.marvin\/(?:task|metrics|critique)\//;
+/** Where a metrics record lives; the one record the gate may carry must be one of these. */
+const MARVIN_METRICS = /^\.marvin\/metrics\/[^/]+\.md$/;
 
 export function undeclaredFiles(
   changed: readonly string[],
@@ -748,6 +756,13 @@ export interface GateStageOptions {
   protectedPatterns: readonly string[];
   /** `snapshotProtected` as it stood before the child ran. */
   protectedBaseline: ProtectedSnapshot;
+  /**
+   * The run's metrics record (`metrics-carry.ts`), or null for none. Its one path is not
+   * uncommitted work while its change against HEAD is an append the metrics tool would write:
+   * the delivery gate appends the terminal block after the executor's last commit, and finalize
+   * commits it. Any other change to it, and every other dirty path, stays a blocker.
+   */
+  metricsRecord?: { path: string; slug: string } | null;
   run: Runner;
   timeoutMs: number;
 }
@@ -764,24 +779,6 @@ const PATCH_FLAGS = [
   "--dst-prefix=b/",
 ];
 
-/**
- * A repo-relative POSIX path in the one spelling git prints it: no leading `/` or `./`, no
- * backslash, no empty, `.` or `..` segment, no control character. The gate compares these by
- * exact string against what git lists, so `./specs/a.test.mjs` would silently match nothing.
- */
-export function isCanonicalPath(path: unknown): path is string {
-  return (
-    typeof path === "string" &&
-    path !== "" &&
-    !path.startsWith("/") &&
-    !path.includes("\\") &&
-    // eslint-disable-next-line no-control-regex
-    !/[\u0000-\u001f\u007f]/.test(path) &&
-    path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") &&
-    posix.normalize(path) === path
-  );
-}
-
 function validateOptions(o: GateStageOptions): void {
   if (!/^[0-9a-f]{40}$/.test(o.baseSha)) throw new Error("baseSha must be a 40-hex commit SHA");
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
@@ -792,6 +789,17 @@ function validateOptions(o: GateStageOptions): void {
   }
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
+  }
+  const record = o.metricsRecord;
+  if (record != null) {
+    if (!isCanonicalPath(record.path) || !MARVIN_METRICS.test(record.path)) {
+      throw new Error(
+        `metrics record is not a path under .marvin/metrics/: ${String(record.path)}`,
+      );
+    }
+    if (typeof record.slug !== "string" || !SLUG_RE.test(record.slug)) {
+      throw new Error(`metrics record slug is not kebab-case: ${String(record.slug)}`);
+    }
   }
   const baseline: unknown = o.protectedBaseline;
   if (
@@ -826,13 +834,6 @@ export function runGateStage(o: GateStageOptions): GateReport {
   const protectedRes = compileProtected(o.protectedPatterns);
   const exempt = o.exemptPattern ? new RegExp(o.exemptPattern) : null;
   const sealedPaths = new Set(o.sealed.map((s) => s.path));
-  const tolerated = (path: string) =>
-    path.endsWith("/")
-      ? o.protectedBaseline[path] === NESTED_REPO
-      : exempt !== null &&
-        exempt.test(path) &&
-        !sealedPaths.has(path) &&
-        !isProtectedPath(protectedRes, path);
   const hiddenByIndex = (): Set<string> =>
     new Set(
       nul(git.text("ls-files", "-v", "-z"))
@@ -853,6 +854,24 @@ export function runGateStage(o: GateStageOptions): GateReport {
   const headSha = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   git.text("cat-file", "-e", `${o.baseSha}^{commit}`);
   const range = `${o.baseSha}...${headSha}`;
+
+  // The run's record is judged afresh at every look, against the HEAD the gate judges: the
+  // gates run in between, and a record that was an append before them may not be after.
+  const record = o.metricsRecord ?? null;
+  const carriedRecord = (path: string) =>
+    record !== null &&
+    path === record.path &&
+    !sealedPaths.has(path) &&
+    !isProtectedPath(protectedRes, path) &&
+    classifyRecord(git, headSha, o.worktree, path, record.slug).state === "appended";
+  const tolerated = (path: string) =>
+    path.endsWith("/")
+      ? o.protectedBaseline[path] === NESTED_REPO
+      : carriedRecord(path) ||
+        (exempt !== null &&
+          exempt.test(path) &&
+          !sealedPaths.has(path) &&
+          !isProtectedPath(protectedRes, path));
 
   const pointerBefore = pointerProblem(o.worktree, o.gitDir);
   if (pointerBefore !== null) {
@@ -882,6 +901,12 @@ export function runGateStage(o: GateStageOptions): GateReport {
     ).map((record) => ({ xy: record.slice(0, 2), path: record.slice(3) }));
   const dirtyBefore = status("all");
   const untolerated = dirtyBefore.filter((e) => !tolerated(e.path));
+  // A record carried before the gates is judged again after them even when its status code does
+  // not move: a gate that rewrites an earlier block of an already-appended record leaves it ` M`.
+  const carriedBefore =
+    record !== null &&
+    dirtyBefore.some((e) => e.path === record.path) &&
+    carriedRecord(record.path);
   for (const e of untolerated.slice(0, MAX_UNCOMMITTED_FINDINGS)) {
     blockers.push({
       category: "scope",
@@ -1045,7 +1070,8 @@ export function runGateStage(o: GateStageOptions): GateReport {
   }
   const seenBefore = new Set(dirtyBefore.map((e) => `${e.xy}\0${e.path}`));
   for (const e of status("no")) {
-    if (seenBefore.has(`${e.xy}\0${e.path}`) || tolerated(e.path)) continue;
+    const recheck = carriedBefore && e.path === record?.path;
+    if ((seenBefore.has(`${e.xy}\0${e.path}`) && !recheck) || tolerated(e.path)) continue;
     blockers.push({
       category: "scope",
       claim: `gates modified tracked file ${e.path}`,

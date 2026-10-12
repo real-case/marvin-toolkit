@@ -141,6 +141,18 @@ project the pipeline is configured for is marvin-toolkit itself (Task 19); live 
   - The executor role now commits the sealed spec with `git add -f` and no other `.marvin/`
     service file, and the retro reports `done` for a halted run instead of `failed`, which had
     cost a retry and lost the retro.
+- **The autopilot engine commits the run's metrics record itself.** The delivery gate appends the
+  record's terminal `task-metrics` block after the executor's last commit, because the block names
+  that commit, so the engine's gate read the append as uncommitted work and spent a second
+  executor iteration on committing it: 12 times in 56 benchmark runs. The gate now tolerates that
+  one path while its change is an append the metrics tool would write (the committed bytes
+  followed by `metric-event` or `task-metrics` blocks for the run's slug, in exactly the tool's
+  shape, in a regular file with one link), and finalize carries the appended bytes into its own
+  commit, never through the format command. A record changed in any other way is still uncommitted
+  work at the gate, and finalize ships the run without it and says why. One rule now finds the
+  record for the spec commit, the gate and finalize (`pipeline/metrics-carry.ts`), and the
+  executor role and the `task-deliver` and `task-implement` pipeline modes no longer tell the
+  executor to commit the record's appends.
 - **A gate timeout ends the command's whole process tree on Linux too.** The gate runner put the
   command in its own process group with a `set -m` shell wrapper, which only bash honours without
   a terminal: dash, Debian's and Ubuntu's `/bin/sh`, printed `can't access tty; job control

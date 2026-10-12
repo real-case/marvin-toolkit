@@ -1323,9 +1323,9 @@ ${indent}`) + "'";
         start2 = start2.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header2 = (startWithSpace ? indentSize : "") + chomp;
+      let header = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -1340,11 +1340,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start2}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header2}
+          return `>${header}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header2}
+      return `|${header}
 ${indent}${start2}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -3960,10 +3960,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep8, value } = collItem;
+        const { start: start2, key, sep: sep9, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep8?.[0],
+          next: key ?? sep9?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3977,7 +3977,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep8) {
+          if (!keyProps.anchor && !keyProps.tag && !sep9) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4001,7 +4001,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep8 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep9 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4017,7 +4017,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep8, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep9, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4106,7 +4106,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep8 = "";
+        let sep9 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4120,13 +4120,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep8 + cb;
-              sep8 = "";
+                comment += sep9 + cb;
+              sep9 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep8 += source;
+                sep9 += source;
               hasSpace = true;
               break;
             default:
@@ -4168,18 +4168,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start: start2, key, sep: sep8, value } = collItem;
+        const { start: start2, key, sep: sep9, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep8?.[0],
+          next: key ?? sep9?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep8 && !value) {
+          if (!props.anchor && !props.tag && !sep9 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4233,8 +4233,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep8 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep8, null, props, onError);
+        if (!isMap && !sep9 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep9, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4246,7 +4246,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep8 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep9 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4257,8 +4257,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep8)
-                for (const st of sep8) {
+              if (sep9)
+                for (const st of sep9) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4275,7 +4275,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep8, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep9, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4404,10 +4404,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start2 = scalar.offset;
-      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header2)
+      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header)
         return { value: "", type: null, comment: "", range: [start2, start2, start2] };
-      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -4418,26 +4418,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start2 + header2.length;
+        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start2 + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header2.comment, range: [start2, end2, end2] };
+        return { value: value2, type, comment: header.comment, range: [start2, end2, end2] };
       }
-      let trimIndent = scalar.indent + header2.indent;
-      let offset = scalar.offset + header2.length;
+      let trimIndent = scalar.indent + header.indent;
+      let offset = scalar.offset + header.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header2.indent === 0 && indent.length > trimIndent)
+          if (header.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header2.indent === 0)
+          if (header.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -4453,7 +4453,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep8 = "";
+      let sep9 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4464,34 +4464,34 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header2.indent ? "explicit indentation indicator" : "first line";
+          const src = header.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep8 + indent.slice(trimIndent) + content;
-          sep8 = "\n";
+          value += sep9 + indent.slice(trimIndent) + content;
+          sep9 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep8 === " ")
-            sep8 = "\n";
-          else if (!prevMoreIndented && sep8 === "\n")
-            sep8 = "\n\n";
-          value += sep8 + indent.slice(trimIndent) + content;
-          sep8 = "\n";
+          if (sep9 === " ")
+            sep9 = "\n";
+          else if (!prevMoreIndented && sep9 === "\n")
+            sep9 = "\n\n";
+          value += sep9 + indent.slice(trimIndent) + content;
+          sep9 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep8 === "\n")
+          if (sep9 === "\n")
             value += "\n";
           else
-            sep8 = "\n";
+            sep9 = "\n";
         } else {
-          value += sep8 + content;
-          sep8 = " ";
+          value += sep9 + content;
+          sep9 = " ";
           prevMoreIndented = false;
         }
       }
-      switch (header2.chomp) {
+      switch (header.chomp) {
         case "-":
           break;
         case "+":
@@ -4503,8 +4503,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start2 + header2.length + scalar.source.length;
-      return { value, type, comment: header2.comment, range: [start2, end, end] };
+      const end = start2 + header.length + scalar.source.length;
+      return { value, type, comment: header.comment, range: [start2, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -4668,25 +4668,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep8 = " ";
+      let sep9 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep8 === "\n")
-            res += sep8;
+          if (sep9 === "\n")
+            res += sep9;
           else
-            sep8 = "\n";
+            sep9 = "\n";
         } else {
-          res += sep8 + match[1];
-          sep8 = " ";
+          res += sep9 + match[1];
+          sep9 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep8 + (match?.[1] ?? "");
+      return res + sep9 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5335,10 +5335,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header2 = token.props[0];
-            if (header2.type !== "block-scalar-header")
+            const header = token.props[0];
+            if (header.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -5370,10 +5370,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header2 = token.props[0];
-        if (header2.type !== "block-scalar-header")
+        const header = token.props[0];
+        if (header.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header2.source = head;
+        header.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -5489,14 +5489,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep8, value }) {
+    function stringifyItem({ start: start2, key, sep: sep9, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep8)
-        for (const st of sep8)
+      if (sep9)
+        for (const st of sep9)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6658,18 +6658,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep8;
+          let sep9;
           if (scalar.end) {
-            sep8 = scalar.end;
-            sep8.push(this.sourceToken);
+            sep9 = scalar.end;
+            sep9.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep8 = [this.sourceToken];
+            sep9 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep8 }]
+            items: [{ start: start2, key: scalar, sep: sep9 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6822,15 +6822,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep8 = it.sep;
-                  sep8.push(this.sourceToken);
+                  const sep9 = it.sep;
+                  sep9.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep8 }]
+                    items: [{ start: start3, key, sep: sep9 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -7024,13 +7024,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep8 = fc.end.splice(1, fc.end.length);
-            sep8.push(this.sourceToken);
+            const sep9 = fc.end.splice(1, fc.end.length);
+            sep9.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep8 }]
+              items: [{ start: start2, key: fc, sep: sep9 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -10896,49 +10896,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative7, options, skipNormalization) {
+    function resolveComponent(base, relative8, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse5(serialize(base, options), options);
-        relative7 = parse5(serialize(relative7, options), options);
+        relative8 = parse5(serialize(relative8, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative7.scheme) {
-        target.scheme = relative7.scheme;
-        target.userinfo = relative7.userinfo;
-        target.host = relative7.host;
-        target.port = relative7.port;
-        target.path = removeDotSegments(relative7.path || "");
-        target.query = relative7.query;
+      if (!options.tolerant && relative8.scheme) {
+        target.scheme = relative8.scheme;
+        target.userinfo = relative8.userinfo;
+        target.host = relative8.host;
+        target.port = relative8.port;
+        target.path = removeDotSegments(relative8.path || "");
+        target.query = relative8.query;
       } else {
-        if (relative7.userinfo !== void 0 || relative7.host !== void 0 || relative7.port !== void 0) {
-          target.userinfo = relative7.userinfo;
-          target.host = relative7.host;
-          target.port = relative7.port;
-          target.path = removeDotSegments(relative7.path || "");
-          target.query = relative7.query;
+        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
+          target.userinfo = relative8.userinfo;
+          target.host = relative8.host;
+          target.port = relative8.port;
+          target.path = removeDotSegments(relative8.path || "");
+          target.query = relative8.query;
         } else {
-          if (!relative7.path) {
+          if (!relative8.path) {
             target.path = base.path;
-            if (relative7.query !== void 0) {
-              target.query = relative7.query;
+            if (relative8.query !== void 0) {
+              target.query = relative8.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative7.path[0] === "/") {
-              target.path = removeDotSegments(relative7.path);
+            if (relative8.path[0] === "/") {
+              target.path = removeDotSegments(relative8.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative7.path;
+                target.path = "/" + relative8.path;
               } else if (!base.path) {
-                target.path = relative7.path;
+                target.path = relative8.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative7.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative7.query;
+            target.query = relative8.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -10946,7 +10946,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative7.fragment;
+      target.fragment = relative8.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -15086,10 +15086,10 @@ function isValidJWT(jwt, alg) {
   if (!jwtRegex.test(jwt))
     return false;
   try {
-    const [header2] = jwt.split(".");
-    if (!header2)
+    const [header] = jwt.split(".");
+    if (!header)
       return false;
-    const base642 = header2.replace(/-/g, "+").replace(/_/g, "/").padEnd(header2.length + (4 - header2.length % 4) % 4, "=");
+    const base642 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
     const decoded = JSON.parse(atob(base642));
     if (typeof decoded !== "object" || decoded === null)
       return false;
@@ -18920,7 +18920,660 @@ function previewAssignments(run2, r) {
 }
 
 // src/pipeline/bench.ts
-var import_yaml3 = __toESM(require_dist());
+var import_yaml4 = __toESM(require_dist());
+var METRIC_EVENT_TAG = "metric-event";
+var TASK_METRICS_TAG = "task-metrics";
+var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var METRIC_EVENT_KINDS = [
+  "fix-round",
+  "spec-gap",
+  "open-item",
+  "critic-dispatch",
+  "critic-verdict",
+  "gate-call"
+];
+var METRIC_EVENT_SOURCES = [
+  "task-start",
+  "task-implement",
+  "task-deliver",
+  "marvin-tm-executor"
+];
+var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
+var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
+var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
+var METRIC_GATES = ["dor"];
+var TERMINAL_VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
+var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
+var REQUIRED_EVENT_FIELDS = {
+  "fix-round": ["loop", "round"],
+  "spec-gap": ["detail"],
+  "open-item": ["classification", "detail"],
+  "critic-dispatch": ["critic", "pass"],
+  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
+  "gate-call": ["gate", "call", "verdict"]
+};
+var MetricEventShape = external_exports.object({
+  slug: external_exports.string().min(1).regex(SLUG_RE, "slug must be kebab-case"),
+  source: external_exports.enum(METRIC_EVENT_SOURCES),
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(METRIC_EVENT_KINDS),
+  contract_sha: external_exports.string().nullable().optional(),
+  at: external_exports.string().datetime(),
+  detail: external_exports.string().min(1).optional(),
+  loop: external_exports.enum(FIX_LOOPS).optional(),
+  round: external_exports.number().int().positive().optional(),
+  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
+  critic: external_exports.enum(METRIC_CRITICS).optional(),
+  pass: external_exports.number().int().positive().optional(),
+  verdict: external_exports.string().min(1).optional(),
+  blockers: external_exports.number().int().nonnegative().optional(),
+  warnings: external_exports.number().int().nonnegative().optional(),
+  gate: external_exports.enum(METRIC_GATES).optional(),
+  call: external_exports.number().int().positive().optional()
+});
+var MetricEventSchema = MetricEventShape.superRefine((value, ctx) => {
+  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
+    const v = value[field];
+    if (v === void 0 || v === null) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [field],
+        message: `a ${value.kind} event requires ${field}`
+      });
+    }
+  }
+  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
+    if (!TERMINAL_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+  if (value.kind === "gate-call" && value.verdict !== void 0) {
+    if (!DOR_VERDICTS.includes(value.verdict)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
+      });
+    }
+  }
+});
+var TaskMetricsEnvelope = external_exports.object({
+  slug: external_exports.string().min(1),
+  rolled_up_at: external_exports.string().min(1),
+  base_branch: external_exports.string().min(1),
+  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
+  time: external_exports.object({}).passthrough(),
+  quality: external_exports.object({}).passthrough(),
+  rework: external_exports.object({}).passthrough(),
+  notes: external_exports.array(external_exports.string())
+}).passthrough();
+function metricsRecordPath(dir, specBasename) {
+  return join(dir, `${specBasename}.md`);
+}
+function recordBasenameForSpec(specPath) {
+  return basename(specPath).replace(/\.md$/, "");
+}
+function slugOfRecord(filename) {
+  return basename(filename).replace(/\.md$/, "").replace(/^\d+-/, "");
+}
+function findRecord(dir, slug) {
+  if (!existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return null;
+  }
+  const exact = `${slug}.md`;
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  let fallback = null;
+  for (const entry of entries) {
+    if (entry === exact) return join(dir, entry);
+    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
+  }
+  return fallback;
+}
+function recordHeader(slug) {
+  return `# Metrics \u2014 ${slug}
+
+Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
+
+`;
+}
+function recordBlock(tag, payload) {
+  return `\`\`\`json ${tag}
+${JSON.stringify(payload)}
+\`\`\`
+
+`;
+}
+function ensureRecord(path, slug) {
+  if (existsSync(path)) return;
+  mkdirSync(join(path, ".."), { recursive: true });
+  appendFileSync(path, recordHeader(slug), "utf8");
+}
+function run(cmd, args, cwd, opts) {
+  const result = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    ...opts?.input !== void 0 ? { input: opts.input } : {},
+    ...opts?.maxBuffer !== void 0 ? { maxBuffer: opts.maxBuffer } : {}
+  });
+  if (result.error) {
+    return { ok: false, code: -1, stderr: result.error.message };
+  }
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      code: result.status ?? -1,
+      stderr: (result.stderr || result.stdout || "").trim()
+    };
+  }
+  return { ok: true, value: (result.stdout || "").trim() };
+}
+function git(args, cwd, opts) {
+  return run("git", args, cwd, opts);
+}
+function inGitRepo(cwd) {
+  return git(["rev-parse", "--is-inside-work-tree"], cwd).ok;
+}
+function hasGit() {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function defaultBranchFromOrigin(cwd) {
+  const r = git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
+  if (!r.ok || !r.value) return null;
+  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
+  return name && name !== r.value ? name : null;
+}
+function normalizeScopePath(p) {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+
+// src/lib/metrics-collect.ts
+__toESM(require_dist());
+var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest",
+  // ADR-0038: `sec-gate` and `sec-fix` emit blocks too. Widening the contract
+  // without widening this mirror makes both reports parse as `invalid` and
+  // vanish from all three readers with only a skip-note.
+  "gate",
+  "fix"
+]);
+external_exports.enum(["new", "persisting", "regressed"]);
+var LinkRefSchema = external_exports.object({
+  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+var FindingSchema = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity,
+  title: external_exports.string().min(1),
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRefSchema).optional()
+});
+external_exports.object({
+  kind: AuditKind,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(FindingSchema)
+});
+var TerminalVerdictSchema = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
+var AxisVerdictSchema = external_exports.object({
+  verdict: TerminalVerdictSchema,
+  blockers: external_exports.number().int().nonnegative(),
+  warnings: external_exports.number().int().nonnegative()
+});
+external_exports.object({
+  critic: external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]),
+  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
+  judged_at: external_exports.string().datetime(),
+  compliance: AxisVerdictSchema,
+  quality: AxisVerdictSchema,
+  inability: external_exports.object({
+    blocker: external_exports.string().min(1),
+    attempted: external_exports.string().min(1),
+    recommendation: external_exports.string().min(1)
+  }).optional()
+}).superRefine((value, ctx) => {
+  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
+  if (unable && !value.inability) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["inability"],
+      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
+    });
+  }
+});
+external_exports.object({
+  name: external_exports.string(),
+  status: external_exports.string().optional(),
+  code: external_exports.number().nullable().optional().catch(null),
+  durationMs: external_exports.number().optional().catch(void 0)
+});
+var ProvenanceSchema = external_exports.object({
+  head_sha: external_exports.string().nullable(),
+  branch: external_exports.string().nullable(),
+  dirty: external_exports.boolean().nullable(),
+  worktree_digest: external_exports.string().nullable(),
+  generated_at: external_exports.string()
+});
+external_exports.object({
+  verdict: external_exports.string().optional().catch(void 0),
+  gates: external_exports.array(external_exports.unknown()).optional().catch(void 0),
+  detectedStacks: external_exports.array(external_exports.string()).optional().catch(void 0),
+  warnings: external_exports.array(external_exports.string()).optional().catch(void 0),
+  wallClockMs: external_exports.number().optional().catch(void 0),
+  sumOfGatesMs: external_exports.number().optional().catch(void 0),
+  artifactPath: external_exports.string().nullable().optional().catch(null),
+  // Optional on read so every artifact written before ADR-0035 still parses, and
+  // `.catch(undefined)` like every other member so a corrupt provenance degrades
+  // alone — a freshness field must never cost a reader the verdict it came for.
+  provenance: ProvenanceSchema.optional().catch(void 0)
+});
+
+// src/lib/shell-quote.ts
+var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
+function encodeForContext(value, context) {
+  switch (context) {
+    case "unquoted":
+      return shellQuote(value);
+    case "single":
+      return value.replaceAll("'", "'\\''");
+    case "double":
+      return value.replace(/[\\"$`]/g, "\\$&");
+    case "escaped":
+      return value;
+  }
+}
+function substitutePlaceholders(template, placeholders, replace) {
+  let out = "";
+  let quote = null;
+  const at = (i) => placeholders.find((p) => template.startsWith(p, i));
+  for (let i = 0; i < template.length; i += 1) {
+    const found = at(i);
+    if (found) {
+      out += replace(found, quote === "'" ? "single" : quote === '"' ? "double" : "unquoted");
+      i += found.length - 1;
+      continue;
+    }
+    const ch = template[i] ?? "";
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      out += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      const escaped = at(i + 1);
+      if (escaped && quote === null) {
+        out += ch + replace(escaped, "escaped");
+        i += escaped.length;
+        continue;
+      }
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    }
+    if (ch === '"') quote = quote === null ? '"' : null;
+    else if (ch === "'" && quote === null) quote = "'";
+    out += ch;
+  }
+  return out;
+}
+function fillShellTemplate(template, values) {
+  return substitutePlaceholders(
+    template,
+    Object.keys(values),
+    (placeholder, context) => encodeForContext(values[placeholder] ?? "", context)
+  );
+}
+
+// src/storage/oracles.ts
+var SHELL_METACHARACTERS = /[;|&`\n<>]|\$\(/;
+function splitRef(ref) {
+  const i = ref.indexOf("::");
+  return i === -1 ? { file: ref, name: "" } : { file: ref.slice(0, i).trim(), name: ref.slice(i + 2).trim() };
+}
+function packageDir(file) {
+  const i = file.lastIndexOf("/");
+  return i === -1 ? "." : `./${file.slice(0, i)}`;
+}
+var STACK_DEFAULTS = {
+  python: ({ file, name }) => `pytest ${file}::${name}`,
+  go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
+  rust: ({ name }) => `cargo test ${name}`
+};
+function isUnsafeOracleRef(criterion) {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return SHELL_METACHARACTERS.test(ref) || SHELL_METACHARACTERS.test(parts.file) || SHELL_METACHARACTERS.test(parts.name);
+}
+function resolveOracleCommand(criterion, opts) {
+  const oracle = criterion.oracle;
+  if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
+  if (oracle.run?.trim()) return { command: oracle.run.trim(), source: "oracle.run" };
+  if (oracle.kind === "prose-review") {
+    return { command: null, source: null, reason: "prose-review-oracle" };
+  }
+  const ref = oracle.ref?.trim();
+  if (!ref) return { command: null, source: null, reason: "no-ref" };
+  if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
+  const parts = splitRef(ref);
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
+  if (opts.testOne?.trim()) {
+    const command = fillShellTemplate(opts.testOne, {
+      "{file}": parts.file,
+      "{name}": parts.name,
+      "{ref}": ref
+    }).trim();
+    return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
+  }
+  const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;
+  if (!row) return { command: null, source: null, reason: "no-single-test-command" };
+  if (!parts.name) return { command: null, source: null, reason: "ref-has-no-test-name" };
+  return { command: row(parts), source: "stack-default" };
+}
+external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /** The seal this run was recorded against. Proofs never cross it. */
+  contract_sha: external_exports.string().min(1),
+  criterion: external_exports.string().min(1),
+  /** Which phase this was: the red run expects `fail`, the green one `pass`. */
+  expect: external_exports.enum(["pass", "fail"]),
+  /** What happened. `not-run` covers an unresolved command, a signal kill and a
+   * launch failure alike — none of them is evidence about the code. */
+  status: external_exports.enum(["pass", "fail", "not-run"]),
+  command: external_exports.string().nullable(),
+  source: external_exports.string().nullable(),
+  reason: external_exports.string().nullable().optional(),
+  code: external_exports.number().nullable(),
+  signal: external_exports.string().nullable(),
+  /** The referenced test file and the hash of its bytes at run time — what makes
+   * a red and a green comparable rather than merely consecutive. */
+  test_file: external_exports.string().nullable(),
+  test_sha: external_exports.string().nullable(),
+  head_sha: external_exports.string().nullable(),
+  durationMs: external_exports.number().optional(),
+  ran_at: external_exports.string()
+});
+var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
+external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  /**
+   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
+   * is the headless implementation path, which numbers its steps `§1`–`§5`.
+   */
+  source: external_exports.enum(PROGRESS_SOURCES),
+  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
+  step: external_exports.string().min(1),
+  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
+  /** One line of position and choice. Never a credential, token or customer datum. */
+  detail: external_exports.string(),
+  /** The acceptance-criterion id, when `kind` is `criterion`. */
+  criterion: external_exports.string().nullable().optional(),
+  /** The draft/spec path, recorded once when the draft is opened. */
+  path: external_exports.string().nullable().optional(),
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601. */
+  at: external_exports.string()
+});
+var JournalGate = external_exports.object({
+  name: external_exports.string().min(1),
+  status: external_exports.string().min(1),
+  durationMs: external_exports.number()
+});
+var RunEntrySchema = external_exports.object({
+  /** The spec's validated kebab-case slug — also this journal's filename. */
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("run"),
+  /** ISO 8601, stamped by the tool. */
+  at: external_exports.string(),
+  /** `PASS` | `PASS WITH WARNINGS` | `FAIL`, as the run computed it. */
+  verdict: external_exports.string().min(1),
+  mode: external_exports.string().min(1),
+  execution: external_exports.string().min(1),
+  /** The gate subset a targeted retry asked for, or null for a full run. */
+  only: external_exports.array(external_exports.string()).nullable(),
+  gates: external_exports.array(JournalGate),
+  wallClockMs: external_exports.number(),
+  sumOfGatesMs: external_exports.number(),
+  /** The commit the run proved, from the run's own provenance; null outside git. */
+  head_sha: external_exports.string().nullable()
+});
+var GateEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  kind: external_exports.literal("gate"),
+  at: external_exports.string(),
+  decision: external_exports.enum(["ALLOW", "BLOCK"]),
+  /** The verdict the gate read off the artifact, null when it found none. */
+  verdict: external_exports.string().nullable(),
+  staleness: external_exports.enum(["fresh", "stale", "unknown"]),
+  allowStale: external_exports.boolean(),
+  red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /** The artifact the gate judged, project-relative. */
+  artifact: external_exports.string().min(1)
+});
+external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
+
+// src/lib/metrics-collect.ts
+function findSpecBySlug(slug, projectRoot, specConfig) {
+  for (const dir of specSearchDirs(projectRoot, specConfig)) {
+    const p = resolveSpecBySlug(dir, slug, projectRoot);
+    if (p) return p;
+  }
+  return null;
+}
+
+// src/lib/metrics-record.ts
+function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
+  const existing = findRecord(dir, slug);
+  if (existing) return existing;
+  const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
+  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
+}
+function recordSlugForSpec(declared, specPath) {
+  const own = (declared ?? "").trim();
+  const slug = own || slugOfRecord(specPath);
+  if (!SLUG_RE.test(slug)) return null;
+  if (!own && /^\d+-/.test(slug)) return null;
+  return slug;
+}
+function isCanonicalPath(path) {
+  return typeof path === "string" && path !== "" && !path.startsWith("/") && !path.includes("\\") && // eslint-disable-next-line no-control-regex
+  !/[\u0000-\u001f\u007f]/.test(path) && path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") && posix.normalize(path) === path;
+}
+function physicalProblem(root, rel) {
+  const parts = rel.split("/");
+  let current = root;
+  for (const [i, part] of parts.entries()) {
+    current = join(current, part);
+    const where = parts.slice(0, i + 1).join("/");
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error2) {
+      const code = error2.code;
+      return code === "ENOENT" ? null : `${where} cannot be inspected (${code ?? String(error2)})`;
+    }
+    if (stat.isSymbolicLink()) return `${where} is a symbolic link`;
+    if (i < parts.length - 1 && !stat.isDirectory()) return `${where} is not a directory`;
+  }
+  return null;
+}
+function assertPlain(root, rel) {
+  const problem = physicalProblem(root, rel);
+  if (problem !== null) throw new Error(`refusing to use ${rel} under ${root}: ${problem}`);
+}
+function assertNotHardLinked(root, rel) {
+  let stat;
+  try {
+    stat = lstatSync(join(root, rel));
+  } catch (error2) {
+    if (error2.code === "ENOENT") return;
+    throw error2;
+  }
+  if (stat.isFile() && stat.nlink > 1) {
+    throw new Error(`refusing to use ${rel} under ${root}: it is a hard link to another file`);
+  }
+}
+
+// src/pipeline/metrics-carry.ts
+var METRICS_DIR = ".marvin/metrics";
+function runRecord(worktree, specPath, specText) {
+  const { frontmatter } = parseFrontmatter(specText.replace(/\r\n?/g, "\n"));
+  const slug = recordSlugForSpec(frontmatter.slug, specPath);
+  if (slug === null) return null;
+  const abs = recordPathFor(
+    join(worktree, METRICS_DIR),
+    slug,
+    worktree,
+    void 0,
+    join(worktree, specPath)
+  );
+  const path = relative(worktree, abs).split(sep).join("/");
+  if (!isCanonicalPath(path)) return null;
+  return candidateRecords(join(worktree, METRICS_DIR), slug) > 1 ? null : { path, slug };
+}
+function candidateRecords(dir, slug) {
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
+  return entries.filter((entry) => entry === `${slug}.md` || numbered.test(entry)).length;
+}
+function runRecordPath(worktree, specPath, specText) {
+  return runRecord(worktree, specPath, specText)?.path ?? null;
+}
+var BLOCK = /```json ([a-z-]+)\n([^\n]*)\n```\n\n/y;
+var refused = (reason2) => ({ state: "refused", reason: reason2 });
+function blocksProblem(text2, slug) {
+  let at = 0;
+  let n = 0;
+  while (at < text2.length) {
+    BLOCK.lastIndex = at;
+    const m = BLOCK.exec(text2);
+    if (m === null) return `the text after block ${n} is not a record block`;
+    n += 1;
+    const [whole, tag, line] = m;
+    let payload;
+    try {
+      payload = JSON.parse(line);
+    } catch {
+      return `block ${n} does not hold one JSON line`;
+    }
+    if (recordBlock(tag, payload) !== whole) {
+      return `block ${n} is not in the shape the metrics tool writes`;
+    }
+    const schema = tag === METRIC_EVENT_TAG ? MetricEventSchema : tag === TASK_METRICS_TAG ? TaskMetricsEnvelope : null;
+    if (schema === null) return `block ${n} is tagged ${tag}, not a metrics block`;
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) return `block ${n} is not a valid ${tag} entry`;
+    if (parsed.data.slug !== slug) {
+      return `block ${n} is an entry for ${parsed.data.slug}, not ${slug}`;
+    }
+    at += whole.length;
+  }
+  return null;
+}
+function strictText(bytes) {
+  try {
+    const text2 = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return text2.includes("\r") ? null : text2;
+  } catch {
+    return null;
+  }
+}
+function classifyRecord(git4, commit, worktree, rel, slug) {
+  if (!isCanonicalPath(rel)) return refused(`${String(rel)} is not a repo-relative path`);
+  const problem = physicalProblem(worktree, rel);
+  if (problem !== null) return refused(problem);
+  let stat;
+  try {
+    stat = lstatSync(join(worktree, rel));
+  } catch (error2) {
+    const code = error2.code;
+    if (code === "ENOENT") return { state: "absent" };
+    return refused(`it cannot be inspected (${code ?? String(error2)})`);
+  }
+  if (!stat.isFile()) return refused("it is not a regular file");
+  try {
+    assertNotHardLinked(worktree, rel);
+  } catch (error2) {
+    return refused(error2 instanceof Error ? error2.message : String(error2));
+  }
+  let bytes;
+  try {
+    bytes = readFileSync(join(worktree, rel));
+  } catch (error2) {
+    return refused(`it cannot be read (${error2 instanceof Error ? error2.message : String(error2)})`);
+  }
+  const entry = git4.text("ls-tree", "-z", "--full-tree", commit, "--", rel).split("\0").map((record2) => /^(\d+) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(record2)).find((m) => m?.[4] === rel);
+  let prefix;
+  if (entry) {
+    const [, mode, type, oid] = entry;
+    if (type !== "blob" || mode !== "100644" && mode !== "100755") {
+      return refused(`it is not a regular file in ${commit}`);
+    }
+    prefix = git4.bytes("cat-file", "blob", oid);
+    if (bytes.equals(prefix)) return { state: "unchanged" };
+  } else {
+    const ignored = git4.text(
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--",
+      `:(literal)${rel}`
+    );
+    if (ignored !== "") return { state: "ignored" };
+    prefix = Buffer.from(recordHeader(slug), "utf8");
+  }
+  if (bytes.length < prefix.length || !bytes.subarray(0, prefix.length).equals(prefix)) {
+    return refused(
+      entry ? `it does not begin with the record as ${commit} holds it: an earlier entry was changed` : "it does not begin with the record header the metrics tool writes"
+    );
+  }
+  const added = strictText(bytes.subarray(prefix.length));
+  if (added === null) return refused("what was added is not UTF-8 text with LF line ends");
+  const why = blocksProblem(added, slug);
+  return why === null ? { state: "appended", bytes } : refused(why);
+}
+
+// src/pipeline/gate.ts
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
 var SUPERVISOR = `
@@ -19106,6 +19759,7 @@ function scanChecks(lines, rules, budgetMs = CHECK_BUDGET_MS) {
   return hits;
 }
 var MARVIN_RECORDS = /^\.marvin\/(?:task|metrics|critique)\//;
+var MARVIN_METRICS = /^\.marvin\/metrics\/[^/]+\.md$/;
 function undeclaredFiles(changed, declared, exemptPattern) {
   const known = new Set(declared);
   const exempt = exemptPattern ? new RegExp(exemptPattern) : null;
@@ -19359,10 +20013,6 @@ var PATCH_FLAGS = [
   "--src-prefix=a/",
   "--dst-prefix=b/"
 ];
-function isCanonicalPath(path) {
-  return typeof path === "string" && path !== "" && !path.startsWith("/") && !path.includes("\\") && // eslint-disable-next-line no-control-regex
-  !/[\u0000-\u001f\u007f]/.test(path) && path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") && posix.normalize(path) === path;
-}
 function validateOptions(o) {
   if (!/^[0-9a-f]{40}$/.test(o.baseSha)) throw new Error("baseSha must be a 40-hex commit SHA");
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
@@ -19373,6 +20023,17 @@ function validateOptions(o) {
   }
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
+  }
+  const record2 = o.metricsRecord;
+  if (record2 != null) {
+    if (!isCanonicalPath(record2.path) || !MARVIN_METRICS.test(record2.path)) {
+      throw new Error(
+        `metrics record is not a path under .marvin/metrics/: ${String(record2.path)}`
+      );
+    }
+    if (typeof record2.slug !== "string" || !SLUG_RE.test(record2.slug)) {
+      throw new Error(`metrics record slug is not kebab-case: ${String(record2.slug)}`);
+    }
   }
   const baseline = o.protectedBaseline;
   if (typeof baseline !== "object" || baseline === null || Array.isArray(baseline) || Object.values(baseline).some((v) => typeof v !== "string")) {
@@ -19397,12 +20058,11 @@ function runGateStage(o) {
   const protectedRes = compileProtected(o.protectedPatterns);
   const exempt = o.exemptPattern ? new RegExp(o.exemptPattern) : null;
   const sealedPaths = new Set(o.sealed.map((s) => s.path));
-  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const hiddenByIndex = () => new Set(
-    nul(git4.text("ls-files", "-v", "-z")).filter((record2) => {
-      const tag = record2.charAt(0);
+    nul(git4.text("ls-files", "-v", "-z")).filter((record3) => {
+      const tag = record3.charAt(0);
       return tag !== tag.toUpperCase() || tag === "S";
-    }).map((record2) => record2.slice(2))
+    }).map((record3) => record3.slice(2))
   );
   const nestedRepo = (path) => ({
     category: "scope",
@@ -19414,6 +20074,9 @@ function runGateStage(o) {
   const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   git4.text("cat-file", "-e", `${o.baseSha}^{commit}`);
   const range = `${o.baseSha}...${headSha2}`;
+  const record2 = o.metricsRecord ?? null;
+  const carriedRecord2 = (path) => record2 !== null && path === record2.path && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path) && classifyRecord(git4, headSha2, o.worktree, path, record2.slug).state === "appended";
+  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : carriedRecord2(path) || exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const pointerBefore = pointerProblem(o.worktree, o.gitDir);
   if (pointerBefore !== null) {
     blockers.push({
@@ -19436,9 +20099,10 @@ function runGateStage(o) {
   }
   const status2 = (untracked) => nul(
     git4.text("status", "--porcelain=v1", "-z", `--untracked-files=${untracked}`, "--no-renames")
-  ).map((record2) => ({ xy: record2.slice(0, 2), path: record2.slice(3) }));
+  ).map((record3) => ({ xy: record3.slice(0, 2), path: record3.slice(3) }));
   const dirtyBefore = status2("all");
   const untolerated = dirtyBefore.filter((e) => !tolerated(e.path));
+  const carriedBefore = record2 !== null && dirtyBefore.some((e) => e.path === record2.path) && carriedRecord2(record2.path);
   for (const e of untolerated.slice(0, MAX_UNCOMMITTED_FINDINGS)) {
     blockers.push({
       category: "scope",
@@ -19593,7 +20257,8 @@ function runGateStage(o) {
   }
   const seenBefore = new Set(dirtyBefore.map((e) => `${e.xy}\0${e.path}`));
   for (const e of status2("no")) {
-    if (seenBefore.has(`${e.xy}\0${e.path}`) || tolerated(e.path)) continue;
+    const recheck = carriedBefore && e.path === record2?.path;
+    if (seenBefore.has(`${e.xy}\0${e.path}`) && !recheck || tolerated(e.path)) continue;
     blockers.push({
       category: "scope",
       claim: `gates modified tracked file ${e.path}`,
@@ -19872,63 +20537,7 @@ exec ${quote(nodePath)} ${quote(script)} "$@"
 function sandboxChildEnv(runDir, s) {
   return s.enabled ? installSandboxGh(runDir) : {};
 }
-
-// src/lib/shell-quote.ts
-var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
-function encodeForContext(value, context) {
-  switch (context) {
-    case "unquoted":
-      return shellQuote(value);
-    case "single":
-      return value.replaceAll("'", "'\\''");
-    case "double":
-      return value.replace(/[\\"$`]/g, "\\$&");
-    case "escaped":
-      return value;
-  }
-}
-function substitutePlaceholders(template, placeholders, replace) {
-  let out = "";
-  let quote = null;
-  const at = (i) => placeholders.find((p) => template.startsWith(p, i));
-  for (let i = 0; i < template.length; i += 1) {
-    const found = at(i);
-    if (found) {
-      out += replace(found, quote === "'" ? "single" : quote === '"' ? "double" : "unquoted");
-      i += found.length - 1;
-      continue;
-    }
-    const ch = template[i] ?? "";
-    if (quote === "'") {
-      if (ch === "'") quote = null;
-      out += ch;
-      continue;
-    }
-    if (ch === "\\") {
-      const escaped = at(i + 1);
-      if (escaped && quote === null) {
-        out += ch + replace(escaped, "escaped");
-        i += escaped.length;
-        continue;
-      }
-      out += ch + (template[i + 1] ?? "");
-      i += 1;
-      continue;
-    }
-    if (ch === '"') quote = quote === null ? '"' : null;
-    else if (ch === "'" && quote === null) quote = "'";
-    out += ch;
-  }
-  return out;
-}
-function fillShellTemplate(template, values) {
-  return substitutePlaceholders(
-    template,
-    Object.keys(values),
-    (placeholder, context) => encodeForContext(values[placeholder] ?? "", context)
-  );
-}
-var git = (cwd, ...args) => execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
+var git2 = (cwd, ...args) => execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
   cwd,
   env: hardenedGitEnv(),
   encoding: "utf8",
@@ -19944,25 +20553,25 @@ function createRunWorktree(o) {
   const path = join(o.worktreesRoot, basename(o.repoRoot), o.runId);
   if (existsSync(path)) throw new Error(`worktree path exists: ${path}`);
   mkdirSync(dirname(path), { recursive: true });
-  git(o.repoRoot, "fetch", "origin", o.base);
-  const baseSha = git(
+  git2(o.repoRoot, "fetch", "origin", o.base);
+  const baseSha = git2(
     o.repoRoot,
     "rev-parse",
     "--verify",
     "--end-of-options",
     `refs/remotes/origin/${o.base}^{commit}`
   );
-  git(o.repoRoot, "worktree", "add", "--no-track", "-b", branch, path, baseSha);
-  const gitDir = git(path, "rev-parse", "--absolute-git-dir");
+  git2(o.repoRoot, "worktree", "add", "--no-track", "-b", branch, path, baseSha);
+  const gitDir = git2(path, "rev-parse", "--absolute-git-dir");
   return { path, branch, baseSha, gitDir };
 }
 function branchName(template, v) {
   return template.replace("{tracker}", v.tracker).replace("{slug}", v.slug);
 }
 function renameRunBranch(worktree, to) {
-  const output = git(worktree, "ls-remote", "--heads", "origin", `refs/heads/${to}`);
+  const output = git2(worktree, "ls-remote", "--heads", "origin", `refs/heads/${to}`);
   if (output) throw new Error(`branch ${to} already exists on origin`);
-  git(worktree, "branch", "-m", to);
+  git2(worktree, "branch", "-m", to);
 }
 var FULL_SHA = /^[0-9a-f]{40}$/;
 var TOOL_CACHES = /* @__PURE__ */ new Set([".cache", ".vite", ".vite-temp", ".vitest"]);
@@ -20145,7 +20754,7 @@ function withBaseWorktree(o, fn) {
   }
 }
 function snapshotTreeImpl(worktree) {
-  const head = git(worktree, "rev-parse", "HEAD");
+  const head = git2(worktree, "rev-parse", "HEAD");
   const porcelainRaw = gitRaw(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all");
   const porcelainStr = porcelainRaw.toString("utf8");
   const entries = [];
@@ -20169,7 +20778,7 @@ function snapshotTreeImpl(worktree) {
       }
       let fingerprint3;
       try {
-        const fprint = git(worktree, "hash-object", "--", join(worktree, path));
+        const fprint = git2(worktree, "hash-object", "--", join(worktree, path));
         fingerprint3 = fprint;
       } catch {
         try {
@@ -20798,7 +21407,7 @@ var Suite = external_exports.object({
 });
 function loadSuite(file) {
   const suiteFile = resolve(file);
-  const parsed = Suite.safeParse((0, import_yaml3.parse)(readFileSync(suiteFile, "utf8")));
+  const parsed = Suite.safeParse((0, import_yaml4.parse)(readFileSync(suiteFile, "utf8")));
   if (!parsed.success) throw new Error(`${suiteFile}: ${parsed.error.message}`);
   const replayDir = resolve(dirname(suiteFile), parsed.data.replay);
   if (!existsSync(join(replayDir, "project"))) {
@@ -21726,7 +22335,7 @@ async function runOne(x) {
 }
 
 // src/pipeline/learning.ts
-var import_yaml4 = __toESM(require_dist());
+var import_yaml5 = __toESM(require_dist());
 
 // src/storage/slug.ts
 function slugify(title, maxLen = 40) {
@@ -22078,43 +22687,9 @@ function parseRetro(raw) {
   const issues = parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
   throw new Error(`retro output rejected: ${issues.join("; ")}`);
 }
-function physicalProblem(root, rel) {
-  const parts = rel.split("/");
-  let current = root;
-  for (const [i, part] of parts.entries()) {
-    current = join(current, part);
-    const where = parts.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync(current);
-    } catch (error2) {
-      const code = error2.code;
-      return code === "ENOENT" ? null : `${where} cannot be inspected (${code ?? String(error2)})`;
-    }
-    if (stat.isSymbolicLink()) return `${where} is a symbolic link`;
-    if (i < parts.length - 1 && !stat.isDirectory()) return `${where} is not a directory`;
-  }
-  return null;
-}
-function assertPlain(root, rel) {
-  const problem = physicalProblem(root, rel);
-  if (problem !== null) throw new Error(`refusing to use ${rel} under ${root}: ${problem}`);
-}
 function removePlain(root, rel) {
   assertPlain(root, rel);
   rmSync(join(root, rel), { force: true });
-}
-function assertNotHardLinked(root, rel) {
-  let stat;
-  try {
-    stat = lstatSync(join(root, rel));
-  } catch (error2) {
-    if (error2.code === "ENOENT") return;
-    throw error2;
-  }
-  if (stat.isFile() && stat.nlink > 1) {
-    throw new Error(`refusing to use ${rel} under ${root}: it is a hard link to another file`);
-  }
 }
 function assertMemoryStore(root) {
   assertPlain(root, MEMORY_DIR);
@@ -22150,7 +22725,7 @@ function parseExistingChecks(text2, where) {
   if (text2 === null) return [];
   let doc;
   try {
-    doc = (0, import_yaml4.parse)(text2);
+    doc = (0, import_yaml5.parse)(text2);
   } catch (error2) {
     const why = error2 instanceof Error ? error2.message : String(error2);
     throw new Error(`${where} is not valid YAML: ${why}`, { cause: error2 });
@@ -22170,8 +22745,8 @@ function mergeChecks(existing, retro) {
     fresh.push(rule);
   }
   if (!fresh.length) return null;
-  const text2 = (0, import_yaml4.stringify)([...existing, ...fresh], { lineWidth: 0 });
-  return { text: text2, rules: (0, import_yaml4.parse)(text2) };
+  const text2 = (0, import_yaml5.stringify)([...existing, ...fresh], { lineWidth: 0 });
+  return { text: text2, rules: (0, import_yaml5.parse)(text2) };
 }
 var proposalText = (n, p) => `# Proposal ${n} (${p.target})
 
@@ -22325,6 +22900,14 @@ function lessonStoreSink(source) {
   };
 }
 var FORMAT_TIMEOUT_MS = 5 * 60 * 1e3;
+function classifyCarefully(classify2) {
+  try {
+    return classify2();
+  } catch (error2) {
+    const reason2 = error2 instanceof Error ? error2.message : String(error2);
+    return { state: "refused", reason: `it could not be judged (${reason2})` };
+  }
+}
 var COMMIT_TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
 var PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
@@ -22387,7 +22970,7 @@ function verifyContents(contents, expected, who) {
   if (expected.rules !== void 0 && checks !== void 0) {
     let rules;
     try {
-      rules = (0, import_yaml4.parse)(checks.toString("utf8"));
+      rules = (0, import_yaml5.parse)(checks.toString("utf8"));
     } catch {
       rules = void 0;
     }
@@ -22437,7 +23020,7 @@ function finalizeRun(o) {
 `);
     writeWhole(o.runDir, "calibration.json", `${JSON.stringify(record2, null, 2)}
 `);
-    return { shipped: false, commit: null, pushed: false, written: [] };
+    return { shipped: false, commit: null, pushed: false, written: [], metricsRecord: null };
   }
   const { branch, specPath } = run2;
   const { worktree } = o;
@@ -22498,6 +23081,7 @@ function finalizeRun(o) {
   const scratch = mkdtempSync(join(tmpdir(), "marvin-finalize-"));
   const branchRef = `refs/heads/${branch}`;
   let newCommit = null;
+  let carried = null;
   try {
     const memoryBase = /* @__PURE__ */ new Map();
     for (const entry of treeEntries(git4, headSha2, MEMORY_DIR, true)) {
@@ -22550,6 +23134,16 @@ function finalizeRun(o) {
       );
     }
     const contents = readFormatted(worktree, paths, expected);
+    if (o.metricsRecord) {
+      const { path: rel, slug: recordSlug } = o.metricsRecord;
+      const judged = written.has(rel) ? { state: "refused", reason: "it is a path finalize writes itself" } : classifyCarefully(() => classifyRecord(git4, headSha2, worktree, rel, recordSlug));
+      carried = {
+        path: rel,
+        state: judged.state,
+        ...judged.state === "refused" ? { reason: judged.reason } : {}
+      };
+      if (judged.state === "appended") contents.set(rel, judged.bytes);
+    }
     const plumbing = isolatedGit(worktree, o.gitDir, {
       HUSKY: "0",
       GIT_INDEX_FILE: join(scratch, "index")
@@ -22611,6 +23205,12 @@ function finalizeRun(o) {
       git4.text("reset", "-q", "--", ...written);
     } catch {
     }
+    if (carried?.state === "appended") {
+      try {
+        git4.text("reset", "-q", "--", carried.path);
+      } catch {
+      }
+    }
     throw error2;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -22631,7 +23231,13 @@ function finalizeRun(o) {
       cause: error2
     });
   }
-  return { shipped: true, commit: newCommit, pushed: true, written: [...written] };
+  return {
+    shipped: true,
+    commit: newCommit,
+    pushed: true,
+    written: [...written],
+    metricsRecord: carried
+  };
 }
 
 // src/pipeline/engine.ts
@@ -23086,11 +23692,11 @@ function step(run2, obs, rubric, now) {
         });
       }
       const r = { ...run2, retries: { ...run2.retries, [role]: tries + 1 } };
-      const refused = (fault.kind === "invalid" || fault.kind === "crashed") && result.structured !== null && result.sessionId !== null && fault.detail !== "";
+      const refused2 = (fault.kind === "invalid" || fault.kind === "crashed") && result.structured !== null && result.sessionId !== null && fault.detail !== "";
       return {
         run: r,
         actions: [
-          refused ? spawn4(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
+          refused2 ? spawn4(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
         ]
       };
     }
@@ -24245,12 +24851,12 @@ function resolveGatePlan(input) {
     gates: [...standard, ...extra]
   };
 }
-var SHELL_METACHARACTERS = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
+var SHELL_METACHARACTERS2 = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
 var ABSTAIN = { kind: "abstain" };
 function planGates(gates, cwd) {
   const byToken = /* @__PURE__ */ new Map();
   return gates.map((gate) => {
-    if (SHELL_METACHARACTERS.test(gate.command)) return { gate, probe: ABSTAIN };
+    if (SHELL_METACHARACTERS2.test(gate.command)) return { gate, probe: ABSTAIN };
     const token = gate.command.trim().split(/\s+/)[0];
     if (!token) return { gate, probe: ABSTAIN };
     let probe = byToken.get(token);
@@ -24379,428 +24985,6 @@ function detectMakefile(projectRoot) {
     if (name) gates.push({ name: gate, command: `make ${name}` });
   }
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
-}
-function run(cmd, args, cwd, opts) {
-  const result = spawnSync(cmd, args, {
-    cwd,
-    encoding: "utf8",
-    ...opts?.input !== void 0 ? { input: opts.input } : {},
-    ...opts?.maxBuffer !== void 0 ? { maxBuffer: opts.maxBuffer } : {}
-  });
-  if (result.error) {
-    return { ok: false, code: -1, stderr: result.error.message };
-  }
-  if (result.status !== 0) {
-    return {
-      ok: false,
-      code: result.status ?? -1,
-      stderr: (result.stderr || result.stdout || "").trim()
-    };
-  }
-  return { ok: true, value: (result.stdout || "").trim() };
-}
-function git2(args, cwd, opts) {
-  return run("git", args, cwd, opts);
-}
-function inGitRepo(cwd) {
-  return git2(["rev-parse", "--is-inside-work-tree"], cwd).ok;
-}
-function hasGit() {
-  try {
-    execFileSync("git", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function defaultBranchFromOrigin(cwd) {
-  const r = git2(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd);
-  if (!r.ok || !r.value) return null;
-  const name = r.value.replace(/^refs\/remotes\/origin\//, "");
-  return name && name !== r.value ? name : null;
-}
-function normalizeScopePath(p) {
-  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-}
-
-// src/lib/metrics-collect.ts
-__toESM(require_dist());
-var Severity = external_exports.enum(["critical", "high", "medium", "low", "info"]);
-var AuditKind = external_exports.enum([
-  "scan",
-  "secrets",
-  "deps",
-  "iac",
-  "ci",
-  "threat-model",
-  "compliance",
-  "pentest",
-  // ADR-0038: `sec-gate` and `sec-fix` emit blocks too. Widening the contract
-  // without widening this mirror makes both reports parse as `invalid` and
-  // vanish from all three readers with only a skip-note.
-  "gate",
-  "fix"
-]);
-external_exports.enum(["new", "persisting", "regressed"]);
-var LinkRefSchema = external_exports.object({
-  kind: external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]),
-  label: external_exports.string().min(1),
-  url: external_exports.string().url().optional(),
-  ref: external_exports.string().optional()
-});
-var FindingSchema = external_exports.object({
-  id: external_exports.string(),
-  severity: Severity,
-  title: external_exports.string().min(1),
-  category: external_exports.string(),
-  file: external_exports.string().optional(),
-  line: external_exports.number().int().positive().optional(),
-  evidence: external_exports.string().optional(),
-  remediation: external_exports.string().optional(),
-  links: external_exports.array(LinkRefSchema).optional()
-});
-external_exports.object({
-  kind: AuditKind,
-  scanned_at: external_exports.string().datetime(),
-  target: external_exports.string().optional(),
-  summary: external_exports.record(Severity, external_exports.number().int().nonnegative()),
-  findings: external_exports.array(FindingSchema)
-});
-var TerminalVerdictSchema = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
-var AxisVerdictSchema = external_exports.object({
-  verdict: TerminalVerdictSchema,
-  blockers: external_exports.number().int().nonnegative(),
-  warnings: external_exports.number().int().nonnegative()
-});
-external_exports.object({
-  critic: external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]),
-  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
-  judged_at: external_exports.string().datetime(),
-  compliance: AxisVerdictSchema,
-  quality: AxisVerdictSchema,
-  inability: external_exports.object({
-    blocker: external_exports.string().min(1),
-    attempted: external_exports.string().min(1),
-    recommendation: external_exports.string().min(1)
-  }).optional()
-}).superRefine((value, ctx) => {
-  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
-  if (unable && !value.inability) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      path: ["inability"],
-      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
-    });
-  }
-});
-external_exports.object({
-  name: external_exports.string(),
-  status: external_exports.string().optional(),
-  code: external_exports.number().nullable().optional().catch(null),
-  durationMs: external_exports.number().optional().catch(void 0)
-});
-var ProvenanceSchema = external_exports.object({
-  head_sha: external_exports.string().nullable(),
-  branch: external_exports.string().nullable(),
-  dirty: external_exports.boolean().nullable(),
-  worktree_digest: external_exports.string().nullable(),
-  generated_at: external_exports.string()
-});
-external_exports.object({
-  verdict: external_exports.string().optional().catch(void 0),
-  gates: external_exports.array(external_exports.unknown()).optional().catch(void 0),
-  detectedStacks: external_exports.array(external_exports.string()).optional().catch(void 0),
-  warnings: external_exports.array(external_exports.string()).optional().catch(void 0),
-  wallClockMs: external_exports.number().optional().catch(void 0),
-  sumOfGatesMs: external_exports.number().optional().catch(void 0),
-  artifactPath: external_exports.string().nullable().optional().catch(null),
-  // Optional on read so every artifact written before ADR-0035 still parses, and
-  // `.catch(undefined)` like every other member so a corrupt provenance degrades
-  // alone — a freshness field must never cost a reader the verdict it came for.
-  provenance: ProvenanceSchema.optional().catch(void 0)
-});
-var METRIC_EVENT_TAG = "metric-event";
-var TASK_METRICS_TAG = "task-metrics";
-var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-var METRIC_EVENT_KINDS = [
-  "fix-round",
-  "spec-gap",
-  "open-item",
-  "critic-dispatch",
-  "critic-verdict",
-  "gate-call"
-];
-var METRIC_EVENT_SOURCES = [
-  "task-start",
-  "task-implement",
-  "task-deliver",
-  "marvin-tm-executor"
-];
-var FIX_LOOPS = ["verify-gate", "critic", "red-green"];
-var OPEN_ITEM_CLASSIFICATIONS = ["deferred", "blocked"];
-var METRIC_CRITICS = ["marvin-tm-spec-critic", "marvin-tm-diff-critic"];
-var METRIC_GATES = ["dor"];
-var TERMINAL_VERDICTS = ["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"];
-var DOR_VERDICTS = ["PASS", "PASS WITH WARNINGS", "FAIL"];
-var REQUIRED_EVENT_FIELDS = {
-  "fix-round": ["loop", "round"],
-  "spec-gap": ["detail"],
-  "open-item": ["classification", "detail"],
-  "critic-dispatch": ["critic", "pass"],
-  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
-  "gate-call": ["gate", "call", "verdict"]
-};
-var MetricEventShape = external_exports.object({
-  slug: external_exports.string().min(1).regex(SLUG_RE, "slug must be kebab-case"),
-  source: external_exports.enum(METRIC_EVENT_SOURCES),
-  step: external_exports.string().min(1),
-  kind: external_exports.enum(METRIC_EVENT_KINDS),
-  contract_sha: external_exports.string().nullable().optional(),
-  at: external_exports.string().datetime(),
-  detail: external_exports.string().min(1).optional(),
-  loop: external_exports.enum(FIX_LOOPS).optional(),
-  round: external_exports.number().int().positive().optional(),
-  classification: external_exports.enum(OPEN_ITEM_CLASSIFICATIONS).optional(),
-  critic: external_exports.enum(METRIC_CRITICS).optional(),
-  pass: external_exports.number().int().positive().optional(),
-  verdict: external_exports.string().min(1).optional(),
-  blockers: external_exports.number().int().nonnegative().optional(),
-  warnings: external_exports.number().int().nonnegative().optional(),
-  gate: external_exports.enum(METRIC_GATES).optional(),
-  call: external_exports.number().int().positive().optional()
-});
-MetricEventShape.superRefine((value, ctx) => {
-  for (const field of REQUIRED_EVENT_FIELDS[value.kind]) {
-    const v = value[field];
-    if (v === void 0 || v === null) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: [field],
-        message: `a ${value.kind} event requires ${field}`
-      });
-    }
-  }
-  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
-    if (!TERMINAL_VERDICTS.includes(value.verdict)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["verdict"],
-        message: `a critic-verdict records a terminal verdict: ${TERMINAL_VERDICTS.join(" | ")}`
-      });
-    }
-  }
-  if (value.kind === "gate-call" && value.verdict !== void 0) {
-    if (!DOR_VERDICTS.includes(value.verdict)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["verdict"],
-        message: `a gate-call records the gate's verdict: ${DOR_VERDICTS.join(" | ")}`
-      });
-    }
-  }
-});
-external_exports.object({
-  slug: external_exports.string().min(1),
-  rolled_up_at: external_exports.string().min(1),
-  base_branch: external_exports.string().min(1),
-  sources: external_exports.record(external_exports.string(), external_exports.enum(["present", "absent"])),
-  time: external_exports.object({}).passthrough(),
-  quality: external_exports.object({}).passthrough(),
-  rework: external_exports.object({}).passthrough(),
-  notes: external_exports.array(external_exports.string())
-}).passthrough();
-function metricsRecordPath(dir, specBasename) {
-  return join(dir, `${specBasename}.md`);
-}
-function recordBasenameForSpec(specPath) {
-  return basename(specPath).replace(/\.md$/, "");
-}
-function slugOfRecord(filename) {
-  return basename(filename).replace(/\.md$/, "").replace(/^\d+-/, "");
-}
-function findRecord(dir, slug) {
-  if (!existsSync(dir)) return null;
-  let entries;
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return null;
-  }
-  const exact = `${slug}.md`;
-  const numbered = new RegExp(`^\\d+-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.md$`);
-  let fallback = null;
-  for (const entry of entries) {
-    if (entry === exact) return join(dir, entry);
-    if (!fallback && numbered.test(entry)) fallback = join(dir, entry);
-  }
-  return fallback;
-}
-function header(slug) {
-  return `# Metrics \u2014 ${slug}
-
-Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
-
-`;
-}
-function ensureRecord(path, slug) {
-  if (existsSync(path)) return;
-  mkdirSync(join(path, ".."), { recursive: true });
-  appendFileSync(path, header(slug), "utf8");
-}
-var SHELL_METACHARACTERS2 = /[;|&`\n<>]|\$\(/;
-function splitRef(ref) {
-  const i = ref.indexOf("::");
-  return i === -1 ? { file: ref, name: "" } : { file: ref.slice(0, i).trim(), name: ref.slice(i + 2).trim() };
-}
-function packageDir(file) {
-  const i = file.lastIndexOf("/");
-  return i === -1 ? "." : `./${file.slice(0, i)}`;
-}
-var STACK_DEFAULTS = {
-  python: ({ file, name }) => `pytest ${file}::${name}`,
-  go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
-  rust: ({ name }) => `cargo test ${name}`
-};
-function isUnsafeOracleRef(criterion) {
-  const oracle = criterion.oracle;
-  if (oracle.run?.trim() || oracle.kind !== "test") return false;
-  const ref = oracle.ref?.trim();
-  if (!ref) return false;
-  const parts = splitRef(ref);
-  return SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name);
-}
-function resolveOracleCommand(criterion, opts) {
-  const oracle = criterion.oracle;
-  if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
-  if (oracle.run?.trim()) return { command: oracle.run.trim(), source: "oracle.run" };
-  if (oracle.kind === "prose-review") {
-    return { command: null, source: null, reason: "prose-review-oracle" };
-  }
-  const ref = oracle.ref?.trim();
-  if (!ref) return { command: null, source: null, reason: "no-ref" };
-  if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
-  const parts = splitRef(ref);
-  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
-  if (opts.testOne?.trim()) {
-    const command = fillShellTemplate(opts.testOne, {
-      "{file}": parts.file,
-      "{name}": parts.name,
-      "{ref}": ref
-    }).trim();
-    return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
-  }
-  const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;
-  if (!row) return { command: null, source: null, reason: "no-single-test-command" };
-  if (!parts.name) return { command: null, source: null, reason: "ref-has-no-test-name" };
-  return { command: row(parts), source: "stack-default" };
-}
-external_exports.object({
-  /** The spec's validated kebab-case slug — also this journal's filename. */
-  slug: external_exports.string().min(1),
-  /** The seal this run was recorded against. Proofs never cross it. */
-  contract_sha: external_exports.string().min(1),
-  criterion: external_exports.string().min(1),
-  /** Which phase this was: the red run expects `fail`, the green one `pass`. */
-  expect: external_exports.enum(["pass", "fail"]),
-  /** What happened. `not-run` covers an unresolved command, a signal kill and a
-   * launch failure alike — none of them is evidence about the code. */
-  status: external_exports.enum(["pass", "fail", "not-run"]),
-  command: external_exports.string().nullable(),
-  source: external_exports.string().nullable(),
-  reason: external_exports.string().nullable().optional(),
-  code: external_exports.number().nullable(),
-  signal: external_exports.string().nullable(),
-  /** The referenced test file and the hash of its bytes at run time — what makes
-   * a red and a green comparable rather than merely consecutive. */
-  test_file: external_exports.string().nullable(),
-  test_sha: external_exports.string().nullable(),
-  head_sha: external_exports.string().nullable(),
-  durationMs: external_exports.number().optional(),
-  ran_at: external_exports.string()
-});
-var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
-external_exports.object({
-  /** The spec's validated kebab-case slug — also this journal's filename. */
-  slug: external_exports.string().min(1),
-  /**
-   * Which writer: step ids collide across the pipelines. `marvin-tm-executor`
-   * is the headless implementation path, which numbers its steps `§1`–`§5`.
-   */
-  source: external_exports.enum(PROGRESS_SOURCES),
-  /** The writer's own step id — `"1.5"`, `"4F"`, `"5F"`, `"2.5"`, `"§1"`. */
-  step: external_exports.string().min(1),
-  kind: external_exports.enum(["step", "criterion", "decision", "note", "archived"]),
-  /** One line of position and choice. Never a credential, token or customer datum. */
-  detail: external_exports.string(),
-  /** The acceptance-criterion id, when `kind` is `criterion`. */
-  criterion: external_exports.string().nullable().optional(),
-  /** The draft/spec path, recorded once when the draft is opened. */
-  path: external_exports.string().nullable().optional(),
-  /** The seal in force, when the writer knows one. */
-  contract_sha: external_exports.string().nullable().optional(),
-  /** ISO 8601. */
-  at: external_exports.string()
-});
-var JournalGate = external_exports.object({
-  name: external_exports.string().min(1),
-  status: external_exports.string().min(1),
-  durationMs: external_exports.number()
-});
-var RunEntrySchema = external_exports.object({
-  /** The spec's validated kebab-case slug — also this journal's filename. */
-  slug: external_exports.string().min(1),
-  kind: external_exports.literal("run"),
-  /** ISO 8601, stamped by the tool. */
-  at: external_exports.string(),
-  /** `PASS` | `PASS WITH WARNINGS` | `FAIL`, as the run computed it. */
-  verdict: external_exports.string().min(1),
-  mode: external_exports.string().min(1),
-  execution: external_exports.string().min(1),
-  /** The gate subset a targeted retry asked for, or null for a full run. */
-  only: external_exports.array(external_exports.string()).nullable(),
-  gates: external_exports.array(JournalGate),
-  wallClockMs: external_exports.number(),
-  sumOfGatesMs: external_exports.number(),
-  /** The commit the run proved, from the run's own provenance; null outside git. */
-  head_sha: external_exports.string().nullable()
-});
-var GateEntrySchema = external_exports.object({
-  slug: external_exports.string().min(1),
-  kind: external_exports.literal("gate"),
-  at: external_exports.string(),
-  decision: external_exports.enum(["ALLOW", "BLOCK"]),
-  /** The verdict the gate read off the artifact, null when it found none. */
-  verdict: external_exports.string().nullable(),
-  staleness: external_exports.enum(["fresh", "stale", "unknown"]),
-  allowStale: external_exports.boolean(),
-  red_green: external_exports.enum(["proven", "missing", "unknown"]),
-  /** The artifact the gate judged, project-relative. */
-  artifact: external_exports.string().min(1)
-});
-external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
-
-// src/lib/metrics-collect.ts
-function findSpecBySlug(slug, projectRoot, specConfig) {
-  for (const dir of specSearchDirs(projectRoot, specConfig)) {
-    const p = resolveSpecBySlug(dir, slug, projectRoot);
-    if (p) return p;
-  }
-  return null;
-}
-
-// src/lib/metrics-record.ts
-function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
-  const existing = findRecord(dir, slug);
-  if (existing) return existing;
-  const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
-  return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
-}
-function recordSlugForSpec(declared, specPath) {
-  const own = (declared ?? "").trim();
-  const slug = own || slugOfRecord(specPath);
-  if (!SLUG_RE.test(slug)) return null;
-  if (!own && /^\d+-/.test(slug)) return null;
-  return slug;
 }
 
 // src/lib/oracles.ts
@@ -26729,10 +26913,10 @@ function isValidJWT2(token, algorithm = null) {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
       return false;
-    const [header2] = tokensParts;
-    if (!header2)
+    const [header] = tokensParts;
+    if (!header)
       return false;
-    const parsedHeader = JSON.parse(atob(header2));
+    const parsedHeader = JSON.parse(atob(header));
     if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT")
       return false;
     if (!parsedHeader.alg)
@@ -31017,7 +31201,7 @@ function checkCitations(body, planned, projectRoot) {
   let trackedList = null;
   const tracked = () => {
     if (trackedList === null) {
-      const r = git2(["ls-files"], projectRoot, { maxBuffer: 64 * 1024 * 1024 });
+      const r = git(["ls-files"], projectRoot, { maxBuffer: 64 * 1024 * 1024 });
       trackedList = r.ok ? r.value.split("\n").filter(Boolean) : [];
     }
     return trackedList;
@@ -31612,7 +31796,6 @@ var CI_STATES = ["green", "red", "pending", "conflict", "no_ci", "closed"];
 var FULL_SHA5 = /^[0-9a-f]{40}$/;
 var PLAIN_TOKEN2 = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var CONFIG_PATH = ".marvin/config.json";
-var METRICS_DIR = ".marvin/metrics";
 var SPEC_COMMIT_MARKER = "spec-commit.json";
 var CHECKS_PATH2 = ".marvin/pipeline/checks.yaml";
 var CALIBRATION_PATH2 = ".marvin/pipeline/calibration.jsonl";
@@ -31666,6 +31849,14 @@ function readEventsTolerant(runDir) {
       return [];
     }
   });
+}
+function carriedRecord(run2, worktree, specText) {
+  if (specText === null || run2.specPath === null || !isCanonicalPath(run2.specPath)) return null;
+  try {
+    return runRecord(worktree, run2.specPath, specText);
+  } catch {
+    return null;
+  }
 }
 function physicallyInside(root, target) {
   const rel = relative(realpathSync(root), realpathSync(target));
@@ -32168,12 +32359,10 @@ ${tail}`);
       const ready = readySpec(original, (text2) => specReadiness(text2, wt, configFor(run2).spec));
       if ("failures" in ready) return { result, dorFailures: ready.failures };
       if (ready.sealed) {
-        const slug = recordSlugForSpec(parseFrontmatter(ready.text).frontmatter.slug, abs);
-        if (slug !== null) {
-          try {
-            ensureRecord(recordPathFor(join(wt, METRICS_DIR), slug, wt, void 0, abs), slug);
-          } catch {
-          }
+        try {
+          const record2 = runRecord(wt, path, ready.text);
+          if (record2 !== null) ensureRecord(join(wt, record2.path), record2.slug);
+        } catch {
         }
       }
       if (ready.text !== original) {
@@ -32540,6 +32729,7 @@ ${tail}`);
       exemptPattern: config2.pipeline.scope_exempt_pattern,
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
+      metricsRecord: carriedRecord(run2, wt.path, spec.text),
       run: runner,
       timeoutMs
     });
@@ -32666,14 +32856,8 @@ ${tail}`);
     const issue2 = sealIssue(text2);
     if (issue2 !== null) return { refused: `${path} no longer matches its seal: ${issue2}` };
     const files = [{ path, bytes: spec.bytes }];
-    const { frontmatter } = parseFrontmatter(text2.replace(/\r\n?/g, "\n"));
-    const slug = recordSlugForSpec(frontmatter.slug, path);
-    if (slug === null) return { files };
-    const dir = join(wt.path, METRICS_DIR);
-    const record2 = relative(
-      wt.path,
-      recordPathFor(dir, slug, wt.path, void 0, join(wt.path, path))
-    ).split(sep).join("/");
+    const record2 = runRecordPath(wt.path, path, text2);
+    if (record2 === null) return { files };
     const found = plainFile(wt.path, record2);
     if (found === null) return { files };
     if ("problem" in found) {
@@ -32856,7 +33040,8 @@ ${tail}`);
     if (ships && (!gated?.passed || !FULL_SHA5.test(gated.head))) {
       throw new Error("finalize needs the commit a passing gate approved, and none is recorded");
     }
-    finalizeRun({
+    const metricsRecord = ships && gated && run2.specPath !== null && isCanonicalPath(run2.specPath) ? carriedRecord(run2, wt.path, committedText(wt, gated.head, run2.specPath)) : null;
+    const result = finalizeRun({
       run: run2,
       runDir,
       worktree: wt.path,
@@ -32866,8 +33051,19 @@ ${tail}`);
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), external_exports.array(external_exports.string())) ?? [],
       formatCommand: config2.pipeline.format_command,
+      metricsRecord,
       runCommand: runner
     });
+    const carried = result.metricsRecord;
+    if (carried?.state === "appended") {
+      note(`the engine committed the metrics record ${carried.path} in the finalize commit`, {
+        notify: true
+      });
+    } else if (carried?.state === "refused") {
+      note(`left the metrics record ${carried.path} uncommitted: ${carried.reason ?? "refused"}`, {
+        notify: true
+      });
+    }
     return { run: run2, obs: { kind: "finalized" } };
   };
   const markReady = (run2, step2) => {

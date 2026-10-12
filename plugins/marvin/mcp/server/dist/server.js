@@ -8107,9 +8107,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header2 = (startWithSpace ? indentSize : "") + chomp;
+      let header = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -8124,11 +8124,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header2}
+          return `>${header}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header2}
+      return `|${header}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -11188,10 +11188,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header2)
+      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -11202,26 +11202,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header2.length;
+        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header2.indent;
-      let offset = scalar.offset + header2.length;
+      let trimIndent = scalar.indent + header.indent;
+      let offset = scalar.offset + header.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header2.indent === 0 && indent.length > trimIndent)
+          if (header.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header2.indent === 0)
+          if (header.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -11248,7 +11248,7 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header2.indent ? "explicit indentation indicator" : "first line";
+          const src = header.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
@@ -11275,7 +11275,7 @@ var require_resolve_block_scalar = __commonJS({
           prevMoreIndented = false;
         }
       }
-      switch (header2.chomp) {
+      switch (header.chomp) {
         case "-":
           break;
         case "+":
@@ -11287,8 +11287,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header2.length + scalar.source.length;
-      return { value, type, comment: header2.comment, range: [start, end, end] };
+      const end = start + header.length + scalar.source.length;
+      return { value, type, comment: header.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -12119,10 +12119,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header2 = token.props[0];
-            if (header2.type !== "block-scalar-header")
+            const header = token.props[0];
+            if (header.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -12154,10 +12154,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header2 = token.props[0];
-        if (header2.type !== "block-scalar-header")
+        const header = token.props[0];
+        if (header.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header2.source = head;
+        header.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -15139,10 +15139,10 @@ function isValidJWT(jwt, alg) {
   if (!jwtRegex.test(jwt))
     return false;
   try {
-    const [header2] = jwt.split(".");
-    if (!header2)
+    const [header] = jwt.split(".");
+    if (!header)
       return false;
-    const base642 = header2.replace(/-/g, "+").replace(/_/g, "/").padEnd(header2.length + (4 - header2.length % 4) % 4, "=");
+    const base642 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
     const decoded = JSON.parse(atob(base642));
     if (typeof decoded !== "object" || decoded === null)
       return false;
@@ -19795,10 +19795,10 @@ function isValidJWT2(token, algorithm = null) {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
       return false;
-    const [header2] = tokensParts;
-    if (!header2)
+    const [header] = tokensParts;
+    if (!header)
       return false;
-    const parsedHeader = JSON.parse(atob(header2));
+    const parsedHeader = JSON.parse(atob(header));
     if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT")
       return false;
     if (!parsedHeader.alg)
@@ -33998,26 +33998,29 @@ function findRecord2(dir, slug) {
   }
   return fallback;
 }
-function header(slug) {
+function recordHeader(slug) {
   return `# Metrics \u2014 ${slug}
 
 Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
 
 `;
 }
-function append(path, slug, tag, payload) {
-  mkdirSync(join(path, ".."), { recursive: true });
-  const head = existsSync(path) ? "" : header(slug);
-  appendFileSync(path, `${head}\`\`\`json ${tag}
+function recordBlock(tag, payload) {
+  return `\`\`\`json ${tag}
 ${JSON.stringify(payload)}
 \`\`\`
 
-`, "utf8");
+`;
+}
+function append(path, slug, tag, payload) {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const head = existsSync(path) ? "" : recordHeader(slug);
+  appendFileSync(path, `${head}${recordBlock(tag, payload)}`, "utf8");
 }
 function ensureRecord(path, slug) {
   if (existsSync(path)) return;
   mkdirSync(join(path, ".."), { recursive: true });
-  appendFileSync(path, header(slug), "utf8");
+  appendFileSync(path, recordHeader(slug), "utf8");
 }
 function appendMetricEvent(path, event) {
   append(path, event.slug, METRIC_EVENT_TAG, event);
@@ -35204,7 +35207,7 @@ function oracleJournalPath(runsDir, slug) {
 function recordOracleRun(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = oracleJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
 
 Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
 
@@ -35214,7 +35217,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readOracleRuns(runsDir, slug) {
   const path = oracleJournalPath(runsDir, slug);
@@ -35360,7 +35363,7 @@ function progressJournalPath(runsDir, slug) {
 function recordProgress(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = progressJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
 
 Append-only. One \`${PROGRESS_TAG}\` block per entry.
 
@@ -35370,7 +35373,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readProgress(runsDir, slug) {
   const path = progressJournalPath(runsDir, slug);
@@ -35469,7 +35472,7 @@ function verifyJournalPath(runsDir, slug) {
 function recordVerifyRun(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = verifyJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
 
 Append-only. One \`${VERIFY_RUN_TAG}\` block per run or delivery-gate decision.
 
@@ -35479,7 +35482,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readVerifyRuns(runsDir, slug) {
   const path = verifyJournalPath(runsDir, slug);

@@ -2181,3 +2181,146 @@ test("an ignored file planted under the targets is refused, though git status do
   exclude(clean);
   assert.doesNotThrow(() => l.finalizeRun(clean.opts()), "an exclude rule alone is not a problem");
 });
+
+// ── the metrics record finalize carries ──────────────────────────────────────
+
+const metricsStore = await importTs("src/storage/metrics.ts");
+const RECORD = ".marvin/metrics/001-demo.md";
+const METRICS_OPTION = { metricsRecord: { path: RECORD, slug: "demo" } };
+const terminalBlock = (n = 1) => ({
+  slug: "demo",
+  rolled_up_at: `2026-10-12T1${n}:00:00.000Z`,
+  base_branch: "dev",
+  sources: { spec: "present" },
+  time: {},
+  quality: {},
+  rework: {},
+  notes: [],
+});
+
+/** A PR fixture whose gated commit holds the seal anchor's record, then the delivery gate's append. */
+function recordFixture() {
+  const fx = prFixture();
+  metricsStore.ensureRecord(join(fx.wt, RECORD), "demo");
+  sh(fx.wt, "add", RECORD);
+  sh(fx.wt, "commit", "-m", "approved spec");
+  sh(fx.wt, "push", "origin", `HEAD:refs/heads/${fx.branch}`);
+  fx.gate();
+  // What the verify tool's delivery gate does on ALLOW, after the executor's last commit.
+  metricsStore.appendTaskMetrics(join(fx.wt, RECORD), terminalBlock());
+  return fx;
+}
+
+test("an appended metrics record lands in the finalize commit byte-equal, and the formatter never sees it", () => {
+  const fx = recordFixture();
+  const appended = readFileSync(join(fx.wt, RECORD));
+  const dir = tmp("pipe-fmt-");
+  const log = join(dir, "argv.json");
+  const script = join(dir, "fmt.mjs");
+  writeFileSync(
+    script,
+    [
+      'import { writeFileSync } from "node:fs";',
+      "const [log, ...files] = process.argv.slice(2);",
+      "writeFileSync(log, JSON.stringify(files));",
+    ].join("\n"),
+  );
+
+  const out = l.finalizeRun(
+    fx.opts({
+      ...METRICS_OPTION,
+      formatCommand: [process.execPath, script, log].map(seal.shellQuote).join(" "),
+    }),
+  );
+
+  assert.deepEqual(out.metricsRecord, { path: RECORD, state: "appended" });
+  assert.equal(JSON.parse(readFileSync(log, "utf8")).includes(join(fx.wt, RECORD)), false);
+  assert.ok(!out.written.includes(RECORD), "the record is carried, not written");
+  const listed = sh(fx.wt, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").split("\n");
+  assert.ok(listed.includes(RECORD));
+  assert.ok(execFileSync("git", ["show", `HEAD:${RECORD}`], { cwd: fx.wt }).equals(appended));
+  assert.ok(readFileSync(join(fx.wt, RECORD)).equals(appended));
+  assert.equal(status(fx.wt), "");
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), head(fx.wt));
+});
+
+test("a refused metrics record ships the run without it, reports why, and is left as it was", () => {
+  const fx = recordFixture();
+  appendFileSync(join(fx.wt, RECORD), "Executor's note: done.\n");
+  const before = readFileSync(join(fx.wt, RECORD));
+
+  const out = l.finalizeRun(fx.opts(METRICS_OPTION));
+
+  assert.equal(out.shipped, true);
+  assert.equal(out.pushed, true);
+  assert.equal(out.metricsRecord.path, RECORD);
+  assert.equal(out.metricsRecord.state, "refused");
+  assert.match(out.metricsRecord.reason, /not a record block/);
+  const listed = sh(fx.wt, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").split("\n");
+  assert.ok(!listed.includes(RECORD));
+  assert.ok(readFileSync(join(fx.wt, RECORD)).equals(before));
+  assert.equal(status(fx.wt), `M ${RECORD}`, "sh trims the leading space");
+});
+
+test("a git failure while judging the record refuses the record, never the run", () => {
+  const fx = recordFixture();
+  // Corrupt the committed record's loose blob: the classifier's `cat-file` then fails outright.
+  const oid = sh(fx.wt, "rev-parse", `HEAD:${RECORD}`);
+  const objects = sh(fx.wt, "rev-parse", "--path-format=absolute", "--git-path", "objects");
+  const loose = join(objects, oid.slice(0, 2), oid.slice(2));
+  chmodSync(loose, 0o644);
+  writeFileSync(loose, "not a git object");
+
+  const out = l.finalizeRun(fx.opts(METRICS_OPTION));
+
+  assert.equal(out.shipped, true);
+  assert.equal(out.metricsRecord.state, "refused");
+  assert.match(out.metricsRecord.reason, /could not be judged/);
+});
+
+test("a replay after the finalize commit reads the record unchanged and commits nothing more", () => {
+  const fx = recordFixture();
+  sh(fx.wt, "remote", "set-url", "origin", join(tmp("pipe-gone-"), "missing.git"));
+  assert.throws(() => l.finalizeRun(fx.opts(METRICS_OPTION)), /push|repository|fatal/i);
+  const committed = head(fx.wt);
+  assert.match(sh(fx.wt, "show", `HEAD:${RECORD}`), /```json task-metrics/);
+  sh(fx.wt, "remote", "set-url", "origin", fx.origin);
+
+  const again = l.finalizeRun(fx.opts(METRICS_OPTION));
+
+  assert.equal(again.commit, null);
+  assert.deepEqual(again.metricsRecord, { path: RECORD, state: "unchanged" });
+  assert.equal(head(fx.wt), committed);
+  assert.equal(status(fx.wt), "");
+});
+
+test("a failed finalize leaves the appended record's bytes alone and its index entry clean", () => {
+  const fx = recordFixture();
+  const appended = readFileSync(join(fx.wt, RECORD));
+  assert.throws(
+    () =>
+      l.finalizeRun(
+        fx.opts({
+          ...METRICS_OPTION,
+          formatCommand: `${seal.shellQuote(process.execPath)} -e "process.exit(3)"`,
+        }),
+      ),
+    /format/,
+  );
+  assert.equal(head(fx.wt), fx.gated);
+  assert.ok(readFileSync(join(fx.wt, RECORD)).equals(appended));
+  assert.equal(status(fx.wt), `M ${RECORD}`, "sh trims the leading space");
+  assert.equal(sh(fx.wt, "diff", "--cached", "--name-only"), "");
+});
+
+test("a run that does not ship leaves the record alone and reports none", () => {
+  const fx = recordFixture();
+  const before = readFileSync(join(fx.wt, RECORD));
+  const out = l.finalizeRun(
+    fx.opts({ ...METRICS_OPTION, run: makeRun({ ...fx.run, prUrl: null }) }),
+  );
+  assert.equal(out.shipped, false);
+  assert.equal(out.metricsRecord, null);
+  assert.equal(head(fx.wt), fx.gated);
+  assert.ok(readFileSync(join(fx.wt, RECORD)).equals(before));
+});
