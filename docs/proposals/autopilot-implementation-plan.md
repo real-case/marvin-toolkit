@@ -2,7 +2,7 @@
 
 | Field      | Value |
 | ---------- | ----- |
-| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Three candidates pass the L3 gate against the baseline under the delivered-runs rule of 2026-10-11, the last (`haiku-dor-rounds`, b9cf905) delivering 8 of 8 ("Benchmark iterations" under Task 21). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), Task 22 (conditional on benchmark evidence) |
+| Status     | In progress — Phases 0–3 implemented (Tasks 1–18), Task 20 scenario 1 shipped (deterministic sandbox, 2026-10-09) and scenario 2's headless half (live sandbox on Haiku, 2026-10-10), Task 21 shipped (replay benchmark and L3 gate on a synthetic suite, 2026-10-10) with a two-repeat baseline (2026-10-11), and Task 19 shipped as marvin-toolkit's own configuration (2026-10-11). Spike S8 is verified at the process level by tests (2026-10-11, `autopilot-spikes.md`); a real turn end and a desktop-app restart are still owed. Three engine candidates pass the L3 gate against the baseline under the delivered-runs rule of 2026-10-11, the last, `haiku-dor-rounds` (b9cf905) delivering 8 of 8, and the tier guidance in task-start (`haiku-tier-guidance`, bede40c, 2026-10-12) passes against it with the tier matching in 7 of 8 runs ("Benchmark iterations" under Task 21). Remaining: Task 20 scenario 2's interactive half and scenarios 3–4 (live runs against marvin-toolkit, which need the engine and the configuration on `dev`), Task 22 (conditional on benchmark evidence) |
 | Date       | 2026-10-04 |
 | Applies to | New `mcp/server/src/pipeline/` module, `pipeline/` assets, `skills/autopilot`; pipeline mode in `task-start`, `task-implement`, `task-deliver`, `commit`, `pr-create` |
 | Spikes     | `docs/proposals/autopilot-spikes.md` |
@@ -3913,7 +3913,7 @@ Known bias: the real PR's tests may name internals the pipeline is free to choos
 
 ---
 
-**Benchmark iterations (2026-10-11).** Five two-repeat Haiku runs of the sandbox suite, each
+**Benchmark iterations (2026-10-11 and 2026-10-12).** Seven two-repeat Haiku runs of the sandbox suite, each
 compared with the L3 gate against the baseline (`evals/autopilot/results/2026-10-11-*.md`). "Hidden"
 is the all-runs rate the result files report; the last two columns are the gate as each run was
 judged, and as `bench-compare` judges the same files under the delivered-runs rule adopted below.
@@ -3926,6 +3926,7 @@ judged, and as `bench-compare` judges the same files under the delivered-runs ru
 | `haiku-integrated` | 80329b3 | 5/8 | 58.3% | $7.74 | 52 min | reject | reject |
 | `haiku-engine-seal` | 19707ac | 7/8 | 83.3% | $9.11 | 64 min | reject | accept |
 | `haiku-dor-rounds` | b9cf905 | 8/8 | 100% | $10.75 | 79 min | — | accept |
+| `haiku-tier-guidance` | bede40c | 8/8 | 100% | $11.97 | 92 min | — | accept |
 
 What each changed, and what it showed:
 
@@ -3962,6 +3963,21 @@ leaves it without one. That raises the planner's DoR budget from one resume (the
 benched it: 8 of 8 delivered, every hidden file passing, no gate rejection in any run, $10.75 (21%
 under the baseline). One planner needed a DoR round and one spec was sealed by the engine; the
 tier still missed the suite in 3 of 8 runs, the subject of the separate tier-guidance proposal.
+
+`bede40c` is that proposal, the first L3 change to a skill rather than to the engine: task-start's
+Step 5F defines a feature's `risk` by what the change does to existing behaviour (purely additive
+work is `low`, changed behaviour for an existing caller is at least `medium`), Step 4F no longer
+carries a variant's comparative rating into the frontmatter, Step 2F gives a command-line script's
+tests a file of their own, and the spec template's writing-rules comment points at both rules.
+`haiku-tier-guidance`, compared against `haiku-dor-rounds`, is accepted: 8 of 8 delivered, every
+hidden file passing, $11.97 (11% over its baseline, within the 1.15 clause; 12% under the original
+baseline, which it is also accepted against). The tier matched in 7 of 8 runs against 5 of 8. Both
+`duration` planners gave the script its own test file and reached six contract files (standard);
+one of the two `csv-quotes` planners rated the parser rewrite `medium`, while the other rated it
+`low` after reading both rules, so the risk half holds in one run of two. Three runs spent a second
+executor iteration on a gate rejection, none of them about the tier: stray temporary files and a
+metrics record left uncommitted (the latter in five of the seven benches), and one executor that
+edited a re-export and the README a two-file contract did not list.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 
