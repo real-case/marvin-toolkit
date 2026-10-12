@@ -276,3 +276,54 @@ presentation, and `--answered-by` reaching `calibration.jsonl` through `aggregat
 run raised no question; the one answered under `--answered-by orchestrator` was in a run stopped
 before its retro). A run that reaches the standard tier, so that sealed tests are exercised live,
 and one long enough for the 6-minute heartbeat to fire are also still owed.
+
+### Scenario 2 — live sandbox, interactive half (2026-10-12)
+
+The orchestrator was a real Code-tab session on Opus 5.5 following `/marvin:autopilot`, and the
+owner answered every `AskUserQuestion` in it. The children ran on Haiku 4.5 under the same
+switches as the headless half (`MARVIN_PIPELINE_SANDBOX=1`, `MARVIN_PIPELINE_MODEL_OVERRIDE=haiku`,
+`MARVIN_PIPELINE_FAKE_CI=green`, the sandbox `gh` shim, a stub `gh` for the engine), wrapped in a
+small `pipe` script because a Code-tab Bash call keeps no environment. The project was the
+benchmark's sandbox (`evals/autopilot/replay/sandbox/project`: CSV parsing and a report built on
+it), so that a task could reach the standard tier. Both tasks were given in Russian with
+`--lang ru`. Claude Code 2.1.287, engine at `33dd79a` (`feature/autopilot`, with the engine-carried
+metrics record).
+
+| Run | Task | Tier | Questions | Approvals | Iterations | Cost | Wall time |
+|-----|------|------|-----------|-----------|------------|------|-----------|
+| `r20261012-1136-ceae` | RFC 4180 quoting in `parseCsv` (the bench's `csv-quotes`) | standard | 0 | 1 | 1 | $1.72 | 13 min |
+| `r20261012-1153-36c1` | stop `totals()` returning NaN, ask how; add `summary()` | standard | 1, the owner's | 2 (changes, then approve) | 1 | $2.89 | 30 min |
+
+Both reached `ready` with the verifier passing on iteration 1 and no rejection.
+
+**Checks.**
+
+| Check | Result |
+|-------|--------|
+| Orchestrator lines in the invocation language | yes: every status line, both spec presentations and both final reports in Russian; everything sent to the engine in English |
+| Every child log English | yes: no Cyrillic in any child's result |
+| Push notifications at approval and at ready | yes: sent before each of the three approvals, before the planner question, and at both `STAGE ready` |
+| The skill's spec-approval presentation | yes: spec link, summary, criteria and files, risk, critic verdict, tier and reasons, assignments, assumptions, and "no estimate" with no calibration records on the tier |
+| `--answered-by` reaches `calibration.jsonl` | yes: the owner's answer to the planner's question went in under `--answered-by user`, the `answer` event carries `answeredBy: user`, and the finalize commit's calibration record has `questions: {byOrchestrator: 0, byUser: 1}` |
+| A standard-tier run seals tests live | yes, both runs: the sealed-test commit sits between the approved-spec commit and the executor's first commit |
+| "Request changes" | yes: `{kind: "changes"}` sent the planner back with the text, and a second approval followed |
+| A report at least every 6 min of executor wall time | still not exercised: the executors ran 4 min and 1 min |
+
+**Observed.**
+
+- In the second run the planner, after the owner's answer, narrowed the task to the `totals()`
+  fix and deferred `summary()` to "a separate spec": the spec critic's first dispatch had flagged
+  a feature bundled into a bugfix, and the planner chose the critic over the task text, which
+  asked for both. The risk then rose to `high` and the tier to `heavy`. The owner's "request
+  changes" restored the full scope as one feature (`medium`, standard). The approval step caught
+  it; nothing earlier would have.
+- The revised spec kept the narrowing among its `assumptions`, and the retro, reading them,
+  reported that `summary()` had been deferred, although the delivered branch exports it. A
+  revision does not prune stale assumptions.
+- The planner decided alone that `summary()` throws a `RangeError` on a column with no numeric
+  value while `totals()` returns 0; the presentation named it as a decision the owner had not
+  taken.
+- In the first run the executor committed the metrics record's appends itself after the delivery
+  gate, which the role still allows, so the engine had nothing to carry.
+
+**Still owed:** a run long enough for the 6-minute heartbeat.
