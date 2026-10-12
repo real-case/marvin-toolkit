@@ -46,7 +46,6 @@ import {
   normalizeScopePath as normalizePath,
 } from "../lib/git.js";
 import { describeExemptions, partitionScope } from "../lib/scope.js";
-import { importersOf } from "../lib/callers.js";
 import type { ServerEnv } from "../lib/env.js";
 
 /**
@@ -1398,9 +1397,6 @@ function validateSpec(
     if (type === "feature" && (frontmatter.risk ?? "").trim() === "high") {
       checks.push(checkSecurityNfr(sections.get("security nfr")));
     }
-    if (type === "feature" && (frontmatter.risk ?? "").trim() === "low" && contract) {
-      checks.push(checkRiskCallers(contract, projectRoot));
-    }
     if (contract) checks.push(...checkSize(raw, contract));
     checks.push(checkOpenQuestions(sections.get("open questions")));
     checks.push(checkAssumptions(sections.get("assumptions")));
@@ -2082,31 +2078,6 @@ function checkSecurityNfr(section: string | undefined): Check {
         "risk: high but no Security / NFR section — state the concern and the criterion or file that addresses it",
       )
     : pass("security-nfr", "Security / NFR", "present for a risk: high spec");
-}
-
-/**
- * A `risk: low` feature is purely additive (task-start Step 5F), so a file it edits that other code
- * already imports is worth a second look: an edit there may change what those callers see. A
- * warning, never a FAIL, because a new export beside existing ones is an edit to such a file and
- * stays `low`; the planner says which it is. Callers come from `importersOf`, which follows only
- * imports it can resolve without a build.
- */
-function checkRiskCallers(contract: SpecContract, projectRoot: string): Check {
-  const hits: string[] = [];
-  for (const row of contract.files) {
-    if (row.action !== "edit") continue;
-    const path = normalizePath(row.path);
-    if (isAbsolute(path) || path.startsWith("../") || path.startsWith(".marvin/")) continue;
-    const callers = importersOf(projectRoot, path, 3);
-    if (callers.length > 0) hits.push(`${row.id} edits ${path}, imported by ${callers.join(", ")}`);
-  }
-  return hits.length > 0
-    ? warn(
-        "risk-callers",
-        "Frontmatter",
-        `risk: low, but ${hits.join("; ")} — low means nothing that exists behaves differently; rate it medium if any of these callers sees a change, or keep low and state under Assumptions why the edit is purely additive`,
-      )
-    : pass("risk-callers", "Frontmatter", "no file the spec edits is imported by other code");
 }
 
 /** The body with every fenced block removed — the contract block has its own
