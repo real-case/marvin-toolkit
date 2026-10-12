@@ -103,6 +103,16 @@ test("heartbeat nudges once the interval has elapsed, then re-arms", () => {
     /SendMessage to "Autopilot"/,
   );
   assert.equal(fire(), "");
+  // Each nudge leaves one note in the journal, without the notify flag `await` prints on.
+  const notes = readFileSync(join(run, "events.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].kind, "note");
+  assert.equal(notes[0].actor, "r1-executor-1");
+  assert.deepEqual(notes[0].data, { heartbeat: true, minutes: 5 });
+  assert.match(notes[0].text, /^heartbeat: 5 min since the last report$/);
 });
 
 test("message log records the report and resets the timer", () => {
