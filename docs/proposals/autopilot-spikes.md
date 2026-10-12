@@ -326,4 +326,21 @@ Both reached `ready` with the verifier passing on iteration 1 and no rejection.
 - In the first run the executor committed the metrics record's appends itself after the delivery
   gate, which the role still allows, so the engine had nothing to carry.
 
-**Still owed:** a run long enough for the 6-minute heartbeat.
+**The heartbeat run** (`r20261012-1925-7698`, the same session and owner, 37 min, $4.44): a
+four-part task (a UTC date module, `totalsByMonth`, a CLI script, exports and README) so that the
+executor would run past six minutes. It reached `ready` at the standard tier in two iterations
+with no rejection, after one "request changes" round (the planner had skipped zero and negative
+values, which the task never asked for, and left the README and the script without a criterion or
+a test) and one dispute the orchestrator settled alone with `revise_tests`: both sealed test files
+used `await import()` in a non-async callback and failed `node --check`, so no criterion in them
+could be judged, and nothing between the test-author and the executor had noticed. This was also
+the first live run whose finalize commit carried the metrics record (the engine's note: "the
+engine committed the metrics record … in the finalize commit").
+
+| Check | Result |
+|-------|--------|
+| A report at least every 6 min of executor wall time | yes: executor 1 ran 6 min 43 s and reported at 5 min 55 s; executor 2 ran 5 min 21 s. The longest stretch without a report was 5 min 55 s |
+| The heartbeat reminder fired | not observable: the reminder reaches the child as hook context, which the child's `stream-json` log does not record, and the `.heartbeat` file's last write (19:49:51) is the report's, by `message-log`. Since this run the hook also appends a `note` event (`data.heartbeat`) to `events.jsonl` each time it fires, without the notify flag, so the next long run will show it |
+
+The orchestrator answered the dispute without `--answered-by`, against the skill; the calibration
+record was unaffected, since no question was asked.
