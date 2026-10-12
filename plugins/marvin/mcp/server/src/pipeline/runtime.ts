@@ -18,7 +18,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { evidenceGap, planGates, resolveGatePlan, unambiguousStackId } from "../lib/gate-plan.js";
-import { recordPathFor, recordSlugForSpec } from "../lib/metrics-record.js";
 import { resolveOracles } from "../lib/oracles.js";
 import { type LoadedConfig, loadConfig } from "../storage/config.js";
 import { parseFrontmatter } from "../storage/frontmatter.js";
@@ -67,9 +66,10 @@ import {
   finalizeRun,
   type LessonDoc,
   lessonsMarkdown,
-  physicalProblem,
   rankLessons,
 } from "./learning.js";
+import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
+import { physicalProblem } from "./plain-path.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
 import { composePrompts, RUNTIME_VARS, type RuntimeVar } from "./prompt.js";
 import {
@@ -190,8 +190,6 @@ const CI_STATES: readonly CiState[] = ["green", "red", "pending", "conflict", "n
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CONFIG_PATH = ".marvin/config.json";
-/** Where a child's own marvin server keeps the metrics records: its project is the worktree. */
-const METRICS_DIR = ".marvin/metrics";
 const SPEC_COMMIT_MARKER = "spec-commit.json";
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
 const CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
@@ -285,6 +283,21 @@ function readEventsTolerant(runDir: string): PipelineEvent[] {
       return [];
     }
   });
+}
+
+/**
+ * The run's metrics record as the gate and finalize carry it (`metrics-carry.ts`), found from the
+ * spec text the caller judged. Null, which is the behaviour before the engine carried the record,
+ * where that text is missing, the spec path is not canonical, or the rule yields no record; never
+ * a throw, since a record is evidence and must not be what fails a gate or a finalize.
+ */
+function carriedRecord(run: Run, worktree: string, specText: string | null): RunRecord | null {
+  if (specText === null || run.specPath === null || !isCanonicalPath(run.specPath)) return null;
+  try {
+    return runRecord(worktree, run.specPath, specText);
+  } catch {
+    return null;
+  }
 }
 
 /** Whether `target` is `root` or lies inside it, comparing physical paths. */
@@ -1034,13 +1047,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       const ready = readySpec(original, (text) => specReadiness(text, wt, configFor(run).spec));
       if ("failures" in ready) return { result, dorFailures: ready.failures };
       if (ready.sealed) {
-        const slug = recordSlugForSpec(parseFrontmatter(ready.text).frontmatter.slug, abs);
-        if (slug !== null) {
-          try {
-            ensureRecord(recordPathFor(join(wt, METRICS_DIR), slug, wt, undefined, abs), slug);
-          } catch {
-            // fail-open, as the seal anchor is (ADR-0044)
-          }
+        try {
+          const record = runRecord(wt, path, ready.text);
+          if (record !== null) ensureRecord(join(wt, record.path), record.slug);
+        } catch {
+          // fail-open, as the seal anchor is (ADR-0044)
         }
       }
       if (ready.text !== original) {
@@ -1503,6 +1514,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       exemptPattern: config.pipeline.scope_exempt_pattern,
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline as ProtectedSnapshot, wt.baseSha, from),
+      metricsRecord: carriedRecord(run, wt.path, spec.text),
       run: runner,
       timeoutMs,
     });
@@ -1656,7 +1668,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   /**
    * What the spec commit holds: the spec, whose seal is checked on the very bytes committed, and
    * its metrics record when the planner's seal created one and git does not ignore it, found by
-   * the rule every writer of a record follows (`recordPathFor`). Anything wrong with either is a
+   * the rule every writer of a record follows (`runRecordPath`, which the gate and finalize also
+   * ask, so the record committed here is the one they later carry). Anything wrong with either is a
    * refusal, never a thrown error, since a restarted engine would only meet it again.
    */
   const specCommitFiles = (
@@ -1674,24 +1687,17 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const issue = sealIssue(text);
     if (issue !== null) return { refused: `${path} no longer matches its seal: ${issue}` };
     const files = [{ path, bytes: spec.bytes }];
-    const { frontmatter } = parseFrontmatter(text.replace(/\r\n?/g, "\n"));
-    const slug = recordSlugForSpec(frontmatter.slug, path);
-    if (slug === null) return { files };
-    const dir = join(wt.path, METRICS_DIR);
-    const record = relative(
-      wt.path,
-      recordPathFor(dir, slug, wt.path, undefined, join(wt.path, path)),
-    )
-      .split(sep)
-      .join("/");
+    const record = runRecordPath(wt.path, path, text);
+    if (record === null) return { files };
     const found = plainFile(wt.path, record);
     if (found === null) return { files };
     if ("problem" in found) {
       return { refused: `the metrics record ${record} cannot be committed: ${found.problem}` };
     }
     // A record the host's ignore rules keep out stays uncommitted (ADR-0043): the delivery gate
-    // reports it, and only a committed record makes the gate's status count every later append
-    // as uncommitted work. The spec goes in regardless, since finalize ships it.
+    // reports it, and the engine's gate never sees it in its status. A committed record's later
+    // appends are the engine's to carry, in the finalize commit. The spec goes in regardless,
+    // since finalize ships it.
     const ignored = isolatedGit(wt.path, wt.gitDir, { GIT_LITERAL_PATHSPECS: "1" }).text(
       "ls-files",
       "-z",
@@ -1928,7 +1934,12 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     if (ships && (!gated?.passed || !FULL_SHA.test(gated.head))) {
       throw new Error("finalize needs the commit a passing gate approved, and none is recorded");
     }
-    finalizeRun({
+    // The record follows the spec the gate approved, as the gate found it.
+    const metricsRecord =
+      ships && gated && run.specPath !== null && isCanonicalPath(run.specPath)
+        ? carriedRecord(run, wt.path, committedText(wt, gated.head, run.specPath))
+        : null;
+    const result = finalizeRun({
       run,
       runDir,
       worktree: wt.path,
@@ -1938,8 +1949,19 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), z.array(z.string())) ?? [],
       formatCommand: config.pipeline.format_command,
+      metricsRecord,
       runCommand: runner,
     });
+    const carried = result.metricsRecord;
+    if (carried?.state === "appended") {
+      note(`the engine committed the metrics record ${carried.path} in the finalize commit`, {
+        notify: true,
+      });
+    } else if (carried?.state === "refused") {
+      note(`left the metrics record ${carried.path} uncommitted: ${carried.reason ?? "refused"}`, {
+        notify: true,
+      });
+    }
     return { run, obs: { kind: "finalized" } satisfies Observation };
   };
 

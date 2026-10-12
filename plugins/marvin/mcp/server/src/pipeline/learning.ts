@@ -27,6 +27,8 @@ import {
   SEVERITIES,
   shellRunner,
 } from "./gate.js";
+import { classifyRecord, type RecordState, type RunRecord } from "./metrics-carry.js";
+import { assertNotHardLinked, assertPlain } from "./plain-path.js";
 import type { PipelineEvent, Role, Run } from "./run-store.js";
 import { shellQuote } from "./seal.js";
 
@@ -410,61 +412,10 @@ export function parseRetro(raw: unknown): RetroOutput {
   throw new Error(`retro output rejected: ${issues.join("; ")}`);
 }
 
-/**
- * Why `rel` is not a plain path beneath `root`, or null. A symbolic link at any component, or a
- * file where a directory belongs, is a problem; a component that does not exist yet is not. With
- * no link below `root`, everything under it is physically under `root`, whatever `root` is.
- */
-export function physicalProblem(root: string, rel: string): string | null {
-  const parts = rel.split("/");
-  let current = root;
-  for (const [i, part] of parts.entries()) {
-    current = join(current, part);
-    const where = parts.slice(0, i + 1).join("/");
-    let stat;
-    try {
-      stat = lstatSync(current);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      return code === "ENOENT" ? null : `${where} cannot be inspected (${code ?? String(error)})`;
-    }
-    if (stat.isSymbolicLink()) return `${where} is a symbolic link`;
-    if (i < parts.length - 1 && !stat.isDirectory()) return `${where} is not a directory`;
-  }
-  return null;
-}
-
-/**
- * The engine writes into a worktree a child has had its hands on, and into a run dir. A planted
- * symbolic link would send a write somewhere else (the main checkout, a dotfile), so every
- * path is checked before it is read, written or removed, and a link is refused, not followed.
- */
-function assertPlain(root: string, rel: string): void {
-  const problem = physicalProblem(root, rel);
-  if (problem !== null) throw new Error(`refusing to use ${rel} under ${root}: ${problem}`);
-}
-
 /** Remove `rel` under `root`, after checking that nothing on the way to it is a link. */
 function removePlain(root: string, rel: string): void {
   assertPlain(root, rel);
   rmSync(join(root, rel), { force: true });
-}
-
-/**
- * Refuse a regular file with a second hard link: it may be a file somewhere else, and a write
- * that goes through the inode (the lesson store appends in place) would change that one too.
- */
-function assertNotHardLinked(root: string, rel: string): void {
-  let stat;
-  try {
-    stat = lstatSync(join(root, rel));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  if (stat.isFile() && stat.nlink > 1) {
-    throw new Error(`refusing to use ${rel} under ${root}: it is a hard link to another file`);
-  }
 }
 
 /**
@@ -823,6 +774,12 @@ export interface FinalizeOptions {
   exposedLessons: readonly string[];
   /** `pipeline.format_command`; run over every written file, which is appended to it. */
   formatCommand: string | null;
+  /**
+   * The run's metrics record (`runRecord`), or null for none. When the run ships and the record
+   * holds appends the metrics tool wrote after the gated commit (the delivery gate's terminal
+   * block, always), finalize commits them as read. Never given to the format command.
+   */
+  metricsRecord?: RunRecord | null;
   addLesson?: AddLessonFn;
   runCommand?: Runner;
 }
@@ -835,6 +792,12 @@ export interface FinalizeResult {
   pushed: boolean;
   /** The files written under the worktree, relative to it; with a PR, the ones committed. */
   written: string[];
+  /**
+   * What became of the run's metrics record, null where there was none or the run did not ship.
+   * `appended` means it is in the finalize commit; `refused` means the run shipped without it,
+   * for `reason`; every other state left nothing to commit.
+   */
+  metricsRecord: { path: string; state: RecordState["state"]; reason?: string } | null;
 }
 
 const FORMAT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -1036,6 +999,13 @@ const nulList = (text: string) => text.split("\0").filter(Boolean);
  * commit; exactly the written files changed; each blob byte-equal to what was written and
  * `checks.yaml` and `calibration.jsonl` still saying what finalize wrote.
  *
+ * The run's metrics record rides along when it holds appends the metrics tool wrote after the
+ * gated commit, which it always does on a delivered run: the delivery gate's terminal block names
+ * the commit it describes, so it can never be inside that commit. `classifyRecord` judges it
+ * after the format command, against the gated commit, and its bytes, read once there, go into
+ * the finalize commit untouched and are checked like the written files. A record changed in any
+ * other way is left out and reported, never thrown on, and finalize never writes or restores it.
+ *
  * Everything is validated before the first write, and a failure up to and including that check
  * puts the branch and every written file back to what the gated commit holds, so the call can
  * simply be made again. A push that fails after the commit leaves the commit in place; the next
@@ -1055,7 +1025,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     writeRunDirFiles(o.runDir, retro);
     writeWhole(o.runDir, "retro-output.json", `${JSON.stringify(retro, null, 2)}\n`);
     writeWhole(o.runDir, "calibration.json", `${JSON.stringify(record, null, 2)}\n`);
-    return { shipped: false, commit: null, pushed: false, written: [] };
+    return { shipped: false, commit: null, pushed: false, written: [], metricsRecord: null };
   }
 
   const { branch, specPath } = run;
@@ -1120,6 +1090,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const scratch = mkdtempSync(join(tmpdir(), "marvin-finalize-"));
   const branchRef = `refs/heads/${branch}`;
   let newCommit: string | null = null;
+  let carried: FinalizeResult["metricsRecord"] = null;
 
   try {
     const memoryBase = new Map<string, Buffer>();
@@ -1177,6 +1148,23 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
       );
     }
     const contents = readFormatted(worktree, paths, expected);
+
+    // The record is judged after the format command ran, which it was never given: it is
+    // tool-written and append-only, and a formatter rewriting an earlier block would break the
+    // prefix every later run is judged by. Its bytes go in as read, once. A refusal does not
+    // stop the run: the record is evidence of the delivery, not part of it.
+    if (o.metricsRecord) {
+      const { path: rel, slug: recordSlug } = o.metricsRecord;
+      const judged: RecordState = written.has(rel)
+        ? { state: "refused", reason: "it is a path finalize writes itself" }
+        : classifyRecord(git, headSha, worktree, rel, recordSlug);
+      carried = {
+        path: rel,
+        state: judged.state,
+        ...(judged.state === "refused" ? { reason: judged.reason } : {}),
+      };
+      if (judged.state === "appended") contents.set(rel, judged.bytes);
+    }
 
     // The commit is built from the bytes just read and verified, with git plumbing only: no hook,
     // no filter and no replace ref has a chance to change what goes in.
@@ -1251,6 +1239,15 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     } catch {
       // nothing was staged, or the index is unreadable
     }
+    // The record is not finalize's write, so its file is left exactly as the tool left it; only
+    // an index entry a failed commit may have moved is put back.
+    if (carried?.state === "appended") {
+      try {
+        git.text("reset", "-q", "--", carried.path);
+      } catch {
+        // as above
+      }
+    }
     throw error;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -1271,5 +1268,11 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
       cause: error,
     });
   }
-  return { shipped: true, commit: newCommit, pushed: true, written: [...written] };
+  return {
+    shipped: true,
+    commit: newCommit,
+    pushed: true,
+    written: [...written],
+    metricsRecord: carried,
+  };
 }

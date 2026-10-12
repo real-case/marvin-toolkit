@@ -320,6 +320,38 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
   assert.equal(pushed, git(run.worktree, "rev-parse", "HEAD").trim());
   assert.match(readFileSync(join(run.worktree, ".marvin/task/001-clamp.md"), "utf8"), /shipped/);
   assert.equal(git(repo, "status", "--porcelain").trim(), "", "the main checkout changed");
+
+  // Each executor appended a terminal block after its commit, as the delivery gate does, and no
+  // gate rejected an iteration for it: the engine carried both appends into its finalize commit.
+  const RECORD = ".marvin/metrics/001-clamp.md";
+  assert.ok(
+    log.every((e) => !e.text.includes(`uncommitted work: ${RECORD}`)),
+    trail,
+  );
+  assert.match(git(run.worktree, "log", "-1", "--format=%s").trim(), /^chore\(clamp\): ship spec/);
+  assert.ok(
+    git(run.worktree, "diff-tree", "-r", "--no-commit-id", "--name-only", "HEAD")
+      .trim()
+      .split("\n")
+      .includes(RECORD),
+  );
+  const shippedRecord = git(run.worktree, "show", `HEAD:${RECORD}`);
+  const heads = [...shippedRecord.matchAll(/^```json task-metrics\n(.*)$/gm)].map(
+    (m) => JSON.parse(m[1]).head_sha,
+  );
+  const workCommits = git(run.worktree, "log", "--reverse", "--format=%H", "-2", "HEAD^")
+    .trim()
+    .split("\n");
+  assert.deepEqual(heads, workCommits, "one block per executor, each naming its own commit");
+  assert.equal(git(run.worktree, "status", "--porcelain", "--", RECORD).trim(), "");
+  assert.ok(
+    log.some(
+      (e) =>
+        e.data?.notify === true &&
+        e.text === `the engine committed the metrics record ${RECORD} in the finalize commit`,
+    ),
+    trail,
+  );
 });
 
 // ------------------------------------------------------------------- S8: engine survival
