@@ -178,6 +178,15 @@ export const PROMPTS: PromptDef[] = [
       "Open a marvin widget as a rendered panel with this project's own data — renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
     skill: "widget-preview",
   },
+  {
+    // Skill-backed (three doors) — the orchestrator of the autopilot pipeline. The
+    // skill acts on a run only through the marvin-pipe CLI, which it locates with the
+    // `pipeline` tool's `paths` action; the engine, not this prompt, drives the run.
+    name: "autopilot",
+    description:
+      "Hand a task to marvin's autonomous pipeline and orchestrate it to a merge-ready PR — a detached engine drives English-only child sessions (planner, sealed acceptance tests, executor, deterministic gates, read-only verifier, CI, retro); this session answers the engine's judgments, asks the user only what nothing else settles, and reports in the user's language. Pass the task, or `resume [run-id]`.",
+    skill: "autopilot",
+  },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {

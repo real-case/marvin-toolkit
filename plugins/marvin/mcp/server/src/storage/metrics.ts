@@ -142,8 +142,10 @@ export const MetricEventSchema = MetricEventShape.superRefine((value, ctx) => {
  * typed against the `TaskMetrics` contract, so the reader checks the envelope —
  * the identity, the four sections, the notes — and passes the sections through.
  * A block that lacks the envelope is dropped like any other unparseable block.
+ * Exported for the autopilot engine, which judges a record's appends by the
+ * same envelope before it commits them (`pipeline/metrics-carry.ts`).
  */
-const TaskMetricsEnvelope = z
+export const TaskMetricsEnvelope = z
   .object({
     slug: z.string().min(1),
     rolled_up_at: z.string().min(1),
@@ -198,7 +200,13 @@ export function findRecord(dir: string, slug: string): string | null {
 
 // ── writes ───────────────────────────────────────────────────────────────────
 
-function header(slug: string): string {
+/**
+ * The one-time header a record opens with. Exported, with `recordBlock`, so that
+ * the autopilot engine can tell a record this module wrote from one that merely
+ * looks like it: the engine commits a record's appends only when every byte it
+ * adds is exactly what these two functions produce (`pipeline/metrics-carry.ts`).
+ */
+export function recordHeader(slug: string): string {
   return (
     `# Metrics — ${slug}\n\n` +
     `Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` ` +
@@ -206,10 +214,15 @@ function header(slug: string): string {
   );
 }
 
+/** One appended block, byte for byte: the fence, one JSON line, the closing fence, a blank line. */
+export function recordBlock(tag: string, payload: unknown): string {
+  return `\`\`\`json ${tag}\n${JSON.stringify(payload)}\n\`\`\`\n\n`;
+}
+
 function append(path: string, slug: string, tag: string, payload: unknown): void {
   mkdirSync(join(path, ".."), { recursive: true });
-  const head = existsSync(path) ? "" : header(slug);
-  appendFileSync(path, `${head}\`\`\`json ${tag}\n${JSON.stringify(payload)}\n\`\`\`\n\n`, "utf8");
+  const head = existsSync(path) ? "" : recordHeader(slug);
+  appendFileSync(path, `${head}${recordBlock(tag, payload)}`, "utf8");
 }
 
 /**
@@ -224,7 +237,7 @@ function append(path: string, slug: string, tag: string, payload: unknown): void
 export function ensureRecord(path: string, slug: string): void {
   if (existsSync(path)) return;
   mkdirSync(join(path, ".."), { recursive: true });
-  appendFileSync(path, header(slug), "utf8");
+  appendFileSync(path, recordHeader(slug), "utf8");
 }
 
 /** Append one live event. Never reads the file back to write it. */

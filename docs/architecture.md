@@ -4,7 +4,7 @@ Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
 pipeline, security scanners, a code-health refactoring family, and a lightweight
-task tracker, and it ships **59 prompts, 14 MCP tools, 10 agents, and 9 interactive
+task tracker, and it ships **60 prompts, 15 MCP tools, 10 agents, and 9 interactive
 widgets** across seven command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
@@ -65,12 +65,12 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-59 prompts divide into eight groups. The [command reference](./commands.md) lists every
+60 prompts divide into eight groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 17 |
+| _(bare)_ | Core developer tools | 18 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
 | `task-*` | Spec-driven task pipeline | 7 |
@@ -132,7 +132,7 @@ all tools precisely because their behavior must not vary with phrasing.
 
 ## Deterministic tools
 
-Fourteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
+Fifteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
 the job they do.
 
 | Tool | Group | Role |
@@ -151,6 +151,7 @@ the job they do.
 | `report` | Read-side | Every report under `.marvin/` as one set, with freshness, plus the triage roll-up against a stored baseline. |
 | `lessons` | Read-side | The team lessons-learned store. |
 | `adr` | Decision lifecycle | ADR numbering, corpus parsing, the accept gate, and the managed index. |
+| `pipeline` | Autopilot | Read-only: where the `marvin-pipe` CLI and the pipeline's shipped assets are (`paths`), and one run read back (`status`). Runs are driven by the CLI, never by this tool. |
 
 ## Agents
 
@@ -205,7 +206,7 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
 Marvin ships nine such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Nine of the fourteen tools bind a widget, so on a capable host the same command that prints
+Nine of the fifteen tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid

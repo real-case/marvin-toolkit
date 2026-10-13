@@ -53,8 +53,10 @@ packages/marvin-widgets/__image_snapshots__/__diff_output__/
 # Marvin working directory (ADR-0007). Almost all of it is local dogfood/test state —
 # board fixtures, specs, handoffs, research output, the usage log — and stays out of git.
 #
-# Two deliberate exceptions, both records that earn their value by accumulating and so
-# have to reach a clone rather than staying on the machine that produced them.
+# Four deliberate exceptions. The first two are records that earn their value by
+# accumulating and so have to reach a clone rather than staying on the machine that
+# produced them. The last two are this project's settings, which every clone and every
+# autopilot run has to see.
 #
 # The lessons store. ADR-0021 specifies `.marvin/memory/` as "git-committed, team-shared
 # … so lessons are shared with the team on clone", CLAUDE.md documents it that way, and
@@ -67,13 +69,30 @@ packages/marvin-widgets/__image_snapshots__/__diff_output__/
 # the branch merges, so an ignored record would be destroyed by exactly the sequence that
 # nearly cost the lesson above, and the series it belongs to would never accumulate.
 #
+# The project config. The autopilot engine reads `.marvin/config.json` as a run's base
+# commit holds it (`runConfig`), and refuses to start when the main checkout's copy sets
+# `gates` or `pipeline` that the base commit does not hold. Every other marvin tool reads
+# the same file, so its gates, spec directory and merge obligations belong to the project
+# rather than to one machine.
+#
+# The pipeline's project rules. `.marvin/pipeline/` holds `rubric.yaml` (tiering, read
+# from the main checkout when a run starts), `checks.yaml` (added-line checks, read from
+# the base commit) and `calibration.jsonl`; a run's finalize commits the last two through
+# its pull request.
+#
+# The spec corpus stays ignored. `.marvin/task/` is the local, interactive corpus. An
+# autopilot run stages its own spec with `git add -f` because finalize ships the
+# committed spec, so the specs of pipeline runs are tracked inside the ignored directory.
+#
 # The pattern matters. It is `.marvin/*`, NOT `.marvin/` — git does not descend into an
 # excluded DIRECTORY, so with a blanket `.marvin/` the negations below are unreachable and
 # silently do nothing. `.marvin/*` excludes each entry instead, which leaves the
 # re-includes below able to work.
 .marvin/*
+!.marvin/config.json
 !.marvin/memory/
 !.marvin/metrics/
+!.marvin/pipeline/
 
 # Runtime markers written next to the installed plugin while a session uses it
 plugins/marvin/.in_use/

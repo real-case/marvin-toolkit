@@ -1,0 +1,626 @@
+{
+  "version": 1,
+  "suite": "sandbox",
+  "variant": "haiku-dor-rounds",
+  "date": "2026-10-11",
+  "startedAt": "2026-10-11T17:11:55.714Z",
+  "finishedAt": "2026-10-11T18:30:48.812Z",
+  "costIsNotional": true,
+  "settings": {
+    "repeat": 2,
+    "tasks": [
+      "clamp",
+      "slugify",
+      "csv-quotes",
+      "duration"
+    ],
+    "modelOverride": "haiku",
+    "judge": "llm",
+    "judgeModel": "haiku",
+    "rubric": null,
+    "rolesDir": null
+  },
+  "stopped": null,
+  "tasks": [
+    {
+      "id": "clamp",
+      "tierExpected": "light",
+      "runs": [
+        {
+          "task": "clamp",
+          "repeat": 1,
+          "runId": "r20261011-1711-4be2",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "light",
+          "tierAssigned": "light",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 1,
+            "total": 1,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/clamp.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.5784137000000001,
+              "cacheReadTokens": 1399685
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.38660939999999994,
+              "cacheReadTokens": 2272324
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.0901382,
+              "cacheReadTokens": 279652
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.0277571,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 1.0829,
+          "cacheReadTokens": 3974802,
+          "judgeCostUsd": 0,
+          "wallMs": 457550
+        },
+        {
+          "task": "clamp",
+          "repeat": 2,
+          "runId": "r20261011-1746-b7bf",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "light",
+          "tierAssigned": "light",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 1,
+            "total": 1,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/clamp.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.306056,
+              "cacheReadTokens": 1543140
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.45574419999999993,
+              "cacheReadTokens": 2893792
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.0810269,
+              "cacheReadTokens": 168079
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.0310591,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 0.8739,
+          "cacheReadTokens": 4628152,
+          "judgeCostUsd": 0,
+          "wallMs": 341150
+        }
+      ]
+    },
+    {
+      "id": "slugify",
+      "tierExpected": "light",
+      "runs": [
+        {
+          "task": "slugify",
+          "repeat": 1,
+          "runId": "r20261011-1719-540e",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "light",
+          "tierAssigned": "light",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 1,
+            "total": 1,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/slugify.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.8374364000000001,
+              "cacheReadTokens": 2923064
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.4821731000000001,
+              "cacheReadTokens": 2929431
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.0879697,
+              "cacheReadTokens": 317477
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.030556100000000003,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 1.4381,
+          "cacheReadTokens": 6193113,
+          "judgeCostUsd": 0,
+          "wallMs": 601847
+        },
+        {
+          "task": "slugify",
+          "repeat": 2,
+          "runId": "r20261011-1752-3764",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "light",
+          "tierAssigned": "light",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 1,
+            "total": 1,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/slugify.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 2,
+              "costUsd": 0.9807331,
+              "cacheReadTokens": 5811321
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.4411166000000001,
+              "cacheReadTokens": 2523596
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.10257480000000001,
+              "cacheReadTokens": 361798
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.0359101,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 1.5603,
+          "cacheReadTokens": 8719856,
+          "judgeCostUsd": 0,
+          "wallMs": 661673
+        }
+      ]
+    },
+    {
+      "id": "csv-quotes",
+      "tierExpected": "standard",
+      "runs": [
+        {
+          "task": "csv-quotes",
+          "repeat": 1,
+          "runId": "r20261011-1729-d295",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "standard",
+          "tierAssigned": "light",
+          "tierMatch": false,
+          "hidden": {
+            "passed": 2,
+            "total": 2,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/csv.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              },
+              {
+                "path": "test/report-quoted.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.3749465,
+              "cacheReadTokens": 2094155
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.4898448000000001,
+              "cacheReadTokens": 2833288
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.20375729999999997,
+              "cacheReadTokens": 382063
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.029563100000000002,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 1.0981,
+          "cacheReadTokens": 5332647,
+          "judgeCostUsd": 0,
+          "wallMs": 513550
+        },
+        {
+          "task": "csv-quotes",
+          "repeat": 2,
+          "runId": "r20261011-1803-50cb",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "standard",
+          "tierAssigned": "light",
+          "tierMatch": false,
+          "hidden": {
+            "passed": 2,
+            "total": 2,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/csv.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              },
+              {
+                "path": "test/report-quoted.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.42443340000000007,
+              "cacheReadTokens": 2202504
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.5043902000000001,
+              "cacheReadTokens": 2968182
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.2775944,
+              "cacheReadTokens": 557094
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.0302281,
+              "cacheReadTokens": 23141
+            }
+          },
+          "totalCostUsd": 1.2366,
+          "cacheReadTokens": 5750921,
+          "judgeCostUsd": 0,
+          "wallMs": 617316
+        }
+      ]
+    },
+    {
+      "id": "duration",
+      "tierExpected": "standard",
+      "runs": [
+        {
+          "task": "duration",
+          "repeat": 1,
+          "runId": "r20261011-1738-4d18",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "standard",
+          "tierAssigned": "light",
+          "tierMatch": false,
+          "hidden": {
+            "passed": 2,
+            "total": 2,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/duration.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              },
+              {
+                "path": "test/duration-cli.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 1,
+          "questions": {
+            "judgments": 0,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 2,
+              "costUsd": 0.6627509000000001,
+              "cacheReadTokens": 1755740
+            },
+            "test-author": {
+              "children": 0,
+              "costUsd": 0,
+              "cacheReadTokens": 0
+            },
+            "executor": {
+              "children": 1,
+              "costUsd": 0.44767680000000004,
+              "cacheReadTokens": 2595238
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.1588615,
+              "cacheReadTokens": 515995
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.0770229,
+              "cacheReadTokens": 172189
+            }
+          },
+          "totalCostUsd": 1.3463,
+          "cacheReadTokens": 5039162,
+          "judgeCostUsd": 0,
+          "wallMs": 499568
+        },
+        {
+          "task": "duration",
+          "repeat": 2,
+          "runId": "r20261011-1813-6af3",
+          "outcome": "ready",
+          "stage": "ready",
+          "haltReason": null,
+          "abortReason": null,
+          "tierExpected": "standard",
+          "tierAssigned": "standard",
+          "tierMatch": true,
+          "hidden": {
+            "passed": 2,
+            "total": 2,
+            "ratio": 1,
+            "files": [
+              {
+                "path": "test/duration.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              },
+              {
+                "path": "test/duration-cli.test.mjs",
+                "passed": true,
+                "exitCode": 0
+              }
+            ]
+          },
+          "gatesGreen": true,
+          "rejections": {
+            "total": 0,
+            "gate": 0,
+            "verifier": 0,
+            "ci": 0
+          },
+          "iterations": 2,
+          "questions": {
+            "judgments": 1,
+            "asked": 0,
+            "fallbacks": 0
+          },
+          "perRole": {
+            "planner": {
+              "children": 1,
+              "costUsd": 0.6771687,
+              "cacheReadTokens": 2658095
+            },
+            "test-author": {
+              "children": 2,
+              "costUsd": 0.2611378,
+              "cacheReadTokens": 607848
+            },
+            "executor": {
+              "children": 2,
+              "costUsd": 0.8270043,
+              "cacheReadTokens": 4422583
+            },
+            "verifier": {
+              "children": 1,
+              "costUsd": 0.1297412,
+              "cacheReadTokens": 432842
+            },
+            "retro": {
+              "children": 1,
+              "costUsd": 0.21484889999999998,
+              "cacheReadTokens": 999379
+            }
+          },
+          "totalCostUsd": 2.1099,
+          "cacheReadTokens": 9120747,
+          "judgeCostUsd": 0.066,
+          "wallMs": 1034347
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "runs": 8,
+    "readyRuns": 8,
+    "incompleteRuns": 0,
+    "hiddenPassed": 12,
+    "hiddenTotal": 12,
+    "hiddenPassRate": 1,
+    "tierMatches": 5,
+    "totalCostUsd": 10.7461,
+    "judgeCostUsd": 0.066,
+    "wallMs": 4727001
+  }
+}

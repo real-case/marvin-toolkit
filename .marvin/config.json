@@ -1,0 +1,130 @@
+{
+  "base_branch": "dev",
+  "statuses": [
+    {
+      "key": "backlog",
+      "role": "todo"
+    },
+    {
+      "key": "in-progress",
+      "role": "wip",
+      "tracker_status": "In Progress"
+    },
+    {
+      "key": "code-review",
+      "role": "review",
+      "tracker_status": "In Review"
+    },
+    {
+      "key": "qa",
+      "role": "review",
+      "tracker_status": "QA"
+    },
+    {
+      "key": "done",
+      "role": "done",
+      "tracker_status": "Done"
+    },
+    {
+      "key": "blocked",
+      "role": "blocked"
+    }
+  ],
+  "spec": {
+    "dir": ".marvin/task"
+  },
+  "adr": {
+    "dir": "docs/adr"
+  },
+  "scope": {
+    "exempt": [
+      "plugins/marvin/mcp/server/dist/",
+      "plugins/marvin/widgets/*.html",
+      "packages/site/src/data/catalog.json",
+      "package.json",
+      "packages/*/package.json",
+      "plugins/marvin/mcp/server/package.json",
+      "plugins/marvin/.claude-plugin/plugin.json",
+      ".claude-plugin/marketplace.json"
+    ]
+  },
+  "merge_obligations": [
+    "A change to what the plugin ships (`plugins/marvin/`, `packages/marvin-mcp-shared/`, `packages/marvin-widgets/`) bumps the one repository version with `npm run sync-version <x.y.z>`: patch for a prompt-body tweak or a bug fix, minor for a new prompt, tool or agent, major only for a breaking change. A change to repository tooling, tests, docs or the site alone is not bumped. The seven manifests `sync-version` rewrites (`plugins/marvin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and the five workspace `package.json` files) are by-products when their version line is all that changes: `scope.exempt` and `pipeline.scope_exempt_pattern` match them, so they are not contract rows, which is the exception to the rule that an obligation touching a file is a row. A manifest the task changes for its own sake (a new script, a dependency) is a row like any other file.",
+    "A bumped version gets its entry in `plugins/marvin/CHANGELOG.md`, which is a contract row.",
+    "After a change to the server, the shared library, a widget, a skill or a prompt registration, run `npm run build` and `npm run gen:catalog -w @marvin-toolkit/site` and commit what they rewrite: `plugins/marvin/mcp/server/dist/`, `plugins/marvin/widgets/*.html` and `packages/site/src/data/catalog.json`. These are by-products that `scope.exempt` and `pipeline.scope_exempt_pattern` match, so they are not contract rows. CI compares the committed bundles and widget documents with a fresh build (`verify-dist`, `verify-widgets`), and the site tests compare the catalog with its generator.",
+    "Keep `CLAUDE.md` and the matching `docs/` page in step with any change to a command, tool, agent, config key or `.marvin/` path; each such file is a contract row."
+  ],
+  "gates": {
+    "test": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/server && npm test",
+    "lint": "npm run lint",
+    "build": "npm run build",
+    "test_one": "node scripts/test-one.mjs {file}",
+    "extra": [
+      {
+        "name": "skills",
+        "command": "npm run lint:skills"
+      },
+      {
+        "name": "manifests",
+        "command": "npm run lint:manifests"
+      },
+      {
+        "name": "docs-drift",
+        "command": "npm run lint:docs"
+      },
+      {
+        "name": "format",
+        "command": "npm run format:check"
+      },
+      {
+        "name": "eval-self-test",
+        "command": "npm run eval:self-test"
+      },
+      {
+        "name": "eval-trigger",
+        "command": "npm run eval:trigger"
+      },
+      {
+        "name": "smoke",
+        "command": "npm run smoke"
+      }
+    ]
+  },
+  "pipeline": {
+    "branch_template": "feat/{slug}",
+    "tracker_default": "none",
+    "bootstrap": "npm ci --prefer-offline --no-audit --fund=false && npm run build -w @marvin-toolkit/mcp-shared",
+    "lockfile": "package-lock.json",
+    "github": {
+      "token_command": "gh auth token --user real-case"
+    },
+    "stall_minutes": 75,
+    "gate_timeout_minutes": 60,
+    "test_path_pattern": "^(?:(?:test|plugins/marvin/mcp/server/test|packages/marvin-mcp-shared/test|packages/site/test)/[^/]+\\.test\\.mjs|packages/marvin-widgets/src/(?:[^/]+/)*[^/]+\\.test\\.tsx?)$",
+    "scope_exempt_pattern": "^(?:plugins/marvin/mcp/server/dist/|plugins/marvin/widgets/[^/]+\\.html$|packages/site/src/data/catalog\\.json$|(?:packages/[^/]+/|plugins/marvin/mcp/server/)?package\\.json$|plugins/marvin/\\.claude-plugin/plugin\\.json$|\\.claude-plugin/marketplace\\.json$)",
+    "format_command": "npx --no -- prettier --write --ignore-unknown",
+    "conventions": "marvin-toolkit is one Claude Code plugin (`plugins/marvin`) with one MCP server; every command is `/marvin:<group>-<command>`, and `task-*` (the spec pipeline) and `track-*` (the board) stay separate. A skill-backed prompt has three entry points that must agree: `plugins/marvin/skills/<name>/SKILL.md` (frontmatter `name` equals the directory), a `plugins/marvin/commands/<name>.md` wrapper (every group except `track-*`, which has none) and an entry in `plugins/marvin/mcp/server/src/prompts/index.ts`; a new skill also gets `evals/trigger/datasets/<name>.json`. A new MCP tool is `src/tools/<name>.ts`, built with `defineTool` and a zod input schema and wired in `src/server.ts`. Committed artefacts match their sources: `dist/server.js` and `dist/marvin-pipe.js`, `plugins/marvin/widgets/*.html` and `packages/site/src/data/catalog.json`. The repository has one version, changed only by `npm run sync-version`, with an entry in `plugins/marvin/CHANGELOG.md`. Server code imports no browser SDK (`@modelcontextprotocol/ext-apps`, React, Preact) and never writes to stdout, which carries JSON-RPC; it logs with `console.error`. Subprocess output is decoded through `setEncoding` with utf8, never by per-chunk `toString()`. Widgets take colours only from `packages/marvin-widgets/src/theme/` and never use `dangerouslySetInnerHTML`. Files marvin generates live under `.marvin/<group>/` (ADR-0007). A server test that spawns the server goes through `plugins/marvin/mcp/server/test/_driver.mjs`, which strips `MARVIN_*` and `CLAUDE_PROJECT_DIR`, and no test depends on the repository's local, untracked `.marvin/` state. One test file runs with `node scripts/test-one.mjs <file>`. A read-only agent pins a `tools:` allowlist. A hook exits 2 only on a confirmed match and 0 on every other path. A change to how a widget renders leaves the committed darwin visual baselines (`packages/marvin-widgets/__image_snapshots__/darwin/`) stale, and CI does not compare them: report it as a minor finding so that the owner regenerates them on darwin. Code, docs, commit messages and PR bodies are in English; commit subjects follow Conventional Commits.",
+    "allowed_commands": [
+      "git",
+      "gh pr create",
+      "gh pr view",
+      "gh pr edit",
+      "npm ci",
+      "npm test",
+      "npm run test",
+      "npm run build",
+      "npm run lint",
+      "npm run format",
+      "npm run sync-version",
+      "npm run gen:catalog",
+      "npm run eval:self-test",
+      "npm run verify-dist",
+      "npm run smoke",
+      "npx --no",
+      "node --test",
+      "node scripts/test-one.mjs",
+      "node scripts/verify-dist.mjs",
+      "node scripts/verify-widgets.mjs"
+    ]
+  }
+}
