@@ -118,6 +118,10 @@ project the pipeline is configured for is marvin-toolkit itself (Task 19); live 
   oracle parser (`lib/oracles.ts`, extracted from `tools/verify.ts`), so the two cannot resolve a
   criterion differently.
 - **`verify-dist` checks both committed bundles**, `server.js` and `marvin-pipe.js`.
+- **The autopilot heartbeat records each reminder** as a `note` event (`data.heartbeat`,
+  `data.minutes`) in the run's `events.jsonl`, without the notify flag, so `await` does not show
+  it to the orchestrator. A child's `stream-json` log does not carry hook context, so before this a
+  run could not tell a report the reminder prompted from one the child sent unprompted.
 
 ### Fixed
 

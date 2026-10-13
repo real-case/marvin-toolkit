@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { orchestratorOf } from "./lib/orchestrator.mjs";
 
@@ -26,6 +26,17 @@ const last = Number(readFileSync(file, "utf8")) || now;
 if (now - last < interval) process.exit(0);
 writeFileSync(file, String(now));
 const minutes = Math.round((now - last) / 60_000);
+// Recorded so a run shows when the reminder fired: a child's stream-json log does not carry hook
+// context. No notify flag, so `await` never shows it to the orchestrator; a failed append must not
+// stop the reminder itself.
+try {
+  appendFileSync(
+    join(run, "events.jsonl"),
+    `${JSON.stringify({ ts: new Date(now).toISOString(), kind: "note", actor: child, text: `heartbeat: ${minutes} min since the last report`, data: { heartbeat: true, minutes } })}\n`,
+  );
+} catch {
+  /* the reminder still goes out */
+}
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
