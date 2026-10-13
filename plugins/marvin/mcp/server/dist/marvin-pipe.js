@@ -20971,6 +20971,22 @@ function gitWouldRewrite(worktree, path) {
   if (/^(error|fatal):/m.test(`${filtered.stderr}${raw.stderr}`)) return true;
   return filtered.stdout.trim() !== raw.stdout.trim();
 }
+var CHECKED_SYNTAX = /\.[cm]?js$/;
+function syntaxProblem(worktree, path, timeoutMs) {
+  if (!CHECKED_SYNTAX.test(path)) return null;
+  const r = spawnSync(process.execPath, ["--check", path], {
+    cwd: worktree,
+    timeout: timeoutMs,
+    maxBuffer: MAX_BUFFER2,
+    encoding: "utf8"
+  });
+  if (r.error) return `syntax check did not run (${errorText(r.error)})`;
+  if (r.signal !== null) return `syntax check did not run (killed by ${r.signal})`;
+  if (r.status === 0) return null;
+  const lines = r.stderr.split("\n").map((line) => line.trimEnd());
+  const message = lines.find((line) => line.startsWith("SyntaxError: ")) ?? lines.find((line) => line.trim() !== "") ?? `exit ${r.status}`;
+  return `does not parse (node --check): ${message}`;
+}
 var BUILTIN_TEST_SHAPES = [
   /\.(test|spec)\.[cm]?[jt]sx?$/,
   /(^|\/)__tests__\//
@@ -21256,12 +21272,19 @@ function sealAuthoredTests(o) {
   }
   const candidates = [];
   for (const a of accepted) {
+    let bytes;
     try {
-      const bytes = readFileSync(a.abs);
-      candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
+      bytes = readFileSync(a.abs);
     } catch (error2) {
       reasons.push(`${a.path}: cannot be read (${errorText(error2)})`);
+      continue;
     }
+    const unparsed = syntaxProblem(o.worktree, a.path, o.timeoutMs);
+    if (unparsed !== null) {
+      reasons.push(`${a.path}: ${unparsed}`);
+      continue;
+    }
+    candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
   }
   const verdict = (sealed) => reasons.length > 0 ? { ok: false, reasons, sealed: [] } : { ok: true, reasons: [], sealed };
   const changed = (path) => `${path}: changed while its red run executed, so what ran is not what is sealed`;

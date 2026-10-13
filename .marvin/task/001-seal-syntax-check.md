@@ -1,7 +1,7 @@
 ---
 slug: seal-syntax-check
 type: feature
-status: ready
+status: in-progress
 created: 2026-10-13
 tracker: none
 supersedes: none
