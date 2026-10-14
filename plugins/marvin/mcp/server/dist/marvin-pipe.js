@@ -24917,7 +24917,7 @@ function resolveStandard(input, configGates) {
 function detectBase(input, projectRoot) {
   if (input.stack) {
     const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
-    if (hinted) return gatesFromStacks([hinted]);
+    if (hinted?.detect(projectRoot)) return gatesFromStacks([hinted]);
   }
   const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
   if (matched.length === 0) {
