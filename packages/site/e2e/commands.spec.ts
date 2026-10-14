@@ -38,14 +38,14 @@ async function openCatalog(page: Page, url = "/commands") {
   await expect(page.locator(".catalog .searchinput")).toBeVisible();
 }
 
-test("commands renders the reference header and all seven groups in order", async ({ page }) => {
+test("commands renders the reference header and every catalog group in order", async ({ page }) => {
   await page.goto("/commands");
 
   // Header: the accent eyebrow and the display-face title, copy verbatim from the mockup.
   await expect(page.locator(".eyebrow").first()).toHaveText("reference");
   await expect(page.locator("h1")).toHaveText("Commands");
 
-  // The seven group sections, in catalog order — scoped to `.gname` (the group headers) so a
+  // Every group section, in catalog order — scoped to `.gname` (the group headers) so a
   // stray heading elsewhere cannot skew the order assertion.
   const gnames = (await page.locator(".gname").allTextContents()).map((t) => t.trim());
   expect(gnames).toEqual(GROUP_KEYS);
@@ -82,8 +82,8 @@ test("commands renders every catalog command with human-run marking and the sear
   );
   expect(marked).toEqual(HUMAN_NAMES.map(strip));
 
-  // The search controls: a real field, its "/" keycap, the live count, and the eight filter
-  // chips (all + the seven groups) with exactly one active.
+  // The search controls: a real field, its "/" keycap, the live count, and the filter chips
+  // (all + one per catalog group) with exactly one active.
   await expect(page.locator(".catalog .searchinput")).toBeVisible();
   await expect(page.locator(".catalog .search .kbd")).toHaveText("/");
   await expect(page.locator(".catalog .shown")).toHaveText(`${catalog.commands.length} shown`);

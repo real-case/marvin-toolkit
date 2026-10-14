@@ -41,8 +41,8 @@ const OUT = join(here, "..", "src", "data", "catalog.json");
 // state.ts pulls in git / storage / fs at import, so it cannot be transpiled in isolation; this
 // 5-line copy is guarded against drift by test/catalog.test.mjs, which parses the arrays out of
 // state.ts as text and asserts equality.
-export const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
-export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
+export const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "audit", "track"];
+export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "audit", "track"];
 
 /**
  * Group of a prompt by its `<group>-<command>` prefix; bare names are "core" — including a bare

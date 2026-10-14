@@ -2,8 +2,8 @@
 
 This page lists every command Marvin ships, with a one-line synopsis and the
 natural-language phrases that invoke it. Commands follow the pattern
-`/marvin:<group>-<command>`, and singletons stay bare. There are **55** in total,
-divided into seven groups.
+`/marvin:<group>-<command>`, and singletons stay bare. There are **60** in total,
+divided into eight groups.
 
 Use this page to look a command up. To learn the workflows themselves, read the
 [usage guide](./usage.md); to understand how the commands are built, read the
@@ -85,6 +85,7 @@ model invocation, so you run it yourself rather than asking for it in chat.
 | `/marvin:reports` | List every report marvin generated under `.marvin/` — security, refactor, task, handoff, critique — newest first, with freshness. | `marvin show the reports`, `what reports do we have?`, `open the latest security report` |
 | `/marvin:report-export` | Export a report to PDF (print-ready HTML), standalone HTML, or a Markdown digest, filled from the widget-theme print template. | `marvin export the security report to PDF`, `save this report as markdown`, `make the scan report shareable` |
 | `/marvin:widget-preview` | Render a bound `ui://` widget with this project's live data into one self-contained file under `.marvin/preview/` and open it — the way to see a widget on a host that cannot render them, including the terminal. | `marvin show me the help widget`, `open the dashboard as a panel`, `why do I never see the widgets?` |
+| `/marvin:autopilot` | Hand a task to the autonomous pipeline and orchestrate it to a merge-ready pull request: a detached engine drives a planner, sealed acceptance tests, an executor, deterministic gates, a read-only verifier, CI and a retro, while this session answers its judgments, gets the spec approved, and reports in your language. `resume [run-id]` takes over an existing run. | `marvin autopilot this task to a PR`, `deliver this end to end without me`, `resume the autopilot run` |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands.
@@ -177,6 +178,25 @@ one behavior-preserving step at a time behind the verify gate.
 
 The `marvin-refactor-auditor` agent supports these commands.
 
+## Project audit — `audit-*`
+
+A formal audit programme of twenty-two audits (`A-01`…`A-22`) plus a consolidation, distinct
+from the `sec-*` and `refactor-*` families: those are working scans, while an audit produces a
+reproducible report — commit SHA, real tool versions, declared coverage and confidence, a
+seven-section skeleton, and a machine-readable findings register — released as `.md` **and**
+`.pdf` under `.marvin/audit/`. Each audit runs in its own session and receives a predecessor's
+output as a parameter, never as remembered context, which is what lets a programme be split
+across days and people. Every audit is strictly read-only on the repository under audit.
+
+The command surface is three; the twenty-two audits are data files under
+`skills/audit-run/references/audits/`, so a twenty-third audit adds no command.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:audit-plan` | Choose which of the twenty-two audits this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run — naming every excluded audit and what it leaves unchecked. | `marvin проведи аудит проекта`, `plan the audit programme`, `which audits does this project need?` |
+| `/marvin:audit-run` | Run one audit end to end — resolve which was asked for, collect evidence under a declared sampling budget, rank findings on the S0–S4 scale, and release the report as `.md` plus `.pdf` with the ids verified identical across prose, register and PDF. | `marvin аудит зависимостей`, `run audit A-14`, `audit the data model` |
+| `/marvin:audit-summary` | Consolidate the finished reports (A-99): deduplicate findings several audits reached, resolve severity conflicts by a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce a top five with numbers. Reads reports, never code. | `marvin сведи результаты аудитов`, `consolidate the audit reports`, `what do we fix first?` |
+
 ## Task tracker — `track-*`
 
 These commands drive a lightweight per-project board with interactive forms, giving
@@ -196,7 +216,7 @@ optional `.marvin/config.json` managed through `/marvin:track-config`.
 | `/marvin:track-show` | Show one task in full — its fields and markdown body. | `marvin show task 3`, `open the login-timeout task` |
 | `/marvin:track-start` | Pick a todo task, branch off, and mark it work-in-progress. | `marvin start a board task`, `pick a todo and branch off` |
 | `/marvin:track-move` | Move a task — to review, to done, or to any configured status. | `marvin move task 3 to review`, `mark this done`, `set task 3 to blocked` |
-| `/marvin:track-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, and statuses — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
+| `/marvin:track-config` | Show or edit the board configuration — base branch, tracker URL template, branch template, statuses, and the scope exemptions for by-product files — with fail-closed validation. | `marvin show the board config`, `set the base branch to main`, `connect our Jira statuses` |
 
 The board dashboard scoped to these commands is `/marvin:help track`
 ([ADR-0032](./adr/0032-track-surface-reduction.md) records the seven-command surface).
@@ -229,7 +249,7 @@ The panel is additive, so a text-only host shows the same information as text.
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to fourteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to fifteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -249,6 +269,7 @@ but they are not typed as slash commands.
 | `adr` | The ADR-lifecycle mechanics — numbering, corpus list, lint, managed index, the accept gate, and paired supersede. |
 | `audit` | The structured `sec-*` findings recovered from `.marvin/security/`. |
 | `report` | The unified report list scanned from `.marvin/` — security, refactor, task, handoff, critique — plus the `triage` action that reconciles findings against the stored baseline. |
+| `pipeline` | The autopilot pipeline's read-only door — `paths` locates the `marvin-pipe` CLI and its assets, `status` reads one run back. Runs are driven by the CLI, never by this tool. |
 
 ## Agents
 

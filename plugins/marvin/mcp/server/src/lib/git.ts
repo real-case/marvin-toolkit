@@ -186,11 +186,18 @@ export function hashObjects(paths: string[], cwd?: string): string[] | null {
 }
 
 /**
- * The files a task changed: `git diff --name-only <base>` (default `HEAD`, i.e.
- * uncommitted changes) plus untracked non-ignored paths, normalised to POSIX
- * separators without a leading `./`, de-duplicated. A failed read contributes
- * nothing rather than failing the caller — the scope gate treats a repository
- * with no readable diff as one with no changes to judge.
+ * The files a task changed: `git diff --name-only <from>` plus untracked
+ * non-ignored paths, normalised to POSIX separators without a leading `./`,
+ * de-duplicated. A failed read contributes nothing rather than failing the
+ * caller — the scope gate treats a repository with no readable diff as one with
+ * no changes to judge.
+ *
+ * `<from>` is `HEAD` (uncommitted changes) when no base is given, and otherwise
+ * `git merge-base <base> HEAD`: the point the task forked from. Diffing from
+ * `<base>` itself would count every commit that landed on the base branch after
+ * the fork as a change of this task, which is what filled a host's roll-up with
+ * hundreds of undeclared paths. When the merge base cannot be computed (an
+ * unrelated history, a shallow clone) the base ref itself is used, as before.
  *
  * Two callers share it and must see the same set (ADR-0043): the scope gate in
  * `tools/spec.ts` (is the change inside the contract allowlist?) and the metrics
@@ -199,13 +206,20 @@ export function hashObjects(paths: string[], cwd?: string): string[] | null {
  */
 export function changedFilesForScope(projectRoot: string, base: string | undefined): string[] {
   const ref = base && base.trim() ? base.trim() : "HEAD";
-  const diff = git(["diff", "--name-only", ref], projectRoot);
+  const diff = git(["diff", "--name-only", forkPoint(ref, projectRoot)], projectRoot);
   const untracked = git(["ls-files", "--others", "--exclude-standard"], projectRoot);
   const lines = [
     ...(diff.ok ? diff.value.split("\n") : []),
     ...(untracked.ok ? untracked.value.split("\n") : []),
   ];
   return [...new Set(lines.map(normalizeScopePath).filter(Boolean))];
+}
+
+/** The merge base of `ref` and `HEAD`, or `ref` itself when there is none to compute. */
+function forkPoint(ref: string, cwd: string): string {
+  if (ref === "HEAD") return ref;
+  const mb = git(["merge-base", ref, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : ref;
 }
 
 /** Normalise a path for scope comparison: POSIX separators, no leading `./`, trimmed. */

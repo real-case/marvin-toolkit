@@ -1,0 +1,9 @@
+[
+  "^\\.marvin/config\\.json$",
+  "^\\.marvin/pipeline/",
+  "^\\.claude/settings[^/]*\\.json$",
+  "^\\.claude/hooks/",
+  "^\\.husky/",
+  "^\\.mcp\\.json$",
+  "^\\.git(/|$)"
+]

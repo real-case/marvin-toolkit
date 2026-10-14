@@ -12,9 +12,11 @@ import type {
 import type { ProgressEntry } from "../storage/progress.js";
 import { redGreenProof, type OracleRun } from "../storage/oracles.js";
 import { isGreenFullRun, type VerifyRunEntry } from "../storage/verify-runs.js";
-import type { SpecContract } from "../storage/spec.js";
+import { specSizeBudget, type SpecContract } from "../storage/spec.js";
 import type { VerifyResult } from "./reports.js";
 import { normalizeScopePath } from "./git.js";
+import { partitionScope } from "./scope.js";
+import { criticBudget } from "./critic-budget.js";
 
 /**
  * The metrics roll-up (ADR-0043 §2) — the **pure half** of the `metrics` tool's
@@ -50,6 +52,8 @@ export interface RollupSpec {
   stamped_sha: string | null;
   /** The block's hash as recomputed now, null when there is no block. */
   actual_sha: string | null;
+  /** The file's size as read (ADR-0046); absent in fixtures that predate it. */
+  size?: { bytes: number; words: number } | null;
 }
 
 export interface RollupGit {
@@ -74,6 +78,12 @@ export interface RollupInputs {
   critique: { spec: Critique | null; diff: Critique | null } | null;
   events: MetricEvent[] | null;
   git: RollupGit | null;
+  /**
+   * The project's `scope.exempt` patterns as configured (ADR-0045), or
+   * null/absent when it configures none — which Q1 reports as `exempt: null`,
+   * not as an empty list.
+   */
+  scope_exempt?: string[] | null;
   /** Anomalies the collector met before the roll-up ran; prepended to `notes`. */
   notes?: string[];
 }
@@ -220,12 +230,21 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     } else intake_ms = interval("T1", start.at, end.at, notes);
   }
 
-  // T2 — `at` of the last criterion entry minus `at` of the task-implement step 2.5 entry.
+  // T2 — `at` of the last criterion entry minus `at` of the implementation's start:
+  // task-implement's step 2.5 entry, or the headless executor's §1 entry.
   let implement_ms: number | null = null;
   if (progress) {
-    const start = progress.find((e) => e.source === "task-implement" && e.step === "2.5");
-    if (!start) notes.push("T2: the progress journal has no task-implement step 2.5 entry");
-    else if (!lastCriterion) notes.push("T2: the progress journal records no completed criterion");
+    const start = progress.find(
+      (e) =>
+        (e.source === "task-implement" && e.step === "2.5") ||
+        (e.source === "marvin-tm-executor" && e.step === "§1"),
+    );
+    if (!start) {
+      notes.push(
+        "T2: the progress journal has no task-implement step 2.5 or marvin-tm-executor §1 entry",
+      );
+    } else if (!lastCriterion)
+      notes.push("T2: the progress journal records no completed criterion");
     else implement_ms = interval("T2", start.at, lastCriterion.at, notes);
   }
 
@@ -284,19 +303,30 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
   // ── quality ───────────────────────────────────────────────────────────────
 
   // Q1 — changed files against the base minus the contract's declared paths.
-  // marvin's own `.marvin/` artifacts and the spec file are excluded, as the
-  // scope gate excludes them: they change on every task by construction.
+  // The judgement is the scope gate's own `partitionScope`: marvin's `.marvin/`
+  // artifacts and the spec file are excluded (they change on every task by
+  // construction), and by-products matching `scope.exempt` leave `undeclared`
+  // for `exempt` (ADR-0045). `changed` still counts them, so it does not move
+  // when a project adopts an exemption; only `undeclared` does.
   let scope_drift: TaskMetricsQuality["scope_drift"] = null;
   if (input.git?.changed_files && contract) {
     const declared = new Set(contract.files.map((f) => normalizeScopePath(f.path)));
-    const specPath = input.spec ? normalizeScopePath(input.spec.path) : null;
-    const changed = input.git.changed_files
-      .map(normalizeScopePath)
-      .filter((p) => p && !p.startsWith(".marvin/") && p !== specPath);
+    const exemptPatterns = input.scope_exempt ?? null;
+    const part = partitionScope(input.git.changed_files, {
+      allowlist: declared,
+      specPath: input.spec ? input.spec.path : null,
+      exempt: exemptPatterns,
+    });
+    for (const r of part.rejected) {
+      notes.push(
+        `scope.exempt pattern ${JSON.stringify(r.pattern)} ignored — ${r.issue}; the files it names stay in Q1's undeclared list`,
+      );
+    }
     scope_drift = {
       declared: declared.size,
-      changed: changed.length,
-      undeclared: changed.filter((p) => !declared.has(p)).sort(),
+      changed: part.judged.length,
+      undeclared: part.outside.sort(),
+      exempt: exemptPatterns ? part.exempt.map((e) => e.path).sort() : null,
     };
   }
 
@@ -376,6 +406,14 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     oracle_resolution = { by_source, unresolved };
   }
 
+  // Q13/Q14 — the spec's size, and the budget its contract earns.
+  const spec_size: TaskMetricsQuality["spec_size"] = input.spec?.size
+    ? {
+        ...input.spec.size,
+        budget: contract ? specSizeBudget(contract.files.length, contract.criteria.length) : null,
+      }
+    : null;
+
   const quality: TaskMetricsQuality = {
     scope_drift,
     oracle_strength,
@@ -387,6 +425,7 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
     open_items,
     dor_first_call,
     oracle_resolution,
+    spec_size,
   };
 
   // ── rework ────────────────────────────────────────────────────────────────
@@ -425,12 +464,27 @@ export function rollUpMetrics(input: RollupInputs): TaskMetrics {
   // R4 — runs before the first green full run; undefined (null) when none is green.
   const runs_before_green = runs && firstGreenIndex !== -1 ? firstGreenIndex : null;
 
+  // R5 — the highest DISPATCH pass against the budget the metrics tool judged it by.
+  const budgetExceeded = (critic: string): boolean | null => {
+    if (!events) return null;
+    const passes = events
+      .filter((e) => e.kind === "critic-dispatch" && e.critic === critic)
+      .map((e) => e.pass ?? 0);
+    if (!passes.length) return null;
+    return Math.max(...passes) > criticBudget(critic, input.spec).limit;
+  };
+  const critic_budget_exceeded = {
+    spec: budgetExceeded("marvin-tm-spec-critic"),
+    diff: budgetExceeded("marvin-tm-diff-critic"),
+  };
+
   const rework: TaskMetricsRework = {
     seals,
     reseals,
     critic_passes,
     fix_rounds,
     runs_before_green,
+    critic_budget_exceeded,
   };
 
   const sources: MetricsSources = {

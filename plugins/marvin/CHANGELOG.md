@@ -4,7 +4,7 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
-## [0.23.1] — 2026-09-05
+## [0.29.3] — 2026-10-14
 
 ### Fixed
 
@@ -17,6 +17,454 @@ follows semver independently of the surrounding marketplace.
   blocking `/marvin:task-deliver`. A hint is now honoured only when its detector actually matches
   the project; a mismatched hint is ignored and normal detection runs, exactly as an unrecognised
   one already was. A project whose detector does match is unaffected.
+
+## [0.29.2] — 2026-10-14
+
+### Fixed
+
+- **The autopilot heartbeat no longer asks for a report on the report itself.** The heartbeat
+  hook runs on every tool's `PostToolUse`, beside `message-log`, which resets the report timer
+  for a `SendMessage`. When a child reported after more than five quiet minutes, the heartbeat
+  read the stale time on that same call and asked for a report the child had just sent, and
+  recorded a reminder that prompted nothing. It now skips `SendMessage`.
+
+## [0.29.1] — 2026-10-13
+
+### Fixed
+
+- **The autopilot's seal stage refuses a JavaScript test that does not parse.** Before any red
+  run, and for a re-seal before the base tree is created, it runs `node --check` (the running
+  node, in the run's worktree, bounded by the seal's timeout) on every listed test whose extension
+  is exactly `.js`, `.mjs` or `.cjs`. A file that does not parse is refused with
+  `<path>: does not parse (node --check): <SyntaxError line>` and is never run, where before its
+  failed red run read as a genuine red test and the broken file was sealed. A check that cannot
+  run (a timeout, a failed spawn) refuses the file as `<path>: syntax check did not run (…)`.
+  TypeScript, JSX and other languages are not checked.
+
+## [0.29.0] — 2026-10-09
+
+The autopilot pipeline (`docs/proposals/autopilot-implementation-plan.md`, Phases 0–3): a task
+description becomes a merge-ready pull request. A deterministic engine drives headless child
+sessions through planning, sealed acceptance tests, implementation, gates, a read-only verifier,
+CI and a retro, and the user talks only to an orchestrator session. The replay benchmark that
+gates changes to the pipeline's own process (Task 21) ships with a synthetic suite. The first real
+project the pipeline is configured for is marvin-toolkit itself (Task 19); live runs against it
+(Task 20 scenarios 3–4, and scenario 2's interactive half) are not part of this release.
+
+### Added
+
+- **The `marvin-pipe` CLI** (`mcp/server/dist/marvin-pipe.js`, a second entry of the same tsup
+  build, run with `node`). Commands: `init`, `start`, `engine`, `attach`, `await`, `judge`,
+  `status`, `list` and `assess`. `engine` is a detached, restartable state machine and the only
+  writer of a run's `run.json`. A lock refuses a second live engine, and a restart resumes from
+  the stored state. Run state lives outside the repository, under `MARVIN_PIPELINE_HOME` (default
+  `~/.local/state/marvin-pipeline`).
+- **The engine.** A pure `decide()` with the escalation ladder, sealing and CI rules, plus the
+  loop that applies it. Each child is a headless `claude -p` process in one out-of-tree worktree
+  per run, launched detached and classified on exit as done, crashed, stalled or usage-limited. A
+  crash is retried once and then halts the run; nothing waits silently. The engine runs every
+  mechanical check itself: the gates with one flaky retry, the oracles, scope, leftover-pattern
+  checks, the sealed-test hashes, PR and CI state (including `conflict` and no CI), and finalize,
+  which builds its commit with git plumbing and verifies it before the push.
+- **Sealed acceptance tests.** The test-author writes the tests and the engine commits them
+  before the first executor runs. A red check proves that each test ran alone and failed. Edits
+  to a sealed test are denied by a hook, and a Bash edit is caught by the gate's hash check.
+- **Tiering and the learning loop.** A rubric (`pipeline/rubric.default.yaml`, overridable by a
+  project's `.marvin/pipeline/rubric.yaml`) maps task signals to a tier and each role to a model
+  and effort. Rejections climb an escalation ladder. Lessons are selected for each child. The
+  retro's output is applied as new checks in `.marvin/pipeline/checks.yaml`, lessons, and
+  proposals left in the run directory, and every run appends a calibration record to
+  `.marvin/pipeline/calibration.jsonl`.
+- **Role assets under `plugins/marvin/pipeline/`**: static system prompts and context templates
+  for the planner, test-author, executor, verifier and retro, a JSON result schema per role, and
+  the per-child hooks: `child-git-guard`, `child-mcp-guard`, `readonly-guard`, `sealed-guard`,
+  `test-path-guard`, `worktree-boundary-guard`, plus `heartbeat` and `message-log`. They are
+  installed per child through `--settings`, not through `hooks.json`, so they never run in a user
+  session.
+- **The `pipeline` MCP tool**, the fifteenth tool and the CLI's read-only door. `paths` returns
+  where the bundle and its assets are, resolved from the installed plugin rather than the cwd.
+  `status` reads one run back and refuses a run directory outside the state root. Its input is
+  `.strict()`.
+- **`/marvin:autopilot`**, the orchestrator skill. It starts or resumes a run, translates progress
+  into the user's language while everything sent to the engine stays English, and answers the
+  engine's judgments: planner and executor questions, spec approval with a role-by-role model
+  table and a calibration cost estimate, halts, `no_ci` and `unverified`. It never edits code,
+  runs gates or touches `run.json`. `judge` gained `--answered-by orchestrator|user` so that
+  calibration counts who answered.
+- **Pipeline mode** in `task-start`, `task-implement`, `task-deliver`, `commit` and `pr-create`,
+  active only with `MARVIN_PIPELINE=1`. Each skill gains one section that replaces every step that
+  would wait on a human. The planner turns its open questions into a capped `needs_input` turn,
+  and `pr-create` opens one draft PR against the run's base.
+- **Config: `gates.extra` and the `pipeline` block.** `gates.extra` lists project gates that
+  `verify` runs after the four standard ones. `pipeline` holds the branch template, bootstrap,
+  GitHub token command, timeouts, test-path and scope-exempt patterns, formatter, conventions and
+  the command allowlist for the writing roles. An invalid subtree resets to its default for every
+  other tool, while the pipeline refuses to start. See `docs/configuration.md`.
+- **A deterministic sandbox test** (`test/autopilot-sandbox.test.mjs`, Task 20 scenario 1). It
+  drives the committed `marvin-pipe` bundle end to end with fake children and fake CI through a
+  verifier FAIL and a PASS to `ready`, in CI and without a model. The
+  `MARVIN_PIPELINE_FAKE_<ROLE>_SCRIPT` seam lets a fake child do its file work in the worktree,
+  and it is read only for a role that is already faked.
+- **Sandbox mode for live acceptance runs** (`MARVIN_PIPELINE_SANDBOX=1`, Task 20 scenario 2).
+  `MARVIN_PIPELINE_MODEL_OVERRIDE=<model>` replaces every role's model, so a run's children go
+  out on Haiku; a subagent that pins its own model (the spec critic) keeps it. A `gh` shim placed
+  first on each child's PATH plays one draft PR (`https://github.com/sandbox/sandbox/pull/1`), so
+  a live executor can deliver to a local bare origin. Sandbox mode requires
+  `MARVIN_PIPELINE_FAKE_CI`. Outside it, an override stops the engine at start rather than being
+  ignored, and a Fable override is refused in either mode. `scripts/autopilot-live-sandbox.mjs`
+  (opt-in through `MARVIN_LIVE=1`, not part of `npm test`) drives the sandbox fixture with real
+  `claude -p` children and prints cost, wall time, cache reads and the headless checks.
+
+- **The replay benchmark and the L3 gate** (Task 21, D5). `marvin-pipe bench --suite --variant
+  [--rubric] [--roles-dir] [--repeat 2] [--baseline]` replays every task of a suite through the
+  whole pipeline and judges it by hidden tests the pipeline never saw, copied from the task's
+  reference commit and run through `gates.test_one` with the seal stage's quoting. Each run
+  records its outcome, assigned against expected tier, hidden-test ratio, gates, iterations,
+  rejections by source, questions, per-role notional cost and cache reads, and wall time, into
+  `evals/autopilot/results/<date>-<variant>.json` and `.md`. The questions go to a simulated
+  user, a tool-less headless `claude -p` given the task's ground truth (`--judge llm`, Opus at
+  effort medium, or the sandbox model override), which also approves the spec and cancels a halted
+  run. `l3Gate` accepts a variant only when the hidden pass rate over delivered runs does not
+  fall, the share of runs delivered does not fall, no task regresses in every repeat (an
+  undelivered repeat counts as one), and the notional cost stays within 1.15 × the baseline or
+  every task delivered on both sides holds its mean delivered ratio and one raises it; with fewer
+  than two repeats, an incomplete run or a baseline that delivered nothing it is inconclusive. A
+  planner whose spec fails the DoR gate is resumed with the failing checks up to `caps.dor_rounds`
+  (2) times, counted apart from crash retries and reset when the spec is revised; the engine
+  stamps the seal of a spec the planner left unsealed once that gate passes. `bench-compare` applies it
+  to two result files. The shipped suite, `evals/autopilot/suites/sandbox.yaml`, replays four
+  tasks (two light, two standard) over a repository generated at bench time from a committed
+  fixture, because historic marvin-toolkit commits carry no pipeline configuration and its gates
+  take about 20 minutes (`evals/autopilot/README.md`). Bench mode (`MARVIN_PIPELINE_BENCH=1`)
+  rides on sandbox mode with green fake CI and adds only `MARVIN_PIPELINE_ROLES_DIR`, which the
+  engine refuses outside it. A usage limit stops the bench with the run recorded `limited`.
+- **marvin-toolkit's own pipeline configuration** (Task 19). The repository commits
+  `.marvin/config.json` (gates and seven CI-mirroring extras, a `pipeline` block, `spec.dir`,
+  `merge_obligations` and `scope.exempt`) and `.marvin/pipeline/rubric.yaml` and `checks.yaml`,
+  and `.gitignore` re-includes both, so autopilot can run against marvin-toolkit itself. Its
+  `gates.test_one` is `scripts/test-one.mjs`, which runs one test file under the runner, and from
+  the directory, of the workspace that owns it (`node --test` or vitest), rebuilds the shared
+  library first for that library's importers (server, shared-library and widget tests), and exits
+  127 for a path no test script selects.
+  `project-config.test.mjs` loads the three files through the engine's loaders and fails on a
+  stripped key, a reset subtree or an ignored pattern.
+
+### Changed
+
+- **`verify` and the pipeline's gate stage share one gate plan** (`resolveGatePlan`) and one
+  oracle parser (`lib/oracles.ts`, extracted from `tools/verify.ts`), so the two cannot resolve a
+  criterion differently.
+- **`verify-dist` checks both committed bundles**, `server.js` and `marvin-pipe.js`.
+- **The autopilot heartbeat records each reminder** as a `note` event (`data.heartbeat`,
+  `data.minutes`) in the run's `events.jsonl`, without the notify flag, so `await` does not show
+  it to the orchestrator. A child's `stream-json` log does not carry hook context, so before this a
+  run could not tell a report the reminder prompted from one the child sent unprompted.
+
+### Fixed
+
+- **Found by the first live sandbox run** (Task 20 scenario 2), each pinned by a regression test:
+  - Writing pipeline children had no MCP server at all: `--strict-mcp-config` also drops the
+    plugin's own servers, so the planner could not reach `spec` nor the executor `verify`. The
+    marvin server is now handed back through `--mcp-config` under the name that keeps the
+    `mcp__plugin_marvin_marvin__*` tool names.
+  - Writing children could not read marvin's own skills: the command wrappers name
+    `skills/<name>/SKILL.md` relative to the plugin, and a read outside the worktree is denied
+    with prompts off. The planner and executor prompts now name the plugin root, and writing
+    roles may read under it.
+  - The DoR gate passed a `kind: test` oracle ref holding a shell metacharacter (a test named
+    `throws when lo > hi`) that every later gate refused to run as `unsafe-ref`. It now FAILs
+    such a spec (`oracle-ref`).
+  - `marvin-pipe start` returned before its engine held the run's lock, so an `await` armed right
+    after it read the engine as down, and the restart the skill then tried was refused. `start`
+    now waits for the lock and fails with the engine's own reason when it exits first.
+  - A spec with `tracker: none` named the run branch `feature/none--<slug>`; `none` now falls
+    back to `pipeline.tracker_default`, as `pr-create`'s pipeline mode already did.
+  - The executor role now commits the sealed spec with `git add -f` and no other `.marvin/`
+    service file, and the retro reports `done` for a halted run instead of `failed`, which had
+    cost a retry and lost the retro.
+- **The autopilot engine commits the run's metrics record itself.** The delivery gate appends the
+  record's terminal `task-metrics` block after the executor's last commit, because the block names
+  that commit, so the engine's gate read the append as uncommitted work and spent a second
+  executor iteration on committing it: 12 times in 56 benchmark runs. The gate now tolerates that
+  one path while its change is an append the metrics tool would write (the committed bytes
+  followed by `metric-event` or `task-metrics` blocks for the run's slug, in exactly the tool's
+  shape, in a regular file with one link), and finalize carries the appended bytes into its own
+  commit, never through the format command. A record changed in any other way is still uncommitted
+  work at the gate, and finalize ships the run without it and says why. One rule now finds the
+  record for the spec commit, the gate and finalize (`pipeline/metrics-carry.ts`), and the
+  executor role and the `task-deliver` and `task-implement` pipeline modes no longer tell the
+  executor to commit the record's appends.
+- **A gate timeout ends the command's whole process tree on Linux too.** The gate runner put the
+  command in its own process group with a `set -m` shell wrapper, which only bash honours without
+  a terminal: dash, Debian's and Ubuntu's `/bin/sh`, printed `can't access tty; job control
+  turned off` into every gate's output, and a timed-out gate left its processes running beside
+  the retry. A small Node supervisor now starts the shell detached (its own session and group)
+  and signals that group with TERM, then KILL; it stays in the engine's group, so stopping the
+  engine still ends a running gate. Output and exit code are passed through unchanged.
+- **`gates.test_one` quotes what it substitutes, for both of its readers.** The oracle resolver
+  (`verify`'s oracles and the gate stage) inserted `{file}` literally, so `npx vitest run {file}`
+  failed with a shell syntax error on a Next.js path such as `src/app/(dashboard)/x.test.ts`,
+  while the autopilot seal stage single-quoted it and refused a quoted `{file}`. Both now encode
+  through one helper (`lib/shell-quote.ts`): an unquoted placeholder is single-quoted, and one the
+  template already quoted (`-k '{name}'`, `"{file}"`) is escaped for that quote instead, so
+  existing templates keep working. `{name}` and `{ref}` get the same treatment in the oracle
+  path; the seal stage still refuses them, since it runs a whole file
+  ([ADR-0048](../../docs/adr/0048-shell-quoted-test-one-placeholders.md), amending ADR-0036).
+- **The autopilot engine's git keeps the host's commit identity and config location.** Its
+  hardened git environment dropped every inherited `GIT_*` variable, so a host that supplies the
+  identity through `GIT_AUTHOR_*`/`GIT_COMMITTER_*` or `GIT_CONFIG_GLOBAL` (a CI runner, a
+  container) could not make the seal commit, and on a developer's machine the engine fell back to
+  `$HOME/.gitconfig` instead of the config the host named. The environment is now an allowlist:
+  identity, `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`/`GIT_CONFIG_NOSYSTEM`, and git's helpers are
+  kept; everything that can name a repository, an index or an object store, or inject config at
+  command-line scope (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_CONFIG_PARAMETERS`, …), is still dropped.
+- **`marvin-tm-diff-critic` diffs against the resolved base branch** (config `base_branch`, then
+  `origin/HEAD`, then `dev`) from the merge base, instead of a hard-coded `main`.
+- **`marvin-tm-executor` passes `--base` to every `gh pr create`**, drafts included.
+- **`spec` `action: "next"` counts the specs on `origin/<base_branch>`**, so two sessions no
+  longer mint the same number. It also reports a local draft whose number the base already holds
+  (`next.base.taken`) and a slug the base holds in a file this checkout lacks
+  (`next.base.collision`), and `task-start`'s pre-seal check acts on both.
+- **`lessons` takes an optional `projectRoot`** on every action, so a session in a worktree reads
+  and writes that worktree's store. `summary`'s lessons join follows the same rule.
+- **The blocking hooks run when launched through a symlinked path.** `bypass-guard` and
+  `secret-guard` compared the unresolved `argv[1]` against the resolved `import.meta.url`, so
+  through a symlinked plugin directory their bodies were skipped and every call was allowed.
+
+## [0.28.0] — 2026-09-27
+
+Changes 2–8 of `docs/proposals/pipeline-stage-efficiency.md`: the pipeline stages the host
+measurements showed to be unenforced, inert or miscounted. Change 1, recalibrating the spec critic,
+waits for five specs written in the ADR-0046 shape, as the proposal orders.
+
+### Added
+
+- **Critic budgets in the `metrics` answer.** A `critic-dispatch` event is now answered with a
+  **Budget** line and a `budget` field: `within`, `final` (the last dispatch the budget allows) or
+  `exceeded`. The spec critic gets two dispatches, one on the light tier, which the tool reads from
+  the spec's own frontmatter and contract; the diff critic gets three, the first dispatch plus one
+  in each of the critic loop's first two rounds. An overrun is still recorded, so it is counted. The
+  roll-up gains `rework.critic_budget_exceeded` (R5, per critic), and `/marvin:task-metrics` reports
+  the share of tasks that exceeded a budget. A record rolled up earlier reads as null.
+- **A red phase on the feature path** ([ADR-0047](../../docs/adr/0047-feature-red-phase.md)).
+  `/marvin:task-implement` Step 5F and `marvin-tm-executor` §2 record one `expect: "fail"` oracle
+  run for the first `kind: test` criterion before implementing, and the delivery gate now reads a
+  feature's `red_green`: `proven` when any `kind: test` criterion has a red→green pair, `missing`
+  when none has, `unknown` when the spec has none. It stays advisory.
+- **Delivery and progress on the headless path.** `marvin-tm-executor` writes progress entries
+  (`source: "marvin-tm-executor"`, from `§1`) and, after `gh pr create` succeeds, sets the spec to
+  `status: shipped` and appends `## Delivery`, as `/marvin:task-deliver` Step 4 does. The roll-up's
+  T2 now starts from the executor's `§1` entry as well as `task-implement`'s step 2.5, so headless
+  tasks get time fields. The executor also runs the feature oracles after its gates, and records a
+  bugfix red and green through `verify` when the tool is available.
+- **Lint before the full `verify`.** Step 6F (and 9B) and the executor run `verify` with
+  `only: ["lint"]` first. Lint caused 6 of the 9 failed gates in the measured first runs. The lint
+  pass is a targeted run, so it counts toward R4 `runs_before_green`.
+- **A `scope.exempt` suggestion at the first by-product SPEC GAP.** `task-implement` names the
+  pattern for a lockfile, a generated declaration file or a subagent's memory notes, and points the
+  user at `/marvin:track-config`. No defaults ship (ADR-0045).
+
+### Changed
+
+- **The scope diff starts at the merge base.** `changedFilesForScope` diffs from
+  `git merge-base <base> HEAD` instead of `<base>`, so commits that reached the base branch after
+  the fork no longer count as undeclared changes. Both callers, the scope gate and the Q1 roll-up,
+  go through it. Without a base the diff is still against `HEAD`, and when no merge base exists the
+  base ref itself is used.
+
+### Fixed
+
+- **The `oracle-filter` detail stated the wrong consequence.** A test-name filter that starts with
+  `-` is parsed as an option, and the runner exits with an error (vitest 4: `CACError: Unknown
+option`), so the oracle can never pass. The check was correct; the detail and the 0.25.0 entry
+  below said it selected nothing and passed.
+
+## [0.27.0] — 2026-09-27
+
+Specs from `/marvin:task-start` get a lean shape: nine permanent sections plus three optional ones
+instead of eighteen, each fact stated once, and a critic that can ask for text to be removed. The
+measured corpus had a median of 37 KB, about a third of it restatement that had started to
+contradict the contracts it restated ([ADR-0046](../../docs/adr/0046-lean-spec-shape.md),
+`docs/proposals/spec-size-reduction.md`).
+
+### Added
+
+- **Advisory size checks in the DoR gate.** `spec-size` warns above
+  `3 KB + 400 B per file + 500 B per criterion`, `ac-length` on a criterion statement over 40 words,
+  `intent-length` on a file intent over 60 words, and `security-nfr` on a `risk: high` feature with
+  no Security / NFR section. All four warn and none fails, so every sealed spec stays dispatchable.
+- **`merge_obligations` in `.marvin/config.json`**, an optional list of what the host needs to merge.
+  With `spec.dir`, `adr.dir`, `gates` and `gates.test_one`, it replaces the `host-bindings` block a
+  spec used to carry; `/marvin:task-start` proposes the missing keys once per project and writes
+  them after confirmation.
+- **Spec size in the task metrics.** The terminal `task-metrics` block gains `quality.spec_size`
+  (`bytes`, `words`, `budget`), read from the spec at roll-up time, and `/marvin:task-metrics`
+  reports Q13 `spec_bytes` and Q14 `spec_words`. A record rolled up earlier reads as null.
+- **The spec critic's Economy category.** `[redundancy]` and `[size]` are warnings, `[drift]` (a
+  restatement that contradicts the contract) is a blocker, and `[prose-only]` flags a requirement
+  nothing can prove. A criterion that describes design rather than behaviour is reported as well.
+
+### Changed
+
+- **The spec templates.** The feature template keeps Goal, Context, Spec Contract, Chosen Approach,
+  Non-goals, Assumptions, Open Questions and a one-line Critic Verdict & Overrides; Data & Config,
+  Security / NFR and Deferred slices are written only when they apply. Test Plan, Definition of
+  Done, Design Notes, Why this over alternatives, Future Considerations and Host Bindings are gone:
+  their content moves into the contract or into Chosen Approach as traps and at most three rejected
+  alternatives. The bugfix template drops Definition of Done, Design Notes and Host Bindings.
+  Both state limits on the contract fields, and `satisfies` is now optional.
+- **The DoR gate's required sections.** A feature requires Goal, Chosen Approach, Non-goals and Open
+  Questions, and recommends Context, Assumptions and Critic Verdict & Overrides; a bugfix no longer
+  requires Definition of Done. Sections were only removed, so a spec that passed still passes.
+- **`task-start` writing rules.** Step 5F replaces "fill every section" with one fact in one place,
+  evidence in a `runs/<slug>.evidence.md` sidecar, and the critic's narrative in its receipt. Step
+  4.5F must present a split for a plan above 15 files or 12 criteria, and the gate's `fcp-size`
+  warning moved to the same threshold. Step 6F turns follow-ups into board cards instead of a spec
+  section. Steps 8F/8B resolve a critic finding by editing the lines it names and pass the size
+  budget to the critic.
+- **A light tier.** A feature with `risk: low` and at most five files may omit Context and gets one
+  spec-critic dispatch instead of two.
+- **The executor** reads traps from Chosen Approach, and still reads `## Design Notes` in an older
+  spec.
+- **The task summary** links the ADR directory from `adr.dir` when a spec carries no
+  `host-bindings` block.
+
+## [0.26.0] — 2026-09-27
+
+Files a task writes as a by-product, rather than as part of the change, stop counting as scope
+creep once the project says which they are. In one host project a third of all recorded SPEC GAPs
+were such files: reviewer agent-memory notes, `.d.mts` sidecars, a lock file, and a harness under
+`.marvin/` that was already exempt ([ADR-0045](../../docs/adr/0045-scope-byproduct-exemptions.md)).
+
+### Added
+
+- **`scope.exempt` in `.marvin/config.json`: path patterns for by-product files.** A changed file
+  the spec's `files` list does not name and that matches a pattern is not a violation for the scope
+  gate (`spec action: "scope"`) and not `undeclared` in a task's metrics. It is never silent: the
+  gate's detail names each exempted path with the pattern that matched it. A file the contract
+  declares is always counted as declared. Patterns are project-relative and anchored at the root:
+  `**` for any depth, `*` within one segment, `?` for one character, a trailing `/` for a whole
+  directory. There are no character classes, braces or negation. marvin ships **no defaults**, so a
+  project without the key gets the gate's previous answer byte for byte.
+- **Q1 `scope_drift.exempt`.** The terminal `task-metrics` block lists the exempted paths, or `null`
+  when the project configures no list: the source is absent, so no zero is claimed. `changed` still
+  counts them; only `undeclared` shrinks. `metrics action: "series"` gains a
+  `scope_drift_exempt` row, and a single record's view prints the exempted paths.
+- **`/marvin:track-config` shows and sets the list.** `scope_exempt` takes a JSON array that
+  replaces the list, and an empty string removes it. The view gains a "Scope exemptions" section.
+  A pattern the matcher cannot honour (absolute, only wildcards, a `..` segment, a leading `!`) is
+  refused with the reason, and nothing is written.
+
+### Changed
+
+- **The scope gate and the metrics roll-up share one judgement.** `partitionScope` in the new
+  `lib/scope.ts` removes marvin's own files, then the allowlist, then the exemptions, and both
+  callers use it, so the gate's violations and Q1's `undeclared` cannot disagree. The
+  `.marvin/`-and-spec exclusion that each of them wrote out separately now lives only there.
+- **The scope gate reads the project config**, and reports what it could not apply: a
+  `.marvin/config.json` that fails to load adds a `scope-config` warning, and a pattern it ignores
+  adds a `scope-exempt` warning naming the pattern and the reason. A hand-edited bad pattern also
+  appears in `/marvin:track-config` and `/marvin:dashboard`. It is never removed from the list,
+  since the gate would then have nothing to name.
+- **`task-implement`, `marvin-tm-executor` and `marvin-tm-diff-critic` know about exemptions.** A
+  file the gate reports as exempted, or anything under `.marvin/`, needs no SPEC GAP. A recurring
+  by-product that is not exempted is still one, and the session suggests its pattern for the list.
+  The diff critic classifies an exempt path as `generated`.
+
+## [0.25.0] — 2026-09-27
+
+The Definition-of-Ready gate takes over the decidable half of two finding classes the spec critic
+was spending its passes on. Across 54 spec-critic receipts in one host project, `[oracle]` and
+`[grounding]` were the two largest blocker categories; most of those blockers are judgements the
+gate cannot make, but some are facts it can check before the critic is dispatched.
+
+### Added
+
+- **`cite-lines` (FAIL): a line citation past the end of its file.** Every `path:line`,
+  `path:a-b` or `path:a,b` in the spec's prose, fenced blocks excluded, is resolved from the project
+  root, or else to the one tracked file whose path ends with it, so `Pages.tsx:969` and a path written
+  relative to a package are both checked. A citation that resolves to no file or to several is
+  skipped rather than guessed at. Paths planned `new` and `.marvin/` artifacts are exempt.
+- **`oracle-paths` (FAIL): an oracle command naming a file that neither exists nor is planned.**
+  Such an oracle cannot run. Paths are resolved from the root, from any `cd`/`-C`/`--cwd` target in
+  the command, and against the contract's `files`. Output targets (`>`, `tee`, `-o`) are ignored. A
+  command that selects a workspace by name (`-w`, `--workspace`, `--filter`) only warns, because
+  its paths are relative to a directory the gate cannot resolve.
+- **`oracle-filter` (FAIL): a test-name filter that starts with `-`.** `vitest -t "--staged …"`
+  hands the pattern to the argument parser as an option, and the runner exits with an error, so
+  the oracle can never pass. Checked only when the command invokes a test runner,
+  so `docker run -t --rm` is not flagged. The host sweep found three such oracles in two sealed
+  specs. One of them surfaced during implementation; the other two had gone unnoticed.
+- **`oracle-narrow` (WARN): a whole-suite oracle.** A project-wide gate or bare runner (`npm test`,
+  `npm run e2e`, `npx vitest run`) that names no file, directory, quoted pattern, URL or test filter
+  proves the suite is green, not that the criterion holds. A bespoke script is not flagged.
+- **`oracle-failure` (WARN): a real oracle with no `failure:` line.** Stating what the oracle shows
+  when the criterion is unmet is what lets anyone check that it can fail at all.
+
+### Changed
+
+- **The spec critic no longer re-reports what the gate checks.** `marvin-tm-spec-critic` is told
+  which oracle and citation facts are now mechanical, and is pointed at what remains: whether an
+  oracle that runs can also FAIL on the wrong implementation its `failure:` line describes.
+  `task-start` step 7F lists the new checks and asks for them to be fixed before the critic is
+  dispatched.
+
+### Not added
+
+- **A "named path does not exist" finding.** It was built and measured before release: across the
+  49 specs of three host projects it was wrong about four times in five (a path in another
+  repository, an import alias, a MIME type, an illustrative `src/components/Foo.tsx`). A missing
+  file stays a critic finding.
+
+## [0.24.0] — 2026-09-08
+
+The eighth command group, `audit`: a project-audit programme of twenty-two audits reachable through
+three commands rather than twenty-three. The prompt count moves from 56 to 59; tools, agents and
+widgets are unchanged.
+
+### Added
+
+- **`/marvin:audit-run` executes one audit end to end** and releases it as `.md` plus `.pdf` with a
+  machine-readable findings register. The half every audit shares — the parameter set, the
+  seven-section report skeleton, the finding schema, the S0–S4 severity scale and its mapping onto
+  the `sec-scan` rubric, the evidence rules, the sampling budget and the prohibitions — is written
+  once in `skills/audit-run/references/report-contract.md`. Each audit is a file under
+  `references/audits/` carrying only what differs, so a twenty-third audit is a new file and one row
+  in `references/audit-index.md`, not a new command. Reports land in `.marvin/audit/` by default;
+  the run is strictly read-only on the audited repository.
+- **`/marvin:audit-plan` chooses the programme** — which of A-01…A-22 a given project needs, ordered
+  into waves by data dependency, with a paste-ready invocation per run. Read-only.
+- **`/marvin:audit-summary` consolidates the finished reports (A-99)** into one prioritised
+  register: duplicates merged, severity conflicts resolved with a stated rationale, work ordered by
+  finding dependency, and a top five with an estimate. It reads reports and never re-reads code.
+- **Sessions are isolated by construction.** A predecessor's output reaches a later run as a
+  parameter value, never as remembered context, so an audit run in a fresh session behaves the same
+  as one run in a long-lived conversation.
+- **Both release artefacts are verified rather than asserted.** `references/tools/audit-pdf.py`
+  registers a TTF whose Cyrillic coverage it has probed and exits 2 instead of emitting empty
+  boxes; `references/tools/audit-verify.py` fails the release when the finding identifiers in the
+  prose, in the machine register and in the rendered PDF disagree, holding prose and register to
+  equality while allowing the PDF the cross-references a report legitimately makes to other audits.
+- **Two exclusion conventions are measured, and the contract records the measurement beside each.**
+  A ripgrep exclusion glob containing `/` is matched from the search root, so `-g '!node_modules/**'`
+  leaves `packages/x/node_modules/` in scope; every glob in `RG_EXCLUDE` is `**/`-prefixed. A git
+  pathspec without the `glob` magic prunes a nested `node_modules` and leaves the root-level one, so
+  every entry in `GIT_EXCLUDE` is `:(exclude,glob)`.
+- **`test/audit-family.test.mjs`** pins what no other gate reaches: the catalogue and the spec files
+  as one set in both directions, the thirteen-section spec template of `spec-authoring.md`, the
+  S0–S4 vocabulary, the Origin column's two values, the length budget, that every `skills/…` path in the family resolves
+  (`skill-datasets.mjs` deliberately does not walk reference files), that every `report-contract.md`
+  §N reference names a section the contract has, and that the register schema and `audit-verify.py`'s
+  required tuple are the same field set.
+
+### Changed
+
+- **The registry grew by one group, not just by three prompts.** `audit` sits between `refactor` and
+  `track` in `GROUP_PREFIXES` and `GROUP_ORDER` in `lib/state.ts` and in its mirror in the site's
+  `gen-catalog.mjs`; the three commands are carried by three `commands/` wrappers, three
+  `prompts/index.ts` entries, five `help-content.ts` maps, three trigger-eval datasets, and the
+  counts in `README.md`, `plugins/marvin/README.md`, `docs/architecture.md`, `docs/commands.md` and
+  `CLAUDE.md`.
 
 ## [0.23.0] — 2026-09-04
 
@@ -183,7 +631,7 @@ that need it are present from the first record in the series rather than absent 
 ## [0.19.0] — 2026-09-03
 
 An instrumented end-to-end run of the pipeline (one feature task, 74.8 minutes) put **67% of the
-wall clock inside the two critic agents**, and 97% of *that* into generating their reports rather
+wall clock inside the two critic agents**, and 97% of _that_ into generating their reports rather
 than investigating: 211 tool calls, 79.6 seconds of execution, 3,026 seconds of wall clock. This
 release attacks the cost without changing what is checked. Recorded as ADR-0042.
 
@@ -207,7 +655,7 @@ release attacks the cost without changing what is checked. Recorded as ADR-0042.
   `marvin-tm-executor` §3). The critic is dispatched once, against a green tree. This reverses P2 of
   `docs/proposals/task-workflow-latency-optimization.md`: the overlap saved 76 seconds and cost the
   393-second re-review that the stale-review guard mandates when a verify fix moves the tree under
-  the critic. The guard becomes a stale-*verify* guard — any change after the green run, including
+  the critic. The guard becomes a stale-_verify_ guard — any change after the green run, including
   one made for a critic blocker, needs the affected gate re-run and a final full pass.
 - **The diff critic is no longer dispatched blind to new files.** It now receives
   `git status --porcelain --untracked-files=all` beside `git diff`, and its own workflow enumerates
@@ -251,7 +699,7 @@ release attacks the cost without changing what is checked. Recorded as ADR-0042.
 
 - **A host that renders widgets no longer also prints the panel as markdown.** Nine of marvin's
   tools bind a `ui://` widget. On a client that advertises the MCP Apps UI extension the host drew
-  the widget *and* the model rebuilt the same panel in text, so the user saw one dashboard twice.
+  the widget _and_ the model rebuilt the same panel in text, so the user saw one dashboard twice.
   A widget-bound tool's result is now gated on the calling client's advertised capabilities: such a
   client receives a one-line digest naming the widget, plus a `_rendered` key in the payload telling
   the model the content is already on screen. A client that advertises nothing — every terminal,
@@ -340,7 +788,7 @@ than skipping a check — and each was found by spawning the shipped guard, not 
 ### Fixed
 
 - **The ADR readiness gate read a record's own content as unfilled template residue.** Its
-  code-stripper matched a fenced-block marker that appeared *inside* an inline code span — the
+  code-stripper matched a fenced-block marker that appeared _inside_ an inline code span — the
   shipped example is a record describing the ` ```json oracle-run ` block it writes — and consumed
   everything up to the next fence in the document. The resulting odd backtick run re-paired every
   span after it, exposing their contents to a lint that is supposed to ignore code. ADR-0036 was
@@ -358,7 +806,7 @@ than skipping a check — and each was found by spawning the shipped guard, not 
 - **Every ADR is now `accepted`.** The eight that stood at `proposed` — 0033 and 0034, whose
   features shipped some time ago, and 0035 through 0040 from the workflow-hardening plan — were
   ratified by the owner. Both index tables were corrected with them: `check-docs-drift` verifies
-  that an ADR is *linked* from each, never that the status it prints is the status the record
+  that an ADR is _linked_ from each, never that the status it prints is the status the record
   carries, so they had gone on saying `Proposed` after each acceptance.
 
 ## [0.17.0] — 2026-08-15
@@ -481,7 +929,7 @@ stops losing its answers. ADR-0037 accompanies it, `proposed`.
   deliberately unbounded for legacy tolerance. Measured on a two-file corpus, the message reached
   1,000,033 bytes; it is now capped at ten listed ids plus a count, and measures 169.
 - **A file with no identity was reported as malformed.** The guard that skips such a file ran
-  *after* the channel it was meant to protect.
+  _after_ the channel it was meant to protect.
 - **`verify action: "oracles"` could not see a configured spec directory**, while every other
   reader could — so a project setting `spec.dir` outside the conventional candidates worked
   everywhere except the oracle runner. `/marvin:help` and `/marvin:dashboard` likewise printed
@@ -505,7 +953,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
 - **Provenance on every verification run** (`head_sha`, `branch`, `dirty`, `worktree_digest`,
   `generated_at`), carried in the `verify-result` block and read by the delivery gate. The
   decisive field is `worktree_digest`: in marvin's own process both verification and delivery run
-  on a dirty tree *before* the commit, so `head_sha` and `dirty` are identical either side of an
+  on a dirty tree _before_ the commit, so `head_sha` and `dirty` are identical either side of an
   edit and would almost never catch a stale proof. It hashes a structural path list — changed
   paths plus untracked paths plus one `git hash-object` pass — rather than patch text, so the
   cost is O(paths) and the computation cannot be defeated by a large diff. `decision` stays
@@ -530,13 +978,13 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
 ### Fixed
 
 - **`task-summary` was over-claiming, not being conservative.** It reported `pass` for every
-  test-backed or command-backed criterion whenever the *run* verdict was green — asserting
+  test-backed or command-backed criterion whenever the _run_ verdict was green — asserting
   per-criterion proofs it never had. A criterion whose oracle did not run now reports `unknown`,
   even on a PASS verdict. `AcOutcome` keeps its three values.
 - **The delivery gate could be bypassed by an unrunnable test gate.** Making a missing binary
   `not-run` would, on its own, have turned `"test": "nonexistent-runner"` from a hard block into a
   delivery. The gate now refuses when every recorded `test` gate is `not-run`, or when every gate
-  is, with no input waiving it — while a missing *optional* scanner still delivers with a warning,
+  is, with no input waiving it — while a missing _optional_ scanner still delivers with a warning,
   which is the whole reason `not-run` exists.
 - **`task-deliver` could skip the gate entirely.** Two clauses licensed reusing a verdict from
   conversation context and hand-reading the artifact when the tool was unavailable. A verdict
@@ -553,6 +1001,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
   inside `runGate` serialised gates that ADR-0002 made concurrent on purpose, and the repository's
   own latency test caught it — parallel 1094ms against sequential 973ms. Probes now run once per
   token before the clock starts; the margin is back to roughly 215ms against 640ms.
+
 ## [0.14.1] — 2026-08-13
 
 ### Fixed
@@ -567,7 +1016,7 @@ finally executed. ADR-0035 and ADR-0036 accompany it, both `proposed`.
   prompt ever passed the argument, so nothing that worked before stops working.
 - **`registerTool` now passes the input schema itself rather than its raw `.shape`** — without
   which the fix above could not work at all. Handed a raw shape, the MCP SDK rebuilds it with a
-  plain, non-strict `z.object()` and strips unknown keys *before* the handler and before the
+  plain, non-strict `z.object()` and strips unknown keys _before_ the handler and before the
   shared `safeParse` ever see them, so a `.strict()` schema could never reject anything. Strict
   schemas now fail loudly; non-strict schemas keep stripping exactly as before. The advertised
   JSON Schema is unchanged for 12 of the 13 tools — and 12 already published
@@ -602,7 +1051,7 @@ CLAUDE.md asserts become machine-checked, and the first session gets a front doo
   Five of the six pass on the current tree with no content edits — they are regression fences,
   not repairs, and the module says so.
 - **`plugins/marvin/commands/{lessons,dashboard,reports}.md`** (decision **D3**). Beyond
-  uniformity, this is what lets the wrapper check pin a *rule* rather than a list: the
+  uniformity, this is what lets the wrapper check pin a _rule_ rather than a list: the
   wrapper-less set was ten prompts — those three plus the seven `track-*` — and is now exactly
   the `track-*` group, which is what CLAUDE.md already asserted.
 - **`scripts/usage-surface.mjs`** — compares the declared registry against the names actually
@@ -669,7 +1118,7 @@ pipeline gets a routed entrance and a bounded intake.
 - **A question budget.** Intake is capped at six questions for a feature and four for a
   bugfix, in priority order — scope and boundaries, security and data, interface and
   contract, the rest — with up to three numbered independent questions per turn. Three sweep
-  rows are relabelled as answered by *reading* rather than asking: reverse dependencies by
+  rows are relabelled as answered by _reading_ rather than asking: reverse dependencies by
   grep, the test environment from CI configuration, merge obligations from CLAUDE.md. A
   do-not-ask list names the default each item assumes, and every accepted default must be
   recorded in `## Assumptions` as "assumed X because Y; correct now if wrong".
@@ -1071,7 +1520,7 @@ Registry unchanged: 52 prompts, 13 tools, 9 widgets.
   report section is now `board` (`## Board`).
 - The curated help content for `track-tracker` and `track-status` now matches what the
   commands actually do (the read-only tracked-tasks list and the branch + WIP report);
-  both previously described status/link *mutations*.
+  both previously described status/link _mutations_.
 
 ## [0.5.0] — 2026-07-12
 

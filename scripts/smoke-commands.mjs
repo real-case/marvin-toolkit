@@ -103,12 +103,14 @@ const REQUIRED_TOOLS = [
   "dashboard",
   "verify",
   "spec",
+  "metrics",
   "lessons",
   "handoff",
   "summary",
   "adr",
   "audit",
   "report",
+  "pipeline",
 ];
 
 /**

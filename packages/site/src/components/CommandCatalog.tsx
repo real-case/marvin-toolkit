@@ -145,7 +145,7 @@ export default function CommandCatalog() {
     [query, group],
   );
 
-  // Keep the seven groups in catalog order; drop the ones with nothing left to show.
+  // Keep the groups in catalog order; drop the ones with nothing left to show.
   const visibleGroups = useMemo(
     () =>
       groups

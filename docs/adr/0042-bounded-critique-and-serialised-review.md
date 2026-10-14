@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-09-03 |
+| Status        | **Accepted** |
+| Date          | 2026-09-05 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0002](0002-tool-backed-verification.md) (the gate runner whose ordering this changes), [ADR-0003](0003-tool-backed-dor.md) (the DoR gate this extends), [ADR-0039](0039-critique-receipts.md) (the receipts the critics leave), `docs/proposals/task-workflow-latency-optimization.md` (P2, reversed here) |

@@ -48,6 +48,11 @@ docs/design/mockups/
 # Trigger-eval run artifacts (also git-ignored)
 evals/trigger/results/
 
+# Autopilot bench results: committed records written by `marvin-pipe bench` as
+# JSON.stringify(…,2)+"\n" and read back by `bench-compare` and `--baseline`. Excluded for the
+# reason catalog.json is: Prettier's JSON layout would fight the writer and churn every record.
+evals/autopilot/results/*.json
+
 # Generated output under packages/site that is git-ignored but NOT prettier-ignored.
 #
 # Prettier does not read nested .gitignore files — only the root .gitignore and this file. So

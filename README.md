@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **56 prompts, 14 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **60 prompts, 15 MCP tools, 10 agents, and 9 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -60,17 +60,18 @@ them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or expor
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 55
-prompts divide into seven groups:
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 60
+prompts divide into eight groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
-| _(bare)_ | Core developer tools | 17 |
+| _(bare)_ | Core developer tools | 18 |
 | `adr-*` | ADR lifecycle | 6 |
 | `pr-*` | Pull-request operations | 4 |
-| `task-*` | Spec-driven task pipeline | 6 |
+| `task-*` | Spec-driven task pipeline | 7 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
+| `audit-*` | Formal project audit (plan, run one, consolidate) | 3 |
 | `track-*` | Lightweight task tracker | 7 |
 
 The tables below give a one-line synopsis per command. The
@@ -101,6 +102,7 @@ auto-triggers these, you invoke them yourself.
 | `/marvin:reports` | Browse every generated `.marvin/` report, newest first, with freshness. |
 | `/marvin:report-export` | Export a report to PDF, print-ready HTML, or a Markdown digest ([ADR-0033](./docs/adr/0033-report-export.md)). |
 | `/marvin:widget-preview` | Open a widget as a rendered panel with this project's data, on any host ([ADR-0034](./docs/adr/0034-widget-preview-door.md)). |
+| `/marvin:autopilot` | Deliver a task to a merge-ready PR through the autonomous pipeline; this session only answers its judgments. |
 
 The `marvin-guide`, `marvin-researcher`, and `marvin-debugger` agents support these
 commands. The plugin also registers two external MCP servers: `context7` for library docs
@@ -291,10 +293,14 @@ rationale is folded into 0001, 0013, and 0018.
 | [0038](./docs/adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
 | [0039](./docs/adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
 | [0040](./docs/adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
-| [0041](./docs/adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Proposed |
-| [0042](./docs/adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Proposed |
+| [0041](./docs/adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Accepted |
+| [0042](./docs/adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Accepted |
 | [0043](./docs/adr/0043-task-workflow-metrics.md) | Task workflow metrics are a committed per-task series, derived at delivery | Accepted |
-| [0044](./docs/adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Proposed |
+| [0044](./docs/adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Accepted |
+| [0045](./docs/adr/0045-scope-byproduct-exemptions.md) | By-product files are exempted from a task's scope by project configuration | Accepted |
+| [0046](./docs/adr/0046-lean-spec-shape.md) | A spec keeps only the sections a reader uses, and states each fact once | Accepted |
+| [0047](./docs/adr/0047-feature-red-phase.md) | A feature records one red phase, and the delivery gate reads it | Accepted |
+| [0048](./docs/adr/0048-shell-quoted-test-one-placeholders.md) | A `test_one` placeholder is shell-quoted by marvin, not by the template author | Accepted |
 
 ## Contributing
 

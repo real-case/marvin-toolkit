@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-08-18 |
+| Status        | **Accepted** |
+| Date          | 2026-09-05 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0024](0024-mcp-apps-widget-architecture.md) (the progressive-enhancement decision this narrows), [ADR-0034](0034-widget-preview-door.md) (the measurement of which hosts render `ui://` documents), [ADR-0008](0008-mcp-door-resource-resolution.md) (the shared server as the single point every result passes through) |

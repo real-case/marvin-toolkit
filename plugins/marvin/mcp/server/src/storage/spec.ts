@@ -93,6 +93,24 @@ export const HostBindings = z
   .passthrough();
 export type HostBindings = z.infer<typeof HostBindings>;
 
+/**
+ * The spec size budget of ADR-0046: `3 KB + 400 B per file + 500 B per
+ * criterion`. One home for two readers — the DoR gate warns above it, and the
+ * metrics roll-up records it beside the spec's measured size — so the number a
+ * spec is warned against and the number its record reports cannot drift.
+ */
+export const SPEC_SIZE_BASE = 3 * 1024;
+export const SPEC_SIZE_PER_FILE = 400;
+export const SPEC_SIZE_PER_CRITERION = 500;
+export function specSizeBudget(files: number, criteria: number): number {
+  return SPEC_SIZE_BASE + SPEC_SIZE_PER_FILE * files + SPEC_SIZE_PER_CRITERION * criteria;
+}
+
+/** Whitespace-separated words — the unit of the size checks and `spec_words`. */
+export function wordCount(text: string | undefined): number {
+  return (text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
+
 /** Extract the first fenced block whose info string mentions `spec-contract`. */
 export function extractContractBlock(body: string): string | null {
   const m = /```[^\n`]*spec-contract[^\n`]*\n([\s\S]*?)\n```/.exec(body);
@@ -402,14 +420,53 @@ function errText(err: unknown): string {
 }
 
 /**
+ * The ordering prefix a spec FILENAME reserves, as written (`"0012"`), or null.
+ *
+ * The filename half of the rule {@link readSpecCorpus} applies — a markdown file
+ * other than `verification.md` whose name leads with a `<digits>-` group — and no
+ * more: a numbered file holds its number whatever its contents, which is why the
+ * corpus counts malformed files too. It exists for names read from somewhere the
+ * corpus reader cannot open, a base branch listed with `git ls-tree`, where a
+ * filename is all there is.
+ */
+function specFilenameId(filename: string): string | null {
+  if (!filename.endsWith(".md") || filename === "verification.md") return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[1] ?? null;
+}
+
+/** The number {@link specFilenameId} reserves, or null for a name that reserves none. */
+export function specFilenameNumber(filename: string): number | null {
+  const id = specFilenameId(filename);
+  return id === null ? null : Number(id);
+}
+
+/**
+ * The slug a numbered spec FILENAME carries after its prefix (`"0012-wide.md"` →
+ * `"wide"`), or null for a name that reserves no number. A filename is all a
+ * base-branch listing gives, so this is the identity such a file is matched on;
+ * the corpus reader prefers the frontmatter `slug`, which it can open.
+ */
+export function specFilenameSlug(filename: string): string | null {
+  if (specFilenameId(filename) === null) return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[2] ?? null;
+}
+
+/**
  * Highest number anywhere in the corpus + 1, or 1 on an empty one. Malformed
  * files hold their numbers too — a file the parser cannot read still occupies
  * its slot, so allocation never hands out a number that is already taken.
+ *
+ * `elsewhere` is the same claim made from outside this directory: bare spec
+ * filenames another tree already holds (the base branch, for `spec action:
+ * "next"`). A number taken there is as taken as one on disk — two sessions that
+ * allocate from their own checkouts otherwise mint the same `NNN`, and the
+ * collision surfaces only when the second branch merges.
  */
-export function nextSpecNumber(corpus: SpecCorpus): number {
+export function nextSpecNumber(corpus: SpecCorpus, elsewhere: readonly string[] = []): number {
   const numbers = [
     ...corpus.records.map((r) => r.number),
     ...corpus.malformed.map((m) => m.number),
+    ...elsewhere.map(specFilenameNumber),
   ].filter((n): n is number => n !== null);
   return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
 }
@@ -420,13 +477,17 @@ export function nextSpecNumber(corpus: SpecCorpus): number {
  * (a 4-digit host RFC convention). Padding widens naturally past the observed
  * width — `String(1000).padStart(3, "0")` is already `"1000"` — the same
  * tolerance `formatAdrId` documents.
+ *
+ * `elsewhere` widens it the way it raises {@link nextSpecNumber}: a 4-digit
+ * convention visible only on the base branch is still this directory's
+ * convention, and a checkout that has not merged it yet must not fall back to 3.
  */
-export function specIdWidth(corpus: SpecCorpus): number {
-  const observed = (filename: string): number =>
-    SPEC_PREFIX_RE.exec(filename.replace(/\.md$/, ""))?.[1]?.length ?? 0;
+export function specIdWidth(corpus: SpecCorpus, elsewhere: readonly string[] = []): number {
+  const observed = (filename: string): number => specFilenameId(filename)?.length ?? 0;
   const widths = [
     ...corpus.records.map((r) => r.id?.length ?? 0),
     ...corpus.malformed.map((m) => observed(m.filename)),
+    ...elsewhere.map(observed),
   ];
   return Math.max(3, ...widths);
 }

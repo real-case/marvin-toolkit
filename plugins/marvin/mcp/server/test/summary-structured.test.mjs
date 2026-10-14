@@ -185,6 +185,24 @@ test("summary aggregates a spec into a TaskSummary structuredContent", async () 
   }
 });
 
+test("a spec with no host-bindings block links the ADR directory from the config (ADR-0046)", async () => {
+  const repo = seedRepo();
+  try {
+    const lean = SPEC.replace(/```yaml host-bindings\n[\s\S]*?\n```\n/, "");
+    assert.ok(!lean.includes("host-bindings"));
+    writeFileSync(join(repo, ".marvin", "task", "001-demo.md"), lean);
+    writeFileSync(
+      join(repo, ".marvin", "config.json"),
+      JSON.stringify({ base_branch: "dev", adr: { dir: "docs/decisions" } }),
+    );
+    const result = await callSummary(repo, { slug: "demo" });
+    const adr = result.structuredContent.links.find((l) => l.kind === "adr");
+    assert.equal(adr?.ref, "docs/decisions");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 // ── per-spec runs: the summary must join against ITS OWN run (ADR-0035) ─────
 
 /** A verify-result artifact with the given verdict and gates. */

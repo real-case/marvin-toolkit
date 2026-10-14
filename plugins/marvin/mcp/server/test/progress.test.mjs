@@ -132,3 +132,22 @@ test("an archived boundary hides earlier entries without deleting them", () => {
     });
   });
 });
+
+test("the headless executor is a writer: its entries round-trip, and an unknown source is dropped", () => {
+  withTmp((dir) => {
+    const runs = join(dir, "runs");
+    const headless = entry({ source: "marvin-tm-executor", step: "§1", detail: "read the spec" });
+    recordProgress(runs, headless);
+    const path = progressJournalPath(runs, "demo");
+    writeFileSync(
+      path,
+      "```json " +
+        PROGRESS_TAG +
+        "\n" +
+        JSON.stringify(entry({ source: "someone-else" })) +
+        "\n```\n\n",
+      { flag: "a" },
+    );
+    assert.deepEqual(readProgress(runs, "demo"), [headless]);
+  });
+});

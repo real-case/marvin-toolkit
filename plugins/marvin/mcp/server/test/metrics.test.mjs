@@ -280,4 +280,32 @@ test("the storage mirror agrees with contracts/metrics.ts on every vocabulary an
   }
   // …and the contract accepts every terminal block the storage reader accepts here.
   assert.equal(contract.TaskMetrics.safeParse(terminal()).success, true);
+
+  // Q1's `exempt` (ADR-0045): a list, null (no scope.exempt configured), or
+  // missing on a record rolled up before the field existed — all three parse,
+  // and the storage envelope reads each back unchanged.
+  const drift = (extra) =>
+    terminal({
+      quality: {
+        ...terminal().quality,
+        scope_drift: { declared: 1, changed: 2, undeclared: ["README.md"], ...extra },
+      },
+    });
+  for (const fixture of [
+    drift({ exempt: [".claude/agent-memory/r/MEMORY.md"] }),
+    drift({ exempt: [] }),
+    drift({ exempt: null }),
+    drift({}),
+  ]) {
+    assert.equal(contract.TaskMetrics.safeParse(fixture).success, true, JSON.stringify(fixture));
+    withTmp((dir) => {
+      appendTaskMetrics(metricsRecordPath(dir, "demo"), fixture);
+      assert.deepEqual(readTaskMetrics(dir, "demo"), fixture);
+    });
+  }
+  assert.equal(
+    contract.TaskMetrics.safeParse(drift({ exempt: [""] })).success,
+    false,
+    "an empty path is not an exempted file",
+  );
 });

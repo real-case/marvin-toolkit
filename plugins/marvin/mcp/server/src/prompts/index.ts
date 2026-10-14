@@ -3,7 +3,7 @@ import type { PromptDef } from "@marvin-toolkit/mcp-shared";
 /**
  * Prompts for the unified `marvin` server. Two body sources:
  *
- *  - **skill-backed** (core / adr / task / sec / refactor groups): `skill` points to a
+ *  - **skill-backed** (core / adr / task / sec / refactor / audit groups): `skill` points to a
  *    directory under `plugins/marvin/skills/<name>/SKILL.md`. The skill
  *    file is the single source of truth — Claude Code auto-discovers it
  *    through its own frontmatter `description`, while this server exposes
@@ -140,8 +140,8 @@ export const PROMPTS: PromptDef[] = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
+      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -177,6 +177,15 @@ export const PROMPTS: PromptDef[] = [
     description:
       "Open a marvin widget as a rendered panel with this project's own data — renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
     skill: "widget-preview",
+  },
+  {
+    // Skill-backed (three doors) — the orchestrator of the autopilot pipeline. The
+    // skill acts on a run only through the marvin-pipe CLI, which it locates with the
+    // `pipeline` tool's `paths` action; the engine, not this prompt, drives the run.
+    name: "autopilot",
+    description:
+      "Hand a task to marvin's autonomous pipeline and orchestrate it to a merge-ready PR — a detached engine drives English-only child sessions (planner, sealed acceptance tests, executor, deterministic gates, read-only verifier, CI, retro); this session answers the engine's judgments, asks the user only what nothing else settles, and reports in the user's language. Pass the task, or `resume [run-id]`.",
+    skill: "autopilot",
   },
 
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
@@ -359,6 +368,29 @@ export const PROMPTS: PromptDef[] = [
     skill: "refactor-apply",
   },
 
+  // ── audit (the formal A-01…A-22 project-audit programme) ────────────
+  // Three commands over twenty-three data files: the two harness commands and
+  // the consolidation. A twenty-third audit is a file under
+  // skills/audit-run/references/audits/, never a fourth prompt.
+  {
+    name: "audit-plan",
+    description:
+      "Plan a project audit programme — choose which of the twenty-two audits (A-01…A-22) this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run. Read-only; writes one plan under .marvin/audit/.",
+    skill: "audit-plan",
+  },
+  {
+    name: "audit-run",
+    description:
+      "Run one audit of the A-01…A-22 programme — inventory, onboarding, dependencies, repository history, static analysis, type safety, tests, development process, module boundaries, data model, API contracts, integrations, frontend, security, performance, observability, CI/CD, reliability, cost, documentation, accessibility, privacy — and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
+    skill: "audit-run",
+  },
+  {
+    name: "audit-summary",
+    description:
+      "A-99 — consolidate finished audit reports into one prioritised register: deduplicate findings several audits reached, resolve severity conflicts with a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce the top five for management. Reads reports and never re-analyses code.",
+    skill: "audit-summary",
+  },
+
   // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─
   // Seven commands over the same tools: the prompts route, the tools decide.
   {
@@ -418,11 +450,11 @@ export const PROMPTS: PromptDef[] = [
   {
     name: "track-config",
     description:
-      "Show or edit the board configuration — base branch, tracker URL template, branch template, statuses",
+      "Show or edit the board configuration — base branch, tracker URL template, branch template, statuses, scope exemptions",
     body: callTool(
       "task",
       { action: "config" },
-      "Mine the user's message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), and `statuses` (a JSON array of {key, role, tracker_status?} — roles: todo, wip, review, done, blocked; tracker_status is the tracker's exact workflow name). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.",
+      'Mine the user\'s message for configuration values and pass them as arguments: `base_branch`, `tracker_url_template` (with `{tracker_id}` marking where the id goes), `branch_template` (placeholders {type_prefix}, {type}, {seq}, {tracker}, {slug}), `statuses` (a JSON array of {key, role, tracker_status?} — roles: todo, wip, review, done, blocked; tracker_status is the tracker\'s exact workflow name), and `scope_exempt` (a JSON array of project-relative path patterns for by-product files the spec scope gate should not count as violations — `**` for any depth, `*` within one segment, e.g. [".claude/agent-memory/**","bun.lock"]; it replaces the whole list, so include the current entries when adding one). Pass an empty string to clear a setting. If the user wants to change settings but named no values, pass edit=true (interactive form for the scalar fields); with no arguments at all the current configuration is shown.',
     ),
   },
 ];

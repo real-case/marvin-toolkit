@@ -24,6 +24,7 @@ export const GROUP_BLURBS: Record<string, string> = {
   task: "Spec-driven pipeline — start, implement, verify, deliver",
   sec: "Security scanners — secrets, deps, threat models & more",
   refactor: "Code-health — audit, smells, plan, apply",
+  audit: "Formal project audit — plan the programme, run one audit, consolidate",
   track: "Lightweight board tracker — create, move, list, configure",
 };
 
@@ -54,6 +55,7 @@ export const COMMAND_BLURBS: Record<string, string> = {
   reports: "Unified viewer over all reports",
   "report-export": "Export a report to PDF / MD",
   "widget-preview": "Open a widget as a rendered panel",
+  autopilot: "Deliver a task to a PR autonomously",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -91,6 +93,10 @@ export const COMMAND_BLURBS: Record<string, string> = {
   "refactor-smells": "Scoped code-smell scan",
   "refactor-plan": "Sequence findings into steps",
   "refactor-apply": "Apply one refactor step, gated",
+  // audit
+  "audit-plan": "Plan the audit programme",
+  "audit-run": "Run one audit, A-01…A-22",
+  "audit-summary": "Consolidate audit reports",
   // track
   "track-menu": "Board action menu",
   "track-new": "New board task",
@@ -143,6 +149,8 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest — Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   "widget-preview":
     "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it — the way to see a widget on a host that cannot render them, including the terminal.",
+  autopilot:
+    "Orchestrate the autonomous pipeline: a detached engine drives a planner, sealed acceptance tests, an executor, deterministic gates, a read-only verifier, CI and a retro to a merge-ready PR, while this session answers its questions, gets the spec approved, and reports in your language.",
   // adr
   "adr-review":
     "Deep review of one proposed ADR — section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
@@ -207,6 +215,13 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Turn selected refactoring findings into a sequenced, risk-annotated plan; oversized items route to the task pipeline.",
   "refactor-apply":
     "Execute exactly one behaviour-preserving refactoring step under hard rails — verify green before and after, rollback on red.",
+  // audit
+  "audit-plan":
+    "Choose which of the twenty-two audits this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run.",
+  "audit-run":
+    "Execute ONE audit of the A-01…A-22 programme end to end and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
+  "audit-summary":
+    "A-99 — consolidate finished audit reports into one prioritised register: deduplicate, resolve severity conflicts, order by finding dependencies, and produce the top five. Reads reports, never code.",
   // track
   "track-menu": "Open the board action menu.",
   "track-new": "Create a board task — bug, feature, chore, or spike — through an interactive form.",
@@ -238,6 +253,7 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   lessons: "/marvin:lessons search dist staleness",
   help: "/marvin:help sec",
   "widget-preview": "/marvin:widget-preview dashboard",
+  autopilot: "/marvin:autopilot add a tag filter to the chat list",
   // adr
   "adr-review": "/marvin:adr-review 31",
   "adr-accept": "/marvin:adr-accept 31",
@@ -257,6 +273,9 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   // refactor
   "refactor-smells": "/marvin:refactor-smells src/tools",
   "refactor-plan": "/marvin:refactor-plan F3,F4",
+  // audit
+  "audit-run": "/marvin:audit-run A-14",
+  "audit-plan": "/marvin:audit-plan due diligence, code + CI only",
   // track
   "track-new": "/marvin:track-new bug login 500s",
   "track-start": "/marvin:track-start 12",
@@ -355,6 +374,11 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, show me the help widget",
     "marvin, open the dashboard as a panel",
     "marvin, why do I never see the widgets?",
+  ],
+  autopilot: [
+    "marvin, autopilot this task to a PR",
+    "marvin, deliver this end to end without me",
+    "marvin, resume the autopilot run",
   ],
   // adr
   "adr-review": [
@@ -524,6 +548,22 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, do the refactoring under the gates",
   ],
   // track
+  // audit
+  "audit-plan": [
+    "marvin, проведи аудит проекта",
+    "marvin, plan the audit programme",
+    "marvin, which audits does this project need?",
+  ],
+  "audit-run": [
+    "marvin, аудит зависимостей",
+    "marvin, run audit A-14",
+    "marvin, audit the data model and give me a findings register",
+  ],
+  "audit-summary": [
+    "marvin, сведи результаты аудитов",
+    "marvin, consolidate the audit reports",
+    "marvin, what do we fix first?",
+  ],
   "track-menu": [
     "marvin, open the board menu",
     "marvin, show the board actions",

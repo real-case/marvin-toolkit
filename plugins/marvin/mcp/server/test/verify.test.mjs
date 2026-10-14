@@ -13,7 +13,7 @@ import {
   mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { callTool } from "./_driver.mjs";
+import { callTool, listTools } from "./_driver.mjs";
 
 /**
  * Drive the live stdio server: initialize, then a single tools/call for
@@ -244,6 +244,205 @@ test("a malformed .marvin/config.json warns and falls back to detection", async 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── `gates.extra`: project gates that run after the four standard ones ──
+
+const STANDARD_AND_EXTRA = ["test", "lint", "typecheck", "build", "css-types", "format"];
+
+/** Four passing standard gates and two passing extras; the tests that are not about order use it. */
+const PLAIN_GATES = {
+  test: "true",
+  lint: "true",
+  typecheck: "true",
+  build: "true",
+  extra: [
+    { name: "css-types", command: "true" },
+    { name: "format", command: "true" },
+  ],
+};
+
+/**
+ * Ordering is decided by what is on disk, never by how long anything took. Each gate appends its
+ * name to `order.log` and leaves a `<name>.done` marker; an extra starts with a `test -f` on the
+ * markers of everything that must already have finished, so a gate that ran too early exits 1
+ * and fails the verdict. The `sleep`s only widen the window in which a wrongly concurrent extra
+ * would find a marker missing: a correct run passes however slowly the machine goes.
+ */
+const finished = (...names) => names.map((n) => `test -f ${n}.done`).join(" && ");
+const ORDERED_GATES = {
+  test: "sleep 0.3 && echo test >> order.log && touch test.done",
+  lint: "echo lint >> order.log && touch lint.done",
+  typecheck: "touch typecheck.done",
+  build: "touch build.done",
+  extra: [
+    {
+      name: "css-types",
+      command: `${finished("test", "lint", "typecheck", "build")} && sleep 0.3 && echo css-types >> order.log && touch css-types.done`,
+    },
+    { name: "format", command: `${finished("css-types")} && echo format >> order.log` },
+  ],
+};
+
+async function withExtraGates(gates, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-extra-"));
+  try {
+    writeConfig(dir, JSON.stringify({ gates }));
+    return await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const orderLog = (dir) => readFileSync(join(dir, "order.log"), "utf8").trim().split("\n");
+
+test("gates.extra run after the four standard gates, one at a time, in declaration order", async () => {
+  await withExtraGates(ORDERED_GATES, async (dir) => {
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "PASS", "an extra that started early would have exited 1");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      STANDARD_AND_EXTRA,
+    );
+    // The standard gates overlap, so only their set is fixed; the extras follow, in order.
+    const order = orderLog(dir);
+    assert.deepEqual(order.slice(0, 2).sort(), ["lint", "test"]);
+    assert.deepEqual(order.slice(2), ["css-types", "format"]);
+  });
+});
+
+test("sequential execution runs the extras after the standard gates too", async () => {
+  await withExtraGates(ORDERED_GATES, async (dir) => {
+    const { parsed } = await callVerify({
+      projectRoot: dir,
+      write: false,
+      execution: "sequential",
+    });
+    assert.equal(parsed.verdict, "PASS");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      STANDARD_AND_EXTRA,
+    );
+    assert.deepEqual(orderLog(dir), ["test", "lint", "css-types", "format"]);
+  });
+});
+
+test("a failing extra gate fails the verdict and names itself in the report", async () => {
+  const gates = { ...PLAIN_GATES, extra: [{ name: "css-types", command: "echo broken; exit 3" }] };
+  await withExtraGates(gates, async (dir) => {
+    const { parsed, isError, text } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "FAIL");
+    assert.equal(isError, true);
+    const extra = parsed.gates.find((g) => g.name === "css-types");
+    assert.equal(extra.status, "fail");
+    assert.equal(extra.code, 3);
+    assert.match(text, /## css-types Results/);
+    assert.match(text, /`echo broken; exit 3`/);
+  });
+});
+
+test("extra gates still run after a failed standard gate, except under fail-fast", async () => {
+  const gates = { ...PLAIN_GATES, lint: "exit 1" };
+  await withExtraGates(gates, async (dir) => {
+    const all = (await callVerify({ projectRoot: dir, write: false })).parsed;
+    assert.equal(all.verdict, "FAIL");
+    assert.deepEqual(
+      all.gates.map((g) => g.name),
+      STANDARD_AND_EXTRA,
+    );
+    const fast = (await callVerify({ projectRoot: dir, write: false, execution: "fail-fast" }))
+      .parsed;
+    assert.deepEqual(
+      fast.gates.map((g) => g.name),
+      ["test", "lint"],
+    );
+  });
+});
+
+test("the dry-run plan lists the extras after the standard gates", async () => {
+  const gates = {
+    ...PLAIN_GATES,
+    extra: [
+      { name: "css-types", command: "npm run css-types:check" },
+      { name: "format", command: "npm run format:check" },
+    ],
+  };
+  await withExtraGates(gates, async (dir) => {
+    const res = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    const at = (s) => res.indexOf(s);
+    assert.ok(at("**build**") > -1 && at("**css-types**") > at("**build**"));
+    assert.ok(at("**format**") > at("**css-types**"));
+    assert.match(res, /npm run css-types:check/);
+    assert.match(res, /\.marvin\/config\.json/);
+  });
+});
+
+test("extra gates alone make a plan for a stack nothing detects", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-verify-extra-only-"));
+  try {
+    writeFileSync(join(dir, "README.md"), "# docs only\n");
+    writeConfig(dir, JSON.stringify({ gates: { extra: [{ name: "docs", command: "true" }] } }));
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["docs"],
+    );
+    assert.equal(parsed.verdict, "PASS");
+    const plan = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(plan, /\*\*Stacks:\*\* \.marvin\/config\.json\n/);
+    assert.match(plan, /\*\*docs\*\*: `true`/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("`only` and explicit per-call gates leave the extras out", async () => {
+  await withExtraGates(PLAIN_GATES, async (dir) => {
+    const only = (await callVerify({ projectRoot: dir, write: false, only: ["lint"] })).parsed;
+    assert.deepEqual(
+      only.gates.map((g) => g.name),
+      ["lint"],
+    );
+    const explicit = (
+      await callVerify({
+        projectRoot: dir,
+        write: false,
+        gates: [{ name: "test", command: "true" }],
+      })
+    ).parsed;
+    assert.deepEqual(
+      explicit.gates.map((g) => g.name),
+      ["test"],
+    );
+  });
+});
+
+test("an unusable gates.extra is named in the verdict instead of silently dropped", async () => {
+  const gates = { ...PLAIN_GATES, extra: [{ name: "prepare:deps", command: "true" }] };
+  await withExtraGates(gates, async (dir) => {
+    const { parsed } = await callVerify({ projectRoot: dir, write: false });
+    assert.equal(parsed.verdict, "PASS WITH WARNINGS");
+    assert.deepEqual(
+      parsed.gates.map((g) => g.name),
+      ["test", "lint", "typecheck", "build"],
+      "the standard gates still run",
+    );
+    assert.ok(
+      parsed.warnings.some((w) => /gates\.extra.*ignored.*reserved/.test(w)),
+      parsed.warnings.join(" | "),
+    );
+    const plan = await callVerifyRaw({ dryRun: true, projectRoot: dir, write: false });
+    assert.match(plan, /gates\.extra.*ignored/);
+  });
+});
+
+test("the verify descriptions say that extras are excluded by `only` and explicit gates", async () => {
+  const { tools } = await listTools();
+  const verify = tools.find((t) => t.name === "verify");
+  assert.match(verify.description, /gates\.extra/);
+  const props = verify.inputSchema.properties;
+  assert.match(props.only.description, /gates\.extra/);
+  assert.match(props.gates.description, /gates\.extra/);
 });
 
 // ── built-in stack detection: top-10 ecosystems emit canonical gates ──
@@ -1190,6 +1389,68 @@ test("deliver gate reports a proven red-green pair for a recorded red-then-green
     assert.equal(gate.parsed.red_green, "proven");
     assert.equal(gate.parsed.decision, "ALLOW");
     assert.doesNotMatch(gate.parsed.reason, /red→green pair/, "nothing to warn about");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate reads a feature's red-green from its kind: test criterion (ADR-0047)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-feature-"));
+  try {
+    writeSpec(dir, { slug: "demo-feature", type: "feature", block: FEATURE_BLOCK });
+    writeFileSync(join(dir, "thing.test.sh"), "grep -q done thing.txt\n");
+    writeFileSync(join(dir, "thing.txt"), "todo\n");
+    writeVerification(dir, "PASS");
+    const gate = () =>
+      callVerify({ action: "gate", projectRoot: dir, specSlug: "demo-feature" }, "deliver-gate");
+
+    // No red on the record: missing, named by the first kind: test criterion, and still ALLOW.
+    const before = await gate();
+    assert.equal(before.parsed.red_green, "missing", "a feature is no longer `unknown`");
+    assert.equal(before.parsed.decision, "ALLOW");
+    assert.match(before.parsed.reason, /red→green pair at this contract_sha for AC1 —/);
+
+    // Red for AC1 only, then the implementation changes and the whole set goes green.
+    await callVerify(
+      {
+        action: "oracles",
+        projectRoot: dir,
+        specSlug: "demo-feature",
+        criteria: ["AC1"],
+        expect: "fail",
+      },
+      "oracle-result",
+    );
+    writeFileSync(join(dir, "thing.txt"), "done\n");
+    await callVerify(
+      { action: "oracles", projectRoot: dir, specSlug: "demo-feature" },
+      "oracle-result",
+    );
+
+    const after = await gate();
+    assert.equal(after.parsed.red_green, "proven", "one proven kind: test criterion is enough");
+    assert.doesNotMatch(after.parsed.reason, /red→green pair/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate keeps a feature with no kind: test criterion at `unknown`", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-feature-none-"));
+  try {
+    const block = FEATURE_BLOCK.replace(
+      "      kind: test\n      ref: thing.test.sh::the first thing works\n      run: sh thing.test.sh",
+      "      kind: command\n      ref: sh thing.test.sh",
+    );
+    assert.notEqual(block, FEATURE_BLOCK, "the fixture edit applied");
+    writeSpec(dir, { slug: "demo-feature", type: "feature", block });
+    writeVerification(dir, "PASS");
+    const gate = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: "demo-feature" },
+      "deliver-gate",
+    );
+    assert.equal(gate.parsed.red_green, "unknown");
+    assert.doesNotMatch(gate.parsed.reason, /red→green/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

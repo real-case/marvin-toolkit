@@ -13,6 +13,11 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 
 # {Short bug description}
 
+<!-- Writing rules (delete this comment). One fact, one place: a requirement lives in the contract,
+as a criterion or a file intent, and prose refers to it by id (F1, AC2) without restating it.
+Measurements, logs and probes go to the evidence sidecar, and the critic's narrative stays in its
+receipt. Size budget: 3 KB + 400 B per file + 500 B per criterion; the DoR gate warns above it. -->
+
 ## Problem
 {What happens — observed behavior.}
 
@@ -30,33 +35,34 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 - Affected code: {files and lines}
 - Cause: {the specific mechanism, supported by evidence — not a guess}
 - Callers / blast radius: {who exercises the affected path — file:line, or "none"}
-- Impact scope: {what else may be affected}
+- Evidence: {.marvin/task/runs/<slug>.evidence.md, or none}
 
 ## Severity & Impact
 {severity from frontmatter, plus blast radius}
 How many users, and which flows, are affected.
 
 ## Spec Contract
-The authoritative, machine-validated contract (the `spec` DoR gate parses and schema-checks this
-block). The implementer/executor may touch **only** the files in `files`; a minimal fix touches
-few. The regression test MUST be a `files` row, and **one criterion MUST carry `regression: true`**
-(it asserts the test fails on pre-fix code and passes after). Use `<…>` for prose to fill; never
-leave a `{…}` placeholder (it parses as a YAML map and fails the gate).
+The authoritative contract, parsed and schema-checked by the `spec` DoR gate and sealed by
+`contract_sha`. The implementer may touch **only** the files in `files`; a minimal fix touches few.
+The regression test MUST be a `files` row, and **one criterion MUST carry `regression: true`** (it
+asserts the test fails on pre-fix code and passes after). Use `<…>` for prose to fill; a `{…}`
+placeholder parses as a YAML map and fails the gate. The field limits of the feature template apply
+here too: a `statement` of at most 30 words, a `failure` that names a wrong implementation, an
+`intent` of at most two sentences, no `oracle.run` when `gates.test_one` derives it, `satisfies`
+optional, and no rationale anywhere in the block.
 
 ```yaml spec-contract
 files:
   - id: F1
     path: path/to/file.ts
     action: edit          # new | edit | delete
-    intent: the minimal change that fixes the root cause
-    satisfies: [AC1]
+    intent: <the minimal change that fixes the root cause>
     anchor: path/to/file.ts:42
   - id: F2
     path: test/path.test.ts
     action: new
-    intent: regression test (see Regression Test Specification)
-    satisfies: [AC1, AC2]
-depends_on: []              # sibling spec slugs this depends on; each MUST be status: shipped (or [])
+    intent: <regression test covering AC1 and AC2>
+depends_on: []              # sibling spec slugs; each MUST be status: shipped
 criteria:
   - id: AC1
     statement: Given the trigger, when run after the fix, then correct behaviour
@@ -64,7 +70,7 @@ criteria:
     oracle:
       kind: test
       ref: test/path.test.ts::the test name
-    failure: reproduces as before
+    failure: <a wrong fix this test catches>
   - id: AC2
     statement: The regression test fails on pre-fix code and passes after the fix
     implemented_by: [F2]
@@ -72,10 +78,7 @@ criteria:
     oracle:
       kind: test
       ref: test/path.test.ts::the test name
-      run: <exact command>  # optional — how to run THIS test alone. Without it the runner falls
-                            # back to `gates.test_one` in .marvin/config.json, then to a narrow
-                            # per-stack default, then records `not-run` rather than guessing.
-    failure: passes before the fix → the test does not exercise the bug
+    failure: passes before the fix, so the test does not exercise the bug
 ```
 
 A `regression: true` criterion's red→green pair is **recorded, not narrated**:
@@ -85,49 +88,20 @@ journal — a red and a green at the same `contract_sha` over an unchanged test 
 `red_green: "proven"`. Anything else, including a pair that was run by hand, reads as `missing`.
 That is a warning on the gate's reason line today and does not block delivery.
 
-## Host Bindings
-Discovered from **this repo**, not assumed. Optional and advisory — the gate uses `spec_location` to
-resolve `depends_on`; the rest records where the spec lives and what the host requires to merge. Fill
-with `<…>`, never `{…}`.
-
-```yaml host-bindings
-spec_location: .marvin/task/     # where specs/RFCs live (default .marvin/task/, or the host's own convention)
-decision_record:
-  style: <madr | nygard | none>
-  path: docs/adr/
-merge_obligations:
-  - <e.g. "ruff + mypy green (.pre-commit-config)">
-gates:
-  test: <the test command>
-```
-
 ## Fix Approach
 {The minimal change that addresses the root cause — nothing else. No adjacent refactoring.}
 
-**Why this over alternatives:** (if alternatives existed)
-- {alternative}: {reason for rejection}
+- {Traps: side effects of the fix, workarounds to remove, related bugs}
+- {Rejected: alternative because of a project constraint, if one existed}
 
 ## Regression Test Specification
 **Test type:** unit | integration | e2e
 **Test location:** {path to test file — MUST match its `files` row in the contract}
-**What test verifies:** {specific behavior}
+**What test verifies:** {the criterion ids it proves, and the trigger it uses}
 **Test must fail before fix:** yes (mandatory)
-
-## Definition of Done
-- [ ] regression test red before fix, green after
-- [ ] {test_command} green
-- [ ] lint / type-check / build green (whichever the host runs)
-- [ ] host-specific merge obligations (e.g. a version bump, a committed build artefact) — or "none"
 
 ## Non-goals
 - {what we explicitly do NOT fix in this task}
-
-## Deferred slices
-Slices split off from this task at the scope gate, each already a board card. The rows are
-descriptive — the card is the work item, this list is the back-reference. Write `none` when nothing
-was deferred: an unfilled section is reported by the DoR gate, an absent one is silent.
-
-- {board id + one-line scope + why it is a separate PR, or none}
 
 ## Assumptions
 {Decisions made under uncertainty. "none" if there are none.}
@@ -135,19 +109,22 @@ Every default the intake assumed instead of asking belongs here, written as "ass
 correct now if wrong". "none" is an accepted value; the DoR gate records it as an advisory warning,
 not a failure.
 
+## Deferred slices
+Optional: keep this section only when sibling patterns were deferred at the scope gate. Each row is a
+board card already created.
+
+- {board id + one-line scope + which one-PR condition failed}
+
 ## Open Questions
 {any question still unresolved — MUST be "none" before DoR passes}
 A genuine unknown that needs investigation is NOT an Assumption: set `spike_required: true` and
 resolve it first.
 
 ## Critic Verdict & Overrides
-{marvin-tm-spec-critic verdict (PASS | PASS WITH WARNINGS | BLOCK | UNABLE); any author override.
-The DoR gate reads the verdict off the first non-empty line, so write the token in capitals there. It
-may lead the line ("BLOCK — resolved in this revision") or follow the critic's name
-("marvin-tm-spec-critic — **PASS WITH WARNINGS**"); a lower-case mention inside prose is not read as
-a verdict, and "none" is recognised only leading the line. NEEDS_CONTEXT is never recorded here — it
-resolves on the re-dispatch or becomes UNABLE. "none" if skipped — a skipped critic is surfaced in
-the PR, never silent, and an UNABLE verdict ("UNABLE — {reason}") is surfaced the same way.}
-
-## Design Notes
-{Related bugs, workarounds to remove, potential side effects of the fix.}
+{VERDICT — receipts NNN, NNN; override: finding because reason}
+One line. The DoR gate reads the verdict off the first non-empty line, so write the token in
+capitals there (`PASS`, `PASS WITH WARNINGS`, `BLOCK`, `UNABLE — <reason>`), or "none — critic
+skipped". NEEDS_CONTEXT is never recorded here. The critic's narrative stays in its receipt under
+`.marvin/critique/`.
+</content>
+</invoke>

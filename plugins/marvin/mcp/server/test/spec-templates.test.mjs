@@ -34,27 +34,21 @@ const templatesDir = join(here, "..", "..", "..", "skills", "task-start", "refer
 /**
  * The `##` sections of each template that require author fill-in, pinned rather
  * than derived from the file: a section that loses its only stub must fail here,
- * not silently drop out of the loop. `## Spec Contract` and `## Host Bindings`
- * are excluded by decision — their fill-in lives inside fenced YAML the scanner
- * strips by design.
+ * not silently drop out of the loop. `## Spec Contract` is excluded by decision —
+ * its fill-in lives inside fenced YAML the scanner strips by design.
  */
 const FILL_IN_SECTIONS = {
   "feature-spec-template.md": [
     "Goal",
     "Context",
-    "Data & Config",
     "Chosen Approach",
-    "Why this over alternatives",
-    "Test Plan",
-    "Definition of Done",
     "Non-goals",
-    "Deferred slices",
     "Assumptions",
-    "Open Questions",
+    "Data & Config",
     "Security / NFR",
+    "Deferred slices",
+    "Open Questions",
     "Critic Verdict & Overrides",
-    "Design Notes",
-    "Future Considerations",
   ],
   "bugfix-spec-template.md": [
     "Problem",
@@ -64,13 +58,11 @@ const FILL_IN_SECTIONS = {
     "Severity & Impact",
     "Fix Approach",
     "Regression Test Specification",
-    "Definition of Done",
     "Non-goals",
-    "Deferred slices",
     "Assumptions",
+    "Deferred slices",
     "Open Questions",
     "Critic Verdict & Overrides",
-    "Design Notes",
   ],
 };
 

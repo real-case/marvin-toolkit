@@ -22,9 +22,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeSync } from "node:fs";
+import { readFileSync, realpathSync, writeSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /**
  * 32 MB rather than node's 1 MB default. An ordinary large diff crosses 1 MB, and
@@ -558,14 +558,28 @@ export function main(_hookName, run) {
 /**
  * The house main-guard predicate: run directly → execute, imported → export only.
  *
- * Total, because it is the ONE expression each guard evaluates outside `main`'s catch.
- * A throw here would escape that catch entirely; returning false instead means the
- * worst case is a guard that declines to run, which is an allow.
+ * REAL PATHS ON BOTH SIDES. The ESM loader resolves symlinks in `import.meta.url`, while
+ * `process.argv[1]` keeps the spelling the hook command used. Compared as strings, a guard
+ * launched through a symlinked path (a linked plugin cache, or anything under macOS's
+ * `/tmp`, which is `/private/tmp`) was never "main": its body was skipped and the call
+ * allowed. Both sides are resolved, so only a different FILE is an import.
+ *
+ * WHEN IT CANNOT COMPARE, THE GUARD RUNS. No `argv[1]` (`node -e`, a REPL) or one that
+ * does not resolve answers true. Skipping a guard is a silent allow, while running one
+ * that was merely imported costs at most a stdin read and an exit inside `main`'s catch.
+ *
+ * Total, because it is the ONE expression each guard evaluates outside `main`'s catch:
+ * a throw here would escape that catch entirely.
+ *
+ * @param {string} url The caller's `import.meta.url`.
+ * @returns {boolean}
  */
 export function isMain(url) {
   try {
-    return Boolean(process.argv[1]) && url === pathToFileURL(process.argv[1]).href;
+    const entry = process.argv[1];
+    if (typeof entry !== "string" || entry === "") return true;
+    return realpathSync(entry) === realpathSync(fileURLToPath(url));
   } catch {
-    return false;
+    return true;
   }
 }

@@ -63,8 +63,8 @@ export function gitState(projectDir: string): DashboardState["git"] {
   };
 }
 
-const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "track"];
-export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "track"];
+const GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "audit", "track"];
+export const GROUP_ORDER = ["core", "adr", "pr", "task", "sec", "refactor", "audit", "track"];
 
 /**
  * Group of a prompt by its `<group>-<command>` prefix; bare names are "core" —

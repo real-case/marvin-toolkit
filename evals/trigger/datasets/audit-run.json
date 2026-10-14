@@ -1,0 +1,217 @@
+{
+  "skill": "audit-run",
+  "target": "audit-run",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. audit-run executes ONE audit of the formal A-01…A-22 programme and releases a report in .md plus .pdf. The sharpest discriminators are scope and artefact: audit-plan owns the whole programme, audit-summary owns consolidation of finished reports, and the sec-*/refactor-* families own the same territory as working scans rather than as a formal audit with a reproducible findings register.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "проведи аудит зависимостей по программе аудита",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "нужен аудит тестов — защищают ли они то, что дорого сломать",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "run audit A-14 on this repository and give me the findings register",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "сделай аудит модели данных и миграций, отчёт в .md и .pdf",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "audit the observability: can we investigate an incident from telemetry alone?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "прогони A-04 — анализ истории репозитория, hotspots и bus factor",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "нужен формальный отчёт по аудиту типобезопасности с реестром находок",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "audit the CI/CD delivery pipeline — DORA metrics and a findings register",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "инвентаризация систем: из чего состоит проект и что из этого живо",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "аудит доступности ключевых сценариев по WCAG 2.2 AA, отчёт с находками",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "просканируй репозиторий и историю git на утёкшие секреты",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secrets sweep with no audit-programme framing → sec-secrets"
+    },
+    {
+      "id": "neg-2",
+      "text": "где в проекте технический долг и с чего начать рефакторинг",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "remediation-oriented structural scan → refactor-audit"
+    },
+    {
+      "id": "neg-3",
+      "text": "проведи аудит проекта, нужен полный обзор состояния",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "the whole programme, not one audit → audit-plan"
+    },
+    {
+      "id": "neg-4",
+      "text": "сведи результаты всех проведённых аудитов в один отчёт",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "consolidation of finished reports → audit-summary"
+    },
+    {
+      "id": "neg-5",
+      "text": "объясни, как устроен модуль аутентификации",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "understanding existing code → explain"
+    },
+    {
+      "id": "neg-6",
+      "text": "почему этот тест падает через раз",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "root-cause investigation of one failure → debug"
+    },
+    {
+      "id": "neg-7",
+      "text": "проверь корпус ADR на дырки в нумерации и битые ссылки",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ADR corpus lint → adr-audit"
+    },
+    {
+      "id": "neg-8",
+      "text": "запусти проверки качества перед тем, как открывать PR",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "running the project gates → task-verify"
+    },
+    {
+      "id": "neg-9",
+      "text": "экспортируй последний отчёт в pdf, чтобы отправить наружу",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "exporting an existing report → report-export"
+    },
+    {
+      "id": "neg-10",
+      "text": "проверь зависимости на известные уязвимости и CVE",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "CVE-first dependency scan → sec-deps; A-03 explicitly defers CVEs to A-14"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "аудит зависимостей: насколько они устарели, кто их поддерживает и чисты ли лицензии",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "audit-run",
+      "mock_rate": 1,
+      "note": "shares 'зависимости' with sec-deps, but currency, maintenance health and licences are A-03's territory while sec-deps is CVE-first → audit-run"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "просканируй проект по OWASP Top 10 и дай список уязвимостей",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "sec-scan",
+      "mock_rate": 0,
+      "note": "OWASP framing with no audit-programme artefact or findings register → sec-scan"
+    },
+    {
+      "id": "cmp-win-3",
+      "text": "нужен аудит безопасности с матрицей прав роль × ресурс × операция и таблицей проверки владения объектом, с реестром находок и pdf",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "audit-run",
+      "mock_rate": 1,
+      "note": "shares security vocabulary with sec-scan, but the permission matrix, the per-endpoint ownership table and the released register are A-14 → audit-run"
+    },
+    {
+      "id": "cmp-lose-4",
+      "text": "найди hotspots по churn и размеру и скажи, что рефакторить в первую очередь",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "refactor-audit",
+      "mock_rate": 0,
+      "note": "shares hotspots with A-04, but the ask is a remediation order rather than a measured history report → refactor-audit"
+    }
+  ]
+}

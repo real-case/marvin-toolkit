@@ -28,7 +28,16 @@ These are the shortcuts that look like the test and are not it:
 - **Never count files.** A twenty-file change with one decision behind it is one PR; a two-file
   change that asks the reviewer two unrelated questions is two.
 
-The only counting that matters is the four conditions above.
+The only counting that **decides** a split is the four conditions above.
+
+## The size threshold
+
+One number does apply, and it obliges rather than decides. At **Step 4.5F**, a plan with **more than
+15 files or more than 12 criteria** must present an explicit split to the user, even when the four
+conditions seem to hold. The user may still keep the scope, recording the rationale in one line of
+Chosen Approach, and PR #176 above is exactly such a case. The threshold exists because large specs
+were kept whole by default rather than by decision: 20 of the 49 specs measured in 2026-09 crossed
+it, four of them with 29–31 files, and none had been shown a split.
 
 ## Worked examples — this repository's own merged history
 

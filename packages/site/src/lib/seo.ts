@@ -143,7 +143,7 @@ export function renderLlmsTxt(pages: PageMeta[], catalog: Catalog, origin: URL):
   // Iterate catalog.GROUPS, not the commands. Bucketing by whatever `command.group` says would
   // order the sections by first appearance, which puts `pr` before `adr` — the reverse of
   // catalog.groups and of what /commands renders (CommandCatalog.tsx keeps catalog order
-  // deliberately). Two surfaces listing the same seven groups in different orders is the kind of
+  // deliberately). Two surfaces listing the same groups in different orders is the kind of
   // small incoherence nobody reports and everybody notices.
   const sections = catalog.groups
     .map((group) => ({

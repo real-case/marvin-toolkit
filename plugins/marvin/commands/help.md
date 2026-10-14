@@ -1,5 +1,5 @@
 ---
-description: Marvin dashboard — project state, dependency status, and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/track).
+description: Marvin dashboard — project state, dependency status, and the full command index, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/track).
 ---
 
 # Help

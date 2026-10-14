@@ -62,10 +62,14 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0038](./adr/0038-finding-identity-and-triage.md) | A finding has an identity that survives the next scan | Accepted |
 | [0039](./adr/0039-critique-receipts.md) | A critic's verdict is a receipt on disk, not a sentence in a transcript | Accepted |
 | [0040](./adr/0040-runtime-enforcement-hooks.md) | Enforcement runs before the call, as a plugin hook | Accepted |
-| [0041](./adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Proposed |
-| [0042](./adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Proposed |
+| [0041](./adr/0041-capability-gated-tool-text-for-widget.md) | A widget-bound tool's text is gated on the client's capabilities | Accepted |
+| [0042](./adr/0042-bounded-critique-and-serialised-review.md) | Bounded critique, and verification before review | Accepted |
 | [0043](./adr/0043-task-workflow-metrics.md) | Task workflow metrics are a committed per-task series, derived at delivery | Accepted |
-| [0044](./adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Proposed |
+| [0044](./adr/0044-deterministic-metrics-anchors.md) | The metrics record is written by two gates, not by prose | Accepted |
+| [0045](./adr/0045-scope-byproduct-exemptions.md) | By-product files are exempted from a task's scope by project configuration | Accepted |
+| [0046](./adr/0046-lean-spec-shape.md) | A spec keeps only the sections a reader uses, and states each fact once | Accepted |
+| [0047](./adr/0047-feature-red-phase.md) | A feature records one red phase, and the delivery gate reads it | Accepted |
+| [0048](./adr/0048-shell-quoted-test-one-placeholders.md) | A `test_one` placeholder is shell-quoted by marvin, not by the template author | Accepted |
 
 ## Work in progress
 

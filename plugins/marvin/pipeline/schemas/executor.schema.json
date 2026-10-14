@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary"],
+  "properties": {
+    "status": { "type": "string", "enum": ["done", "needs_input", "failed"] },
+    "summary": { "type": "string", "maxLength": 800 },
+    "branch": { "type": "string" },
+    "head_sha": { "type": "string" },
+    "pr_url": {
+      "type": "string",
+      "pattern": "^https:\\/\\/github\\.com\\/[\\w.-]+\\/[\\w.-]+\\/pull\\/\\d+$"
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "result"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "result": { "type": "string", "enum": ["pass", "fail", "not-run"] }
+        }
+      }
+    },
+    "findings_addressed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "resolution"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "resolution": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "claims": { "type": "array", "items": { "type": "string" } },
+    "questions": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "recommendation", "why_blocking"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "options": { "type": "array", "items": { "type": "string" } },
+          "recommendation": { "type": "string", "minLength": 1 },
+          "why_blocking": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "dispute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason", "evidence"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "failure": { "type": "string" }
+  }
+}

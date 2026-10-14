@@ -185,6 +185,16 @@ export const SERIES_METRICS: readonly SeriesMetric[] = [
     pick: (r) => r.block?.quality.scope_drift?.undeclared.length ?? null,
   },
   {
+    // Present only where the project configures `scope.exempt` (ADR-0045), so
+    // its count is the tasks that ran under an exemption list, not every task.
+    group: "quality",
+    key: "scope_drift_exempt",
+    id: "Q1",
+    label: "by-product files exempted (scope.exempt)",
+    unit: "count",
+    pick: (r) => r.block?.quality.scope_drift?.exempt?.length ?? null,
+  },
+  {
     group: "quality",
     key: "oracle_strength_share",
     id: "Q2",
@@ -310,6 +320,22 @@ export const SERIES_METRICS: readonly SeriesMetric[] = [
     pick: (_r, extra) => extra.escaped,
   },
   {
+    group: "quality",
+    key: "spec_bytes",
+    id: "Q13",
+    label: "spec size in bytes",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.bytes ?? null,
+  },
+  {
+    group: "quality",
+    key: "spec_words",
+    id: "Q14",
+    label: "spec size in words",
+    unit: "count",
+    pick: (r) => r.block?.quality.spec_size?.words ?? null,
+  },
+  {
     group: "rework",
     key: "seals",
     id: "R1",
@@ -372,6 +398,18 @@ export const SERIES_METRICS: readonly SeriesMetric[] = [
     label: "verification runs before the first green",
     unit: "count",
     pick: (r) => r.block?.rework.runs_before_green ?? null,
+  },
+  {
+    group: "rework",
+    key: "critic_budget_exceeded",
+    id: "R5",
+    label: "tasks where a critic was dispatched past its budget",
+    unit: "share",
+    pick: (r) => {
+      const e = r.block?.rework.critic_budget_exceeded;
+      if (!e || (e.spec === null && e.diff === null)) return null;
+      return e.spec === true || e.diff === true ? 1 : 0;
+    },
   },
 ];
 

@@ -102,6 +102,7 @@ function fullInputs() {
     now: T("12:00:00"),
     spec: {
       path: ".marvin/task/001-demo.md",
+      size: { bytes: 9000, words: 1200 },
       frontmatter: {
         type: "feature",
         risk: "medium",
@@ -337,7 +338,12 @@ test("with every source present, every metric of the derivation table is derived
   });
 
   // quality
-  assert.deepEqual(b.quality.scope_drift, { declared: 3, changed: 3, undeclared: ["README.md"] });
+  assert.deepEqual(b.quality.scope_drift, {
+    declared: 3,
+    changed: 3,
+    undeclared: ["README.md"],
+    exempt: null, // no scope.exempt configured: the source is absent, not zero
+  });
   assert.deepEqual(b.quality.oracle_strength, { criteria: 3, executable: 2, share: 0.667 });
   assert.equal(b.quality.red_green, null, "Q3 is a bugfix metric; a feature reports null");
   assert.deepEqual(b.quality.not_run, { gates: 3, not_run: 1, share: 0.333 });
@@ -356,6 +362,8 @@ test("with every source present, every metric of the derivation table is derived
     by_source: { "oracle.run": 1, "config.test_one": 1 },
     unresolved: 1,
   });
+  // Q13/Q14 — three files and three criteria earn 3072 + 1200 + 1500 bytes (ADR-0046).
+  assert.deepEqual(b.quality.spec_size, { bytes: 9000, words: 1200, budget: 5772 });
 
   // rework
   assert.equal(
@@ -365,6 +373,8 @@ test("with every source present, every metric of the derivation table is derived
   );
   assert.equal(b.rework.reseals, 1);
   assert.deepEqual(b.rework.critic_passes, { spec: 2, diff: null });
+  // R5 — two spec dispatches on a risk: medium spec is the standard budget; one diff dispatch is within its own.
+  assert.deepEqual(b.rework.critic_budget_exceeded, { spec: false, diff: false });
   assert.deepEqual(b.rework.fix_rounds, { verify_gate: 1, critic: 0, red_green: 0 });
   assert.equal(
     b.rework.runs_before_green,
@@ -376,6 +386,20 @@ test("with every source present, every metric of the derivation table is derived
   assert.deepEqual(b.notes, ["T8: 1 critic dispatch(es) without a recorded verdict — excluded"]);
 });
 
+test("rollUpMetrics: a spec read before the size field existed reports no size, and an unusable contract no budget", () => {
+  const legacy = fullInputs();
+  delete legacy.spec.size;
+  assert.equal(rollUpMetrics(legacy).quality.spec_size, null);
+
+  const noContract = fullInputs();
+  noContract.spec.contract = null;
+  assert.deepEqual(rollUpMetrics(noContract).quality.spec_size, {
+    bytes: 9000,
+    words: 1200,
+    budget: null,
+  });
+});
+
 /** For each source, the rows that go null when exactly that source is absent. */
 const ABSENT_ROWS = {
   spec: (b) => {
@@ -385,6 +409,7 @@ const ABSENT_ROWS = {
     assert.equal(b.quality.oracle_strength, null);
     assert.deepEqual(b.time.oracle_ms, [], "no seal to join the oracle journal on");
     assert.equal(b.quality.oracle_resolution, null);
+    assert.equal(b.quality.spec_size, null);
   },
   progress: (b) => {
     assert.equal(b.time.intake_ms, null);
@@ -422,6 +447,7 @@ const ABSENT_ROWS = {
     assert.equal(b.quality.open_items, null);
     assert.equal(b.quality.dor_first_call, null);
     assert.deepEqual(b.rework.critic_passes, { spec: null, diff: null });
+    assert.deepEqual(b.rework.critic_budget_exceeded, { spec: null, diff: null });
     assert.equal(b.rework.fix_rounds, null);
   },
   git: (b) => {
@@ -563,6 +589,64 @@ test("Q1 lists the undeclared paths, excluding marvin's own artifacts and the sp
   assert.equal(nb.sources.git, "present");
 });
 
+test("Q1 moves by-products matching scope.exempt from undeclared to exempt, and leaves changed alone (ADR-0045)", () => {
+  const withExempt = fullInputs();
+  withExempt.git.changed_files.push(
+    ".claude/agent-memory/contract-test-critic/MEMORY.md",
+    ".claude/agent-memory/refactor-safety/MEMORY.md",
+    "scripts/commit-attribution.d.mts",
+    "src/b.ts", // declared (F3) — matches no pattern, stays declared
+  );
+  withExempt.scope_exempt = [".claude/agent-memory/**", "**/*.d.mts", "bun.lock"];
+  const b = rollUpMetrics(withExempt);
+  assert.deepEqual(b.quality.scope_drift, {
+    declared: 3,
+    changed: 7,
+    undeclared: ["README.md"],
+    exempt: [
+      ".claude/agent-memory/contract-test-critic/MEMORY.md",
+      ".claude/agent-memory/refactor-safety/MEMORY.md",
+      "scripts/commit-attribution.d.mts",
+    ],
+  });
+  assert.equal(
+    b.notes.some((n) => n.includes("scope.exempt")),
+    false,
+    "valid patterns leave no note",
+  );
+
+  // The same change set without the config: the by-products are undeclared, and
+  // `changed` does not move — only the split between undeclared and exempt does.
+  const without = { ...withExempt, scope_exempt: undefined };
+  const nb = rollUpMetrics(without);
+  assert.equal(nb.quality.scope_drift.changed, 7);
+  assert.equal(nb.quality.scope_drift.exempt, null);
+  assert.deepEqual(nb.quality.scope_drift.undeclared, [
+    ".claude/agent-memory/contract-test-critic/MEMORY.md",
+    ".claude/agent-memory/refactor-safety/MEMORY.md",
+    "README.md",
+    "scripts/commit-attribution.d.mts",
+  ]);
+
+  // Configured, nothing matched: an empty list, not null — the source is present.
+  const none = fullInputs();
+  none.scope_exempt = ["bun.lock"];
+  assert.deepEqual(rollUpMetrics(none).quality.scope_drift.exempt, []);
+});
+
+test("Q1: a scope.exempt pattern the matcher refuses leaves a note and exempts nothing", () => {
+  const bad = fullInputs();
+  bad.git.changed_files.push("bun.lock");
+  bad.scope_exempt = ["/bun.lock"];
+  const b = rollUpMetrics(bad);
+  assert.deepEqual(b.quality.scope_drift.exempt, []);
+  assert.deepEqual(b.quality.scope_drift.undeclared, ["README.md", "bun.lock"]);
+  assert.ok(
+    b.notes.some((n) => n.includes('scope.exempt pattern "/bun.lock" ignored')),
+    JSON.stringify(b.notes),
+  );
+});
+
 test("a stamp that disagrees with its block joins the oracle journal against nothing, and says so", () => {
   const tampered = fullInputs();
   tampered.spec.actual_sha = "cccccccccccccccc";
@@ -629,4 +713,65 @@ test("Q3 red-green completeness is derived for a bugfix from a red then green pa
   // the same pair under a superseded seal proves nothing about the contract in force
   bug.oracles = bug.oracles.map((r) => ({ ...r, contract_sha: SEAL1 }));
   assert.deepEqual(rollUpMetrics(bug).quality.red_green, { criteria: 2, proven: 0, share: 0 });
+});
+
+test("R5: a critic dispatched past its budget is counted, and the light tier halves the spec critic's", () => {
+  const dispatch = (critic, pass) =>
+    ev({ kind: "critic-dispatch", critic, pass, at: T("11:30:00") });
+  const base = fullInputs();
+  const light = {
+    ...base.spec,
+    frontmatter: { ...base.spec.frontmatter, risk: "low" },
+  };
+  // Two spec dispatches: within the standard budget, past the light one.
+  const events = [dispatch("marvin-tm-spec-critic", 1), dispatch("marvin-tm-spec-critic", 2)];
+  assert.deepEqual(rollUpMetrics({ ...base, events }).rework.critic_budget_exceeded, {
+    spec: false,
+    diff: null,
+  });
+  assert.deepEqual(rollUpMetrics({ ...base, spec: light, events }).rework.critic_budget_exceeded, {
+    spec: true,
+    diff: null,
+  });
+  // A bugfix qualifies by severity, not risk.
+  const lowBug = {
+    ...base.spec,
+    frontmatter: { ...base.spec.frontmatter, type: "bugfix", risk: "medium", severity: "low" },
+  };
+  assert.equal(
+    rollUpMetrics({ ...base, spec: lowBug, events }).rework.critic_budget_exceeded.spec,
+    true,
+  );
+  // The diff critic: the first dispatch plus two critic-loop re-dispatches, and no more.
+  const diff = (n) => Array.from({ length: n }, (_, i) => dispatch("marvin-tm-diff-critic", i + 1));
+  assert.equal(
+    rollUpMetrics({ ...base, events: diff(3) }).rework.critic_budget_exceeded.diff,
+    false,
+  );
+  assert.equal(
+    rollUpMetrics({ ...base, events: diff(4) }).rework.critic_budget_exceeded.diff,
+    true,
+  );
+  // Without a spec the light tier cannot be established, so the standard budget applies.
+  assert.equal(
+    rollUpMetrics({ ...base, spec: null, events }).rework.critic_budget_exceeded.spec,
+    false,
+  );
+});
+
+test("T2: the headless executor's §1 entry anchors the implementation interval", () => {
+  const base = fullInputs();
+  const progress = [
+    progressEntry({ source: "marvin-tm-executor", step: "§1", at: T("11:00:00") }),
+    progressEntry({
+      source: "marvin-tm-executor",
+      step: "§2",
+      kind: "criterion",
+      criterion: "AC1",
+      at: T("11:05:00"),
+    }),
+  ];
+  const b = rollUpMetrics({ ...base, progress });
+  assert.equal(b.time.implement_ms, 300000);
+  assert.ok(!b.notes.some((n) => n.startsWith("T2:")), b.notes.join("\n"));
 });

@@ -28,6 +28,7 @@ import {
   resolveSpecBySlug,
   resolveSpecDir,
   specSearchDirs,
+  wordCount,
 } from "../storage/spec.js";
 import { readVerifyRuns, verifyJournalPath } from "../storage/verify-runs.js";
 
@@ -112,7 +113,7 @@ export function latestReceipts(
   };
 }
 
-function readRollupSpec(specPath: string, projectRoot: string, notes: string[]): RollupSpec {
+export function readRollupSpec(specPath: string, projectRoot: string, notes: string[]): RollupSpec {
   const raw = readFileSync(specPath, "utf8");
   const { frontmatter, body } = parseFrontmatter(raw);
   const block = extractContractBlock(body);
@@ -137,6 +138,7 @@ function readRollupSpec(specPath: string, projectRoot: string, notes: string[]):
     contract,
     stamped_sha: frontmatter.contract_sha?.trim() || null,
     actual_sha: block !== null ? contractHash(block) : null,
+    size: { bytes: Buffer.byteLength(raw, "utf8"), words: wordCount(raw) },
   };
 }
 
@@ -171,7 +173,12 @@ function collectGit(projectRoot: string, base: string, notes: string[]): RollupG
   return { head_sha, changed_files: changedFilesForScope(projectRoot, base) };
 }
 
-/** Read every roll-up input for a slug from where it lives. */
+/**
+ * Read every roll-up input for a slug from where it lives. `scopeExempt` is the
+ * project's `scope.exempt` list, passed through untouched: which entries are
+ * usable is decided inside the roll-up by the same `partitionScope` the scope
+ * gate calls (ADR-0045).
+ */
 export function collectRollupInputs(
   env: ServerEnv,
   projectRoot: string,
@@ -179,6 +186,7 @@ export function collectRollupInputs(
   slug: string,
   base: string,
   now: string,
+  scopeExempt?: string[],
 ): RollupInputs {
   const notes: string[] = [];
 
@@ -222,6 +230,7 @@ export function collectRollupInputs(
     critique,
     events: events.length ? events : null,
     git,
+    scope_exempt: scopeExempt ?? null,
     notes,
   };
 }

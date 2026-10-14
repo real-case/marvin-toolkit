@@ -1,0 +1,55 @@
+# marvin-toolkit's own pipeline rubric (plan Task 19). marvin-pipe deep-merges it over
+# plugins/marvin/pipeline/rubric.default.yaml: a key not named here keeps its default, and a list
+# named here replaces the default list whole. The engine reads this file from the main checkout's
+# working tree when a run starts (`rubricFor`), not from the run's base commit, so start a run from
+# a checkout of the base branch that holds no uncommitted edit to it.
+#
+# The tier bounds stay at the default (light: risk low and at most 5 contract files; heavy: risk
+# high or at least 16). The version manifests and the derived artefacts are by-products that
+# `pipeline.scope_exempt_pattern` exempts, and the merge obligations in .marvin/config.json say
+# they are not contract rows, so a spec counts only the files it means to change. Calibration
+# after the first live runs decides whether the bounds move.
+version: 1
+
+# A contract file matching any of these makes the run heavy. JavaScript regular expressions over
+# repo-relative paths, case-sensitive.
+sensitive_paths:
+  # The autopilot engine, and what it runs its children with.
+  - "^plugins/marvin/mcp/server/src/pipeline/"
+  - "^plugins/marvin/pipeline/"
+  # The skills whose pipeline mode the children run, and the agents the planner dispatches.
+  - "^plugins/marvin/skills/(autopilot|task-start|task-implement|task-deliver|commit|pr-create)/"
+  - "^plugins/marvin/agents/marvin-tm-"
+  # Sealing and contract hashing, the DoR and delivery gates, oracle resolution and the
+  # single-test runner, the scope judgement, critic budgets, and the config, schema and stores
+  # the engine imports.
+  - '^plugins/marvin/mcp/server/src/tools/(pipeline|spec|verify)\.ts$'
+  - '^plugins/marvin/mcp/server/src/storage/(spec|frontmatter|oracles|verify-runs|config|schema|lessons|slug)\.ts$'
+  - '^plugins/marvin/mcp/server/src/lib/(gate-plan|oracles|scope|shell-quote|provenance|critic-budget)\.ts$'
+  - '^scripts/test-one\.mjs$'
+  # The build that produces the engine's bundle, the blocking hooks every session runs, and the
+  # MCP server registration.
+  - '^plugins/marvin/mcp/server/tsup\.config\.ts$'
+  - "^plugins/marvin/hooks/"
+  - '^plugins/marvin/\.mcp\.json$'
+  # CI, release and deploy, and the drift guards and version tooling.
+  - '^\.github/'
+  - '^vercel\.json$'
+  - '^scripts/(lint-manifests|sync-version|release-notes|verify-dist|verify-widgets)\.mjs$'
+  - '^scripts/lib/committed-artifact\.mjs$'
+  # The instruments that judge the pipeline: the replay benchmark behind the L3 gate, the
+  # trigger-eval harness, the engine's own tests and fixtures, and the helpers every server
+  # test stands on (`_driver.mjs`, `_tsload.mjs` and the rest of the `_` files).
+  - "^evals/autopilot/"
+  - '^evals/trigger/(lib/|run\.mjs$|self-test\.mjs$)'
+  - '^test/(autopilot-|pipeline-mode-|test-one\.)'
+  - "^test/fixtures/autopilot-sandbox/"
+  - "^plugins/marvin/mcp/server/test/(pipeline-|_)"
+
+# A match anywhere in the spec text makes the run heavy.
+cross_repo_markers:
+  # A feature spec that declares itself breaking (a prompt or server-key rename, a schema break):
+  # every installed plugin and every project with a committed .marvin/ has to follow it.
+  - '\nbreaking:\s*true\b'
+  # The host project marvin's autopilot was first planned against.
+  - "osint-chat-client"

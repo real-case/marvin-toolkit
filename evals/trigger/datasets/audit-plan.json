@@ -1,0 +1,217 @@
+{
+  "skill": "audit-plan",
+  "target": "audit-plan",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders (api/claude-cli) ignore it and measure the description. audit-plan chooses WHICH of the twenty-two audits a project needs and in what order, and emits paste-ready invocations. The discriminator against audit-run is scope — programme versus one audit — and against migration-plan / refactor-plan it is that nothing is being changed: the output is an assessment programme, not a remediation plan.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "проведи аудит проекта",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "нужен полный аудит, с чего начать",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "составь план аудита перед due diligence",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "какие аудиты нам вообще нужны при таком стеке",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "audit this project — I need a programme, not a single report",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "нам нужна техническая оценка проекта для инвестора, спланируй работы",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "распиши волны аудита и что за чем идёт",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "we are taking over a legacy codebase — plan the technical assessment",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "спланируй программу аудита, доступ есть только к коду и CI",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "какие аудиты можно пропустить, если у нас нет фронтенда",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "проведи аудит тестов",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "one named audit → audit-run"
+    },
+    {
+      "id": "neg-2",
+      "text": "сведи готовые отчёты аудита в один реестр",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "consolidation of finished reports → audit-summary"
+    },
+    {
+      "id": "neg-3",
+      "text": "спланируй переход на новую мажорную версию фреймворка",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "executing a named migration → migration-plan"
+    },
+    {
+      "id": "neg-4",
+      "text": "составь план рефакторинга по найденным проблемам",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "sequenced remediation of known findings → refactor-plan"
+    },
+    {
+      "id": "neg-5",
+      "text": "создай спецификацию на новую фичу",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "spec pipeline intake → task-start"
+    },
+    {
+      "id": "neg-6",
+      "text": "покажи текущее состояние проекта и доску задач",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "toolbox state report → dashboard"
+    },
+    {
+      "id": "neg-7",
+      "text": "проведи первую сессию с новым разработчиком в проекте",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "introducing marvin in a project → onboard"
+    },
+    {
+      "id": "neg-8",
+      "text": "составь чеклист для пентеста этого приложения",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "penetration-testing checklist → sec-pentest"
+    },
+    {
+      "id": "neg-9",
+      "text": "какие архитектурные решения у нас не задокументированы",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ADR gap analysis → adr-coverage"
+    },
+    {
+      "id": "neg-10",
+      "text": "покажи, какие отчёты уже лежат в .marvin",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "listing generated reports → reports"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "нам нужен план работ по техдолгу на квартал",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-plan",
+      "mock_rate": 0,
+      "note": "shares 'план' with audit-plan, but the input is known debt and the output is remediation → refactor-plan"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "проведи аудит проекта и скажи, с чего начинать",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "audit-plan",
+      "mock_rate": 1,
+      "note": "no audit reports exist yet, so this is the programme rather than a consolidation → audit-plan"
+    },
+    {
+      "id": "cmp-lose-3",
+      "text": "нам нужно быстро ввести нового разработчика в проект и понять, чего ему не хватает",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "onboard",
+      "mock_rate": 0,
+      "note": "shares the assessment framing with A-02, but the ask is to run the first session rather than to plan an audit programme → onboard"
+    },
+    {
+      "id": "cmp-win-4",
+      "text": "нужна программа технической оценки перед покупкой компании, с волнами и оценкой сроков",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "audit-plan",
+      "mock_rate": 1,
+      "note": "due-diligence programme with waves and estimates is exactly the planning surface → audit-plan"
+    }
+  ]
+}

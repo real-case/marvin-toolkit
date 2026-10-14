@@ -94,3 +94,40 @@ When a board task is linked to this branch, persist the PR URL onto it: call the
 MCP tool from the `marvin` server with `action: "link-pr"` and `url` set to the PR URL
 that `gh pr create` printed (pass `taskId` only if the branch lookup would be ambiguous).
 Then offer to move the task to review — `task` tool, `action: "review"`.
+
+## Pipeline mode
+
+Active only when `MARVIN_PIPELINE=1` is set: a child session of the autopilot pipeline, usually
+chained from `/marvin:task-deliver`, where nobody is present to answer. The workflow above applies
+except where this section overrides it. An interactive session never sets the variable, so none of
+this reaches one.
+
+- **The base is the run's.** Use the base the TASK CONTEXT names, which the pipeline took from
+  `base_branch` in `.marvin/config.json`, and never ask. The pipeline's guard refuses `gh pr create`
+  with any other `--base`.
+- **One pull request, opened as a draft.** Run `gh pr view` first: when the branch already has an
+  open PR, the push has updated it, so report its URL and create nothing. Otherwise add `--draft`.
+  The pipeline marks the PR ready itself once its verifier has passed and CI is green.
+- **No confirmation.** Skip Submit step 4; the pipeline's verifier reads the PR instead.
+- **No second gate run.** Skip Submit step 1 and fill `## Verification` from the last full `verify`
+  run (`.marvin/task/runs/<slug>.md`): the run the delivery gate judged, or the red run
+  `/marvin:task-implement` stopped on at a loop's limit. The gates have just run, and the pipeline
+  runs them again itself.
+- **No issue-reference question.** Use the spec's `tracker` frontmatter, or
+  `pipeline.tracker_default` from `.marvin/config.json` when the spec says `none` or nothing.
+- **A Pipeline section closes the body**, whichever template composed it, task-deliver's included:
+
+  ```markdown
+  ## Pipeline
+  - Run: <run id>
+  - Tier: <tier>
+  - Iteration: <n>
+
+  Review: pipeline gate stage and external verifier
+  ```
+
+  Take Run, Tier and Iteration from the TASK CONTEXT: its heading names the iteration, and the line
+  under the orchestrator's name names the run and the tier. This section is the one exception to
+  Submit rule 6: it names the run, never a model or an assistant.
+- **No board-task calls.** Skip "After creation": the board belongs to the pipeline, whose guard
+  refuses the `task` tool to a child.
