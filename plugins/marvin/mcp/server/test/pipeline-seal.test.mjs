@@ -111,7 +111,7 @@ const seal = (wt, tests, over = {}) =>
     testPathPattern: PATTERN,
     testOne: "npx vitest run {file}",
     run: scripted(),
-    timeoutMs: 1000,
+    timeoutMs: 60000,
     ...over,
   });
 const authored = (path, criteria = ["AC1"]) => ({ path, criteria });
@@ -1846,7 +1846,7 @@ test("D-RESEAL: a seal that throws while the base worktree exists still removes 
           testPathPattern: PATTERN,
           testOne: "node --test {file}",
           run: dropsPointer,
-          timeoutMs: 1000,
+          timeoutMs: 60000,
           base: baseOf(w),
         }),
       /cannot list the worktree's files/,
@@ -2005,6 +2005,209 @@ test("D-RESEAL: a base that is not a full commit SHA, or a relative git dir, is 
     );
   }
   assert.deepEqual(calls, []);
+});
+
+// ── a JavaScript test that does not parse is refused before its red run ─────
+
+/** `await` inside a callback that is not async: a SyntaxError in any module. */
+const UNPARSEABLE_MJS = [
+  'import { test } from "node:test";',
+  'test("reads", () => {',
+  '  [1].forEach(() => { await import("node:fs"); });',
+  "});",
+  "",
+].join("\n");
+const UNPARSEABLE_JS = "const = 1;\n";
+const UNPARSEABLE_CJS = "function (\n";
+/** A top-level `return` parses only as CommonJS, which is what a `.js` file is here. */
+const PARSEABLE_JS = [
+  'const assert = require("node:assert");',
+  "if (process.env.MARVIN_SEAL_NEVER_SET) return;",
+  "assert.equal(1, 2);",
+  "",
+].join("\n");
+const PARSEABLE_CJS = 'require("node:assert").equal(1, 2);\n';
+const PARSEABLE_MJS = 'import assert from "node:assert";\nassert.equal(1, 2);\n';
+const DOES_NOT_PARSE = (path) => `${path}: does not parse (node --check): `;
+const DID_NOT_RUN = (path) => `${path}: syntax check did not run`;
+
+/** A worktree holding `files`, a map of repo-relative path to content. */
+function worktreeOf(files) {
+  const wt = tmp();
+  gitInit(wt);
+  for (const [path, body] of Object.entries(files)) put(wt, path, body);
+  return wt;
+}
+
+/** What `node --check` answers for `path`, checked where it lies in `dir`. */
+const nodeCheck = (dir, path) =>
+  spawnSync(process.execPath, ["--check", path], { cwd: dir, encoding: "utf8" });
+
+/** Node's own `SyntaxError: …` line for a file that does not parse. */
+function parserLine(dir, path) {
+  const r = nodeCheck(dir, path);
+  assert.notEqual(r.status, 0, `${path} is meant not to parse`);
+  const line = r.stderr.split("\n").find((l) => l.startsWith("SyntaxError: "));
+  assert.ok(line !== undefined, r.stderr);
+  return line.trimEnd();
+}
+
+/** The reason `verdict` gives `path` for not parsing, checked against node's own message. */
+function assertDoesNotParse(verdict, dir, path) {
+  const reason = verdict.reasons.find((r) => r.startsWith(DOES_NOT_PARSE(path)));
+  assert.ok(reason !== undefined, `no does-not-parse reason for ${path}: ${verdict.reasons}`);
+  assert.ok(reason.includes(parserLine(dir, path)), reason);
+}
+
+/** The positive control: the check refuses a broken `.mjs`, so a seal beside it went through it. */
+function assertTheCheckRuns() {
+  const path = "control.test.mjs";
+  const wt = worktreeOf({ [path]: UNPARSEABLE_MJS });
+  const v = seal(wt, [authored(path)]);
+  assert.deepEqual([v.ok, v.sealed], [false, []]);
+  assertDoesNotParse(v, wt, path);
+}
+
+test("a red .mjs test that does not parse is refused with node's own message", () => {
+  const path = "broken.test.mjs";
+  const wt = worktreeOf({ [path]: UNPARSEABLE_MJS });
+  const v = seal(wt, [authored(path)], { run: scripted({ [path]: RED }) });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assertDoesNotParse(v, wt, path);
+});
+
+test("a test that does not parse never reaches the runner, while one that parses does", () => {
+  const broken = "broken.test.mjs";
+  const fine = "fine.test.mjs";
+  const wt = worktreeOf({ [broken]: UNPARSEABLE_MJS, [fine]: PARSEABLE_MJS });
+  const calls = [];
+  const v = seal(wt, [authored(broken), authored(fine)], { run: scripted({}, calls) });
+  assert.equal(v.ok, false);
+  assertDoesNotParse(v, wt, broken);
+  assert.deepEqual(
+    calls.filter((c) => c.command.includes(broken)),
+    [],
+    "the broken file is never run",
+  );
+  assert.ok(
+    calls.some((c) => c.command.includes(fine)),
+    "the file that parses is still red-run",
+  );
+});
+
+test("every broken .js and .cjs test has its own reason beside a parseable red .mjs", () => {
+  const files = {
+    "one.test.js": UNPARSEABLE_JS,
+    "two.test.cjs": UNPARSEABLE_CJS,
+    "three.test.mjs": PARSEABLE_MJS,
+  };
+  const wt = worktreeOf(files);
+  const v = seal(
+    wt,
+    Object.keys(files).map((path) => authored(path)),
+  );
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assertDoesNotParse(v, wt, "one.test.js");
+  assertDoesNotParse(v, wt, "two.test.cjs");
+  assert.deepEqual(
+    v.reasons.filter((r) => r.startsWith("three.test.mjs:")),
+    [],
+    "the file that parses is not refused",
+  );
+});
+
+test("TypeScript, JSX and other languages are not checked as JavaScript", () => {
+  assertTheCheckRuns();
+  const files = {
+    "alpha.test.ts": "const n: number = 1;\nexport {};\n",
+    "beta.test.tsx": "const el = <div>{(1 as number)}</div>;\n",
+    "gamma.test.jsx": 'const el = <div className="x" />;\n',
+    "delta_test.py": "def test_delta():\n    assert 1 == 2\n",
+  };
+  const wt = worktreeOf(files);
+  const v = seal(
+    wt,
+    Object.keys(files).map((path) => authored(path)),
+    { testPathPattern: "(\\.(test|spec)\\.[cm]?[jt]sx?|_test\\.py)$" },
+  );
+  assert.deepEqual(v.reasons, []);
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.sealed.map((x) => x.path).sort(), Object.keys(files).sort());
+});
+
+test("parseable red .js, .mjs and .cjs tests are sealed with their hashes", () => {
+  assertTheCheckRuns();
+  const files = {
+    "cjs-only.test.js": PARSEABLE_JS,
+    "esm.test.mjs": PARSEABLE_MJS,
+    "common.test.cjs": PARSEABLE_CJS,
+  };
+  const wt = worktreeOf(files);
+  for (const path of Object.keys(files)) {
+    const r = nodeCheck(wt, path);
+    assert.equal(r.status, 0, `${path} is meant to parse where it lies: ${r.stderr}`);
+  }
+  const v = seal(
+    wt,
+    Object.keys(files).map((path) => authored(path)),
+  );
+  assert.deepEqual(v.reasons, []);
+  assert.equal(v.ok, true);
+  assert.deepEqual(
+    [...v.sealed].sort((a, b) => a.path.localeCompare(b.path)),
+    Object.keys(files)
+      .sort((a, b) => a.localeCompare(b))
+      .map((path) => ({ path, criteria: ["AC1"], sha256: sha256Of(join(wt, path)) })),
+  );
+});
+
+test("D-RESEAL: a revised test that does not parse is refused and never run in the base tree", () => {
+  const w = runWorktree({ "calc.mjs": CALC_BASE });
+  w.write("bad.test.mjs", UNPARSEABLE_MJS);
+  w.write("good.test.mjs", PARSEABLE_MJS);
+  const count = worktreeCount(w);
+  const calls = [];
+  const v = seal(w.path, [authored("bad.test.mjs"), authored("good.test.mjs")], {
+    run: scripted({}, calls),
+    base: baseOf(w),
+  });
+  assert.deepEqual([v.ok, v.sealed], [false, []]);
+  assertDoesNotParse(v, w.path, "bad.test.mjs");
+  assert.deepEqual(
+    calls.filter((c) => c.command.includes("bad.test.mjs")),
+    [],
+  );
+  assert.ok(
+    calls.some((c) => c.command.includes("good.test.mjs")),
+    "the revision that parses is red-run in the base tree",
+  );
+  assert.equal(worktreeCount(w), count);
+
+  // Alone, nothing is left to run: one reason, and no base tree.
+  const alone = [];
+  const only = seal(w.path, [authored("bad.test.mjs")], {
+    run: scripted({}, alone),
+    base: baseOf(w),
+  });
+  assert.deepEqual([only.ok, only.sealed, alone], [false, [], []]);
+  assert.equal(only.reasons.length, 1, only.reasons.join("; "));
+  assertDoesNotParse(only, w.path, "bad.test.mjs");
+  assert.equal(worktreeCount(w), count);
+});
+
+test("a syntax check that cannot run in time is a reason, and the file is not sealed", () => {
+  const path = "slow.test.mjs";
+  const wt = worktreeOf({ [path]: PARSEABLE_MJS });
+  assert.equal(nodeCheck(wt, path).status, 0, "the file itself parses");
+  const v = seal(wt, [authored(path)], { timeoutMs: 1 });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.sealed, []);
+  assert.ok(
+    v.reasons.some((r) => r.startsWith(DID_NOT_RUN(path))),
+    v.reasons.join("; "),
+  );
 });
 
 // ── writeSealManifest ───────────────────────────────────────────────────────

@@ -318,6 +318,34 @@ function gitWouldRewrite(worktree: string, path: string): boolean {
   return filtered.stdout.trim() !== raw.stdout.trim();
 }
 
+/** The extensions `node --check` judges: JavaScript itself, never TypeScript, JSX or another language. */
+const CHECKED_SYNTAX = /\.[cm]?js$/;
+
+/**
+ * Why the JavaScript test at `path` does not parse, or null if it does or is not JavaScript. A file
+ * that does not parse fails its red run for that reason alone, which would read as a genuine red.
+ * Checked where it lies, so a `.js` file's module type comes from its nearest `package.json`, and
+ * with the running node rather than whichever `node` is on PATH.
+ */
+function syntaxProblem(worktree: string, path: string, timeoutMs: number): string | null {
+  if (!CHECKED_SYNTAX.test(path)) return null;
+  const r = spawnSync(process.execPath, ["--check", path], {
+    cwd: worktree,
+    timeout: timeoutMs,
+    maxBuffer: MAX_BUFFER,
+    encoding: "utf8",
+  });
+  if (r.error) return `syntax check did not run (${errorText(r.error)})`;
+  if (r.signal !== null) return `syntax check did not run (killed by ${r.signal})`;
+  if (r.status === 0) return null;
+  const lines = r.stderr.split("\n").map((line) => line.trimEnd());
+  const message =
+    lines.find((line) => line.startsWith("SyntaxError: ")) ??
+    lines.find((line) => line.trim() !== "") ??
+    `exit ${r.status}`;
+  return `does not parse (node --check): ${message}`;
+}
+
 /** The shapes of a test file that runners select by default, whatever `testPathPattern` says. */
 const BUILTIN_TEST_SHAPES: readonly RegExp[] = [
   /\.(test|spec)\.[cm]?[jt]sx?$/,
@@ -824,12 +852,21 @@ export function sealAuthoredTests(o: {
 
   const candidates: Candidate[] = [];
   for (const a of accepted) {
+    let bytes: Buffer;
     try {
-      const bytes = readFileSync(a.abs);
-      candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
+      bytes = readFileSync(a.abs);
     } catch (error) {
       reasons.push(`${a.path}: cannot be read (${errorText(error)})`);
+      continue;
     }
+    // Before any red run, and for a re-seal before the base tree: a file that does not parse is
+    // never run, and a re-seal left with nothing to run creates no base tree.
+    const unparsed = syntaxProblem(o.worktree, a.path, o.timeoutMs);
+    if (unparsed !== null) {
+      reasons.push(`${a.path}: ${unparsed}`);
+      continue;
+    }
+    candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
   }
   const verdict = (sealed: SealedFile[]): SealVerdict =>
     reasons.length > 0 ? { ok: false, reasons, sealed: [] } : { ok: true, reasons: [], sealed };
