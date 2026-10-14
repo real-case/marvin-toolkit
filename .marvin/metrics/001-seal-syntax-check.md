@@ -30,3 +30,11 @@ Append-only. One `metric-event` block per live event; one `task-metrics` block p
 {"slug":"seal-syntax-check","source":"task-start","step":"8F","kind":"critic-verdict","contract_sha":null,"at":"2026-10-13T18:16:54.103Z","critic":"marvin-tm-spec-critic","pass":2,"verdict":"PASS WITH WARNINGS","blockers":0,"warnings":4}
 ```
 
+```json metric-event
+{"slug":"seal-syntax-check","source":"task-implement","step":"fix-cycle","kind":"fix-round","contract_sha":null,"at":"2026-10-13T19:12:47.062Z","loop":"verify-gate","round":1}
+```
+
+```json metric-event
+{"slug":"seal-syntax-check","source":"task-implement","step":"6F","kind":"open-item","contract_sha":null,"at":"2026-10-13T20:18:42.613Z","detail":"verify-tool test gate red: pipeline-guards.test.mjs:732 inherits the MCP server's CLAUDE_PROJECT_DIR (test file outside contract); clean shell green","classification":"blocked"}
+```
+

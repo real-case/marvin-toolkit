@@ -1,7 +1,7 @@
 ---
 slug: seal-syntax-check
 type: feature
-status: in-progress
+status: shipped
 created: 2026-10-13
 tracker: none
 supersedes: none
@@ -154,3 +154,8 @@ none
 
 ## Critic Verdict & Overrides
 PASS WITH WARNINGS — receipts 001 (BLOCK, fixed), 002; its two listed warnings folded into F2, the two unlisted ones accepted unseen.
+
+## Delivery
+
+- PR: https://github.com/real-case/marvin-toolkit/pull/231
+- Pipeline run: r20261013-1806-cf2b (1 iterations)
