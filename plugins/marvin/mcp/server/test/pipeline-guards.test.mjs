@@ -29,7 +29,15 @@ const allows = (fn, cases) => {
   for (const c of cases) assert.equal(fn(c), null, `expected no denial: ${c}`);
 };
 
-const { MARVIN_PIPELINE_PROTECTED: _inherited, ...cleanEnv } = process.env;
+// The hooks take their whole configuration from the environment, and a suite run inside a
+// pipeline child (the executor's `verify` call, through the marvin MCP server) inherits that
+// child's: CLAUDE_PROJECT_DIR and MARVIN_PIPELINE_RUN with a real sealed.json turned the
+// symlink case's sealed-guard denial into an allow. Every case passes what it needs explicitly.
+const cleanEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([key]) => key !== "CLAUDE_PROJECT_DIR" && !key.startsWith("MARVIN_"),
+  ),
+);
 
 function runHook(file, payload, env = {}) {
   const r = spawnSync(process.execPath, [join(hooks, file)], {
