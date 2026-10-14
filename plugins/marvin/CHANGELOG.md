@@ -4,6 +4,15 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.5] — 2026-10-14
+
+### Changed
+
+- **Scanner gates are advised through `gates.extra`.** `task-verify`, `sec-gate` and
+  `docs/configuration.md` no longer tell users to chain a scanner onto `lint` because the four
+  gate names are the whole set; they recommend a `gates.extra` entry with its own name and
+  status, and say a single simple command with a missing binary is `not-run`. Documentation only.
+
 ## [0.29.4] — 2026-10-14
 
 ### Fixed

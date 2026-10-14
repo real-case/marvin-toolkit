@@ -49,14 +49,16 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   preferred over re-passing `gates` on every call. The report's `Stacks:` line shows
   `.marvin/config.json` when an override applies.
 - **A gate command is any shell command**, so a security scanner can be a blocking gate:
-  `npm audit --audit-level=high`, `gitleaks detect`, `semgrep --config auto`. The four gate
-  names are the complete set (a fifth key is stripped silently), so a scanner is chained onto
-  a gate the project already runs — `"lint": "npm run lint && gitleaks detect"` — and the
-  chain reports one status for both commands. State the cost before recommending this, and
-  state it accurately (ADR-0035): a **single simple command** whose binary is absent is
-  recorded `not-run` and only warns, so `"lint": "gitleaks detect"` no longer blocks a
-  contributor who has not installed the tool — but the **chained** form above is not covered
-  and still FAILs, because the check cannot answer for a chain. A `not-run` gate never makes
+  `npm audit --audit-level=high`, `gitleaks detect`, `semgrep --config auto`. Give it its own
+  entry in `gates.extra` (0.29.0+) rather than folding it into a standard gate:
+  `"gates": { "extra": [{ "name": "secrets", "command": "gitleaks detect" }] }`. The extra gets
+  its own `<name> Results` section and verdict row, so a lint error no longer hides whether the
+  scan ran. State the cost before recommending this, and state it accurately (ADR-0035): an
+  extra goes through the same missing-binary probe as a standard gate, so a **single simple
+  command** whose binary is absent is recorded `not-run` and only warns, and does not block a
+  contributor who has not installed the tool; a command containing a shell metacharacter
+  (`&&`, a pipe, a quote, a redirection, a glob, a substitution) is not probed and still FAILs
+  when its binary is missing, because the check cannot answer for it. A `not-run` gate never makes
   delivery easier: the delivery gate refuses outright, unwaivably, when every recorded `test`
   gate was `not-run`, or when every recorded gate was.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
