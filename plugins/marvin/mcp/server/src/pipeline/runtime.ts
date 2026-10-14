@@ -70,6 +70,7 @@ import {
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
 import { physicalProblem } from "./plain-path.js";
+import { pendingToolCall, readLogTail, statusLine } from "./child-activity.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
 import { composePrompts, RUNTIME_VARS, type RuntimeVar } from "./prompt.js";
 import {
@@ -222,6 +223,11 @@ export interface RuntimeOptions {
   pollMs?: number;
   /** How long one `waitChild` waits before it reports the child still running. Default 110 min. */
   childDeadlineMs?: number;
+  /**
+   * How long a running child may go without a report before the engine writes a status note for
+   * it. Default `MARVIN_PIPELINE_HEARTBEAT_S` seconds, else 300, the heartbeat hook's interval.
+   */
+  statusAfterMs?: number;
   /** Runs the bootstrap, the gates, the oracles and the red runs. Default `shellRunner`. */
   runner?: Runner;
 }
@@ -508,6 +514,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const runner = o.runner ?? shellRunner;
   const pollMs = o.pollMs ?? 1000;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
+  const statusAfterMs =
+    o.statusAfterMs ?? (Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S) || 300) * 1000;
   const at = (name: string) => join(runDir, name);
   const now = () => new Date().toISOString();
   /** The plugin a child loads with `--plugin-dir`, and whose skills its prompt points into. */
@@ -1106,6 +1114,51 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  /**
+   * The engine's half of the heartbeat. The hook reminds a child only between tool calls, so a
+   * child inside one long call goes silent; while a child runs, the engine writes a status note
+   * (`data.status`) whenever neither the child's last report nor the engine's last note for it is
+   * younger than `statusAfterMs`, naming the call the child is in (`child-activity.ts`). The
+   * baseline is read back from the events, so a restarted engine does not repeat a note at once.
+   * Looks at the events at most every 30 s: the poll runs every second.
+   */
+  const childStatus = (child: Child, key: string) => {
+    const startedMs = Date.parse(child.startedAt);
+    let lastHeard = startedMs;
+    let checked = 0;
+    const lastHeardFromEvents = () => {
+      for (const e of readEventsTolerant(runDir)) {
+        const fromChild = e.kind === "report" && e.actor === child.name;
+        const ourNote = e.kind === "note" && e.data?.status === true && e.data?.key === key;
+        if (fromChild || ourNote) lastHeard = Math.max(lastHeard, Date.parse(e.ts));
+      }
+    };
+    return {
+      look: () => {
+        const nowMs = Date.now();
+        if (nowMs - checked < Math.min(30_000, statusAfterMs)) return;
+        checked = nowMs;
+        try {
+          lastHeardFromEvents();
+          if (nowMs - lastHeard < statusAfterMs) return;
+          const tail = readLogTail(at(`${key}.log.jsonl`));
+          const call = tail === null ? null : pendingToolCall(tail.text);
+          const text = statusLine(
+            child.name,
+            nowMs - startedMs,
+            nowMs - lastHeard,
+            call,
+            tail === null ? null : nowMs - tail.mtimeMs,
+          );
+          note(text, { notify: true, status: true, key, ...(call ? { tool: call.tool } : {}) });
+          lastHeard = nowMs;
+        } catch {
+          // A status note is a courtesy: nothing about it may stop the wait.
+        }
+      },
+    };
+  };
+
   const waitChild = async (run: Run, signal?: AbortSignal) => {
     let index = -1;
     run.children.forEach((c, i) => {
@@ -1117,10 +1170,12 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const config = configFor(run);
     const stallMs = config.pipeline.stall_minutes * 60_000;
     const started = Date.now();
+    const status = childStatus(child, key);
     let result: WaitResult;
     for (;;) {
       result = classify({ ...readChildState(runDir, key, Date.now()), stallMs });
       if (result.outcome !== "running" || Date.now() - started >= childDeadlineMs) break;
+      status.look();
       await delay(pollMs, undefined, { signal: signal ?? deps.signal });
     }
     if (result.outcome === "running") {
