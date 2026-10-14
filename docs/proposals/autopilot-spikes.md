@@ -200,8 +200,8 @@ The fixed per-spawn overhead is dominated by the system prompt, which is what D1
 
 ## Acceptance
 
-The first calibration baseline (plan Task 20). Scenarios 3 and 4, real tasks in the host project,
-have not run yet.
+The first calibration baseline (plan Task 20). Scenario 3, a real task in the host project, has not
+run yet.
 
 ### Scenario 2 — live sandbox, headless half (2026-10-10)
 
@@ -344,3 +344,63 @@ engine committed the metrics record … in the finalize commit").
 
 The orchestrator answered the dispute without `--answered-by`, against the skill; the calibration
 record was unaffected, since no question was asked.
+
+### Scenario 4 — standard task in marvin-toolkit (2026-10-13)
+
+`r20261013-1806-cf2b`: a real task against marvin-toolkit itself, base `dev`, with no sandbox
+variable, so every child ran on its rubric assignment. The task, given in Russian with
+`--lang ru`, was the defect the heartbeat run above exposed: the seal stage must run `node --check`
+on every `.js`, `.mjs` and `.cjs` test before sealing it, and refuse one that does not parse.
+The orchestrator was a Code-tab session on Opus 5.5 following `/marvin:autopilot`, and the owner
+approved the spec. Claude Code 2.1.287, engine at `f7efa5e` (`feature/autopilot`).
+
+The stage-A guess was `standard`; the engine computed `heavy` from the project rubric's sensitive
+paths (`src/pipeline/seal.ts` and `test/pipeline-seal.test.mjs`), and the owner approved at
+`heavy`. The planner ran before the tier was recomputed, so it ran on the standard assignment.
+The run reached `ready` as PR #231 into `dev`: one iteration, rung 0, no rejection, no question,
+the verifier passing on iteration 1, CI green.
+
+| Role | Runs | Model/effort | Cost | Wall time | Cache reads |
+|------|------|--------------|------|-----------|-------------|
+| planner | 1 | opus/high | $5.90 | 11 min | 8 611 089 |
+| test-author | 1 | opus/high | $2.27 | 11 min | 3 169 189 |
+| executor | 1 | opus/high | $3.54 | 109 min | 7 724 042 |
+| verifier | 1 | opus/xhigh | $2.13 | 5 min | 2 157 584 |
+| retro | 1 | opus/medium | $0.67 | under 1 min | 152 730 |
+| **Total** | 5 | | **$14.52** | about 2 h 30 min active | **21 814 634** |
+
+Wall clock was 18:06 on 2026-10-13 to 11:41 on 2026-10-14 (UTC). The engine stopped with the
+orchestrator session at the start of `gating` (20:19) and left nothing in `engine.log`; a
+`resume` the next morning restarted it, and it carried on from disk to `ready` in 14 minutes.
+
+**Checks.**
+
+| Check | Result |
+|-------|--------|
+| Sealed tests committed before implementation | yes: on the PR branch, `408e018` (approved spec), `61158dc` (sealed acceptance tests, AC1–AC7), then `e2cf674` (the executor's fix), then `080d868` (finalize) |
+| Per-role cost in the final report | yes: the table above, from `children[]` in `status`, matches `aggregate.perRole` in the finalize commit's calibration record |
+| Spec approval by the owner through `AskUserQuestion` | yes, with a push notification first; the presentation offered `standard` beside the computed `heavy` |
+| `--answered-by` reaches `calibration.jsonl` | not exercised: no child asked a question, and the record has `questions: {byOrchestrator: 0, byUser: 0}` |
+| The heartbeat reminder fired | yes, eleven `note` events with `data.heartbeat`: two for the planner, two for the test-author and one for the verifier, each at 5 min, and six for the executor at 26, 15, 23, 16, 16 and 9 min |
+| A report at least every 6 min of executor wall time | no: the executor's gaps between reports were 9 to 26 min. Five of its six reminders were followed by a report 5 to 14 s later, so a reminder that fires is acted on. The hook runs on `PostToolUse` only, so it cannot fire during a tool call, and the long gaps are consistent with single long calls such as the `verify` tool's sequential gate run |
+
+The first executor reminder (18:56:52.773) came 2 ms before the report it was attached to: the
+heartbeat hook and `message-log` both run on the `SendMessage` call's own `PostToolUse`, so a
+report sent after more than five quiet minutes also gets a reminder to send a report. Harmless
+here, but the heartbeat hook should skip `SendMessage`.
+
+**Observed.**
+
+- Most of the executor's 109 minutes went into one failure outside the contract: the `verify`
+  tool's `test` gate failed twice on `test/pipeline-guards.test.mjs:732`, which passed in the
+  executor's own shell (1352 of 1352). The test reads `CLAUDE_PROJECT_DIR` inherited from the MCP
+  server, the same class of environment leak as `MARVIN_TASKS_CONFIG` earlier. The executor
+  recorded it as a claim and delivered; the verifier passed. The leak still needs its own fix.
+- The gate recorded one flaky test as a minor finding (`G-test-flaky`: an `ENOENT` on a child log
+  `utime` in a runtime test), carried into the PR body.
+- The spec critic's second pass listed two warnings and summarised two more as "+2 further
+  warnings not listed"; the planner accepted those unseen and said so in `assumptions`.
+- The retro added no check and no lesson, and proposed one role-prompt line: the test-author runs
+  `node --check` on its JavaScript tests before handing off. It waits for the benchmark.
+- The first calibration record on the heavy tier: $14.52 against $1.72–$4.44 for the
+  Haiku sandbox runs of scenario 2.
