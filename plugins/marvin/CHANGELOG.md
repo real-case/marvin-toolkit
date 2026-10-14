@@ -4,7 +4,7 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
-## [0.29.1] — 2026-10-14
+## [0.29.2] — 2026-10-14
 
 ### Fixed
 
@@ -13,6 +13,19 @@ follows semver independently of the surrounding marketplace.
   for a `SendMessage`. When a child reported after more than five quiet minutes, the heartbeat
   read the stale time on that same call and asked for a report the child had just sent, and
   recorded a reminder that prompted nothing. It now skips `SendMessage`.
+
+## [0.29.1] — 2026-10-13
+
+### Fixed
+
+- **The autopilot's seal stage refuses a JavaScript test that does not parse.** Before any red
+  run, and for a re-seal before the base tree is created, it runs `node --check` (the running
+  node, in the run's worktree, bounded by the seal's timeout) on every listed test whose extension
+  is exactly `.js`, `.mjs` or `.cjs`. A file that does not parse is refused with
+  `<path>: does not parse (node --check): <SyntaxError line>` and is never run, where before its
+  failed red run read as a genuine red test and the broken file was sealed. A check that cannot
+  run (a timeout, a failed spawn) refuses the file as `<path>: syntax check did not run (…)`.
+  TypeScript, JSX and other languages are not checked.
 
 ## [0.29.0] — 2026-10-09
 
