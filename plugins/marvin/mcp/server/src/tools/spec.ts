@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { keyList, strictInput } from "../lib/strict-input.js";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { SpecAuditFinding, SpecAuditPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { parseFrontmatter } from "../storage/frontmatter.js";
@@ -225,8 +226,10 @@ type SpecInput = z.infer<typeof SpecInput>;
  * turns that into an explicit failure naming the argument and the valid fields.
  */
 const SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
-const SpecInputStrict = SpecInput.strict(
-  `unknown argument for the spec tool — it accepts only: ${SPEC_INPUT_FIELDS}. ` +
+const SpecInputStrict = strictInput(
+  SpecInput,
+  (keys) =>
+    `unknown argument ${keyList(keys)} for the spec tool — it accepts only: ${SPEC_INPUT_FIELDS}. ` +
     `The changed-file set for action: "scope" is always derived from git (use \`base\` to pick the ref, ` +
     `\`allow\` to permit extra paths); it cannot be supplied by the caller.`,
 );

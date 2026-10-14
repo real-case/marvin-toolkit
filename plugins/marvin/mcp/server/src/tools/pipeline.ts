@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { keyList, strictInput } from "../lib/strict-input.js";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import { loadRun, stateRoot, type Child, type Run } from "../pipeline/run-store.js";
 
@@ -49,8 +50,10 @@ const PipelineInput = z.object({
 type PipelineInput = z.infer<typeof PipelineInput>;
 
 const PIPELINE_INPUT_FIELDS = Object.keys(PipelineInput.shape).join(", ");
-const PipelineInputStrict = PipelineInput.strict(
-  `unknown argument for the pipeline tool — it accepts only: ${PIPELINE_INPUT_FIELDS}.`,
+const PipelineInputStrict = strictInput(
+  PipelineInput,
+  (keys) =>
+    `unknown argument ${keyList(keys)} for the pipeline tool — it accepts only: ${PIPELINE_INPUT_FIELDS}.`,
 );
 
 /** The shipped assets, in the order `paths` lists them. The state root is not shipped. */

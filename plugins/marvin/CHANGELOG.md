@@ -4,6 +4,24 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.4] — 2026-10-14
+
+### Fixed
+
+- **A strict tool input names the key it rejects again.** `spec`, `metrics` and `pipeline` refuse
+  an undeclared argument with their own message, which replaced the key list zod prints; the key
+  showed up only because the MCP SDK appended zod's raw issue to the error. From SDK 1.32 it
+  prints the issue messages alone, so a misspelt `detial` was refused without being named. The
+  message is now built from the issue (`lib/strict-input.ts`) and names the keys whatever the SDK
+  prints around it.
+
+### Changed
+
+- **Dependencies:** the Dependabot minor-and-patch group (19 updates, among them
+  `@modelcontextprotocol/sdk` 1.29.0 → 1.32.1, `astro` 7.1.1 → 7.3.8, `eslint` 10.7.0 → 10.12.0
+  and `prettier` 3.9.5 → 3.9.10). `esbuild` stays at 0.28.1: 0.28.2 fails the widget build
+  ("Transforming destructuring to the configured target environment … is not supported yet").
+
 ## [0.29.3] — 2026-10-14
 
 ### Fixed
