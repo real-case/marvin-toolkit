@@ -482,38 +482,33 @@ name suggests. `npm audit --audit-level=high`, `gitleaks detect`, and `semgrep -
 are all legitimate gate content, and running one under `verify` is what makes it blocking:
 the result lands in `verification.md`, and through it in the delivery gate.
 
-Because the four gate names are the complete set, adding a scanner means chaining it onto a
-gate you already run:
+The four gate names are the complete set of `gates` keys, but since 0.29.0 a scanner does not
+need one of them: [`gates.extra`](#gatesextra) gives it its own name and its own status.
 
 ```json
 {
   "gates": {
-    "lint": "npm run lint && gitleaks detect"
+    "extra": [{ "name": "secrets", "command": "gitleaks detect" }]
   }
 }
 ```
 
-Chaining has a cost. The two commands share one gate result, `&&` stops at the first failure
-so a lint error means the scan never ran at all, and both the status line and the truncated
-output kept in the report describe the chain rather than either command. Attributing a red
-chained gate takes one manual re-run.
+The extra gets its own `secrets Results` section in `verification.md` and its own verdict row,
+so a lint error no longer hides whether the scan ran, and the status line describes the scan
+rather than a chain.
 
 **A missing binary depends on the shape of the command.** Before it spawns anything, `verify`
-checks whether a gate's binary can be resolved — but only for a **single simple command**. Such
-a gate is recorded `not-run` rather than failed: the verdict becomes `PASS WITH WARNINGS`, a
-warning names the gate and the missing token, and delivery proceeds. `"lint": "gitleaks detect"`
-therefore no longer blocks a contributor who has not installed the tool.
+checks whether a gate's binary can be resolved, for extras as for the standard gates — but only
+for a **single simple command**. Such a gate is recorded `not-run` rather than failed: the
+verdict becomes `PASS WITH WARNINGS`, a warning names the gate and the missing token, and
+delivery proceeds. The entry above therefore does not block a contributor who has not installed
+the tool. A command containing a shell metacharacter — `&&`, a pipe, a quote, a redirection —
+is left alone and runs as it always has, so a multi-token command on a machine without its
+binary still exits non-zero and yields `FAIL`.
 
-**The chained form above is not covered, and still fails.** A command containing a shell
-metacharacter — `&&`, a pipe, a quote, a redirection — is left alone and runs exactly as it
-always has, so `"lint": "npm run lint && gitleaks detect"` on a machine without `gitleaks`
-still exits non-zero, still yields `FAIL`, and still blocks `/marvin:task-deliver`. This is the
-same cost the previous paragraph describes, seen from another angle: a chain is one gate to
-everything downstream, and `command -v` cannot answer for it. Guessing at shell grammar risks
-the opposite error — reporting `not-run` for a chain whose real failure was somewhere else,
-which turns a genuine red into a warning. So for a shared config the advice is unchanged:
-either keep chained scanner gates out of it, or make the binary a documented prerequisite of
-the project.
+Before 0.29.0 the only route was to chain the scanner onto a gate the project already ran, such
+as `"lint": "npm run lint && gitleaks detect"`; that form still works on older installs, but the
+two commands share one gate result and a lint error means the scan never ran.
 
 **A `not-run` gate never makes delivery easier.** The delivery gate refuses outright, with no
 input that waives it, when the run recorded a `test` gate and every `test` gate was `not-run`,
