@@ -1,7 +1,7 @@
 ---
 slug: scanner-gates-via-gates-extra
 type: feature
-status: ready
+status: shipped
 created: 2026-10-14
 tracker: none
 supersedes: none
@@ -130,3 +130,8 @@ none
 
 ## Critic Verdict & Overrides
 BLOCK — receipt 001; resolved without a re-dispatch (cap 1) by orchestrator answer Q1: F5 added, AC1–AC4 tightened.
+
+## Delivery
+
+- PR: https://github.com/real-case/marvin-toolkit/pull/239
+- Pipeline run: r20261014-1833-9f85 (2 iterations)
