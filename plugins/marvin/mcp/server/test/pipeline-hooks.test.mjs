@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,33 @@ test("heartbeat nudges once the interval has elapsed, then re-arms", () => {
   assert.equal(notes[0].actor, "r1-executor-1");
   assert.deepEqual(notes[0].data, { heartbeat: true, minutes: 5 });
   assert.match(notes[0].text, /^heartbeat: 5 min since the last report$/);
+});
+
+test("heartbeat stays silent on the report itself", () => {
+  const run = mkdtempSync(join(tmpdir(), "pipe-"));
+  const env = {
+    ...process.env,
+    MARVIN_PIPELINE_RUN: run,
+    MARVIN_PIPELINE_CHILD: "r1-executor-1",
+    MARVIN_PIPELINE_ORCH: "Autopilot",
+    MARVIN_PIPELINE_HEARTBEAT_S: "300",
+  };
+  const stale = String(Date.now() - 301_000);
+  const timer = join(run, "r1-executor-1.heartbeat");
+  writeFileSync(timer, stale);
+  const fire = (tool_name) =>
+    spawnSync(process.execPath, [join(hooks, "heartbeat.mjs")], {
+      input: JSON.stringify({ tool_name, tool_input: { to: "Autopilot", message: "[r1] done" } }),
+      env,
+      encoding: "utf8",
+    }).stdout;
+  // The interval has elapsed, but the call that ends it is the report: no nudge, no note, and the
+  // timer is left to message-log.
+  assert.equal(fire("SendMessage"), "");
+  assert.equal(readFileSync(timer, "utf8"), stale);
+  assert.equal(existsSync(join(run, "events.jsonl")), false);
+  // Any other tool still gets the nudge.
+  assert.match(JSON.parse(fire("Bash")).hookSpecificOutput.additionalContext, /SendMessage/);
 });
 
 test("message log records the report and resets the timer", () => {
