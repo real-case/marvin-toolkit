@@ -3,11 +3,16 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 import { orchestratorOf } from "./lib/orchestrator.mjs";
 
+let toolName;
 try {
-  readFileSync(0);
+  toolName = JSON.parse(readFileSync(0, "utf8"))?.tool_name;
 } catch {
-  /* payload unused */
+  /* an unreadable payload is judged by the timer alone */
 }
+// A report is not a step to be reminded after: message-log, on the same PostToolUse, resets the
+// timer for it, and running beside it this hook would still read the stale time and ask for a
+// report the child has just sent.
+if (toolName === "SendMessage") process.exit(0);
 const {
   MARVIN_PIPELINE_RUN: run,
   MARVIN_PIPELINE_CHILD: child,
