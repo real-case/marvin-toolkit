@@ -502,9 +502,9 @@ checks whether a gate's binary can be resolved, for extras as for the standard g
 for a **single simple command**. Such a gate is recorded `not-run` rather than failed: the
 verdict becomes `PASS WITH WARNINGS`, a warning names the gate and the missing token, and
 delivery proceeds. The entry above therefore does not block a contributor who has not installed
-the tool. A command containing a shell metacharacter — `&&`, a pipe, a quote, a redirection —
-is left alone and runs as it always has, so a multi-token command on a machine without its
-binary still exits non-zero and yields `FAIL`.
+the tool. A command containing a shell metacharacter — `&&`, a pipe, a quote, a redirection, a
+glob, a substitution — is left alone and runs as it always has, so such a command on a machine
+without its binary still exits non-zero and yields `FAIL`.
 
 Before 0.29.0 the only route was to chain the scanner onto a gate the project already ran, such
 as `"lint": "npm run lint && gitleaks detect"`; that form still works on older installs, but the

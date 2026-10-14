@@ -56,8 +56,9 @@ gate execution — there is a single source of truth in TypeScript, not a table 
   scan ran. State the cost before recommending this, and state it accurately (ADR-0035): an
   extra goes through the same missing-binary probe as a standard gate, so a **single simple
   command** whose binary is absent is recorded `not-run` and only warns, and does not block a
-  contributor who has not installed the tool; a multi-token shell command still FAILs, because
-  the check cannot answer for it. A `not-run` gate never makes
+  contributor who has not installed the tool; a command containing a shell metacharacter
+  (`&&`, a pipe, a quote, a redirection, a glob, a substitution) is not probed and still FAILs
+  when its binary is missing, because the check cannot answer for it. A `not-run` gate never makes
   delivery easier: the delivery gate refuses outright, unwaivably, when every recorded `test`
   gate was `not-run`, or when every recorded gate was.
 - It runs the **independent gates concurrently** (`execution: "parallel"`, the default), collects
