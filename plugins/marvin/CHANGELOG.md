@@ -4,6 +4,16 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.1] — 2026-10-14
+
+### Fixed
+
+- **The autopilot heartbeat no longer asks for a report on the report itself.** The heartbeat
+  hook runs on every tool's `PostToolUse`, beside `message-log`, which resets the report timer
+  for a `SendMessage`. When a child reported after more than five quiet minutes, the heartbeat
+  read the stale time on that same call and asked for a report the child had just sent, and
+  recorded a reminder that prompted nothing. It now skips `SendMessage`.
+
 ## [0.29.0] — 2026-10-09
 
 The autopilot pipeline (`docs/proposals/autopilot-implementation-plan.md`, Phases 0–3): a task
