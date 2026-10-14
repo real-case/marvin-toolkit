@@ -344,3 +344,60 @@ engine committed the metrics record … in the finalize commit").
 
 The orchestrator answered the dispute without `--answered-by`, against the skill; the calibration
 record was unaffected, since no question was asked.
+
+### Scenarios 3 and 4 — live runs against marvin-toolkit (2026-10-13/14)
+
+The first runs against marvin-toolkit itself, with no sandbox switch: the children ran on the
+rubric's models, the PR went to the real `dev` and CI was GitHub's. Each orchestrator was its own
+Code-tab session on Sonnet 5.5, started from a task chip in a fresh worktree of the main checkout,
+and the owner answered every question in it. Engine at `0085c9a` (`dev` after #225).
+
+| Run | Task | Tier | Outcome | Cost | Wall time |
+|-----|------|------|---------|------|-----------|
+| `r20261013-1806-0418` | restore `tracker_url_template` in `.marvin/config.json` | — | closed at planning on the owner's answer | $1.67 | 12 min |
+| `r20261013-1806-cf2b` | the seal stage runs `node --check` on a JavaScript test before sealing it | heavy | `ready`, PR #231 | $14.52 | 18:06 → 11:41 the next day, about 15 h of it stopped (below) |
+
+**Scenario 3 did not deliver, by design of its task.** The planner found that the key was removed
+on purpose (`71b6edf5`: a dead `tracker.local` host in a public repository), asked, and the owner
+cancelled the run (`answeredBy: user`); the retro still ran. The task was the orchestrator's
+mistake, not the pipeline's. The planner also reported that `.marvin/config.json` matches
+`protected.default.json`, so no autopilot run can change that file. Scenario 3 is owed again with
+another light task.
+
+**Scenario 4 passed every criterion.** One iteration, no rejection, verifier PASS on iteration 1,
+CI green, the PR marked ready, the sealed tests committed before the implementation, and the
+finalize commit carrying the metrics record. The tier came out `heavy`, not the `standard` the
+task was chosen for, because `seal.ts` and its test are sensitive paths.
+
+| Role | Assignment | Cost | Wall time | cache_read |
+|------|-----------|------|-----------|------------|
+| planner | opus/high | $5.90 | 11 min | 8,611,089 |
+| test-author | opus/high | $2.27 | 11 min | 3,169,189 |
+| executor 1 | opus/high | $3.54 | 109 min | 7,724,042 |
+| verifier 1 | opus/xhigh | $2.13 | 5 min | 2,157,584 |
+| retro | opus/medium | $0.67 | under 1 min | 152,730 |
+| **run** | | **$14.52** | | |
+
+The executor's 109 minutes were mostly this repository's own gates: it chased a red `verify` run
+to `test/pipeline-guards.test.mjs:732`, which reads the MCP server's `CLAUDE_PROJECT_DIR` (an
+environment leak outside the contract), and confirmed one flaky process-group test. The heartbeat
+fired three times while it worked (9 and 16 min since the last report) and each reminder was
+followed by a report within seconds, which settles the last open item of scenario 2.
+
+**Why the engine stopped for 15 hours.** The engine entered `gating` at 20:19:30Z and wrote nothing
+after it: no `engine stopped` note, its lock left held, `engine.log` empty. The cause was outside
+the pipeline: the machine was shut down at about 20:30Z. A `shutdown_stall` report is dated
+20:34:46Z, `pmset` stops logging at 20:34:38Z, `last` shows no clean shutdown, and the next boot was
+at 07:17Z on the 14th. A gate test process left a half-written cache file
+(`node_modules/.cache/marvin-ts-test/*.47685.tmp`) at 20:29:40Z, which dates the kill. The
+orchestrator session went down with the machine. On the 14th the run was resumed (a new engine
+at 10:31Z), re-ran the gate from the start, and finished.
+
+What the pipeline did wrong in that is narrower: the engine could not stop cleanly. The gate stage
+runs synchronously (`runGateStage` through `shellRunner`'s `spawnSync`, up to
+`gate_timeout_minutes`, 60 here), so the `SIGTERM` the shutdown sent waited on a blocked event
+loop until the `SIGKILL` that followed. A clean stop would have written the note and released the
+lock. Nothing was lost, since the run resumed from disk, but `await` could only report a dead
+engine, not why. Making the gate stage asynchronous, or forwarding the signal to the gate's
+process group, is a candidate fix.
+
