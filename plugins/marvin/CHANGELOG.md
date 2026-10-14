@@ -17,10 +17,13 @@ follows semver independently of the surrounding marketplace.
 
 ### Changed
 
-- **Dependencies:** the Dependabot minor-and-patch group (19 updates, among them
-  `@modelcontextprotocol/sdk` 1.29.0 → 1.32.1, `astro` 7.1.1 → 7.3.8, `eslint` 10.7.0 → 10.12.0
-  and `prettier` 3.9.5 → 3.9.10). `esbuild` stays at 0.28.1: 0.28.2 fails the widget build
-  ("Transforming destructuring to the configured target environment … is not supported yet").
+- **Dependencies:** sixteen of the Dependabot minor-and-patch group's twenty updates, among them
+  `@modelcontextprotocol/sdk` 1.29.0 → 1.32.1, `eslint` 10.7.0 → 10.12.0 and `prettier`
+  3.9.5 → 3.9.10. Four stay where they were: `esbuild` 0.28.1 (0.28.2 fails the widget build,
+  "Transforming destructuring to the configured target environment … is not supported yet"),
+  `astro` 7.1.1 and `@astrojs/preact` 6.0.1 (7.3.8 fails the site build on a `cookie` export the
+  locked version lacks), and `@storybook/test-runner` 0.22.1 (0.26.0 cannot load the ESM
+  `test-runner.ts`; Storybook-family updates land together).
 
 ## [0.29.3] — 2026-10-14
 
