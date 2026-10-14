@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { z } from "zod";
+import { keyList, strictInput } from "../lib/strict-input.js";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
 import type { MetricEvent, MetricsSeries, TaskMetrics } from "@marvin-toolkit/mcp-shared/contracts";
 import { projectConfigPath, projectScopedDir, type ServerEnv } from "../lib/env.js";
@@ -185,8 +186,10 @@ const MetricsInput = z.object({
 type MetricsInput = z.infer<typeof MetricsInput>;
 
 const METRICS_INPUT_FIELDS = Object.keys(MetricsInput.shape).join(", ");
-const MetricsInputStrict = MetricsInput.strict(
-  `unknown argument for the metrics tool — it accepts only: ${METRICS_INPUT_FIELDS}. ` +
+const MetricsInputStrict = strictInput(
+  MetricsInput,
+  (keys) =>
+    `unknown argument ${keyList(keys)} for the metrics tool — it accepts only: ${METRICS_INPUT_FIELDS}. ` +
     `An event's fields are named by its kind (see the kind description); a misspelt key would otherwise be dropped and the event recorded without it.`,
 );
 

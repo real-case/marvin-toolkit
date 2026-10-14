@@ -1,6 +1,6 @@
 {
   "name": "@marvin-toolkit/site",
-  "version": "0.29.3",
+  "version": "0.29.4",
   "private": true,
   "description": "Marketing + reference site for the marvin plugin — static Astro site (website Phase 1 scaffold).",
   "type": "module",
@@ -33,8 +33,8 @@
     "preact": "^10.29.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "@types/node": "^26.1.1",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5",
     "typescript": "^5.4.0"
   }
 }
