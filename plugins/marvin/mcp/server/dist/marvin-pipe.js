@@ -19579,6 +19579,7 @@ function classifyRecord(git4, commit, worktree, rel, slug) {
 // src/pipeline/gate.ts
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
+var SUPERVISOR_GRACE_MS = 5e3;
 var SUPERVISOR = `
 const { spawn } = require("node:child_process");
 const { constants } = require("node:os");
@@ -19619,22 +19620,94 @@ var shellRunner = (command, cwd, timeoutMs) => {
     ms: Date.now() - started
   };
 };
+var shellRunnerAsync = (command, cwd, timeoutMs, signal) => new Promise((resolvePromise, reject) => {
+  if (signal?.aborted) {
+    reject(signal.reason);
+    return;
+  }
+  const started = Date.now();
+  const supervisor = spawn(process.execPath, ["-e", SUPERVISOR, "--", command], {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const stdout = [];
+  const stderr = [];
+  let size = 0;
+  let ended = null;
+  let launchError = null;
+  let grace;
+  const end = (why) => {
+    if (ended !== null) return;
+    ended = why;
+    supervisor.kill("SIGTERM");
+    grace = setTimeout(() => supervisor.kill("SIGKILL"), SUPERVISOR_GRACE_MS);
+    grace.unref();
+  };
+  const collect = (into) => (chunk) => {
+    if (ended === "overflow") return;
+    size += chunk.length;
+    if (size > MAX_BUFFER) {
+      end("overflow");
+      return;
+    }
+    into.push(chunk);
+  };
+  supervisor.stdout.on("data", collect(stdout));
+  supervisor.stderr.on("data", collect(stderr));
+  const timer = setTimeout(() => end("timeout"), timeoutMs);
+  const onAbort = () => end("abort");
+  signal?.addEventListener("abort", onAbort, { once: true });
+  supervisor.once("error", (error2) => {
+    launchError = error2;
+  });
+  supervisor.once("close", (code) => {
+    clearTimeout(timer);
+    clearTimeout(grace);
+    signal?.removeEventListener("abort", onAbort);
+    if (ended === "abort") {
+      reject(signal?.reason);
+      return;
+    }
+    const tail = ended === "timeout" ? `error: timed out after ${timeoutMs}ms
+` : ended === "overflow" ? `error: output exceeded ${MAX_BUFFER} bytes
+` : launchError ? `error: ${launchError.message}
+` : "";
+    resolvePromise({
+      code: ended === "timeout" ? 124 : code ?? 124,
+      output: `${Buffer.concat(stdout).toString("utf8")}${Buffer.concat(stderr).toString("utf8")}${tail}`,
+      ms: Date.now() - started
+    });
+  });
+});
 var relevantTail = (s) => {
   const lines = s.trimEnd().split("\n");
   const errors = lines.filter((l) => /\berror\b|\bfail(ed|ure)?\b|✗|×/i.test(l)).slice(-20);
   return (errors.length ? errors : lines.slice(-40)).join("\n");
 };
-function runGates(commands, cwd, run2, timeoutMs) {
-  return commands.map(({ name, command, retry: retry2 = true }) => {
-    const first = run2(command, cwd, timeoutMs);
-    if (first.code === 0) return { name, result: "pass", ms: first.ms, tail: "" };
-    if (!retry2) return { name, result: "fail", ms: first.ms, tail: relevantTail(first.output) };
-    const second = run2(command, cwd, timeoutMs);
-    if (second.code === 0) {
-      return { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) };
+async function runGates(commands, cwd, run2, timeoutMs, signal) {
+  const once = async (command) => {
+    signal?.throwIfAborted();
+    const result = await run2(command, cwd, timeoutMs, signal);
+    signal?.throwIfAborted();
+    return result;
+  };
+  const results = [];
+  for (const { name, command, retry: retry2 = true } of commands) {
+    const first = await once(command);
+    if (first.code === 0) {
+      results.push({ name, result: "pass", ms: first.ms, tail: "" });
+      continue;
     }
-    return { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) };
-  });
+    if (!retry2) {
+      results.push({ name, result: "fail", ms: first.ms, tail: relevantTail(first.output) });
+      continue;
+    }
+    const second = await once(command);
+    results.push(
+      second.code === 0 ? { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) } : { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) }
+    );
+  }
+  return results;
 }
 var C_ESCAPES = {
   '"': 34,
@@ -20054,7 +20127,7 @@ function pointerProblem(worktree, gitDir) {
     return `.git cannot be read (${error2 instanceof Error ? error2.message : String(error2)})`;
   }
 }
-function runGateStage(o) {
+async function runGateStage(o) {
   validateOptions(o);
   const git4 = isolatedGit(o.worktree, o.gitDir);
   const blockers = [];
@@ -20182,11 +20255,12 @@ function runGateStage(o) {
       });
       continue;
     }
-    const ran = runGates(
+    const ran = await runGates(
       [{ name, command: step2.command, retry: false }],
       o.worktree,
       o.run,
-      o.timeoutMs
+      o.timeoutMs,
+      o.signal
     );
     prepareGates.push(...ran);
     const failure = ran.find((r) => r.result === "fail");
@@ -20205,11 +20279,12 @@ function runGateStage(o) {
   for (const x of prepareFailed === null ? runnable : []) {
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
     oracleGates.push(
-      ...runGates(
+      ...await runGates(
         [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
         o.worktree,
         o.run,
-        o.timeoutMs
+        o.timeoutMs,
+        o.signal
       )
     );
     const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
@@ -20237,7 +20312,7 @@ function runGateStage(o) {
   const gates = [
     ...prepareGates,
     ...oracleGates,
-    ...runGates(o.gates, o.worktree, o.run, o.timeoutMs)
+    ...await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal)
   ];
   const headAfter = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha2) {
@@ -23495,7 +23570,7 @@ function step(run2, obs, rubric, now) {
     run: r,
     actions: [{ kind: "judgment", judgment, payload }]
   });
-  const spawn4 = (r, role, context, resume2 = false) => {
+  const spawn5 = (r, role, context, resume2 = false) => {
     const tier = r.tier ?? r.stageA;
     const own = assignmentFor(tier, role, role === "executor" ? r.rung : 0, rubric);
     if (own === "skip") throw new Error(`${role} is skipped on tier ${tier}`);
@@ -23545,7 +23620,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(go({ ...r, awaitingRole: null }, "halted", reason2), "retro");
     return {
       run: retro,
-      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
+      actions: [spawn5(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
     };
   };
   const pollCi = (r) => {
@@ -23565,7 +23640,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(r, "retro");
     return {
       run: retro,
-      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
+      actions: [spawn5(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
     };
   };
   const reopenTests = (r, feedback, reason2, detail2, findings) => {
@@ -23575,7 +23650,7 @@ function step(run2, obs, rubric, now) {
       ...findings ? { previousFindings: asRecords(findings) } : {}
     };
     const reopened = r.stage === "test_authoring" ? counted : go({ ...counted, awaitingRole: null }, "test_authoring");
-    const action = spawn4(reopened, "test-author", testAuthorCtx(reopened, feedback));
+    const action = spawn5(reopened, "test-author", testAuthorCtx(reopened, feedback));
     if (counted.testAuthorAttempts >= rubric.caps.test_author_attempts) {
       return ask(
         {
@@ -23613,7 +23688,7 @@ function step(run2, obs, rubric, now) {
       return {
         run: exec,
         actions: [
-          spawn4(exec, "executor", executorCtx(exec, fs)),
+          spawn5(exec, "executor", executorCtx(exec, fs)),
           {
             kind: "notify",
             text: `${source} rejected iteration ${r.iteration} (${fs.length} blocking); executor ${exec.iteration} started on rung ${rung}`
@@ -23660,7 +23735,7 @@ function step(run2, obs, rubric, now) {
       );
       return {
         run: exec,
-        actions: [spawn4(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
+        actions: [spawn5(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
       };
     }
     if (role === "test-author") {
@@ -23722,7 +23797,7 @@ function step(run2, obs, rubric, now) {
       return {
         run: r,
         actions: [
-          refused2 ? spawn4(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
+          refused2 ? spawn5(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
         ]
       };
     }
@@ -23741,7 +23816,7 @@ function step(run2, obs, rubric, now) {
         return {
           run: r,
           actions: [
-            spawn4(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
+            spawn5(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
           ]
         };
       }
@@ -23768,7 +23843,7 @@ function step(run2, obs, rubric, now) {
           };
           return {
             run: r2,
-            actions: [spawn4(r2, "planner", { message: `ANSWERS:
+            actions: [spawn5(r2, "planner", { message: `ANSWERS:
 ${lines.join("\n")}` }, true)]
           };
         }
@@ -23793,7 +23868,7 @@ ${lines.join("\n")}` }, true)]
           'Fix each check, re-run the marvin `spec` tool (action "dor", specPath) until it passes,',
           "then finish with spec_ready again. The engine stamps contract_sha from the same gate."
         ].join("\n");
-        return { run: r2, actions: [spawn4(r2, "planner", { message }, true)] };
+        return { run: r2, actions: [spawn5(r2, "planner", { message }, true)] };
       }
       if (!child?.signals) throw new Error("spec_ready observation carries no signals");
       const { tier, reasons } = tierFor(child.signals, rubric);
@@ -23823,7 +23898,7 @@ ${lines.join("\n")}` }, true)]
           { ...run2, awaitingRole: null, questionsAnswered: run2.questionsAnswered + a.count },
           role === "planner" ? "planning" : "executing"
         );
-        return { run: r, actions: [spawn4(r, role, { message: `ANSWERS:
+        return { run: r, actions: [spawn5(r, role, { message: `ANSWERS:
 ${a.text}` }, true)] };
       }
       if (a.kind === "revise_tests" && role === "executor") {
@@ -23859,10 +23934,10 @@ ${a.text}` }, true)] };
         const rename = { kind: "work", work: "rename_branch" };
         if (shouldAuthorTests(committed, rubric)) {
           const r2 = go(committed, "test_authoring");
-          return { run: r2, actions: [rename, spawn4(r2, "test-author", testAuthorCtx(r2, ""))] };
+          return { run: r2, actions: [rename, spawn5(r2, "test-author", testAuthorCtx(r2, ""))] };
         }
         const r = go({ ...committed, iteration: 1 }, "executing");
-        return { run: r, actions: [rename, spawn4(r, "executor", executorCtx(r, []))] };
+        return { run: r, actions: [rename, spawn5(r, "executor", executorCtx(r, []))] };
       }
       if (obs.kind !== "answer" || obs.judgment !== "spec_approval") break;
       const a = obs.answer;
@@ -23872,7 +23947,7 @@ ${a.text}` }, true)] };
         const r = go({ ...run2, retries }, "planning");
         return {
           run: r,
-          actions: [spawn4(r, "planner", { message: `CHANGES REQUESTED:
+          actions: [spawn5(r, "planner", { message: `CHANGES REQUESTED:
 ${a.text}` }, true)]
         };
       }
@@ -23901,7 +23976,7 @@ ${a.text}` }, true)]
           );
           return {
             run: r,
-            actions: [spawn4(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
+            actions: [spawn5(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
           };
         }
         const reasons = obs.reasons.length ? obs.reasons : [obs.ok ? "seal reported success but sealed no tests" : "seal failed without a reason"];
@@ -23963,7 +24038,7 @@ ${a.text}` }, true)]
       );
       return {
         run: r,
-        actions: [{ kind: "work", work: "snapshot" }, spawn4(r, "verifier", verifierCtx(r))]
+        actions: [{ kind: "work", work: "snapshot" }, spawn5(r, "verifier", verifierCtx(r))]
       };
     }
     case "verifying": {
@@ -23993,7 +24068,7 @@ ${a.text}` }, true)]
           };
           return {
             run: r2,
-            actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
+            actions: [{ kind: "work", work: "snapshot" }, spawn5(r2, "verifier", verifierCtx(r2))]
           };
         }
         break;
@@ -24051,7 +24126,7 @@ ${a.text}` }, true)]
         const r2 = { ...base, retries: { ...base.retries, verifier: tries + 1 } };
         return {
           run: r2,
-          actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
+          actions: [{ kind: "work", work: "snapshot" }, spawn5(r2, "verifier", verifierCtx(r2))]
         };
       }
       const named = new Set(v.criteria.map((c) => c.id));
@@ -32074,6 +32149,7 @@ function createRuntime(o) {
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
+  const gateRunner = o.runner ?? shellRunnerAsync;
   const pollMs = o.pollMs ?? 1e3;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const statusAfterMs = o.statusAfterMs ?? (Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S) || 300) * 1e3;
@@ -32784,7 +32860,7 @@ ${tail}`);
     }
     return { text: text2, findings };
   };
-  const gateWork = (run2) => {
+  const gateWork = async (run2) => {
     const config2 = configFor(run2);
     const wt = worktreeRecord(run2);
     const head = isolatedGit(wt.path, wt.gitDir).text("rev-parse", "--verify", "HEAD^{commit}").trim();
@@ -32858,7 +32934,7 @@ ${tail}`);
         }
       ]
     );
-    const report = runGateStage({
+    const report = await runGateStage({
       worktree: wt.path,
       baseSha: from,
       gitDir: wt.gitDir,
@@ -32873,8 +32949,9 @@ ${tail}`);
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
       metricsRecord: carriedRecord(run2, wt.path, spec.text),
-      run: runner,
-      timeoutMs
+      run: gateRunner,
+      timeoutMs,
+      ...deps.signal ? { signal: deps.signal } : {}
     });
     const passed = report.passed && findings.length === 0;
     writeAtomic2(

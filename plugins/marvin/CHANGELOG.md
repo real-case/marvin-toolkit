@@ -4,6 +4,22 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.6] — 2026-10-15
+
+### Fixed
+
+- **The autopilot engine stops cleanly during the gate stage.** The gate stage ran its commands
+  through `spawnSync`, for up to `gate_timeout_minutes`, so a stop request (a shutdown, a
+  `kill <pid>`) waited on a blocked event loop: the engine's TERM handler could not run until the
+  gate returned, and a shutdown's KILL came first. In Task 20 scenario 4 the engine went down that
+  way with no `engine stopped` note and its lock still held. The gate stage now runs its prepare
+  steps, oracles and gates through `shellRunnerAsync`, which uses the same supervisor without
+  blocking: on a stop request the running command's whole process group is ended, the stage
+  rejects instead of reporting, so no verdict, rejection or `gated-head.json` is recorded, and the
+  engine writes `engine stopped on request` and releases the run. The engine that resumes it runs
+  the gate stage again from the start. The bootstrap, the seal's red runs and the formatter still
+  run synchronously.
+
 ## [0.29.5] — 2026-10-14
 
 ### Fixed
