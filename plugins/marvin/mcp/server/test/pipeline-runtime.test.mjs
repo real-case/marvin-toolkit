@@ -999,6 +999,71 @@ test("waitChild reports a child still running when its own deadline passes", asy
   assert.deepEqual(same, run);
 });
 
+test("a quiet running child gets one engine status note per interval, naming its call", async () => {
+  const s = await prepared({ options: { childDeadlineMs: 400, pollMs: 20, statusAfterMs: 150 } });
+  const child = {
+    name: "r1-executor-1",
+    role: "executor",
+    iteration: 1,
+    sessionId: null,
+    pid: null,
+    assignment: { model: "sonnet", effort: "medium" },
+    startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    endedAt: null,
+    status: "running",
+    costUsd: null,
+    cacheReadTokens: null,
+  };
+  writeFileSync(
+    join(s.runDir, "r1-executor-1.log.jsonl"),
+    `${JSON.stringify({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: "tool_use", id: "t1", name: "Bash", input: { description: "Run the gates" } },
+        ],
+      },
+    })}\n`,
+  );
+  const run = { ...s.run, stage: "executing", iteration: 1, children: [child] };
+  const statusNotes = () => events(s.runDir).filter((e) => e.data?.status === true);
+
+  await s.deps.waitChild(run);
+  const notes = statusNotes();
+  // 400 ms of waiting at a 150 ms interval: the first look is due at once, then one per interval.
+  assert.ok(notes.length >= 2 && notes.length <= 3, `got ${notes.length} status notes`);
+  const [first] = notes;
+  assert.equal(first.kind, "note");
+  assert.equal(first.actor, "engine");
+  assert.equal(first.data.notify, true);
+  assert.equal(first.data.key, "r1-executor-1");
+  assert.equal(first.data.tool, "Bash");
+  assert.match(
+    first.text,
+    /^r1-executor-1 still running after 10 min, no report for 10 min; in Bash \(Run the gates\)/,
+  );
+
+  // A report the child sent just now resets the clock, and so does a restarted engine's reading of
+  // the notes already written: neither waits below the interval gets a new note.
+  const before = statusNotes().length;
+  const quiet = await prepared({
+    options: { childDeadlineMs: 100, pollMs: 20, statusAfterMs: 150 },
+  });
+  appendFileSync(
+    join(quiet.runDir, "events.jsonl"),
+    `${JSON.stringify({ ts: new Date().toISOString(), kind: "report", actor: "r1-executor-1", text: "[r1-executor-1] done: x" })}\n`,
+  );
+  await quiet.deps.waitChild({ ...quiet.run, stage: "executing", iteration: 1, children: [child] });
+  assert.equal(events(quiet.runDir).filter((e) => e.data?.status === true).length, 0);
+  // A new wait (a restarted engine reads the same events) keeps the interval from the last note.
+  const lastBefore = Date.parse(statusNotes().at(-1).ts);
+  await s.deps.waitChild({ ...run });
+  const firstAfter = statusNotes()[before];
+  assert.ok(firstAfter, "a later wait still writes a note once the interval has passed");
+  assert.ok(Date.parse(firstAfter.ts) - lastBefore >= 140, "no note before the interval");
+});
+
 test("a write into the main checkout during a child is reported as leaked, and decide halts on it", async () => {
   const s = await prepared();
   const run = { ...s.run, stage: "executing", iteration: 1 };

@@ -31651,6 +31651,73 @@ function launchDetached(cmd, runDir, name) {
   }
   return { pid: child.pid, logPath, errPath, exitPath };
 }
+var TAIL_BYTES = 512 * 1024;
+var oneLine3 = (text2, max = 100) => {
+  const flat = text2.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
+};
+function detailOf(input) {
+  if (typeof input !== "object" || input === null) return null;
+  const record2 = input;
+  for (const key of ["description", "command", "file_path", "path", "pattern", "url", "prompt"]) {
+    const value = record2[key];
+    if (typeof value === "string" && value.trim() !== "") return oneLine3(value);
+  }
+  return null;
+}
+function pendingToolCall(log) {
+  const pending = /* @__PURE__ */ new Map();
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.parent_tool_use_id != null) continue;
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (entry.type === "assistant" && part.type === "tool_use" && typeof part.id === "string") {
+        pending.set(part.id, { tool: String(part.name ?? "tool"), detail: detailOf(part.input) });
+      } else if (entry.type === "user" && part.type === "tool_result" && typeof part.tool_use_id === "string") {
+        pending.delete(part.tool_use_id);
+      }
+    }
+  }
+  return [...pending.values()].at(-1) ?? null;
+}
+function readLogTail(path) {
+  let fd;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const { size, mtimeMs } = fstatSync(fd);
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    let text2 = buffer.toString("utf8");
+    if (length < size) text2 = text2.slice(text2.indexOf("\n") + 1);
+    return { text: text2, mtimeMs };
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+function statusLine(child, runningMs, quietMs, call, logIdleMs) {
+  const minutes2 = (ms) => Math.max(0, Math.round(ms / 6e4));
+  const head = `${child} still running after ${minutes2(runningMs)} min, no report for ${minutes2(quietMs)} min`;
+  if (call === null) {
+    return logIdleMs === null ? `${head}; no tool call in flight` : `${head}; no tool call in flight, log idle ${minutes2(logIdleMs)} min`;
+  }
+  const what = call.detail ? `${call.tool} (${call.detail})` : call.tool;
+  return logIdleMs === null ? `${head}; in ${what}` : `${head}; in ${what} for at least ${minutes2(logIdleMs)} min`;
+}
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
@@ -32009,6 +32076,7 @@ function createRuntime(o) {
   const runner = o.runner ?? shellRunner;
   const pollMs = o.pollMs ?? 1e3;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
+  const statusAfterMs = o.statusAfterMs ?? (Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S) || 300) * 1e3;
   const at = (name) => join(runDir, name);
   const now = () => (/* @__PURE__ */ new Date()).toISOString();
   const childPluginDir = () => resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot);
@@ -32442,6 +32510,41 @@ ${tail}`);
     } catch {
     }
   };
+  const childStatus = (child, key) => {
+    const startedMs = Date.parse(child.startedAt);
+    let lastHeard = startedMs;
+    let checked = 0;
+    const lastHeardFromEvents = () => {
+      for (const e of readEventsTolerant(runDir)) {
+        const fromChild = e.kind === "report" && e.actor === child.name;
+        const ourNote = e.kind === "note" && e.data?.status === true && e.data?.key === key;
+        if (fromChild || ourNote) lastHeard = Math.max(lastHeard, Date.parse(e.ts));
+      }
+    };
+    return {
+      look: () => {
+        const nowMs = Date.now();
+        if (nowMs - checked < Math.min(3e4, statusAfterMs)) return;
+        checked = nowMs;
+        try {
+          lastHeardFromEvents();
+          if (nowMs - lastHeard < statusAfterMs) return;
+          const tail = readLogTail(at(`${key}.log.jsonl`));
+          const call = tail === null ? null : pendingToolCall(tail.text);
+          const text2 = statusLine(
+            child.name,
+            nowMs - startedMs,
+            nowMs - lastHeard,
+            call,
+            tail === null ? null : nowMs - tail.mtimeMs
+          );
+          note(text2, { notify: true, status: true, key, ...call ? { tool: call.tool } : {} });
+          lastHeard = nowMs;
+        } catch {
+        }
+      }
+    };
+  };
   const waitChild = async (run2, signal) => {
     let index = -1;
     run2.children.forEach((c, i) => {
@@ -32453,10 +32556,12 @@ ${tail}`);
     const config2 = configFor(run2);
     const stallMs = config2.pipeline.stall_minutes * 6e4;
     const started = Date.now();
+    const status2 = childStatus(child, key);
     let result;
     for (; ; ) {
       result = classify({ ...readChildState(runDir, key, Date.now()), stallMs });
       if (result.outcome !== "running" || Date.now() - started >= childDeadlineMs) break;
+      status2.look();
       await setTimeout$1(pollMs, void 0, { signal: signal ?? deps.signal });
     }
     if (result.outcome === "running") {

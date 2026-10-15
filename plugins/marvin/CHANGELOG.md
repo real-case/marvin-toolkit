@@ -4,6 +4,20 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.5] — 2026-10-14
+
+### Fixed
+
+- **The autopilot engine reports on a child that is inside one long tool call.** The heartbeat
+  hook reminds a child to report only between tool calls (`PostToolUse`), so a child running a
+  20-minute gate through the `verify` tool sent nothing for that long: in Task 20 scenario 4 the
+  executor's gaps between reports were 9 to 26 minutes against the 6-minute rule. While a child
+  runs, the engine now writes a status note (`data.status`, notify) whenever neither the child's
+  last report nor the engine's last note for it is younger than the heartbeat interval
+  (`MARVIN_PIPELINE_HEARTBEAT_S`, default 300 s), naming the call the child is in, read from the
+  tail of its `stream-json` log (`pipeline/child-activity.ts`). The baseline is read back from the
+  events, so a restarted engine does not repeat a note at once.
+
 ## [0.29.4] — 2026-10-14
 
 ### Fixed

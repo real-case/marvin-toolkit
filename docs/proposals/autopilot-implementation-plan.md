@@ -3917,7 +3917,7 @@ Known bias: the real PR's tests may name internals the pipeline is free to choos
 
 ---
 
-**Benchmark iterations (2026-10-11 and 2026-10-12).** Seven two-repeat Haiku runs of the sandbox suite, each
+**Benchmark iterations (2026-10-11 to 2026-10-15).** Two-repeat Haiku runs of the sandbox suite, each
 compared with the L3 gate against the baseline (`evals/autopilot/results/2026-10-11-*.md`). "Hidden"
 is the all-runs rate the result files report; the last two columns are the gate as each run was
 judged, and as `bench-compare` judges the same files under the delivered-runs rule adopted below.
@@ -3933,6 +3933,7 @@ judged, and as `bench-compare` judges the same files under the delivered-runs ru
 | `haiku-tier-guidance` | bede40c | 8/8 | 100% | $11.97 | 92 min | — | accept |
 | `haiku-engine-metrics` | 0383ed9 | 7/8 | 75% | $11.35 | 73 min | — | reject (recorded; change kept) |
 | `haiku-risk-callers` | d7a796c | 8/8 | 91.7% | $11.29 | 85 min | — | reject (recorded; change dropped) |
+| `haiku-engine-status` | a28b1de | 8/8 | 91.7% | $12.74 | 88 min | — | reject (recorded; change kept) |
 
 What each changed, and what it showed:
 
@@ -4012,6 +4013,24 @@ the warning, which fires only on `low`, never appeared where it was meant to; th
 fired (clamp #2) it was a false alarm on a purely additive edit to `src/math.mjs`, which
 `src/index.mjs` re-exports, and the planner rightly kept `low`. The owner dropped the change
 (2026-10-12), and the merged commit is reverted; `haiku-tier-guidance` stays the baseline.
+
+`a28b1de` (PR #238) gives the heartbeat an engine half: while a child runs, the engine writes a
+status note to the run's events whenever neither the child's last report nor its own last note
+for that child is younger than five minutes, naming the tool call the child is in. The first bench
+of it (2026-10-14) is not counted: the machine slept with its lid closed from 20:16:57Z to
+21:15:55Z (`pmset -g log`), three and a half minutes into duration #2's executor, and the bench
+aborted that run on its 60-minute wall limit a second after waking, a limit that counts the time
+asleep. Its first status note after the wake ("still running after 62 min") is the change working
+as designed. The bench was run again under `caffeinate -is` on mains power (2026-10-15).
+`haiku-engine-status`, compared against `haiku-tier-guidance`, is rejected: 8 of 8 delivered, but
+91.7% of hidden files passing over the delivered runs against 100%, at $12.74. The one regression
+is duration #2, delivered on its second iteration with code failing one of its two hidden files,
+the same task and file that regressed in `haiku-engine-metrics` and `haiku-risk-callers`. The
+change cannot reach it: a status note is written only to the run's `events.jsonl`, which no child
+reads, and the engine wrote three in the whole bench (clamp #2, duration #1, duration #2). The
+owner kept the change on that reading (2026-10-15) and the result is recorded as a rejection;
+`haiku-tier-guidance` stays the baseline. A bench that counts sleep against its wall limit is a
+defect of its own, owed separately.
 
 ## 14. Phase 6 — Slicing large specs (only on benchmark evidence)
 
