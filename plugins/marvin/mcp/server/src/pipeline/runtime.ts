@@ -49,12 +49,14 @@ import {
   type ProtectedSnapshot,
   protectedChanges,
   reportFindings,
+  type GateRunner,
   runGateStage,
   type Runner,
   type SealedFile,
   SEVERITIES,
   sha256Bytes,
   shellRunner,
+  shellRunnerAsync,
   snapshotProtected,
 } from "./gate.js";
 import { launchDetached } from "./launch.js";
@@ -228,7 +230,10 @@ export interface RuntimeOptions {
    * it. Default `MARVIN_PIPELINE_HEARTBEAT_S` seconds, else 300, the heartbeat hook's interval.
    */
   statusAfterMs?: number;
-  /** Runs the bootstrap, the gates, the oracles and the red runs. Default `shellRunner`. */
+  /**
+   * Runs the bootstrap, the gates, the oracles and the red runs. Default `shellRunner`, except in
+   * the gate stage, which uses `shellRunnerAsync` so that a stop request can end a gate.
+   */
   runner?: Runner;
 }
 
@@ -512,6 +517,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
+  const gateRunner: GateRunner = o.runner ?? shellRunnerAsync;
   const pollMs = o.pollMs ?? 1000;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
   const statusAfterMs =
@@ -1468,7 +1474,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     return { text, findings };
   };
 
-  const gateWork = (run: Run): { run: Run; obs: Observation } => {
+  const gateWork = async (run: Run): Promise<{ run: Run; obs: Observation }> => {
     const config = configFor(run);
     const wt = worktreeRecord(run);
     const head = isolatedGit(wt.path, wt.gitDir)
@@ -1555,7 +1561,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
             },
           ],
     );
-    const report = runGateStage({
+    // A stop request ends the gate running at the time and rejects here, before anything below
+    // records a verdict; the engine that resumes the run repeats this step from the start.
+    const report = await runGateStage({
       worktree: wt.path,
       baseSha: from,
       gitDir: wt.gitDir,
@@ -1570,8 +1578,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline as ProtectedSnapshot, wt.baseSha, from),
       metricsRecord: carriedRecord(run, wt.path, spec.text),
-      run: runner,
+      run: gateRunner,
       timeoutMs,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     });
     // Finalize builds on exactly the commit the last passing gate judged.
     const passed = report.passed && findings.length === 0;

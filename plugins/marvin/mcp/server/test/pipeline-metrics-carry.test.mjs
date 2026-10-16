@@ -288,60 +288,60 @@ test("a record whose committed entry is a symlink is refused", () => {
 const OPTION = { metricsRecord: { path: RECORD, slug: SLUG } };
 const uncommitted = (report) => claims(report).filter((c) => c.startsWith("uncommitted work"));
 
-test("the delivery gate's append is not uncommitted work when the gate carries the record", () => {
+test("the delivery gate's append is not uncommitted work when the gate carries the record", async () => {
   const w = withRecord();
   w.write("src/a.mjs", "export const a = 1;\n");
   w.commit("the executor's work");
   w.deliver();
-  const report = gateStage(w, { ...OPTION, contractFiles: ["src/a.mjs"] });
+  const report = await gateStage(w, { ...OPTION, contractFiles: ["src/a.mjs"] });
   assert.deepEqual(report.blockers, []);
   assert.equal(report.passed, true);
   // Without the option the gate reads the append as it always has.
-  assert.deepEqual(uncommitted(gateStage(w)), [`uncommitted work: ${RECORD}`]);
+  assert.deepEqual(uncommitted(await gateStage(w)), [`uncommitted work: ${RECORD}`]);
 });
 
-test("an untracked record holding the header and an append is carried, an unknown file is not", () => {
+test("an untracked record holding the header and an append is carried, an unknown file is not", async () => {
   const w = runWorktree();
   w.write("src/a.mjs", "export const a = 1;\n");
   w.commit("work");
   store.ensureRecord(join(w.path, RECORD), SLUG);
   store.appendTaskMetrics(join(w.path, RECORD), terminal());
-  assert.deepEqual(uncommitted(gateStage(w, OPTION)), []);
+  assert.deepEqual(uncommitted(await gateStage(w, OPTION)), []);
   w.write(".marvin/metrics/002-other.md", store.recordHeader("other"));
-  assert.deepEqual(uncommitted(gateStage(w, OPTION)), [
+  assert.deepEqual(uncommitted(await gateStage(w, OPTION)), [
     "uncommitted work: .marvin/metrics/002-other.md",
   ]);
 });
 
-test("a rewritten record is uncommitted work, carried or not", () => {
+test("a rewritten record is uncommitted work, carried or not", async () => {
   const w = withRecord();
   const abs = join(w.path, RECORD);
   writeFileSync(abs, readFileSync(abs, "utf8").replace("a by-product", "nothing"));
   w.deliver();
-  assert.deepEqual(uncommitted(gateStage(w, OPTION)), [`uncommitted work: ${RECORD}`]);
+  assert.deepEqual(uncommitted(await gateStage(w, OPTION)), [`uncommitted work: ${RECORD}`]);
 });
 
-test("another dirty record beside the carried one is still uncommitted work", () => {
+test("another dirty record beside the carried one is still uncommitted work", async () => {
   const w = withRecord();
   w.write(".marvin/metrics/002-other.md", store.recordHeader("other"));
   w.commit("another record");
   w.deliver();
   w.deliver(1, "other", ".marvin/metrics/002-other.md");
-  assert.deepEqual(uncommitted(gateStage(w, OPTION)), [
+  assert.deepEqual(uncommitted(await gateStage(w, OPTION)), [
     "uncommitted work: .marvin/metrics/002-other.md",
   ]);
 });
 
-test("a symlinked record is uncommitted work, even pointing at a valid append", () => {
+test("a symlinked record is uncommitted work, even pointing at a valid append", async () => {
   const w = withRecord();
   const outside = join(mkdtempSync(join(tmpdir(), "carry-gate-")), "001-demo.md");
   writeFileSync(outside, committedRecord() + store.recordBlock(store.TASK_METRICS_TAG, terminal()));
   rmSync(join(w.path, RECORD));
   symlinkSync(outside, join(w.path, RECORD));
-  assert.deepEqual(uncommitted(gateStage(w, OPTION)), [`uncommitted work: ${RECORD}`]);
+  assert.deepEqual(uncommitted(await gateStage(w, OPTION)), [`uncommitted work: ${RECORD}`]);
 });
 
-test("a gate command that appends a valid block is tolerated; one that rewrites the record is not", () => {
+test("a gate command that appends a valid block is tolerated; one that rewrites the record is not", async () => {
   const appender = withRecord();
   const block = store.recordBlock(store.TASK_METRICS_TAG, terminal());
   const script = join(mkdtempSync(join(tmpdir(), "carry-cmd-")), "append.mjs");
@@ -350,7 +350,7 @@ test("a gate command that appends a valid block is tolerated; one that rewrites 
     `import { appendFileSync } from "node:fs";\nappendFileSync(process.argv[2], ${JSON.stringify(block)});\n`,
   );
   const append = { name: "append", command: `node ${script} ${RECORD}` };
-  const ok = gateStage(appender, { ...OPTION, gates: [append] });
+  const ok = await gateStage(appender, { ...OPTION, gates: [append] });
   assert.deepEqual(
     claims(ok).filter((c) => c.startsWith("gates modified")),
     [],
@@ -358,7 +358,7 @@ test("a gate command that appends a valid block is tolerated; one that rewrites 
 
   const rewriter = withRecord();
   const rewrite = { name: "rewrite", command: `printf 'x\\n' > ${RECORD}` };
-  const bad = gateStage(rewriter, { ...OPTION, gates: [rewrite] });
+  const bad = await gateStage(rewriter, { ...OPTION, gates: [rewrite] });
   assert.deepEqual(
     claims(bad).filter((c) => c.startsWith("gates modified")),
     [`gates modified tracked file ${RECORD}`],
@@ -371,14 +371,14 @@ test("a gate command that appends a valid block is tolerated; one that rewrites 
     name: "relabel",
     command: `node -e "const f=process.argv[1],fs=require('fs');fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('a by-product','nothing'))" ${RECORD}`,
   };
-  const relabelled = gateStage(late, { ...OPTION, gates: [relabel] });
+  const relabelled = await gateStage(late, { ...OPTION, gates: [relabel] });
   assert.deepEqual(
     claims(relabelled).filter((c) => c.startsWith("gates modified")),
     [`gates modified tracked file ${RECORD}`],
   );
 });
 
-test("the gate refuses a record option that is not a record path or a kebab slug", () => {
+test("the gate refuses a record option that is not a record path or a kebab slug", async () => {
   const w = withRecord();
   for (const metricsRecord of [
     { path: "src/a.mjs", slug: SLUG },
@@ -386,8 +386,8 @@ test("the gate refuses a record option that is not a record path or a kebab slug
     { path: ".marvin/metrics/sub/001-demo.md", slug: SLUG },
     { path: RECORD, slug: "Not Kebab" },
   ]) {
-    assert.throws(() => gateStage(w, { metricsRecord }), /metrics record/);
+    await assert.rejects(() => gateStage(w, { metricsRecord }), /metrics record/);
   }
   // null is no record at all: today's behaviour.
-  assert.equal(gateStage(w, { metricsRecord: null }).passed, true);
+  assert.equal((await gateStage(w, { metricsRecord: null })).passed, true);
 });
