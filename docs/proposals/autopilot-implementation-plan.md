@@ -37,8 +37,8 @@ A child asks questions by ending its turn with `status: "needs_input"` and is re
 **Spec:** §1 Requirements (R1–R18), captured in the 2026-10-04 design conversation. There is no separate spec file; executors read §1–§6 before any task.
 
 **Repos:**
-- **M** = `/Users/urchin/projects/marvin-toolkit`. Plugin root `M/plugins/marvin`; server `M/plugins/marvin/mcp/server`, abbreviated **S** below.
-- **O** = `/Users/urchin/tesari/osint-chat-client`, the first consumer.
+- **M** = the marvin-toolkit checkout. Plugin root `M/plugins/marvin`; server `M/plugins/marvin/mcp/server`, abbreviated **S** below.
+- **O** = a private host project, the first consumer.
 
 ---
 

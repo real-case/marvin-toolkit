@@ -418,7 +418,47 @@ function flagValues(t, long, short) {
   return values;
 }
 
-function ghViolation(command, { base, branch }) {
+/** `gh pr edit` flags that take no value; every other flag takes the next word unless `=` joins it. */
+const GH_EDIT_SWITCHES = new Set(["--remove-milestone", "--help", "-h"]);
+
+/** The words of `gh pr edit` that are not flags or flag values: the PR it would edit. */
+function prEditTargets(t) {
+  const targets = [];
+  for (let i = 0; i < t.length; i += 1) {
+    const a = t[i];
+    if (a === "--") {
+      targets.push(...t.slice(i + 1));
+      break;
+    }
+    if (!a.startsWith("-")) targets.push(a);
+    else if (!GH_EDIT_SWITCHES.has(a) && !a.includes("=") && !/^-[A-Za-z]./.test(a)) i += 1;
+  }
+  return targets;
+}
+
+/**
+ * Why a `--body-file` would publish a file from outside the worktree, or null. The PR body
+ * is public, so a body file is read only inside the run's worktree (`-` is the command's
+ * own input); without the worktree and the shell's directory it cannot be judged.
+ */
+function bodyFileViolation(files, { root, cwd }) {
+  for (const file of files) {
+    if (file === "-") continue;
+    const refusal = `gh --body-file may only read a file inside the run's worktree (${file})`;
+    if (typeof root !== "string" || root === "" || typeof cwd !== "string" || cwd === "") {
+      return refusal;
+    }
+    if (file === "" || file.startsWith("~")) return refusal;
+    const realRoot = physicalPath(resolve(root));
+    const readings = [isAbsolute(file) ? file : `${cwd}/${file}`, resolve(cwd, file)];
+    if (readings.some((path) => relativeInside(physicalPath(path), realRoot) === null)) {
+      return refusal;
+    }
+  }
+  return null;
+}
+
+function ghViolation(command, { base, branch, root, cwd }) {
   const t = texts(command.slice(1));
   const sub = `${t[0] ?? ""} ${t[1] ?? ""}`.trim();
   if (!GH_ALLOWED.has(sub) || command.slice(1, 3).some(isDynamic)) {
@@ -438,6 +478,14 @@ function ghViolation(command, { base, branch }) {
   if (bases.some((b) => base === "" || b !== base)) {
     return `gh ${sub} may only target the run's base (${base || "unknown"})`;
   }
+  if (
+    sub === "pr edit" &&
+    prEditTargets(rest).some((target) => branch === "" || target !== branch)
+  ) {
+    return "gh pr edit may only edit the run's own PR: name no PR, or the run branch";
+  }
+  const bodyFile = bodyFileViolation(flagValues(rest, "--body-file", "-F"), { root, cwd });
+  if (bodyFile) return bodyFile;
   const heads = sub === "pr create" ? flagValues(rest, "--head", "-H") : [];
   if (heads.some((h) => branch === "" || h !== branch)) {
     return `gh pr create may only open a PR from the run branch (${branch || "unnamed yet"})`;
@@ -573,7 +621,11 @@ export function childGitViolation(command, run) {
   const state = { dirChanges: [], git: false };
   for (const context of contexts) {
     for (const segment of commandSegments(context)) {
-      const why = segmentViolation(segment, { base, branch }, state);
+      const why = segmentViolation(
+        segment,
+        { base, branch, root: run?.root, cwd: run?.cwd },
+        state,
+      );
       if (why) return why;
     }
   }

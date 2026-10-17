@@ -1988,7 +1988,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
    * The run's last write, which `finalizeRun` makes. A run that ships builds on the commit the
    * last passing gate approved, recorded by the gate work; a run without a PR, and a halted one
    * with or without a PR (D16, D-HALTPR), keeps its retro in the run dir and touches no git, so
-   * it needs none. A replay is safe: `finalizeRun` recognises its own commit and pushes it again.
+   * it needs none. A replay is safe: `finalizeRun` records its commit before the branch moves, recognises it, and pushes it again.
    */
   const finalizeWork = (run: Run, data: Record<string, unknown> | undefined) => {
     const config = configFor(run);
