@@ -74,13 +74,174 @@ function placeholderIsQuoted(template: string): boolean {
   return quoted;
 }
 
+/** A word of a template as a POSIX shell splits it at unquoted blanks, its quotes and escapes kept. */
+interface Word {
+  start: number;
+  end: number;
+  text: string;
+}
+
 /**
- * The shell command that runs one test file: `{file}` is replaced, everywhere, by the path in
- * single quotes. The path is data written by the test-author, so it reaches the shell as one
- * literal word whatever it contains. `{name}`, `{ref}` and `{path}` are refused because the
- * seal stage runs a whole file, and a name filter left unfilled would match nothing or everything.
- * A backtick, `$(`, `<<`, `#` or newline anywhere in the template is refused too: after one of
- * them `{file}` would be a heredoc line, a comment, or a word the shell splits and globs.
+ * The blank-separated words of `template`, read the way `substitutePlaceholders` reads quotes: a
+ * space or tab inside `'…'` or `"…"`, or behind a backslash, does not end a word. Only called on a
+ * template `NOT_ONE_WORD` has passed, so no newline, comment or substitution is in it.
+ */
+function shellWords(template: string): Word[] {
+  const words: Word[] = [];
+  let quote: "'" | '"' | null = null;
+  let start = -1;
+  const close = (end: number): void => {
+    if (start !== -1) words.push({ start, end, text: template.slice(start, end) });
+    start = -1;
+  };
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i];
+    if (quote === null && (ch === " " || ch === "\t")) {
+      close(i);
+      continue;
+    }
+    if (start === -1) start = i;
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      i += 1;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
+  }
+  close(template.length);
+  return words;
+}
+
+/** An option word: one or two dashes, a letter, then letters, digits, `_`, `.` or `-`. */
+const FLAG = /^--?[A-Za-z][\w.-]*$/;
+const SHORT_FLAG = /^-[A-Za-z]/;
+
+/** Whether `text` is a foreign placeholder and nothing else, bare or as the whole of one quoted span. */
+const isForeignValue = (text: string): boolean =>
+  FOREIGN_PLACEHOLDERS.some((p) => text === p || text === `"${p}"` || text === `'${p}'`);
+
+/**
+ * `template` without the per-test filters the oracle resolver fills and the seal stage has no
+ * value for. A filter is dropped only where it is an option word and a value that is exactly a
+ * foreign placeholder, bare or quoted as a whole: `-t {name}`, `-t "{name}"`, `--grep '{name}'`,
+ * `--testNamePattern={name}`, `-t{name}`. The option goes with its value, so a whole-file run is
+ * left (`vitest run {file} -t {name}` runs `vitest run {file}`). Each pair is cut together with the
+ * blanks before it, and the rest of the template is kept byte for byte. Anything else holding a
+ * foreign placeholder (a positional `{ref}`, `-t "^{name}$"`, `"-t {name}"`) stays, and
+ * `wholeFileTemplate` refuses it.
+ */
+function dropNameFilters(template: string): string {
+  const words = shellWords(template);
+  const cuts: Array<[number, number]> = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i] as Word;
+    const next = words[i + 1];
+    const eq = word.text.indexOf("=");
+    let last = -1;
+    if (FLAG.test(word.text) && next !== undefined && isForeignValue(next.text)) {
+      last = i + 1;
+    } else if (
+      (eq > 0 && FLAG.test(word.text.slice(0, eq)) && isForeignValue(word.text.slice(eq + 1))) ||
+      (SHORT_FLAG.test(word.text) && isForeignValue(word.text.slice(2)))
+    ) {
+      last = i;
+    }
+    if (last === -1) continue;
+    cuts.push([i > 0 ? (words[i - 1] as Word).end : word.start, (words[last] as Word).end]);
+    i = last;
+  }
+  let out = "";
+  let from = 0;
+  for (const [start, end] of cuts) {
+    out += template.slice(from, start);
+    from = end;
+  }
+  return out + template.slice(from);
+}
+
+const QUOTED_FILE = [`"${FILE}"`, `'${FILE}'`];
+
+/**
+ * `template` with every `"{file}"` and `'{file}'` that is a whole quoted span in unquoted context
+ * written as a bare `{file}`, which the shared encoder then single-quotes. The author's quotes
+ * only made one word of the path, and the engine's quotes do that themselves. A `{file}` that
+ * shares its quoted span with anything else (`"./{file}"`, `sh -c 'vitest {file}'`, a `'{file}'`
+ * inside `"…"`) is left quoted, and `wholeFileTemplate` refuses it: there the path would be
+ * part of a longer string, or re-read by another shell.
+ */
+function unquoteFile(template: string): string {
+  let out = "";
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i] ?? "";
+    if (quote === null) {
+      const whole = QUOTED_FILE.find((q) => template.startsWith(q, i));
+      if (whole !== undefined) {
+        out += FILE;
+        i += whole.length - 1;
+        continue;
+      }
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * `gates.test_one` read for a whole-file run, as the seal stage, the bench and the verifier's
+ * probe use it: per-test filters dropped (`dropNameFilters`), a `{file}` the author quoted as a
+ * whole word unquoted (`unquoteFile`), and every template that would not then hold exactly an
+ * unquoted `{file}` refused. One template therefore serves this reader and the oracle resolver,
+ * which keeps the filter: `npx vitest run "{file}" -t "{name}"` runs one named test in `verify`
+ * and `npx vitest run {file}` here. The engine reads the template from a run's base commit, so it
+ * is read as committed rather than asked to change.
+ *
+ * Refused: a backtick, `$(`, `<<`, `#` or newline anywhere in the template (after one of them
+ * `{file}` would be a heredoc line, a comment, or a word the shell splits and globs); a `{name}`,
+ * `{ref}` or `{path}` that is not the whole value of an option, because a name filter left
+ * unfilled would match nothing or everything and a positional one names something other than a
+ * file; a template without `{file}`; and a `{file}` still quoted or escaped.
+ */
+export function wholeFileTemplate(template: string): string {
+  if (NOT_ONE_WORD.test(template)) {
+    throw new Error(
+      "gates.test_one must not contain a backtick, $(, <<, # or a newline: {file} must stay one shell word",
+    );
+  }
+  const whole = unquoteFile(dropNameFilters(template));
+  if (FOREIGN_PLACEHOLDERS.some((placeholder) => whole.includes(placeholder))) {
+    throw new Error(
+      "gates.test_one must not contain {name}, {ref} or {path} except as the whole value of an option (-t {name}, --grep={name}), which the seal stage drops with its option: it runs a whole test file, so it names it with {file} alone",
+    );
+  }
+  if (!whole.includes(FILE)) throw new Error("gates.test_one must contain {file}");
+  if (placeholderIsQuoted(whole)) {
+    throw new Error(
+      "gates.test_one must not quote {file} except as a whole word (\"{file}\" or '{file}'): the engine quotes the path itself",
+    );
+  }
+  return whole;
+}
+
+/**
+ * The shell command that runs one test file: `gates.test_one` read for a whole-file run
+ * (`wholeFileTemplate`), with `{file}` replaced, everywhere, by the path in single quotes. The
+ * path is data written by the test-author, so it reaches the shell as one literal word whatever
+ * it contains.
  *
  * `gates.test_one` must select exactly ONE file. A runner that takes its argument as a filter
  * selects every file the argument matches, and the runners disagree on what it is: vitest reads
@@ -94,21 +255,7 @@ function placeholderIsQuoted(template: string): boolean {
  * adjusts `gates.test_one`.
  */
 export function formatTestOne(template: string, path: string): string {
-  if (FOREIGN_PLACEHOLDERS.some((placeholder) => template.includes(placeholder))) {
-    throw new Error(
-      "gates.test_one must not contain {name}, {ref} or {path}: the seal stage runs a whole test file, so name it with {file} alone",
-    );
-  }
-  if (!template.includes(FILE)) throw new Error("gates.test_one must contain {file}");
-  if (NOT_ONE_WORD.test(template)) {
-    throw new Error(
-      "gates.test_one must not contain a backtick, $(, <<, # or a newline: {file} must stay one shell word",
-    );
-  }
-  if (placeholderIsQuoted(template)) {
-    throw new Error("gates.test_one must not quote {file}: the engine quotes the path itself");
-  }
-  return fillShellTemplate(template, { [FILE]: path });
+  return fillShellTemplate(wholeFileTemplate(template), { [FILE]: path });
 }
 
 const isInside = (root: string, target: string): boolean => {

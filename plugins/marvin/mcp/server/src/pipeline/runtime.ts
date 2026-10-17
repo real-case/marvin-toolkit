@@ -83,7 +83,13 @@ import {
   type Run,
   checkedStateRoot,
 } from "./run-store.js";
-import { type AuthoredTest, isReseal, sealAuthoredTests, writeSealManifest } from "./seal.js";
+import {
+  type AuthoredTest,
+  isReseal,
+  sealAuthoredTests,
+  wholeFileTemplate,
+  writeSealManifest,
+} from "./seal.js";
 import { buildRoleSettings } from "./settings.js";
 import { classify, readChildState, summaryLine, type WaitResult } from "./wait.js";
 import {
@@ -895,16 +901,18 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   };
 
   /**
-   * What a verifier may run beyond reading: the part of `gates.test_one` before `{file}`, so it
-   * can probe a single test. A prefix the allowlist cannot hold is left out and noted, never
-   * widened into something it did not say.
+   * What a verifier may run beyond reading: the part of `gates.test_one` before `{file}`, read for
+   * a whole-file run as the seal stage reads it (`wholeFileTemplate`), so it can probe a single
+   * test file and a `"{file}"` leaves no opening quote on the prefix. A template the seal stage
+   * refuses, or a prefix the allowlist cannot hold, is left out and noted, never widened into
+   * something it did not say.
    */
   const probePrefixes = (config: Config): string[] => {
     const template = config.gates?.test_one;
-    const cut = template?.indexOf("{file}") ?? -1;
-    if (!template || cut < 0) return [];
-    const prefix = template.slice(0, cut).trim();
+    if (!template?.includes("{file}")) return [];
     try {
+      const whole = wholeFileTemplate(template);
+      const prefix = whole.slice(0, whole.indexOf("{file}")).trim();
       validatePrefix(prefix);
       return [prefix];
     } catch (error) {
