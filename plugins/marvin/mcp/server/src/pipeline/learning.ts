@@ -1199,6 +1199,14 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
       newCommit = git
         .text("commit-tree", tree, "-p", headSha, "-m", subject, "-m", COMMIT_TRAILER)
         .trim();
+      // The record goes down before the ref moves: a replay knows HEAD as its own commit only
+      // through it, so an engine killed between the two must not leave HEAD unrecorded. A
+      // record naming a commit the ref never reached, or was rolled back from, matches no HEAD.
+      writeWhole(
+        o.runDir,
+        FINALIZE_RECORD,
+        `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}\n`,
+      );
       git.text("update-ref", branchRef, newCommit, headSha);
       git.text("reset", "-q", "--", ...changed);
 
@@ -1263,13 +1271,6 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  if (newCommit !== null) {
-    writeWhole(
-      o.runDir,
-      FINALIZE_RECORD,
-      `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}\n`,
-    );
-  }
   try {
     git.text("push", "origin", `${newCommit ?? headSha}:${branchRef}`);
   } catch (error) {

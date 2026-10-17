@@ -175,7 +175,7 @@ Child in W with a PreToolUse `Edit|Write` hook from `--settings`.
 
 ## S10/S11 — writes outside the worktree (new, found during S6)
 
-- In S6's kill run, the child in W **read the main checkout's files** by absolute path (`/Users/urchin/tesari/osint-chat-client/src/shared/...`) although its cwd was W.
+- In S6's kill run, the child in W **read the main checkout's files** by absolute path (`<main checkout>/src/shared/...`) although its cwd was W.
 - S10: a child in W (`acceptEdits`, prompts `none`) **wrote a file into the main checkout** by absolute path. No denial; the file was deleted at once.
 - S11: in a worktree created **outside** the repository tree (`~/.local/state/marvin-pipeline/worktrees/osint-chat-client/<id>`, detached), the child:
   - still loaded the project's auto-memory and `CLAUDE.md`;

@@ -4,6 +4,39 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.7] — 2026-10-17
+
+### Security
+
+- **A pipeline child may edit only its own pull request, and publish no file from outside its
+  worktree.** `child-git-guard` checked `gh pr edit` for `--repo` and `--base` alone, so a child
+  steered by repository content could retitle, rewrite or add reviewers to any pull request in
+  the repository, and `gh pr create|edit --body-file ~/.ssh/id_ed25519` would have published a
+  private file as a PR body. `gh pr edit` now names no PR or the run branch, and a `--body-file`
+  must resolve, physically, inside the run's worktree (`-`, the command's own input, stays
+  allowed).
+- **The bundled `fast-uri` is 3.1.8** (was 3.1.2, reached through the MCP SDK's `ajv`), which
+  closes eight advisories against its URI parser. marvin resolves only its own schemas through
+  it, so no input of a user reached the affected paths.
+- **`SECURITY.md` names the supported line, `0.29.x`, and states the autopilot's trust
+  boundary:** its children run as the user, with the user's credentials, and code a child writes
+  and then runs is outside every guard.
+
+### Fixed
+
+- **A finalize interrupted between its commit and its record can be replayed.** Finalize moved
+  the run branch to its commit and only then wrote `finalize-commit.json`, the record a replay
+  recognises that commit by. An engine killed between the two left HEAD on a commit nothing
+  recorded, and every restart failed with `HEAD is …, not the gated commit …` until the ref was
+  moved back by hand. The record is now written before the branch moves; one naming a commit the
+  branch never reached matches no HEAD and is ignored.
+
+### Documentation
+
+- `docs/usage.md` describes `/marvin:autopilot`: what the engine runs, where its state lives,
+  and that each run's worktree and local branch stay behind until removed.
+- The plugin README's group table counts seven `task-*` commands and lists the `audit-*` group.
+
 ## [0.29.6] — 2026-10-15
 
 ### Fixed

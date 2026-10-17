@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { importTs } from "./_tsload.mjs";
@@ -1963,6 +1963,25 @@ test("a retry may stand on its own earlier finalize commit, recorded in the run 
   const again = l.finalizeRun(fx.opts());
   assert.equal(again.pushed, true);
   assert.equal(remoteRef(fx), own);
+});
+
+test("the finalize record is down before the branch moves, and a record HEAD never reached is inert", () => {
+  const fx = prFixture();
+  const common = sh(fx.wt, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  const lock = join(common, "refs", "heads", `${fx.branch}.lock`);
+  mkdirSync(dirname(lock), { recursive: true });
+  writeFileSync(lock, "");
+  assert.throws(() => l.finalizeRun(fx.opts()));
+  rmSync(lock);
+  assert.equal(head(fx.wt), fx.gated, "the ref never moved");
+  const record = JSON.parse(readFileSync(join(fx.runDir, "finalize-commit.json"), "utf8"));
+  assert.equal(record.expectedHead, fx.gated);
+  assert.notEqual(record.commit, fx.gated);
+
+  const out = l.finalizeRun(fx.opts());
+  assert.equal(out.pushed, true);
+  assert.equal(remoteRef(fx), head(fx.wt));
+  assert.equal(sh(fx.wt, "rev-parse", "HEAD^"), fx.gated);
 });
 
 const onOrigin = (fx, path) => sh(fx.origin, "show", `refs/heads/${fx.branch}:${path}`);
