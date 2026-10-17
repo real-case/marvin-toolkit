@@ -103,7 +103,7 @@ function renderDashboard(
   version: string,
   input: DashboardInput,
 ): ToolResult {
-  const { config, warning: configWarning, settingWarnings } = loaded;
+  const { config, warning: configWarning, settingWarnings, pipelineIssues } = loaded;
   // ── aggregate (every source degrades to zeros on a fresh project) ────────
   const board = boardCounts(env, config);
   const git = gitState(env.projectDir);
@@ -154,7 +154,9 @@ function renderDashboard(
       ...(configWarning ? [`- ⚠ config: ${configWarning} — using defaults`] : []),
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...[...settingWarnings, ...scopeExemptWarnings(config)].map((w) => `- ⚠ config: ${w}`),
+      ...[...settingWarnings, ...scopeExemptWarnings(config), ...pipelineIssues].map(
+        (w) => `- ⚠ config: ${w}`,
+      ),
     ],
     board: [
       "## Board",

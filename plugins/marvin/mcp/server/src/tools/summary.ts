@@ -36,7 +36,7 @@ import {
   type VerifyGate,
 } from "../lib/reports.js";
 import { readOracleRuns, type OracleRun } from "../storage/oracles.js";
-import { projectConfigPath, type ServerEnv } from "../lib/env.js";
+import { projectConfigPath, projectScopedDir, type ServerEnv } from "../lib/env.js";
 import { TASK_SUMMARY_WIDGET_URI } from "../resources/widgets.js";
 
 /**
@@ -138,12 +138,12 @@ function runSummary(env: ServerEnv, input: z.infer<typeof SummaryInput>): ToolRe
   );
   const gates: GateOutcome[] = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config.base_branch);
-  const lessons: LessonRef[] = searchLessons(env.memoryDir, { query: slug, limit: 10 }).map(
-    (l) => ({
-      id: l.slug,
-      title: l.title,
-    }),
-  );
+  // The store of the root being summarised, resolved as the `lessons` tool resolves it.
+  const memoryDir = projectScopedDir(env, projectRoot, env.memoryDir, "memory");
+  const lessons: LessonRef[] = searchLessons(memoryDir, { query: slug, limit: 10 }).map((l) => ({
+    id: l.slug,
+    title: l.title,
+  }));
   const links = buildLinks(env, config, projectRoot, slug, frontmatter, hostBindings);
 
   const summary: TaskSummary = {
@@ -466,16 +466,12 @@ const CRITIC_LABELS: Record<string, string> = {
  * `MARVIN_CRITIQUE_DIR` authoritative for the normal case (and for the test
  * isolation it exists for); the target tree's own `.marvin/critique` otherwise.
  *
- * `env.memoryDir` (the lessons join above) still reads the spawning project
- * under a foreign root — the same divergence, deferred rather than defended:
- * lessons reach the payload as `{id, title}` with no path, so nothing there
- * escapes a root, and changing which lessons a cross-project summary reports is
- * a behavioural change no spec row asks for.
+ * The lessons join above follows the same rule through the shared
+ * `projectScopedDir`, which is how the `lessons` tool resolves its store: a
+ * summary of a worktree reports the lessons that worktree's sessions captured.
  */
 function critiqueDirFor(env: ServerEnv, projectRoot: string): string {
-  return projectRoot === env.projectDir
-    ? env.critiqueDir
-    : join(projectRoot, ".marvin", "critique");
+  return projectScopedDir(env, projectRoot, env.critiqueDir, "critique");
 }
 
 /**

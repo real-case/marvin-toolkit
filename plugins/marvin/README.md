@@ -5,8 +5,8 @@
 The complete Marvin toolkit as **one plugin, one MCP server, and one slash prefix** —
 `/marvin:`. It covers the whole development lifecycle: core developer tools, the ADR
 decision-record lifecycle, a spec-driven task pipeline, security scanners, a code-health
-refactoring family, and a lightweight task tracker. Under the hood it ships **59 prompts,
-14 MCP tools, 10 agents, and 9 interactive widgets**.
+refactoring family, and a lightweight task tracker. Under the hood it ships **60 prompts,
+15 MCP tools, 10 agents, and 9 interactive widgets**.
 
 ## Install
 
@@ -34,12 +34,13 @@ them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or expor
 
 | Group | Purpose | Count | Examples |
 |-------|---------|-------|----------|
-| _(bare)_ | Core developer tools | 17 | `/marvin:onboard`, `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:report-export` |
+| _(bare)_ | Core developer tools | 18 | `/marvin:onboard`, `/marvin:commit`, `/marvin:debug`, `/marvin:adr`, `/marvin:report-export` |
 | `adr-*` | ADR lifecycle | 6 | `/marvin:adr-review`, `/marvin:adr-accept`, `/marvin:adr-audit` |
 | `pr-*` | Pull-request operations | 4 | `/marvin:pr-create`, `/marvin:pr-review`, `/marvin:pr-resolve`, `/marvin:pr-merge` |
-| `task-*` | Spec-driven task pipeline | 6 | `/marvin:task-start`, `/marvin:task-verify`, `/marvin:task-audit` |
+| `task-*` | Spec-driven task pipeline | 7 | `/marvin:task-start`, `/marvin:task-verify`, `/marvin:task-metrics` |
 | `sec-*` | Security scanners | 11 | `/marvin:sec-scan`, `/marvin:sec-threat-model` |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 | `/marvin:refactor-audit`, `/marvin:refactor-plan`, `/marvin:refactor-apply` |
+| `audit-*` | Formal project-audit programme (A-01…A-22) | 3 | `/marvin:audit-plan`, `/marvin:audit-run`, `/marvin:audit-summary` |
 | `track-*` | Lightweight task tracker | 7 | `/marvin:track-menu`, `/marvin:track-new`, `/marvin:track-start` |
 
 Most commands are reachable three ways — by chat, by `/<command>`, and by

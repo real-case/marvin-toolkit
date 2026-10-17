@@ -91,7 +91,8 @@ export function projectConfigPath(env: ServerEnv, projectRoot: string): string {
  * the startup value while the root is unchanged — which keeps the `MARVIN_*_DIR`
  * overrides authoritative for the normal case and for the test isolation they
  * exist for — and the target tree's own `.marvin/<name>` otherwise. `summary`
- * applies it to receipts; the `metrics` tool applies it to receipts and records.
+ * applies it to receipts and lessons, the `lessons` tool to its store, and the
+ * `metrics` tool to receipts and records.
  */
 export function projectScopedDir(
   env: ServerEnv,

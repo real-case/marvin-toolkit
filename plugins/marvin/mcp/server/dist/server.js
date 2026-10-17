@@ -1,11 +1,12 @@
 import { createRequire } from 'node:module';
-import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, lstatSync, unlinkSync } from 'fs';
-import { join, dirname, basename, isAbsolute, relative, sep, posix } from 'path';
+import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, realpathSync, lstatSync, unlinkSync } from 'fs';
+import { join, dirname, basename, isAbsolute, relative, sep, posix, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
-import { spawnSync, execFileSync, spawn } from 'child_process';
+import { execFileSync, spawn, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { performance } from 'perf_hooks';
+import { homedir } from 'os';
 
 const require$1 = createRequire(import.meta.url);
 var __create = Object.create;
@@ -76,9 +77,9 @@ var require_code = __commonJS({
     };
     exports.Name = Name;
     var _Code = class extends _CodeOrName {
-      constructor(code) {
+      constructor(code2) {
         super();
-        this._items = typeof code === "string" ? [code] : code;
+        this._items = typeof code2 === "string" ? [code2] : code2;
       }
       toString() {
         return this.str;
@@ -105,13 +106,13 @@ var require_code = __commonJS({
     exports._Code = _Code;
     exports.nil = new _Code("");
     function _(strs, ...args) {
-      const code = [strs[0]];
+      const code2 = [strs[0]];
       let i = 0;
       while (i < args.length) {
-        addCodeArg(code, args[i]);
-        code.push(strs[++i]);
+        addCodeArg(code2, args[i]);
+        code2.push(strs[++i]);
       }
-      return new _Code(code);
+      return new _Code(code2);
     }
     exports._ = _;
     var plus = new _Code("+");
@@ -127,13 +128,13 @@ var require_code = __commonJS({
       return new _Code(expr);
     }
     exports.str = str;
-    function addCodeArg(code, arg) {
+    function addCodeArg(code2, arg) {
       if (arg instanceof _Code)
-        code.push(...arg._items);
+        code2.push(...arg._items);
       else if (arg instanceof Name)
-        code.push(arg);
+        code2.push(arg);
       else
-        code.push(interpolate(arg));
+        code2.push(interpolate(arg));
     }
     exports.addCodeArg = addCodeArg;
     function optimize(expr) {
@@ -316,7 +317,7 @@ var require_scope = __commonJS({
         }, usedValues, getCode);
       }
       _reduceValues(values, valueCode, usedValues = {}, getCode) {
-        let code = code_1.nil;
+        let code2 = code_1.nil;
         for (const prefix in values) {
           const vs = values[prefix];
           if (!vs)
@@ -329,16 +330,16 @@ var require_scope = __commonJS({
             let c = valueCode(name);
             if (c) {
               const def = this.opts.es5 ? exports.varKinds.var : exports.varKinds.const;
-              code = (0, code_1._)`${code}${def} ${name} = ${c};${this.opts._n}`;
+              code2 = (0, code_1._)`${code2}${def} ${name} = ${c};${this.opts._n}`;
             } else if (c = getCode === null || getCode === void 0 ? void 0 : getCode(name)) {
-              code = (0, code_1._)`${code}${c}${this.opts._n}`;
+              code2 = (0, code_1._)`${code2}${c}${this.opts._n}`;
             } else {
               throw new ValueError(name);
             }
             nameSet.set(name, UsedValueState.Completed);
           });
         }
-        return code;
+        return code2;
       }
     };
     exports.ValueScope = ValueScope;
@@ -497,9 +498,9 @@ var require_codegen = __commonJS({
       }
     };
     var AnyCode = class extends Node {
-      constructor(code) {
+      constructor(code2) {
         super();
-        this.code = code;
+        this.code = code2;
       }
       render({ _n }) {
         return `${this.code};` + _n;
@@ -521,7 +522,7 @@ var require_codegen = __commonJS({
         this.nodes = nodes;
       }
       render(opts) {
-        return this.nodes.reduce((code, n) => code + n.render(opts), "");
+        return this.nodes.reduce((code2, n) => code2 + n.render(opts), "");
       }
       optimizeNodes() {
         const { nodes } = this;
@@ -569,10 +570,10 @@ var require_codegen = __commonJS({
         this.condition = condition;
       }
       render(opts) {
-        let code = `if(${this.condition})` + super.render(opts);
+        let code2 = `if(${this.condition})` + super.render(opts);
         if (this.else)
-          code += "else " + this.else.render(opts);
-        return code;
+          code2 += "else " + this.else.render(opts);
+        return code2;
       }
       optimizeNodes() {
         super.optimizeNodes();
@@ -693,12 +694,12 @@ var require_codegen = __commonJS({
     Return.kind = "return";
     var Try = class extends BlockNode {
       render(opts) {
-        let code = "try" + super.render(opts);
+        let code2 = "try" + super.render(opts);
         if (this.catch)
-          code += this.catch.render(opts);
+          code2 += this.catch.render(opts);
         if (this.finally)
-          code += this.finally.render(opts);
-        return code;
+          code2 += this.finally.render(opts);
+        return code2;
       }
       optimizeNodes() {
         var _a, _b;
@@ -815,18 +816,18 @@ var require_codegen = __commonJS({
       }
       // returns code for object literal for the passed argument list of key-value pairs
       object(...keyValues) {
-        const code = ["{"];
+        const code2 = ["{"];
         for (const [key, value] of keyValues) {
-          if (code.length > 1)
-            code.push(",");
-          code.push(key);
+          if (code2.length > 1)
+            code2.push(",");
+          code2.push(key);
           if (key !== value || this.opts.es5) {
-            code.push(":");
-            (0, code_1.addCodeArg)(code, value);
+            code2.push(":");
+            (0, code_1.addCodeArg)(code2, value);
           }
         }
-        code.push("}");
-        return new code_1._Code(code);
+        code2.push("}");
+        return new code_1._Code(code2);
       }
       // `if` clause (or statement if `thenBody` and, optionally, `elseBody` are passed)
       if(condition, thenBody, elseBody) {
@@ -2977,7 +2978,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve.call(this, root, ref);
+      let _sch = resolve2.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3004,7 +3005,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve(root, ref) {
+    function resolve2(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3101,118 +3102,151 @@ var require_utils = __commonJS({
   "../../../../node_modules/fast-uri/lib/utils.js"(exports, module) {
     var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
     var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+    var isPort = RegExp.prototype.test.bind(/^\d*$/u);
     var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
     var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-    var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
+    var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
+    var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
+    var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
+    var BYTE_HEX = new Array(256);
+    {
+      const HEX_DIGITS = "0123456789ABCDEF";
+      for (let i = 0; i < 256; i++) {
+        BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
+      }
+    }
+    function percentEncodeNonAscii(cp) {
+      if (cp < 2048) {
+        return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
+      }
+      if (cp < 65536) {
+        return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+      }
+      return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+    }
     function stringArrayToHexStripped(input) {
       let acc = "";
-      let code = 0;
+      let code2 = 0;
       let i = 0;
       for (i = 0; i < input.length; i++) {
-        code = input[i].charCodeAt(0);
-        if (code === 48) {
+        code2 = input[i].charCodeAt(0);
+        if (code2 === 48) {
           continue;
         }
-        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
+        if (!(code2 >= 48 && code2 <= 57 || code2 >= 65 && code2 <= 70 || code2 >= 97 && code2 <= 102)) {
           return "";
         }
         acc += input[i];
         break;
       }
       for (i += 1; i < input.length; i++) {
-        code = input[i].charCodeAt(0);
-        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
+        code2 = input[i].charCodeAt(0);
+        if (!(code2 >= 48 && code2 <= 57 || code2 >= 65 && code2 <= 70 || code2 >= 97 && code2 <= 102)) {
           return "";
         }
         acc += input[i];
       }
       return acc;
     }
+    var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
+    var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
+    var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
     var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-    function consumeIsZone(buffer) {
-      buffer.length = 0;
-      return true;
-    }
-    function consumeHextets(buffer, address, output) {
-      if (buffer.length) {
-        const hex = stringArrayToHexStripped(buffer);
-        if (hex !== "") {
-          address.push(hex);
-        } else {
-          output.error = true;
-          return false;
+    function isZoneIdentifier(zone) {
+      if (zone.length === 0) return false;
+      for (let i = 0; i < zone.length; i++) {
+        if (isZoneCharacter(zone[i])) continue;
+        if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
+          i += 2;
+          continue;
         }
-        buffer.length = 0;
+        return false;
       }
       return true;
     }
-    function getIPV6(input) {
-      let tokenCount = 0;
-      const output = { error: false, address: "", zone: "" };
-      const address = [];
-      const buffer = [];
-      let endipv6Encountered = false;
-      let endIpv6 = false;
-      let consume = consumeHextets;
-      for (let i = 0; i < input.length; i++) {
-        const cursor = input[i];
-        if (cursor === "[" || cursor === "]") {
-          continue;
-        }
-        if (cursor === ":") {
-          if (endipv6Encountered === true) {
-            endIpv6 = true;
+    function compressIPv6ZeroRun(hextets) {
+      let bestStart = -1;
+      let bestLength = 0;
+      let runStart2 = -1;
+      let runLength = 0;
+      for (let i = 0; i < hextets.length; i++) {
+        if (hextets[i] === "0") {
+          if (runStart2 === -1) runStart2 = i;
+          runLength++;
+          if (runLength > bestLength) {
+            bestLength = runLength;
+            bestStart = runStart2;
           }
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          if (++tokenCount > 7) {
-            output.error = true;
-            break;
-          }
-          if (i > 0 && input[i - 1] === ":") {
-            endipv6Encountered = true;
-          }
-          address.push(":");
-          continue;
-        } else if (cursor === "%") {
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          consume = consumeIsZone;
         } else {
-          buffer.push(cursor);
-          continue;
+          runStart2 = -1;
+          runLength = 0;
         }
       }
-      if (buffer.length) {
-        if (consume === consumeIsZone) {
-          output.zone = buffer.join("");
-        } else if (endIpv6) {
-          address.push(buffer.join(""));
-        } else {
-          address.push(stringArrayToHexStripped(buffer));
-        }
+      if (bestLength < 2) return hextets.join(":");
+      const head = hextets.slice(0, bestStart).join(":");
+      const tail = hextets.slice(bestStart + bestLength).join(":");
+      return head + "::" + tail;
+    }
+    function normalizeIPv6Address(input) {
+      const compression = input.indexOf("::");
+      if (compression !== -1 && input.indexOf("::", compression + 1) !== -1) return void 0;
+      const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
+      const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
+      if (compression !== -1) {
+        if (left.length === 1 && left[0] === "") left.length = 0;
+        if (right.length === 1 && right[0] === "") right.length = 0;
       }
-      output.address = address.join("");
-      return output;
+      const parts = left.concat(right);
+      let hextetCount = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === "") return void 0;
+        if (part.indexOf(".") !== -1) {
+          if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part)) return void 0;
+          hextetCount += 2;
+          continue;
+        }
+        if (!isHextet(part)) return void 0;
+        parts[i] = parseInt(part, 16).toString(16);
+        hextetCount++;
+      }
+      if (compression === -1) {
+        if (hextetCount !== 8) return void 0;
+        return compressIPv6ZeroRun(parts);
+      }
+      if (hextetCount >= 8) return void 0;
+      const expanded = parts.slice(0, left.length);
+      for (let i = hextetCount; i < 8; i++) expanded.push("0");
+      for (let i = left.length; i < parts.length; i++) expanded.push(parts[i]);
+      return compressIPv6ZeroRun(expanded);
     }
     function normalizeIPv6(host) {
-      if (findToken(host, ":") < 2) {
-        return { host, isIPV6: false };
+      const bracketed = host[0] === "[" && host[host.length - 1] === "]";
+      const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
+      if (hasBracket && !bracketed) return { host, isIPV6: false, error: true };
+      let input = bracketed ? host.slice(1, -1) : host;
+      if (bracketed && isIPvFuture(input)) {
+        input = input.toLowerCase();
+        return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
       }
-      const ipv62 = getIPV6(host);
-      if (!ipv62.error) {
-        let newHost = ipv62.address;
-        let escapedHost = ipv62.address;
-        if (ipv62.zone) {
-          newHost += "%" + ipv62.zone;
-          escapedHost += "%25" + ipv62.zone;
-        }
-        return { host: newHost, isIPV6: true, escapedHost };
-      } else {
-        return { host, isIPV6: false };
+      if (findToken(input, ":") < 2) {
+        return { host, isIPV6: false, error: bracketed };
       }
+      let zoneIdentifier = "";
+      const zoneSeparator = input.indexOf("%");
+      if (zoneSeparator !== -1) {
+        const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
+        zoneIdentifier = input.slice(zoneSeparator + separatorLength);
+        if (!isZoneIdentifier(zoneIdentifier)) return { host, isIPV6: false, error: true };
+        input = input.slice(0, zoneSeparator);
+      }
+      const address = normalizeIPv6Address(input);
+      if (address === void 0) return { host, isIPV6: false, error: true };
+      return {
+        host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
+        escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
+        isIPV6: true
+      };
     }
     function findToken(str, token) {
       let ind = 0;
@@ -3331,7 +3365,8 @@ var require_utils = __commonJS({
     function normalizePathEncoding(input) {
       let output = "";
       for (let i = 0; i < input.length; i++) {
-        if (input[i] === "%" && i + 2 < input.length) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
           const hex = input.slice(i + 1, i + 3);
           if (isHexPair(hex)) {
             const normalizedHex = hex.toUpperCase();
@@ -3345,10 +3380,152 @@ var require_utils = __commonJS({
             continue;
           }
         }
-        if (isPathCharacter(input[i])) {
-          output += input[i];
+        if (isPathCharacter(ch)) {
+          output += ch;
         } else {
-          output += escape(input[i]);
+          const code2 = input.charCodeAt(i);
+          if (code2 < 128) {
+            output += isEscapeSafe(code2) ? ch : BYTE_HEX[code2];
+          } else if (code2 < 55296 || code2 > 57343) {
+            output += percentEncodeNonAscii(code2);
+          } else if (code2 <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code2 - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function serializePathEncoding(input, pathNoScheme = false) {
+      let output = "";
+      let firstSegment = pathNoScheme && input[0] !== "/";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (ch === "/") {
+          firstSegment = false;
+        }
+        if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
+          output += ch;
+        } else {
+          const code2 = input.charCodeAt(i);
+          if (code2 < 128) {
+            output += BYTE_HEX[code2];
+          } else if (code2 < 55296 || code2 > 57343) {
+            output += percentEncodeNonAscii(code2);
+          } else if (code2 <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code2 - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeComponent(input, isAllowed) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (isAllowed(ch)) {
+          output += ch;
+        } else {
+          const code2 = input.charCodeAt(i);
+          if (code2 < 128) {
+            output += BYTE_HEX[code2];
+          } else if (code2 < 55296 || code2 > 57343) {
+            output += percentEncodeNonAscii(code2);
+          } else if (code2 <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code2 - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeUserinfo(input) {
+      return encodeComponent(input, isUserinfoCharacter);
+    }
+    function encodeQuery(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function encodeFragment(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function isEscapeSafe(cp) {
+      return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
+    }
+    function normalizeQueryFragmentEncoding(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        if (isQueryFragmentCharacter(ch)) {
+          output += ch;
+        } else {
+          const code2 = input.charCodeAt(i);
+          if (code2 < 128) {
+            output += isEscapeSafe(code2) ? ch : BYTE_HEX[code2];
+          } else if (code2 < 55296 || code2 > 57343) {
+            output += percentEncodeNonAscii(code2);
+          } else if (code2 <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code2 - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
         }
       }
       return output;
@@ -3371,14 +3548,18 @@ var require_utils = __commonJS({
     function recomposeAuthority(component) {
       const uriTokens = [];
       if (component.userinfo !== void 0) {
-        uriTokens.push(component.userinfo);
+        uriTokens.push(encodeUserinfo(component.userinfo));
         uriTokens.push("@");
       }
       if (component.host !== void 0) {
-        let host = unescape(component.host);
+        let host = component.host;
         if (!isIPv4(host)) {
-          const ipV6res = normalizeIPv6(host);
-          if (ipV6res.isIPV6 === true) {
+          let ipV6res = normalizeIPv6(host);
+          if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
+            host = normalizePercentEncoding(host, true);
+            ipV6res = normalizeIPv6(host);
+          }
+          if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
             host = `[${ipV6res.escapedHost}]`;
           } else {
             host = reescapeHostDelimiters(host, false);
@@ -3387,8 +3568,12 @@ var require_utils = __commonJS({
         uriTokens.push(host);
       }
       if (typeof component.port === "number" || typeof component.port === "string") {
+        const port = String(component.port);
+        if (!isPort(port)) {
+          throw new TypeError("URI port is malformed.");
+        }
         uriTokens.push(":");
-        uriTokens.push(String(component.port));
+        uriTokens.push(port);
       }
       return uriTokens.length ? uriTokens.join("") : void 0;
     }
@@ -3398,6 +3583,11 @@ var require_utils = __commonJS({
       reescapeHostDelimiters,
       normalizePercentEncoding,
       normalizePathEncoding,
+      serializePathEncoding,
+      normalizeQueryFragmentEncoding,
+      encodeUserinfo,
+      encodeQuery,
+      encodeFragment,
       escapePreservingEscapes,
       removeDotSegments,
       isIPv4,
@@ -3412,7 +3602,7 @@ var require_utils = __commonJS({
 var require_schemes = __commonJS({
   "../../../../node_modules/fast-uri/lib/schemes.js"(exports, module) {
     var { isUUID } = require_utils();
-    var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
+    var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
     var supportedSchemeNames = (
       /** @type {const} */
       [
@@ -3473,9 +3663,10 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
+        const queryIndex = wsComponent.resourceName.indexOf("?");
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
         wsComponent.path = path && path !== "/" ? path : void 0;
-        wsComponent.query = query;
+        wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
       wsComponent.fragment = void 0;
@@ -3487,7 +3678,7 @@ var require_schemes = __commonJS({
         return urnComponent;
       }
       const matches = urnComponent.path.match(URN_REG);
-      if (matches) {
+      if (matches && matches[0] === urnComponent.path) {
         const scheme = options.scheme || urnComponent.scheme || "urn";
         urnComponent.nid = matches[1].toLowerCase();
         urnComponent.nss = matches[2];
@@ -3620,8 +3811,17 @@ var require_schemes = __commonJS({
 // ../../../../node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS({
   "../../../../node_modules/fast-uri/index.js"(exports, module) {
-    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
+    var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
+    var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
+    function decodeValidScheme(scheme) {
+      const decodedScheme = unescape(String(scheme));
+      if (!VALID_SCHEME.test(decodedScheme)) {
+        throw new TypeError(MALFORMED_SCHEME_ERROR);
+      }
+      return decodedScheme;
+    }
     function normalize(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
@@ -3632,55 +3832,82 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
+      const {
+        parsed: baseParsed,
+        malformedAuthorityOrPort: baseMalformed,
+        malformedPercentEncoding: baseMalformedPercentEncoding,
+        malformedSchemeSpecific: baseMalformedSchemeSpecific,
+        malformedHost: baseMalformedHost,
+        malformedScheme: baseMalformedScheme
+      } = parseWithStatus(baseURI, schemelessOptions);
+      const {
+        parsed: relativeParsed,
+        malformedAuthorityOrPort: relativeMalformed,
+        malformedPercentEncoding: relativeMalformedPercentEncoding,
+        malformedSchemeSpecific: relativeMalformedSchemeSpecific,
+        malformedHost: relativeMalformedHost,
+        malformedScheme: relativeMalformedScheme
+      } = parseWithStatus(relativeURI, schemelessOptions);
+      if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
+        throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
+      }
+      const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+      const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
+      const resolvedHost = resolved.host;
+      const resolvedHostIsIP = resolvedHost !== void 0 && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+      canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
+      const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !new RegExp("\\P{ASCII}", "u").test(resolvedHost);
+      if (resolved.error && !encodedASCIIHost) {
+        throw new Error(resolved.error);
+      }
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative7, options, skipNormalization) {
+    function resolveComponent(base, relative8, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative7 = parse4(serialize(relative7, options), options);
+        relative8 = parse4(serialize(relative8, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative7.scheme) {
-        target.scheme = relative7.scheme;
-        target.userinfo = relative7.userinfo;
-        target.host = relative7.host;
-        target.port = relative7.port;
-        target.path = removeDotSegments(relative7.path || "");
-        target.query = relative7.query;
+      if (!options.tolerant && relative8.scheme) {
+        target.scheme = relative8.scheme;
+        target.userinfo = relative8.userinfo;
+        target.host = relative8.host;
+        target.port = relative8.port;
+        target.path = removeDotSegments(relative8.path || "");
+        target.query = relative8.query;
       } else {
-        if (relative7.userinfo !== void 0 || relative7.host !== void 0 || relative7.port !== void 0) {
-          target.userinfo = relative7.userinfo;
-          target.host = relative7.host;
-          target.port = relative7.port;
-          target.path = removeDotSegments(relative7.path || "");
-          target.query = relative7.query;
+        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
+          target.userinfo = relative8.userinfo;
+          target.host = relative8.host;
+          target.port = relative8.port;
+          target.path = removeDotSegments(relative8.path || "");
+          target.query = relative8.query;
         } else {
-          if (!relative7.path) {
+          if (!relative8.path) {
             target.path = base.path;
-            if (relative7.query !== void 0) {
-              target.query = relative7.query;
+            if (relative8.query !== void 0) {
+              target.query = relative8.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative7.path[0] === "/") {
-              target.path = removeDotSegments(relative7.path);
+            if (relative8.path[0] === "/") {
+              target.path = removeDotSegments(relative8.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative7.path;
+                target.path = "/" + relative8.path;
               } else if (!base.path) {
-                target.path = relative7.path;
+                target.path = relative8.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative7.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative7.query;
+            target.query = relative8.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3688,13 +3915,13 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative7.fragment;
+      target.fragment = relative8.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
       const normalizedA = normalizeComparableURI(uriA, options);
       const normalizedB = normalizeComparableURI(uriB, options);
-      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA.toLowerCase() === normalizedB.toLowerCase();
+      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA === normalizedB;
     }
     function serialize(cmpts, opts) {
       const component = {
@@ -3715,19 +3942,22 @@ var require_fast_uri = __commonJS({
       };
       const options = Object.assign({}, opts);
       const uriTokens = [];
+      if (component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
+      }
       const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
       if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(component, options);
+      const hasAuthority = component.userinfo !== void 0 || component.host !== void 0 || component.port !== void 0;
+      const pathNoScheme = !options.skipEscape && component.scheme === void 0 && !hasAuthority;
       if (component.path !== void 0) {
         if (!options.skipEscape) {
-          component.path = escapePreservingEscapes(component.path);
-          if (component.scheme !== void 0) {
-            component.path = component.path.split("%3A").join(":");
-          }
+          component.path = serializePathEncoding(component.path, pathNoScheme);
         } else {
           component.path = normalizePercentEncoding(component.path);
         }
       }
       if (options.reference !== "suffix" && component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
         uriTokens.push(component.scheme, ":");
       }
       const authority = recomposeAuthority(component);
@@ -3745,20 +3975,25 @@ var require_fast_uri = __commonJS({
         if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
           s = removeDotSegments(s);
         }
+        if (pathNoScheme) {
+          s = serializePathEncoding(s, true);
+        }
         if (authority === void 0 && s[0] === "/" && s[1] === "/") {
           s = "/%2F" + s.slice(2);
         }
         uriTokens.push(s);
       }
       if (component.query !== void 0) {
-        uriTokens.push("?", component.query);
+        uriTokens.push("?", encodeQuery(component.query));
       }
       if (component.fragment !== void 0) {
-        uriTokens.push("#", component.fragment);
+        uriTokens.push("#", encodeFragment(component.fragment));
       }
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
+    var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
+    var AUTHORITY_INTRODUCER_REGION = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
     function getParseError(parsed, matches) {
       if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
         return 'URI path must start with "/" when authority is present.';
@@ -3767,6 +4002,35 @@ var require_fast_uri = __commonJS({
         return "URI port is malformed.";
       }
       return void 0;
+    }
+    function hasMalformedPercentEncoding(component) {
+      if (component === void 0) return false;
+      let percent = component.indexOf("%");
+      while (percent !== -1) {
+        if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
+          return true;
+        }
+        percent = component.indexOf("%", percent + 3);
+      }
+      return false;
+    }
+    function isIPLiteral(host) {
+      return host[0] === "[" && host[host.length - 1] === "]";
+    }
+    function hasMalformedComponentPercentEncoding(matches) {
+      const host = matches[4];
+      return hasMalformedPercentEncoding(matches[3]) || host !== void 0 && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
+    }
+    function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+        try {
+          parsed.host = new URL("http://" + parsed.host).hostname;
+        } catch (e) {
+          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+          return true;
+        }
+      }
+      return false;
     }
     function parseWithStatus(uri, opts) {
       const options = Object.assign({}, opts);
@@ -3780,12 +4044,36 @@ var require_fast_uri = __commonJS({
         fragment: void 0
       };
       let malformedAuthorityOrPort = false;
+      let malformedPercentEncoding = false;
+      let malformedSchemeSpecific = false;
+      let malformedHost = false;
+      let malformedIPLiteral = false;
+      let malformedScheme = false;
       let isIP = false;
       if (options.reference === "suffix") {
         if (options.scheme) {
           uri = options.scheme + ":" + uri;
         } else {
           uri = "//" + uri;
+        }
+      }
+      const authorityMatch = uri.match(AUTHORITY_PREFIX);
+      if (authorityMatch !== null && authorityMatch[1].indexOf("\\") !== -1) {
+        parsed.error = "URI authority must not contain a literal backslash.";
+        malformedAuthorityOrPort = true;
+      }
+      const introducerMatch = uri.match(AUTHORITY_INTRODUCER_REGION);
+      if (introducerMatch !== null) {
+        const region = introducerMatch[1];
+        const normalizedRegion = region.replace(/[\t\n\r]/g, "");
+        if (normalizedRegion.length >= 2) {
+          if (normalizedRegion.slice(0, 2) !== "//") {
+            parsed.error = parsed.error || "URI authority must not contain a literal backslash.";
+            malformedAuthorityOrPort = true;
+          } else if (region.length !== normalizedRegion.length) {
+            parsed.error = parsed.error || "URI authority introducer must not contain whitespace.";
+            malformedAuthorityOrPort = true;
+          }
         }
       }
       const matches = uri.match(URI_PARSE);
@@ -3797,6 +4085,19 @@ var require_fast_uri = __commonJS({
         parsed.path = matches[6] || "";
         parsed.query = matches[7];
         parsed.fragment = matches[8];
+        if (parsed.scheme !== void 0) {
+          const decodedScheme = unescape(parsed.scheme);
+          if (VALID_SCHEME.test(decodedScheme)) {
+            parsed.scheme = decodedScheme.toLowerCase();
+          } else {
+            parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
+            malformedScheme = true;
+          }
+        }
+        malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
+        if (malformedPercentEncoding) {
+          parsed.error = parsed.error || "URI contains malformed percent-encoding.";
+        }
         if (isNaN(parsed.port)) {
           parsed.port = matches[5];
         }
@@ -3808,9 +4109,16 @@ var require_fast_uri = __commonJS({
         if (parsed.host) {
           const ipv4result = isIPv4(parsed.host);
           if (ipv4result === false) {
+            const bracketedIPLiteral = isIPLiteral(parsed.host);
+            const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
             const ipv6result = normalizeIPv6(parsed.host);
-            parsed.host = ipv6result.host.toLowerCase();
-            isIP = ipv6result.isIPV6;
+            isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
+            malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
+            parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
+            if (malformedIPLiteral) {
+              parsed.error = parsed.error || "URI host is malformed.";
+              malformedAuthorityOrPort = true;
+            }
           } else {
             isIP = true;
           }
@@ -3828,42 +4136,37 @@ var require_fast_uri = __commonJS({
           parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
         }
         const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-        if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-          if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-            try {
-              parsed.host = URL.domainToASCII(parsed.host.toLowerCase());
-            } catch (e) {
-              parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-            }
+        if (!malformedIPLiteral) {
+          malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
+        }
+        if (uri.indexOf("%") !== -1 && parsed.host !== void 0 && !malformedIPLiteral) {
+          let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
+          if (!isIP) {
+            host = normalizePercentEncoding(host.toLowerCase());
           }
+          parsed.host = reescapeHostDelimiters(host, isIP);
         }
         if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
-          if (uri.indexOf("%") !== -1) {
-            if (parsed.scheme !== void 0) {
-              parsed.scheme = unescape(parsed.scheme);
-            }
-            if (parsed.host !== void 0) {
-              parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
-            }
-          }
           if (parsed.path) {
             parsed.path = normalizePathEncoding(parsed.path);
           }
+          if (parsed.query) {
+            parsed.query = normalizeQueryFragmentEncoding(parsed.query);
+          }
           if (parsed.fragment) {
-            try {
-              parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
-            } catch {
-              parsed.error = parsed.error || "URI malformed";
-            }
+            parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
           }
         }
         if (schemeHandler && schemeHandler.parse) {
           schemeHandler.parse(parsed, options);
+          if (schemeHandler === SCHEMES.urn && parsed.nid === void 0) {
+            malformedSchemeSpecific = true;
+          }
         }
       } else {
         parsed.error = parsed.error || "URI can not be parsed.";
       }
-      return { parsed, malformedAuthorityOrPort };
+      return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
     function parse4(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
@@ -3872,25 +4175,33 @@ var require_fast_uri = __commonJS({
       return normalizeStringWithStatus(uri, opts).normalized;
     }
     function normalizeStringWithStatus(uri, opts) {
-      const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
+      const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
       return {
-        normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
-        malformedAuthorityOrPort
+        normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
+        malformedAuthorityOrPort,
+        malformedPercentEncoding,
+        malformedSchemeSpecific,
+        malformedHost,
+        malformedScheme
       };
     }
     function normalizeComparableURI(uri, opts) {
-      if (typeof uri === "string") {
-        const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
-        return malformedAuthorityOrPort ? void 0 : normalized;
+      if (typeof uri !== "string" && typeof uri !== "object") {
+        return void 0;
       }
-      if (typeof uri === "object") {
-        return serialize(uri, opts);
+      let value;
+      try {
+        value = typeof uri === "string" ? uri : serialize(uri, opts);
+      } catch {
+        return void 0;
       }
+      const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
+      return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? void 0 : normalized;
     }
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -6102,8 +6413,8 @@ var require_format = __commonJS({
             }
           }
           function getFormat(fmtDef) {
-            const code = fmtDef instanceof RegExp ? (0, codegen_1.regexpCode)(fmtDef) : opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(schema)}` : void 0;
-            const fmt = gen.scopeValue("formats", { key: schema, ref: fmtDef, code });
+            const code2 = fmtDef instanceof RegExp ? (0, codegen_1.regexpCode)(fmtDef) : opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(schema)}` : void 0;
+            const fmt = gen.scopeValue("formats", { key: schema, ref: fmtDef, code: code2 });
             if (typeof fmtDef == "object" && !(fmtDef instanceof RegExp)) {
               return [fmtDef.type || "string", fmtDef.validate, (0, codegen_1._)`${fmt}.validate`];
             }
@@ -7450,36 +7761,38 @@ var require_Alias = __commonJS({
           if (node.anchor === this.source)
             found = node;
         }
+        if (found && ctx) {
+          const { anchors: anchors2, doc: doc2, maxAliasCount } = ctx;
+          let data = anchors2.get(found);
+          if (!data) {
+            toJS.toJS(found, null, ctx);
+            data = anchors2.get(found);
+          }
+          if (data?.res === void 0) {
+            const msg = "This should not happen: Alias anchor was not resolved?";
+            throw new ReferenceError(msg);
+          }
+          if (maxAliasCount >= 0) {
+            data.count += 1;
+            if (data.aliasCount === 0)
+              data.aliasCount = getAliasCount(doc2, found, anchors2);
+            if (data.count * data.aliasCount > maxAliasCount) {
+              const msg = "Excessive alias count indicates a resource exhaustion attack";
+              throw new ReferenceError(msg);
+            }
+          }
+        }
         return found;
       }
       toJSON(_arg, ctx) {
         if (!ctx)
           return { source: this.source };
-        const { anchors: anchors2, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc, ctx);
+        const source = this.resolve(ctx.doc, ctx);
         if (!source) {
           const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
           throw new ReferenceError(msg);
         }
-        let data = anchors2.get(source);
-        if (!data) {
-          toJS.toJS(source, null, ctx);
-          data = anchors2.get(source);
-        }
-        if (data?.res === void 0) {
-          const msg = "This should not happen: Alias anchor was not resolved?";
-          throw new ReferenceError(msg);
-        }
-        if (maxAliasCount >= 0) {
-          data.count += 1;
-          if (data.aliasCount === 0)
-            data.aliasCount = getAliasCount(doc, source, anchors2);
-          if (data.count * data.aliasCount > maxAliasCount) {
-            const msg = "Excessive alias count indicates a resource exhaustion attack";
-            throw new ReferenceError(msg);
-          }
-        }
-        return data.res;
+        return ctx.anchors.get(source).res;
       }
       toString(ctx, _onComment, _onChompKeep) {
         const src = `*${this.source}`;
@@ -7965,8 +8278,8 @@ var require_stringifyString = __commonJS({
             case "u":
               {
                 str += json.slice(start, i);
-                const code = json.substr(i + 2, 4);
-                switch (code) {
+                const code2 = json.substr(i + 2, 4);
+                switch (code2) {
                   case "0000":
                     str += "\\0";
                     break;
@@ -7992,8 +8305,8 @@ var require_stringifyString = __commonJS({
                     str += "\\P";
                     break;
                   default:
-                    if (code.substr(0, 2) === "00")
-                      str += "\\x" + code.substr(2);
+                    if (code2.substr(0, 2) === "00")
+                      str += "\\x" + code2.substr(2);
                     else
                       str += json.substr(i, 6);
                 }
@@ -8106,9 +8419,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header2 = (startWithSpace ? indentSize : "") + chomp;
+      let header = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -8123,11 +8436,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header2}
+          return `>${header}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header2}
+      return `|${header}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -10459,22 +10772,22 @@ var require_Document = __commonJS({
 var require_errors2 = __commonJS({
   "../../../../node_modules/yaml/dist/errors.js"(exports) {
     var YAMLError = class extends Error {
-      constructor(name, pos, code, message) {
+      constructor(name, pos, code2, message) {
         super();
         this.name = name;
-        this.code = code;
+        this.code = code2;
         this.message = message;
         this.pos = pos;
       }
     };
     var YAMLParseError = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLParseError", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLParseError", pos, code2, message);
       }
     };
     var YAMLWarning = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLWarning", pos, code, message);
+      constructor(pos, code2, message) {
+        super("YAMLWarning", pos, code2, message);
       }
     };
     var prettifyError2 = (src, lc) => (error2) => {
@@ -10743,10 +11056,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep5, value } = collItem;
+        const { start, key, sep: sep6, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -10760,7 +11073,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep5) {
+          if (!keyProps.anchor && !keyProps.tag && !sep6) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -10784,7 +11097,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -10800,7 +11113,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep5, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -10889,7 +11202,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep5 = "";
+        let sep6 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -10903,13 +11216,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep5 + cb;
-              sep5 = "";
+                comment += sep6 + cb;
+              sep6 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep5 += source;
+                sep6 += source;
               hasSpace = true;
               break;
             default:
@@ -10951,18 +11264,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep5, value } = collItem;
+        const { start, key, sep: sep6, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep5?.[0],
+          next: key ?? sep6?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep5 && !value) {
+          if (!props.anchor && !props.tag && !sep6 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11016,8 +11329,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep5 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep5, null, props, onError);
+        if (!isMap && !sep6 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11029,7 +11342,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep5 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11040,8 +11353,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep5)
-                for (const st of sep5) {
+              if (sep6)
+                for (const st of sep6) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11058,7 +11371,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -11187,10 +11500,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header2)
+      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -11201,26 +11514,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header2.length;
+        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header2.indent;
-      let offset = scalar.offset + header2.length;
+      let trimIndent = scalar.indent + header.indent;
+      let offset = scalar.offset + header.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header2.indent === 0 && indent.length > trimIndent)
+          if (header.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header2.indent === 0)
+          if (header.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -11236,7 +11549,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep5 = "";
+      let sep6 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -11247,34 +11560,34 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header2.indent ? "explicit indentation indicator" : "first line";
+          const src = header.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep5 === " ")
-            sep5 = "\n";
-          else if (!prevMoreIndented && sep5 === "\n")
-            sep5 = "\n\n";
-          value += sep5 + indent.slice(trimIndent) + content;
-          sep5 = "\n";
+          if (sep6 === " ")
+            sep6 = "\n";
+          else if (!prevMoreIndented && sep6 === "\n")
+            sep6 = "\n\n";
+          value += sep6 + indent.slice(trimIndent) + content;
+          sep6 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep5 === "\n")
+          if (sep6 === "\n")
             value += "\n";
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          value += sep5 + content;
-          sep5 = " ";
+          value += sep6 + content;
+          sep6 = " ";
           prevMoreIndented = false;
         }
       }
-      switch (header2.chomp) {
+      switch (header.chomp) {
         case "-":
           break;
         case "+":
@@ -11286,8 +11599,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header2.length + scalar.source.length;
-      return { value, type, comment: header2.comment, range: [start, end, end] };
+      const end = start + header.length + scalar.source.length;
+      return { value, type, comment: header.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -11372,7 +11685,7 @@ var require_resolve_flow_scalar = __commonJS({
       const { offset, type, source, end } = scalar;
       let _type;
       let value;
-      const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
+      const _onError = (rel, code2, msg) => onError(offset + rel, code2, msg);
       switch (type) {
         case "scalar":
           _type = Scalar.Scalar.PLAIN;
@@ -11431,45 +11744,46 @@ var require_resolve_flow_scalar = __commonJS({
       }
       if (badChar)
         onError(0, "BAD_SCALAR_START", `Plain value cannot start with ${badChar}`);
-      return foldLines(source);
+      return unfoldLines(source);
     }
     function singleQuotedValue(source, onError) {
       if (source[source.length - 1] !== "'" || source.length === 1)
         onError(source.length, "MISSING_CHAR", "Missing closing 'quote");
-      return foldLines(source.slice(1, -1)).replace(/''/g, "'");
+      return unfoldLines(source.slice(1, -1)).replace(/''/g, "'");
     }
-    function foldLines(source) {
-      let first, line;
-      try {
-        first = new RegExp("(.*?)(?<![ 	])[ 	]*\r?\n", "sy");
-        line = new RegExp("[ 	]*(.*?)(?:(?<![ 	])[ 	]*)?\r?\n", "sy");
-      } catch {
-        first = /(.*?)[ \t]*\r?\n/sy;
-        line = /[ \t]*(.*?)[ \t]*\r?\n/sy;
-      }
-      let match = first.exec(source);
+    function unfoldLines(source) {
+      const line = /(.*?)\r?\n/sy;
+      let match = line.exec(source);
       if (!match)
         return source;
-      let res = match[1];
-      let sep5 = " ";
-      let pos = first.lastIndex;
-      line.lastIndex = pos;
+      let trimEnd, trimBoth;
+      try {
+        trimEnd = new RegExp("(?<![ 	])[ 	]+$");
+        trimBoth = new RegExp("^[ 	]+|(?<![ 	])[ 	]+$", "g");
+      } catch {
+        trimEnd = /[ \t]+$/;
+        trimBoth = /^[ \t]+|[ \t]+$/g;
+      }
+      let res = match[1].replace(trimEnd, "");
+      let sep6 = " ";
+      let pos = line.lastIndex;
       while (match = line.exec(source)) {
-        if (match[1] === "") {
-          if (sep5 === "\n")
-            res += sep5;
+        const lm = match[1].replace(trimBoth, "");
+        if (lm === "") {
+          if (sep6 === "\n")
+            res += sep6;
           else
-            sep5 = "\n";
+            sep6 = "\n";
         } else {
-          res += sep5 + match[1];
-          sep5 = " ";
+          res += sep6 + lm;
+          sep6 = " ";
         }
         pos = line.lastIndex;
       }
       const last2 = /[ \t]*(.*)/sy;
       last2.lastIndex = pos;
       match = last2.exec(source);
-      return res + sep5 + (match?.[1] ?? "");
+      return res + sep6 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -11569,9 +11883,9 @@ var require_resolve_flow_scalar = __commonJS({
     function parseCharCode(source, offset, length, onError) {
       const cc = source.substr(offset, length);
       const ok5 = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
-      const code = ok5 ? parseInt(cc, 16) : NaN;
+      const code2 = ok5 ? parseInt(cc, 16) : NaN;
       try {
-        return String.fromCodePoint(code);
+        return String.fromCodePoint(code2);
       } catch {
         const raw = source.substr(offset - 2, length + 2);
         onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
@@ -11888,12 +12202,12 @@ var require_composer = __commonJS({
         this.prelude = [];
         this.errors = [];
         this.warnings = [];
-        this.onError = (source, code, message, warning) => {
+        this.onError = (source, code2, message, warning) => {
           const pos = getErrorPos(source);
           if (warning)
-            this.warnings.push(new errors.YAMLWarning(pos, code, message));
+            this.warnings.push(new errors.YAMLWarning(pos, code2, message));
           else
-            this.errors.push(new errors.YAMLParseError(pos, code, message));
+            this.errors.push(new errors.YAMLParseError(pos, code2, message));
         };
         this.directives = new directives.Directives({ version: options.version || "1.2" });
         this.options = options;
@@ -12054,12 +12368,12 @@ var require_cst_scalar = __commonJS({
     var stringifyString = require_stringifyString();
     function resolveAsScalar(token, strict = true, onError) {
       if (token) {
-        const _onError = (pos, code, message) => {
+        const _onError = (pos, code2, message) => {
           const offset = typeof pos === "number" ? pos : Array.isArray(pos) ? pos[0] : pos.offset;
           if (onError)
-            onError(offset, code, message);
+            onError(offset, code2, message);
           else
-            throw new errors.YAMLParseError([offset, offset + 1], code, message);
+            throw new errors.YAMLParseError([offset, offset + 1], code2, message);
         };
         switch (token.type) {
           case "scalar":
@@ -12118,10 +12432,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header2 = token.props[0];
-            if (header2.type !== "block-scalar-header")
+            const header = token.props[0];
+            if (header.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -12153,10 +12467,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header2 = token.props[0];
-        if (header2.type !== "block-scalar-header")
+        const header = token.props[0];
+        if (header.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header2.source = head;
+        header.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -12272,14 +12586,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep5, value }) {
+    function stringifyItem({ start, key, sep: sep6, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep5)
-        for (const st of sep5)
+      if (sep6)
+        for (const st of sep6)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -13441,18 +13755,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep5;
+          let sep6;
           if (scalar.end) {
-            sep5 = scalar.end;
-            sep5.push(this.sourceToken);
+            sep6 = scalar.end;
+            sep6.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep5 = [this.sourceToken];
+            sep6 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep5 }]
+            items: [{ start, key: scalar, sep: sep6 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -13605,15 +13919,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep5 = it.sep;
-                  sep5.push(this.sourceToken);
+                  const sep6 = it.sep;
+                  sep6.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep5 }]
+                    items: [{ start: start2, key, sep: sep6 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -13807,13 +14121,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep5 = fc.end.splice(1, fc.end.length);
-            sep5.push(this.sourceToken);
+            const sep6 = fc.end.splice(1, fc.end.length);
+            sep6.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep5 }]
+              items: [{ start, key: fc, sep: sep6 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -14681,18 +14995,18 @@ var ParseStatus = class _ParseStatus {
     if (this.value !== "aborted")
       this.value = "aborted";
   }
-  static mergeArray(status, results) {
+  static mergeArray(status2, results) {
     const arrayValue = [];
     for (const s of results) {
       if (s.status === "aborted")
         return INVALID;
       if (s.status === "dirty")
-        status.dirty();
+        status2.dirty();
       arrayValue.push(s.value);
     }
-    return { status: status.value, value: arrayValue };
+    return { status: status2.value, value: arrayValue };
   }
-  static async mergeObjectAsync(status, pairs) {
+  static async mergeObjectAsync(status2, pairs) {
     const syncPairs = [];
     for (const pair of pairs) {
       const key = await pair.key;
@@ -14702,9 +15016,9 @@ var ParseStatus = class _ParseStatus {
         value
       });
     }
-    return _ParseStatus.mergeObjectSync(status, syncPairs);
+    return _ParseStatus.mergeObjectSync(status2, syncPairs);
   }
-  static mergeObjectSync(status, pairs) {
+  static mergeObjectSync(status2, pairs) {
     const finalObject = {};
     for (const pair of pairs) {
       const { key, value } = pair;
@@ -14713,14 +15027,14 @@ var ParseStatus = class _ParseStatus {
       if (value.status === "aborted")
         return INVALID;
       if (key.status === "dirty")
-        status.dirty();
+        status2.dirty();
       if (value.status === "dirty")
-        status.dirty();
+        status2.dirty();
       if (key.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
         finalObject[key.value] = value.value;
       }
     }
-    return { status: status.value, value: finalObject };
+    return { status: status2.value, value: finalObject };
   }
 };
 var INVALID = Object.freeze({
@@ -15138,10 +15452,10 @@ function isValidJWT(jwt, alg) {
   if (!jwtRegex.test(jwt))
     return false;
   try {
-    const [header2] = jwt.split(".");
-    if (!header2)
+    const [header] = jwt.split(".");
+    if (!header)
       return false;
-    const base642 = header2.replace(/-/g, "+").replace(/_/g, "/").padEnd(header2.length + (4 - header2.length % 4) % 4, "=");
+    const base642 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
     const decoded = JSON.parse(atob(base642));
     if (typeof decoded !== "object" || decoded === null)
       return false;
@@ -15180,7 +15494,7 @@ var ZodString = class _ZodString2 extends ZodType {
       });
       return INVALID;
     }
-    const status = new ParseStatus();
+    const status2 = new ParseStatus();
     let ctx = void 0;
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
@@ -15194,7 +15508,7 @@ var ZodString = class _ZodString2 extends ZodType {
             exact: false,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "max") {
         if (input.data.length > check2.value) {
@@ -15207,7 +15521,7 @@ var ZodString = class _ZodString2 extends ZodType {
             exact: false,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "length") {
         const tooBig = input.data.length > check2.value;
@@ -15233,7 +15547,7 @@ var ZodString = class _ZodString2 extends ZodType {
               message: check2.message
             });
           }
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "email") {
         if (!emailRegex.test(input.data)) {
@@ -15243,7 +15557,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "emoji") {
         if (!emojiRegex) {
@@ -15256,7 +15570,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "uuid") {
         if (!uuidRegex.test(input.data)) {
@@ -15266,7 +15580,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "nanoid") {
         if (!nanoidRegex.test(input.data)) {
@@ -15276,7 +15590,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "cuid") {
         if (!cuidRegex.test(input.data)) {
@@ -15286,7 +15600,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "cuid2") {
         if (!cuid2Regex.test(input.data)) {
@@ -15296,7 +15610,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "ulid") {
         if (!ulidRegex.test(input.data)) {
@@ -15306,7 +15620,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "url") {
         try {
@@ -15318,7 +15632,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "regex") {
         check2.regex.lastIndex = 0;
@@ -15330,7 +15644,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "trim") {
         input.data = input.data.trim();
@@ -15342,7 +15656,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: { includes: check2.value, position: check2.position },
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "toLowerCase") {
         input.data = input.data.toLowerCase();
@@ -15356,7 +15670,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: { startsWith: check2.value },
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "endsWith") {
         if (!input.data.endsWith(check2.value)) {
@@ -15366,7 +15680,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: { endsWith: check2.value },
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "datetime") {
         const regex = datetimeRegex(check2);
@@ -15377,7 +15691,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: "datetime",
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "date") {
         const regex = dateRegex;
@@ -15388,7 +15702,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: "date",
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "time") {
         const regex = timeRegex(check2);
@@ -15399,7 +15713,7 @@ var ZodString = class _ZodString2 extends ZodType {
             validation: "time",
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "duration") {
         if (!durationRegex.test(input.data)) {
@@ -15409,7 +15723,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "ip") {
         if (!isValidIP(input.data, check2.version)) {
@@ -15419,7 +15733,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "jwt") {
         if (!isValidJWT(input.data, check2.alg)) {
@@ -15429,7 +15743,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "cidr") {
         if (!isValidCidr(input.data, check2.version)) {
@@ -15439,7 +15753,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "base64") {
         if (!base64Regex.test(input.data)) {
@@ -15449,7 +15763,7 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "base64url") {
         if (!base64urlRegex.test(input.data)) {
@@ -15459,13 +15773,13 @@ var ZodString = class _ZodString2 extends ZodType {
             code: ZodIssueCode.invalid_string,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else {
         util.assertNever(check2);
       }
     }
-    return { status: status.value, value: input.data };
+    return { status: status2.value, value: input.data };
   }
   _regex(regex, validation, message) {
     return this.refinement((data) => regex.test(data), {
@@ -15741,7 +16055,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
       return INVALID;
     }
     let ctx = void 0;
-    const status = new ParseStatus();
+    const status2 = new ParseStatus();
     for (const check2 of this._def.checks) {
       if (check2.kind === "int") {
         if (!util.isInteger(input.data)) {
@@ -15752,7 +16066,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
             received: "float",
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "min") {
         const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
@@ -15766,7 +16080,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
             exact: false,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "max") {
         const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
@@ -15780,7 +16094,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
             exact: false,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "multipleOf") {
         if (floatSafeRemainder(input.data, check2.value) !== 0) {
@@ -15790,7 +16104,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
             multipleOf: check2.value,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "finite") {
         if (!Number.isFinite(input.data)) {
@@ -15799,13 +16113,13 @@ var ZodNumber = class _ZodNumber extends ZodType {
             code: ZodIssueCode.not_finite,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else {
         util.assertNever(check2);
       }
     }
-    return { status: status.value, value: input.data };
+    return { status: status2.value, value: input.data };
   }
   gte(value, message) {
     return this.setLimit("min", value, true, errorUtil.toString(message));
@@ -15970,7 +16284,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
       return this._getInvalidInput(input);
     }
     let ctx = void 0;
-    const status = new ParseStatus();
+    const status2 = new ParseStatus();
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
         const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
@@ -15983,7 +16297,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
             inclusive: check2.inclusive,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "max") {
         const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
@@ -15996,7 +16310,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
             inclusive: check2.inclusive,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "multipleOf") {
         if (input.data % check2.value !== BigInt(0)) {
@@ -16006,13 +16320,13 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
             multipleOf: check2.value,
             message: check2.message
           });
-          status.dirty();
+          status2.dirty();
         }
       } else {
         util.assertNever(check2);
       }
     }
-    return { status: status.value, value: input.data };
+    return { status: status2.value, value: input.data };
   }
   _getInvalidInput(input) {
     const ctx = this._getOrReturnCtx(input);
@@ -16170,7 +16484,7 @@ var ZodDate = class _ZodDate extends ZodType {
       });
       return INVALID;
     }
-    const status = new ParseStatus();
+    const status2 = new ParseStatus();
     let ctx = void 0;
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
@@ -16184,7 +16498,7 @@ var ZodDate = class _ZodDate extends ZodType {
             minimum: check2.value,
             type: "date"
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (check2.kind === "max") {
         if (input.data.getTime() > check2.value) {
@@ -16197,14 +16511,14 @@ var ZodDate = class _ZodDate extends ZodType {
             maximum: check2.value,
             type: "date"
           });
-          status.dirty();
+          status2.dirty();
         }
       } else {
         util.assertNever(check2);
       }
     }
     return {
-      status: status.value,
+      status: status2.value,
       value: new Date(input.data.getTime())
     };
   }
@@ -16390,7 +16704,7 @@ ZodVoid.create = (params) => {
 };
 var ZodArray = class _ZodArray extends ZodType {
   _parse(input) {
-    const { ctx, status } = this._processInputParams(input);
+    const { ctx, status: status2 } = this._processInputParams(input);
     const def = this._def;
     if (ctx.parsedType !== ZodParsedType.array) {
       addIssueToContext(ctx, {
@@ -16413,7 +16727,7 @@ var ZodArray = class _ZodArray extends ZodType {
           exact: true,
           message: def.exactLength.message
         });
-        status.dirty();
+        status2.dirty();
       }
     }
     if (def.minLength !== null) {
@@ -16426,7 +16740,7 @@ var ZodArray = class _ZodArray extends ZodType {
           exact: false,
           message: def.minLength.message
         });
-        status.dirty();
+        status2.dirty();
       }
     }
     if (def.maxLength !== null) {
@@ -16439,20 +16753,20 @@ var ZodArray = class _ZodArray extends ZodType {
           exact: false,
           message: def.maxLength.message
         });
-        status.dirty();
+        status2.dirty();
       }
     }
     if (ctx.common.async) {
       return Promise.all([...ctx.data].map((item, i) => {
         return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
       })).then((result3) => {
-        return ParseStatus.mergeArray(status, result3);
+        return ParseStatus.mergeArray(status2, result3);
       });
     }
     const result2 = [...ctx.data].map((item, i) => {
       return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
     });
-    return ParseStatus.mergeArray(status, result2);
+    return ParseStatus.mergeArray(status2, result2);
   }
   get element() {
     return this._def.type;
@@ -16541,7 +16855,7 @@ var ZodObject = class _ZodObject extends ZodType {
       });
       return INVALID;
     }
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     const { shape, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
     if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
@@ -16576,7 +16890,7 @@ var ZodObject = class _ZodObject extends ZodType {
             code: ZodIssueCode.unrecognized_keys,
             keys: extraKeys
           });
-          status.dirty();
+          status2.dirty();
         }
       } else if (unknownKeys === "strip") ; else {
         throw new Error(`Internal ZodObject error: invalid unknownKeys value.`);
@@ -16609,10 +16923,10 @@ var ZodObject = class _ZodObject extends ZodType {
         }
         return syncPairs;
       }).then((syncPairs) => {
-        return ParseStatus.mergeObjectSync(status, syncPairs);
+        return ParseStatus.mergeObjectSync(status2, syncPairs);
       });
     } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
+      return ParseStatus.mergeObjectSync(status2, pairs);
     }
   }
   get shape() {
@@ -17090,7 +17404,7 @@ function mergeValues(a, b) {
 }
 var ZodIntersection = class extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     const handleParsed = (parsedLeft, parsedRight) => {
       if (isAborted(parsedLeft) || isAborted(parsedRight)) {
         return INVALID;
@@ -17103,9 +17417,9 @@ var ZodIntersection = class extends ZodType {
         return INVALID;
       }
       if (isDirty(parsedLeft) || isDirty(parsedRight)) {
-        status.dirty();
+        status2.dirty();
       }
-      return { status: status.value, value: merged.data };
+      return { status: status2.value, value: merged.data };
     };
     if (ctx.common.async) {
       return Promise.all([
@@ -17143,7 +17457,7 @@ ZodIntersection.create = (left, right, params) => {
 };
 var ZodTuple = class _ZodTuple extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.array) {
       addIssueToContext(ctx, {
         code: ZodIssueCode.invalid_type,
@@ -17171,7 +17485,7 @@ var ZodTuple = class _ZodTuple extends ZodType {
         exact: false,
         type: "array"
       });
-      status.dirty();
+      status2.dirty();
     }
     const items = [...ctx.data].map((item, itemIndex) => {
       const schema = this._def.items[itemIndex] || this._def.rest;
@@ -17181,10 +17495,10 @@ var ZodTuple = class _ZodTuple extends ZodType {
     }).filter((x) => !!x);
     if (ctx.common.async) {
       return Promise.all(items).then((results) => {
-        return ParseStatus.mergeArray(status, results);
+        return ParseStatus.mergeArray(status2, results);
       });
     } else {
-      return ParseStatus.mergeArray(status, items);
+      return ParseStatus.mergeArray(status2, items);
     }
   }
   get items() {
@@ -17216,7 +17530,7 @@ var ZodRecord = class _ZodRecord extends ZodType {
     return this._def.valueType;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.object) {
       addIssueToContext(ctx, {
         code: ZodIssueCode.invalid_type,
@@ -17236,9 +17550,9 @@ var ZodRecord = class _ZodRecord extends ZodType {
       });
     }
     if (ctx.common.async) {
-      return ParseStatus.mergeObjectAsync(status, pairs);
+      return ParseStatus.mergeObjectAsync(status2, pairs);
     } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
+      return ParseStatus.mergeObjectSync(status2, pairs);
     }
   }
   get element() {
@@ -17269,7 +17583,7 @@ var ZodMap = class extends ZodType {
     return this._def.valueType;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.map) {
       addIssueToContext(ctx, {
         code: ZodIssueCode.invalid_type,
@@ -17296,11 +17610,11 @@ var ZodMap = class extends ZodType {
             return INVALID;
           }
           if (key.status === "dirty" || value.status === "dirty") {
-            status.dirty();
+            status2.dirty();
           }
           finalMap.set(key.value, value.value);
         }
-        return { status: status.value, value: finalMap };
+        return { status: status2.value, value: finalMap };
       });
     } else {
       const finalMap = /* @__PURE__ */ new Map();
@@ -17311,11 +17625,11 @@ var ZodMap = class extends ZodType {
           return INVALID;
         }
         if (key.status === "dirty" || value.status === "dirty") {
-          status.dirty();
+          status2.dirty();
         }
         finalMap.set(key.value, value.value);
       }
-      return { status: status.value, value: finalMap };
+      return { status: status2.value, value: finalMap };
     }
   }
 };
@@ -17329,7 +17643,7 @@ ZodMap.create = (keyType, valueType, params) => {
 };
 var ZodSet = class _ZodSet extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.set) {
       addIssueToContext(ctx, {
         code: ZodIssueCode.invalid_type,
@@ -17349,7 +17663,7 @@ var ZodSet = class _ZodSet extends ZodType {
           exact: false,
           message: def.minSize.message
         });
-        status.dirty();
+        status2.dirty();
       }
     }
     if (def.maxSize !== null) {
@@ -17362,7 +17676,7 @@ var ZodSet = class _ZodSet extends ZodType {
           exact: false,
           message: def.maxSize.message
         });
-        status.dirty();
+        status2.dirty();
       }
     }
     const valueType = this._def.valueType;
@@ -17372,10 +17686,10 @@ var ZodSet = class _ZodSet extends ZodType {
         if (element.status === "aborted")
           return INVALID;
         if (element.status === "dirty")
-          status.dirty();
+          status2.dirty();
         parsedSet.add(element.value);
       }
-      return { status: status.value, value: parsedSet };
+      return { status: status2.value, value: parsedSet };
     }
     const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
     if (ctx.common.async) {
@@ -17706,15 +18020,15 @@ var ZodEffects = class extends ZodType {
     return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     const effect = this._def.effect || null;
     const checkCtx = {
       addIssue: (arg) => {
         addIssueToContext(ctx, arg);
         if (arg.fatal) {
-          status.abort();
+          status2.abort();
         } else {
-          status.dirty();
+          status2.dirty();
         }
       },
       get path() {
@@ -17726,7 +18040,7 @@ var ZodEffects = class extends ZodType {
       const processed = effect.transform(ctx.data, checkCtx);
       if (ctx.common.async) {
         return Promise.resolve(processed).then(async (processed2) => {
-          if (status.value === "aborted")
+          if (status2.value === "aborted")
             return INVALID;
           const result2 = await this._def.schema._parseAsync({
             data: processed2,
@@ -17737,12 +18051,12 @@ var ZodEffects = class extends ZodType {
             return INVALID;
           if (result2.status === "dirty")
             return DIRTY(result2.value);
-          if (status.value === "dirty")
+          if (status2.value === "dirty")
             return DIRTY(result2.value);
           return result2;
         });
       } else {
-        if (status.value === "aborted")
+        if (status2.value === "aborted")
           return INVALID;
         const result2 = this._def.schema._parseSync({
           data: processed,
@@ -17753,7 +18067,7 @@ var ZodEffects = class extends ZodType {
           return INVALID;
         if (result2.status === "dirty")
           return DIRTY(result2.value);
-        if (status.value === "dirty")
+        if (status2.value === "dirty")
           return DIRTY(result2.value);
         return result2;
       }
@@ -17778,17 +18092,17 @@ var ZodEffects = class extends ZodType {
         if (inner.status === "aborted")
           return INVALID;
         if (inner.status === "dirty")
-          status.dirty();
+          status2.dirty();
         executeRefinement(inner.value);
-        return { status: status.value, value: inner.value };
+        return { status: status2.value, value: inner.value };
       } else {
         return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((inner) => {
           if (inner.status === "aborted")
             return INVALID;
           if (inner.status === "dirty")
-            status.dirty();
+            status2.dirty();
           return executeRefinement(inner.value).then(() => {
-            return { status: status.value, value: inner.value };
+            return { status: status2.value, value: inner.value };
           });
         });
       }
@@ -17806,13 +18120,13 @@ var ZodEffects = class extends ZodType {
         if (result2 instanceof Promise) {
           throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
         }
-        return { status: status.value, value: result2 };
+        return { status: status2.value, value: result2 };
       } else {
         return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base) => {
           if (!isValid(base))
             return INVALID;
           return Promise.resolve(effect.transform(base.value, checkCtx)).then((result2) => ({
-            status: status.value,
+            status: status2.value,
             value: result2
           }));
         });
@@ -17991,7 +18305,7 @@ var ZodBranded = class extends ZodType {
 };
 var ZodPipeline = class _ZodPipeline extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status: status2, ctx } = this._processInputParams(input);
     if (ctx.common.async) {
       const handleAsync = async () => {
         const inResult = await this._def.in._parseAsync({
@@ -18002,7 +18316,7 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
         if (inResult.status === "aborted")
           return INVALID;
         if (inResult.status === "dirty") {
-          status.dirty();
+          status2.dirty();
           return DIRTY(inResult.value);
         } else {
           return this._def.out._parseAsync({
@@ -18022,7 +18336,7 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
       if (inResult.status === "aborted")
         return INVALID;
       if (inResult.status === "dirty") {
-        status.dirty();
+        status2.dirty();
         return {
           status: "dirty",
           value: inResult.value
@@ -19794,10 +20108,10 @@ function isValidJWT2(token, algorithm = null) {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
       return false;
-    const [header2] = tokensParts;
-    if (!header2)
+    const [header] = tokensParts;
+    if (!header)
       return false;
-    const parsedHeader = JSON.parse(atob(header2));
+    const parsedHeader = JSON.parse(atob(header));
     if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT")
       return false;
     if (!parsedHeader.alg)
@@ -22171,16 +22485,32 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
+function getDotPath(path) {
+  if (path.length === 0) {
+    return "object root";
+  }
+  return path.reduce((acc, seg, index) => {
+    if (index === 0) {
+      return String(seg);
+    }
+    if (typeof seg === "number") {
+      return `${acc}[${seg}]`;
+    }
+    return `${acc}.${seg}`;
+  }, "");
+}
 function getParseErrorMessage(error2) {
   if (error2 && typeof error2 === "object") {
+    if ("issues" in error2 && Array.isArray(error2.issues) && error2.issues.length > 0) {
+      return error2.issues.map((i) => {
+        if (!i.path?.length) {
+          return i.message;
+        }
+        return `${i.message} at ${getDotPath(i.path)}`;
+      }).join("\n");
+    }
     if ("message" in error2 && typeof error2.message === "string") {
       return error2.message;
-    }
-    if ("issues" in error2 && Array.isArray(error2.issues) && error2.issues.length > 0) {
-      const firstIssue = error2.issues[0];
-      if (firstIssue && typeof firstIssue === "object" && "message" in firstIssue) {
-        return String(firstIssue.message);
-      }
     }
     try {
       return JSON.stringify(error2);
@@ -24424,23 +24754,23 @@ union([
   CreateTaskResultSchema
 ]);
 var McpError = class _McpError extends Error {
-  constructor(code, message, data) {
-    super(`MCP error ${code}: ${message}`);
-    this.code = code;
+  constructor(code2, message, data) {
+    super(`MCP error ${code2}: ${message}`);
+    this.code = code2;
     this.data = data;
     this.name = "McpError";
   }
   /**
    * Factory method to create the appropriate error type based on the error code and data
    */
-  static fromError(code, message, data) {
-    if (code === ErrorCode.UrlElicitationRequired && data) {
+  static fromError(code2, message, data) {
+    if (code2 === ErrorCode.UrlElicitationRequired && data) {
       const errorData = data;
       if (errorData.elicitations) {
         return new UrlElicitationRequiredError(errorData.elicitations, message);
       }
     }
-    return new _McpError(code, message, data);
+    return new _McpError(code2, message, data);
   }
 };
 var UrlElicitationRequiredError = class extends McpError {
@@ -24455,8 +24785,8 @@ var UrlElicitationRequiredError = class extends McpError {
 };
 
 // ../../../../node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
-function isTerminal(status) {
-  return status === "completed" || status === "failed" || status === "cancelled";
+function isTerminal(status2) {
+  return status2 === "completed" || status2 === "failed" || status2 === "cancelled";
 }
 
 // ../../../../node_modules/zod-to-json-schema/dist/esm/Options.js
@@ -25819,6 +26149,9 @@ var Protocol = class {
       this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
         const handleTaskResult = async () => {
           const taskId = request.params.taskId;
+          if (!await this._taskStore.getTask(taskId, extra.sessionId)) {
+            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
+          }
           if (this._taskMessageQueue) {
             let queuedMessage;
             while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
@@ -25849,12 +26182,12 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
           }
           if (!isTerminal(task.status)) {
-            await this._waitForTaskUpdate(taskId, extra.signal);
+            await this._waitForTaskUpdate(taskId, extra.signal, extra.sessionId);
             return await handleTaskResult();
           }
           if (isTerminal(task.status)) {
             const result2 = await this._taskStore.getTaskResult(taskId, extra.sessionId);
-            this._clearTaskQueue(taskId);
+            this._clearTaskQueue(taskId, extra.sessionId);
             return {
               ...result2,
               _meta: {
@@ -25891,7 +26224,7 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
           }
           await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId);
+          this._clearTaskQueue(request.params.taskId, extra.sessionId);
           const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
           if (!cancelledTask) {
             throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
@@ -26019,6 +26352,19 @@ var Protocol = class {
     const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
     const capturedTransport = this._transport;
     const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
+    const sessionId = capturedTransport?.sessionId;
+    const store = this._taskStore;
+    let relatedTaskFound = true;
+    let relatedTaskLookup;
+    if (relatedTaskId && store && this._taskMessageQueue && sessionId !== void 0) {
+      relatedTaskFound = false;
+      relatedTaskLookup = (async () => {
+        if (!await store.getTask(relatedTaskId, sessionId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Task not found: ${relatedTaskId}`);
+        }
+        relatedTaskFound = true;
+      })();
+    }
     if (handler === void 0) {
       const errorResponse = {
         jsonrpc: "2.0",
@@ -26028,7 +26374,10 @@ var Protocol = class {
           message: "Method not found"
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && relatedTaskLookup) {
+        const queuedError = { type: "error", message: errorResponse, timestamp: Date.now() };
+        relatedTaskLookup.then(() => this._enqueueTaskMessage(relatedTaskId, queuedError, sessionId), () => capturedTransport?.send(errorResponse)).catch((error2) => this._onerror(new Error(`Failed to send an error response: ${error2}`)));
+      } else if (relatedTaskId && this._taskMessageQueue) {
         this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -26079,7 +26428,10 @@ var Protocol = class {
       closeSSEStream: extra?.closeSSEStream,
       closeStandaloneSSEStream: extra?.closeStandaloneSSEStream
     };
-    Promise.resolve().then(() => {
+    (relatedTaskLookup ?? Promise.resolve()).then(() => {
+      if (relatedTaskLookup && abortController.signal.aborted) {
+        throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
+      }
       if (taskCreationParams) {
         this.assertTaskHandlerCapability(request.method);
       }
@@ -26114,7 +26466,7 @@ var Protocol = class {
           ...error2["data"] !== void 0 && { data: error2["data"] }
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && this._taskMessageQueue && relatedTaskFound) {
         await this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -26278,7 +26630,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -26295,7 +26647,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -26373,7 +26725,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -26594,7 +26946,7 @@ var Protocol = class {
       throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
     }
     const maxQueueSize = this._options?.maxTaskQueueSize;
-    await this._taskMessageQueue.enqueue(taskId, message, sessionId, maxQueueSize);
+    await this._taskMessageQueue.enqueue(taskId, message, sessionId ?? this._transport?.sessionId, maxQueueSize);
   }
   /**
    * Clears the message queue for a task and rejects any pending request resolvers.
@@ -26623,23 +26975,24 @@ var Protocol = class {
    * Uses polling to check for updates at the task's configured poll interval.
    * @param taskId The task ID to wait for
    * @param signal Abort signal to cancel the wait
+   * @param sessionId Session of the request that waits, passed to the task store
    * @returns Promise that resolves when an update occurs or rejects if aborted
    */
-  async _waitForTaskUpdate(taskId, signal) {
+  async _waitForTaskUpdate(taskId, signal, sessionId) {
     let interval2 = this._options?.defaultTaskPollInterval ?? 1e3;
     try {
-      const task = await this._taskStore?.getTask(taskId);
+      const task = await this._taskStore?.getTask(taskId, sessionId);
       if (task?.pollInterval) {
         interval2 = task.pollInterval;
       }
     } catch {
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve, interval2);
+      const timeoutId = setTimeout(resolve2, interval2);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -26668,8 +27021,8 @@ var Protocol = class {
         }
         return task;
       },
-      storeTaskResult: async (taskId, status, result2) => {
-        await taskStore.storeTaskResult(taskId, status, result2, sessionId);
+      storeTaskResult: async (taskId, status2, result2) => {
+        await taskStore.storeTaskResult(taskId, status2, result2, sessionId);
         const task = await taskStore.getTask(taskId, sessionId);
         if (task) {
           const notification = TaskStatusNotificationSchema.parse({
@@ -26685,15 +27038,15 @@ var Protocol = class {
       getTaskResult: (taskId) => {
         return taskStore.getTaskResult(taskId, sessionId);
       },
-      updateTaskStatus: async (taskId, status, statusMessage) => {
+      updateTaskStatus: async (taskId, status2, statusMessage) => {
         const task = await taskStore.getTask(taskId, sessionId);
         if (!task) {
           throw new McpError(ErrorCode.InvalidParams, `Task "${taskId}" not found - it may have been cleaned up`);
         }
         if (isTerminal(task.status)) {
-          throw new McpError(ErrorCode.InvalidParams, `Cannot update task "${taskId}" from terminal status "${task.status}" to "${status}". Terminal states (completed, failed, cancelled) cannot transition to other states.`);
+          throw new McpError(ErrorCode.InvalidParams, `Cannot update task "${taskId}" from terminal status "${task.status}" to "${status2}". Terminal states (completed, failed, cancelled) cannot transition to other states.`);
         }
-        await taskStore.updateTaskStatus(taskId, status, statusMessage, sessionId);
+        await taskStore.updateTaskStatus(taskId, status2, statusMessage, sessionId);
         const updatedTask = await taskStore.getTask(taskId, sessionId);
         if (updatedTask) {
           const notification = TaskStatusNotificationSchema.parse({
@@ -27110,16 +27463,7 @@ var Server = class extends Protocol {
     if (!methodSchema) {
       throw new Error("Schema is missing a method literal");
     }
-    let methodValue;
-    if (isZ4Schema(methodSchema)) {
-      const v4Schema = methodSchema;
-      const v4Def = v4Schema._zod?.def;
-      methodValue = v4Def?.value ?? v4Schema.value;
-    } else {
-      const v3Schema = methodSchema;
-      const legacyDef = v3Schema._def;
-      methodValue = legacyDef?.value ?? v3Schema.value;
-    }
+    const methodValue = getLiteralValue(methodSchema);
     if (typeof methodValue !== "string") {
       throw new Error("Schema method literal must be a string");
     }
@@ -27503,6 +27847,42 @@ var ExperimentalMcpServerTasks = class {
 };
 
 // ../../../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
+function toolInputElementCount(value, max) {
+  let count = 0;
+  const stack = [value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== "object")
+      continue;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        if (++count > max)
+          return count;
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    } else {
+      for (const key in node) {
+        if (!Object.prototype.hasOwnProperty.call(node, key))
+          continue;
+        if (++count > max)
+          return count;
+        const child = node[key];
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+function resolveMaxToolInputElements(value) {
+  if (value === void 0 || value === Infinity)
+    return void 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 1) {
+    throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
+  }
+  return value;
+}
 var McpServer = class {
   constructor(serverInfo, options) {
     this._registeredResources = {};
@@ -27514,6 +27894,7 @@ var McpServer = class {
     this._resourceHandlersInitialized = false;
     this._promptHandlersInitialized = false;
     this.server = new Server(serverInfo, options);
+    this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
   }
   /**
    * Access experimental features.
@@ -27644,12 +28025,15 @@ var McpServer = class {
    * Validates tool input arguments against the tool's input schema.
    */
   async validateToolInput(tool, args, toolName) {
+    if (this._maxToolInputElements !== void 0 && toolInputElementCount(args, this._maxToolInputElements) > this._maxToolInputElements) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for tool ${toolName}: arguments contain more than the maximum of ${this._maxToolInputElements} elements`);
+    }
     if (!tool.inputSchema) {
       return void 0;
     }
     const inputObj = normalizeObjectSchema(tool.inputSchema);
     const schemaToParse = inputObj ?? tool.inputSchema;
-    const parseResult = await safeParseAsync2(schemaToParse, args);
+    const parseResult = await safeParseAsync2(schemaToParse, args ?? {});
     if (!parseResult.success) {
       const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error2);
@@ -27726,7 +28110,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -27887,7 +28271,7 @@ var McpServer = class {
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync2(argsObj, request.params.arguments);
+        const parseResult = await safeParseAsync2(argsObj, request.params.arguments ?? {});
         if (!parseResult.success) {
           const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error2);
@@ -28295,8 +28679,17 @@ var EMPTY_COMPLETION_RESULT = {
 };
 
 // ../../../../node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 var ReadBuffer = class {
+  constructor(options) {
+    this._maxBufferSize = options?.maxBufferSize ?? STDIO_DEFAULT_MAX_BUFFER_SIZE;
+  }
   append(chunk) {
+    const newSize = (this._buffer?.length ?? 0) + chunk.length;
+    if (newSize > this._maxBufferSize) {
+      this.clear();
+      throw new Error(`ReadBuffer exceeded maximum size of ${this._maxBufferSize} bytes`);
+    }
     this._buffer = this._buffer ? Buffer.concat([this._buffer, chunk]) : chunk;
   }
   readMessage() {
@@ -28324,18 +28717,24 @@ function serializeMessage(message) {
 
 // ../../../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 var StdioServerTransport = class {
-  constructor(_stdin = process2.stdin, _stdout = process2.stdout) {
+  constructor(_stdin = process2.stdin, _stdout = process2.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
-    this._readBuffer = new ReadBuffer();
     this._started = false;
     this._ondata = (chunk) => {
-      this._readBuffer.append(chunk);
-      this.processReadBuffer();
+      try {
+        this._readBuffer.append(chunk);
+        this.processReadBuffer();
+      } catch (error2) {
+        this.onerror?.(error2);
+        this.close().catch(() => {
+        });
+      }
     };
     this._onerror = (error2) => {
       this.onerror?.(error2);
     };
+    this._readBuffer = new ReadBuffer({ maxBufferSize: options?.maxBufferSize });
   }
   /**
    * Starts listening for messages on stdin.
@@ -28372,12 +28771,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
@@ -28658,6 +29057,14 @@ var PROMPTS = [
     description: "Open a marvin widget as a rendered panel with this project's own data \u2014 renders the bound ui:// widget plus its live payload into one self-contained file under .marvin/preview/ and opens it, on any host including the terminal.",
     skill: "widget-preview"
   },
+  {
+    // Skill-backed (three doors) — the orchestrator of the autopilot pipeline. The
+    // skill acts on a run only through the marvin-pipe CLI, which it locates with the
+    // `pipeline` tool's `paths` action; the engine, not this prompt, drives the run.
+    name: "autopilot",
+    description: "Hand a task to marvin's autonomous pipeline and orchestrate it to a merge-ready PR \u2014 a detached engine drives English-only child sessions (planner, sealed acceptance tests, executor, deterministic gates, read-only verifier, CI, retro); this session answers the engine's judgments, asks the user only what nothing else settles, and reports in the user's language. Pass the task, or `resume [run-id]`.",
+    skill: "autopilot"
+  },
   // ── adr lifecycle (ADR-0027; creation stays on the bare `adr` above) ─
   {
     name: "adr-review",
@@ -28921,6 +29328,17 @@ function loadEnv(env2 = process.env) {
     metricsDir
   };
 }
+function validatePrefix(prefix) {
+  if (prefix !== prefix.trim()) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (prefix.length === 0) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+  if (/[(),[*\n]/.test(prefix)) {
+    throw new Error(`invalid allowlist prefix: ${prefix}`);
+  }
+}
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
@@ -28987,6 +29405,26 @@ var HandoffFrontmatter = external_exports.object({
   spec_slug: external_exports.string().min(1).optional(),
   created: external_exports.string().datetime()
 });
+var STANDARD_GATE_NAMES = ["test", "lint", "typecheck", "build"];
+var RESERVED_GATE_PREFIXES = ["prepare:", "oracle:"];
+var GateExtra = external_exports.object({
+  name: external_exports.string(),
+  command: external_exports.string().min(1)
+}).superRefine((gate, ctx) => {
+  const name = gate.name.toLowerCase();
+  const problem = RESERVED_GATE_PREFIXES.some((p) => name.startsWith(p)) ? `gate name "${gate.name}" is reserved: names starting with ${RESERVED_GATE_PREFIXES.join(" or ")} belong to the pipeline's gate stage` : STANDARD_GATE_NAMES.includes(name) ? `gate name "${gate.name}" is a standard gate (${STANDARD_GATE_NAMES.join(", ")}); extra gates need their own name` : /^[a-z0-9][a-z0-9_.-]*$/i.test(gate.name) ? null : `gate name "${gate.name}" must start with a letter or digit and use only letters, digits, "_", "." and "-"`;
+  if (problem) ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: problem, path: ["name"] });
+});
+var GateExtraList = external_exports.array(GateExtra).superRefine((extra, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const gate of extra) {
+    const name = gate.name.toLowerCase();
+    if (seen.has(name)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate gate name "${gate.name}"` });
+    }
+    seen.add(name);
+  }
+});
 var GateCommands = external_exports.object({
   test: external_exports.string().min(1).optional(),
   lint: external_exports.string().min(1).optional(),
@@ -29008,7 +29446,14 @@ var GateCommands = external_exports.object({
    *
    * Placeholders: `{file}`, `{name}`, `{ref}`. See docs/configuration.md.
    */
-  test_one: external_exports.string().min(1).optional()
+  test_one: external_exports.string().min(1).optional(),
+  /**
+   * Project gates that run AFTER the four standard ones, one at a time, in declaration order
+   * (autopilot pipeline). Unlike `test`/`lint`/`typecheck`/`build` they are never detected from
+   * the stack, and `verify`'s `only` and explicit per-call `gates` leave them out: the project
+   * names them and `verify` runs them last. Entries are checked by `GateExtra`.
+   */
+  extra: GateExtraList.default([])
 });
 var AdrConfig = external_exports.object({
   dir: external_exports.string().min(1).optional(),
@@ -29022,6 +29467,64 @@ var ScopeConfig = external_exports.object({
 });
 var UsageConfig = external_exports.object({
   enabled: external_exports.boolean().default(true)
+});
+var regexField = (field) => external_exports.string().min(1).superRefine((value, ctx) => {
+  try {
+    new RegExp(value);
+  } catch (err3) {
+    const why = err3 instanceof Error ? err3.message : String(err3);
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `${field} is not a valid regular expression: ${why}`
+    });
+  }
+});
+var PipelineConfig = external_exports.object({
+  /** Run branch name; placeholders `{tracker}` and `{slug}`. */
+  branch_template: external_exports.string().min(1).default("feature/{tracker}--{slug}"),
+  /** Tracker id used in the branch name when the spec names none. */
+  tracker_default: external_exports.string().min(1).default("TBD"),
+  /** Command run once in a fresh run worktree before any child starts (e.g. `npm ci`). */
+  bootstrap: external_exports.string().min(1).nullable().default(null),
+  /** The lockfile the bootstrap installs from. */
+  lockfile: external_exports.string().min(1).nullable().default(null),
+  github: external_exports.object({
+    /** Command printing the GitHub token the pipeline's `gh` calls use. */
+    token_command: external_exports.string().min(1).nullable().default(null)
+  }).default({}),
+  /** Minutes without child output before the child counts as stalled. */
+  stall_minutes: external_exports.number().int().min(1).default(15),
+  /** Minutes after a push with no CI run appearing before the pipeline concludes there is no CI. */
+  no_ci_minutes: external_exports.number().int().min(1).default(10),
+  /** Minutes a single gate may run before it is killed. */
+  gate_timeout_minutes: external_exports.number().int().min(1).default(20),
+  /** Seconds between CI status polls. */
+  ci_poll_seconds: external_exports.number().int().min(1).default(60),
+  /** JavaScript regex over repo-relative paths: which files are tests (the test-author writes only these). */
+  test_path_pattern: regexField("test_path_pattern").default(
+    "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)"
+  ),
+  /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
+  scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /** Formatter run, with each written file appended, over files the pipeline itself writes. */
+  format_command: external_exports.string().min(1).nullable().default(null),
+  /** Project conventions handed to the verifier. */
+  conventions: external_exports.string().default(""),
+  /** Bash command prefixes the writing roles (planner, test-author, executor) may run. */
+  allowed_commands: external_exports.array(external_exports.string()).superRefine((list, ctx) => {
+    list.forEach((prefix, i) => {
+      try {
+        validatePrefix(prefix);
+      } catch (err3) {
+        const why = err3 instanceof Error ? err3.message : String(err3);
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `allowed_commands entry is not usable: ${why}`,
+          path: [i]
+        });
+      }
+    });
+  }).default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"])
 });
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
@@ -29059,7 +29562,9 @@ var Config = external_exports.object({
    * means the default ADR-0019 scheme; a template that renders an invalid
    * git ref falls back to that default at create time (with a warning).
    */
-  branch_template: external_exports.string().min(1).optional()
+  branch_template: external_exports.string().min(1).optional(),
+  /** Autopilot pipeline settings; absent means every default. */
+  pipeline: PipelineConfig.default({})
 });
 var ROLE_ORDER = ["wip", "review", "todo", "blocked", "done"];
 function orderedStatuses(config2) {
@@ -29069,14 +29574,14 @@ function firstOfRole(config2, role) {
   return config2.statuses.find((s) => s.role === role) ?? null;
 }
 function requireRole(config2, role) {
-  const status = firstOfRole(config2, role);
-  if (!status) throw new Error(`no status with role "${role}" is configured`);
-  return status;
+  const status2 = firstOfRole(config2, role);
+  if (!status2) throw new Error(`no status with role "${role}" is configured`);
+  return status2;
 }
 function roleOfStatus(config2, key) {
-  const status = config2.statuses.find((s) => s.key === key);
-  if (!status) throw new Error(`unknown status key "${key}"`);
-  return status.role;
+  const status2 = config2.statuses.find((s) => s.key === key);
+  if (!status2) throw new Error(`unknown status key "${key}"`);
+  return status2.role;
 }
 function statusKeys(config2) {
   return config2.statuses.map((s) => s.key);
@@ -29163,16 +29668,16 @@ function untrackedFiles(cwd, opts = {}) {
   if (!r.ok) return null;
   return r.value.split("\0").filter(Boolean);
 }
-function hashObjects(paths, cwd) {
-  if (paths.length === 0) return [];
+function hashObjects(paths2, cwd) {
+  if (paths2.length === 0) return [];
   const r = git(["hash-object", "--stdin-paths"], cwd, {
-    input: `${paths.join("\n")}
+    input: `${paths2.join("\n")}
 `,
     maxBuffer: WORKTREE_READ_MAX_BUFFER
   });
   if (!r.ok) return null;
   const ids = r.value.split("\n").map((s) => s.trim());
-  return ids.length === paths.length ? ids : null;
+  return ids.length === paths2.length ? ids : null;
 }
 function changedFilesForScope(projectRoot, base) {
   const ref = base && base.trim() ? base.trim() : "HEAD";
@@ -29248,11 +29753,11 @@ function partitionScope(changed, opts) {
 function describeExemptions(exempt) {
   const byPattern = /* @__PURE__ */ new Map();
   for (const e of exempt) {
-    const paths = byPattern.get(e.pattern);
-    if (paths) paths.push(e.path);
+    const paths2 = byPattern.get(e.pattern);
+    if (paths2) paths2.push(e.path);
     else byPattern.set(e.pattern, [e.path]);
   }
-  return [...byPattern].map(([pattern, paths]) => `\`${pattern}\` (${paths.length}): ${paths.join(", ")}`).join("; ");
+  return [...byPattern].map(([pattern, paths2]) => `\`${pattern}\` (${paths2.length}): ${paths2.join(", ")}`).join("; ");
 }
 function compileExemptions(patterns) {
   const matchers = [];
@@ -29315,10 +29820,22 @@ function loadConfig(configPath, projectDir) {
       const detected = defaultBranchFromOrigin(projectDir);
       if (detected) {
         config2.base_branch = detected;
-        return { config: config2, warning: null, settingWarnings: [], base_branch_source: "origin/HEAD" };
+        return {
+          config: config2,
+          warning: null,
+          settingWarnings: [],
+          pipelineIssues: [],
+          base_branch_source: "origin/HEAD"
+        };
       }
     }
-    return { config: config2, warning: null, settingWarnings: [], base_branch_source: "default" };
+    return {
+      config: config2,
+      warning: null,
+      settingWarnings: [],
+      pipelineIssues: [],
+      base_branch_source: "default"
+    };
   }
   let raw;
   try {
@@ -29329,6 +29846,7 @@ function loadConfig(configPath, projectDir) {
       config: Config.parse({}),
       warning: `failed to read config: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
@@ -29341,15 +29859,18 @@ function loadConfig(configPath, projectDir) {
       config: Config.parse({}),
       warning: `config.json is not valid JSON: ${reason}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
-  const parsed = Config.safeParse(json);
+  const { json: usable, issues: pipelineIssues } = isolatePipelineSettings(json);
+  const parsed = Config.safeParse(usable);
   if (!parsed.success) {
     return {
       config: Config.parse({}),
       warning: `config.json failed schema validation: ${parsed.error.message}`,
       settingWarnings: [],
+      pipelineIssues: [],
       base_branch_source: "default"
     };
   }
@@ -29358,8 +29879,37 @@ function loadConfig(configPath, projectDir) {
     config: parsed.data,
     warning: null,
     settingWarnings: neutraliseUnusableSettings(parsed.data),
+    pipelineIssues,
     base_branch_source: hasOwnBase ? "config" : "default"
   };
+}
+var isPlainObject3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var issuesAt = (error2, prefix) => error2.issues.map((i) => `${[prefix, ...i.path].join(".")}: ${i.message}`).join("; ");
+function isolatePipelineSettings(json) {
+  if (!isPlainObject3(json)) return { json, issues: [] };
+  let out = json;
+  const issues = [];
+  if (Object.hasOwn(out, "pipeline")) {
+    const parsed = PipelineConfig.safeParse(out.pipeline);
+    if (!parsed.success) {
+      const { pipeline: _dropped, ...rest } = out;
+      out = rest;
+      issues.push(
+        `\`pipeline\` is ignored \u2014 ${issuesAt(parsed.error, "pipeline")}. The pipeline will not start until it is fixed; its defaults are in force (\`/marvin:track-config\`).`
+      );
+    }
+  }
+  if (isPlainObject3(out.gates) && Object.hasOwn(out.gates, "extra")) {
+    const parsed = GateExtraList.safeParse(out.gates.extra);
+    if (!parsed.success) {
+      const { extra: _dropped, ...gates } = out.gates;
+      out = { ...out, gates };
+      issues.push(
+        `\`gates.extra\` is ignored \u2014 ${issuesAt(parsed.error, "gates.extra")}. No extra gate runs, and the pipeline will not start, until it is fixed.`
+      );
+    }
+  }
+  return { json: out, issues };
 }
 function neutraliseUnusableSettings(config2) {
   const warnings = [];
@@ -29446,7 +29996,7 @@ function updateConfigFile(configPath, patch) {
     if (Object.keys(scope).length === 0) delete raw.scope;
     else raw.scope = scope;
   }
-  const merged = Config.safeParse(raw);
+  const merged = Config.safeParse(isolatePipelineSettings(raw).json);
   if (!merged.success) {
     return { ok: false, error: `the merged config fails validation: ${zodIssues(merged.error)}` };
   }
@@ -29619,8 +30169,8 @@ function parseAdrFile(raw, filename, relPath) {
       "no status header found (neither a `| Status | \u2026 |` table row nor a `## Status` section)"
     );
   }
-  const status = normalizeStatus(statusSource.text);
-  if (!status) {
+  const status2 = normalizeStatus(statusSource.text);
+  if (!status2) {
     return fail2(
       "invalid-status",
       `status "${compact(statusSource.text)}" is not in the vocabulary (${ADR_STATUSES.join(" | ")})`
@@ -29633,7 +30183,7 @@ function parseAdrFile(raw, filename, relPath) {
       number: number3,
       slug,
       title,
-      status,
+      status: status2,
       date: extractDate(raw, statusSource.style),
       supersedes: links.supersedes,
       superseded_by: links.supersededBy,
@@ -29670,8 +30220,8 @@ function headingSection(raw, name) {
 }
 function normalizeStatus(text) {
   const plain = text.replace(/[*_]/g, "").trim().toLowerCase();
-  for (const status of ADR_STATUSES) {
-    if (plain.startsWith(status)) return status;
+  for (const status2 of ADR_STATUSES) {
+    if (plain.startsWith(status2)) return status2;
   }
   return null;
 }
@@ -29882,9 +30432,9 @@ function renderIndexBlock(corpus, dir, indexAbs) {
   const lines = ["| ADR | Title | Status | Date |", "| --- | ----- | ------ | ---- |"];
   for (const r of corpus.records) {
     const href = toPosix(relative(dirname(indexAbs), join(dir.abs, r.filename)));
-    const status = r.superseded_by.length ? `Superseded by ${r.superseded_by.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}` : STATUS_LABEL[r.status];
+    const status2 = r.superseded_by.length ? `Superseded by ${r.superseded_by.map((n) => `ADR-${formatAdrId(n)}`).join(", ")}` : STATUS_LABEL[r.status];
     lines.push(
-      `| [${formatAdrId(r.number)}](${href}) | ${r.title} | ${status} | ${r.date ?? "\u2014"} |`
+      `| [${formatAdrId(r.number)}](${href}) | ${r.title} | ${status2} | ${r.date ?? "\u2014"} |`
     );
   }
   return lines.join("\n");
@@ -30560,11 +31110,11 @@ function createTask(tasksDir, config2, input) {
     }
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const status = requireRole(config2, "todo").key;
+  const status2 = requireRole(config2, "todo").key;
   const frontmatter = {
     id,
     type: input.type,
-    status,
+    status: status2,
     title: input.title,
     tracker_id: input.tracker_id,
     branch,
@@ -30580,7 +31130,7 @@ ${input.description}
   const parsed = TaskFrontmatter.parse({
     id,
     type: input.type,
-    status,
+    status: status2,
     title: input.title,
     ...input.tracker_id ? { tracker_id: input.tracker_id } : {},
     branch,
@@ -30668,10 +31218,10 @@ function renderListTable(tasks, currentBranch2, config2) {
   if (tasks.length === 0) return "_No tasks yet \u2014 use `/marvin:track-new` to create one._";
   const groups = groupByStatus(tasks);
   const sections = [];
-  for (const status of orderedStatuses(config2)) {
-    const list = groups[status.key] ?? [];
+  for (const status2 of orderedStatuses(config2)) {
+    const list = groups[status2.key] ?? [];
     if (list.length === 0) continue;
-    sections.push(`### ${status.key} (${list.length})`);
+    sections.push(`### ${status2.key} (${list.length})`);
     sections.push("");
     sections.push("| seq | type | title | tracker | branch | pr |");
     sections.push("|-----|------|-------|---------|--------|----|");
@@ -31076,9 +31626,9 @@ function parsePlanChecks(raw) {
   const re = /^###\s+Step\s+\d+\s+—\s+(.+?)(?:\s+\[([^\]]+)\])?\s*$/gm;
   for (const m of raw.matchAll(re)) {
     const marker = (m[2] ?? "pending").trim().toLowerCase();
-    const status = marker.startsWith("done") ? "pass" : marker.startsWith("blocked") ? "fail" : "pending";
+    const status2 = marker.startsWith("done") ? "pass" : marker.startsWith("blocked") ? "fail" : "pending";
     const note = marker.startsWith("done") && marker.length > 4 ? marker.slice(5) : void 0;
-    checks.push({ name: m[1].trim(), status, ...note ? { note } : {} });
+    checks.push({ name: m[1].trim(), status: status2, ...note ? { note } : {} });
   }
   return checks;
 }
@@ -31140,11 +31690,11 @@ function parseVerificationChecks(raw) {
   const parse4 = parseVerifyBlock(raw);
   if (parse4.kind !== "ok" || !parse4.gatesDeclared) return null;
   return parse4.result.gates.map((g) => {
-    const status = g.status === "pass" ? "pass" : g.status === "skip" || g.status === "not-run" ? "pending" : "fail";
-    const note = status === "fail" ? g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` : void 0;
+    const status2 = g.status === "pass" ? "pass" : g.status === "skip" || g.status === "not-run" ? "pending" : "fail";
+    const note = status2 === "fail" ? g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` : void 0;
     return {
       name: g.name,
-      status,
+      status: status2,
       ...note ? { note } : {}
     };
   });
@@ -32238,14 +32788,16 @@ Mark where a task's id goes with \`{tracker_id}\`, e.g. \`https://acme.atlassian
   return ok(lines.join("\n"));
 }
 function renderConfigView(env2, loaded) {
-  const { config: config2, warning, settingWarnings, base_branch_source } = loaded;
+  const { config: config2, warning, settingWarnings, pipelineIssues, base_branch_source } = loaded;
   const fileExists = existsSync(env2.configPath);
   const sourceLabel = base_branch_source === "config" ? "from config" : base_branch_source === "origin/HEAD" ? "auto-detected from origin/HEAD" : "default";
   const lines = [];
   lines.push("# Board configuration");
   lines.push("");
   if (warning) lines.push(`\u26A0 ${warning} \u2014 showing defaults.`, "");
-  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2)]) lines.push(`\u26A0 ${w}`, "");
+  for (const w of [...settingWarnings, ...scopeExemptWarnings(config2), ...pipelineIssues]) {
+    lines.push(`\u26A0 ${w}`, "");
+  }
   lines.push(`- **Project:** \`${env2.projectDir}\``);
   lines.push(`- **Tasks dir:** \`${env2.tasksDir}\``);
   lines.push(
@@ -32675,18 +33227,32 @@ function firstHeading2(text) {
 function errText(err3) {
   return (err3 instanceof Error ? err3.message : String(err3)).split("\n")[0].slice(0, 120);
 }
-function nextSpecNumber(corpus) {
+function specFilenameId(filename) {
+  if (!filename.endsWith(".md") || filename === "verification.md") return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[1] ?? null;
+}
+function specFilenameNumber(filename) {
+  const id = specFilenameId(filename);
+  return id === null ? null : Number(id);
+}
+function specFilenameSlug(filename) {
+  if (specFilenameId(filename) === null) return null;
+  return SPEC_PREFIX_RE.exec(filename.slice(0, -3))?.[2] ?? null;
+}
+function nextSpecNumber(corpus, elsewhere = []) {
   const numbers = [
     ...corpus.records.map((r) => r.number),
-    ...corpus.malformed.map((m) => m.number)
+    ...corpus.malformed.map((m) => m.number),
+    ...elsewhere.map(specFilenameNumber)
   ].filter((n) => n !== null);
   return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
 }
-function specIdWidth(corpus) {
-  const observed = (filename) => SPEC_PREFIX_RE.exec(filename.replace(/\.md$/, ""))?.[1]?.length ?? 0;
+function specIdWidth(corpus, elsewhere = []) {
+  const observed = (filename) => specFilenameId(filename)?.length ?? 0;
   const widths = [
     ...corpus.records.map((r) => r.id?.length ?? 0),
-    ...corpus.malformed.map((m) => observed(m.filename))
+    ...corpus.malformed.map((m) => observed(m.filename)),
+    ...elsewhere.map(observed)
   ];
   return Math.max(3, ...widths);
 }
@@ -32866,6 +33432,7 @@ var COMMAND_BLURBS = {
   reports: "Unified viewer over all reports",
   "report-export": "Export a report to PDF / MD",
   "widget-preview": "Open a widget as a rendered panel",
+  autopilot: "Deliver a task to a PR autonomously",
   // adr
   "adr-review": "Review a proposed ADR",
   "adr-accept": "Ratify an ADR (human-run)",
@@ -32935,6 +33502,7 @@ var COMMAND_DETAILS = {
   reports: "Unified viewer over every generated .marvin/ report \u2014 security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 newest first, with per-report freshness.",
   "report-export": "Export any generated .marvin/ report as print-ready HTML (the PDF path), standalone HTML, or a Markdown digest \u2014 Claude fills the shipped print-quality template styled on the widget theme tokens; nothing renders server-side.",
   "widget-preview": "Render a bound ui:// widget with this project's live data into one self-contained file under .marvin/preview/ and open it \u2014 the way to see a widget on a host that cannot render them, including the terminal.",
+  autopilot: "Orchestrate the autonomous pipeline: a detached engine drives a planner, sealed acceptance tests, an executor, deterministic gates, a read-only verifier, CI and a retro to a merge-ready PR, while this session answers its questions, gets the spec approved, and reports in your language.",
   // adr
   "adr-review": "Deep review of one proposed ADR \u2014 section validation, codebase grounding, formal auto-fixes, and a readiness verdict. Never sets accepted.",
   "adr-accept": "Ratify a proposed ADR \u2014 proposed \u2192 accepted with a date stamp, through the fail-closed readiness gate. Human-run.",
@@ -32998,6 +33566,7 @@ var COMMAND_EXAMPLES = {
   lessons: "/marvin:lessons search dist staleness",
   help: "/marvin:help sec",
   "widget-preview": "/marvin:widget-preview dashboard",
+  autopilot: "/marvin:autopilot add a tag filter to the chat list",
   // adr
   "adr-review": "/marvin:adr-review 31",
   "adr-accept": "/marvin:adr-accept 31",
@@ -33108,6 +33677,11 @@ var COMMAND_PROMPTS = {
     "marvin, show me the help widget",
     "marvin, open the dashboard as a panel",
     "marvin, why do I never see the widgets?"
+  ],
+  autopilot: [
+    "marvin, autopilot this task to a PR",
+    "marvin, deliver this end to end without me",
+    "marvin, resume the autopilot run"
   ],
   // adr
   "adr-review": [
@@ -33822,26 +34396,29 @@ function findRecord2(dir, slug) {
   }
   return fallback;
 }
-function header(slug) {
+function recordHeader(slug) {
   return `# Metrics \u2014 ${slug}
 
 Append-only. One \`${METRIC_EVENT_TAG}\` block per live event; one \`${TASK_METRICS_TAG}\` block per delivery, the last authoritative (ADR-0043).
 
 `;
 }
-function append(path, slug, tag, payload) {
-  mkdirSync(join(path, ".."), { recursive: true });
-  const head = existsSync(path) ? "" : header(slug);
-  appendFileSync(path, `${head}\`\`\`json ${tag}
+function recordBlock(tag, payload) {
+  return `\`\`\`json ${tag}
 ${JSON.stringify(payload)}
 \`\`\`
 
-`, "utf8");
+`;
+}
+function append(path, slug, tag, payload) {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const head = existsSync(path) ? "" : recordHeader(slug);
+  appendFileSync(path, `${head}${recordBlock(tag, payload)}`, "utf8");
 }
 function ensureRecord(path, slug) {
   if (existsSync(path)) return;
   mkdirSync(join(path, ".."), { recursive: true });
-  appendFileSync(path, header(slug), "utf8");
+  appendFileSync(path, recordHeader(slug), "utf8");
 }
 function appendMetricEvent(path, event) {
   append(path, event.slug, METRIC_EVENT_TAG, event);
@@ -34377,7 +34954,7 @@ function buildDashboardTool(env2, version2) {
   });
 }
 function renderDashboard(env2, loaded, version2, input) {
-  const { config: config2, warning: configWarning, settingWarnings } = loaded;
+  const { config: config2, warning: configWarning, settingWarnings, pipelineIssues } = loaded;
   const board = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const verification = verificationFreshness(env2.projectDir);
@@ -34410,7 +34987,9 @@ function renderDashboard(env2, loaded, version2, input) {
       ...configWarning ? [`- \u26A0 config: ${configWarning} \u2014 using defaults`] : [],
       // Per-setting fallbacks, not a whole-file one: the rest of the config
       // stands, so these carry no "using defaults" clause.
-      ...[...settingWarnings, ...scopeExemptWarnings(config2)].map((w) => `- \u26A0 config: ${w}`)
+      ...[...settingWarnings, ...scopeExemptWarnings(config2), ...pipelineIssues].map(
+        (w) => `- \u26A0 config: ${w}`
+      )
     ],
     board: [
       "## Board",
@@ -34633,58 +35212,315 @@ function nonZero(counts) {
 function days(n) {
   return `${n} day(s)`;
 }
-
-// src/tools/verify.ts
-var import_yaml3 = __toESM(require_dist2());
-var DIGEST_EXCLUDE = [".marvin"];
-var MAX_DIGEST_PATHS = 5e3;
-function readChangedPaths(root) {
-  const diff = diffAgainstHead(root, {
-    format: "name-status",
-    exclude: DIGEST_EXCLUDE,
-    nul: true
-  });
-  if (diff === null) return null;
-  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
-  if (untracked === null) return null;
-  const paths = /* @__PURE__ */ new Map();
-  const fields = diff.split("\0").filter((s) => s.length > 0);
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    paths.set(fields[i + 1], fields[i]);
+var GATE_NAMES = ["test", "lint", "typecheck", "build"];
+var CONFIG_STACK = ".marvin/config.json";
+function hasFile(root, ...names) {
+  return names.some((n) => existsSync(join(root, n)));
+}
+function hasFileMatching(root, re) {
+  try {
+    return readdirSync(root).some((f) => re.test(f));
+  } catch {
+    return false;
   }
-  for (const p of untracked) if (!paths.has(p)) paths.set(p, "?");
-  return paths;
 }
-function digestFrom(paths, root) {
-  if (paths.size > MAX_DIGEST_PATHS) return null;
-  const sorted = [...paths.keys()].sort();
-  if (sorted.some((p) => p.includes("\n"))) return null;
-  const present = sorted.filter((p) => existsSync(join(root, p)));
-  const ids = hashObjects(present, root);
-  if (ids === null) return null;
-  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
-  const lines = sorted.map((p) => `${p}\0${paths.get(p)}\0${idByPath.get(p) ?? "D"}`);
-  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
-}
-function collectProvenance(cwd) {
-  const root = worktreeRoot(cwd);
-  if (!root) return null;
-  const paths = readChangedPaths(root);
+var STACK_DETECTORS = [
+  {
+    id: "go",
+    marker: "Go",
+    detect: (r) => hasFile(r, "go.mod"),
+    gates: { test: "go test ./...", lint: "golangci-lint run", build: "go build ./..." }
+  },
+  {
+    id: "rust",
+    marker: "Rust",
+    detect: (r) => hasFile(r, "Cargo.toml"),
+    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" }
+  },
+  {
+    id: "python",
+    marker: "Python",
+    detect: (r) => hasFile(r, "pyproject.toml", "setup.py", "setup.cfg"),
+    gates: { test: "pytest", lint: "ruff check .", typecheck: "mypy ." }
+  },
+  {
+    id: "typescript",
+    marker: "TypeScript",
+    detect: (r) => hasFile(r, "tsconfig.json"),
+    gates: {
+      test: "npm test",
+      lint: "npx eslint .",
+      typecheck: "npx tsc --noEmit",
+      build: "npm run build"
+    }
+  },
+  {
+    id: "maven",
+    marker: "Java (Maven)",
+    detect: (r) => hasFile(r, "pom.xml"),
+    gates: { test: "mvn test", build: "mvn package" }
+  },
+  {
+    id: "gradle",
+    marker: "JVM (Gradle)",
+    detect: (r) => hasFile(r, "build.gradle", "build.gradle.kts"),
+    gates: { test: "./gradlew test", build: "./gradlew build" }
+  },
+  {
+    id: "dotnet",
+    marker: "C#/.NET",
+    detect: (r) => hasFileMatching(r, /\.(sln|csproj|fsproj)$/i) || hasFile(r, "global.json"),
+    gates: {
+      test: "dotnet test",
+      lint: "dotnet format --verify-no-changes",
+      build: "dotnet build"
+    }
+  },
+  {
+    id: "swift",
+    marker: "Swift",
+    detect: (r) => hasFile(r, "Package.swift"),
+    gates: { test: "swift test", build: "swift build" }
+  },
+  {
+    id: "ruby",
+    marker: "Ruby",
+    detect: (r) => hasFile(r, "Gemfile"),
+    gates: { test: "bundle exec rspec", lint: "bundle exec rubocop" }
+  },
+  {
+    id: "php",
+    marker: "PHP",
+    detect: (r) => hasFile(r, "composer.json"),
+    gates: { test: "composer test" }
+  },
+  {
+    id: "cpp",
+    marker: "C/C++ (CMake)",
+    detect: (r) => hasFile(r, "CMakeLists.txt"),
+    // test/lint vary too much across C/C++ to default safely — declare them in
+    // `.marvin/config.json`. The build gate configures then builds, so it is
+    // self-contained (no dependence on a sibling gate running first).
+    gates: { build: "cmake -B build && cmake --build build" }
+  }
+];
+function resolveGatePlan(input) {
+  const configGates = gateSpecsFromConfig(input.gates);
+  const resolved = resolveStandard(input, configGates);
+  const usesExtras = !(input.explicit?.length || input.only);
+  const extra = usesExtras ? extraGateSpecs(input.gates) : [];
+  let standard = resolved.gates;
+  if (input.only) {
+    const only = input.only;
+    standard = standard.filter((g) => only.includes(g.name));
+  }
+  const stacks = extra.length > 0 && !resolved.stacks.includes(CONFIG_STACK) ? [...resolved.stacks, CONFIG_STACK] : resolved.stacks;
   return {
-    head_sha: headSha(root),
-    branch: currentBranch(root),
-    dirty: paths === null ? null : paths.size > 0,
-    worktree_digest: paths === null ? null : digestFrom(paths, root),
-    generated_at: (/* @__PURE__ */ new Date()).toISOString()
+    stacks,
+    detected: resolved.gates,
+    standard,
+    extra,
+    usesExtras,
+    gates: [...standard, ...extra]
   };
 }
-function classifyStaleness(recorded, current) {
-  if (!recorded || !current) return "unknown";
-  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
-  if (!recorded.head_sha || !current.head_sha) return "unknown";
-  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
+var SHELL_METACHARACTERS = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
+var ABSTAIN = { kind: "abstain" };
+function planGates(gates, cwd) {
+  const byToken = /* @__PURE__ */ new Map();
+  return gates.map((gate) => {
+    if (SHELL_METACHARACTERS.test(gate.command)) return { gate, probe: ABSTAIN };
+    const token = gate.command.trim().split(/\s+/)[0];
+    if (!token) return { gate, probe: ABSTAIN };
+    let probe = byToken.get(token);
+    if (!probe) {
+      probe = probeToken(token, cwd);
+      byToken.set(token, probe);
+    }
+    return { gate, probe };
+  });
 }
-var SHELL_METACHARACTERS = /[;|&`\n<>]|\$\(/;
+function probeToken(token, cwd) {
+  const probe = spawnSync("sh", ["-c", `command -v -- ${token}`], { cwd, encoding: "utf8" });
+  if (probe.error || probe.status === null) return ABSTAIN;
+  return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
+}
+function evidenceGap(gates) {
+  if (gates.length === 0) return null;
+  const tests = gates.filter((g) => g.name === "test");
+  if (tests.length > 0 && tests.every((g) => !g.ran)) return "test";
+  if (gates.every((g) => !g.ran)) return "all";
+  return null;
+}
+function unambiguousStackId(projectRoot) {
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  return matched.length === 1 ? matched[0].id : void 0;
+}
+function resolveStandard(input, configGates) {
+  if (input.explicit && input.explicit.length > 0) {
+    return { stacks: ["explicit"], gates: [...input.explicit] };
+  }
+  const base = detectBase(input, input.projectRoot);
+  if (configGates.length === 0) return base;
+  return mergeConfigGates(base, configGates);
+}
+function detectBase(input, projectRoot) {
+  if (input.stack) {
+    const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
+    if (hinted?.detect(projectRoot)) return gatesFromStacks([hinted]);
+  }
+  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
+  if (matched.length === 0) {
+    return detectGeneric(projectRoot);
+  }
+  return gatesFromStacks(matched);
+}
+function gatesFromStacks(detectors) {
+  const stacks = [];
+  const gates = [];
+  for (const d of detectors) {
+    stacks.push(d.marker);
+    for (const name of GATE_NAMES) {
+      const command = d.gates[name];
+      if (command) gates.push({ name, command });
+    }
+  }
+  return { stacks, gates };
+}
+function mergeConfigGates(base, configGates) {
+  const gates = [];
+  for (const name of GATE_NAMES) {
+    const override = configGates.find((g) => g.name === name);
+    if (override) gates.push(override);
+    else gates.push(...base.gates.filter((g) => g.name === name));
+  }
+  return { stacks: [...base.stacks, CONFIG_STACK], gates };
+}
+function gateSpecsFromConfig(gates) {
+  if (!gates) return [];
+  const out = [];
+  for (const name of GATE_NAMES) {
+    const command = gates[name];
+    if (command) out.push({ name, command });
+  }
+  return out;
+}
+function extraGateSpecs(gates) {
+  return (gates?.extra ?? []).map((g) => ({ name: g.name, command: g.command, extra: true }));
+}
+var DECLARED_GATE_ALIASES = [
+  ["test", ["test"]],
+  ["lint", ["lint"]],
+  ["typecheck", ["typecheck", "type-check", "tsc"]],
+  ["build", ["build"]]
+];
+function detectGeneric(projectRoot) {
+  const npm = detectNpmScripts(projectRoot);
+  if (npm.gates.length) return npm;
+  const make = detectMakefile(projectRoot);
+  if (make.gates.length) return make;
+  return { stacks: [], gates: [] };
+}
+function detectNpmScripts(projectRoot) {
+  const pkgPath = join(projectRoot, "package.json");
+  if (!existsSync(pkgPath)) return { stacks: [], gates: [] };
+  let scripts = {};
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    scripts = pkg.scripts ?? {};
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  const gates = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find(
+      (a) => typeof scripts[a] === "string" && scripts[a].trim()
+    );
+    if (name) gates.push({ name: gate, command: `npm run ${name}` });
+  }
+  return gates.length ? { stacks: ["package.json scripts"], gates } : { stacks: [], gates: [] };
+}
+function detectMakefile(projectRoot) {
+  const mkPath = join(projectRoot, "Makefile");
+  if (!existsSync(mkPath)) return { stacks: [], gates: [] };
+  let text;
+  try {
+    text = readFileSync(mkPath, "utf8");
+  } catch {
+    return { stacks: [], gates: [] };
+  }
+  const targets = new Set(
+    [...text.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):(?!=)/gm)].map((m) => m[1].toLowerCase())
+  );
+  const gates = [];
+  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
+    const name = aliases.find((a) => targets.has(a));
+    if (name) gates.push({ name: gate, command: `make ${name}` });
+  }
+  return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
+}
+
+// src/lib/oracles.ts
+var import_yaml2 = __toESM(require_dist2());
+
+// src/lib/shell-quote.ts
+var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
+function encodeForContext(value, context) {
+  switch (context) {
+    case "unquoted":
+      return shellQuote(value);
+    case "single":
+      return value.replaceAll("'", "'\\''");
+    case "double":
+      return value.replace(/[\\"$`]/g, "\\$&");
+    case "escaped":
+      return value;
+  }
+}
+function substitutePlaceholders(template, placeholders, replace) {
+  let out = "";
+  let quote = null;
+  const at = (i) => placeholders.find((p) => template.startsWith(p, i));
+  for (let i = 0; i < template.length; i += 1) {
+    const found = at(i);
+    if (found) {
+      out += replace(found, quote === "'" ? "single" : quote === '"' ? "double" : "unquoted");
+      i += found.length - 1;
+      continue;
+    }
+    const ch = template[i] ?? "";
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      out += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      const escaped = at(i + 1);
+      if (escaped && quote === null) {
+        out += ch + replace(escaped, "escaped");
+        i += escaped.length;
+        continue;
+      }
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    }
+    if (ch === '"') quote = quote === null ? '"' : null;
+    else if (ch === "'" && quote === null) quote = "'";
+    out += ch;
+  }
+  return out;
+}
+function fillShellTemplate(template, values) {
+  return substitutePlaceholders(
+    template,
+    Object.keys(values),
+    (placeholder, context) => encodeForContext(values[placeholder] ?? "", context)
+  );
+}
+
+// src/storage/oracles.ts
+var SHELL_METACHARACTERS2 = /[;|&`\n<>]|\$\(/;
 function splitRef(ref) {
   const i = ref.indexOf("::");
   return i === -1 ? { file: ref, name: "" } : { file: ref.slice(0, i).trim(), name: ref.slice(i + 2).trim() };
@@ -34698,6 +35534,14 @@ var STACK_DEFAULTS = {
   go: ({ file, name }) => `go test -run '^${name}$' ${packageDir(file)}`,
   rust: ({ name }) => `cargo test ${name}`
 };
+function isUnsafeOracleRef(criterion) {
+  const oracle = criterion.oracle;
+  if (oracle.run?.trim() || oracle.kind !== "test") return false;
+  const ref = oracle.ref?.trim();
+  if (!ref) return false;
+  const parts = splitRef(ref);
+  return SHELL_METACHARACTERS2.test(ref) || SHELL_METACHARACTERS2.test(parts.file) || SHELL_METACHARACTERS2.test(parts.name);
+}
 function resolveOracleCommand(criterion, opts) {
   const oracle = criterion.oracle;
   if (opts.call?.trim()) return { command: opts.call.trim(), source: "call" };
@@ -34709,11 +35553,13 @@ function resolveOracleCommand(criterion, opts) {
   if (!ref) return { command: null, source: null, reason: "no-ref" };
   if (oracle.kind === "command") return { command: ref, source: "oracle.ref" };
   const parts = splitRef(ref);
-  if (SHELL_METACHARACTERS.test(ref) || SHELL_METACHARACTERS.test(parts.file) || SHELL_METACHARACTERS.test(parts.name)) {
-    return { command: null, source: null, reason: "unsafe-ref" };
-  }
+  if (isUnsafeOracleRef(criterion)) return { command: null, source: null, reason: "unsafe-ref" };
   if (opts.testOne?.trim()) {
-    const command = opts.testOne.replaceAll("{file}", parts.file).replaceAll("{name}", parts.name).replaceAll("{ref}", ref).trim();
+    const command = fillShellTemplate(opts.testOne, {
+      "{file}": parts.file,
+      "{name}": parts.name,
+      "{ref}": ref
+    }).trim();
     return command ? { command, source: "config.test_one" } : { command: null, source: null, reason: "empty-test_one" };
   }
   const row = opts.stack ? STACK_DEFAULTS[opts.stack] : void 0;
@@ -34759,7 +35605,7 @@ function oracleJournalPath(runsDir, slug) {
 function recordOracleRun(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = oracleJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
 
 Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
 
@@ -34769,7 +35615,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readOracleRuns(runsDir, slug) {
   const path = oracleJournalPath(runsDir, slug);
@@ -34815,8 +35661,75 @@ function redGreenProof(runs, contractSha, criterionId) {
   return "missing";
 }
 
+// src/lib/oracles.ts
+function parseContractCriteria(blockText) {
+  let parsed;
+  try {
+    parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
+  } catch (err3) {
+    return {
+      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
+    };
+  }
+  if (!parsed.success) {
+    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
+  }
+  return { criteria: parsed.data.criteria };
+}
+function resolveCriteria(criteria, opts) {
+  return criteria.filter((criterion) => criterion.oracle.kind !== "prose-review").map((criterion) => ({ criterion, resolved: resolveOracleCommand(criterion, opts) }));
+}
+var DIGEST_EXCLUDE = [".marvin"];
+var MAX_DIGEST_PATHS = 5e3;
+function readChangedPaths(root) {
+  const diff = diffAgainstHead(root, {
+    format: "name-status",
+    exclude: DIGEST_EXCLUDE,
+    nul: true
+  });
+  if (diff === null) return null;
+  const untracked = untrackedFiles(root, { exclude: DIGEST_EXCLUDE });
+  if (untracked === null) return null;
+  const paths2 = /* @__PURE__ */ new Map();
+  const fields = diff.split("\0").filter((s) => s.length > 0);
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    paths2.set(fields[i + 1], fields[i]);
+  }
+  for (const p of untracked) if (!paths2.has(p)) paths2.set(p, "?");
+  return paths2;
+}
+function digestFrom(paths2, root) {
+  if (paths2.size > MAX_DIGEST_PATHS) return null;
+  const sorted = [...paths2.keys()].sort();
+  if (sorted.some((p) => p.includes("\n"))) return null;
+  const present = sorted.filter((p) => existsSync(join(root, p)));
+  const ids = hashObjects(present, root);
+  if (ids === null) return null;
+  const idByPath = new Map(present.map((p, i) => [p, ids[i]]));
+  const lines = sorted.map((p) => `${p}\0${paths2.get(p)}\0${idByPath.get(p) ?? "D"}`);
+  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16);
+}
+function collectProvenance(cwd) {
+  const root = worktreeRoot(cwd);
+  if (!root) return null;
+  const paths2 = readChangedPaths(root);
+  return {
+    head_sha: headSha(root),
+    branch: currentBranch(root),
+    dirty: paths2 === null ? null : paths2.size > 0,
+    worktree_digest: paths2 === null ? null : digestFrom(paths2, root),
+    generated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyStaleness(recorded, current) {
+  if (!recorded || !current) return "unknown";
+  if (!recorded.worktree_digest || !current.worktree_digest) return "unknown";
+  if (!recorded.head_sha || !current.head_sha) return "unknown";
+  return recorded.worktree_digest === current.worktree_digest && recorded.head_sha === current.head_sha ? "fresh" : "stale";
+}
+
 // src/lib/metrics-collect.ts
-var import_yaml2 = __toESM(require_dist2());
+var import_yaml3 = __toESM(require_dist2());
 var PROGRESS_SOURCES = ["task-start", "task-implement", "marvin-tm-executor"];
 var PROGRESS_TAG = "spec-progress";
 var PROGRESS_RE = new RegExp("```json " + PROGRESS_TAG + "\\n([\\s\\S]*?)\\n```", "g");
@@ -34848,7 +35761,7 @@ function progressJournalPath(runsDir, slug) {
 function recordProgress(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = progressJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Progress \u2014 ${entry.slug}
 
 Append-only. One \`${PROGRESS_TAG}\` block per entry.
 
@@ -34858,7 +35771,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readProgress(runsDir, slug) {
   const path = progressJournalPath(runsDir, slug);
@@ -34957,7 +35870,7 @@ function verifyJournalPath(runsDir, slug) {
 function recordVerifyRun(runsDir, entry) {
   mkdirSync(runsDir, { recursive: true });
   const path = verifyJournalPath(runsDir, entry.slug);
-  const header2 = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
+  const header = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
 
 Append-only. One \`${VERIFY_RUN_TAG}\` block per run or delivery-gate decision.
 
@@ -34967,7 +35880,7 @@ ${JSON.stringify(entry)}
 \`\`\`
 
 `;
-  appendFileSync(path, `${header2}${block}`, "utf8");
+  appendFileSync(path, `${header}${block}`, "utf8");
 }
 function readVerifyRuns(runsDir, slug) {
   const path = verifyJournalPath(runsDir, slug);
@@ -35043,7 +35956,7 @@ function readRollupSpec(specPath, projectRoot, notes) {
   let contract = null;
   if (block !== null) {
     try {
-      const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+      const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
       if (parsed.success) contract = parsed.data;
       else
         notes.push(
@@ -35142,7 +36055,7 @@ function readShippedSpecs(projectRoot, specConfig) {
     let files = [];
     if (block !== null) {
       try {
-        const parsed = SpecContract.safeParse((0, import_yaml2.parse)(block));
+        const parsed = SpecContract.safeParse((0, import_yaml3.parse)(block));
         if (parsed.success) files = parsed.data.files.map((f) => normalizeScopePath(f.path));
       } catch {
       }
@@ -35531,6 +36444,13 @@ function recordPathFor(dir, slug, projectRoot, specConfig, knownSpecPath) {
   const specPath = knownSpecPath ?? findSpecBySlug(slug, projectRoot, specConfig);
   return metricsRecordPath(dir, specPath ? recordBasenameForSpec(specPath) : slug);
 }
+function recordSlugForSpec(declared, specPath) {
+  const own = (declared ?? "").trim();
+  const slug = own || slugOfRecord(specPath);
+  if (!SLUG_RE.test(slug)) return null;
+  if (!own && /^\d+-/.test(slug)) return null;
+  return slug;
+}
 function metricsDirFor(env2, projectRoot) {
   return projectScopedDir(env2, projectRoot, env2.metricsDir, "metrics");
 }
@@ -35568,105 +36488,18 @@ function performRollup(req) {
 }
 
 // src/tools/verify.ts
-var GATE_NAMES = ["test", "lint", "typecheck", "build"];
-function hasFile(root, ...names) {
-  return names.some((n) => existsSync(join(root, n)));
-}
-function hasFileMatching(root, re) {
-  try {
-    return readdirSync(root).some((f) => re.test(f));
-  } catch {
-    return false;
-  }
-}
-var STACK_DETECTORS = [
-  {
-    id: "go",
-    marker: "Go",
-    detect: (r) => hasFile(r, "go.mod"),
-    gates: { test: "go test ./...", lint: "golangci-lint run", build: "go build ./..." }
-  },
-  {
-    id: "rust",
-    marker: "Rust",
-    detect: (r) => hasFile(r, "Cargo.toml"),
-    gates: { test: "cargo test", lint: "cargo clippy", build: "cargo build" }
-  },
-  {
-    id: "python",
-    marker: "Python",
-    detect: (r) => hasFile(r, "pyproject.toml", "setup.py", "setup.cfg"),
-    gates: { test: "pytest", lint: "ruff check .", typecheck: "mypy ." }
-  },
-  {
-    id: "typescript",
-    marker: "TypeScript",
-    detect: (r) => hasFile(r, "tsconfig.json"),
-    gates: {
-      test: "npm test",
-      lint: "npx eslint .",
-      typecheck: "npx tsc --noEmit",
-      build: "npm run build"
-    }
-  },
-  {
-    id: "maven",
-    marker: "Java (Maven)",
-    detect: (r) => hasFile(r, "pom.xml"),
-    gates: { test: "mvn test", build: "mvn package" }
-  },
-  {
-    id: "gradle",
-    marker: "JVM (Gradle)",
-    detect: (r) => hasFile(r, "build.gradle", "build.gradle.kts"),
-    gates: { test: "./gradlew test", build: "./gradlew build" }
-  },
-  {
-    id: "dotnet",
-    marker: "C#/.NET",
-    detect: (r) => hasFileMatching(r, /\.(sln|csproj|fsproj)$/i) || hasFile(r, "global.json"),
-    gates: {
-      test: "dotnet test",
-      lint: "dotnet format --verify-no-changes",
-      build: "dotnet build"
-    }
-  },
-  {
-    id: "swift",
-    marker: "Swift",
-    detect: (r) => hasFile(r, "Package.swift"),
-    gates: { test: "swift test", build: "swift build" }
-  },
-  {
-    id: "ruby",
-    marker: "Ruby",
-    detect: (r) => hasFile(r, "Gemfile"),
-    gates: { test: "bundle exec rspec", lint: "bundle exec rubocop" }
-  },
-  {
-    id: "php",
-    marker: "PHP",
-    detect: (r) => hasFile(r, "composer.json"),
-    gates: { test: "composer test" }
-  },
-  {
-    id: "cpp",
-    marker: "C/C++ (CMake)",
-    detect: (r) => hasFile(r, "CMakeLists.txt"),
-    // test/lint vary too much across C/C++ to default safely — declare them in
-    // `.marvin/config.json`. The build gate configures then builds, so it is
-    // self-contained (no dependence on a sibling gate running first).
-    gates: { build: "cmake -B build && cmake --build build" }
-  }
-];
 var VerifyInput = external_exports.object({
   mode: external_exports.enum(["feature", "bug", "standalone"]).default("standalone").describe("Pipeline mode. feature: warn if no new tests. bug: warn if no regression test."),
   execution: external_exports.enum(["parallel", "sequential", "fail-fast"]).default("parallel").describe(
     "parallel: all gates concurrently (default). sequential: one at a time, all run (verdict parity with parallel). fail-fast: one at a time, stop at first failure (resource-constrained / fast feedback)."
   ),
-  only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe("Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix)."),
+  only: external_exports.array(external_exports.enum(GATE_NAMES)).optional().describe(
+    "Run only these gates (targeted retry, e.g. ['test'] to re-confirm a fix). Leaves out the project's `gates.extra`."
+  ),
   stack: external_exports.string().optional().describe("Pre-detected stack id (e.g. 'go', 'dotnet') to skip detection in a chained run."),
-  gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe("Explicit gate commands, bypassing stack detection (project override / testing)."),
+  gates: external_exports.array(external_exports.object({ name: external_exports.enum(GATE_NAMES), command: external_exports.string().min(1) })).optional().describe(
+    "Explicit gate commands, bypassing stack detection (project override / testing). Leaves out the project's `gates.extra`."
+  ),
   projectRoot: external_exports.string().optional().describe("Project root. Defaults to CLAUDE_PROJECT_DIR / cwd."),
   write: external_exports.boolean().default(true).describe(
     "Write verification.md to <projectRoot>/.marvin/task/. That location is deliberately independent of where specs live: a spec is a project document and stays host-adaptive (ADR-0005), while everything marvin generates about a run is a service file pinned under .marvin/ (ADR-0007), so this path does not follow `spec.dir` (ADR-0037)."
@@ -35694,14 +36527,18 @@ var VerifyInput = external_exports.object({
 function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
-    description: `Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor's self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md.`,
+    description: 'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env2)
   });
 }
 async function runVerify(input, env2) {
   const projectRoot = input.projectRoot ?? env2.projectDir;
-  const { config: config2, warning: configWarning } = loadConfig(projectConfigPath(env2, projectRoot));
+  const {
+    config: config2,
+    warning: configWarning,
+    pipelineIssues
+  } = loadConfig(projectConfigPath(env2, projectRoot));
   if (input.action === "gate") {
     return deliverGate(projectRoot, {
       specSlug: input.specSlug,
@@ -35712,28 +36549,38 @@ async function runVerify(input, env2) {
     });
   }
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
-  const configGates = gateSpecsFromConfig(config2.gates);
-  const detected = resolvePlan(input, projectRoot, configGates);
-  if (detected.gates.length === 0) {
+  const resolved = resolveGatePlan({
+    projectRoot,
+    gates: config2.gates,
+    explicit: input.gates,
+    stack: input.stack,
+    only: input.only
+  });
+  const extraGates = resolved.extra;
+  const extraIssues = resolved.usesExtras ? pipelineIssues.filter((i) => i.startsWith("`gates.extra`")) : [];
+  if (resolved.detected.length === 0 && extraGates.length === 0) {
     return ok3(
       `No quality gates detected for \`${projectRoot}\`.
 Looked for a known stack (${STACK_DETECTORS.map((d) => d.marker).join(", ")}), then for declared commands (package.json scripts, Makefile targets) \u2014 found none. Declare them in \`.marvin/config.json\` (\`"gates": { "test": "\u2026" }\`) or pass an explicit \`gates\` list (e.g. from the spec's \`test_command\`) to verify this project.`
     );
   }
-  let gates = detected.gates;
-  if (input.only) gates = gates.filter((g) => input.only.includes(g.name));
-  if (gates.length === 0) {
+  if (resolved.standard.length === 0 && extraGates.length === 0) {
     return ok3(`None of the requested gates (\`only\`) matched the detected plan.`);
   }
+  const gates = resolved.gates;
+  const stacks = resolved.stacks;
   if (input.dryRun) {
     const plan = gates.map((g) => `- **${g.name}**: \`${g.command}\``).join("\n");
-    const warn2 = configWarning ? `
+    const warn2 = [
+      ...configWarning ? [`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`] : [],
+      ...extraIssues.map((i) => `\`.marvin/config.json\`: ${i}`)
+    ].map((w) => `
 
-> \u26A0\uFE0F \`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.` : "";
+> \u26A0\uFE0F ${w}`).join("");
     return ok3(
       `# Verify Plan (dry run)
 
-**Stacks:** ${detected.stacks.join(", ") || "explicit"}
+**Stacks:** ${stacks.join(", ") || "explicit"}
 **Execution:** ${input.execution}
 
 ${plan}${warn2}`
@@ -35748,6 +36595,7 @@ ${plan}${warn2}`
   if (configWarning) {
     warnings.push(`\`.marvin/config.json\`: ${configWarning} \u2014 using auto-detected gates.`);
   }
+  for (const issue2 of extraIssues) warnings.push(`\`.marvin/config.json\`: ${issue2}`);
   for (const r of results) {
     if (r.status === "not-run") warnings.push(notRunWarning(r.name, r.missingToken));
   }
@@ -35770,7 +36618,7 @@ ${plan}${warn2}`
     execution: input.execution,
     results,
     warnings,
-    stacks: detected.stacks,
+    stacks,
     wallClockMs,
     sumOfGatesMs
   });
@@ -35785,7 +36633,7 @@ ${plan}${warn2}`
       code: r.code,
       durationMs: r.durationMs
     })),
-    detectedStacks: detected.stacks,
+    detectedStacks: stacks,
     warnings,
     wallClockMs,
     sumOfGatesMs,
@@ -35823,115 +36671,20 @@ ${machine}`;
     isError: verdict === "FAIL"
   };
 }
-function resolvePlan(input, projectRoot, configGates) {
-  if (input.gates && input.gates.length > 0) {
-    return { stacks: ["explicit"], gates: input.gates };
-  }
-  const base = detectBase(input, projectRoot);
-  if (configGates.length === 0) return base;
-  return mergeConfigGates(base, configGates);
-}
-function detectBase(input, projectRoot) {
-  if (input.stack) {
-    const hinted = STACK_DETECTORS.find((d) => d.id === input.stack);
-    if (hinted) return gatesFromStacks([hinted]);
-  }
-  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
-  if (matched.length === 0) {
-    return detectGeneric(projectRoot);
-  }
-  return gatesFromStacks(matched);
-}
-function gatesFromStacks(detectors) {
-  const stacks = [];
-  const gates = [];
-  for (const d of detectors) {
-    stacks.push(d.marker);
-    for (const name of GATE_NAMES) {
-      const command = d.gates[name];
-      if (command) gates.push({ name, command });
-    }
-  }
-  return { stacks, gates };
-}
-function mergeConfigGates(base, configGates) {
-  const gates = [];
-  for (const name of GATE_NAMES) {
-    const override = configGates.find((g) => g.name === name);
-    if (override) gates.push(override);
-    else gates.push(...base.gates.filter((g) => g.name === name));
-  }
-  return { stacks: [...base.stacks, ".marvin/config.json"], gates };
-}
-function gateSpecsFromConfig(gates) {
-  if (!gates) return [];
-  const out = [];
-  for (const name of GATE_NAMES) {
-    const command = gates[name];
-    if (command) out.push({ name, command });
-  }
-  return out;
-}
-var DECLARED_GATE_ALIASES = [
-  ["test", ["test"]],
-  ["lint", ["lint"]],
-  ["typecheck", ["typecheck", "type-check", "tsc"]],
-  ["build", ["build"]]
-];
-function detectGeneric(projectRoot) {
-  const npm = detectNpmScripts(projectRoot);
-  if (npm.gates.length) return npm;
-  const make = detectMakefile(projectRoot);
-  if (make.gates.length) return make;
-  return { stacks: [], gates: [] };
-}
-function detectNpmScripts(projectRoot) {
-  const pkgPath = join(projectRoot, "package.json");
-  if (!existsSync(pkgPath)) return { stacks: [], gates: [] };
-  let scripts = {};
-  try {
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    scripts = pkg.scripts ?? {};
-  } catch {
-    return { stacks: [], gates: [] };
-  }
-  const gates = [];
-  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
-    const name = aliases.find(
-      (a) => typeof scripts[a] === "string" && scripts[a].trim()
-    );
-    if (name) gates.push({ name: gate, command: `npm run ${name}` });
-  }
-  return gates.length ? { stacks: ["package.json scripts"], gates } : { stacks: [], gates: [] };
-}
-function detectMakefile(projectRoot) {
-  const mkPath = join(projectRoot, "Makefile");
-  if (!existsSync(mkPath)) return { stacks: [], gates: [] };
-  let text;
-  try {
-    text = readFileSync(mkPath, "utf8");
-  } catch {
-    return { stacks: [], gates: [] };
-  }
-  const targets = new Set(
-    [...text.matchAll(/^([A-Za-z][A-Za-z0-9_-]*):(?!=)/gm)].map((m) => m[1].toLowerCase())
-  );
-  const gates = [];
-  for (const [gate, aliases] of DECLARED_GATE_ALIASES) {
-    const name = aliases.find((a) => targets.has(a));
-    if (name) gates.push({ name: gate, command: `make ${name}` });
-  }
-  return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
-}
 async function executeGates(planned, execution, cwd) {
-  if (execution === "parallel") {
-    const settled = await Promise.allSettled(planned.map((p) => runGate(p, cwd)));
-    return settled.map(
-      (s, i) => s.status === "fulfilled" ? s.value : crashResult(planned[i].gate, s.reason)
-    );
-  }
   const results = [];
-  for (const p of planned) {
+  let inOrder = planned;
+  if (execution === "parallel") {
+    const standard = planned.filter((p) => !p.gate.extra);
+    const settled = await Promise.allSettled(standard.map((p) => runGate(p, cwd)));
+    results.push(
+      ...settled.map(
+        (s, i) => s.status === "fulfilled" ? s.value : crashResult(standard[i].gate, s.reason)
+      )
+    );
+    inOrder = planned.filter((p) => p.gate.extra);
+  }
+  for (const p of inOrder) {
     let r;
     try {
       r = await runGate(p, cwd);
@@ -35943,27 +36696,6 @@ async function executeGates(planned, execution, cwd) {
   }
   return results;
 }
-var SHELL_METACHARACTERS2 = /[|&;<>()$`\\"'*?[\]{}~#\n]/;
-var ABSTAIN = { kind: "abstain" };
-function planGates(gates, cwd) {
-  const byToken = /* @__PURE__ */ new Map();
-  return gates.map((gate) => {
-    if (SHELL_METACHARACTERS2.test(gate.command)) return { gate, probe: ABSTAIN };
-    const token = gate.command.trim().split(/\s+/)[0];
-    if (!token) return { gate, probe: ABSTAIN };
-    let probe = byToken.get(token);
-    if (!probe) {
-      probe = probeToken(token, cwd);
-      byToken.set(token, probe);
-    }
-    return { gate, probe };
-  });
-}
-function probeToken(token, cwd) {
-  const probe = spawnSync("sh", ["-c", `command -v -- ${token}`], { cwd, encoding: "utf8" });
-  if (probe.error || probe.status === null) return ABSTAIN;
-  return probe.status === 0 ? { kind: "available" } : { kind: "missing", token };
-}
 function notRunWarning(gate, token) {
   return `gate not run: \`${gate}\` \u2014 \`${token ?? "the gate command"}\` is not on PATH (install it, or pin a different command in \`.marvin/config.json\`)`;
 }
@@ -35972,12 +36704,12 @@ function spawnCommand(command, cwd) {
   const start = performance.now();
   const since = () => Math.round(performance.now() - start);
   const asError = (err3) => err3 instanceof Error ? err3 : new Error(String(err3));
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     let child;
     try {
       child = spawn(command, { cwd, shell: true });
     } catch (err3) {
-      resolve({
+      resolve2({
         code: null,
         signal: null,
         stdout: "",
@@ -35993,7 +36725,7 @@ function spawnCommand(command, cwd) {
     const settle = (o) => {
       if (settled) return;
       settled = true;
-      resolve(o);
+      resolve2(o);
     };
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
@@ -36005,13 +36737,13 @@ function spawnCommand(command, cwd) {
     );
     child.on(
       "close",
-      (code, signal) => settle({ code, signal, stdout, stderr, durationMs: since() })
+      (code2, signal) => settle({ code: code2, signal, stdout, stderr, durationMs: since() })
     );
   });
 }
-function classifyExit(code, signal) {
-  if (code === 0) return "pass";
-  if (code === null || signal !== null) return "error";
+function classifyExit(code2, signal) {
+  if (code2 === 0) return "pass";
+  if (code2 === null || signal !== null) return "error";
   return "fail";
 }
 async function runGate({ gate, probe }, cwd) {
@@ -36029,13 +36761,13 @@ async function runGate({ gate, probe }, cwd) {
   }
   const out = await spawnCommand(gate.command, cwd);
   if (out.error) return crashResult(gate, out.error, out.durationMs);
-  const status = classifyExit(out.code, out.signal);
+  const status2 = classifyExit(out.code, out.signal);
   const tail = failureExcerpt(out.stderr || out.stdout);
-  const summary = status === "pass" ? "passed" : status === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
+  const summary = status2 === "pass" ? "passed" : status2 === "error" ? `terminated (${out.signal})` : `exit ${out.code}`;
   return {
     name: gate.name,
     command: gate.command,
-    status,
+    status: status2,
     code: out.code,
     durationMs: out.durationMs,
     summary,
@@ -36166,23 +36898,14 @@ function readSealedSpec(slug, projectRoot, specConfig) {
       error: `spec \`${slug}\` has been edited since it was sealed \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`
     };
   }
-  let parsed;
-  try {
-    parsed = SpecContract.safeParse((0, import_yaml3.parse)(blockText));
-  } catch (err3) {
-    return {
-      error: `spec-contract block is not valid YAML: ${err3 instanceof Error ? err3.message : err3}`
-    };
-  }
-  if (!parsed.success) {
-    return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
-  }
+  const parsed = parseContractCriteria(blockText);
+  if ("error" in parsed) return { error: parsed.error };
   return {
     slug,
     path,
     type: (frontmatter.type ?? "").trim(),
     contractSha: actual,
-    criteria: parsed.data.criteria
+    criteria: parsed.criteria
   };
 }
 function testFileHash(projectRoot, file) {
@@ -36197,8 +36920,7 @@ function testFileHash(projectRoot, file) {
 }
 function unambiguousStack(input, projectRoot) {
   if (input.stack) return input.stack;
-  const matched = STACK_DETECTORS.filter((d) => d.detect(projectRoot));
-  return matched.length === 1 ? matched[0].id : void 0;
+  return unambiguousStackId(projectRoot);
 }
 async function runOracles(projectRoot, input, config2) {
   const { slug, rejected } = resolveRunSlug(input.specSlug);
@@ -36223,11 +36945,11 @@ async function runOracles(projectRoot, input, config2) {
   const head = headSha(projectRoot);
   const runsDir = runsDirOf(projectRoot);
   const entries = [];
-  for (const criterion of runnable) {
-    const resolved = resolveOracleCommand(criterion, {
-      call: input.command,
-      testOne,
-      stack});
+  const resolutions = resolveCriteria(runnable, {
+    call: input.command,
+    testOne,
+    stack});
+  for (const { criterion, resolved } of resolutions) {
     const file = oracleTestFile(criterion);
     const base = {
       slug,
@@ -36348,6 +37070,10 @@ ${r.details}
     return `## ${title} Results
 ${body}`;
   };
+  const standardNames = GATE_NAMES;
+  const extraNames = [
+    ...new Set(o.results.map((r) => r.name).filter((n) => !standardNames.includes(n)))
+  ];
   return [
     `# Verification Report`,
     ``,
@@ -36364,6 +37090,7 @@ ${body}`;
     ``,
     section("Build", "build"),
     ``,
+    ...extraNames.flatMap((n) => [section(n, n), ``]),
     `## Warnings`,
     o.warnings.length ? o.warnings.map((w) => `- ${w}`).join("\n") : "- none",
     ``
@@ -36464,17 +37191,13 @@ function deliverGate(projectRoot, opts) {
   });
 }
 function noEvidenceRefusal(gates, warnings) {
-  if (gates.length === 0) return null;
-  const notRun = (g) => g.status === "not-run";
-  const testGates = gates.filter((g) => g.name === "test");
+  const gap = evidenceGap(gates.map((g) => ({ name: g.name, ran: g.status !== "not-run" })));
+  if (gap === null) return null;
   const quoted = quoteNotRunWarnings(warnings);
-  if (testGates.length > 0 && testGates.every(notRun)) {
+  if (gap === "test") {
     return `no test evidence \u2014 every recorded \`test\` gate was not run${quoted}. Install the test runner (or pin one in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
   }
-  if (gates.every(notRun)) {
-    return `no evidence \u2014 every recorded gate was not run${quoted}. Install the missing tooling (or pin gate commands in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
-  }
-  return null;
+  return `no evidence \u2014 every recorded gate was not run${quoted}. Install the missing tooling (or pin gate commands in \`.marvin/config.json\`) and re-run /marvin:task-verify. No input waives this refusal.`;
 }
 function quoteNotRunWarnings(warnings) {
   const relevant = warnings.filter((w) => w.startsWith(NOT_RUN_WARNING_PREFIX));
@@ -36517,6 +37240,19 @@ function ok3(text) {
 
 // src/tools/spec.ts
 var import_yaml4 = __toESM(require_dist2());
+
+// src/lib/strict-input.ts
+function strictInput(schema, describe) {
+  return external_exports.object(schema.shape, {
+    errorMap: (issue2, ctx) => issue2.code === external_exports.ZodIssueCode.unrecognized_keys ? { message: describe(issue2.keys) } : { message: ctx.defaultError }
+  }).strict();
+}
+function keyList(keys) {
+  const quoted = keys.map((k) => `\`${k}\``);
+  return quoted.length < 2 ? quoted[0] ?? "" : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
+}
+
+// src/tools/spec.ts
 var STATUS_VALUES = ["draft", "ready", "in-progress", "shipped", "superseded"];
 var RISK_VALUES = ["low", "medium", "high"];
 var SEVERITY_VALUES = ["critical", "high", "medium", "low"];
@@ -36551,7 +37287,7 @@ var SpecInput = external_exports.object({
     "Project root for File Change Plan path-existence checks. Defaults to CLAUDE_PROJECT_DIR / cwd."
   ),
   action: external_exports.enum(["dor", "seal", "scope", "next", "list", "audit", "progress", "resume"]).optional().describe(
-    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision. list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
+    "dor: the full Definition-of-Ready gate (default). seal: verify the spec-contract immutability hash against the frontmatter contract_sha and refuse a spec whose lifecycle is already over (the deterministic pre-execution gate for /marvin:task-implement). scope: check the working-tree diff stays within the contract files allowlist (deterministic scope-creep gate); by-product paths matching `scope.exempt` in .marvin/config.json are reported as exempted, not as violations. next: allocate the next ordering number for a new spec \u2014 the resolved directory, the padded id, the composed filename and any slug collision; numbers the base branch already holds (origin/<base_branch>, as last fetched) are counted too, and a local draft whose number or slug the base holds under another filename is reported (next.base.taken, next.base.collision). list: enumerate the spec corpus, newest number first. audit: lint the whole corpus for consistency \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on, unsealed specs, unknown statuses and files that do not identify themselves as specs. progress: append one entry to a spec's append-only progress journal. resume: read that journal back and report where an interrupted run got to."
   ),
   mode: external_exports.enum(["dor", "seal", "scope"]).optional().describe(
     "Deprecated synonym for `action`, kept so shipped callers keep working. Same three values; `action` wins when both are passed and they agree, and a disagreeing pair is rejected rather than answered for."
@@ -36582,13 +37318,14 @@ var SpecInput = external_exports.object({
   )
 });
 var SPEC_INPUT_FIELDS = Object.keys(SpecInput.shape).join(", ");
-var SpecInputStrict = SpecInput.strict(
-  `unknown argument for the spec tool \u2014 it accepts only: ${SPEC_INPUT_FIELDS}. The changed-file set for action: "scope" is always derived from git (use \`base\` to pick the ref, \`allow\` to permit extra paths); it cannot be supplied by the caller.`
+var SpecInputStrict = strictInput(
+  SpecInput,
+  (keys) => `unknown argument ${keyList(keys)} for the spec tool \u2014 it accepts only: ${SPEC_INPUT_FIELDS}. The changed-file set for action: "scope" is always derived from git (use \`base\` to pick the ref, \`allow\` to permit extra paths); it cannot be supplied by the caller.`
 );
 function buildSpecTool(env2) {
   return defineTool({
     name: "spec",
-    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
+    description: 'Validate a task spec against the Definition of Ready mechanically \u2014 identity/lifecycle frontmatter + a ```yaml spec-contract block (files / criteria / build_order / contract) parsed and zod-validated fail-closed: schema-valid shape, file-path existence, the AC\u21C4files\u21C4tests traceability triple (every criterion maps to real file IDs, every satisfies / test-oracle is allowlisted, the two directions of the graph agree, \u22651 real proof), a typed oracle that can run (every file its command names exists or is planned, no test-name filter the runner would parse as a flag; whole-suite commands and a missing failure line warn), line citations that point inside the files they name, bugfix regression marker, resolved open questions, no leftover placeholders. The tool-backed DoR gate for /marvin:task-start. Returns PASS / PASS WITH WARNINGS / FAIL. With action: "seal" it instead verifies the spec-contract immutability hash against the stamped contract_sha and refuses a spec already shipped or superseded \u2014 the deterministic pre-execution gate for /marvin:task-implement. With action: "scope" it checks that the working-tree diff stays within the contract files allowlist, exempting (and naming) by-product paths that match the project\'s `scope.exempt` patterns. Two corpus reads answer without a verdict: action: "next" allocates the next ordering number (resolved directory, padded id, composed filename, slug collision; a number already taken on the base branch counts as taken, and a draft whose number or slug the base branch claimed meanwhile is reported) and action: "list" enumerates the specs this project holds. With action: "audit" it lints the corpus as a whole \u2014 duplicate numbers, numbering holes, slug collisions, dangling depends_on references, unsealed specs, statuses outside the vocabulary and files that do not identify themselves as specs \u2014 and returns typed findings by severity (the corpus lint behind /marvin:task-audit). Two actions carry the pipeline\'s durable memory: action: "progress" appends one entry to a spec\'s append-only journal under the spec directory\'s runs/ (step, criterion, decision, note, or an "archived" boundary), and action: "resume" reads it back so an interrupted intake or a compacted implementation run can say where it got to. A resume that finds no journal is NOT an error and NOT a claim that nothing was done \u2014 it says so and asks for every criterion to be verified from scratch.',
     inputSchema: SpecInputStrict,
     handler: (input) => runSpec(input, env2)
   });
@@ -36665,10 +37402,8 @@ function verifySeal(raw, env2, projectRoot, diskPath) {
 }
 function ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict) {
   if (!diskPath || verdict === "FAIL") return;
-  const declared = (frontmatter.slug ?? "").trim();
-  const slug = declared || slugOfRecord(diskPath);
-  if (!SLUG_RE3.test(slug)) return;
-  if (!declared && /^\d+-/.test(slug)) return;
+  const slug = recordSlugForSpec(frontmatter.slug, diskPath);
+  if (slug === null) return;
   try {
     ensureRecordForSpec(env2, projectRoot, slug, diskPath);
   } catch {
@@ -36676,29 +37411,29 @@ function ensureMetricsRecord(env2, projectRoot, diskPath, frontmatter, verdict) 
 }
 var TERMINAL_STATUSES = ["shipped", "superseded"];
 function checkStatusTransition(rawStatus) {
-  const status = (rawStatus ?? "").trim();
-  if (!status) {
+  const status2 = (rawStatus ?? "").trim();
+  if (!status2) {
     return warn(
       "status",
       "Lifecycle status",
       "no `status` in frontmatter \u2014 the shipped/superseded transition check did not run"
     );
   }
-  if (TERMINAL_STATUSES.includes(status)) {
+  if (TERMINAL_STATUSES.includes(status2)) {
     return fail(
       "status",
       "Lifecycle status",
-      `spec is \`${status}\` \u2014 its lifecycle is over and it must not be executed again. Write a NEW spec whose \`supersedes:\` names this one (/marvin:task-start).`
+      `spec is \`${status2}\` \u2014 its lifecycle is over and it must not be executed again. Write a NEW spec whose \`supersedes:\` names this one (/marvin:task-start).`
     );
   }
-  if (!STATUS_VALUES.includes(status)) {
+  if (!STATUS_VALUES.includes(status2)) {
     return warn(
       "status",
       "Lifecycle status",
-      `status \`${status}\` is outside the vocabulary (${STATUS_VALUES.join(" | ")}) \u2014 the transition check could not classify it`
+      `status \`${status2}\` is outside the vocabulary (${STATUS_VALUES.join(" | ")}) \u2014 the transition check could not classify it`
     );
   }
-  return pass("status", "Lifecycle status", `\`${status}\` \u2014 not a terminal state`);
+  return pass("status", "Lifecycle status", `\`${status2}\` \u2014 not a terminal state`);
 }
 var SLUG_RE3 = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 function readCorpus(action, input, env2, projectRoot) {
@@ -36708,7 +37443,10 @@ function readCorpus(action, input, env2, projectRoot) {
       `\`slug\` \`${slug}\` is not kebab-case (${SLUG_RE3.source}) \u2014 no number was allocated. Pass a lowercase, hyphen-separated slug; it is rejected rather than rewritten, because a sanitised slug is not the identity the author chose.`
     );
   }
-  const { config: config2 } = loadConfig(specConfigPath(env2, projectRoot));
+  const { config: config2 } = loadConfig(
+    specConfigPath(env2, projectRoot),
+    action === "next" ? projectRoot : void 0
+  );
   const dir = resolveSpecDir(projectRoot, config2.spec);
   const corpus = readSpecCorpus(dir);
   const payload = { action, dir: { rel: dir.rel, source: dir.source } };
@@ -36718,11 +37456,14 @@ function readCorpus(action, input, env2, projectRoot) {
     `**Directory:** \`${dir.rel}\` (${dir.source})`
   ];
   if (action === "next") {
-    const width = specIdWidth(corpus);
-    const number3 = nextSpecNumber(corpus);
+    const base = specFilenamesOnBase(projectRoot, dir, config2.base_branch);
+    const elsewhere = base?.filenames ?? [];
+    const width = specIdWidth(corpus, elsewhere);
+    const number3 = nextSpecNumber(corpus, elsewhere);
     const id = formatSpecId(number3, width);
     const filename = slug ? `${id}-${slug}.md` : null;
     const collision = slug ? corpus.records.find((r) => r.slug === slug) ?? null : null;
+    const claims = base ? baseClaims(corpus, base.filenames, slug) : null;
     payload.next = {
       number: number3,
       id,
@@ -36733,10 +37474,25 @@ function readCorpus(action, input, env2, projectRoot) {
         filename: collision.filename,
         path: collision.path,
         status: collision.status
-      } : null
+      } : null,
+      // Null means the base branch was NOT read (no repository, no origin, no
+      // such ref) and the number is the local directory's alone — never "the
+      // base holds nothing", which is `highest: null` on a ref that was read.
+      base: base ? { ref: base.ref, highest: base.highest, ...claims } : null
     };
     lines.push(
       `**Next number:** ${number3} \u2192 \`${id}\` (width ${width})`,
+      ...base ? [
+        `**Base branch:** \`${base.ref}\` as last fetched \u2014 ` + (base.highest === null ? "no numbered spec there" : `highest there \`${formatSpecId(base.highest, width)}\``)
+      ] : [],
+      ...base && claims ? [
+        ...claims.taken.map(
+          (t) => `\u26A0\uFE0F Number \`${formatSpecId(t.number, width)}\` is already taken on \`${base.ref}\` by \`${t.filename}\` (local \`${t.local}\`): renumber this draft before it merges.`
+        ),
+        ...claims.collision ? [
+          `\u26A0\uFE0F **Slug collision on the base branch** \u2014 \`${base.ref}\` holds \`${claims.collision.filename}\`, which this checkout does not have yet. Choose a different slug, or supersede that spec once it is merged here.`
+        ] : []
+      ] : [],
       ...filename ? [`**Filename:** \`${dir.rel}/${filename}\``] : [],
       ...collision ? [
         "",
@@ -36761,6 +37517,35 @@ function readCorpus(action, input, env2, projectRoot) {
     );
   }
   return corpusResult(lines, payload);
+}
+function specFilenamesOnBase(projectRoot, dir, baseBranch) {
+  const ref = `origin/${baseBranch}`;
+  const rel = relative(projectRoot, dir.abs).split(sep).join(posix.sep) || ".";
+  const listing = git(["ls-tree", "-z", `refs/remotes/${ref}`, "--", `${rel}/`], projectRoot);
+  if (!listing.ok) return null;
+  const filenames = [];
+  for (const entry of listing.value.split("\0")) {
+    const tab = entry.indexOf("	");
+    if (tab < 0 || !entry.startsWith("100")) continue;
+    filenames.push(posix.basename(entry.slice(tab + 1)));
+  }
+  const numbers = filenames.map(specFilenameNumber).filter((n) => n !== null);
+  return { ref, filenames, highest: numbers.length > 0 ? Math.max(...numbers) : null };
+}
+function baseClaims(corpus, onBase, slug) {
+  const baseNames = new Set(onBase);
+  const local = [...corpus.records, ...corpus.malformed];
+  const drafts = local.filter((f) => f.number !== null && !baseNames.has(f.filename));
+  const taken = onBase.flatMap((filename) => {
+    const number3 = specFilenameNumber(filename);
+    if (number3 === null) return [];
+    return drafts.filter((f) => f.number === number3).map((f) => ({ number: number3, filename, local: f.filename }));
+  }).sort(
+    (a, b) => a.number - b.number || a.filename.localeCompare(b.filename) || a.local.localeCompare(b.local)
+  );
+  const localNames = new Set(local.map((f) => f.filename));
+  const claimed = slug ? onBase.find((f) => !localNames.has(f) && specFilenameSlug(f) === slug) : void 0;
+  return { taken, collision: claimed ? { filename: claimed } : null };
 }
 function specConfigPath(env2, projectRoot) {
   return projectRoot === env2.projectDir ? env2.configPath : join(projectRoot, ".marvin", "config.json");
@@ -37390,8 +38175,8 @@ function resolveDependencies(deps, dirs, projectRoot) {
       continue;
     }
     const { frontmatter } = parseFrontmatter(readFileSync(resolved, "utf8"));
-    const status = (frontmatter.status ?? "").trim();
-    if (status !== "shipped") notShipped.push(`${slug}(${status || "?"})`);
+    const status2 = (frontmatter.status ?? "").trim();
+    if (status2 !== "shipped") notShipped.push(`${slug}(${status2 || "?"})`);
   }
   return { notFound, notShipped };
 }
@@ -37840,10 +38625,12 @@ function checkOracles(c, projectRoot) {
   const flagFilters = [];
   const broad = [];
   const noFailure = [];
+  const unsafeRefs = [];
   let commands = 0;
   for (const cr of c.criteria) {
     if (cr.oracle.kind === "prose-review") continue;
     if (!(cr.failure ?? "").trim()) noFailure.push(cr.id);
+    if (isUnsafeOracleRef(cr)) unsafeRefs.push(`${cr.id}: ${cr.oracle.ref?.trim()}`);
     const cmd = oracleCommand(cr);
     if (!cmd) continue;
     commands += 1;
@@ -37880,6 +38667,15 @@ function checkOracles(c, projectRoot) {
         "oracle-filter",
         "Oracles",
         `test-name filter(s) starting with "-" are parsed as options, so the runner exits with an error and the oracle can never pass: ${listed(flagFilters)} \u2014 drop the leading dashes from the pattern`
+      )
+    );
+  }
+  if (unsafeRefs.length) {
+    checks.push(
+      fail(
+        "oracle-ref",
+        "Oracles",
+        `test ref(s) holding a shell metacharacter are refused by the oracle runner (unsafe-ref), so the criterion has no runnable oracle at any gate: ${listed(unsafeRefs)} \u2014 rename the test without ; | & \` < > or $(, or give the criterion an explicit \`run\``
       )
     );
   }
@@ -38108,8 +38904,9 @@ var MetricsInput = external_exports.object({
   since: external_exports.string().optional().describe("series: aggregate only the records rolled up on or after this date (YYYY-MM-DD).")
 });
 var METRICS_INPUT_FIELDS = Object.keys(MetricsInput.shape).join(", ");
-var MetricsInputStrict = MetricsInput.strict(
-  `unknown argument for the metrics tool \u2014 it accepts only: ${METRICS_INPUT_FIELDS}. An event's fields are named by its kind (see the kind description); a misspelt key would otherwise be dropped and the event recorded without it.`
+var MetricsInputStrict = strictInput(
+  MetricsInput,
+  (keys) => `unknown argument ${keyList(keys)} for the metrics tool \u2014 it accepts only: ${METRICS_INPUT_FIELDS}. An event's fields are named by its kind (see the kind description); a misspelt key would otherwise be dropped and the event recorded without it.`
 );
 function buildMetricsTool(env2) {
   return defineTool({
@@ -38434,29 +39231,35 @@ var LessonsInput = external_exports.object({
   limit: external_exports.number().int().positive().max(50).optional(),
   // prune
   slug: external_exports.string().optional().describe("prune: the lesson to delete \u2014 a slug from the candidate list"),
-  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form")
+  confirm: external_exports.boolean().optional().describe("prune: confirm the deletion without an interactive form"),
+  // every action
+  projectRoot: external_exports.string().optional().describe(
+    "Project root whose .marvin/memory store this call reads or writes. Defaults to CLAUDE_PROJECT_DIR / cwd."
+  )
 });
 function buildLessonsTool(server, env2) {
   return defineTool({
     name: "lessons",
-    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation.",
+    description: "Project lessons-learned memory under .marvin/memory (committed to git, shared with the team). action:'add' captures one typed lesson (type, title, body[, tags, source]) from a finished task, review pass, or debug session \u2014 guarded against near-duplicate titles (override with force:true); action:'search' recalls relevant prior lessons (query and/or type) \u2014 call it before writing code so past mistakes inform new work; action:'stats' counts the store by type and tag; action:'prune' lists stale/duplicate candidates and deletes one by slug behind an explicit confirmation. Every action takes an optional projectRoot \u2014 a session working in a git worktree passes its own root, or it reads and writes the store of the checkout the server was started in.",
     inputSchema: LessonsInput,
     handler: (input) => dispatch2(server, env2, input)
   });
 }
 async function dispatch2(server, env2, input) {
+  const projectRoot = input.projectRoot ?? env2.projectDir;
+  const memoryDir = projectScopedDir(env2, projectRoot, env2.memoryDir, "memory");
   switch (input.action) {
     case "add":
-      return runAdd(env2, input);
+      return runAdd(memoryDir, input);
     case "search":
-      return runSearch(env2, input);
+      return runSearch(memoryDir, input);
     case "stats":
-      return runStats(env2);
+      return runStats(memoryDir);
     case "prune":
-      return runPrune(server, env2, input);
+      return runPrune(server, memoryDir, input);
   }
 }
-function runAdd(env2, input) {
+function runAdd(memoryDir, input) {
   const missing = [];
   if (!input.type) missing.push("type");
   if (!input.title?.trim()) missing.push("title");
@@ -38467,7 +39270,7 @@ function runAdd(env2, input) {
     );
   }
   if (!input.force) {
-    const dup = findNearDuplicate(env2.memoryDir, input.title.trim());
+    const dup = findNearDuplicate(memoryDir, input.title.trim());
     if (dup) {
       return err2(
         `Near-duplicate of existing lesson **${dup.slug}** \u2014 "${dup.title}" (\`${dup.type}\`, ${dup.created}). Nothing written. Extend that lesson instead, or pass \`force: true\` to add this one anyway.`
@@ -38475,7 +39278,7 @@ function runAdd(env2, input) {
     }
   }
   const tags = input.tags ? input.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
-  const { slug, path } = addLesson(env2.memoryDir, {
+  const { slug, path } = addLesson(memoryDir, {
     type: input.type,
     title: input.title.trim(),
     body: input.body,
@@ -38488,8 +39291,8 @@ File: \`${path}\`
 Indexed in \`.marvin/memory/MEMORY.md\` \u2014 commit it to share with the team.`
   );
 }
-function runSearch(env2, input) {
-  const lessons = searchLessons(env2.memoryDir, {
+function runSearch(memoryDir, input) {
+  const lessons = searchLessons(memoryDir, {
     ...input.query ? { query: input.query } : {},
     ...input.type ? { type: input.type } : {},
     ...input.limit ? { limit: input.limit } : {}
@@ -38502,8 +39305,8 @@ function runSearch(env2, input) {
   }
   return ok4(renderLessons(lessons));
 }
-function runStats(env2) {
-  const stats = lessonsStats(env2.memoryDir);
+function runStats(memoryDir) {
+  const stats = lessonsStats(memoryDir);
   if (stats.total === 0) {
     return {
       content: [{ type: "text", text: "No lessons captured yet in `.marvin/memory`." }],
@@ -38526,13 +39329,13 @@ function runStats(env2) {
     structuredContent: stats
   };
 }
-async function runPrune(server, env2, input) {
+async function runPrune(server, memoryDir, input) {
   if (!input.slug) {
-    const total = readAllLessons(env2.memoryDir).length;
+    const total = readAllLessons(memoryDir).length;
     if (total === 0) {
       return ok4("No lessons captured yet in `.marvin/memory` \u2014 nothing to prune.");
     }
-    const { stale, duplicates } = pruneCandidates(env2.memoryDir);
+    const { stale, duplicates } = pruneCandidates(memoryDir);
     if (stale.length === 0 && duplicates.length === 0) {
       return ok4(
         `No prune candidates \u2014 none of the ${total} lesson(s) look stale (older than ${STALE_AFTER_DAYS2} days) or duplicated.`
@@ -38556,7 +39359,7 @@ async function runPrune(server, env2, input) {
     );
     return ok4(out.join("\n").trimEnd());
   }
-  const target = readAllLessons(env2.memoryDir).find((l) => l.slug === input.slug);
+  const target = readAllLessons(memoryDir).find((l) => l.slug === input.slug);
   if (!target) {
     return err2(
       `No lesson with slug \`${input.slug}\` under \`.marvin/memory\`. Call \`action: "prune"\` with no slug to list the candidates.`
@@ -38575,7 +39378,7 @@ async function runPrune(server, env2, input) {
     );
     if (answer?.delete !== "yes") return ok4("Cancelled \u2014 no changes made.");
   }
-  const deleted = deleteLesson(env2.memoryDir, target.slug);
+  const deleted = deleteLesson(memoryDir, target.slug);
   if (!deleted) return err2(`Lesson \`${target.slug}\` disappeared before deletion \u2014 nothing done.`);
   return ok4(
     `Deleted lesson **${target.slug}** ("${target.title}").
@@ -38711,12 +39514,11 @@ function runSummary(env2, input) {
   );
   const gates = (verify?.gates ?? []).map(toGateOutcome);
   const commits = readCommits(projectRoot, config2.base_branch);
-  const lessons = searchLessons(env2.memoryDir, { query: slug, limit: 10 }).map(
-    (l) => ({
-      id: l.slug,
-      title: l.title
-    })
-  );
+  const memoryDir = projectScopedDir(env2, projectRoot, env2.memoryDir, "memory");
+  const lessons = searchLessons(memoryDir, { query: slug, limit: 10 }).map((l) => ({
+    id: l.slug,
+    title: l.title
+  }));
   const links = buildLinks(env2, config2, projectRoot, slug, frontmatter, hostBindings);
   const summary = {
     slug,
@@ -38825,11 +39627,11 @@ function recordedOutcome(run3) {
   return "unknown";
 }
 function toGateOutcome(g) {
-  const status = g.status === "pass" ? "pass" : g.status === "not-run" || g.status === "skip" ? "skip" : "fail";
+  const status2 = g.status === "pass" ? "pass" : g.status === "not-run" || g.status === "skip" ? "skip" : "fail";
   return {
     name: g.name,
-    status,
-    ...status === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {},
+    status: status2,
+    ...status2 === "fail" ? { detail: g.status === "error" ? "errored" : `exit ${g.code ?? "?"}` } : {},
     ...g.status === "not-run" ? { detail: "not run \u2014 binary not on PATH" } : {}
   };
 }
@@ -38869,7 +39671,7 @@ var CRITIC_LABELS = {
   "marvin-tm-diff-critic": "diff critic"
 };
 function critiqueDirFor(env2, projectRoot) {
-  return projectRoot === env2.projectDir ? env2.critiqueDir : join(projectRoot, ".marvin", "critique");
+  return projectScopedDir(env2, projectRoot, env2.critiqueDir, "critique");
 }
 function critiqueLinks(env2, projectRoot, slug) {
   const dir = critiqueDirFor(env2, projectRoot);
@@ -39048,9 +39850,345 @@ function formatReportLine2(r) {
 function buildPayload(reports) {
   return { reports };
 }
+var STAGES = [
+  "intake",
+  "planning",
+  "awaiting_answer",
+  "awaiting_approval",
+  "test_authoring",
+  "executing",
+  "gating",
+  "verifying",
+  "ci_wait",
+  "retro",
+  "finalizing",
+  "ready",
+  "done",
+  "halted"
+];
+var Stage = external_exports.enum(STAGES);
+var TIERS = ["light", "standard", "heavy"];
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+var Assignment = external_exports.object({ model: external_exports.string().min(1), effort: external_exports.enum(EFFORTS) });
+var ROLES = ["planner", "test-author", "executor", "verifier", "retro"];
+var Json = external_exports.record(external_exports.string(), external_exports.unknown());
+var Child = external_exports.object({
+  name: external_exports.string(),
+  role: external_exports.enum(ROLES),
+  iteration: external_exports.number().int().min(0),
+  sessionId: external_exports.string().nullable(),
+  pid: external_exports.number().int().nullable(),
+  assignment: Assignment,
+  startedAt: external_exports.string(),
+  endedAt: external_exports.string().nullable(),
+  status: external_exports.enum([
+    "running",
+    "needs_input",
+    "spec_ready",
+    "done",
+    "failed",
+    "crashed",
+    "stalled",
+    "limited"
+  ]),
+  costUsd: external_exports.number().nullable(),
+  cacheReadTokens: external_exports.number().nullable()
+});
+var Run = external_exports.object({
+  version: external_exports.literal(2),
+  id: external_exports.string(),
+  repoRoot: external_exports.string(),
+  base: external_exports.string(),
+  lang: external_exports.string(),
+  orchestratorName: external_exports.string(),
+  task: external_exports.object({ original: external_exports.string(), english: external_exports.string() }),
+  stageA: external_exports.enum(TIERS),
+  stage: Stage,
+  haltReason: external_exports.string().nullable(),
+  worktree: external_exports.string().nullable(),
+  branch: external_exports.string().nullable(),
+  specPath: external_exports.string().nullable(),
+  /**
+   * The commit in which the engine put the approved spec, and its metrics record unless git
+   * ignores it, on the run branch; null until the approval. Absent from runs written before it
+   * existed.
+   */
+  specCommit: external_exports.string().nullable().default(null),
+  tier: external_exports.enum(TIERS).nullable(),
+  tierReasons: external_exports.array(external_exports.string()),
+  prUrl: external_exports.string().nullable(),
+  iteration: external_exports.number().int().min(0),
+  rung: external_exports.number().int().min(0),
+  rejections: external_exports.array(
+    external_exports.object({
+      iteration: external_exports.number().int(),
+      source: external_exports.enum(["gate", "verifier", "ci"]),
+      fingerprints: external_exports.array(external_exports.string())
+    })
+  ),
+  retries: external_exports.record(external_exports.string(), external_exports.number().int()),
+  questionsAnswered: external_exports.number().int().min(0),
+  testAuthorAttempts: external_exports.number().int().min(0),
+  /** Rounds in which the executor asked a question or raised a dispute. Absent from older run files. */
+  executorQuestionRounds: external_exports.number().int().min(0).default(0),
+  sealed: external_exports.array(
+    external_exports.object({ path: external_exports.string(), sha256: external_exports.string(), criteria: external_exports.array(external_exports.string()) })
+  ),
+  assumptions: external_exports.array(external_exports.string()),
+  previousFindings: external_exports.array(Json),
+  minorFindings: external_exports.array(Json),
+  claims: external_exports.array(external_exports.string()),
+  gateReport: Json.nullable(),
+  awaitingRole: external_exports.enum(["planner", "executor"]).nullable(),
+  pendingJudgment: external_exports.object({ id: external_exports.string(), kind: external_exports.string() }).nullable(),
+  pendingWork: external_exports.object({ work: external_exports.string(), data: Json.optional() }).nullable(),
+  haltRole: external_exports.enum(ROLES).nullable(),
+  finalized: external_exports.boolean(),
+  /** When the current wait for CI began; null outside a CI wait. Absent from runs written before it existed. */
+  ciSince: external_exports.string().nullable().default(null),
+  lastSpawn: external_exports.record(external_exports.string(), Json),
+  children: external_exports.array(Child),
+  createdAt: external_exports.string(),
+  updatedAt: external_exports.string()
+});
+function stateRoot(env2 = process.env) {
+  return env2.MARVIN_PIPELINE_HOME ?? join(homedir(), ".local", "state", "marvin-pipeline");
+}
+function loadRun(dir) {
+  return Run.parse(JSON.parse(readFileSync(join(dir, "run.json"), "utf8")));
+}
+external_exports.enum([
+  "stage",
+  "assignment",
+  "report",
+  "question",
+  "answer",
+  "verdict",
+  "escalation",
+  "note"
+]);
+
+// src/tools/pipeline.ts
+var PipelineInput = external_exports.object({
+  action: external_exports.enum(["paths", "status"]).describe(
+    "paths: where the pipeline's assets are \u2014 the marvin-pipe CLI bundle (run it with node), the role prompts, the result schemas, the child guard hooks, the default rubric and checks \u2014 and the state root runs live under, each resolved from where the plugin is installed. status: one run read back from its run.json \u2014 stage, tier, iteration, PR, pending judgment and children."
+  ),
+  runDir: external_exports.string().optional().describe(
+    "status only: the run directory, as marvin-pipe init printed it. Must be an absolute path inside the state root."
+  )
+});
+var PIPELINE_INPUT_FIELDS = Object.keys(PipelineInput.shape).join(", ");
+var PipelineInputStrict = strictInput(
+  PipelineInput,
+  (keys) => `unknown argument ${keyList(keys)} for the pipeline tool \u2014 it accepts only: ${PIPELINE_INPUT_FIELDS}.`
+);
+var SHIPPED = ["cli", "roles", "schemas", "hooks", "rubricDefault", "checksDefault"];
+function pipelinePaths(packRoot2, env2) {
+  const root = resolve(packRoot2);
+  const assets = join(root, "pipeline");
+  return {
+    cli: join(root, "mcp", "server", "dist", "marvin-pipe.js"),
+    roles: join(assets, "roles"),
+    schemas: join(assets, "schemas"),
+    hooks: join(assets, "hooks"),
+    rubricDefault: join(assets, "rubric.default.yaml"),
+    checksDefault: join(assets, "checks.default.yaml"),
+    stateRoot: stateRoot(env2)
+  };
+}
+function buildPipelineTool(packRoot2, env2 = process.env) {
+  return defineTool({
+    name: "pipeline",
+    description: `The autopilot pipeline's read-only door; runs are driven by the marvin-pipe CLI, never by this tool. action: "paths" returns where the pipeline's assets are \u2014 cli (the marvin-pipe bundle, run with node), roles, schemas, hooks, rubricDefault, checksDefault \u2014 each resolved from where the plugin is installed and never from the cwd, plus the stateRoot runs live under (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline) and the list of shipped paths that are missing. action: "status" reads one run back from <runDir>/run.json \u2014 id, stage, halt reason, tier, iteration, PR, pending judgment and a children summary \u2014 and refuses a runDir that does not resolve inside the state root. Strict input: an unknown key is an error.`,
+    inputSchema: PipelineInputStrict,
+    handler: (input) => Promise.resolve(runPipeline(input, packRoot2, env2))
+  });
+}
+function runPipeline(input, packRoot2, env2) {
+  if (input.action === "paths") {
+    if (input.runDir !== void 0) {
+      return errText4(
+        '`runDir` is read by `action: "status"` only \u2014 `paths` does not depend on a run. Call status for the run, or drop runDir.'
+      );
+    }
+    return paths(packRoot2, env2);
+  }
+  if (input.runDir === void 0 || input.runDir.trim() === "") {
+    return errText4('`action: "status"` needs a `runDir` \u2014 the directory marvin-pipe init printed.');
+  }
+  return status(input.runDir, env2);
+}
+function relativeStateRoot(env2) {
+  const root = stateRoot(env2);
+  if (isAbsolute(root)) return null;
+  return errText4(
+    `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. The state root is never resolved against the server's cwd, which is the session's project and not where runs live. Set it to an absolute path, or unset it for ~/.local/state/marvin-pipeline.`
+  );
+}
+function paths(packRoot2, env2) {
+  const refused = relativeStateRoot(env2);
+  if (refused) return refused;
+  const p = pipelinePaths(packRoot2, env2);
+  const missing = SHIPPED.filter((key) => !existsSync(p[key]));
+  const line = (key, note) => `- **${key}:** \`${p[key]}\`${note}${missing.includes(key) ? " \u2014 **missing**" : ""}`;
+  const lines = [
+    line("cli", " \u2014 run it with `node`"),
+    line("roles", ""),
+    line("schemas", ""),
+    line("hooks", ""),
+    line("rubricDefault", ""),
+    line("checksDefault", ""),
+    line(
+      "stateRoot",
+      existsSync(p.stateRoot) ? "" : " \u2014 not created yet; the first `init` creates it"
+    )
+  ];
+  const warning = missing.length === 0 ? "" : `
+
+_\u26A0 missing: ${missing.join(", ")}.` + (missing.includes("cli") ? " The CLI is built with the server (`npm run build` in mcp/server); until then no run can start." : "") + (missing.some((key) => key !== "cli") ? " A shipped pipeline asset is absent, so this plugin install is incomplete." : "") + "_";
+  return {
+    content: [{ type: "text", text: `# Pipeline paths
+
+${lines.join("\n")}${warning}` }],
+    structuredContent: { ...p, missing }
+  };
+}
+function strictlyInside(root, path) {
+  const rel = relative(root, path);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+function status(runDirArg, env2) {
+  if (!isAbsolute(runDirArg)) {
+    return errText4(
+      `\`runDir\` \`${runDirArg}\` is not an absolute path. It is never resolved against the server's cwd, which is not the run's; pass the path marvin-pipe init printed.`
+    );
+  }
+  const refused = relativeStateRoot(env2);
+  if (refused) return refused;
+  const root = resolve(stateRoot(env2));
+  const runDir = resolve(runDirArg);
+  if (!existsSync(root)) {
+    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root);
+    return errText4(
+      `The state root \`${root}\` does not exist, so no run has been started under it.`
+    );
+  }
+  const realRoot = realpathSync(root);
+  if (strictlyInside(root, runDir) || strictlyInside(realRoot, runDir)) {
+    if (!existsSync(runDir)) return errText4(`There is no run directory at \`${runDir}\`.`);
+  } else if (!existsSync(runDir)) {
+    return outsideRoot(runDirArg, root);
+  }
+  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root);
+  const file = join(runDir, "run.json");
+  if (!existsSync(file)) return errText4(`There is no run.json in \`${runDir}\`.`);
+  if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root);
+  let run3;
+  try {
+    run3 = loadRun(runDir);
+  } catch (error2) {
+    return errText4(`\`${file}\` is not a valid run: ${describeError(error2)}`);
+  }
+  const payload = statusPayload(runDir, run3);
+  return {
+    content: [{ type: "text", text: renderStatus(payload) }],
+    structuredContent: payload
+  };
+}
+function statusPayload(runDir, run3) {
+  const byStatus = {};
+  for (const child of run3.children) byStatus[child.status] = (byStatus[child.status] ?? 0) + 1;
+  const costs = run3.children.map((c) => c.costUsd).filter((c) => c !== null);
+  return {
+    runDir,
+    id: run3.id,
+    stage: run3.stage,
+    haltReason: run3.haltReason,
+    tier: run3.tier,
+    stageA: run3.stageA,
+    iteration: run3.iteration,
+    rung: run3.rung,
+    prUrl: run3.prUrl,
+    branch: run3.branch,
+    worktree: run3.worktree,
+    specPath: run3.specPath,
+    pendingJudgment: run3.pendingJudgment,
+    rejections: run3.rejections.length,
+    children: {
+      total: run3.children.length,
+      running: byStatus.running ?? 0,
+      byStatus,
+      costUsd: costs.length === 0 ? null : costs.reduce((a, b) => a + b, 0),
+      rows: run3.children.map((c) => ({
+        name: c.name,
+        role: c.role,
+        iteration: c.iteration,
+        status: c.status,
+        model: c.assignment.model,
+        effort: c.assignment.effort,
+        costUsd: c.costUsd,
+        startedAt: c.startedAt,
+        endedAt: c.endedAt
+      }))
+    },
+    updatedAt: run3.updatedAt
+  };
+}
+var usd = (n) => n === null ? "\u2014" : `$${n.toFixed(2)}`;
+var code = (s) => s === null ? "none" : `\`${s}\``;
+function renderStatus(s) {
+  const tier = s.tier === null ? `not assessed yet (stage A \`${s.stageA}\`)` : `\`${s.tier}\``;
+  const judgment = s.pendingJudgment === null ? "none" : `\`${s.pendingJudgment.id}\` (${s.pendingJudgment.kind})`;
+  const head = [
+    `# Pipeline run \u2014 ${s.id}`,
+    "",
+    `**Stage:** \`${s.stage}\` \xB7 **Tier:** ${tier} \xB7 **Iteration:** ${s.iteration} \xB7 **Rung:** ${s.rung}`,
+    ...s.haltReason === null ? [] : [`**Halted:** ${s.haltReason}`],
+    `**PR:** ${s.prUrl ?? "none yet"}`,
+    `**Pending judgment:** ${judgment}`,
+    `**Branch:** ${code(s.branch)} \xB7 **Worktree:** ${code(s.worktree)}`,
+    `**Spec:** ${code(s.specPath)}`,
+    `**Rejections:** ${s.rejections} \xB7 **Updated:** ${s.updatedAt}`,
+    `**Run dir:** \`${s.runDir}\``
+  ];
+  const c = s.children;
+  if (c.total === 0) return [...head, "", "_No children launched yet._"].join("\n");
+  const counts = Object.entries(c.byStatus).map(([status2, n]) => `${status2} ${n}`).join(", ");
+  const rows = c.rows.map(
+    (r) => `| ${r.name} | ${r.role} | ${r.iteration} | ${r.status} | ${r.model}/${r.effort} | ${usd(r.costUsd)} |`
+  );
+  return [
+    ...head,
+    "",
+    `## Children (${c.total}) \u2014 ${counts} \xB7 cost ${usd(c.costUsd)}`,
+    "",
+    "| Child | Role | Iteration | Status | Model/effort | Cost |",
+    "|---|---|---|---|---|---|",
+    ...rows
+  ].join("\n");
+}
+function outsideRoot(runDir, root) {
+  return errText4(
+    `\`${runDir}\` is not a run directory inside the pipeline state root \`${root}\` (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). status reads runs only from there, so nothing was read.`
+  );
+}
+function describeError(error2) {
+  if (error2 instanceof external_exports.ZodError) {
+    return error2.issues.map((i) => i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message).join("; ");
+  }
+  return error2 instanceof Error ? error2.message : String(error2);
+}
+function errText4(text) {
+  return {
+    content: [{ type: "text", text: `# Pipeline tool \u2014 refused
+
+${text}` }],
+    isError: true
+  };
+}
 
 // src/server.ts
-var VERSION = "0.28.0";
+var VERSION = "0.29.7";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -39079,7 +40217,10 @@ await runPackServer({
         buildSummaryTool(env),
         buildAdrTool(env),
         buildAuditTool(env),
-        buildReportTool(env)
+        buildReportTool(env),
+        // The autopilot pipeline's read-only door: where the marvin-pipe CLI and its assets
+        // are, resolved from packRoot rather than the session's cwd, and one run's status.
+        buildPipelineTool(packRoot)
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

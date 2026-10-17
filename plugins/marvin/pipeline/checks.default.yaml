@@ -1,0 +1,23 @@
+- {
+    id: only,
+    pattern: '\.only\(',
+    path_pattern: '\.(test|spec)\.[cm]?[jt]sx?$',
+    message: "focused test left in",
+    severity: blocker,
+    category: test-quality,
+  }
+- {
+    id: skip,
+    pattern: '\b(it|test|describe)\.skip\(|\bxit\(',
+    path_pattern: '\.(test|spec)\.[cm]?[jt]sx?$',
+    message: "skipped test added",
+    severity: major,
+    category: test-quality,
+  }
+- {
+    id: debugger,
+    pattern: '\bdebugger;',
+    message: "debugger statement left in",
+    severity: major,
+    category: convention,
+  }

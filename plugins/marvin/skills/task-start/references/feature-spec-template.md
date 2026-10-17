@@ -18,7 +18,9 @@ test_command: {command that runs the tests, e.g. "npm test" | none}
 as a criterion or a file intent, and prose refers to it by id (F3, AC2) without restating it. A
 requirement found only in prose is a defect, because nothing proves it. Measurements, probes and
 provenance go to the evidence sidecar, and the critic's narrative stays in its receipt. Size budget:
-3 KB + 400 B per file + 500 B per criterion; the DoR gate warns above it. -->
+3 KB + 400 B per file + 500 B per criterion; the DoR gate warns above it. `risk: low` only when
+nothing that exists behaves differently, and a command-line script's tests take a test file of their
+own (task-start Steps 5F and 2F). -->
 
 ## Goal
 {what this task delivers, and why — one or two sentences}
