@@ -12,6 +12,7 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
   unlinkSync,
@@ -554,3 +555,79 @@ test(
     assert.deepEqual(registered(w), before);
   },
 );
+
+test("a base that looks like an option is fetched as a ref name, never parsed as a flag", () => {
+  const repo = repoWithOrigin();
+  const marker = join(mkdtempSync(join(tmpdir(), "pipe-opt-")), "ran");
+  assert.throws(
+    () =>
+      wt.createRunWorktree({
+        repoRoot: repo,
+        base: `--upload-pack=touch ${marker}; false`,
+        runId: "r1",
+        worktreesRoot: worktreesRoot(),
+      }),
+    /fetch origin -- --upload-pack/,
+  );
+  assert.equal(existsSync(marker), false, "git ran the base as --upload-pack");
+});
+
+test("the worktrees root is created owner-only", () => {
+  const repo = repoWithOrigin();
+  const root = join(worktreesRoot(), "fresh");
+  wt.createRunWorktree({ repoRoot: repo, base: "dev", runId: "r1", worktreesRoot: root });
+  assert.equal(statSync(join(root, basename(repo))).mode & 0o777, 0o700);
+});
+
+test("the git common dir snapshot sees a planted hook, a config key and info/, not branch tracking", () => {
+  const repo = repoWithOrigin();
+  const made = wt.createRunWorktree({
+    repoRoot: repo,
+    base: "dev",
+    runId: "r1",
+    worktreesRoot: worktreesRoot(),
+  });
+  const common = realpathSync(join(repo, ".git"));
+  // Taken from the run worktree and from the main checkout, it is one directory.
+  assert.equal(realpathSync(wt.gitCommonDir(made.path)), common);
+  const before = wt.snapshotGitCommon(repo);
+  assert.deepEqual(wt.diffGitCommon(before, wt.snapshotGitCommon(made.path)), []);
+
+  // What `git push -u` and `gh pr create` write is not a change.
+  sh(made.path, "config", "branch.autopilot/r1.remote", "origin");
+  sh(made.path, "config", "branch.autopilot/r1.merge", "refs/heads/autopilot/r1");
+  sh(repo, "config", "remote.origin.gh-resolved", "base");
+  assert.deepEqual(wt.diffGitCommon(before, wt.snapshotGitCommon(repo)), []);
+
+  writeFileSync(join(common, "hooks", "pre-commit"), "#!/bin/sh\ntouch /tmp/owned\n");
+  chmodSync(join(common, "hooks", "pre-commit"), 0o755);
+  sh(repo, "config", "core.hooksPath", "/tmp/elsewhere");
+  writeFileSync(join(common, "info", "attributes"), "* filter=x\n");
+  const after = wt.snapshotGitCommon(repo);
+  assert.deepEqual(wt.diffGitCommon(before, after), [
+    `git common dir changed: ${join(common, "config")}`,
+    `git common dir added: ${join(common, "hooks/pre-commit")}`,
+    `git common dir added: ${join(common, "info/attributes")}`,
+  ]);
+
+  // A sample hook made executable is a change of mode alone.
+  const sample = join(common, "hooks", "pre-push.sample");
+  if (existsSync(sample)) {
+    chmodSync(sample, 0o644);
+    const plain = wt.snapshotGitCommon(repo);
+    chmodSync(sample, 0o755);
+    assert.deepEqual(wt.diffGitCommon(plain, wt.snapshotGitCommon(repo)), [
+      `git common dir changed: ${sample}`,
+    ]);
+  }
+  // A config.worktree that appears is a change, and so is one removed.
+  writeFileSync(join(common, "config.worktree"), "[core]\n\tfsmonitor = /tmp/x\n");
+  const withWt = wt.snapshotGitCommon(repo);
+  assert.deepEqual(wt.diffGitCommon(after, withWt), [
+    `git common dir added: ${join(common, "config.worktree")}`,
+  ]);
+  unlinkSync(join(common, "config.worktree"));
+  assert.deepEqual(wt.diffGitCommon(withWt, wt.snapshotGitCommon(repo)), [
+    `git common dir removed: ${join(common, "config.worktree")}`,
+  ]);
+});

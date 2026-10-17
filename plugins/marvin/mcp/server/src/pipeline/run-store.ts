@@ -7,8 +7,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { z } from "zod";
+import { isSafeBranchRef } from "../storage/slug.js";
 
 export const STAGES = [
   "intake",
@@ -69,7 +70,8 @@ export const Run = z.object({
   version: z.literal(2),
   id: z.string(),
   repoRoot: z.string(),
-  base: z.string(),
+  // `createRunWorktree` fetches it and children are told it, so it is a branch name or nothing.
+  base: z.string().refine(isSafeBranchRef, { message: "base is not a safe branch name" }),
   lang: z.string(),
   orchestratorName: z.string(),
   task: z.object({ original: z.string(), english: z.string() }),
@@ -141,8 +143,38 @@ const NEXT: Record<Stage, readonly Stage[]> = {
   halted: ["retro"],
 };
 
+/**
+ * The state root as configured, unchecked: MARVIN_PIPELINE_HOME, else
+ * ~/.local/state/marvin-pipeline. The `pipeline` tool reads it this way so that it can answer a
+ * bad value with a refusal of its own; everything that writes uses `checkedStateRoot`.
+ */
 export function stateRoot(env: NodeJS.ProcessEnv = process.env): string {
   return env.MARVIN_PIPELINE_HOME ?? join(homedir(), ".local", "state", "marvin-pipeline");
+}
+
+/**
+ * The state root, refused when MARVIN_PIPELINE_HOME is set but empty or relative. Such a root
+ * would resolve against the cwd, which for `marvin-pipe` is the user's project: runs and their
+ * worktrees would land inside the repository the run works on, and a later call from another
+ * directory would not find them.
+ */
+export function checkedStateRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const root = stateRoot(env);
+  if (!isAbsolute(root)) {
+    throw new Error(
+      `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. ` +
+        "Set it to an absolute path, or unset it for ~/.local/state/marvin-pipeline.",
+    );
+  }
+  return root;
+}
+
+/**
+ * Creates `dir` and any missing parent owner-only (0700): run state holds the task, child
+ * transcripts and session ids. Directories that already exist keep their mode.
+ */
+export function mkdirPrivate(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
 export function runDirFor(
@@ -150,7 +182,7 @@ export function runDirFor(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return join(stateRoot(env), basename(repoRoot), id);
+  return join(checkedStateRoot(env), basename(repoRoot), id);
 }
 
 export function newRunId(now: Date, rand: () => number = Math.random): string {
@@ -218,7 +250,7 @@ export function initRun(o: {
 }
 
 export function saveRun(dir: string, run: Run): void {
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   const target = join(dir, "run.json");
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(Run.parse(run), null, 2)}\n`);
@@ -260,7 +292,7 @@ export interface PipelineEvent {
 
 export function appendEvent(dir: string, event: PipelineEvent): void {
   EventKind.parse(event.kind);
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   appendFileSync(join(dir, "events.jsonl"), `${JSON.stringify(event)}\n`);
 }
 

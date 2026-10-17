@@ -2177,3 +2177,102 @@ test("the engine drives a light run to ready on this runtime, with fake children
     delete process.env.MARVIN_PIPELINE_FAKE_CI;
   }
 });
+
+/** The repository's shared hooks directory, which no `git status` of either checkout lists. */
+const hooksOf = (repo) => join(realpathSync(join(repo, ".git")), "hooks");
+
+test("a hook planted in the shared git dir during a child is a leak, and decide halts on it", async () => {
+  const s = await prepared();
+  const run = { ...s.run, stage: "executing", iteration: 1 };
+  await withFake(s.runDir, "executor", DONE, async () => {
+    const spawned = s.deps.spawnChild(
+      run,
+      spawnAction("executor", 1, EXECUTOR_CONTEXT),
+      step("hook"),
+    );
+    writeFileSync(join(hooksOf(s.repo), "pre-commit"), "#!/bin/sh\n");
+    const { run: seen, obs } = await waitFor(s.deps, spawned);
+    assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "pre-commit")}`]);
+    const d = decide(seen, obs, rubric, new Date());
+    assert.deepEqual(
+      d.actions.map((a) => a.judgment),
+      ["halt"],
+    );
+  });
+});
+
+const PLANT = (name) =>
+  `printf x > "$(git rev-parse --path-format=absolute --git-common-dir)/hooks/${name}"`;
+
+test("a gate command that plants a hook in the shared git dir halts the run, charged to the executor", async () => {
+  const s = await prepared({ config: { gates: { test: PLANT("post-checkout") } } });
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "src/a.mjs");
+  sh(s.wt, "commit", "-q", "-m", "work");
+  const run = { ...s.run, stage: "gating", iteration: 1, prUrl: PR };
+  const { obs } = await s.deps.work(run, "gate", undefined, step("gate"));
+  assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "post-checkout")}`]);
+  const d = decide(run, obs, rubric, new Date());
+  assert.deepEqual(
+    d.actions.map((a) => a.judgment),
+    ["halt"],
+  );
+  assert.equal(d.run.haltRole, "executor");
+  assert.match(d.actions[0].payload.reason, /gate stage changed the repository's shared git dir/);
+
+  // The next gate compares against its own before-snapshot, so a clean gate passes again.
+  const again = await s.deps.work(run, "gate", undefined, step("gate-2"));
+  assert.equal(again.obs.leaked, undefined);
+});
+
+test("a red run that plants a hook in the shared git dir halts the run, charged to the test-author", async () => {
+  const s = await prepared({
+    config: { gates: { test_one: "node --test {file}" } },
+  });
+  write(s.wt, ".marvin/task/001-tag-filter.md", specText());
+  write(
+    s.wt,
+    "test/a.test.mjs",
+    [
+      'import test from "node:test";',
+      'import assert from "node:assert";',
+      'import { execFileSync } from "node:child_process";',
+      'import { writeFileSync } from "node:fs";',
+      'const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" }).trim();',
+      'writeFileSync(`${common}/hooks/pre-rebase`, "x");',
+      'test("a", () => assert.equal(1, 2));',
+      "",
+    ].join("\n"),
+  );
+  const run = { ...s.run, stage: "test_authoring", specPath: ".marvin/task/001-tag-filter.md" };
+  const data = { tests: [{ path: "test/a.test.mjs", criteria: ["AC1"] }] };
+  const context = process.env.NODE_TEST_CONTEXT;
+  delete process.env.NODE_TEST_CONTEXT;
+  try {
+    const { obs } = await s.deps.work(run, "seal", data, step("seal-1"));
+    assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "pre-rebase")}`]);
+    const d = decide(run, obs, rubric, new Date());
+    assert.equal(d.actions[0].judgment, "halt");
+    assert.equal(d.run.haltRole, "test-author");
+  } finally {
+    if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
+  }
+});
+
+test("a bootstrap that plants a hook in the shared git dir fails prepare", async () => {
+  const s = setup({ config: { pipeline: { bootstrap: PLANT("pre-push") } } });
+  await assert.rejects(s.deps.prepare(s.run), /changed the repository's shared git dir/);
+  assert.ok(existsSync(join(hooksOf(s.repo), "pre-push")));
+  // A restarted engine runs the bootstrap again, and still judges it against the first snapshot.
+  await assert.rejects(s.deps.prepare(s.run), /changed the repository's shared git dir/);
+});
+
+test("prepare refuses a relative MARVIN_PIPELINE_HOME rather than make worktrees under the cwd", async () => {
+  const s = setup();
+  process.env.MARVIN_PIPELINE_HOME = "relative-home";
+  try {
+    await assert.rejects(s.deps.prepare(s.run), /not an absolute path/);
+  } finally {
+    process.env.MARVIN_PIPELINE_HOME = s.home;
+  }
+});

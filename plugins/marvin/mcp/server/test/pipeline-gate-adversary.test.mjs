@@ -159,7 +159,11 @@ test("P3: new protected files hidden by a self-ignoring .gitignore are still fla
   assert.equal(w.git("status", "--porcelain"), "", "git itself reports a clean tree");
   const report = await gateStage(w);
   assert.equal(report.passed, false);
-  assert.deepEqual(report.protected, [".claude/hooks/x.sh", ".claude/settings.json"]);
+  assert.deepEqual(report.protected, [
+    ".claude/.gitignore",
+    ".claude/hooks/x.sh",
+    ".claude/settings.json",
+  ]);
   assert.deepEqual(report.blockers, []);
 });
 
@@ -430,6 +434,28 @@ test("G3: a gitlink the baseline already holds is tolerated", async () => {
   assert.equal(w.baseline["vendor/sub/"], "nested-repo");
   const report = await gateStage(w, { contractFiles: ["vendor/sub"] });
   assert.equal(report.passed, true, JSON.stringify(report));
+});
+
+test("G4b: everything under .claude/ is protected, CLAUDE.md is not", () => {
+  // .claude/ holds agents, commands, skills and settings the user's own sessions load; no role
+  // writes there. CLAUDE.md stays editable: feature work routinely documents itself in it.
+  const changed = [
+    ".claude/agents/x.md",
+    ".claude/commands/y.md",
+    ".claude/skills/z/SKILL.md",
+    ".claude/launch.json",
+    ".Claude/agents/x.md",
+    "CLAUDE.md",
+    "docs/CLAUDE.md",
+    "src/.claude/x.md",
+  ];
+  assert.deepEqual(g.protectedChanges(changed, protectedDefaults), [
+    ".claude/agents/x.md",
+    ".claude/commands/y.md",
+    ".claude/skills/z/SKILL.md",
+    ".claude/launch.json",
+    ".Claude/agents/x.md",
+  ]);
 });
 
 test("G4: a plain file standing where a protected directory belongs is a protected change", async () => {

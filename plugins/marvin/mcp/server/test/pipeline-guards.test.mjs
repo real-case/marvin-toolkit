@@ -689,6 +689,7 @@ test("protected paths inside the worktree are denied", () => {
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/hooks/pre.sh",
+    ".claude/agents/a.md",
     ".husky/pre-commit",
     ".mcp.json",
     ".git",
@@ -699,7 +700,8 @@ test("protected paths inside the worktree are denied", () => {
   }
   for (const rel of [
     ".marvin/task/1-x.md",
-    ".claude/agents/a.md",
+    "CLAUDE.md",
+    "src/.claude/agents/a.md",
     "src/.mcp.json",
     "docs/.husky.md",
     ".github/workflows/ci.yml",
