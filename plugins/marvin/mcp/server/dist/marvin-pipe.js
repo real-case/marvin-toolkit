@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { spawn, spawnSync, execFileSync, execSync } from 'child_process';
-import { writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, appendFileSync, renameSync, cpSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
-import { isAbsolute, resolve, posix, join, dirname, basename, sep, normalize, relative } from 'path';
+import { realpathSync, writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdtempSync, mkdirSync, readdirSync, appendFileSync, renameSync, cpSync, linkSync, rmSync, fstatSync, readSync, statSync, lstatSync, readlinkSync, chmodSync, rmdirSync, symlinkSync } from 'fs';
+import { isAbsolute, posix, resolve, join, dirname, basename, sep, normalize, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { setTimeout as setTimeout$1 } from 'timers/promises';
 import { parseArgs, isDeepStrictEqual } from 'util';
@@ -18748,6 +18748,28 @@ function buildChildCommand(s) {
   if (s.testPathPattern) env.MARVIN_PIPELINE_TEST_PATTERN = s.testPathPattern;
   return { argv, env, cwd: s.cwd };
 }
+
+// src/storage/slug.ts
+function slugify(title, maxLen = 40) {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+  if (base.length <= maxLen) return base;
+  const cut = base.slice(0, maxLen);
+  const lastHyphen = cut.lastIndexOf("-");
+  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
+}
+function isSafeBranchRef(name) {
+  if (!name || name === "@") return false;
+  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
+  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
+  for (const segment of name.split("/")) {
+    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
+  }
+  return true;
+}
+
+// src/pipeline/run-store.ts
 var STAGES = [
   "intake",
   "planning",
@@ -18796,7 +18818,8 @@ var Run = external_exports.object({
   version: external_exports.literal(2),
   id: external_exports.string(),
   repoRoot: external_exports.string(),
-  base: external_exports.string(),
+  // `createRunWorktree` fetches it and children are told it, so it is a branch name or nothing.
+  base: external_exports.string().refine(isSafeBranchRef, { message: "base is not a safe branch name" }),
   lang: external_exports.string(),
   orchestratorName: external_exports.string(),
   task: external_exports.object({ original: external_exports.string(), english: external_exports.string() }),
@@ -18868,8 +18891,20 @@ var NEXT = {
 function stateRoot(env = process.env) {
   return env.MARVIN_PIPELINE_HOME ?? join(homedir(), ".local", "state", "marvin-pipeline");
 }
+function checkedStateRoot(env = process.env) {
+  const root = stateRoot(env);
+  if (!isAbsolute(root)) {
+    throw new Error(
+      `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. Set it to an absolute path, or unset it for ~/.local/state/marvin-pipeline.`
+    );
+  }
+  return root;
+}
+function mkdirPrivate(dir) {
+  mkdirSync(dir, { recursive: true, mode: 448 });
+}
 function runDirFor(repoRoot, id, env = process.env) {
-  return join(stateRoot(env), basename(repoRoot), id);
+  return join(checkedStateRoot(env), basename(repoRoot), id);
 }
 function newRunId(now, rand = Math.random) {
   const p = (n) => String(n).padStart(2, "0");
@@ -18922,7 +18957,7 @@ function initRun(o) {
   });
 }
 function saveRun(dir, run2) {
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   const target = join(dir, "run.json");
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(Run.parse(run2), null, 2)}
@@ -18954,7 +18989,7 @@ var EventKind = external_exports.enum([
 ]);
 function appendEvent(dir, event) {
   EventKind.parse(event.kind);
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   appendFileSync(join(dir, "events.jsonl"), `${JSON.stringify(event)}
 `);
 }
@@ -20940,8 +20975,8 @@ function createRunWorktree(o) {
   const branch = `autopilot/${o.runId}`;
   const path = join(o.worktreesRoot, basename(o.repoRoot), o.runId);
   if (existsSync(path)) throw new Error(`worktree path exists: ${path}`);
-  mkdirSync(dirname(path), { recursive: true });
-  git2(o.repoRoot, "fetch", "origin", o.base);
+  mkdirSync(dirname(path), { recursive: true, mode: 448 });
+  git2(o.repoRoot, "fetch", "origin", "--", o.base);
   const baseSha = git2(
     o.repoRoot,
     "rev-parse",
@@ -21218,6 +21253,82 @@ function diffSnapshots(before, after) {
     }
   }
   return diff;
+}
+var COMMON_FILES = ["config", "config.worktree"];
+var COMMON_DIRS = ["hooks", "info"];
+var COMMON_MAX_DEPTH = 8;
+var VOLATILE_CONFIG = /^(?:branch\.|remote\.[^\n]*\.gh-resolved\n)/i;
+function configFingerprint(abs) {
+  const raw = readFileSync(abs);
+  try {
+    const listed2 = execFileSync(
+      "git",
+      [...HARDENED_GIT_OPTIONS, "config", "--file", abs, "--no-includes", "--list", "-z"],
+      { env: hardenedGitEnv(), stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 }
+    ).toString("utf8");
+    const kept = listed2.split("\0").filter((entry) => entry !== "" && !VOLATILE_CONFIG.test(entry)).sort();
+    return `config:${sha256Bytes(Buffer.from(kept.join("\0")))}`;
+  } catch {
+    return `raw:${sha256Bytes(raw)}`;
+  }
+}
+function commonEntry(abs, config2) {
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink()) return `link:${readlinkSync(abs)}`;
+  if (st.isDirectory()) return "dir";
+  if (!st.isFile()) return `special:${st.mode.toString(8)}`;
+  const mode = (st.mode & 73) !== 0 ? "x" : "-";
+  return config2 ? `${mode}${configFingerprint(abs)}` : `${mode}${sha256Bytes(readFileSync(abs))}`;
+}
+function walkCommon(root, rel, depth, out) {
+  const abs = join(root, rel);
+  const entry = commonEntry(abs, false);
+  if (entry === null) return;
+  out[rel] = entry;
+  if (entry !== "dir") return;
+  if (depth >= COMMON_MAX_DEPTH) {
+    out[rel] = "dir:too-deep";
+    return;
+  }
+  let names;
+  try {
+    names = readdirSync(abs).sort();
+  } catch {
+    out[rel] = "dir:unreadable";
+    return;
+  }
+  for (const name of names) walkCommon(root, posix.join(rel, name), depth + 1, out);
+}
+function gitCommonDir(repoRoot) {
+  return git2(repoRoot, "rev-parse", "--path-format=absolute", "--git-common-dir");
+}
+function snapshotGitCommon(repoRoot) {
+  const common = gitCommonDir(repoRoot);
+  const out = {};
+  for (const name of COMMON_FILES) {
+    const entry = commonEntry(join(common, name), true);
+    if (entry !== null) out[name] = entry;
+  }
+  for (const name of COMMON_DIRS) walkCommon(common, name, 0, out);
+  return JSON.stringify({ common, entries: out });
+}
+function diffGitCommon(before, after) {
+  const a = JSON.parse(before);
+  const b = JSON.parse(after);
+  if (a.common !== b.common) return [`git common dir moved: ${a.common} -> ${b.common}`];
+  const keys = [.../* @__PURE__ */ new Set([...Object.keys(a.entries), ...Object.keys(b.entries)])].sort();
+  return keys.flatMap((k) => {
+    const was = a.entries[k];
+    const now = b.entries[k];
+    if (was === now) return [];
+    const what = was === void 0 ? "added" : now === void 0 ? "removed" : "changed";
+    return [`git common dir ${what}: ${join(b.common, k)}`];
+  });
 }
 
 // src/pipeline/seal.ts
@@ -22747,28 +22858,6 @@ async function runOne(x) {
 
 // src/pipeline/learning.ts
 var import_yaml5 = __toESM(require_dist());
-
-// src/storage/slug.ts
-function slugify(title, maxLen = 40) {
-  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-  if (base.length <= maxLen) return base;
-  const cut = base.slice(0, maxLen);
-  const lastHyphen = cut.lastIndexOf("-");
-  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
-}
-function isSafeBranchRef(name) {
-  if (!name || name === "@") return false;
-  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
-  if (name.endsWith(".")) return false;
-  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
-  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
-  for (const segment of name.split("/")) {
-    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
-  }
-  return true;
-}
-
-// src/storage/lessons.ts
 var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
 var INDEX_FILE = "MEMORY.md";
 var INDEX_HEADER = [
@@ -24052,6 +24141,13 @@ function step(run2, obs, rubric, now) {
     }
     throw new Error(`cannot retry ${role} from stage ${r.stage}`);
   };
+  if ((obs.kind === "gate" || obs.kind === "seal") && obs.leaked?.length) {
+    const role = obs.kind === "gate" ? "executor" : "test-author";
+    return ask({ ...run2, haltRole: role }, "halt", {
+      reason: `the ${obs.kind} stage changed the repository's shared git dir`,
+      detail: obs.leaked
+    });
+  }
   const child = obs.kind === "child" ? obs : null;
   let output = null;
   if (child) {
@@ -32013,12 +32109,17 @@ var WRAPPER = [
   'echo "$code" > "$exitf"'
 ].join("\n");
 function launchDetached(cmd, runDir, name) {
-  mkdirSync(runDir, { recursive: true });
+  mkdirSync(runDir, { recursive: true, mode: 448 });
   const logPath = join(runDir, `${name}.log.jsonl`);
   const errPath = join(runDir, `${name}.err`);
   const exitPath = join(runDir, `${name}.exit`);
   const child = spawn("/bin/sh", ["-c", WRAPPER, "sh", logPath, errPath, exitPath, ...cmd.argv], {
     cwd: cmd.cwd,
+    // The engine's environment is passed on whole, credentials included: the executor pushes
+    // and runs `gh pr create`, which authenticate through GH_TOKEN / GITHUB_TOKEN where the user
+    // set them, and every role is a `claude -p` that may reach the model through Bedrock or
+    // Vertex credentials (AWS_*, GOOGLE_*, CLOUD_ML_*). Stripping them would stop the run rather
+    // than contain it; the child's guards, not its environment, bound what it does.
     env: { ...process.env, ...cmd.env },
     detached: true,
     stdio: "ignore"
@@ -32548,7 +32649,7 @@ function createRuntime(o) {
       if (!existsSync(saved.path)) throw new Error(`the run's worktree ${saved.path} is gone`);
       return saved;
     }
-    const worktreesRoot = join(stateRoot(), "worktrees");
+    const worktreesRoot = join(checkedStateRoot(), "worktrees");
     const path = join(worktreesRoot, basename(run2.repoRoot), run2.id);
     const made = existsSync(path) ? adoptWorktree(run2, path, `autopilot/${run2.id}`) : createRunWorktree({ repoRoot: run2.repoRoot, base: run2.base, runId: run2.id, worktreesRoot });
     let originUrl;
@@ -32568,11 +32669,20 @@ function createRuntime(o) {
     const marker = at("bootstrap.json");
     if (readJson(marker, external_exports.object({ command: external_exports.string() }))?.command === command) return;
     const timeout = config2.pipeline.gate_timeout_minutes * 6e4;
+    const beforeFile = at("bootstrap.common-before.json");
+    if (!existsSync(beforeFile)) writeAtomic2(beforeFile, snapshotGitCommon(worktree));
     const result = runner(`export HUSKY=0; ${command}`, worktree, timeout);
     if (result.code !== 0) {
       const tail = result.output.trimEnd().split("\n").slice(-20).join("\n");
       throw new Error(`bootstrap \`${command}\` failed (exit ${result.code}):
 ${tail}`);
+    }
+    const planted = diffGitCommon(readFileSync(beforeFile, "utf8"), snapshotGitCommon(worktree));
+    if (planted.length > 0) {
+      throw new Error(
+        `bootstrap \`${command}\` changed the repository's shared git dir:
+${planted.join("\n")}`
+      );
     }
     writeAtomic2(marker, `${JSON.stringify({ command })}
 `);
@@ -32821,6 +32931,8 @@ ${tail}`);
     );
     const mainBefore = at(`${key}.main-before.txt`);
     if (!existsSync(mainBefore)) writeAtomic2(mainBefore, snapshotTree(run2.repoRoot));
+    const commonBefore = at(`${key}.common-before.json`);
+    if (!existsSync(commonBefore)) writeAtomic2(commonBefore, snapshotGitCommon(run2.repoRoot));
     const marker = { ref: step2.ref, key, name, startedAt: now(), pid: null };
     writeAtomic2(markerPath(step2.ref), `${JSON.stringify(marker)}
 `);
@@ -32970,6 +33082,16 @@ ${tail}`);
       if (leaked.length > 0) obs.leaked = leaked;
     } else {
       note(`no main-checkout snapshot for ${key}; its leak check was skipped`, { notify: true });
+    }
+    const commonBefore = at(`${key}.common-before.json`);
+    if (existsSync(commonBefore)) {
+      const planted = diffGitCommon(
+        readFileSync(commonBefore, "utf8"),
+        snapshotGitCommon(run2.repoRoot)
+      );
+      if (planted.length > 0) obs.leaked = [...obs.leaked ?? [], ...planted];
+    } else {
+      note(`no git common dir snapshot for ${key}; its check was skipped`, { notify: true });
     }
     if (child.role === "verifier") {
       const before = at("snapshot.txt");
@@ -33645,9 +33767,15 @@ ${tail}`);
       case "commit_spec":
         return commitSpecWork(run2);
       case "gate":
-        return gateWork(run2);
-      case "seal":
-        return sealWork(run2, data, step2);
+      case "seal": {
+        const commonBefore = snapshotGitCommon(run2.repoRoot);
+        const done = kind === "gate" ? await gateWork(run2) : sealWork(run2, data, step2);
+        const planted = diffGitCommon(commonBefore, snapshotGitCommon(run2.repoRoot));
+        if (planted.length > 0 && (done.obs.kind === "gate" || done.obs.kind === "seal")) {
+          return { ...done, obs: { ...done.obs, leaked: planted } };
+        }
+        return done;
+      }
       case "ci":
         return ciWork(run2);
       case "finalize":
@@ -33719,6 +33847,9 @@ function init(flags) {
     throw new Error(`--stage-a must be one of ${TIERS.join(", ")}, not ${stageA}`);
   }
   assertOrchestratorName(flag(flags, "orch"));
+  const base = flag(flags, "base");
+  if (!isSafeBranchRef(base))
+    throw new Error(`--base ${JSON.stringify(base)} is not a branch name`);
   const now = /* @__PURE__ */ new Date();
   const id = newRunId(now);
   const runDir = runDirFor(repoRoot, id);
@@ -33726,7 +33857,7 @@ function init(flags) {
   const run2 = initRun({
     id,
     repoRoot,
-    base: flag(flags, "base"),
+    base,
     lang: flag(flags, "lang"),
     orchestratorName: flag(flags, "orch"),
     task: readFileSync(flag(flags, "task-file"), "utf8"),
@@ -33734,7 +33865,7 @@ function init(flags) {
     stageA,
     now
   });
-  mkdirSync(runDir, { recursive: true });
+  mkdirPrivate(runDir);
   saveRun(runDir, run2);
   print({ runId: id, runDir });
 }
@@ -33848,7 +33979,7 @@ function status(flags) {
   });
 }
 function list(flags) {
-  const root = stateRoot();
+  const root = checkedStateRoot();
   const repo = optional2(flags, "repo");
   const repoRoot = repo === void 0 ? void 0 : resolve(repo);
   const groups = repoRoot === void 0 ? subdirs(root) : [basename(repoRoot)];
@@ -34017,7 +34148,14 @@ async function main(argv) {
     return 1;
   }
 }
-if (process.argv[1] !== void 0 && resolve(process.argv[1]) === SELF) {
+function isEntry(argv1) {
+  try {
+    return realpathSync(argv1) === realpathSync(SELF);
+  } catch {
+    return false;
+  }
+}
+if (process.argv[1] !== void 0 && isEntry(process.argv[1])) {
   process.exitCode = await main(process.argv.slice(2));
 }
 

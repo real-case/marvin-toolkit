@@ -15,7 +15,13 @@ import {
   symlinkSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
-import { HARDENED_GIT_OPTIONS, hardenedGitEnv, type IsolatedGit, isolatedGit } from "./gate.js";
+import {
+  HARDENED_GIT_OPTIONS,
+  hardenedGitEnv,
+  type IsolatedGit,
+  isolatedGit,
+  sha256Bytes,
+} from "./gate.js";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
@@ -41,8 +47,9 @@ export function createRunWorktree(o: {
   const branch = `autopilot/${o.runId}`;
   const path = join(o.worktreesRoot, basename(o.repoRoot), o.runId);
   if (existsSync(path)) throw new Error(`worktree path exists: ${path}`);
-  mkdirSync(dirname(path), { recursive: true });
-  git(o.repoRoot, "fetch", "origin", o.base);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  // `--` so that a base which slipped past the checks can never be read as an option.
+  git(o.repoRoot, "fetch", "origin", "--", o.base);
   const baseSha = git(
     o.repoRoot,
     "rev-parse",
@@ -467,4 +474,114 @@ export function diffSnapshots(before: string, after: string): string[] {
   }
 
   return diff;
+}
+
+// ---------------------------------------------------------------------- git common dir
+
+/**
+ * What in the shared git directory runs code or redirects git for every checkout of the
+ * repository: hooks, the config files, and `info/` (`exclude`, `attributes`, `sparse-checkout`).
+ * A child, or a test the engine runs, that writes `<common>/hooks/pre-commit` has planted a
+ * command the user's next commit runs. None of these is inside a worktree, so neither the
+ * protected snapshot nor the D19 leak check (both `git status` of a checkout) sees them.
+ */
+const COMMON_FILES = ["config", "config.worktree"] as const;
+const COMMON_DIRS = ["hooks", "info"] as const;
+/** A planted tree deeper than this is reported as one entry rather than walked. */
+const COMMON_MAX_DEPTH = 8;
+
+/**
+ * `branch.*` entries are what `git push -u` and `gh pr create` write for the run branch, and set
+ * nothing that runs; `remote.<name>.gh-resolved` is `gh`'s default-repository marker. Every other
+ * key, `include.path` and the hooks path among them, is fingerprinted.
+ */
+const VOLATILE_CONFIG = /^(?:branch\.|remote\.[^\n]*\.gh-resolved\n)/i;
+
+/** A config file as its sorted entries, so that a branch entry being added is not a change. */
+function configFingerprint(abs: string): string {
+  const raw = readFileSync(abs);
+  try {
+    const listed = execFileSync(
+      "git",
+      [...HARDENED_GIT_OPTIONS, "config", "--file", abs, "--no-includes", "--list", "-z"],
+      { env: hardenedGitEnv(), stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 },
+    ).toString("utf8");
+    const kept = listed
+      .split("\0")
+      .filter((entry) => entry !== "" && !VOLATILE_CONFIG.test(entry))
+      .sort();
+    return `config:${sha256Bytes(Buffer.from(kept.join("\0")))}`;
+  } catch {
+    // A file git cannot parse is compared byte for byte.
+    return `raw:${sha256Bytes(raw)}`;
+  }
+}
+
+function commonEntry(abs: string, config: boolean): string | null {
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink()) return `link:${readlinkSync(abs)}`;
+  if (st.isDirectory()) return "dir";
+  if (!st.isFile()) return `special:${st.mode.toString(8)}`;
+  const mode = (st.mode & 0o111) !== 0 ? "x" : "-";
+  return config ? `${mode}${configFingerprint(abs)}` : `${mode}${sha256Bytes(readFileSync(abs))}`;
+}
+
+function walkCommon(root: string, rel: string, depth: number, out: Record<string, string>): void {
+  const abs = join(root, rel);
+  const entry = commonEntry(abs, false);
+  if (entry === null) return;
+  out[rel] = entry;
+  if (entry !== "dir") return;
+  if (depth >= COMMON_MAX_DEPTH) {
+    out[rel] = "dir:too-deep";
+    return;
+  }
+  let names: string[];
+  try {
+    names = readdirSync(abs).sort();
+  } catch {
+    out[rel] = "dir:unreadable";
+    return;
+  }
+  for (const name of names) walkCommon(root, posix.join(rel, name), depth + 1, out);
+}
+
+/** The repository's common git dir, as an absolute path. */
+export function gitCommonDir(repoRoot: string): string {
+  return git(repoRoot, "rev-parse", "--path-format=absolute", "--git-common-dir");
+}
+
+/**
+ * A fingerprint of the hooks, config and `info/` of `repoRoot`'s common git dir, as JSON, for
+ * `diffGitCommon`. Absent paths are absent from it, so one appearing is a difference.
+ */
+export function snapshotGitCommon(repoRoot: string): string {
+  const common = gitCommonDir(repoRoot);
+  const out: Record<string, string> = {};
+  for (const name of COMMON_FILES) {
+    const entry = commonEntry(join(common, name), true);
+    if (entry !== null) out[name] = entry;
+  }
+  for (const name of COMMON_DIRS) walkCommon(common, name, 0, out);
+  return JSON.stringify({ common, entries: out });
+}
+
+/** What changed in the common git dir between two `snapshotGitCommon` results; empty if nothing. */
+export function diffGitCommon(before: string, after: string): string[] {
+  const a = JSON.parse(before) as { common: string; entries: Record<string, string> };
+  const b = JSON.parse(after) as { common: string; entries: Record<string, string> };
+  if (a.common !== b.common) return [`git common dir moved: ${a.common} -> ${b.common}`];
+  const keys = [...new Set([...Object.keys(a.entries), ...Object.keys(b.entries)])].sort();
+  return keys.flatMap((k) => {
+    const was = a.entries[k];
+    const now = b.entries[k];
+    if (was === now) return [];
+    const what = was === undefined ? "added" : now === undefined ? "removed" : "changed";
+    return [`git common dir ${what}: ${join(b.common, k)}`];
+  });
 }

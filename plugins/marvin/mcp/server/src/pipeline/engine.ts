@@ -57,8 +57,9 @@ export type Observation =
       leaked?: string[];
     }
   | { kind: "answer"; judgment: JudgmentKind; answer: Answer }
-  | { kind: "gate"; report: GateReport; findings: Finding[] }
-  | { kind: "seal"; ok: boolean; reasons: string[]; sealed: Run["sealed"] }
+  /** `leaked`: what the gate's commands changed in the shared git dir (hooks, config, info/). */
+  | { kind: "gate"; report: GateReport; findings: Finding[]; leaked?: string[] }
+  | { kind: "seal"; ok: boolean; reasons: string[]; sealed: Run["sealed"]; leaked?: string[] }
   /** The engine's commit of the approved spec, or why it refused to make one. */
   | { kind: "spec_commit"; ok: boolean; commit: string | null; reason: string | null }
   | { kind: "ci"; state: CiState; failing: string[] }
@@ -625,6 +626,15 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     throw new Error(`cannot retry ${role} from stage ${r.stage}`);
   };
 
+  // The gate runs the executor's code and the seal runs the test-author's tests; either planting
+  // something in the shared git dir halts the run, charged to the role whose code ran.
+  if ((obs.kind === "gate" || obs.kind === "seal") && obs.leaked?.length) {
+    const role: Role = obs.kind === "gate" ? "executor" : "test-author";
+    return ask({ ...run, haltRole: role }, "halt", {
+      reason: `the ${obs.kind} stage changed the repository's shared git dir`,
+      detail: obs.leaked,
+    });
+  }
   const child = obs.kind === "child" ? obs : null;
   let output: ChildOutput | null = null;
   if (child) {
