@@ -4,6 +4,26 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.9] — 2026-10-17
+
+Lets the autopilot seal stage run on a `gates.test_one` written for the per-test oracles.
+
+### Fixed
+
+- **The seal stage reads `gates.test_one` for a whole file instead of refusing its per-test
+  parts.** A template such as `npx vitest run "{file}" -t "{name}"`, which `verify`'s oracles
+  use to run one named test, stopped every autopilot run at the seal stage, and since the engine
+  reads config from a run's base commit, the run could not be repaired by editing it. The seal
+  stage, the bench's hidden tests and the verifier's probe now share one reading
+  (`wholeFileTemplate`): an option whose value is exactly `{name}`, `{ref}` or `{path}`, bare or
+  quoted as a whole, is dropped with its option, and a `"{file}"` or `'{file}'` becomes the
+  engine's single-quoted path. Every other placement of those placeholders, a `{file}` quoted
+  with other text, and a backtick, `$(`, `<<`, `#` or newline are still refused
+  ([ADR-0049](../../docs/adr/0049-whole-file-reading-of-test-one.md), amending ADR-0048).
+- **The verifier's test probe no longer carries an opening quote.** It was cut from the raw
+  template at `{file}`, so `npx vitest run "{file}"` gave `Bash(npx vitest run ":*)`. It is now
+  cut from the whole-file reading and gives `Bash(npx vitest run:*)`.
+
 ## [0.29.8] — 2026-10-17
 
 Closes the autopilot audit notes v0.29.7 left open.

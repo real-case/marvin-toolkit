@@ -590,6 +590,25 @@ test("every role launches with its name, env, settings, schema and allowlist, an
   }
 });
 
+test("the verifier's probe is the whole-file prefix of a test_one that quotes {file} and filters by {name}", async () => {
+  const s = await prepared({
+    config: { gates: { test_one: 'npx vitest run "{file}" -t "{name}"' } },
+  });
+  const fixture = join(s.runDir, "fake.json");
+  writeFileSync(fixture, JSON.stringify({ status: "failed", summary: "fake" }));
+  const verifier = engineContexts(s.run).find((a) => a.role === "verifier");
+  process.env[fakeVariable("verifier")] = fixture;
+  try {
+    s.deps.spawnChild(s.run, verifier, step("launch-verifier"));
+    const { argv } = command(s.runDir, `r1-verifier-${verifier.iteration}`);
+    const tools = argv.slice(argv.indexOf("--allowedTools") + 1);
+    assert.ok(tools.includes("Bash(npx vitest run:*)"), tools.join(" "));
+    assert.ok(!tools.some((tool) => tool.includes('"')), "no opening quote is left on the prefix");
+  } finally {
+    delete process.env[fakeVariable("verifier")];
+  }
+});
+
 test("a resume continues the role's last session with the message alone; spec_ready carries the spec's signals", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
   const s = await prepared({ files: { [spec]: specText() } });

@@ -441,10 +441,16 @@ newline) is refused rather than substituted: the run records `not-run` with the 
 [ADR-0048](./adr/0048-shell-quoted-test-one-placeholders.md).
 
 The [autopilot pipeline](#pipeline)'s seal stage reads the same template to run one whole
-test file, so it accepts a narrower form: `{file}` only, unquoted. It refuses `{name}` and
-`{ref}`, because it runs every test in the file, and a quoted `{file}`. A template that serves
-both is `"npx vitest run {file}"`; one that adds `-t {name}` serves `verify` and the oracles
-but not the seal stage.
+test file, so it reads it for a whole file first. A per-test filter is dropped together with its
+option when the option's value is exactly one placeholder, bare or quoted as a whole:
+`-t {name}`, `-t "{name}"`, `--testNamePattern={name}`, `-t{name}`, `--grep '{ref}'`. A
+`"{file}"` or `'{file}'` is read as the placeholder with its quotes, and the engine single-quotes
+the path itself. So `"npx vitest run \"{file}\" -t \"{name}\""` runs one named test in `verify`
+and the oracles, and `npx vitest run '<path>'` in the seal stage. Anything else is refused: a
+`{name}`, `{ref}` or `{path}` in another position (positional, `-t "^{name}$"`), a `{file}` that
+shares its quotes with other text (`"./{file}"`, `sh -c 'vitest {file}'`), and a backtick, `$(`,
+`<<`, `#` or newline anywhere in the template. The reading is recorded in
+[ADR-0049](./adr/0049-whole-file-reading-of-test-one.md).
 
 `test_one` is **not a gate**. It is never scheduled, its exit code never enters a verdict, and it
 never appears in `verification.md`. Only `verify`'s `action: "oracles"` and the autopilot
