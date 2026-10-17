@@ -77,7 +77,8 @@ ready to merge. `/marvin:autopilot resume [run-id]` takes over a run another ses
 started.
 
 Run state lives outside the repository under `MARVIN_PIPELINE_HOME`, by default
-`~/.local/state/marvin-pipeline`. Each run's worktree and local branch are kept after the
+`~/.local/state/marvin-pipeline`; a value that is set must be an absolute path, and the
+directories marvin creates there are readable by your user only. Each run's worktree and local branch are kept after the
 run ends, so remove them with `git worktree remove` and `git branch -D` once the pull request
 is merged. The children run as your OS user with your credentials; the
 [security policy](../SECURITY.md#trust-boundary) describes what their guards do and do not

@@ -4,6 +4,43 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.8] — 2026-10-17
+
+Closes the autopilot audit notes v0.29.7 left open.
+
+### Security
+
+- **A run halts when anything it executes changes the repository's shared git dir.** The gate's
+  protected snapshot and the main-checkout leak check are both `git status` of a checkout, so
+  neither saw `<common>/hooks/`, `config`, `config.worktree` or `info/`, and a child that wrote
+  and ran a test could plant `hooks/pre-commit` for the user's next commit. The engine now
+  fingerprints those paths before and after every child, every gate, every red run of the seal
+  and the bootstrap, and halts the run on a difference (a bootstrap fails prepare). The
+  `branch.*` entries `git push -u` writes and `gh`'s `remote.<name>.gh-resolved` are not counted.
+- **`marvin-pipe init` refuses a `--base` that is not a branch name**, and a run file whose base
+  is not one no longer loads. The worktree's `git fetch origin -- <base>` now ends option
+  parsing before the ref, so a base such as `--upload-pack=…` is a missing ref, never a command.
+- **Run state is owner-only.** The state root, every run directory and the worktrees root are
+  created with mode `0700`.
+- **An empty or relative `MARVIN_PIPELINE_HOME` is refused by `marvin-pipe` and the engine**, as
+  the `pipeline` tool already refused it, instead of placing runs and worktrees under the cwd.
+- **Everything under `.claude/` is a protected path for the autopilot** (agents, commands,
+  skills, `launch.json`), not only its settings and hooks: those files steer the user's own
+  sessions and no role writes them. `CLAUDE.md` stays editable, because feature work documents
+  itself there.
+
+### Fixed
+
+- **`marvin-pipe` runs when invoked through a symlink.** It compared `argv[1]` with its own path
+  as written and silently did nothing when either was a link; it now compares real paths, as the
+  pipeline hooks already do.
+
+### Notes
+
+- A child keeps the engine's environment, credentials included: the executor pushes and runs
+  `gh pr create` (`GH_TOKEN`/`GITHUB_TOKEN`), and every role is a `claude -p` that may reach the
+  model through Bedrock or Vertex. A test pins that these reach the child.
+
 ## [0.29.7] — 2026-10-17
 
 ### Security

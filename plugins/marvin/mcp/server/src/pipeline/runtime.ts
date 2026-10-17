@@ -81,7 +81,7 @@ import {
   type PipelineEvent,
   type Role,
   type Run,
-  stateRoot,
+  checkedStateRoot,
 } from "./run-store.js";
 import { type AuthoredTest, isReseal, sealAuthoredTests, writeSealManifest } from "./seal.js";
 import { buildRoleSettings } from "./settings.js";
@@ -89,8 +89,10 @@ import { classify, readChildState, summaryLine, type WaitResult } from "./wait.j
 import {
   branchName,
   createRunWorktree,
+  diffGitCommon,
   diffSnapshots,
   renameRunBranch,
+  snapshotGitCommon,
   snapshotTree,
 } from "./worktree.js";
 
@@ -648,7 +650,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (!existsSync(saved.path)) throw new Error(`the run's worktree ${saved.path} is gone`);
       return saved;
     }
-    const worktreesRoot = join(stateRoot(), "worktrees");
+    const worktreesRoot = join(checkedStateRoot(), "worktrees");
     const path = join(worktreesRoot, basename(run.repoRoot), run.id);
     const made = existsSync(path)
       ? adoptWorktree(run, path, `autopilot/${run.id}`)
@@ -677,10 +679,20 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const marker = at("bootstrap.json");
     if (readJson(marker, z.object({ command: z.string() }))?.command === command) return;
     const timeout = config.pipeline.gate_timeout_minutes * 60_000;
+    // Kept from the first attempt: a bootstrap rerun after one that planted something would
+    // otherwise compare against a snapshot that already holds it.
+    const beforeFile = at("bootstrap.common-before.json");
+    if (!existsSync(beforeFile)) writeAtomic(beforeFile, snapshotGitCommon(worktree));
     const result = runner(`export HUSKY=0; ${command}`, worktree, timeout);
     if (result.code !== 0) {
       const tail = result.output.trimEnd().split("\n").slice(-20).join("\n");
       throw new Error(`bootstrap \`${command}\` failed (exit ${result.code}):\n${tail}`);
+    }
+    const planted = diffGitCommon(readFileSync(beforeFile, "utf8"), snapshotGitCommon(worktree));
+    if (planted.length > 0) {
+      throw new Error(
+        `bootstrap \`${command}\` changed the repository's shared git dir:\n${planted.join("\n")}`,
+      );
     }
     writeAtomic(marker, `${JSON.stringify({ command })}\n`);
   };
@@ -1013,6 +1025,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     // relaunch keeps the snapshot an earlier call took, which predates any launch.
     const mainBefore = at(`${key}.main-before.txt`);
     if (!existsSync(mainBefore)) writeAtomic(mainBefore, snapshotTree(run.repoRoot));
+    // The shared git dir (hooks, config, info/) is outside both checkouts, so `git status` of
+    // either never shows a hook the child planted there.
+    const commonBefore = at(`${key}.common-before.json`);
+    if (!existsSync(commonBefore)) writeAtomic(commonBefore, snapshotGitCommon(run.repoRoot));
 
     const marker: SpawnMarker = { ref: step.ref, key, name, startedAt: now(), pid: null };
     writeAtomic(markerPath(step.ref), `${JSON.stringify(marker)}\n`);
@@ -1210,6 +1226,16 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (leaked.length > 0) obs.leaked = leaked;
     } else {
       note(`no main-checkout snapshot for ${key}; its leak check was skipped`, { notify: true });
+    }
+    const commonBefore = at(`${key}.common-before.json`);
+    if (existsSync(commonBefore)) {
+      const planted = diffGitCommon(
+        readFileSync(commonBefore, "utf8"),
+        snapshotGitCommon(run.repoRoot),
+      );
+      if (planted.length > 0) obs.leaked = [...(obs.leaked ?? []), ...planted];
+    } else {
+      note(`no git common dir snapshot for ${key}; its check was skipped`, { notify: true });
     }
     // The verifier is read-only: the tree after it must be the tree the snapshot work recorded.
     if (child.role === "verifier") {
@@ -2096,9 +2122,17 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       case "commit_spec":
         return commitSpecWork(run);
       case "gate":
-        return gateWork(run);
-      case "seal":
-        return sealWork(run, data, step);
+      case "seal": {
+        // The gate and the red run execute the run's code and tests in the engine's own process
+        // tree, so they are checked the way a child is.
+        const commonBefore = snapshotGitCommon(run.repoRoot);
+        const done = kind === "gate" ? await gateWork(run) : sealWork(run, data, step);
+        const planted = diffGitCommon(commonBefore, snapshotGitCommon(run.repoRoot));
+        if (planted.length > 0 && (done.obs.kind === "gate" || done.obs.kind === "seal")) {
+          return { ...done, obs: { ...done.obs, leaked: planted } };
+        }
+        return done;
+      }
       case "ci":
         return ciWork(run);
       case "finalize":

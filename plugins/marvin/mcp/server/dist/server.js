@@ -39898,7 +39898,8 @@ var Run = external_exports.object({
   version: external_exports.literal(2),
   id: external_exports.string(),
   repoRoot: external_exports.string(),
-  base: external_exports.string(),
+  // `createRunWorktree` fetches it and children are told it, so it is a branch name or nothing.
+  base: external_exports.string().refine(isSafeBranchRef, { message: "base is not a safe branch name" }),
   lang: external_exports.string(),
   orchestratorName: external_exports.string(),
   task: external_exports.object({ original: external_exports.string(), english: external_exports.string() }),
@@ -40188,7 +40189,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.29.7";
+var VERSION = "0.29.8";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

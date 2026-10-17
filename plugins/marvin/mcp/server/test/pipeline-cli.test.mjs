@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -278,4 +287,73 @@ test("assess prints a spec's tier, its reasons and every role's assignment", () 
   assert.equal(out.tier, "heavy");
   assert.match(out.reasons.join(" "), /risk high/);
   assert.deepEqual(Object.keys(out.assignments).sort(), [...rs.ROLES].sort());
+});
+
+test("init refuses a --base that is not a branch name, before anything is written", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const t = join(home, "t.txt");
+  writeFileSync(t, "x");
+  for (const base of ["--upload-pack=touch x", "-b", "a..b"]) {
+    const args = ["init", "--repo", "/x/r", "--lang", "en", "--orch", "A", "--stage-a", "light"];
+    assert.match(
+      pipeFails(home, ...args, `--base=${base}`, "--task-file", t, "--task-en-file", t),
+      /is not a branch name/,
+      base,
+    );
+  }
+  assert.equal(existsSync(join(home, "r")), false);
+});
+
+test("init refuses an empty or relative MARVIN_PIPELINE_HOME instead of writing under the cwd", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pipe-cwd-"));
+  const t = join(cwd, "t.txt");
+  writeFileSync(t, "x");
+  for (const home of ["", "state"]) {
+    const r = spawnSync(
+      process.execPath,
+      [cli, "init", "--repo", "/x/r", "--base", "dev", "--lang", "en", "--orch", "A"].concat([
+        "--stage-a",
+        "light",
+        "--task-file",
+        t,
+        "--task-en-file",
+        t,
+      ]),
+      { cwd, env: envFor(home), encoding: "utf8" },
+    );
+    assert.equal(r.status, 1, home);
+    assert.match(r.stderr, /MARVIN_PIPELINE_HOME .* is not an absolute path/, home);
+    assert.match(
+      spawnSync(process.execPath, [cli, "list"], { cwd, env: envFor(home), encoding: "utf8" })
+        .stderr,
+      /not an absolute path/,
+    );
+  }
+  assert.deepEqual(readdirSync(cwd), ["t.txt"]);
+});
+
+test("init creates the state root and the run dir owner-only", () => {
+  const parent = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const home = join(parent, "state");
+  const t = join(parent, "t.txt");
+  writeFileSync(t, "x");
+  const { runDir } = JSON.parse(
+    pipe(
+      home,
+      ...["init", "--repo", "/x/osint-chat-client", "--base", "dev", "--lang", "en"],
+      ...["--orch", "A", "--stage-a", "light", "--task-file", t, "--task-en-file", t],
+    ),
+  );
+  for (const dir of [home, join(home, "osint-chat-client"), runDir]) {
+    assert.equal(statSync(dir).mode & 0o777, 0o700, dir);
+  }
+});
+
+test("the CLI runs when it is invoked through a symlink", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const link = join(home, "marvin-pipe.js");
+  symlinkSync(cli, link);
+  const r = spawnSync(process.execPath, [link, "list"], { env: envFor(home), encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), []);
 });

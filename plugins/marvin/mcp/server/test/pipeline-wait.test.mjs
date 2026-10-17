@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -247,4 +247,32 @@ test("wrapper re-wait ensures the correct exit code is captured (S6)", async () 
   });
   assert.equal(r.outcome, "crashed");
   assert.match(r.detail, /exit 7/);
+});
+
+test("a child keeps the credentials its role needs: gh's token and the model provider's", async () => {
+  // The executor pushes and runs `gh pr create`; every role is a `claude -p` that may reach the
+  // model through Bedrock or Vertex. Stripping these would stop the run, not contain it.
+  const dir = mkdtempSync(join(tmpdir(), "pipe-"));
+  const names = ["GH_TOKEN", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID", "GOOGLE_APPLICATION_CREDENTIALS"];
+  const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
+  for (const n of names) process.env[n] = `value-of-${n}`;
+  try {
+    const echo = `process.stdout.write(JSON.stringify(${JSON.stringify(names)}.map((n) => process.env[n])))`;
+    launch.launchDetached(
+      { argv: [process.execPath, "-e", echo], env: {}, cwd: dir },
+      dir,
+      "r1-executor-env",
+    );
+  } finally {
+    for (const n of names) {
+      if (saved[n] === undefined) delete process.env[n];
+      else process.env[n] = saved[n];
+    }
+  }
+  const exit = join(dir, "r1-executor-env.exit");
+  for (let i = 0; i < 200 && !existsSync(exit); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(dir, "r1-executor-env.log.jsonl"), "utf8")),
+    names.map((n) => `value-of-${n}`),
+  );
 });
