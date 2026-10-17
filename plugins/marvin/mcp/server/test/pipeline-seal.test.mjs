@@ -169,31 +169,91 @@ test("the single-test template must name the file, and the engine quotes the pat
   assert.throws(() => s.formatTestOne("npx vitest run", "a.test.ts"), /must contain/);
 });
 
-test("only {file} is a placeholder of the seal stage", () => {
+test("only {file} is filled by the seal stage: a foreign placeholder it cannot drop is refused", () => {
   for (const template of [
     "npx vitest run {path}",
     "npx vitest run {file} {path}",
-    "npx vitest run {file} -t {name}",
     "npx vitest run {file} {ref}",
     "npx vitest run {name}",
     "npx vitest run {ref}",
+    "npx vitest run {file} -- {name}",
+    'npx vitest run {file} -t "^{name}$"',
+    "npx vitest run {file} -t {name}x",
+    'npx vitest run {file} "-t {name}"',
+    "npx vitest run {file} -t \\{name}",
+    "npx vitest run {file} -tx{name}",
+    "npx vitest run {file} -t={name}={name}",
+    "npx vitest run {file} -t {name} {name}",
+    "sh -c 'vitest {file} -t {name}'",
   ]) {
     assert.throws(() => s.formatTestOne(template, "a.test.ts"), /must (not )?contain/, template);
   }
-  assert.throws(() => s.formatTestOne("npx vitest run {file} -t {name}", "a.test.ts"), /\{name\}/);
+  assert.throws(() => s.formatTestOne("npx vitest run {file} {ref}", "a.test.ts"), /\{ref\}/);
+  assert.throws(() => s.formatTestOne("npx vitest run -t {name}", "a.test.ts"), /contain \{file\}/);
 });
 
-test("a placeholder that is already quoted is refused; one beside a closed quote is not", () => {
+test("a per-test filter is dropped together with its option, and the rest is kept byte for byte", () => {
+  const cases = [
+    ["npx vitest run {file} -t {name}", "npx vitest run {file}"],
+    ['npx vitest run {file} -t "{name}"', "npx vitest run {file}"],
+    ["npx vitest run {file} -t '{name}'", "npx vitest run {file}"],
+    ["npx vitest run {file} -t{name}", "npx vitest run {file}"],
+    ['npx vitest run {file} -t"{name}"', "npx vitest run {file}"],
+    ["npx vitest run {file} --testNamePattern={name}", "npx vitest run {file}"],
+    ['npx vitest run {file} --testNamePattern="{name}"', "npx vitest run {file}"],
+    [
+      "npx jest --runTestsByPath {file} --testNamePattern {name} --ci",
+      "npx jest --runTestsByPath {file} --ci",
+    ],
+    ["pytest {file} -k '{name}'", "pytest {file}"],
+    ["node --test --test-name-pattern={name} {file}", "node --test {file}"],
+    ["npx playwright test {file} --grep {ref}", "npx playwright test {file}"],
+    ["npm test -- {file} -t {name}", "npm test -- {file}"],
+    ["x {file} --path {path} -t {name} --reporter=dot", "x {file} --reporter=dot"],
+    [
+      "npx vitest run  {file}\t-t  {name}  --reporter=dot",
+      "npx vitest run  {file}  --reporter=dot",
+    ],
+    ["FOO='a -t {name}' npx vitest run {file}", null],
+  ];
+  for (const [template, whole] of cases) {
+    if (whole === null) {
+      assert.throws(() => s.wholeFileTemplate(template), /must not contain/, template);
+      continue;
+    }
+    assert.equal(s.wholeFileTemplate(template), whole, template);
+    assert.equal(
+      s.formatTestOne(template, "a.test.ts"),
+      whole.replaceAll("{file}", "'a.test.ts'"),
+      template,
+    );
+  }
+});
+
+test("a {file} quoted as a whole word is the engine's to quote; one quoted with anything else is refused", () => {
   for (const template of [
-    "npx vitest run '{file}'",
-    'npx vitest run "{file}"',
     "sh -c 'vitest {file}'",
     `sh -c "vitest {file}"`,
+    `sh -c "vitest '{file}'"`,
+    `sh -c 'vitest "{file}"'`,
     "vitest \\{file}",
-    "echo 'a' '{file}'",
+    'npx vitest run "./{file}"',
+    'npx vitest run "{file} x"',
+    "npx vitest run '{file}x'",
   ]) {
     assert.throws(() => s.formatTestOne(template, "a.test.ts"), /quote/, template);
   }
+  assert.equal(
+    s.formatTestOne("npx vitest run '{file}'", "a.test.ts"),
+    "npx vitest run 'a.test.ts'",
+  );
+  assert.equal(
+    s.formatTestOne('npx vitest run "{file}"', "a.test.ts"),
+    "npx vitest run 'a.test.ts'",
+  );
+  assert.equal(s.formatTestOne("echo 'a' '{file}'", "a.test.ts"), "echo 'a' 'a.test.ts'");
+  assert.equal(s.formatTestOne('run --file="{file}"', "a.test.ts"), "run --file='a.test.ts'");
+  assert.equal(s.formatTestOne('run "{file}"x', "a.test.ts"), "run 'a.test.ts'x");
   assert.equal(
     s.formatTestOne("sh -c 'echo hi' x {file}", "a.test.ts"),
     "sh -c 'echo hi' x 'a.test.ts'",
@@ -215,6 +275,12 @@ test("a template in which {file} is not one shell word is refused", () => {
     "echo $(echo {file})",
     "npx vitest run\nnpx vitest run {file}",
     "npx vitest run {file}\r",
+    'npx vitest run "{file}" -t "{name}" # one test',
+    "npx vitest run {file} -t `{name}`",
+    "npx vitest run {file} -t $({name})",
+    'npx vitest run "{file}" -t "$({name})"',
+    'npx vitest run "{file}"\n-t "{name}"',
+    "npx vitest run {file} -t {name} <<EOF",
   ]) {
     assert.throws(
       () => s.formatTestOne(template, "a.test.ts"),
@@ -250,6 +316,11 @@ test("a hostile path reaches the shell as one literal argument", () => {
   const dir = tmp();
   for (const path of NASTY) {
     const command = s.formatTestOne("printf '<%s>' {file}", path);
+    assert.equal(
+      s.formatTestOne(`printf '<%s>' "{file}" -t "{name}"`, path),
+      command,
+      `the quoted, filtered form builds the same command for ${JSON.stringify(path)}`,
+    );
     const plain = spawnSync("/bin/sh", ["-c", command], { cwd: dir, encoding: "utf8" });
     assert.equal(plain.stdout, `<${path}>`, JSON.stringify(path));
     const viaRunner = g.shellRunner(command, dir, 10000);
@@ -332,9 +403,42 @@ test("the oracle resolver keeps every placeholder literal in every quoting conte
   }
 });
 
-test("the seal stage still refuses {name} and a quoted {file}", () => {
-  assert.throws(() => s.formatTestOne("npx vitest run {file} -t {name}", "a.test.ts"), /\{name\}/);
-  assert.throws(() => s.formatTestOne('npx vitest run "{file}"', "a.test.ts"), /quote/);
+/** The test path of run r20261017-1749-b2f2, under a Next.js route group. */
+const ROUTE_GROUP_TEST =
+  "src/app/(dashboard)/projects/_lib/components/split-chat-row/__tests__/split-chat-row.test.tsx";
+const QUOTED_FILTERED = 'npx vitest run "{file}" -t "{name}"';
+
+test("a test_one that quotes {file} and filters by {name} runs one whole file in the seal stage", () => {
+  const dir = tmp();
+  const command = s.formatTestOne(QUOTED_FILTERED, ROUTE_GROUP_TEST);
+  assert.equal(command, `npx vitest run '${ROUTE_GROUP_TEST}'`);
+  assert.doesNotMatch(command, /\s-t\b|\{name\}/);
+  assert.equal(s.wholeFileTemplate(QUOTED_FILTERED), "npx vitest run {file}");
+  // As the shell reads it: exactly one argument after the runner, the path, and no -t.
+  const shown = QUOTED_FILTERED.replace("npx vitest run", "printf '<%s>'");
+  assert.equal(printed(s.formatTestOne(shown, ROUTE_GROUP_TEST), dir), `<${ROUTE_GROUP_TEST}>`);
+  // The oracle resolver reads the same template and keeps the per-test filter.
+  const resolved = resolveOracleCommand(oracleFor(`${ROUTE_GROUP_TEST}::renders the row`), {
+    testOne: shown,
+    projectRoot: dir,
+  });
+  assert.equal(resolved.source, "config.test_one");
+  assert.equal(printed(resolved.command, dir), `<${ROUTE_GROUP_TEST}><-t><renders the row>`);
+});
+
+test("sealAuthoredTests red-runs a route-group test through a quoted, filtered test_one", () => {
+  const wt = worktreeWith([ROUTE_GROUP_TEST, "src/app/(dashboard)/projects/page.test.tsx"]);
+  const calls = [];
+  const v = seal(wt, [authored(ROUTE_GROUP_TEST)], {
+    testOne: QUOTED_FILTERED,
+    run: scripted({ [ROUTE_GROUP_TEST]: RED }, calls),
+  });
+  assert.deepEqual(v.reasons, []);
+  assert.equal(v.ok, true);
+  assert.deepEqual(
+    calls.map((c) => c.command),
+    [`npx vitest run '${ROUTE_GROUP_TEST}'`],
+  );
 });
 
 // ── sealAuthoredTests: path validation ──────────────────────────────────────

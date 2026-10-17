@@ -259,6 +259,18 @@ test("hidden tests replace the pipeline's file of the same name and run through 
   });
   assert.deepEqual([none.passed, none.total, none.ratio], [0, 1, 0]);
   assert.match(none.skipped, /no worktree/);
+  // A template the seal stage reads for a whole file is read the same way here.
+  const filtered = bench.runHiddenTests({
+    worktree,
+    replayRepo: replay,
+    reference,
+    paths: [odd],
+    testOne: "node --test '{file}' --test-name-pattern \"{name}\"",
+  });
+  assert.deepEqual(
+    filtered.files.map((f) => [f.path, f.passed]),
+    [[odd, true]],
+  );
   // A template the seal stage refuses is refused here too: one reader, one rule.
   assert.throws(
     () =>
@@ -267,7 +279,7 @@ test("hidden tests replace the pipeline's file of the same name and run through 
         replayRepo: replay,
         reference,
         paths: [odd],
-        testOne: "node --test '{file}'",
+        testOne: "node --test './{file}'",
       }),
     /must not quote \{file\}/,
   );

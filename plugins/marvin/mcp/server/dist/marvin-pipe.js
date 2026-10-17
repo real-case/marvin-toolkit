@@ -21344,22 +21344,113 @@ function placeholderIsQuoted(template) {
   });
   return quoted;
 }
-function formatTestOne(template, path) {
-  if (FOREIGN_PLACEHOLDERS.some((placeholder) => template.includes(placeholder))) {
-    throw new Error(
-      "gates.test_one must not contain {name}, {ref} or {path}: the seal stage runs a whole test file, so name it with {file} alone"
-    );
+function shellWords(template) {
+  const words = [];
+  let quote = null;
+  let start2 = -1;
+  const close = (end) => {
+    if (start2 !== -1) words.push({ start: start2, end, text: template.slice(start2, end) });
+    start2 = -1;
+  };
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i];
+    if (quote === null && (ch === " " || ch === "	")) {
+      close(i);
+      continue;
+    }
+    if (start2 === -1) start2 = i;
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      i += 1;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
   }
-  if (!template.includes(FILE)) throw new Error("gates.test_one must contain {file}");
+  close(template.length);
+  return words;
+}
+var FLAG = /^--?[A-Za-z][\w.-]*$/;
+var SHORT_FLAG = /^-[A-Za-z]/;
+var isForeignValue = (text2) => FOREIGN_PLACEHOLDERS.some((p) => text2 === p || text2 === `"${p}"` || text2 === `'${p}'`);
+function dropNameFilters(template) {
+  const words = shellWords(template);
+  const cuts = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i];
+    const next = words[i + 1];
+    const eq = word.text.indexOf("=");
+    let last = -1;
+    if (FLAG.test(word.text) && next !== void 0 && isForeignValue(next.text)) {
+      last = i + 1;
+    } else if (eq > 0 && FLAG.test(word.text.slice(0, eq)) && isForeignValue(word.text.slice(eq + 1)) || SHORT_FLAG.test(word.text) && isForeignValue(word.text.slice(2))) {
+      last = i;
+    }
+    if (last === -1) continue;
+    cuts.push([i > 0 ? words[i - 1].end : word.start, words[last].end]);
+    i = last;
+  }
+  let out = "";
+  let from = 0;
+  for (const [start2, end] of cuts) {
+    out += template.slice(from, start2);
+    from = end;
+  }
+  return out + template.slice(from);
+}
+var QUOTED_FILE = [`"${FILE}"`, `'${FILE}'`];
+function unquoteFile(template) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i] ?? "";
+    if (quote === null) {
+      const whole = QUOTED_FILE.find((q) => template.startsWith(q, i));
+      if (whole !== void 0) {
+        out += FILE;
+        i += whole.length - 1;
+        continue;
+      }
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
+    out += ch;
+  }
+  return out;
+}
+function wholeFileTemplate(template) {
   if (NOT_ONE_WORD.test(template)) {
     throw new Error(
       "gates.test_one must not contain a backtick, $(, <<, # or a newline: {file} must stay one shell word"
     );
   }
-  if (placeholderIsQuoted(template)) {
-    throw new Error("gates.test_one must not quote {file}: the engine quotes the path itself");
+  const whole = unquoteFile(dropNameFilters(template));
+  if (FOREIGN_PLACEHOLDERS.some((placeholder) => whole.includes(placeholder))) {
+    throw new Error(
+      "gates.test_one must not contain {name}, {ref} or {path} except as the whole value of an option (-t {name}, --grep={name}), which the seal stage drops with its option: it runs a whole test file, so it names it with {file} alone"
+    );
   }
-  return fillShellTemplate(template, { [FILE]: path });
+  if (!whole.includes(FILE)) throw new Error("gates.test_one must contain {file}");
+  if (placeholderIsQuoted(whole)) {
+    throw new Error(
+      `gates.test_one must not quote {file} except as a whole word ("{file}" or '{file}'): the engine quotes the path itself`
+    );
+  }
+  return whole;
+}
+function formatTestOne(template, path) {
+  return fillShellTemplate(wholeFileTemplate(template), { [FILE]: path });
 }
 var isInside = (root, target) => {
   const rel = relative(root, target);
@@ -31749,7 +31840,7 @@ function checkCitations(body, planned, projectRoot) {
     ) : pass("cite-lines", "Grounding", `${citations} line citation(s) resolve`)
   ];
 }
-function shellWords(cmd) {
+function shellWords2(cmd) {
   const out = [];
   let cur = "";
   let quoted = false;
@@ -31807,7 +31898,7 @@ var OUTPUT_WORDS = /* @__PURE__ */ new Set([">", ">>", "2>", "&>", "tee", "-o", 
 var GENERIC_GATES = /^(?:(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest|tsc|eslint)|(?:test|tests|build|lint|typecheck|type-check|check|e2e|ci|verify)(?::[\w-]+)?)$/;
 var RUNNERS = /^(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest)$|^test$|^--test$/;
 function readOracle(cmd, projectRoot, plannedPaths) {
-  const words = shellWords(cmd);
+  const words = shellWords2(cmd);
   const bases = [projectRoot];
   for (let i = 0; i < words.length - 1; i++) {
     const w = words[i].text;
@@ -32833,10 +32924,10 @@ ${planted.join("\n")}`
   };
   const probePrefixes = (config2) => {
     const template = config2.gates?.test_one;
-    const cut = template?.indexOf("{file}") ?? -1;
-    if (!template || cut < 0) return [];
-    const prefix = template.slice(0, cut).trim();
+    if (!template?.includes("{file}")) return [];
     try {
+      const whole = wholeFileTemplate(template);
+      const prefix = whole.slice(0, whole.indexOf("{file}")).trim();
       validatePrefix(prefix);
       return [prefix];
     } catch (error2) {
