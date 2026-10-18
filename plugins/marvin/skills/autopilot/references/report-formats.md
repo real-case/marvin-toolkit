@@ -74,7 +74,8 @@ Where each part comes from:
 | Proposal and prune files | `<runDir>/proposals/<n>-<target>.md`, `<runDir>/proposals/prune.md` |
 
 Checks (`.marvin/pipeline/checks.yaml`), lessons (`.marvin/memory/`) and the calibration record
-(`.marvin/pipeline/calibration.jsonl`) ship only with a PR, committed on its branch by finalize.
+(`.marvin/pipeline/calibration/<run-id>.json`) ship only with a PR, committed on its branch by
+finalize.
 A run that closed without a ready PR keeps its retro in the run directory and commits nothing:
 say so in the Learning section, and name the run-directory files instead.
 

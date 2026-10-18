@@ -23071,7 +23071,8 @@ function findNearDuplicate(memoryDir, title) {
 
 // src/pipeline/learning.ts
 var CHECKS_PATH = ".marvin/pipeline/checks.yaml";
-var CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
+var CALIBRATION_DIR = ".marvin/pipeline/calibration";
+var LEGACY_CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
 var MEMORY_DIR = ".marvin/memory";
 var MEMORY_INDEX_PATH = `${MEMORY_DIR}/MEMORY.md`;
 function rankLessons(lessons, o) {
@@ -23475,27 +23476,54 @@ ${section}${tail ? `
 ${tail}
 ` : ""}`;
 }
-function calibrationText(existing, record2) {
-  const line = JSON.stringify(record2);
-  const isThisRun = (candidate) => {
+function calibrationPath(runId) {
+  if (!PLAIN_TOKEN.test(runId)) throw new Error(`run id is not a plain token: ${runId}`);
+  return `${CALIBRATION_DIR}/${runId}.json`;
+}
+var calibrationText = (record2) => `${JSON.stringify(record2, null, 2)}
+`;
+var JSON_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+function readCalibrationRecords(root) {
+  const byRun = /* @__PURE__ */ new Map();
+  const anonymous = [];
+  const take = (value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const runId = value.runId;
+    if (typeof runId === "string") {
+      if (!byRun.has(runId)) byRun.set(runId, value);
+    } else anonymous.push(value);
+  };
+  const parsed = (text2) => {
     try {
-      return JSON.parse(candidate).runId === record2.runId;
+      return JSON.parse(text2);
     } catch {
-      return false;
+      return void 0;
     }
   };
-  const lines = existing === null ? [] : existing.split("\n").filter(Boolean);
-  const next = lines.some(isThisRun) ? lines.map((candidate) => isThisRun(candidate) ? line : candidate) : [...lines, line];
-  return `${next.join("\n")}
-`;
-}
-var jsonLines = (text2) => text2.split("\n").filter(Boolean).map((line) => {
+  const dir = join(root, CALIBRATION_DIR);
+  let names;
   try {
-    return JSON.parse(line);
+    names = readdirSync(dir).filter((n) => JSON_FILE.test(n)).sort();
   } catch {
-    return line;
+    names = [];
   }
-});
+  for (const name of names) {
+    try {
+      if (!lstatSync(join(dir, name)).isFile()) continue;
+      take(parsed(readFileSync(join(dir, name), "utf8")));
+    } catch {
+    }
+  }
+  let legacy;
+  try {
+    const path = join(root, LEGACY_CALIBRATION_PATH);
+    legacy = lstatSync(path).isFile() ? readFileSync(path, "utf8") : "";
+  } catch {
+    legacy = "";
+  }
+  for (const line of legacy.split("\n").filter(Boolean)) take(parsed(line));
+  return [...byRun.values(), ...anonymous];
+}
 var targetTag = (category) => `target:${category}`;
 function lessonStoreSink(source) {
   return (root, lesson) => {
@@ -23595,11 +23623,19 @@ function verifyContents(contents, expected, who) {
       );
     }
   }
-  const calibration = contents.get(CALIBRATION_PATH);
-  if (calibration !== void 0 && !isDeepStrictEqual(jsonLines(calibration.toString("utf8")), expected.records)) {
-    throw new Error(
-      `${who} changed the records in ${CALIBRATION_PATH}: a formatter may change layout, not records`
-    );
+  const calibration = contents.get(expected.recordPath);
+  if (calibration !== void 0) {
+    let record2;
+    try {
+      record2 = JSON.parse(calibration.toString("utf8"));
+    } catch {
+      record2 = void 0;
+    }
+    if (!isDeepStrictEqual(record2, expected.record)) {
+      throw new Error(
+        `${who} changed the record in ${expected.recordPath}: a formatter may change layout, not the record`
+      );
+    }
   }
 }
 function readFormatted(worktree, paths, expected) {
@@ -23801,8 +23837,10 @@ function finalizeRun(o) {
     throw new Error("expectedHead must be the 40-hex SHA of the commit the last gate approved");
   }
   const abs = (rel) => join(worktree, rel);
-  const targets = [specPath, CHECKS_PATH, CALIBRATION_PATH, MEMORY_INDEX_PATH];
+  const recordPath = calibrationPath(run2.id);
+  const targets = [specPath, CHECKS_PATH, recordPath, MEMORY_INDEX_PATH];
   for (const rel of targets) assertPlain(worktree, rel);
+  assertPlain(worktree, CALIBRATION_DIR);
   assertPlain(worktree, MEMORY_DIR);
   assertRunDirTargets(o.runDir, retro);
   assertPlain(o.runDir, FINALIZE_RECORD);
@@ -23833,9 +23871,7 @@ function finalizeRun(o) {
   const slug = specSlug(parseFrontmatter(specText).frontmatter.slug, specPath);
   const checksBase = committedFile(git4, headSha2, CHECKS_PATH)?.toString("utf8") ?? null;
   const merged = mergeChecks(parseExistingChecks(checksBase, CHECKS_PATH), retro);
-  const calibrationBase = committedFile(git4, headSha2, CALIBRATION_PATH)?.toString("utf8") ?? null;
-  const calibration = calibrationText(calibrationBase, record2);
-  const expected = { rules: merged?.rules, records: jsonLines(calibration) };
+  const expected = { rules: merged?.rules, record: record2, recordPath };
   const written = /* @__PURE__ */ new Set();
   const restoreFromCommit = (rel) => {
     const base = committedFile(git4, headSha2, rel);
@@ -23867,7 +23903,7 @@ function finalizeRun(o) {
     }
     const writes = [
       ...merged ? [[CHECKS_PATH, merged.text]] : [],
-      [CALIBRATION_PATH, calibration],
+      [recordPath, calibrationText(record2)],
       [specPath, shipped],
       ...memoryChanges
     ];
@@ -32695,7 +32731,6 @@ var PLAIN_TOKEN2 = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var CONFIG_PATH = ".marvin/config.json";
 var SPEC_COMMIT_MARKER = "spec-commit.json";
 var CHECKS_PATH2 = ".marvin/pipeline/checks.yaml";
-var CALIBRATION_PATH2 = ".marvin/pipeline/calibration.jsonl";
 var MEMORY_DIR2 = ".marvin/memory";
 var LESSON_LIMIT = 8;
 var GITLINK = "160000";
@@ -33080,24 +33115,14 @@ ${planted.join("\n")}`
     }
   };
   const calibrationRecords = (run2) => {
-    let text2;
-    try {
-      text2 = readFileSync(join(lessonRoot(run2), CALIBRATION_PATH2), "utf8");
-    } catch {
-      return [];
-    }
     const Record = external_exports.object({
       ts: external_exports.string(),
       findingCategories: external_exports.array(external_exports.string()),
       exposedLessons: external_exports.array(external_exports.string())
     });
-    return text2.split("\n").flatMap((line) => {
-      try {
-        const parsed = Record.safeParse(JSON.parse(line));
-        return parsed.success ? [parsed.data] : [];
-      } catch {
-        return [];
-      }
+    return readCalibrationRecords(lessonRoot(run2)).flatMap((value) => {
+      const parsed = Record.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
     });
   };
   const efficacyText = (run2) => {

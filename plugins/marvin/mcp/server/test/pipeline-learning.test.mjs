@@ -773,7 +773,7 @@ for (const [label, plant] of PLANTED_IN_WORKTREE) {
   });
 }
 
-test("appendCalibration refuses a symlinked directory or file on the way to calibration.jsonl", () => {
+test("writeCalibration refuses a symlinked directory or file on the way to calibration/<run>.json", () => {
   const agg = l.aggregate(makeRun(), []);
   const record = l.calibrationRecord(makeRun(), agg, []);
   for (const [label, plant] of PLANTED_IN_WORKTREE) {
@@ -782,16 +782,22 @@ test("appendCalibration refuses a symlinked directory or file on the way to cali
     const out = tmp("pipe-out-");
     plant(wt, out);
     const outBefore = contents(out);
-    assert.throws(() => l.appendCalibration(wt, record), /symbolic link/, label);
+    assert.throws(() => l.writeCalibration(wt, record), /symbolic link/, label);
     assert.deepEqual(contents(out), outBefore, label);
   }
+  const linkedDir = tmp("pipe-wt-");
+  const outDir = tmp("pipe-out-");
+  mkdirSync(join(linkedDir, ".marvin", "pipeline"), { recursive: true });
+  symlinkSync(outDir, join(linkedDir, ".marvin", "pipeline", "calibration"));
+  assert.throws(() => l.writeCalibration(linkedDir, record), /symbolic link/);
+  assert.deepEqual(contents(outDir), []);
   const wt = tmp("pipe-wt-");
   const out = tmp("pipe-out-");
-  mkdirSync(join(wt, ".marvin", "pipeline"), { recursive: true });
-  writeFileSync(join(out, "victim.jsonl"), '{"runId":"x"}\n');
-  symlinkSync(join(out, "victim.jsonl"), join(wt, ".marvin", "pipeline", "calibration.jsonl"));
-  assert.throws(() => l.appendCalibration(wt, record), /symbolic link/);
-  assert.equal(readFileSync(join(out, "victim.jsonl"), "utf8"), '{"runId":"x"}\n');
+  mkdirSync(join(wt, ".marvin", "pipeline", "calibration"), { recursive: true });
+  writeFileSync(join(out, "victim.json"), '{"runId":"x"}\n');
+  symlinkSync(join(out, "victim.json"), join(wt, ".marvin", "pipeline", "calibration", "r1.json"));
+  assert.throws(() => l.writeCalibration(wt, record), /symbolic link/);
+  assert.equal(readFileSync(join(out, "victim.json"), "utf8"), '{"runId":"x"}\n');
 });
 
 const PLANTED_IN_MEMORY = [
@@ -1109,28 +1115,51 @@ test("a PR url or run id holding a line break is refused", () => {
   assert.throws(() => l.finalizeSpec(spec, { ...DELIVERY, runId: "r\r1" }), /line break/);
 });
 
-test("calibration records append, and a run's record is replaced rather than repeated", () => {
+test("a calibration record is one file per run, a run's second record replaces its own file, and both layouts are read", () => {
+  // ADR-0050: two runs write two files, so their branches never conflict on the record.
   const wt = tmp("pipe-wt-");
+  assert.deepEqual(l.readCalibrationRecords(wt), []);
   const run = makeRun();
   const agg = l.aggregate(run, []);
-  const file = join(wt, ".marvin", "pipeline", "calibration.jsonl");
-  l.appendCalibration(wt, l.calibrationRecord(run, agg, []));
-  l.appendCalibration(wt, l.calibrationRecord(makeRun({ id: "r2" }), agg, ["L1"]));
-  l.appendCalibration(wt, l.calibrationRecord(run, agg, ["L9"]));
-  const lines = readFileSync(file, "utf8").trimEnd().split("\n").map(JSON.parse);
+  const dir = join(wt, ".marvin", "pipeline", "calibration");
+  assert.equal(l.calibrationPath("r1"), ".marvin/pipeline/calibration/r1.json");
+  assert.throws(() => l.calibrationPath("../r1"), /plain token/);
+  l.writeCalibration(wt, l.calibrationRecord(run, agg, []));
+  l.writeCalibration(wt, l.calibrationRecord(makeRun({ id: "r2" }), agg, ["L1"]));
+  l.writeCalibration(wt, l.calibrationRecord(run, agg, ["L9"]));
+  assert.deepEqual(readdirSync(join(wt, ".marvin", "pipeline")), ["calibration"]);
+  assert.deepEqual(readdirSync(dir).sort(), ["r1.json", "r2.json"]);
+  const r1 = JSON.parse(readFileSync(join(dir, "r1.json"), "utf8"));
+  assert.deepEqual([r1.runId, r1.exposedLessons], ["r1", ["L9"]]);
+  // Prettier's own layout, so a formatter run over it changes nothing.
+  assert.equal(readFileSync(join(dir, "r1.json"), "utf8"), `${JSON.stringify(r1, null, 2)}\n`);
   assert.deepEqual(
-    lines.map((x) => [x.runId, x.exposedLessons]),
+    l.readCalibrationRecords(wt).map((r) => [r.runId, r.exposedLessons]),
     [
       ["r1", ["L9"]],
       ["r2", ["L1"]],
     ],
   );
-  writeFileSync(file, `not json\n${readFileSync(file, "utf8")}`);
-  l.appendCalibration(wt, l.calibrationRecord(makeRun({ id: "r3" }), agg, []));
-  const text = readFileSync(file, "utf8").trimEnd().split("\n");
-  assert.equal(text[0], "not json");
-  assert.equal(text.length, 4);
-  assert.deepEqual(readdirSync(join(wt, ".marvin", "pipeline")), ["calibration.jsonl"]);
+
+  // The legacy log is read for the records it holds and never written: a run in both layouts
+  // is its file, a line that is not JSON is skipped, and so is anything under the directory
+  // that is not a regular JSON file.
+  const legacy = join(wt, ".marvin", "pipeline", "calibration.jsonl");
+  const legacyText =
+    'not json\n{"runId":"r0","ts":"2026-01-01"}\n{"runId":"r2","exposedLessons":["old"]}\n{"ts":"anonymous"}\n[1]\n';
+  writeFileSync(legacy, legacyText);
+  mkdirSync(join(dir, "dir.json"));
+  writeFileSync(join(dir, "broken.json"), "{");
+  writeFileSync(join(dir, "notes.txt"), "{}");
+  const records = l.readCalibrationRecords(wt);
+  assert.deepEqual(
+    records.map((r) => r.runId),
+    ["r1", "r2", "r0", undefined],
+  );
+  assert.deepEqual(records[1].exposedLessons, ["L1"]);
+  l.writeCalibration(wt, l.calibrationRecord(makeRun({ id: "r3" }), agg, []));
+  assert.equal(readFileSync(legacy, "utf8"), legacyText);
+  assert.equal(l.readCalibrationRecords(wt).length, 5);
 });
 
 test("seal.ts exports the single-quote shell escaping the format command reuses", () => {
@@ -1236,7 +1265,7 @@ test("finalizing a run with a PR commits exactly the files it wrote and pushes t
     [
       ".marvin/memory/MEMORY.md",
       slug,
-      ".marvin/pipeline/calibration.jsonl",
+      ".marvin/pipeline/calibration/r1.json",
       ".marvin/pipeline/checks.yaml",
       SPEC_PATH,
     ].sort(),
@@ -1255,11 +1284,11 @@ test("finalizing a run with a PR commits exactly the files it wrote and pushes t
     spec,
     /## Delivery\n\n- PR: https:\/\/github.com\/o\/r\/pull\/1\n- Pipeline run: r1 \(2 iterations\)\n$/,
   );
-  const [calibration] = readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
-    .trimEnd()
-    .split("\n")
-    .map(JSON.parse);
+  const calibration = JSON.parse(
+    readFileSync(join(fx.wt, ".marvin/pipeline/calibration/r1.json"), "utf8"),
+  );
   assert.equal(calibration.runId, "r1");
+  assert.equal(existsSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl")), false);
   assert.deepEqual(calibration.findingCategories, ["test-quality"]);
   assert.deepEqual(calibration.exposedLessons, ["L1"]);
   assert.deepEqual(
@@ -1318,7 +1347,7 @@ test("a retro that produced nothing finalizes as an empty one, with or without a
   assert.equal(shipped.shipped, true);
   assert.deepEqual(
     [...shipped.written].sort(),
-    [".marvin/pipeline/calibration.jsonl", SPEC_PATH].sort(),
+    [".marvin/pipeline/calibration/r1.json", SPEC_PATH].sort(),
   );
 });
 
@@ -1456,7 +1485,7 @@ test("a failing format command throws, commits nothing and puts the written file
   assert.equal(readFileSync(join(fx.wt, SPEC_PATH), "utf8"), SPEC);
   for (const gone of [
     ".marvin/pipeline/checks.yaml",
-    ".marvin/pipeline/calibration.jsonl",
+    ".marvin/pipeline/calibration/r1.json",
     ".marvin/memory/t.md",
   ]) {
     assert.equal(existsSync(join(fx.wt, gone)), false, gone);
@@ -1534,7 +1563,7 @@ test("a push the remote refuses is never forced: the local commit stays, the rem
   assert.equal(commitCount(fx), 2);
 });
 
-test("finalize can be run again after a failed push: no second commit, one calibration line, one Delivery", () => {
+test("finalize can be run again after a failed push: no second commit, one calibration record, one Delivery", () => {
   const fx = prFixture();
   sh(fx.wt, "remote", "set-url", "origin", join(tmp("pipe-gone-"), "missing.git"));
   assert.throws(() => l.finalizeRun(fx.opts()), /push|repository|fatal/i);
@@ -1549,10 +1578,10 @@ test("finalize can be run again after a failed push: no second commit, one calib
   assert.equal(head(fx.wt), committed);
   assert.equal(commitCount(fx), 2);
   assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), committed);
+  assert.deepEqual(readdirSync(join(fx.wt, ".marvin/pipeline/calibration")), ["r1.json"]);
   assert.equal(
-    readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8").trimEnd().split("\n")
-      .length,
-    1,
+    JSON.parse(readFileSync(join(fx.wt, ".marvin/pipeline/calibration/r1.json"), "utf8")).runId,
+    "r1",
   );
   assert.equal(readFileSync(join(fx.wt, SPEC_PATH), "utf8").match(/^## Delivery$/gm).length, 1);
   assert.equal(status(fx.wt), "");
@@ -1618,10 +1647,10 @@ const REFUSED_BEFORE_ANY_WRITE = (fx, outBefore, out) => {
 
 const HARD_LINKS = [
   [
-    "an untracked calibration.jsonl",
+    "an untracked calibration/r1.json",
     (fx, secret) => {
-      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
-      linkSync(secret, join(fx.wt, ".marvin", "pipeline", "calibration.jsonl"));
+      mkdirSync(join(fx.wt, ".marvin", "pipeline", "calibration"), { recursive: true });
+      linkSync(secret, join(fx.wt, ".marvin", "pipeline", "calibration", "r1.json"));
     },
   ],
   [
@@ -1698,11 +1727,14 @@ const PLANTED_CONTENT = [
     },
   ],
   [
-    "a staged but uncommitted calibration.jsonl",
+    "a staged but uncommitted calibration/r1.json",
     (fx) => {
-      mkdirSync(join(fx.wt, ".marvin", "pipeline"), { recursive: true });
-      writeFileSync(join(fx.wt, ".marvin", "pipeline", "calibration.jsonl"), '{"runId":"x"}\n');
-      sh(fx.wt, "add", ".marvin/pipeline/calibration.jsonl");
+      mkdirSync(join(fx.wt, ".marvin", "pipeline", "calibration"), { recursive: true });
+      writeFileSync(
+        join(fx.wt, ".marvin", "pipeline", "calibration", "r1.json"),
+        '{"runId":"x"}\n',
+      );
+      sh(fx.wt, "add", ".marvin/pipeline/calibration/r1.json");
     },
   ],
 ];
@@ -1753,6 +1785,8 @@ test("content planted while finalize runs never reaches the commit: every file i
       "- { id: planted, pattern: p, message: m }\n",
     );
     writeFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), '{"runId":"planted"}\n');
+    mkdirSync(join(fx.wt, ".marvin/pipeline/calibration"), { recursive: true });
+    writeFileSync(join(fx.wt, ".marvin/pipeline/calibration/r1.json"), '{"runId":"planted"}\n');
     appendFileSync(join(fx.wt, SPEC_PATH), "INJECTED\n");
     writeFileSync(join(fx.wt, ".marvin/memory/MEMORY.md"), "planted index\n");
     writeFileSync(join(fx.wt, ".marvin/memory/planted.md"), "planted lesson\n");
@@ -1769,12 +1803,9 @@ test("content planted while finalize runs never reaches the commit: every file i
     parse(committed(".marvin/pipeline/checks.yaml")).map((r) => r.id),
     ["seed", "no-console"],
   );
-  assert.deepEqual(
-    committed(".marvin/pipeline/calibration.jsonl")
-      .split("\n")
-      .map((x) => JSON.parse(x).runId),
-    ["r0", "r1"],
-  );
+  // The legacy log is never written; the run's record is its own file, built from the run.
+  assert.equal(committed(".marvin/pipeline/calibration.jsonl"), '{"runId":"r0","ts":"2026-01-01"}');
+  assert.equal(JSON.parse(committed(".marvin/pipeline/calibration/r1.json")).runId, "r1");
   assert.doesNotMatch(committed(SPEC_PATH), /INJECTED/);
   const index = committed(".marvin/memory/MEMORY.md");
   assert.match(index, /\[Seed lesson\]/);
@@ -1798,8 +1829,8 @@ if (mode === "swap-dir") {
   const f = ".marvin/pipeline/checks.yaml";
   writeFileSync(f, readFileSync(f, "utf8").replace("console", "evil-console"));
 } else if (mode === "edit-calibration") {
-  const f = ".marvin/pipeline/calibration.jsonl";
-  writeFileSync(f, readFileSync(f, "utf8").replace('"runId":"r1"', '"runId":"r9"'));
+  const f = ".marvin/pipeline/calibration/r1.json";
+  writeFileSync(f, readFileSync(f, "utf8").replace('"runId": "r1"', '"runId": "r9"'));
 } else if (mode === "hard-link-spec") {
   const spec = ".marvin/task/001-demo.md";
   unlinkSync(spec);
@@ -1847,7 +1878,7 @@ test("a format command that rewrites a calibration record is refused", () => {
   const fx = prFixture();
   assert.throws(
     () => l.finalizeRun(fx.opts({ formatCommand: formatterCommand("edit-calibration", "-") })),
-    /calibration\.jsonl.*records/,
+    /calibration\/r1\.json.*record/,
   );
   assert.equal(head(fx.wt), fx.gated);
   assert.equal(status(fx.wt), "");
@@ -1991,7 +2022,7 @@ const originCount = (fx) =>
 const WRITTEN = [
   ".marvin/memory/MEMORY.md",
   ".marvin/memory/t.md",
-  ".marvin/pipeline/calibration.jsonl",
+  ".marvin/pipeline/calibration/r1.json",
   ".marvin/pipeline/checks.yaml",
   SPEC_PATH,
 ];
@@ -2050,12 +2081,11 @@ test("replace refs over the committed base files do not change what finalize bui
     parse(onOrigin(fx, ".marvin/pipeline/checks.yaml")).map((r) => r.id),
     ["seed", "no-console"],
   );
-  assert.deepEqual(
-    onOrigin(fx, ".marvin/pipeline/calibration.jsonl")
-      .split("\n")
-      .map((x) => JSON.parse(x).runId),
-    ["r0", "r1"],
+  assert.equal(
+    onOrigin(fx, ".marvin/pipeline/calibration.jsonl"),
+    '{"runId":"r0","ts":"2026-01-01"}',
   );
+  assert.equal(JSON.parse(onOrigin(fx, ".marvin/pipeline/calibration/r1.json")).runId, "r1");
   assert.doesNotMatch(onOrigin(fx, SPEC_PATH), /INJECTED/);
   assert.equal(originCount(fx), 1);
   assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), out.commit);
@@ -2374,11 +2404,12 @@ const mergeOpts = (fx, extra = {}) => ({
 
 const OTHER_RECORD = `${JSON.stringify({ runId: "r0", tier: "light" })}\n`;
 
-test("a base that gained its own calibration file is merged first, and finalize appends to it", () => {
-  // The 2026-10-17 run: a parallel run created calibration.jsonl on dev, the finalize commit
-  // created it again, and the PR conflicted (add/add) with nothing else wrong.
+test("a base that gained a calibration record is merged first, and finalize writes its own beside it", () => {
+  // The 2026-10-17 run: a parallel run created the then shared calibration.jsonl on dev, the
+  // finalize commit created it again, and the PR conflicted (add/add) with nothing else wrong.
+  // The merge still brings the base's record into the worktree, where the retro reads it.
   const fx = prFixture();
-  const devTip = advanceDev(fx, { ".marvin/pipeline/calibration.jsonl": OTHER_RECORD });
+  const devTip = advanceDev(fx, { ".marvin/pipeline/calibration/r0.json": OTHER_RECORD });
   const merged = l.mergeBaseForFinalize(mergeOpts(fx));
   assert.equal(merged.state, "merged");
   assert.equal(merged.base, devTip);
@@ -2389,24 +2420,116 @@ test("a base that gained its own calibration file is merged first, and finalize 
   ]);
   assert.equal(status(fx.wt), "", "the worktree and the index follow the merge");
   assert.equal(
-    readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8"),
+    readFileSync(join(fx.wt, ".marvin/pipeline/calibration/r0.json"), "utf8"),
     OTHER_RECORD,
   );
 
   const out = l.finalizeRun(fx.opts({ expectedHead: merged.head }));
   assert.equal(out.shipped, true);
-  const lines = readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
-    .trim()
-    .split("\n");
-  assert.equal(lines.length, 2);
-  assert.equal(lines[0], OTHER_RECORD.trim());
-  assert.equal(JSON.parse(lines[1]).runId, "r1");
+  assert.deepEqual(readdirSync(join(fx.wt, ".marvin/pipeline/calibration")).sort(), [
+    "r0.json",
+    "r1.json",
+  ]);
+  assert.equal(
+    readFileSync(join(fx.wt, ".marvin/pipeline/calibration/r0.json"), "utf8"),
+    OTHER_RECORD,
+  );
+  assert.deepEqual(
+    l.readCalibrationRecords(fx.wt).map((r) => r.runId),
+    ["r0", "r1"],
+  );
   // dev is now an ancestor of the pushed branch, so the PR merges without a conflict.
   sh(fx.wt, "merge-base", "--is-ancestor", devTip, "HEAD");
   assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), head(fx.wt));
 
   // A replay of either step recognises what the first call made.
   assert.deepEqual(l.mergeBaseForFinalize(mergeOpts(fx)), merged);
+});
+
+test("two runs that start from one base and both finalize before either merges leave no conflict", () => {
+  // The class the 0.30.0 base merge does not reach: neither run sees the other's record at
+  // finalize, since neither PR has merged. With one record per run their branches add two
+  // different files, and dev takes both in either order. Both retros are empty so that only the
+  // record and the spec are written; checks and lessons are shared files and not what is shown.
+  const fx = prFixture();
+  const other = wtm.createRunWorktree({
+    repoRoot: fx.repo,
+    base: "dev",
+    runId: "r2",
+    worktreesRoot: tmp("pipe-wts-"),
+  });
+  const otherSpec = ".marvin/task/002-other.md";
+  mkdirSync(join(other.path, ".marvin", "task"), { recursive: true });
+  writeFileSync(join(other.path, otherSpec), SPEC.replace("slug: demo", "slug: other"));
+  sh(other.path, "add", ".");
+  sh(other.path, "commit", "-m", "spec");
+  sh(other.path, "push", "origin", `HEAD:refs/heads/${other.branch}`);
+  const run2 = makeRun({
+    id: "r2",
+    prUrl: "https://github.com/o/r/pull/2",
+    branch: other.branch,
+    specPath: otherSpec,
+    worktree: other.path,
+    iteration: 1,
+  });
+  const common = { retro: null, events: [], exposedLessons: [], formatCommand: null };
+  assert.equal(l.mergeBaseForFinalize(mergeOpts(fx)).state, "current");
+  const one = l.finalizeRun(fx.opts({ ...common }));
+  assert.equal(
+    l.mergeBaseForFinalize({
+      runDir: tmp("pipe-run-"),
+      worktree: other.path,
+      gitDir: other.gitDir,
+      branch: other.branch,
+      base: "dev",
+      slug: "other",
+      gatedHead: head(other.path),
+    }).state,
+    "current",
+  );
+  const two = l.finalizeRun({
+    run: run2,
+    runDir: tmp("pipe-run-"),
+    worktree: other.path,
+    gitDir: other.gitDir,
+    expectedHead: head(other.path),
+    ...common,
+  });
+  assert.deepEqual([...one.written].sort(), [".marvin/pipeline/calibration/r1.json", SPEC_PATH]);
+  assert.deepEqual([...two.written].sort(), [".marvin/pipeline/calibration/r2.json", otherSpec]);
+
+  for (const order of [
+    [fx.branch, other.branch],
+    [other.branch, fx.branch],
+  ]) {
+    const clone = tmp("pipe-dev-");
+    sh(clone, "clone", "-q", "--branch", "dev", fx.origin, ".");
+    for (const branch of order) {
+      sh(
+        clone,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "merge",
+        "-q",
+        "--no-edit",
+        `origin/${branch}`,
+      );
+    }
+    assert.deepEqual(readdirSync(join(clone, ".marvin/pipeline/calibration")).sort(), [
+      "r1.json",
+      "r2.json",
+    ]);
+    assert.deepEqual(
+      l
+        .readCalibrationRecords(clone)
+        .map((r) => r.runId)
+        .sort(),
+      ["r1", "r2"],
+    );
+    assert.equal(status(clone), "");
+  }
 });
 
 test("a base already in the run branch is current, and nothing moves", () => {

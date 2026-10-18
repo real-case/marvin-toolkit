@@ -1729,7 +1729,7 @@ test("finalize merges a base that moved before it writes, and says so", async ()
   // A parallel run lands its calibration record on dev while this one is in its retro.
   const clone = mkdtempSync(join(tmpdir(), "pipe-dev-"));
   sh(clone, "clone", "-q", "--branch", "dev", origin, ".");
-  write(clone, ".marvin/pipeline/calibration.jsonl", `${JSON.stringify({ runId: "r0" })}\n`);
+  write(clone, ".marvin/pipeline/calibration/r0.json", `${JSON.stringify({ runId: "r0" })}\n`);
   sh(clone, "add", "-f", "-A");
   sh(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parallel run");
   sh(clone, "push", "-q", "origin", "HEAD:refs/heads/dev");
@@ -1748,10 +1748,13 @@ test("finalize merges a base that moved before it writes, and says so", async ()
     gated,
     devTip,
   ]);
-  const records = readFileSync(join(s.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line).runId);
+  // The base's record came in with the merge; the run's own is a second file beside it.
+  const records = readdirSync(join(s.wt, ".marvin/pipeline/calibration"))
+    .sort()
+    .map(
+      (name) =>
+        JSON.parse(readFileSync(join(s.wt, ".marvin/pipeline/calibration", name), "utf8")).runId,
+    );
   assert.deepEqual(records, ["r0", "r1"]);
   assert.ok(
     events(s.runDir).some((e) => /^merged dev \([0-9a-f]{8}\) into the run branch/.test(e.text)),
