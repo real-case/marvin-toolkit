@@ -12,6 +12,7 @@
     "args": ["-y", "@upstash/context7-mcp@3.2.1"]
   },
   "gitmcp": {
+    "type": "http",
     "url": "https://gitmcp.io/docs"
   }
 }

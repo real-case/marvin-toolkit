@@ -4,6 +4,17 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.29.10] — 2026-10-18
+
+Lets Claude Code load the bundled `gitmcp` server again.
+
+### Fixed
+
+- **`gitmcp` declares its transport.** Its `.mcp.json` entry carried a `url` and no `type`,
+  which current Claude Code rejects as an invalid server config (`invalid_union`) and drops
+  without a visible error, so the plugin's `gitmcp` tools never appeared. The entry now reads
+  `"type": "http"`, and the server connects over streamable HTTP.
+
 ## [0.29.9] — 2026-10-17
 
 Lets the autopilot seal stage run on a `gates.test_one` written for the per-test oracles.
