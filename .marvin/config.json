@@ -55,7 +55,7 @@
     "Keep `CLAUDE.md` and the matching `docs/` page in step with any change to a command, tool, agent, config key or `.marvin/` path; each such file is a contract row."
   ],
   "gates": {
-    "test": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/server && npm test",
+    "test": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/server && npm run test:fast",
     "lint": "npm run lint",
     "build": "npm run build",
     "test_one": "node scripts/test-one.mjs {file}",

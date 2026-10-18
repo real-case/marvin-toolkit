@@ -481,6 +481,17 @@ working directory matters as much as the runner: the server test driver starts t
 test's directory, and from the repository root that server would read the repository's own
 committed `.marvin/config.json` instead of an empty project.
 
+Its `test` gate is also narrower than its CI. The gate runs `npm run test:fast`, which runs every
+workspace's suite whole except the server's, where `scripts/test-fast.mjs` leaves out ten files
+that spawn git, supervisors, whole red `node --test` runs or the server itself once per test:
+measured alone they are 17–152 s each and about 90 % of that suite's sequential time, and the
+autopilot's `test` gate, which reruns the suite after every executor iteration, took 33 minutes
+with them. `npm test` still runs everything and CI runs it on every push, so a pull request is
+judged by the whole suite; the fast set is what judges the commits in between. A project whose
+suite has the same shape can do the same: keep the full `test` script for CI, give the gate a
+script that excludes the slow files by name, and let a test fail the run when a named file no
+longer exists, so the list cannot quietly exclude nothing.
+
 ### Scanners as gates
 
 A gate command is an ordinary shell command, so a gate is not limited to the kind of tool its

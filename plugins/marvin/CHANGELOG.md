@@ -4,6 +4,26 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.30.2] — 2026-10-18
+
+Makes the autopilot's `test` gate on marvin-toolkit itself take minutes instead of the 33 it took
+in run r20261014-1833-9f85, without changing what CI runs.
+
+### Changed
+
+- **The repository's `gates.test` runs the fast set.** The root `npm run test:fast` runs the
+  shared-library, widget, site and root suites whole and the server suite through its new
+  `npm run test:fast`, `plugins/marvin/mcp/server/scripts/test-fast.mjs`: every `test/*.test.mjs`
+  except the ten in its `SLOW` list (`spec`, `pipeline-learning`, `pipeline-runtime`,
+  `pipeline-seal`, `pipeline-gate-adversary`, `pipeline-metrics-carry`, `pipeline-gate`, `verify`,
+  `pipeline-worktree`, `summary-structured`), which spawn git, supervisors, whole red `node --test`
+  runs or the server itself per test and measured 17–152 s each alone, 713 of the suite's 802
+  sequential seconds. Concurrency alone could not help: the longest file is the critical path.
+  `npm test` is unchanged, CI runs it on every push, and `scripts/test-one.mjs` still runs any
+  single file. `test/test-fast.test.mjs` pins the list to the tree, and a `SLOW` entry that names
+  no file fails the run rather than running everything. `CLAUDE.md` and `docs/configuration.md`
+  describe the split.
+
 ## [0.30.1] — 2026-10-18
 
 Brings the scanner-gate advice in line with `gates.extra`.
