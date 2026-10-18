@@ -332,7 +332,7 @@ base commit's `.marvin/config.json`, never from a run's worktree.
 | `tracker_default` | `TBD` | The tracker id used in the branch name when the spec has none. |
 | `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing. |
 | `lockfile` | `null` | The lockfile `bootstrap` installs from, such as `package-lock.json`. |
-| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. `null` uses `gh`'s own authentication. |
+| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. The engine reads CI and marks the pull request ready with it, and hands it to the writing children (planner, test-author, executor) as `GH_TOKEN`, so that their `gh pr create` and `git push` act as that account rather than whichever one is active. `null` uses `gh`'s own authentication everywhere. |
 | `stall_minutes` | `15` | Minutes without output from a child before it counts as stalled. |
 | `no_ci_minutes` | `10` | Minutes after a push with no CI run appearing before the pipeline concludes the branch has no CI. |
 | `gate_timeout_minutes` | `20` | Minutes one gate command may run before it is killed. |

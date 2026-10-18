@@ -331,6 +331,35 @@ const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
 const DOR_ROUNDS = "planner-dor";
 /** The `retries` key counting the waits a role got after a usage limit, apart from its retries. */
 const limitWaits = (role: Role) => `${role}-limited`;
+/** The `retries` key counting the relaunches a role got after a launch fault, apart from its retries. */
+const launchFaults = (role: Role) => `${role}-launch`;
+/**
+ * A child that ended within this time, at no cost and with no output, never got to work: the CLI
+ * failed before the first request (an expired OAuth session, a provider outage). In the
+ * 2026-10-17 run two such planners ended 218 ms apart and spent the one crash retry on the same
+ * dead session; the user's retry six minutes later worked. The relaunch waits, doubling from here.
+ */
+const LAUNCH_FAULT_MS = 30_000;
+const LAUNCH_BACKOFF_MS = 60_000;
+const isLaunchFault = (result: WaitResult) =>
+  (result.outcome === "failed" || result.outcome === "crashed") &&
+  result.structured === null &&
+  (result.costUsd ?? 0) === 0 &&
+  result.durationMs !== null &&
+  result.durationMs < LAUNCH_FAULT_MS;
+/**
+ * The files the pipeline's own tools write while a task runs: critic receipts, the metrics
+ * record, handoffs, `verification.md`, and the `runs/<slug>.*` journals beside a spec, under
+ * `.marvin/task/` or in a host directory. An executor that commits one is told so by the gate,
+ * and the fix is `git rm --cached`, which no stronger model does better: in the 2026-10-17 runs
+ * three iterations were spent on these alone, each one rung up, and the verifier floor then
+ * raised the verifier with it.
+ */
+const SERVICE_FILE =
+  /^\.marvin\/(?:critique|metrics|handoff)\/|^\.marvin\/task\/verification\.md$|(?:^|\/)runs\/[^/]+\.md$/;
+/** A scope finding on a service file: a rejection made of these alone moves no rung. */
+export const isBookkeeping = (f: Finding) =>
+  f.category === "scope" && f.file !== undefined && SERVICE_FILE.test(f.file);
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /**
  * Gate findings that leave the run with no sealed spec to restore. `SPEC-uncommitted` and
@@ -545,28 +574,47 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
   const reject = (r: Run, source: "gate" | "verifier" | "ci", found: Finding[]): Decision => {
     const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
+    // A rejection over the pipeline's own service files alone is bookkeeping: the same executor
+    // fixes it with `git rm --cached`, so it climbs no rung and is counted on its own cap, past
+    // which it is a rejection like any other, so that a run cannot loop on it.
+    const bookkept = r.rejections.filter((x) => x.bookkeeping === true).length;
+    const bookkeeping = fs.every(isBookkeeping) && bookkept < rubric.caps.bookkeeping_rejections;
     const last = r.rejections.at(-1)?.fingerprints ?? [];
-    let rung = r.rung + 1;
-    if (prints.some((p) => last.includes(p))) {
-      while (rubric.escalation[rung - 1]?.startsWith("effort")) rung += 1;
+    let rung = r.rung;
+    if (!bookkeeping) {
+      rung += 1;
+      if (prints.some((p) => last.includes(p))) {
+        while (rubric.escalation[rung - 1]?.startsWith("effort")) rung += 1;
+      }
     }
     const next: Run = {
       ...r,
       rung,
       previousFindings: asRecords(fs),
-      rejections: [...r.rejections, { iteration: r.iteration, source, fingerprints: prints }],
+      rejections: [
+        ...r.rejections,
+        {
+          iteration: r.iteration,
+          source,
+          fingerprints: prints,
+          ...(bookkeeping ? { bookkeeping: true } : {}),
+        },
+      ],
     };
     const halted = (reason: string) =>
       ask({ ...next, haltRole: "executor" }, "halt", { reason, findings: fs });
+    const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
     if (
-      next.rejections.length >= rubric.caps.rejections ||
-      stepNow === undefined ||
-      stepNow === "halt"
+      !bookkeeping &&
+      (counted >= rubric.caps.rejections || stepNow === undefined || stepNow === "halt")
     ) {
-      return halted(`rejected ${next.rejections.length} times (last: ${source})`);
+      return halted(`rejected ${counted} times (last: ${source})`);
     }
     const exec = go({ ...next, iteration: r.iteration + 1 }, "executing");
+    const why = bookkeeping
+      ? `${fs.length} blocking, all over pipeline service files; rung unchanged`
+      : `${fs.length} blocking`;
     try {
       return {
         run: exec,
@@ -574,7 +622,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           spawn(exec, "executor", executorCtx(exec, fs)),
           {
             kind: "notify",
-            text: `${source} rejected iteration ${r.iteration} (${fs.length} blocking); executor ${exec.iteration} started on rung ${rung}`,
+            text: `${source} rejected iteration ${r.iteration} (${why}); executor ${exec.iteration} started on rung ${rung}`,
           },
         ],
       };
@@ -597,7 +645,7 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         Object.entries(r.retries).filter(
           ([name]) =>
             name !== role &&
-            (role === null || name !== limitWaits(role)) &&
+            (role === null || (name !== limitWaits(role) && name !== launchFaults(role))) &&
             !(role === "planner" && name === DOR_ROUNDS),
         ),
       ),
@@ -682,6 +730,26 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     if (fault) {
       const tries = run.retries[role] ?? 0;
       const spent = tries >= rubric.caps.child_retries;
+      // A child that never got to work is relaunched after a wait that doubles each time, on a
+      // budget of its own: the fault is the platform's, not the child's, and an instant retry
+      // meets it again. Past the budget it is a crash like any other.
+      if (fault.kind !== "limited" && isLaunchFault(result)) {
+        const launches = run.retries[launchFaults(role)] ?? 0;
+        if (launches < rubric.caps.launch_retries) {
+          const until = new Date(now.getTime() + LAUNCH_BACKOFF_MS * 2 ** launches);
+          const r = { ...run, retries: { ...run.retries, [launchFaults(role)]: launches + 1 } };
+          return {
+            run: r,
+            actions: [
+              {
+                kind: "notify",
+                text: `${role} could not start (${fault.detail || "no output"}); retrying at ${until.toISOString()} (${launches + 1} of ${rubric.caps.launch_retries})`,
+              },
+              { ...lastSpawnOf(run, role), notBefore: until.toISOString() },
+            ],
+          };
+        }
+      }
       if (role === "retro" && (spent || fault.kind === "limited")) {
         return {
           run: go(run, "finalizing"),
