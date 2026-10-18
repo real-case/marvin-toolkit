@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -109,4 +109,34 @@ test("a run file written before the engine committed the spec loads with no spec
   const sha = "a".repeat(40);
   assert.equal(rs.Run.parse({ ...old, specCommit: sha }).specCommit, sha);
   assert.throws(() => rs.Run.parse({ ...old, specCommit: 5 }), /specCommit/);
+});
+
+test("a run's base must be a safe branch name, so it can never reach git as an option", () => {
+  for (const base of ["--upload-pack=touch x", "-x", "a..b", "dev name", ""]) {
+    assert.throws(() => rs.Run.parse({ ...fresh(), base }), /base is not a safe branch name/, base);
+  }
+  assert.equal(rs.Run.parse({ ...fresh(), base: "release/1.2" }).base, "release/1.2");
+});
+
+test("an empty or relative MARVIN_PIPELINE_HOME is refused by everything that writes state", () => {
+  for (const home of ["", "state", "./state", "../state"]) {
+    const env = { MARVIN_PIPELINE_HOME: home };
+    assert.throws(() => rs.checkedStateRoot(env), /not an absolute path/, home);
+    assert.throws(() => rs.runDirFor("/repo/osint", "r1", env), /not an absolute path/, home);
+    // The unchecked reader still returns it, for the pipeline tool's own refusal.
+    assert.equal(rs.stateRoot(env), home);
+  }
+  assert.equal(rs.checkedStateRoot({ MARVIN_PIPELINE_HOME: "/s" }), "/s");
+  assert.match(rs.checkedStateRoot({}), /\.local\/state\/marvin-pipeline$/);
+});
+
+test("run directories are created owner-only", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-rs-"));
+  const dir = join(home, "osint", "r1");
+  rs.saveRun(dir, fresh());
+  assert.equal(statSync(join(home, "osint")).mode & 0o777, 0o700);
+  assert.equal(statSync(dir).mode & 0o777, 0o700);
+  const events = join(home, "other", "r2");
+  rs.appendEvent(events, { ts: NOW.toISOString(), kind: "note", actor: "engine", text: "x" });
+  assert.equal(statSync(events).mode & 0o777, 0o700);
 });

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { spawn, spawnSync, execFileSync, execSync } from 'child_process';
-import { writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, appendFileSync, renameSync, cpSync, realpathSync, linkSync, rmSync, fstatSync, readSync, statSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
-import { isAbsolute, resolve, posix, join, dirname, basename, sep, normalize, relative } from 'path';
+import { realpathSync, writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdtempSync, mkdirSync, readdirSync, appendFileSync, renameSync, cpSync, linkSync, rmSync, fstatSync, readSync, statSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
+import { isAbsolute, posix, resolve, join, dirname, basename, sep, normalize, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { setTimeout as setTimeout$1 } from 'timers/promises';
 import { parseArgs, isDeepStrictEqual } from 'util';
@@ -10362,9 +10362,28 @@ var require_utils = __commonJS({
   "../../../../node_modules/fast-uri/lib/utils.js"(exports, module) {
     var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
     var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+    var isPort = RegExp.prototype.test.bind(/^\d*$/u);
     var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
     var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-    var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
+    var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
+    var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
+    var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
+    var BYTE_HEX = new Array(256);
+    {
+      const HEX_DIGITS = "0123456789ABCDEF";
+      for (let i = 0; i < 256; i++) {
+        BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
+      }
+    }
+    function percentEncodeNonAscii(cp) {
+      if (cp < 2048) {
+        return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
+      }
+      if (cp < 65536) {
+        return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+      }
+      return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+    }
     function stringArrayToHexStripped(input) {
       let acc = "";
       let code = 0;
@@ -10389,91 +10408,105 @@ var require_utils = __commonJS({
       }
       return acc;
     }
+    var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
+    var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
+    var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
     var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-    function consumeIsZone(buffer) {
-      buffer.length = 0;
-      return true;
-    }
-    function consumeHextets(buffer, address, output) {
-      if (buffer.length) {
-        const hex = stringArrayToHexStripped(buffer);
-        if (hex !== "") {
-          address.push(hex);
-        } else {
-          output.error = true;
-          return false;
+    function isZoneIdentifier(zone) {
+      if (zone.length === 0) return false;
+      for (let i = 0; i < zone.length; i++) {
+        if (isZoneCharacter(zone[i])) continue;
+        if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
+          i += 2;
+          continue;
         }
-        buffer.length = 0;
+        return false;
       }
       return true;
     }
-    function getIPV6(input) {
-      let tokenCount = 0;
-      const output = { error: false, address: "", zone: "" };
-      const address = [];
-      const buffer = [];
-      let endipv6Encountered = false;
-      let endIpv6 = false;
-      let consume = consumeHextets;
-      for (let i = 0; i < input.length; i++) {
-        const cursor = input[i];
-        if (cursor === "[" || cursor === "]") {
-          continue;
-        }
-        if (cursor === ":") {
-          if (endipv6Encountered === true) {
-            endIpv6 = true;
+    function compressIPv6ZeroRun(hextets) {
+      let bestStart = -1;
+      let bestLength = 0;
+      let runStart = -1;
+      let runLength = 0;
+      for (let i = 0; i < hextets.length; i++) {
+        if (hextets[i] === "0") {
+          if (runStart === -1) runStart = i;
+          runLength++;
+          if (runLength > bestLength) {
+            bestLength = runLength;
+            bestStart = runStart;
           }
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          if (++tokenCount > 7) {
-            output.error = true;
-            break;
-          }
-          if (i > 0 && input[i - 1] === ":") {
-            endipv6Encountered = true;
-          }
-          address.push(":");
-          continue;
-        } else if (cursor === "%") {
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          consume = consumeIsZone;
         } else {
-          buffer.push(cursor);
-          continue;
+          runStart = -1;
+          runLength = 0;
         }
       }
-      if (buffer.length) {
-        if (consume === consumeIsZone) {
-          output.zone = buffer.join("");
-        } else if (endIpv6) {
-          address.push(buffer.join(""));
-        } else {
-          address.push(stringArrayToHexStripped(buffer));
-        }
+      if (bestLength < 2) return hextets.join(":");
+      const head = hextets.slice(0, bestStart).join(":");
+      const tail = hextets.slice(bestStart + bestLength).join(":");
+      return head + "::" + tail;
+    }
+    function normalizeIPv6Address(input) {
+      const compression = input.indexOf("::");
+      if (compression !== -1 && input.indexOf("::", compression + 1) !== -1) return void 0;
+      const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
+      const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
+      if (compression !== -1) {
+        if (left.length === 1 && left[0] === "") left.length = 0;
+        if (right.length === 1 && right[0] === "") right.length = 0;
       }
-      output.address = address.join("");
-      return output;
+      const parts = left.concat(right);
+      let hextetCount = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === "") return void 0;
+        if (part.indexOf(".") !== -1) {
+          if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part)) return void 0;
+          hextetCount += 2;
+          continue;
+        }
+        if (!isHextet(part)) return void 0;
+        parts[i] = parseInt(part, 16).toString(16);
+        hextetCount++;
+      }
+      if (compression === -1) {
+        if (hextetCount !== 8) return void 0;
+        return compressIPv6ZeroRun(parts);
+      }
+      if (hextetCount >= 8) return void 0;
+      const expanded = parts.slice(0, left.length);
+      for (let i = hextetCount; i < 8; i++) expanded.push("0");
+      for (let i = left.length; i < parts.length; i++) expanded.push(parts[i]);
+      return compressIPv6ZeroRun(expanded);
     }
     function normalizeIPv6(host) {
-      if (findToken(host, ":") < 2) {
-        return { host, isIPV6: false };
+      const bracketed = host[0] === "[" && host[host.length - 1] === "]";
+      const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
+      if (hasBracket && !bracketed) return { host, isIPV6: false, error: true };
+      let input = bracketed ? host.slice(1, -1) : host;
+      if (bracketed && isIPvFuture(input)) {
+        input = input.toLowerCase();
+        return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
       }
-      const ipv62 = getIPV6(host);
-      if (!ipv62.error) {
-        let newHost = ipv62.address;
-        let escapedHost = ipv62.address;
-        if (ipv62.zone) {
-          newHost += "%" + ipv62.zone;
-          escapedHost += "%25" + ipv62.zone;
-        }
-        return { host: newHost, isIPV6: true, escapedHost };
-      } else {
-        return { host, isIPV6: false };
+      if (findToken(input, ":") < 2) {
+        return { host, isIPV6: false, error: bracketed };
       }
+      let zoneIdentifier = "";
+      const zoneSeparator = input.indexOf("%");
+      if (zoneSeparator !== -1) {
+        const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
+        zoneIdentifier = input.slice(zoneSeparator + separatorLength);
+        if (!isZoneIdentifier(zoneIdentifier)) return { host, isIPV6: false, error: true };
+        input = input.slice(0, zoneSeparator);
+      }
+      const address = normalizeIPv6Address(input);
+      if (address === void 0) return { host, isIPV6: false, error: true };
+      return {
+        host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
+        escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
+        isIPV6: true
+      };
     }
     function findToken(str, token) {
       let ind = 0;
@@ -10592,7 +10625,8 @@ var require_utils = __commonJS({
     function normalizePathEncoding(input) {
       let output = "";
       for (let i = 0; i < input.length; i++) {
-        if (input[i] === "%" && i + 2 < input.length) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
           const hex = input.slice(i + 1, i + 3);
           if (isHexPair(hex)) {
             const normalizedHex = hex.toUpperCase();
@@ -10606,10 +10640,152 @@ var require_utils = __commonJS({
             continue;
           }
         }
-        if (isPathCharacter(input[i])) {
-          output += input[i];
+        if (isPathCharacter(ch)) {
+          output += ch;
         } else {
-          output += escape(input[i]);
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function serializePathEncoding(input, pathNoScheme = false) {
+      let output = "";
+      let firstSegment = pathNoScheme && input[0] !== "/";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (ch === "/") {
+          firstSegment = false;
+        }
+        if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeComponent(input, isAllowed) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (isAllowed(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeUserinfo(input) {
+      return encodeComponent(input, isUserinfoCharacter);
+    }
+    function encodeQuery(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function encodeFragment(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function isEscapeSafe(cp) {
+      return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
+    }
+    function normalizeQueryFragmentEncoding(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        if (isQueryFragmentCharacter(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
         }
       }
       return output;
@@ -10632,14 +10808,18 @@ var require_utils = __commonJS({
     function recomposeAuthority(component) {
       const uriTokens = [];
       if (component.userinfo !== void 0) {
-        uriTokens.push(component.userinfo);
+        uriTokens.push(encodeUserinfo(component.userinfo));
         uriTokens.push("@");
       }
       if (component.host !== void 0) {
-        let host = unescape(component.host);
+        let host = component.host;
         if (!isIPv4(host)) {
-          const ipV6res = normalizeIPv6(host);
-          if (ipV6res.isIPV6 === true) {
+          let ipV6res = normalizeIPv6(host);
+          if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
+            host = normalizePercentEncoding(host, true);
+            ipV6res = normalizeIPv6(host);
+          }
+          if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
             host = `[${ipV6res.escapedHost}]`;
           } else {
             host = reescapeHostDelimiters(host, false);
@@ -10648,8 +10828,12 @@ var require_utils = __commonJS({
         uriTokens.push(host);
       }
       if (typeof component.port === "number" || typeof component.port === "string") {
+        const port = String(component.port);
+        if (!isPort(port)) {
+          throw new TypeError("URI port is malformed.");
+        }
         uriTokens.push(":");
-        uriTokens.push(String(component.port));
+        uriTokens.push(port);
       }
       return uriTokens.length ? uriTokens.join("") : void 0;
     }
@@ -10659,6 +10843,11 @@ var require_utils = __commonJS({
       reescapeHostDelimiters,
       normalizePercentEncoding,
       normalizePathEncoding,
+      serializePathEncoding,
+      normalizeQueryFragmentEncoding,
+      encodeUserinfo,
+      encodeQuery,
+      encodeFragment,
       escapePreservingEscapes,
       removeDotSegments,
       isIPv4,
@@ -10673,7 +10862,7 @@ var require_utils = __commonJS({
 var require_schemes = __commonJS({
   "../../../../node_modules/fast-uri/lib/schemes.js"(exports, module) {
     var { isUUID } = require_utils();
-    var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
+    var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
     var supportedSchemeNames = (
       /** @type {const} */
       [
@@ -10734,9 +10923,10 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
+        const queryIndex = wsComponent.resourceName.indexOf("?");
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
         wsComponent.path = path && path !== "/" ? path : void 0;
-        wsComponent.query = query;
+        wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
       wsComponent.fragment = void 0;
@@ -10748,7 +10938,7 @@ var require_schemes = __commonJS({
         return urnComponent;
       }
       const matches = urnComponent.path.match(URN_REG);
-      if (matches) {
+      if (matches && matches[0] === urnComponent.path) {
         const scheme = options.scheme || urnComponent.scheme || "urn";
         urnComponent.nid = matches[1].toLowerCase();
         urnComponent.nss = matches[2];
@@ -10881,8 +11071,17 @@ var require_schemes = __commonJS({
 // ../../../../node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS({
   "../../../../node_modules/fast-uri/index.js"(exports, module) {
-    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
+    var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
+    var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
+    function decodeValidScheme(scheme) {
+      const decodedScheme = unescape(String(scheme));
+      if (!VALID_SCHEME.test(decodedScheme)) {
+        throw new TypeError(MALFORMED_SCHEME_ERROR);
+      }
+      return decodedScheme;
+    }
     function normalize2(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
@@ -10895,53 +11094,80 @@ var require_fast_uri = __commonJS({
     }
     function resolve7(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse5(baseURI, schemelessOptions), parse5(relativeURI, schemelessOptions), schemelessOptions, true);
+      const {
+        parsed: baseParsed,
+        malformedAuthorityOrPort: baseMalformed,
+        malformedPercentEncoding: baseMalformedPercentEncoding,
+        malformedSchemeSpecific: baseMalformedSchemeSpecific,
+        malformedHost: baseMalformedHost,
+        malformedScheme: baseMalformedScheme
+      } = parseWithStatus(baseURI, schemelessOptions);
+      const {
+        parsed: relativeParsed,
+        malformedAuthorityOrPort: relativeMalformed,
+        malformedPercentEncoding: relativeMalformedPercentEncoding,
+        malformedSchemeSpecific: relativeMalformedSchemeSpecific,
+        malformedHost: relativeMalformedHost,
+        malformedScheme: relativeMalformedScheme
+      } = parseWithStatus(relativeURI, schemelessOptions);
+      if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
+        throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
+      }
+      const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+      const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
+      const resolvedHost = resolved.host;
+      const resolvedHostIsIP = resolvedHost !== void 0 && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+      canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
+      const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !new RegExp("\\P{ASCII}", "u").test(resolvedHost);
+      if (resolved.error && !encodedASCIIHost) {
+        throw new Error(resolved.error);
+      }
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative8, options, skipNormalization) {
+    function resolveComponent(base, relative9, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse5(serialize(base, options), options);
-        relative8 = parse5(serialize(relative8, options), options);
+        relative9 = parse5(serialize(relative9, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative8.scheme) {
-        target.scheme = relative8.scheme;
-        target.userinfo = relative8.userinfo;
-        target.host = relative8.host;
-        target.port = relative8.port;
-        target.path = removeDotSegments(relative8.path || "");
-        target.query = relative8.query;
+      if (!options.tolerant && relative9.scheme) {
+        target.scheme = relative9.scheme;
+        target.userinfo = relative9.userinfo;
+        target.host = relative9.host;
+        target.port = relative9.port;
+        target.path = removeDotSegments(relative9.path || "");
+        target.query = relative9.query;
       } else {
-        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
-          target.userinfo = relative8.userinfo;
-          target.host = relative8.host;
-          target.port = relative8.port;
-          target.path = removeDotSegments(relative8.path || "");
-          target.query = relative8.query;
+        if (relative9.userinfo !== void 0 || relative9.host !== void 0 || relative9.port !== void 0) {
+          target.userinfo = relative9.userinfo;
+          target.host = relative9.host;
+          target.port = relative9.port;
+          target.path = removeDotSegments(relative9.path || "");
+          target.query = relative9.query;
         } else {
-          if (!relative8.path) {
+          if (!relative9.path) {
             target.path = base.path;
-            if (relative8.query !== void 0) {
-              target.query = relative8.query;
+            if (relative9.query !== void 0) {
+              target.query = relative9.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative8.path[0] === "/") {
-              target.path = removeDotSegments(relative8.path);
+            if (relative9.path[0] === "/") {
+              target.path = removeDotSegments(relative9.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative8.path;
+                target.path = "/" + relative9.path;
               } else if (!base.path) {
-                target.path = relative8.path;
+                target.path = relative9.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative9.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative8.query;
+            target.query = relative9.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -10949,13 +11175,13 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative8.fragment;
+      target.fragment = relative9.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
       const normalizedA = normalizeComparableURI(uriA, options);
       const normalizedB = normalizeComparableURI(uriB, options);
-      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA.toLowerCase() === normalizedB.toLowerCase();
+      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA === normalizedB;
     }
     function serialize(cmpts, opts) {
       const component = {
@@ -10976,19 +11202,22 @@ var require_fast_uri = __commonJS({
       };
       const options = Object.assign({}, opts);
       const uriTokens = [];
+      if (component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
+      }
       const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
       if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(component, options);
+      const hasAuthority = component.userinfo !== void 0 || component.host !== void 0 || component.port !== void 0;
+      const pathNoScheme = !options.skipEscape && component.scheme === void 0 && !hasAuthority;
       if (component.path !== void 0) {
         if (!options.skipEscape) {
-          component.path = escapePreservingEscapes(component.path);
-          if (component.scheme !== void 0) {
-            component.path = component.path.split("%3A").join(":");
-          }
+          component.path = serializePathEncoding(component.path, pathNoScheme);
         } else {
           component.path = normalizePercentEncoding(component.path);
         }
       }
       if (options.reference !== "suffix" && component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
         uriTokens.push(component.scheme, ":");
       }
       const authority = recomposeAuthority(component);
@@ -11006,20 +11235,25 @@ var require_fast_uri = __commonJS({
         if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
           s = removeDotSegments(s);
         }
+        if (pathNoScheme) {
+          s = serializePathEncoding(s, true);
+        }
         if (authority === void 0 && s[0] === "/" && s[1] === "/") {
           s = "/%2F" + s.slice(2);
         }
         uriTokens.push(s);
       }
       if (component.query !== void 0) {
-        uriTokens.push("?", component.query);
+        uriTokens.push("?", encodeQuery(component.query));
       }
       if (component.fragment !== void 0) {
-        uriTokens.push("#", component.fragment);
+        uriTokens.push("#", encodeFragment(component.fragment));
       }
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
+    var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
+    var AUTHORITY_INTRODUCER_REGION = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
     function getParseError(parsed, matches) {
       if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
         return 'URI path must start with "/" when authority is present.';
@@ -11028,6 +11262,35 @@ var require_fast_uri = __commonJS({
         return "URI port is malformed.";
       }
       return void 0;
+    }
+    function hasMalformedPercentEncoding(component) {
+      if (component === void 0) return false;
+      let percent = component.indexOf("%");
+      while (percent !== -1) {
+        if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
+          return true;
+        }
+        percent = component.indexOf("%", percent + 3);
+      }
+      return false;
+    }
+    function isIPLiteral(host) {
+      return host[0] === "[" && host[host.length - 1] === "]";
+    }
+    function hasMalformedComponentPercentEncoding(matches) {
+      const host = matches[4];
+      return hasMalformedPercentEncoding(matches[3]) || host !== void 0 && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
+    }
+    function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+        try {
+          parsed.host = new URL("http://" + parsed.host).hostname;
+        } catch (e) {
+          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+          return true;
+        }
+      }
+      return false;
     }
     function parseWithStatus(uri, opts) {
       const options = Object.assign({}, opts);
@@ -11041,12 +11304,36 @@ var require_fast_uri = __commonJS({
         fragment: void 0
       };
       let malformedAuthorityOrPort = false;
+      let malformedPercentEncoding = false;
+      let malformedSchemeSpecific = false;
+      let malformedHost = false;
+      let malformedIPLiteral = false;
+      let malformedScheme = false;
       let isIP = false;
       if (options.reference === "suffix") {
         if (options.scheme) {
           uri = options.scheme + ":" + uri;
         } else {
           uri = "//" + uri;
+        }
+      }
+      const authorityMatch = uri.match(AUTHORITY_PREFIX);
+      if (authorityMatch !== null && authorityMatch[1].indexOf("\\") !== -1) {
+        parsed.error = "URI authority must not contain a literal backslash.";
+        malformedAuthorityOrPort = true;
+      }
+      const introducerMatch = uri.match(AUTHORITY_INTRODUCER_REGION);
+      if (introducerMatch !== null) {
+        const region = introducerMatch[1];
+        const normalizedRegion = region.replace(/[\t\n\r]/g, "");
+        if (normalizedRegion.length >= 2) {
+          if (normalizedRegion.slice(0, 2) !== "//") {
+            parsed.error = parsed.error || "URI authority must not contain a literal backslash.";
+            malformedAuthorityOrPort = true;
+          } else if (region.length !== normalizedRegion.length) {
+            parsed.error = parsed.error || "URI authority introducer must not contain whitespace.";
+            malformedAuthorityOrPort = true;
+          }
         }
       }
       const matches = uri.match(URI_PARSE);
@@ -11058,6 +11345,19 @@ var require_fast_uri = __commonJS({
         parsed.path = matches[6] || "";
         parsed.query = matches[7];
         parsed.fragment = matches[8];
+        if (parsed.scheme !== void 0) {
+          const decodedScheme = unescape(parsed.scheme);
+          if (VALID_SCHEME.test(decodedScheme)) {
+            parsed.scheme = decodedScheme.toLowerCase();
+          } else {
+            parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
+            malformedScheme = true;
+          }
+        }
+        malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
+        if (malformedPercentEncoding) {
+          parsed.error = parsed.error || "URI contains malformed percent-encoding.";
+        }
         if (isNaN(parsed.port)) {
           parsed.port = matches[5];
         }
@@ -11069,9 +11369,16 @@ var require_fast_uri = __commonJS({
         if (parsed.host) {
           const ipv4result = isIPv4(parsed.host);
           if (ipv4result === false) {
+            const bracketedIPLiteral = isIPLiteral(parsed.host);
+            const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
             const ipv6result = normalizeIPv6(parsed.host);
-            parsed.host = ipv6result.host.toLowerCase();
-            isIP = ipv6result.isIPV6;
+            isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
+            malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
+            parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
+            if (malformedIPLiteral) {
+              parsed.error = parsed.error || "URI host is malformed.";
+              malformedAuthorityOrPort = true;
+            }
           } else {
             isIP = true;
           }
@@ -11089,42 +11396,37 @@ var require_fast_uri = __commonJS({
           parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
         }
         const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-        if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-          if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-            try {
-              parsed.host = URL.domainToASCII(parsed.host.toLowerCase());
-            } catch (e) {
-              parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-            }
+        if (!malformedIPLiteral) {
+          malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
+        }
+        if (uri.indexOf("%") !== -1 && parsed.host !== void 0 && !malformedIPLiteral) {
+          let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
+          if (!isIP) {
+            host = normalizePercentEncoding(host.toLowerCase());
           }
+          parsed.host = reescapeHostDelimiters(host, isIP);
         }
         if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
-          if (uri.indexOf("%") !== -1) {
-            if (parsed.scheme !== void 0) {
-              parsed.scheme = unescape(parsed.scheme);
-            }
-            if (parsed.host !== void 0) {
-              parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
-            }
-          }
           if (parsed.path) {
             parsed.path = normalizePathEncoding(parsed.path);
           }
+          if (parsed.query) {
+            parsed.query = normalizeQueryFragmentEncoding(parsed.query);
+          }
           if (parsed.fragment) {
-            try {
-              parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
-            } catch {
-              parsed.error = parsed.error || "URI malformed";
-            }
+            parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
           }
         }
         if (schemeHandler && schemeHandler.parse) {
           schemeHandler.parse(parsed, options);
+          if (schemeHandler === SCHEMES.urn && parsed.nid === void 0) {
+            malformedSchemeSpecific = true;
+          }
         }
       } else {
         parsed.error = parsed.error || "URI can not be parsed.";
       }
-      return { parsed, malformedAuthorityOrPort };
+      return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
     function parse5(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
@@ -11133,20 +11435,28 @@ var require_fast_uri = __commonJS({
       return normalizeStringWithStatus(uri, opts).normalized;
     }
     function normalizeStringWithStatus(uri, opts) {
-      const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
+      const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
       return {
-        normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
-        malformedAuthorityOrPort
+        normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
+        malformedAuthorityOrPort,
+        malformedPercentEncoding,
+        malformedSchemeSpecific,
+        malformedHost,
+        malformedScheme
       };
     }
     function normalizeComparableURI(uri, opts) {
-      if (typeof uri === "string") {
-        const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
-        return malformedAuthorityOrPort ? void 0 : normalized;
+      if (typeof uri !== "string" && typeof uri !== "object") {
+        return void 0;
       }
-      if (typeof uri === "object") {
-        return serialize(uri, opts);
+      let value;
+      try {
+        value = typeof uri === "string" ? uri : serialize(uri, opts);
+      } catch {
+        return void 0;
       }
+      const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
+      return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? void 0 : normalized;
     }
     var fastUri = {
       SCHEMES,
@@ -18438,6 +18748,28 @@ function buildChildCommand(s) {
   if (s.testPathPattern) env.MARVIN_PIPELINE_TEST_PATTERN = s.testPathPattern;
   return { argv, env, cwd: s.cwd };
 }
+
+// src/storage/slug.ts
+function slugify(title, maxLen = 40) {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+  if (base.length <= maxLen) return base;
+  const cut = base.slice(0, maxLen);
+  const lastHyphen = cut.lastIndexOf("-");
+  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
+}
+function isSafeBranchRef(name) {
+  if (!name || name === "@") return false;
+  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
+  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
+  for (const segment of name.split("/")) {
+    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
+  }
+  return true;
+}
+
+// src/pipeline/run-store.ts
 var STAGES = [
   "intake",
   "planning",
@@ -18486,7 +18818,8 @@ var Run = external_exports.object({
   version: external_exports.literal(2),
   id: external_exports.string(),
   repoRoot: external_exports.string(),
-  base: external_exports.string(),
+  // `createRunWorktree` fetches it and children are told it, so it is a branch name or nothing.
+  base: external_exports.string().refine(isSafeBranchRef, { message: "base is not a safe branch name" }),
   lang: external_exports.string(),
   orchestratorName: external_exports.string(),
   task: external_exports.object({ original: external_exports.string(), english: external_exports.string() }),
@@ -18558,8 +18891,20 @@ var NEXT = {
 function stateRoot(env = process.env) {
   return env.MARVIN_PIPELINE_HOME ?? join(homedir(), ".local", "state", "marvin-pipeline");
 }
+function checkedStateRoot(env = process.env) {
+  const root = stateRoot(env);
+  if (!isAbsolute(root)) {
+    throw new Error(
+      `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. Set it to an absolute path, or unset it for ~/.local/state/marvin-pipeline.`
+    );
+  }
+  return root;
+}
+function mkdirPrivate(dir) {
+  mkdirSync(dir, { recursive: true, mode: 448 });
+}
 function runDirFor(repoRoot, id, env = process.env) {
-  return join(stateRoot(env), basename(repoRoot), id);
+  return join(checkedStateRoot(env), basename(repoRoot), id);
 }
 function newRunId(now, rand = Math.random) {
   const p = (n) => String(n).padStart(2, "0");
@@ -18612,7 +18957,7 @@ function initRun(o) {
   });
 }
 function saveRun(dir, run2) {
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   const target = join(dir, "run.json");
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(Run.parse(run2), null, 2)}
@@ -18644,7 +18989,7 @@ var EventKind = external_exports.enum([
 ]);
 function appendEvent(dir, event) {
   EventKind.parse(event.kind);
-  mkdirSync(dir, { recursive: true });
+  mkdirPrivate(dir);
   appendFileSync(join(dir, "events.jsonl"), `${JSON.stringify(event)}
 `);
 }
@@ -18680,6 +19025,8 @@ var Rubric = external_exports.object({
     planner_questions: external_exports.number().int().min(0),
     test_author_attempts: external_exports.number().int().min(1),
     child_retries: external_exports.number().int().min(0),
+    limit_retries: external_exports.number().int().min(0).default(3),
+    limit_wait_minutes: external_exports.number().int().min(1).default(30),
     dor_rounds: external_exports.number().int().min(0),
     ci_wait_minutes: external_exports.number().int().min(1),
     executor_questions: external_exports.number().int().min(0),
@@ -19579,6 +19926,7 @@ function classifyRecord(git4, commit, worktree, rel, slug) {
 // src/pipeline/gate.ts
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
+var SUPERVISOR_GRACE_MS = 5e3;
 var SUPERVISOR = `
 const { spawn } = require("node:child_process");
 const { constants } = require("node:os");
@@ -19619,22 +19967,94 @@ var shellRunner = (command, cwd, timeoutMs) => {
     ms: Date.now() - started
   };
 };
+var shellRunnerAsync = (command, cwd, timeoutMs, signal) => new Promise((resolvePromise, reject) => {
+  if (signal?.aborted) {
+    reject(signal.reason);
+    return;
+  }
+  const started = Date.now();
+  const supervisor = spawn(process.execPath, ["-e", SUPERVISOR, "--", command], {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const stdout = [];
+  const stderr = [];
+  let size = 0;
+  let ended = null;
+  let launchError = null;
+  let grace;
+  const end = (why) => {
+    if (ended !== null) return;
+    ended = why;
+    supervisor.kill("SIGTERM");
+    grace = setTimeout(() => supervisor.kill("SIGKILL"), SUPERVISOR_GRACE_MS);
+    grace.unref();
+  };
+  const collect = (into) => (chunk) => {
+    if (ended === "overflow") return;
+    size += chunk.length;
+    if (size > MAX_BUFFER) {
+      end("overflow");
+      return;
+    }
+    into.push(chunk);
+  };
+  supervisor.stdout.on("data", collect(stdout));
+  supervisor.stderr.on("data", collect(stderr));
+  const timer = setTimeout(() => end("timeout"), timeoutMs);
+  const onAbort = () => end("abort");
+  signal?.addEventListener("abort", onAbort, { once: true });
+  supervisor.once("error", (error2) => {
+    launchError = error2;
+  });
+  supervisor.once("close", (code) => {
+    clearTimeout(timer);
+    clearTimeout(grace);
+    signal?.removeEventListener("abort", onAbort);
+    if (ended === "abort") {
+      reject(signal?.reason);
+      return;
+    }
+    const tail = ended === "timeout" ? `error: timed out after ${timeoutMs}ms
+` : ended === "overflow" ? `error: output exceeded ${MAX_BUFFER} bytes
+` : launchError ? `error: ${launchError.message}
+` : "";
+    resolvePromise({
+      code: ended === "timeout" ? 124 : code ?? 124,
+      output: `${Buffer.concat(stdout).toString("utf8")}${Buffer.concat(stderr).toString("utf8")}${tail}`,
+      ms: Date.now() - started
+    });
+  });
+});
 var relevantTail = (s) => {
   const lines = s.trimEnd().split("\n");
   const errors = lines.filter((l) => /\berror\b|\bfail(ed|ure)?\b|✗|×/i.test(l)).slice(-20);
   return (errors.length ? errors : lines.slice(-40)).join("\n");
 };
-function runGates(commands, cwd, run2, timeoutMs) {
-  return commands.map(({ name, command, retry: retry2 = true }) => {
-    const first = run2(command, cwd, timeoutMs);
-    if (first.code === 0) return { name, result: "pass", ms: first.ms, tail: "" };
-    if (!retry2) return { name, result: "fail", ms: first.ms, tail: relevantTail(first.output) };
-    const second = run2(command, cwd, timeoutMs);
-    if (second.code === 0) {
-      return { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) };
+async function runGates(commands, cwd, run2, timeoutMs, signal) {
+  const once = async (command) => {
+    signal?.throwIfAborted();
+    const result = await run2(command, cwd, timeoutMs, signal);
+    signal?.throwIfAborted();
+    return result;
+  };
+  const results = [];
+  for (const { name, command, retry: retry2 = true } of commands) {
+    const first = await once(command);
+    if (first.code === 0) {
+      results.push({ name, result: "pass", ms: first.ms, tail: "" });
+      continue;
     }
-    return { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) };
-  });
+    if (!retry2) {
+      results.push({ name, result: "fail", ms: first.ms, tail: relevantTail(first.output) });
+      continue;
+    }
+    const second = await once(command);
+    results.push(
+      second.code === 0 ? { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) } : { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) }
+    );
+  }
+  return results;
 }
 var C_ESCAPES = {
   '"': 34,
@@ -19769,6 +20189,17 @@ function undeclaredFiles(changed, declared, exemptPattern) {
   return [...new Set(changed)].filter(
     (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f)
   );
+}
+var JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
+function runArtifactMatcher(specPath, slug) {
+  if (!isCanonicalPath(specPath) || !SLUG_RE.test(slug)) return () => false;
+  const dirs = /* @__PURE__ */ new Set([posix.dirname(specPath), ".marvin/task"]);
+  const own = /* @__PURE__ */ new Set([".marvin/task/verification.md"]);
+  for (const dir of dirs) {
+    for (const suffix of JOURNAL_SUFFIXES) own.add(`${dir}/runs/${slug}${suffix}.md`);
+  }
+  const receipt = new RegExp(`^\\.marvin/critique/\\d+-${slug}\\.md$`);
+  return (path) => own.has(path) || receipt.test(path);
 }
 function compileProtected(patterns) {
   if (!Array.isArray(patterns) || patterns.length === 0) {
@@ -20027,6 +20458,15 @@ function validateOptions(o) {
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
   }
+  const artifacts = o.runArtifacts;
+  if (artifacts != null) {
+    if (!isCanonicalPath(artifacts.specPath)) {
+      throw new Error(`run spec path is not canonical: ${String(artifacts.specPath)}`);
+    }
+    if (typeof artifacts.slug !== "string" || !SLUG_RE.test(artifacts.slug)) {
+      throw new Error(`run slug is not kebab-case: ${String(artifacts.slug)}`);
+    }
+  }
   const record2 = o.metricsRecord;
   if (record2 != null) {
     if (!isCanonicalPath(record2.path) || !MARVIN_METRICS.test(record2.path)) {
@@ -20054,7 +20494,7 @@ function pointerProblem(worktree, gitDir) {
     return `.git cannot be read (${error2 instanceof Error ? error2.message : String(error2)})`;
   }
 }
-function runGateStage(o) {
+async function runGateStage(o) {
   validateOptions(o);
   const git4 = isolatedGit(o.worktree, o.gitDir);
   const blockers = [];
@@ -20079,7 +20519,9 @@ function runGateStage(o) {
   const range = `${o.baseSha}...${headSha2}`;
   const record2 = o.metricsRecord ?? null;
   const carriedRecord2 = (path) => record2 !== null && path === record2.path && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path) && classifyRecord(git4, headSha2, o.worktree, path, record2.slug).state === "appended";
-  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : carriedRecord2(path) || exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
+  const runArtifact = o.runArtifacts != null ? runArtifactMatcher(o.runArtifacts.specPath, o.runArtifacts.slug) : () => false;
+  const ownArtifact = (path) => runArtifact(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
+  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : carriedRecord2(path) || ownArtifact(path) || exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const pointerBefore = pointerProblem(o.worktree, o.gitDir);
   if (pointerBefore !== null) {
     blockers.push({
@@ -20182,11 +20624,12 @@ function runGateStage(o) {
       });
       continue;
     }
-    const ran = runGates(
+    const ran = await runGates(
       [{ name, command: step2.command, retry: false }],
       o.worktree,
       o.run,
-      o.timeoutMs
+      o.timeoutMs,
+      o.signal
     );
     prepareGates.push(...ran);
     const failure = ran.find((r) => r.result === "fail");
@@ -20205,11 +20648,12 @@ function runGateStage(o) {
   for (const x of prepareFailed === null ? runnable : []) {
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
     oracleGates.push(
-      ...runGates(
+      ...await runGates(
         [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
         o.worktree,
         o.run,
-        o.timeoutMs
+        o.timeoutMs,
+        o.signal
       )
     );
     const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
@@ -20237,7 +20681,7 @@ function runGateStage(o) {
   const gates = [
     ...prepareGates,
     ...oracleGates,
-    ...runGates(o.gates, o.worktree, o.run, o.timeoutMs)
+    ...await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal)
   ];
   const headAfter = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha2) {
@@ -20555,8 +20999,8 @@ function createRunWorktree(o) {
   const branch = `autopilot/${o.runId}`;
   const path = join(o.worktreesRoot, basename(o.repoRoot), o.runId);
   if (existsSync(path)) throw new Error(`worktree path exists: ${path}`);
-  mkdirSync(dirname(path), { recursive: true });
-  git2(o.repoRoot, "fetch", "origin", o.base);
+  mkdirSync(dirname(path), { recursive: true, mode: 448 });
+  git2(o.repoRoot, "fetch", "origin", "--", o.base);
   const baseSha = git2(
     o.repoRoot,
     "rev-parse",
@@ -20834,6 +21278,82 @@ function diffSnapshots(before, after) {
   }
   return diff;
 }
+var COMMON_FILES = ["config", "config.worktree"];
+var COMMON_DIRS = ["hooks", "info"];
+var COMMON_MAX_DEPTH = 8;
+var VOLATILE_CONFIG = /^(?:branch\.|remote\.[^\n]*\.gh-resolved\n)/i;
+function configFingerprint(abs) {
+  const raw = readFileSync(abs);
+  try {
+    const listed2 = execFileSync(
+      "git",
+      [...HARDENED_GIT_OPTIONS, "config", "--file", abs, "--no-includes", "--list", "-z"],
+      { env: hardenedGitEnv(), stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 }
+    ).toString("utf8");
+    const kept = listed2.split("\0").filter((entry) => entry !== "" && !VOLATILE_CONFIG.test(entry)).sort();
+    return `config:${sha256Bytes(Buffer.from(kept.join("\0")))}`;
+  } catch {
+    return `raw:${sha256Bytes(raw)}`;
+  }
+}
+function commonEntry(abs, config2) {
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink()) return `link:${readlinkSync(abs)}`;
+  if (st.isDirectory()) return "dir";
+  if (!st.isFile()) return `special:${st.mode.toString(8)}`;
+  const mode = (st.mode & 73) !== 0 ? "x" : "-";
+  return config2 ? `${mode}${configFingerprint(abs)}` : `${mode}${sha256Bytes(readFileSync(abs))}`;
+}
+function walkCommon(root, rel, depth, out) {
+  const abs = join(root, rel);
+  const entry = commonEntry(abs, false);
+  if (entry === null) return;
+  out[rel] = entry;
+  if (entry !== "dir") return;
+  if (depth >= COMMON_MAX_DEPTH) {
+    out[rel] = "dir:too-deep";
+    return;
+  }
+  let names;
+  try {
+    names = readdirSync(abs).sort();
+  } catch {
+    out[rel] = "dir:unreadable";
+    return;
+  }
+  for (const name of names) walkCommon(root, posix.join(rel, name), depth + 1, out);
+}
+function gitCommonDir(repoRoot) {
+  return git2(repoRoot, "rev-parse", "--path-format=absolute", "--git-common-dir");
+}
+function snapshotGitCommon(repoRoot) {
+  const common = gitCommonDir(repoRoot);
+  const out = {};
+  for (const name of COMMON_FILES) {
+    const entry = commonEntry(join(common, name), true);
+    if (entry !== null) out[name] = entry;
+  }
+  for (const name of COMMON_DIRS) walkCommon(common, name, 0, out);
+  return JSON.stringify({ common, entries: out });
+}
+function diffGitCommon(before, after) {
+  const a = JSON.parse(before);
+  const b = JSON.parse(after);
+  if (a.common !== b.common) return [`git common dir moved: ${a.common} -> ${b.common}`];
+  const keys = [.../* @__PURE__ */ new Set([...Object.keys(a.entries), ...Object.keys(b.entries)])].sort();
+  return keys.flatMap((k) => {
+    const was = a.entries[k];
+    const now = b.entries[k];
+    if (was === now) return [];
+    const what = was === void 0 ? "added" : now === void 0 ? "removed" : "changed";
+    return [`git common dir ${what}: ${join(b.common, k)}`];
+  });
+}
 
 // src/pipeline/seal.ts
 var isReseal = (run2) => run2.iteration > 0;
@@ -20848,22 +21368,113 @@ function placeholderIsQuoted(template) {
   });
   return quoted;
 }
-function formatTestOne(template, path) {
-  if (FOREIGN_PLACEHOLDERS.some((placeholder) => template.includes(placeholder))) {
-    throw new Error(
-      "gates.test_one must not contain {name}, {ref} or {path}: the seal stage runs a whole test file, so name it with {file} alone"
-    );
+function shellWords(template) {
+  const words = [];
+  let quote = null;
+  let start2 = -1;
+  const close = (end) => {
+    if (start2 !== -1) words.push({ start: start2, end, text: template.slice(start2, end) });
+    start2 = -1;
+  };
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i];
+    if (quote === null && (ch === " " || ch === "	")) {
+      close(i);
+      continue;
+    }
+    if (start2 === -1) start2 = i;
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      i += 1;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
   }
-  if (!template.includes(FILE)) throw new Error("gates.test_one must contain {file}");
+  close(template.length);
+  return words;
+}
+var FLAG = /^--?[A-Za-z][\w.-]*$/;
+var SHORT_FLAG = /^-[A-Za-z]/;
+var isForeignValue = (text2) => FOREIGN_PLACEHOLDERS.some((p) => text2 === p || text2 === `"${p}"` || text2 === `'${p}'`);
+function dropNameFilters(template) {
+  const words = shellWords(template);
+  const cuts = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i];
+    const next = words[i + 1];
+    const eq = word.text.indexOf("=");
+    let last = -1;
+    if (FLAG.test(word.text) && next !== void 0 && isForeignValue(next.text)) {
+      last = i + 1;
+    } else if (eq > 0 && FLAG.test(word.text.slice(0, eq)) && isForeignValue(word.text.slice(eq + 1)) || SHORT_FLAG.test(word.text) && isForeignValue(word.text.slice(2))) {
+      last = i;
+    }
+    if (last === -1) continue;
+    cuts.push([i > 0 ? words[i - 1].end : word.start, words[last].end]);
+    i = last;
+  }
+  let out = "";
+  let from = 0;
+  for (const [start2, end] of cuts) {
+    out += template.slice(from, start2);
+    from = end;
+  }
+  return out + template.slice(from);
+}
+var QUOTED_FILE = [`"${FILE}"`, `'${FILE}'`];
+function unquoteFile(template) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < template.length; i += 1) {
+    const ch = template[i] ?? "";
+    if (quote === null) {
+      const whole = QUOTED_FILE.find((q) => template.startsWith(q, i));
+      if (whole !== void 0) {
+        out += FILE;
+        i += whole.length - 1;
+        continue;
+      }
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+    } else if (ch === "\\") {
+      out += ch + (template[i + 1] ?? "");
+      i += 1;
+      continue;
+    } else if (ch === '"') {
+      quote = quote === null ? '"' : null;
+    } else if (ch === "'" && quote === null) {
+      quote = "'";
+    }
+    out += ch;
+  }
+  return out;
+}
+function wholeFileTemplate(template) {
   if (NOT_ONE_WORD.test(template)) {
     throw new Error(
       "gates.test_one must not contain a backtick, $(, <<, # or a newline: {file} must stay one shell word"
     );
   }
-  if (placeholderIsQuoted(template)) {
-    throw new Error("gates.test_one must not quote {file}: the engine quotes the path itself");
+  const whole = unquoteFile(dropNameFilters(template));
+  if (FOREIGN_PLACEHOLDERS.some((placeholder) => whole.includes(placeholder))) {
+    throw new Error(
+      "gates.test_one must not contain {name}, {ref} or {path} except as the whole value of an option (-t {name}, --grep={name}), which the seal stage drops with its option: it runs a whole test file, so it names it with {file} alone"
+    );
   }
-  return fillShellTemplate(template, { [FILE]: path });
+  if (!whole.includes(FILE)) throw new Error("gates.test_one must contain {file}");
+  if (placeholderIsQuoted(whole)) {
+    throw new Error(
+      `gates.test_one must not quote {file} except as a whole word ("{file}" or '{file}'): the engine quotes the path itself`
+    );
+  }
+  return whole;
+}
+function formatTestOne(template, path) {
+  return fillShellTemplate(wholeFileTemplate(template), { [FILE]: path });
 }
 var isInside = (root, target) => {
   const rel = relative(root, target);
@@ -22362,28 +22973,6 @@ async function runOne(x) {
 
 // src/pipeline/learning.ts
 var import_yaml5 = __toESM(require_dist());
-
-// src/storage/slug.ts
-function slugify(title, maxLen = 40) {
-  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-  if (base.length <= maxLen) return base;
-  const cut = base.slice(0, maxLen);
-  const lastHyphen = cut.lastIndexOf("-");
-  return lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut;
-}
-function isSafeBranchRef(name) {
-  if (!name || name === "@") return false;
-  if (name.startsWith("-") || name.startsWith("/") || name.endsWith("/")) return false;
-  if (name.endsWith(".")) return false;
-  if (/[\u0000-\u0020\u007F~^:?*[\\]/.test(name)) return false;
-  if (name.includes("..") || name.includes("//") || name.includes("@{")) return false;
-  for (const segment of name.split("/")) {
-    if (!segment || segment.startsWith(".") || segment.endsWith(".lock")) return false;
-  }
-  return true;
-}
-
-// src/storage/lessons.ts
 var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
 var INDEX_FILE = "MEMORY.md";
 var INDEX_HEADER = [
@@ -22918,7 +23507,7 @@ function lessonStoreSink(source) {
     const { slug } = addLesson(memoryDir, {
       type: lesson.type,
       title: lesson.title,
-      body: lesson.body,
+      body: codeSpanPaths(lesson.body),
       tags,
       source
     });
@@ -23031,6 +23620,155 @@ function readFormatted(worktree, paths, expected) {
   return contents;
 }
 var nulList = (text2) => text2.split("\0").filter(Boolean);
+var BASE_MERGE_RECORD = "base-merge.json";
+var REGULAR_MODES = /* @__PURE__ */ new Set(["100644", "100755"]);
+var ZERO_OID = /^0+$/;
+var sameBytes = (a, b) => a === null ? b === null : b !== null && a.equals(b);
+function rawChanges(git4, from, to) {
+  const fields = git4.text("diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to).split("\0");
+  const out = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const m = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(fields[i]);
+    if (!m) break;
+    out.push({
+      oldMode: m[1],
+      newMode: m[2],
+      oldOid: m[3],
+      newOid: m[4],
+      status: m[5],
+      path: fields[i + 1]
+    });
+  }
+  return out;
+}
+function mergeBaseForFinalize(o) {
+  if (!isSafeBranchRef(o.branch)) throw new Error(`run branch is not a safe ref: ${o.branch}`);
+  if (!isSafeBranchRef(o.base)) throw new Error(`run base is not a safe ref: ${o.base}`);
+  if (!FULL_SHA3.test(o.gatedHead)) throw new Error("gatedHead must be a 40-hex commit SHA");
+  if (!PLAIN_TOKEN.test(o.slug)) throw new Error(`slug is not a plain token: ${o.slug}`);
+  const git4 = isolatedGit(o.worktree, o.gitDir, { HUSKY: "0" });
+  const skipped = (reason2) => ({
+    state: "skipped",
+    head: o.gatedHead,
+    reason: reason2
+  });
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  assertPlain(o.runDir, BASE_MERGE_RECORD);
+  const recordPath = join(o.runDir, BASE_MERGE_RECORD);
+  const record2 = existsSync(recordPath) ? JSON.parse(readFileSync(recordPath, "utf8")) : null;
+  const recorded = record2 !== null && record2.gated === o.gatedHead && typeof record2.commit === "string" && typeof record2.base === "string" && FULL_SHA3.test(record2.commit) && FULL_SHA3.test(record2.base) ? { commit: record2.commit, base: record2.base } : null;
+  if (recorded !== null && headSha2 !== o.gatedHead) {
+    if (headSha2 === recorded.commit || isOwnFinalizeCommit(git4, o.runDir, headSha2, recorded.commit)) {
+      return { state: "merged", head: recorded.commit, base: recorded.base };
+    }
+  }
+  if (headSha2 !== o.gatedHead) return { state: "current", head: o.gatedHead };
+  let baseTip;
+  try {
+    git4.text("fetch", "--no-tags", "--quiet", "origin", "--", `refs/heads/${o.base}`);
+    baseTip = git4.text("rev-parse", "--verify", "FETCH_HEAD^{commit}").trim();
+  } catch (error2) {
+    return skipped(
+      `fetching ${o.base} failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  try {
+    git4.text("merge-base", "--is-ancestor", baseTip, o.gatedHead);
+    return { state: "current", head: o.gatedHead };
+  } catch {
+  }
+  let drivers = "";
+  try {
+    drivers = git4.text("config", "--get-regexp", "^merge\\..*\\.driver$");
+  } catch {
+  }
+  if (drivers.trim() !== "") return skipped("a custom merge driver is configured");
+  let tree;
+  try {
+    tree = git4.text("merge-tree", "--write-tree", "--name-only", "--no-messages", o.gatedHead, baseTip).split("\n")[0].trim();
+  } catch (error2) {
+    const out = error2.stdout?.toString() ?? "";
+    const files = out.split("\n").slice(1).filter(Boolean);
+    return skipped(
+      files.length ? `${o.base} conflicts with the run branch in ${files.slice(0, 5).join(", ")}` : `merge-tree failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  if (!FULL_SHA3.test(tree)) return skipped(`merge-tree printed no tree: ${tree}`);
+  const commit = recorded?.base === baseTip ? recorded.commit : git4.text(
+    "commit-tree",
+    tree,
+    "-p",
+    o.gatedHead,
+    "-p",
+    baseTip,
+    "-m",
+    `chore(${o.slug}): merge ${o.base} before finalize`,
+    "-m",
+    COMMIT_TRAILER
+  ).trim();
+  const changes2 = rawChanges(git4, o.gatedHead, commit);
+  for (const c of changes2) {
+    const removal = c.status === "D";
+    if (!removal && !REGULAR_MODES.has(c.newMode) || !ZERO_OID.test(c.oldOid) && !REGULAR_MODES.has(c.oldMode)) {
+      return skipped(`${o.base} changes ${c.path}, which is not a regular file`);
+    }
+    assertPlain(o.worktree, c.path);
+    const onDisk = existsSync(join(o.worktree, c.path)) ? readFileSync(join(o.worktree, c.path)) : null;
+    const before = ZERO_OID.test(c.oldOid) ? null : git4.bytes("cat-file", "blob", c.oldOid);
+    const after = removal ? null : git4.bytes("cat-file", "blob", c.newOid);
+    if (!sameBytes(onDisk, before) && !sameBytes(onDisk, after)) {
+      return skipped(`${c.path} has an uncommitted change the merge would overwrite`);
+    }
+  }
+  writeWhole(
+    o.runDir,
+    BASE_MERGE_RECORD,
+    `${JSON.stringify({ gated: o.gatedHead, base: baseTip, commit })}
+`
+  );
+  let indexInfo = "";
+  for (const c of changes2) {
+    if (c.status === "D") {
+      removePlain(o.worktree, c.path);
+      indexInfo += `0 ${"0".repeat(40)}	${c.path}\0`;
+    } else {
+      writeWhole(o.worktree, c.path, git4.bytes("cat-file", "blob", c.newOid));
+      chmodSync(join(o.worktree, c.path), c.newMode === "100755" ? 493 : 420);
+      indexInfo += `${c.newMode} ${c.newOid}	${c.path}\0`;
+    }
+  }
+  if (indexInfo) git4.textIn(indexInfo, "update-index", "-z", "--index-info");
+  git4.text("update-ref", `refs/heads/${o.branch}`, commit, o.gatedHead);
+  const parents = git4.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+  if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== commit || parents.length !== 3 || parents[1] !== o.gatedHead || parents[2] !== baseTip) {
+    throw new Error(
+      `the base merge ${commit} is not the one HEAD names, on ${o.gatedHead} and ${baseTip}`
+    );
+  }
+  return { state: "merged", head: commit, base: baseTip };
+}
+function inferFormatCommand(repoRoot) {
+  try {
+    const modules = realpathSync(join(repoRoot, "node_modules"));
+    const bin = realpathSync(join(modules, ".bin", "prettier"));
+    const inside = relative(modules, bin);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
+  } catch {
+    return null;
+  }
+}
+function codeSpanPaths(body) {
+  const spanned = (token) => {
+    const punct = /[.,;:!?]$/.test(token) ? token.slice(-1) : "";
+    const core = punct ? token.slice(0, -1) : token;
+    const path = core.includes("/") && (core.includes("*") || core.includes("<"));
+    return path && !core.includes("`") ? `\`${core}\`${punct}` : token;
+  };
+  return body.split(/(`[^`\n]*`)/).map(
+    (part, i) => i % 2 === 1 ? part : part.split(/([\s()]+)/).map((token, j) => j % 2 === 1 ? token : spanned(token)).join("")
+  ).join("");
+}
 function finalizeRun(o) {
   const { run: run2 } = o;
   if (!PLAIN_TOKEN.test(run2.id))
@@ -23189,6 +23927,12 @@ function finalizeRun(o) {
       const tree = plumbing.text("write-tree").trim();
       const subject = `chore(${slug}): ship spec; lessons and calibration from run ${run2.id}`;
       newCommit = git4.text("commit-tree", tree, "-p", headSha2, "-m", subject, "-m", COMMIT_TRAILER).trim();
+      writeWhole(
+        o.runDir,
+        FINALIZE_RECORD,
+        `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}
+`
+      );
       git4.text("update-ref", branchRef, newCommit, headSha2);
       git4.text("reset", "-q", "--", ...changed);
       const parents = git4.text("rev-list", "--parents", "-n", "1", newCommit).trim().split(" ");
@@ -23241,14 +23985,6 @@ function finalizeRun(o) {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
-  if (newCommit !== null) {
-    writeWhole(
-      o.runDir,
-      FINALIZE_RECORD,
-      `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}
-`
-    );
-  }
   try {
     git4.text("push", "origin", `${newCommit ?? headSha2}:${branchRef}`);
   } catch (error2) {
@@ -23264,6 +24000,94 @@ function finalizeRun(o) {
     written: [...written],
     metricsRecord: carried
   };
+}
+var STRUCTURED = /* @__PURE__ */ new Set(["needs_input", "spec_ready", "done", "failed"]);
+var LIMIT_MAX_WAIT_MS = 6 * 60 * 6e4;
+var LIMIT_RESET_MARGIN_MS = 6e4;
+function limitResetAt(detail, now) {
+  const epoch = /\|(\d{10})\b/.exec(detail)?.[1];
+  if (epoch !== void 0) {
+    const at2 = Number(epoch) * 1e3 + LIMIT_RESET_MARGIN_MS;
+    return at2 > now.getTime() ? new Date(at2) : null;
+  }
+  const clock = /\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(detail);
+  if (!clock) return null;
+  const hour = Number(clock[1]);
+  const minute = Number(clock[2] ?? "0");
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  const at = new Date(now);
+  at.setHours(hour % 12 + (clock[3]?.toLowerCase() === "pm" ? 12 : 0), minute, 0, 0);
+  if (at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1);
+  return new Date(at.getTime() + LIMIT_RESET_MARGIN_MS);
+}
+function lastResultEvent(log) {
+  const lines = log.trimEnd().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line?.startsWith("{")) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "result") return event;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+function classify(i) {
+  const none = {
+    sessionId: null,
+    costUsd: null,
+    durationMs: null,
+    cacheReadTokens: null,
+    structured: null
+  };
+  if (i.exitCode === null) {
+    return i.idleMs >= i.stallMs ? {
+      ...none,
+      outcome: "stalled",
+      detail: `no output for ${Math.round(i.idleMs / 6e4)} min`
+    } : { ...none, outcome: "running", detail: "" };
+  }
+  const r = i.result;
+  if (!r) return { ...none, outcome: "crashed", detail: `exit ${i.exitCode}, no result event` };
+  const usage = r.usage ?? {};
+  const meta = {
+    sessionId: typeof r.session_id === "string" ? r.session_id : null,
+    costUsd: typeof r.total_cost_usd === "number" ? r.total_cost_usd : null,
+    durationMs: typeof r.duration_ms === "number" ? r.duration_ms : null,
+    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : null
+  };
+  const text2 = String(r.result ?? "");
+  if (r.api_error_status === 429 || r.is_error === true && /usage limit|rate limit/i.test(text2)) {
+    return { ...meta, structured: null, outcome: "limited", detail: text2.slice(0, 200) };
+  }
+  if (r.is_error === true)
+    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
+  const s = r.structured_output;
+  if (!s || typeof s !== "object")
+    return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
+  const structured = s;
+  const status2 = String(structured.status ?? "");
+  if (!STRUCTURED.has(status2))
+    return { ...meta, structured, outcome: "crashed", detail: `unknown status "${status2}"` };
+  const failure = status2 === "failed" && typeof structured.failure === "string" ? structured.failure.trim().slice(0, 200) : "";
+  return { ...meta, structured, outcome: status2, detail: failure };
+}
+function readChildState(runDir, name, nowMs) {
+  const exitPath = join(runDir, `${name}.exit`);
+  const logPath = join(runDir, `${name}.log.jsonl`);
+  const raw = existsSync(exitPath) ? readFileSync(exitPath, "utf8").trim() : "";
+  const hasLog = existsSync(logPath);
+  const result = hasLog ? lastResultEvent(readFileSync(logPath, "utf8")) : null;
+  const exitCode = raw === "" ? result ? 0 : null : Number(raw);
+  return { exitCode, result, idleMs: hasLog ? nowMs - statSync(logPath).mtimeMs : 0 };
+}
+function summaryLine(name, r) {
+  const cost = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
+  const dur = r.durationMs === null ? "?" : `${Math.round(r.durationMs / 6e4)}m`;
+  const detail = r.detail ? ` detail=${JSON.stringify(r.detail)}` : "";
+  return `CHILD ${name} outcome=${r.outcome} cost=${cost} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
 }
 
 // src/pipeline/engine.ts
@@ -23435,6 +24259,7 @@ var STAGE_OF = {
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
 var DOR_ROUNDS = "planner-dor";
+var limitWaits = (role) => `${role}-limited`;
 var FULL_SHA4 = /^[0-9a-f]{40}$/;
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var refusalMessage = (role, detail) => [
@@ -23495,7 +24320,7 @@ function step(run2, obs, rubric, now) {
     run: r,
     actions: [{ kind: "judgment", judgment, payload }]
   });
-  const spawn4 = (r, role, context, resume2 = false) => {
+  const spawn5 = (r, role, context, resume2 = false) => {
     const tier = r.tier ?? r.stageA;
     const own = assignmentFor(tier, role, role === "executor" ? r.rung : 0, rubric);
     if (own === "skip") throw new Error(`${role} is skipped on tier ${tier}`);
@@ -23545,7 +24370,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(go({ ...r, awaitingRole: null }, "halted", reason2), "retro");
     return {
       run: retro,
-      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
+      actions: [spawn5(retro, "retro", {}), { kind: "notify", text: `halted: ${reason2}` }]
     };
   };
   const pollCi = (r) => {
@@ -23565,7 +24390,7 @@ function step(run2, obs, rubric, now) {
     const retro = go(r, "retro");
     return {
       run: retro,
-      actions: [spawn4(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
+      actions: [spawn5(retro, "retro", {}), { kind: "notify", text: "CI green; retro started" }]
     };
   };
   const reopenTests = (r, feedback, reason2, detail2, findings) => {
@@ -23575,7 +24400,7 @@ function step(run2, obs, rubric, now) {
       ...findings ? { previousFindings: asRecords(findings) } : {}
     };
     const reopened = r.stage === "test_authoring" ? counted : go({ ...counted, awaitingRole: null }, "test_authoring");
-    const action = spawn4(reopened, "test-author", testAuthorCtx(reopened, feedback));
+    const action = spawn5(reopened, "test-author", testAuthorCtx(reopened, feedback));
     if (counted.testAuthorAttempts >= rubric.caps.test_author_attempts) {
       return ask(
         {
@@ -23613,7 +24438,7 @@ function step(run2, obs, rubric, now) {
       return {
         run: exec,
         actions: [
-          spawn4(exec, "executor", executorCtx(exec, fs)),
+          spawn5(exec, "executor", executorCtx(exec, fs)),
           {
             kind: "notify",
             text: `${source} rejected iteration ${r.iteration} (${fs.length} blocking); executor ${exec.iteration} started on rung ${rung}`
@@ -23631,7 +24456,7 @@ function step(run2, obs, rubric, now) {
       ...r,
       retries: Object.fromEntries(
         Object.entries(r.retries).filter(
-          ([name]) => name !== role && !(role === "planner" && name === DOR_ROUNDS)
+          ([name]) => name !== role && (role === null || name !== limitWaits(role)) && !(role === "planner" && name === DOR_ROUNDS)
         )
       ),
       haltRole: null
@@ -23660,7 +24485,7 @@ function step(run2, obs, rubric, now) {
       );
       return {
         run: exec,
-        actions: [spawn4(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
+        actions: [spawn5(exec, "executor", executorCtx(exec, asFindings(r.previousFindings)))]
       };
     }
     if (role === "test-author") {
@@ -23669,6 +24494,13 @@ function step(run2, obs, rubric, now) {
     }
     throw new Error(`cannot retry ${role} from stage ${r.stage}`);
   };
+  if ((obs.kind === "gate" || obs.kind === "seal") && obs.leaked?.length) {
+    const role = obs.kind === "gate" ? "executor" : "test-author";
+    return ask({ ...run2, haltRole: role }, "halt", {
+      reason: `the ${obs.kind} stage changed the repository's shared git dir`,
+      detail: obs.leaked
+    });
+  }
   const child = obs.kind === "child" ? obs : null;
   let output = null;
   if (child) {
@@ -23711,7 +24543,29 @@ function step(run2, obs, rubric, now) {
           actions: [{ kind: "work", work: "finalize", data: { retro: null } }]
         };
       }
-      if (fault.kind === "limited" || fault.kind === "stalled" || spent) {
+      if (fault.kind === "limited") {
+        const waits = run2.retries[limitWaits(role)] ?? 0;
+        const named = limitResetAt(fault.detail, now);
+        const until = named ?? new Date(now.getTime() + rubric.caps.limit_wait_minutes * 6e4);
+        if (waits >= rubric.caps.limit_retries || until.getTime() - now.getTime() > LIMIT_MAX_WAIT_MS) {
+          return ask({ ...run2, haltRole: role }, "halt", {
+            reason: fault.reason,
+            detail: fault.detail
+          });
+        }
+        const r2 = { ...run2, retries: { ...run2.retries, [limitWaits(role)]: waits + 1 } };
+        return {
+          run: r2,
+          actions: [
+            {
+              kind: "notify",
+              text: `${role} hit a usage limit; retrying at ${until.toISOString()} (${waits + 1} of ${rubric.caps.limit_retries})`
+            },
+            { ...lastSpawnOf(run2, role), notBefore: until.toISOString() }
+          ]
+        };
+      }
+      if (spent) {
         return ask({ ...run2, haltRole: role }, "halt", {
           reason: fault.reason,
           detail: fault.detail
@@ -23722,7 +24576,7 @@ function step(run2, obs, rubric, now) {
       return {
         run: r,
         actions: [
-          refused2 ? spawn4(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
+          refused2 ? spawn5(r, role, { message: refusalMessage(role, fault.detail) }, true) : lastSpawnOf(run2, role)
         ]
       };
     }
@@ -23741,7 +24595,7 @@ function step(run2, obs, rubric, now) {
         return {
           run: r,
           actions: [
-            spawn4(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
+            spawn5(r, "planner", { task: r.task.english, critic_cap: String(criticCap(r, rubric)) })
           ]
         };
       }
@@ -23768,7 +24622,7 @@ function step(run2, obs, rubric, now) {
           };
           return {
             run: r2,
-            actions: [spawn4(r2, "planner", { message: `ANSWERS:
+            actions: [spawn5(r2, "planner", { message: `ANSWERS:
 ${lines.join("\n")}` }, true)]
           };
         }
@@ -23793,7 +24647,7 @@ ${lines.join("\n")}` }, true)]
           'Fix each check, re-run the marvin `spec` tool (action "dor", specPath) until it passes,',
           "then finish with spec_ready again. The engine stamps contract_sha from the same gate."
         ].join("\n");
-        return { run: r2, actions: [spawn4(r2, "planner", { message }, true)] };
+        return { run: r2, actions: [spawn5(r2, "planner", { message }, true)] };
       }
       if (!child?.signals) throw new Error("spec_ready observation carries no signals");
       const { tier, reasons } = tierFor(child.signals, rubric);
@@ -23823,7 +24677,7 @@ ${lines.join("\n")}` }, true)]
           { ...run2, awaitingRole: null, questionsAnswered: run2.questionsAnswered + a.count },
           role === "planner" ? "planning" : "executing"
         );
-        return { run: r, actions: [spawn4(r, role, { message: `ANSWERS:
+        return { run: r, actions: [spawn5(r, role, { message: `ANSWERS:
 ${a.text}` }, true)] };
       }
       if (a.kind === "revise_tests" && role === "executor") {
@@ -23859,10 +24713,10 @@ ${a.text}` }, true)] };
         const rename = { kind: "work", work: "rename_branch" };
         if (shouldAuthorTests(committed, rubric)) {
           const r2 = go(committed, "test_authoring");
-          return { run: r2, actions: [rename, spawn4(r2, "test-author", testAuthorCtx(r2, ""))] };
+          return { run: r2, actions: [rename, spawn5(r2, "test-author", testAuthorCtx(r2, ""))] };
         }
         const r = go({ ...committed, iteration: 1 }, "executing");
-        return { run: r, actions: [rename, spawn4(r, "executor", executorCtx(r, []))] };
+        return { run: r, actions: [rename, spawn5(r, "executor", executorCtx(r, []))] };
       }
       if (obs.kind !== "answer" || obs.judgment !== "spec_approval") break;
       const a = obs.answer;
@@ -23872,7 +24726,7 @@ ${a.text}` }, true)] };
         const r = go({ ...run2, retries }, "planning");
         return {
           run: r,
-          actions: [spawn4(r, "planner", { message: `CHANGES REQUESTED:
+          actions: [spawn5(r, "planner", { message: `CHANGES REQUESTED:
 ${a.text}` }, true)]
         };
       }
@@ -23901,7 +24755,7 @@ ${a.text}` }, true)]
           );
           return {
             run: r,
-            actions: [spawn4(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
+            actions: [spawn5(r, "executor", executorCtx(r, asFindings(run2.previousFindings)))]
           };
         }
         const reasons = obs.reasons.length ? obs.reasons : [obs.ok ? "seal reported success but sealed no tests" : "seal failed without a reason"];
@@ -23963,7 +24817,7 @@ ${a.text}` }, true)]
       );
       return {
         run: r,
-        actions: [{ kind: "work", work: "snapshot" }, spawn4(r, "verifier", verifierCtx(r))]
+        actions: [{ kind: "work", work: "snapshot" }, spawn5(r, "verifier", verifierCtx(r))]
       };
     }
     case "verifying": {
@@ -23993,7 +24847,7 @@ ${a.text}` }, true)]
           };
           return {
             run: r2,
-            actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
+            actions: [{ kind: "work", work: "snapshot" }, spawn5(r2, "verifier", verifierCtx(r2))]
           };
         }
         break;
@@ -24051,7 +24905,7 @@ ${a.text}` }, true)]
         const r2 = { ...base, retries: { ...base.retries, verifier: tries + 1 } };
         return {
           run: r2,
-          actions: [{ kind: "work", work: "snapshot" }, spawn4(r2, "verifier", verifierCtx(r2))]
+          actions: [{ kind: "work", work: "snapshot" }, spawn5(r2, "verifier", verifierCtx(r2))]
         };
       }
       const named = new Set(v.criteria.map((c) => c.id));
@@ -24510,8 +25364,11 @@ async function perform(runDir, j, deps, replay) {
   const info = { ref: step2.ref, replay };
   const { action } = step2;
   switch (action.kind) {
-    case "spawn":
+    case "spawn": {
+      const wait2 = action.notBefore ? Date.parse(action.notBefore) - Date.now() : 0;
+      if (wait2 > 0) await setTimeout$1(wait2, void 0, { signal: deps.signal });
       return advance(deps.spawnChild(j.run, action, info));
+    }
     case "judgment": {
       const id = requestJudgment(runDir, action.judgment, action.payload, step2.judgmentId);
       const ts = (/* @__PURE__ */ new Date()).toISOString();
@@ -31270,7 +32127,7 @@ function checkCitations(body, planned, projectRoot) {
     ) : pass("cite-lines", "Grounding", `${citations} line citation(s) resolve`)
   ];
 }
-function shellWords(cmd) {
+function shellWords2(cmd) {
   const out = [];
   let cur = "";
   let quoted = false;
@@ -31328,7 +32185,7 @@ var OUTPUT_WORDS = /* @__PURE__ */ new Set([">", ">>", "2>", "&>", "tee", "-o", 
 var GENERIC_GATES = /^(?:(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest|tsc|eslint)|(?:test|tests|build|lint|typecheck|type-check|check|e2e|ci|verify)(?::[\w-]+)?)$/;
 var RUNNERS = /^(?:.*\/)?(?:vitest|jest|mocha|playwright|pytest)$|^test$|^--test$/;
 function readOracle(cmd, projectRoot, plannedPaths) {
-  const words = shellWords(cmd);
+  const words = shellWords2(cmd);
   const bases = [projectRoot];
   for (let i = 0; i < words.length - 1; i++) {
     const w = words[i].text;
@@ -31630,12 +32487,17 @@ var WRAPPER = [
   'echo "$code" > "$exitf"'
 ].join("\n");
 function launchDetached(cmd, runDir, name) {
-  mkdirSync(runDir, { recursive: true });
+  mkdirSync(runDir, { recursive: true, mode: 448 });
   const logPath = join(runDir, `${name}.log.jsonl`);
   const errPath = join(runDir, `${name}.err`);
   const exitPath = join(runDir, `${name}.exit`);
   const child = spawn("/bin/sh", ["-c", WRAPPER, "sh", logPath, errPath, exitPath, ...cmd.argv], {
     cwd: cmd.cwd,
+    // The engine's environment is passed on whole, credentials included: the executor pushes
+    // and runs `gh pr create`, which authenticate through GH_TOKEN / GITHUB_TOKEN where the user
+    // set them, and every role is a `claude -p` that may reach the model through Bedrock or
+    // Vertex credentials (AWS_*, GOOGLE_*, CLOUD_ML_*). Stripping them would stop the run rather
+    // than contain it; the child's guards, not its environment, bound what it does.
     env: { ...process.env, ...cmd.env },
     detached: true,
     stdio: "ignore"
@@ -31650,6 +32512,73 @@ function launchDetached(cmd, runDir, name) {
     throw new Error(message);
   }
   return { pid: child.pid, logPath, errPath, exitPath };
+}
+var TAIL_BYTES = 512 * 1024;
+var oneLine3 = (text2, max = 100) => {
+  const flat = text2.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
+};
+function detailOf(input) {
+  if (typeof input !== "object" || input === null) return null;
+  const record2 = input;
+  for (const key of ["description", "command", "file_path", "path", "pattern", "url", "prompt"]) {
+    const value = record2[key];
+    if (typeof value === "string" && value.trim() !== "") return oneLine3(value);
+  }
+  return null;
+}
+function pendingToolCall(log) {
+  const pending = /* @__PURE__ */ new Map();
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.parent_tool_use_id != null) continue;
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (entry.type === "assistant" && part.type === "tool_use" && typeof part.id === "string") {
+        pending.set(part.id, { tool: String(part.name ?? "tool"), detail: detailOf(part.input) });
+      } else if (entry.type === "user" && part.type === "tool_result" && typeof part.tool_use_id === "string") {
+        pending.delete(part.tool_use_id);
+      }
+    }
+  }
+  return [...pending.values()].at(-1) ?? null;
+}
+function readLogTail(path) {
+  let fd;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const { size, mtimeMs } = fstatSync(fd);
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    let text2 = buffer.toString("utf8");
+    if (length < size) text2 = text2.slice(text2.indexOf("\n") + 1);
+    return { text: text2, mtimeMs };
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+function statusLine(child, runningMs, quietMs, call, logIdleMs) {
+  const minutes2 = (ms) => Math.max(0, Math.round(ms / 6e4));
+  const head = `${child} still running after ${minutes2(runningMs)} min, no report for ${minutes2(quietMs)} min`;
+  if (call === null) {
+    return logIdleMs === null ? `${head}; no tool call in flight` : `${head}; no tool call in flight, log idle ${minutes2(logIdleMs)} min`;
+  }
+  const what = call.detail ? `${call.tool} (${call.detail})` : call.tool;
+  return logIdleMs === null ? `${head}; in ${what}` : `${head}; in ${what} for at least ${minutes2(logIdleMs)} min`;
 }
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons", "plugin"],
@@ -31706,76 +32635,6 @@ function buildRoleSettings(role, hooksDir) {
     { matcher: "*", hooks: [hook("heartbeat.mjs")] }
   ];
   return { outputStyle: "default", hooks: { PreToolUse: pre, PostToolUse: post } };
-}
-var STRUCTURED = /* @__PURE__ */ new Set(["needs_input", "spec_ready", "done", "failed"]);
-function lastResultEvent(log) {
-  const lines = log.trimEnd().split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]?.trim();
-    if (!line?.startsWith("{")) continue;
-    try {
-      const event = JSON.parse(line);
-      if (event.type === "result") return event;
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-function classify(i) {
-  const none = {
-    sessionId: null,
-    costUsd: null,
-    durationMs: null,
-    cacheReadTokens: null,
-    structured: null
-  };
-  if (i.exitCode === null) {
-    return i.idleMs >= i.stallMs ? {
-      ...none,
-      outcome: "stalled",
-      detail: `no output for ${Math.round(i.idleMs / 6e4)} min`
-    } : { ...none, outcome: "running", detail: "" };
-  }
-  const r = i.result;
-  if (!r) return { ...none, outcome: "crashed", detail: `exit ${i.exitCode}, no result event` };
-  const usage = r.usage ?? {};
-  const meta = {
-    sessionId: typeof r.session_id === "string" ? r.session_id : null,
-    costUsd: typeof r.total_cost_usd === "number" ? r.total_cost_usd : null,
-    durationMs: typeof r.duration_ms === "number" ? r.duration_ms : null,
-    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : null
-  };
-  const text2 = String(r.result ?? "");
-  if (r.api_error_status === 429 || r.is_error === true && /usage limit|rate limit/i.test(text2)) {
-    return { ...meta, structured: null, outcome: "limited", detail: text2.slice(0, 200) };
-  }
-  if (r.is_error === true)
-    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
-  const s = r.structured_output;
-  if (!s || typeof s !== "object")
-    return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
-  const structured = s;
-  const status2 = String(structured.status ?? "");
-  if (!STRUCTURED.has(status2))
-    return { ...meta, structured, outcome: "crashed", detail: `unknown status "${status2}"` };
-  const failure = status2 === "failed" && typeof structured.failure === "string" ? structured.failure.trim().slice(0, 200) : "";
-  return { ...meta, structured, outcome: status2, detail: failure };
-}
-function readChildState(runDir, name, nowMs) {
-  const exitPath = join(runDir, `${name}.exit`);
-  const logPath = join(runDir, `${name}.log.jsonl`);
-  const raw = existsSync(exitPath) ? readFileSync(exitPath, "utf8").trim() : "";
-  const hasLog = existsSync(logPath);
-  const result = hasLog ? lastResultEvent(readFileSync(logPath, "utf8")) : null;
-  const exitCode = raw === "" ? result ? 0 : null : Number(raw);
-  return { exitCode, result, idleMs: hasLog ? nowMs - statSync(logPath).mtimeMs : 0 };
-}
-function summaryLine(name, r) {
-  const cost = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
-  const dur = r.durationMs === null ? "?" : `${Math.round(r.durationMs / 6e4)}m`;
-  const detail = r.detail ? ` detail=${JSON.stringify(r.detail)}` : "";
-  return `CHILD ${name} outcome=${r.outcome} cost=${cost} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
 }
 
 // src/pipeline/runtime.ts
@@ -32007,8 +32866,10 @@ function createRuntime(o) {
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
+  const gateRunner = o.runner ?? shellRunnerAsync;
   const pollMs = o.pollMs ?? 1e3;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
+  const statusAfterMs = o.statusAfterMs ?? (Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S) || 300) * 1e3;
   const at = (name) => join(runDir, name);
   const now = () => (/* @__PURE__ */ new Date()).toISOString();
   const childPluginDir = () => resolve(process.env.MARVIN_PIPELINE_PLUGIN_DIR || pluginRoot);
@@ -32096,7 +32957,7 @@ function createRuntime(o) {
       if (!existsSync(saved.path)) throw new Error(`the run's worktree ${saved.path} is gone`);
       return saved;
     }
-    const worktreesRoot = join(stateRoot(), "worktrees");
+    const worktreesRoot = join(checkedStateRoot(), "worktrees");
     const path = join(worktreesRoot, basename(run2.repoRoot), run2.id);
     const made = existsSync(path) ? adoptWorktree(run2, path, `autopilot/${run2.id}`) : createRunWorktree({ repoRoot: run2.repoRoot, base: run2.base, runId: run2.id, worktreesRoot });
     let originUrl;
@@ -32116,11 +32977,20 @@ function createRuntime(o) {
     const marker = at("bootstrap.json");
     if (readJson(marker, external_exports.object({ command: external_exports.string() }))?.command === command) return;
     const timeout = config2.pipeline.gate_timeout_minutes * 6e4;
+    const beforeFile = at("bootstrap.common-before.json");
+    if (!existsSync(beforeFile)) writeAtomic2(beforeFile, snapshotGitCommon(worktree));
     const result = runner(`export HUSKY=0; ${command}`, worktree, timeout);
     if (result.code !== 0) {
       const tail = result.output.trimEnd().split("\n").slice(-20).join("\n");
       throw new Error(`bootstrap \`${command}\` failed (exit ${result.code}):
 ${tail}`);
+    }
+    const planted = diffGitCommon(readFileSync(beforeFile, "utf8"), snapshotGitCommon(worktree));
+    if (planted.length > 0) {
+      throw new Error(
+        `bootstrap \`${command}\` changed the repository's shared git dir:
+${planted.join("\n")}`
+      );
     }
     writeAtomic2(marker, `${JSON.stringify({ command })}
 `);
@@ -32271,10 +33141,10 @@ ${tail}`);
   };
   const probePrefixes = (config2) => {
     const template = config2.gates?.test_one;
-    const cut = template?.indexOf("{file}") ?? -1;
-    if (!template || cut < 0) return [];
-    const prefix = template.slice(0, cut).trim();
+    if (!template?.includes("{file}")) return [];
     try {
+      const whole = wholeFileTemplate(template);
+      const prefix = whole.slice(0, whole.indexOf("{file}")).trim();
       validatePrefix(prefix);
       return [prefix];
     } catch (error2) {
@@ -32369,6 +33239,8 @@ ${tail}`);
     );
     const mainBefore = at(`${key}.main-before.txt`);
     if (!existsSync(mainBefore)) writeAtomic2(mainBefore, snapshotTree(run2.repoRoot));
+    const commonBefore = at(`${key}.common-before.json`);
+    if (!existsSync(commonBefore)) writeAtomic2(commonBefore, snapshotGitCommon(run2.repoRoot));
     const marker = { ref: step2.ref, key, name, startedAt: now(), pid: null };
     writeAtomic2(markerPath(step2.ref), `${JSON.stringify(marker)}
 `);
@@ -32442,6 +33314,41 @@ ${tail}`);
     } catch {
     }
   };
+  const childStatus = (child, key) => {
+    const startedMs = Date.parse(child.startedAt);
+    let lastHeard = startedMs;
+    let checked = 0;
+    const lastHeardFromEvents = () => {
+      for (const e of readEventsTolerant(runDir)) {
+        const fromChild = e.kind === "report" && e.actor === child.name;
+        const ourNote = e.kind === "note" && e.data?.status === true && e.data?.key === key;
+        if (fromChild || ourNote) lastHeard = Math.max(lastHeard, Date.parse(e.ts));
+      }
+    };
+    return {
+      look: () => {
+        const nowMs = Date.now();
+        if (nowMs - checked < Math.min(3e4, statusAfterMs)) return;
+        checked = nowMs;
+        try {
+          lastHeardFromEvents();
+          if (nowMs - lastHeard < statusAfterMs) return;
+          const tail = readLogTail(at(`${key}.log.jsonl`));
+          const call = tail === null ? null : pendingToolCall(tail.text);
+          const text2 = statusLine(
+            child.name,
+            nowMs - startedMs,
+            nowMs - lastHeard,
+            call,
+            tail === null ? null : nowMs - tail.mtimeMs
+          );
+          note(text2, { notify: true, status: true, key, ...call ? { tool: call.tool } : {} });
+          lastHeard = nowMs;
+        } catch {
+        }
+      }
+    };
+  };
   const waitChild = async (run2, signal) => {
     let index = -1;
     run2.children.forEach((c, i) => {
@@ -32453,10 +33360,12 @@ ${tail}`);
     const config2 = configFor(run2);
     const stallMs = config2.pipeline.stall_minutes * 6e4;
     const started = Date.now();
+    const status2 = childStatus(child, key);
     let result;
     for (; ; ) {
       result = classify({ ...readChildState(runDir, key, Date.now()), stallMs });
       if (result.outcome !== "running" || Date.now() - started >= childDeadlineMs) break;
+      status2.look();
       await setTimeout$1(pollMs, void 0, { signal: signal ?? deps.signal });
     }
     if (result.outcome === "running") {
@@ -32481,6 +33390,16 @@ ${tail}`);
       if (leaked.length > 0) obs.leaked = leaked;
     } else {
       note(`no main-checkout snapshot for ${key}; its leak check was skipped`, { notify: true });
+    }
+    const commonBefore = at(`${key}.common-before.json`);
+    if (existsSync(commonBefore)) {
+      const planted = diffGitCommon(
+        readFileSync(commonBefore, "utf8"),
+        snapshotGitCommon(run2.repoRoot)
+      );
+      if (planted.length > 0) obs.leaked = [...obs.leaked ?? [], ...planted];
+    } else {
+      note(`no git common dir snapshot for ${key}; its check was skipped`, { notify: true });
     }
     if (child.role === "verifier") {
       const before = at("snapshot.txt");
@@ -32679,7 +33598,7 @@ ${tail}`);
     }
     return { text: text2, findings };
   };
-  const gateWork = (run2) => {
+  const gateWork = async (run2) => {
     const config2 = configFor(run2);
     const wt = worktreeRecord(run2);
     const head = isolatedGit(wt.path, wt.gitDir).text("rev-parse", "--verify", "HEAD^{commit}").trim();
@@ -32753,7 +33672,7 @@ ${tail}`);
         }
       ]
     );
-    const report = runGateStage({
+    const report = await runGateStage({
       worktree: wt.path,
       baseSha: from,
       gitDir: wt.gitDir,
@@ -32768,8 +33687,10 @@ ${tail}`);
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
       metricsRecord: carriedRecord(run2, wt.path, spec.text),
-      run: runner,
-      timeoutMs
+      runArtifacts: run2.specPath !== null && isCanonicalPath(run2.specPath) ? { specPath: run2.specPath, slug: specIdentity(run2).slug } : null,
+      run: gateRunner,
+      timeoutMs,
+      ...deps.signal ? { signal: deps.signal } : {}
     });
     const passed = report.passed && findings.length === 0;
     writeAtomic2(
@@ -33079,16 +34000,32 @@ ${tail}`);
       throw new Error("finalize needs the commit a passing gate approved, and none is recorded");
     }
     const metricsRecord = ships && gated && run2.specPath !== null && isCanonicalPath(run2.specPath) ? carriedRecord(run2, wt.path, committedText(wt, gated.head, run2.specPath)) : null;
+    const merge3 = ships && gated && run2.branch !== null ? mergeBaseForFinalize({
+      runDir,
+      worktree: wt.path,
+      gitDir: wt.gitDir,
+      branch: run2.branch,
+      base: run2.base,
+      slug: specIdentity(run2).slug,
+      gatedHead: gated.head
+    }) : null;
+    if (merge3?.state === "merged") {
+      note(`merged ${run2.base} (${merge3.base.slice(0, 8)}) into the run branch before finalize`, {
+        notify: true
+      });
+    } else if (merge3?.state === "skipped") {
+      note(`did not merge ${run2.base} before finalize: ${merge3.reason}`, { notify: true });
+    }
     const result = finalizeRun({
       run: run2,
       runDir,
       worktree: wt.path,
       gitDir: wt.gitDir,
-      expectedHead: ships && gated ? gated.head : "",
+      expectedHead: ships && gated ? merge3?.head ?? gated.head : "",
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), external_exports.array(external_exports.string())) ?? [],
-      formatCommand: config2.pipeline.format_command,
+      formatCommand: config2.pipeline.format_command ?? inferFormatCommand(run2.repoRoot),
       metricsRecord,
       runCommand: runner
     });
@@ -33155,9 +34092,15 @@ ${tail}`);
       case "commit_spec":
         return commitSpecWork(run2);
       case "gate":
-        return gateWork(run2);
-      case "seal":
-        return sealWork(run2, data, step2);
+      case "seal": {
+        const commonBefore = snapshotGitCommon(run2.repoRoot);
+        const done = kind === "gate" ? await gateWork(run2) : sealWork(run2, data, step2);
+        const planted = diffGitCommon(commonBefore, snapshotGitCommon(run2.repoRoot));
+        if (planted.length > 0 && (done.obs.kind === "gate" || done.obs.kind === "seal")) {
+          return { ...done, obs: { ...done.obs, leaked: planted } };
+        }
+        return done;
+      }
       case "ci":
         return ciWork(run2);
       case "finalize":
@@ -33229,6 +34172,9 @@ function init(flags) {
     throw new Error(`--stage-a must be one of ${TIERS.join(", ")}, not ${stageA}`);
   }
   assertOrchestratorName(flag(flags, "orch"));
+  const base = flag(flags, "base");
+  if (!isSafeBranchRef(base))
+    throw new Error(`--base ${JSON.stringify(base)} is not a branch name`);
   const now = /* @__PURE__ */ new Date();
   const id = newRunId(now);
   const runDir = runDirFor(repoRoot, id);
@@ -33236,7 +34182,7 @@ function init(flags) {
   const run2 = initRun({
     id,
     repoRoot,
-    base: flag(flags, "base"),
+    base,
     lang: flag(flags, "lang"),
     orchestratorName: flag(flags, "orch"),
     task: readFileSync(flag(flags, "task-file"), "utf8"),
@@ -33244,7 +34190,7 @@ function init(flags) {
     stageA,
     now
   });
-  mkdirSync(runDir, { recursive: true });
+  mkdirPrivate(runDir);
   saveRun(runDir, run2);
   print({ runId: id, runDir });
 }
@@ -33358,7 +34304,7 @@ function status(flags) {
   });
 }
 function list(flags) {
-  const root = stateRoot();
+  const root = checkedStateRoot();
   const repo = optional2(flags, "repo");
   const repoRoot = repo === void 0 ? void 0 : resolve(repo);
   const groups = repoRoot === void 0 ? subdirs(root) : [basename(repoRoot)];
@@ -33527,7 +34473,14 @@ async function main(argv) {
     return 1;
   }
 }
-if (process.argv[1] !== void 0 && resolve(process.argv[1]) === SELF) {
+function isEntry(argv1) {
+  try {
+    return realpathSync(argv1) === realpathSync(SELF);
+  } catch {
+    return false;
+  }
+}
+if (process.argv[1] !== void 0 && isEntry(process.argv[1])) {
   process.exitCode = await main(process.argv.slice(2));
 }
 

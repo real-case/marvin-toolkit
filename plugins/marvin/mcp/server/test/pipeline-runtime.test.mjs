@@ -590,6 +590,25 @@ test("every role launches with its name, env, settings, schema and allowlist, an
   }
 });
 
+test("the verifier's probe is the whole-file prefix of a test_one that quotes {file} and filters by {name}", async () => {
+  const s = await prepared({
+    config: { gates: { test_one: 'npx vitest run "{file}" -t "{name}"' } },
+  });
+  const fixture = join(s.runDir, "fake.json");
+  writeFileSync(fixture, JSON.stringify({ status: "failed", summary: "fake" }));
+  const verifier = engineContexts(s.run).find((a) => a.role === "verifier");
+  process.env[fakeVariable("verifier")] = fixture;
+  try {
+    s.deps.spawnChild(s.run, verifier, step("launch-verifier"));
+    const { argv } = command(s.runDir, `r1-verifier-${verifier.iteration}`);
+    const tools = argv.slice(argv.indexOf("--allowedTools") + 1);
+    assert.ok(tools.includes("Bash(npx vitest run:*)"), tools.join(" "));
+    assert.ok(!tools.some((tool) => tool.includes('"')), "no opening quote is left on the prefix");
+  } finally {
+    delete process.env[fakeVariable("verifier")];
+  }
+});
+
 test("a resume continues the role's last session with the message alone; spec_ready carries the spec's signals", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
   const s = await prepared({ files: { [spec]: specText() } });
@@ -997,6 +1016,71 @@ test("waitChild reports a child still running when its own deadline passes", asy
   const { run: same, obs } = await s.deps.waitChild(run);
   assert.equal(obs.result.outcome, "running");
   assert.deepEqual(same, run);
+});
+
+test("a quiet running child gets one engine status note per interval, naming its call", async () => {
+  const s = await prepared({ options: { childDeadlineMs: 400, pollMs: 20, statusAfterMs: 150 } });
+  const child = {
+    name: "r1-executor-1",
+    role: "executor",
+    iteration: 1,
+    sessionId: null,
+    pid: null,
+    assignment: { model: "sonnet", effort: "medium" },
+    startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    endedAt: null,
+    status: "running",
+    costUsd: null,
+    cacheReadTokens: null,
+  };
+  writeFileSync(
+    join(s.runDir, "r1-executor-1.log.jsonl"),
+    `${JSON.stringify({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: "tool_use", id: "t1", name: "Bash", input: { description: "Run the gates" } },
+        ],
+      },
+    })}\n`,
+  );
+  const run = { ...s.run, stage: "executing", iteration: 1, children: [child] };
+  const statusNotes = () => events(s.runDir).filter((e) => e.data?.status === true);
+
+  await s.deps.waitChild(run);
+  const notes = statusNotes();
+  // 400 ms of waiting at a 150 ms interval: the first look is due at once, then one per interval.
+  assert.ok(notes.length >= 2 && notes.length <= 3, `got ${notes.length} status notes`);
+  const [first] = notes;
+  assert.equal(first.kind, "note");
+  assert.equal(first.actor, "engine");
+  assert.equal(first.data.notify, true);
+  assert.equal(first.data.key, "r1-executor-1");
+  assert.equal(first.data.tool, "Bash");
+  assert.match(
+    first.text,
+    /^r1-executor-1 still running after 10 min, no report for 10 min; in Bash \(Run the gates\)/,
+  );
+
+  // A report the child sent just now resets the clock, and so does a restarted engine's reading of
+  // the notes already written: neither waits below the interval gets a new note.
+  const before = statusNotes().length;
+  const quiet = await prepared({
+    options: { childDeadlineMs: 100, pollMs: 20, statusAfterMs: 150 },
+  });
+  appendFileSync(
+    join(quiet.runDir, "events.jsonl"),
+    `${JSON.stringify({ ts: new Date().toISOString(), kind: "report", actor: "r1-executor-1", text: "[r1-executor-1] done: x" })}\n`,
+  );
+  await quiet.deps.waitChild({ ...quiet.run, stage: "executing", iteration: 1, children: [child] });
+  assert.equal(events(quiet.runDir).filter((e) => e.data?.status === true).length, 0);
+  // A new wait (a restarted engine reads the same events) keeps the interval from the last note.
+  const lastBefore = Date.parse(statusNotes().at(-1).ts);
+  await s.deps.waitChild({ ...run });
+  const firstAfter = statusNotes()[before];
+  assert.ok(firstAfter, "a later wait still writes a note once the interval has passed");
+  assert.ok(Date.parse(firstAfter.ts) - lastBefore >= 140, "no note before the interval");
 });
 
 test("a write into the main checkout during a child is reported as leaked, and decide halts on it", async () => {
@@ -1432,6 +1516,28 @@ test("the gate runs verify's plan, the spec's oracles and the scope, the spec de
   assert.equal(decide(run, tampered.obs, rubric, new Date()).run.stage, "executing");
 });
 
+test("the gate tolerates the run's own uncommitted journals and receipts, keyed on its spec", async () => {
+  const spec = "specs/1-tag-filter.md";
+  const s = await prepared({ config: { gates: { test: "true" } } });
+  write(s.wt, spec, specText());
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "-A");
+  sh(s.wt, "commit", "-m", "work");
+  write(s.wt, "specs/runs/tag-filter.progress.md", "journal\n");
+  write(s.wt, "specs/runs/tag-filter.evidence.md", "evidence\n");
+  write(s.wt, ".marvin/critique/001-tag-filter.md", "receipt\n");
+  const run = { ...s.run, stage: "gating", iteration: 1, specPath: spec, prUrl: PR };
+  const { obs } = await s.deps.work(run, "gate", undefined, step("gate-own"));
+  assert.equal(obs.report.passed, true, JSON.stringify(obs.report.blockers, null, 2));
+  // The positive control: a stray file beside them is still uncommitted work.
+  write(s.wt, "notes.txt", "scratch\n");
+  const stray = await s.deps.work(run, "gate", undefined, step("gate-stray"));
+  assert.deepEqual(
+    stray.obs.report.blockers.map((b) => b.claim),
+    ["uncommitted work: notes.txt"],
+  );
+});
+
 test("a spec the executor left uncommitted is a gate blocker, since finalize ships the committed one", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
   const s = await prepared({ config: { gates: { test: "true" } } });
@@ -1613,6 +1719,42 @@ test("a run halted after its PR opened finalizes like one without: nothing leave
   await assert.rejects(
     s.deps.work({ ...run, haltReason: null }, "finalize", { retro }, step("fin-2")),
     /a passing gate/,
+  );
+});
+
+test("finalize merges a base that moved before it writes, and says so", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  const s = await prepared({ files: { [spec]: specText() } });
+  const origin = sh(s.repo, "remote", "get-url", "origin");
+  // A parallel run lands its calibration record on dev while this one is in its retro.
+  const clone = mkdtempSync(join(tmpdir(), "pipe-dev-"));
+  sh(clone, "clone", "-q", "--branch", "dev", origin, ".");
+  write(clone, ".marvin/pipeline/calibration.jsonl", `${JSON.stringify({ runId: "r0" })}\n`);
+  sh(clone, "add", "-f", "-A");
+  sh(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parallel run");
+  sh(clone, "push", "-q", "origin", "HEAD:refs/heads/dev");
+  const devTip = sh(clone, "rev-parse", "HEAD");
+  const gated = sh(s.wt, "rev-parse", "HEAD");
+  writeFileSync(
+    join(s.runDir, "gated-head.json"),
+    `${JSON.stringify({ head: gated, iteration: 1, passed: true })}\n`,
+  );
+  const run = { ...s.run, stage: "finalizing", iteration: 1, specPath: spec, prUrl: PR };
+  const retro = { status: "done", summary: "s", checks: [], proposals: [], lessons: [], prune: [] };
+  const { obs } = await s.deps.work(run, "finalize", { retro }, step("fin"));
+  assert.deepEqual(obs, { kind: "finalized" });
+  const merge = sh(s.wt, "rev-parse", "HEAD^");
+  assert.deepEqual(sh(s.wt, "rev-list", "--parents", "-n", "1", merge).split(" ").slice(1), [
+    gated,
+    devTip,
+  ]);
+  const records = readFileSync(join(s.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line).runId);
+  assert.deepEqual(records, ["r0", "r1"]);
+  assert.ok(
+    events(s.runDir).some((e) => /^merged dev \([0-9a-f]{8}\) into the run branch/.test(e.text)),
   );
 });
 
@@ -2110,5 +2252,104 @@ test("the engine drives a light run to ready on this runtime, with fake children
   } finally {
     for (const role of Object.keys(outputs)) delete process.env[fakeVariable(role)];
     delete process.env.MARVIN_PIPELINE_FAKE_CI;
+  }
+});
+
+/** The repository's shared hooks directory, which no `git status` of either checkout lists. */
+const hooksOf = (repo) => join(realpathSync(join(repo, ".git")), "hooks");
+
+test("a hook planted in the shared git dir during a child is a leak, and decide halts on it", async () => {
+  const s = await prepared();
+  const run = { ...s.run, stage: "executing", iteration: 1 };
+  await withFake(s.runDir, "executor", DONE, async () => {
+    const spawned = s.deps.spawnChild(
+      run,
+      spawnAction("executor", 1, EXECUTOR_CONTEXT),
+      step("hook"),
+    );
+    writeFileSync(join(hooksOf(s.repo), "pre-commit"), "#!/bin/sh\n");
+    const { run: seen, obs } = await waitFor(s.deps, spawned);
+    assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "pre-commit")}`]);
+    const d = decide(seen, obs, rubric, new Date());
+    assert.deepEqual(
+      d.actions.map((a) => a.judgment),
+      ["halt"],
+    );
+  });
+});
+
+const PLANT = (name) =>
+  `printf x > "$(git rev-parse --path-format=absolute --git-common-dir)/hooks/${name}"`;
+
+test("a gate command that plants a hook in the shared git dir halts the run, charged to the executor", async () => {
+  const s = await prepared({ config: { gates: { test: PLANT("post-checkout") } } });
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "src/a.mjs");
+  sh(s.wt, "commit", "-q", "-m", "work");
+  const run = { ...s.run, stage: "gating", iteration: 1, prUrl: PR };
+  const { obs } = await s.deps.work(run, "gate", undefined, step("gate"));
+  assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "post-checkout")}`]);
+  const d = decide(run, obs, rubric, new Date());
+  assert.deepEqual(
+    d.actions.map((a) => a.judgment),
+    ["halt"],
+  );
+  assert.equal(d.run.haltRole, "executor");
+  assert.match(d.actions[0].payload.reason, /gate stage changed the repository's shared git dir/);
+
+  // The next gate compares against its own before-snapshot, so a clean gate passes again.
+  const again = await s.deps.work(run, "gate", undefined, step("gate-2"));
+  assert.equal(again.obs.leaked, undefined);
+});
+
+test("a red run that plants a hook in the shared git dir halts the run, charged to the test-author", async () => {
+  const s = await prepared({
+    config: { gates: { test_one: "node --test {file}" } },
+  });
+  write(s.wt, ".marvin/task/001-tag-filter.md", specText());
+  write(
+    s.wt,
+    "test/a.test.mjs",
+    [
+      'import test from "node:test";',
+      'import assert from "node:assert";',
+      'import { execFileSync } from "node:child_process";',
+      'import { writeFileSync } from "node:fs";',
+      'const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" }).trim();',
+      'writeFileSync(`${common}/hooks/pre-rebase`, "x");',
+      'test("a", () => assert.equal(1, 2));',
+      "",
+    ].join("\n"),
+  );
+  const run = { ...s.run, stage: "test_authoring", specPath: ".marvin/task/001-tag-filter.md" };
+  const data = { tests: [{ path: "test/a.test.mjs", criteria: ["AC1"] }] };
+  const context = process.env.NODE_TEST_CONTEXT;
+  delete process.env.NODE_TEST_CONTEXT;
+  try {
+    const { obs } = await s.deps.work(run, "seal", data, step("seal-1"));
+    assert.deepEqual(obs.leaked, [`git common dir added: ${join(hooksOf(s.repo), "pre-rebase")}`]);
+    const d = decide(run, obs, rubric, new Date());
+    assert.equal(d.actions[0].judgment, "halt");
+    assert.equal(d.run.haltRole, "test-author");
+  } finally {
+    if (context !== undefined) process.env.NODE_TEST_CONTEXT = context;
+  }
+});
+
+test("a bootstrap that plants a hook in the shared git dir fails prepare", async () => {
+  const s = setup({ config: { pipeline: { bootstrap: PLANT("pre-push") } } });
+  await assert.rejects(s.deps.prepare(s.run), /changed the repository's shared git dir/);
+  assert.ok(existsSync(join(hooksOf(s.repo), "pre-push")));
+  // A restarted engine runs the bootstrap again, and still judges it against the first snapshot.
+  await assert.rejects(s.deps.prepare(s.run), /changed the repository's shared git dir/);
+});
+
+test("prepare refuses a relative MARVIN_PIPELINE_HOME rather than make worktrees under the cwd", async () => {
+  const s = setup();
+  process.env.MARVIN_PIPELINE_HOME = "relative-home";
+  try {
+    await assert.rejects(s.deps.prepare(s.run), /not an absolute path/);
+  } finally {
+    process.env.MARVIN_PIPELINE_HOME = s.home;
   }
 });

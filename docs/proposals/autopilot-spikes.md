@@ -132,6 +132,7 @@ rests on a running child while the test acts on it.
 | While that engine lives, a second `start` is refused (`an engine already holds`), and so is a bare `engine` (`engine already running (pid N)`). Neither writes to `run.json` or `events.jsonl`. | same |
 | SIGKILL to the engine's process group mid-run leaves no `engine stopped` note, and `await` prints `ENGINE down`. The running child survives, since it leads a group of its own. | "S8: an engine killed mid-run is reported down …" |
 | The resume path of SKILL.md section 2 and `recovery.md` (`list`, `attach`, `start`) restarts the run. A second engine, killed in turn, is reported down again. A third picks up the child that finished while no engine ran. The run reaches `ready` with the planner launched once, and every child spawned after `attach` reports to the new orchestrator. | same |
+| A `SIGTERM` to the engine alone while a gate runs ends the gate's processes, writes `engine stopped on request` and frees the run with no gate verdict; the next engine runs the gate again and reaches `ready` (added 2026-10-15, 0.29.6). | "S8: an engine stopped during the gate stage …" |
 
 Each test was checked against the defect it targets, by mutating the source and rebuilding the
 bundle:
@@ -174,7 +175,7 @@ Child in W with a PreToolUse `Edit|Write` hook from `--settings`.
 
 ## S10/S11 — writes outside the worktree (new, found during S6)
 
-- In S6's kill run, the child in W **read the main checkout's files** by absolute path (`/Users/urchin/tesari/osint-chat-client/src/shared/...`) although its cwd was W.
+- In S6's kill run, the child in W **read the main checkout's files** by absolute path (`<main checkout>/src/shared/...`) although its cwd was W.
 - S10: a child in W (`acceptEdits`, prompts `none`) **wrote a file into the main checkout** by absolute path. No denial; the file was deleted at once.
 - S11: in a worktree created **outside** the repository tree (`~/.local/state/marvin-pipeline/worktrees/osint-chat-client/<id>`, detached), the child:
   - still loaded the project's auto-memory and `CLAUDE.md`;
@@ -434,5 +435,13 @@ runs synchronously (`runGateStage` through `shellRunner`'s `spawnSync`, up to
 `gate_timeout_minutes`, 60 here), so the `SIGTERM` the shutdown sent waited on a blocked event
 loop until the `SIGKILL` that followed. A clean stop would have written the note and released the
 lock. Nothing was lost, since the run resumed from disk, but `await` could only report a dead
-engine, not why. Making the gate stage asynchronous, or forwarding the signal to the gate's
-process group, is a candidate fix.
+engine, not why.
+
+**Fixed in 0.29.6.** The gate stage now runs its prepare steps, oracles and gates through
+`shellRunnerAsync`, the same supervisor without `spawnSync`. On a stop request the running
+command's process group is ended, the stage rejects without a verdict, and the engine writes
+`engine stopped on request` and releases its lock; the next engine runs the gate stage again from
+the start. The sandbox test "S8: an engine stopped during the gate stage …" holds the `test` gate,
+sends `SIGTERM` to the engine alone and checks all of this; against the earlier bundle the engine
+never stops. The bootstrap and the seal's red runs still run synchronously, so a stop request
+during them waits as before.

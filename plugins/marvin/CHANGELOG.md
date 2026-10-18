@@ -4,7 +4,9 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
-## [0.29.5] — 2026-10-14
+## [0.30.1] — 2026-10-18
+
+Brings the scanner-gate advice in line with `gates.extra`.
 
 ### Changed
 
@@ -12,6 +14,176 @@ follows semver independently of the surrounding marketplace.
   `docs/configuration.md` no longer tell users to chain a scanner onto `lint` because the four
   gate names are the whole set; they recommend a `gates.extra` entry with its own name and
   status, and say a single simple command with a missing binary is `not-run`. Documentation only.
+
+## [0.30.0] — 2026-10-18
+
+Lets an autopilot run recover on its own from the four things that stopped a 2026-10-17 run for a
+human although nothing in the task needed one.
+
+### Changed
+
+- **A usage limit is waited out, and a stall is retried, before either halts.** A `limited` child
+  is spawned again once its limit lifts, at the reset its text names (`…limit reached|<epoch>`
+  or `resets 7pm`), else after `caps.limit_wait_minutes` (30), at most `caps.limit_retries` (3)
+  times on a budget of its own; a reset more than six hours away still halts. The wait is a
+  `notBefore` on the journalled spawn, so a restarted engine waits out only what is left. A
+  `stalled` child now costs a `child_retries` retry like a crash instead of halting at once, so
+  a stalled retro, like a crashed one, finalizes without its retro the second time.
+- **Finalize merges the base first when it merges cleanly.** Every append-only file finalize
+  writes is built from the commit it builds on, so a base that gained its own
+  `calibration.jsonl` (or `checks.yaml`, or lessons) while the run went on made the finalize
+  commit conflict with it. The engine now joins the base tip to the gated commit with plumbing
+  only (`merge-tree --write-tree`, `commit-tree`, blobs written from `cat-file`, `update-ref`
+  guarded on the gated commit) and finalizes on top. A conflict, a failed fetch, a custom merge
+  driver, a link or submodule, or an uncommitted change on a merged path leaves the run as it
+  was, with a note saying why. A replay recognises its merge through `base-merge.json`.
+- **Finalize formats its files when the host configured no formatter.** A `null`
+  `pipeline.format_command` now runs the Prettier installed in the main checkout, never the run
+  worktree's (a child writes there), resolved through its links to inside `node_modules` and run
+  by the engine's node with `--write --ignore-unknown`; `""` still turns formatting off. Lesson bodies put bare glob and placeholder paths in code spans first, so
+  Prettier no longer reads `(.marvin/critique/*) … (.marvin/metrics/*)` as emphasis.
+- **The scope gate tolerates the run's own service files while they stay uncommitted.** The
+  `runs/<slug>.*` journals beside the spec and under `.marvin/task/`, `.marvin/task/verification.md`
+  and the critic receipts `.marvin/critique/<NNN>-<slug>.md` are not uncommitted work, for the
+  run's own slug only; two of the run's three iterations were rejected for nothing else.
+  Committed, they still count as undeclared files, since a committed one is evidence the PR
+  carries and an executor could forge.
+- **The planner looks for guard tests before it seals.** `planner.md` tells it to find the
+  tests that enumerate or count what the change joins (a module allowlist, a counted docstring,
+  an inventory) and put every file they force into the contract, since the scope gate leaves a
+  missed one only a dodge or a halt. `executor.md` says the run's journals are never committed to
+  clear a finding.
+
+## [0.29.10] — 2026-10-18
+
+Lets Claude Code load the bundled `gitmcp` server again.
+
+### Fixed
+
+- **`gitmcp` declares its transport.** Its `.mcp.json` entry carried a `url` and no `type`,
+  which current Claude Code rejects as an invalid server config (`invalid_union`) and drops
+  without a visible error, so the plugin's `gitmcp` tools never appeared. The entry now reads
+  `"type": "http"`, and the server connects over streamable HTTP.
+
+## [0.29.9] — 2026-10-17
+
+Lets the autopilot seal stage run on a `gates.test_one` written for the per-test oracles.
+
+### Fixed
+
+- **The seal stage reads `gates.test_one` for a whole file instead of refusing its per-test
+  parts.** A template such as `npx vitest run "{file}" -t "{name}"`, which `verify`'s oracles
+  use to run one named test, stopped every autopilot run at the seal stage, and since the engine
+  reads config from a run's base commit, the run could not be repaired by editing it. The seal
+  stage, the bench's hidden tests and the verifier's probe now share one reading
+  (`wholeFileTemplate`): an option whose value is exactly `{name}`, `{ref}` or `{path}`, bare or
+  quoted as a whole, is dropped with its option, and a `"{file}"` or `'{file}'` becomes the
+  engine's single-quoted path. Every other placement of those placeholders, a `{file}` quoted
+  with other text, and a backtick, `$(`, `<<`, `#` or newline are still refused
+  ([ADR-0049](../../docs/adr/0049-whole-file-reading-of-test-one.md), amending ADR-0048).
+- **The verifier's test probe no longer carries an opening quote.** It was cut from the raw
+  template at `{file}`, so `npx vitest run "{file}"` gave `Bash(npx vitest run ":*)`. It is now
+  cut from the whole-file reading and gives `Bash(npx vitest run:*)`.
+
+## [0.29.8] — 2026-10-17
+
+Closes the autopilot audit notes v0.29.7 left open.
+
+### Security
+
+- **A run halts when anything it executes changes the repository's shared git dir.** The gate's
+  protected snapshot and the main-checkout leak check are both `git status` of a checkout, so
+  neither saw `<common>/hooks/`, `config`, `config.worktree` or `info/`, and a child that wrote
+  and ran a test could plant `hooks/pre-commit` for the user's next commit. The engine now
+  fingerprints those paths before and after every child, every gate, every red run of the seal
+  and the bootstrap, and halts the run on a difference (a bootstrap fails prepare). The
+  `branch.*` entries `git push -u` writes and `gh`'s `remote.<name>.gh-resolved` are not counted.
+- **`marvin-pipe init` refuses a `--base` that is not a branch name**, and a run file whose base
+  is not one no longer loads. The worktree's `git fetch origin -- <base>` now ends option
+  parsing before the ref, so a base such as `--upload-pack=…` is a missing ref, never a command.
+- **Run state is owner-only.** The state root, every run directory and the worktrees root are
+  created with mode `0700`.
+- **An empty or relative `MARVIN_PIPELINE_HOME` is refused by `marvin-pipe` and the engine**, as
+  the `pipeline` tool already refused it, instead of placing runs and worktrees under the cwd.
+- **Everything under `.claude/` is a protected path for the autopilot** (agents, commands,
+  skills, `launch.json`), not only its settings and hooks: those files steer the user's own
+  sessions and no role writes them. `CLAUDE.md` stays editable, because feature work documents
+  itself there.
+
+### Fixed
+
+- **`marvin-pipe` runs when invoked through a symlink.** It compared `argv[1]` with its own path
+  as written and silently did nothing when either was a link; it now compares real paths, as the
+  pipeline hooks already do.
+
+### Notes
+
+- A child keeps the engine's environment, credentials included: the executor pushes and runs
+  `gh pr create` (`GH_TOKEN`/`GITHUB_TOKEN`), and every role is a `claude -p` that may reach the
+  model through Bedrock or Vertex. A test pins that these reach the child.
+
+## [0.29.7] — 2026-10-17
+
+### Security
+
+- **A pipeline child may edit only its own pull request, and publish no file from outside its
+  worktree.** `child-git-guard` checked `gh pr edit` for `--repo` and `--base` alone, so a child
+  steered by repository content could retitle, rewrite or add reviewers to any pull request in
+  the repository, and `gh pr create|edit --body-file ~/.ssh/id_ed25519` would have published a
+  private file as a PR body. `gh pr edit` now names no PR or the run branch, and a `--body-file`
+  must resolve, physically, inside the run's worktree (`-`, the command's own input, stays
+  allowed).
+- **The bundled `fast-uri` is 3.1.8** (was 3.1.2, reached through the MCP SDK's `ajv`), which
+  closes eight advisories against its URI parser. marvin resolves only its own schemas through
+  it, so no input of a user reached the affected paths.
+- **`SECURITY.md` names the supported line, `0.29.x`, and states the autopilot's trust
+  boundary:** its children run as the user, with the user's credentials, and code a child writes
+  and then runs is outside every guard.
+
+### Fixed
+
+- **A finalize interrupted between its commit and its record can be replayed.** Finalize moved
+  the run branch to its commit and only then wrote `finalize-commit.json`, the record a replay
+  recognises that commit by. An engine killed between the two left HEAD on a commit nothing
+  recorded, and every restart failed with `HEAD is …, not the gated commit …` until the ref was
+  moved back by hand. The record is now written before the branch moves; one naming a commit the
+  branch never reached matches no HEAD and is ignored.
+
+### Documentation
+
+- `docs/usage.md` describes `/marvin:autopilot`: what the engine runs, where its state lives,
+  and that each run's worktree and local branch stay behind until removed.
+- The plugin README's group table counts seven `task-*` commands and lists the `audit-*` group.
+
+## [0.29.6] — 2026-10-15
+
+### Fixed
+
+- **The autopilot engine stops cleanly during the gate stage.** The gate stage ran its commands
+  through `spawnSync`, for up to `gate_timeout_minutes`, so a stop request (a shutdown, a
+  `kill <pid>`) waited on a blocked event loop: the engine's TERM handler could not run until the
+  gate returned, and a shutdown's KILL came first. In Task 20 scenario 4 the engine went down that
+  way with no `engine stopped` note and its lock still held. The gate stage now runs its prepare
+  steps, oracles and gates through `shellRunnerAsync`, which uses the same supervisor without
+  blocking: on a stop request the running command's whole process group is ended, the stage
+  rejects instead of reporting, so no verdict, rejection or `gated-head.json` is recorded, and the
+  engine writes `engine stopped on request` and releases the run. The engine that resumes it runs
+  the gate stage again from the start. The bootstrap, the seal's red runs and the formatter still
+  run synchronously.
+
+## [0.29.5] — 2026-10-14
+
+### Fixed
+
+- **The autopilot engine reports on a child that is inside one long tool call.** The heartbeat
+  hook reminds a child to report only between tool calls (`PostToolUse`), so a child running a
+  20-minute gate through the `verify` tool sent nothing for that long: in Task 20 scenario 4 the
+  executor's gaps between reports were 9 to 26 minutes against the 6-minute rule. While a child
+  runs, the engine now writes a status note (`data.status`, notify) whenever neither the child's
+  last report nor the engine's last note for it is younger than the heartbeat interval
+  (`MARVIN_PIPELINE_HEARTBEAT_S`, default 300 s), naming the call the child is in, read from the
+  tail of its `stream-json` log (`pipeline/child-activity.ts`). The baseline is read back from the
+  events, so a restarted engine does not repeat a note at once.
 
 ## [0.29.4] — 2026-10-14
 

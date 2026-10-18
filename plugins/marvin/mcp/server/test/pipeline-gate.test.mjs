@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   claims,
@@ -33,22 +34,22 @@ const scripted = (codes) => {
   return () => ({ code: codes[i++] ?? 0, output: "out\nerror: boom", ms: 5 });
 };
 
-test("a gate that fails twice fails; a gate that passes on the re-run is flaky", () => {
+test("a gate that fails twice fails; a gate that passes on the re-run is flaky", async () => {
   assert.equal(
-    g.runGates([{ name: "test", command: "x" }], "/", scripted([1, 1]), 1000)[0].result,
+    (await g.runGates([{ name: "test", command: "x" }], "/", scripted([1, 1]), 1000))[0].result,
     "fail",
   );
   assert.equal(
-    g.runGates([{ name: "test", command: "x" }], "/", scripted([1, 0]), 1000)[0].result,
+    (await g.runGates([{ name: "test", command: "x" }], "/", scripted([1, 0]), 1000))[0].result,
     "flaky",
   );
   assert.equal(
-    g.runGates([{ name: "test", command: "x" }], "/", scripted([0]), 1000)[0].result,
+    (await g.runGates([{ name: "test", command: "x" }], "/", scripted([0]), 1000))[0].result,
     "pass",
   );
 });
 
-test("gates run one after another and a failing tail prefers the error lines", () => {
+test("gates run one after another and a failing tail prefers the error lines", async () => {
   const order = [];
   const run = (command) => {
     order.push(command);
@@ -58,7 +59,7 @@ test("gates run one after another and a failing tail prefers the error lines", (
       ms: 1,
     };
   };
-  const out = g.runGates(
+  const out = await g.runGates(
     [
       { name: "a", command: "a" },
       { name: "b", command: "b" },
@@ -75,22 +76,38 @@ test("gates run one after another and a failing tail prefers the error lines", (
   assert.equal(out[1].tail, "FAILED: nope");
 });
 
-test("the shell runner reports the exit code, the output and a timeout as 124", () => {
-  const ok = g.shellRunner("echo hi; echo oops >&2; exit 3", tmpdir(), 5000);
-  assert.equal(ok.code, 3);
-  assert.match(ok.output, /hi/);
-  assert.match(ok.output, /oops/);
-  assert.equal(g.shellRunner("sleep 5", tmpdir(), 100).code, 124);
-});
+// The gate stage runs its commands through `shellRunnerAsync`, which a stop request can end; the
+// bootstrap, the seal's red runs and the formatter keep `shellRunner`. Both owe the same answers.
+// A budget that is not under test is generous: under a loaded parallel run, starting the
+// supervisor's `node` alone has been measured at several seconds.
+const SHELL_RUNNERS = [
+  ["shellRunner", (...a) => g.shellRunner(...a)],
+  ["shellRunnerAsync", (...a) => g.shellRunnerAsync(...a)],
+];
 
-test("an acceptance oracle gets no flaky re-run: its first failure is a fail", () => {
+for (const [name, runner] of SHELL_RUNNERS) {
+  test(`${name} reports the exit code, the output and a timeout as 124`, async () => {
+    const ok = await runner("echo hi; echo oops >&2; exit 3", tmpdir(), 60_000);
+    assert.equal(ok.code, 3);
+    assert.match(ok.output, /hi/);
+    assert.match(ok.output, /oops/);
+    assert.equal((await runner("sleep 5", tmpdir(), 100)).code, 124);
+  });
+}
+
+test("an acceptance oracle gets no flaky re-run: its first failure is a fail", async () => {
   let runs = 0;
   const run = () => ({ code: ++runs === 1 ? 1 : 0, output: "error: boom", ms: 1 });
-  const [oracle] = g.runGates([{ name: "oracle:AC1", command: "x", retry: false }], "/", run, 1000);
+  const [oracle] = await g.runGates(
+    [{ name: "oracle:AC1", command: "x", retry: false }],
+    "/",
+    run,
+    1000,
+  );
   assert.equal(oracle.result, "fail");
   assert.equal(runs, 1);
   runs = 0;
-  const [plain] = g.runGates([{ name: "test", command: "x" }], "/", run, 1000);
+  const [plain] = await g.runGates([{ name: "test", command: "x" }], "/", run, 1000);
   assert.equal(plain.result, "flaky");
   assert.equal(runs, 2);
 });
@@ -99,33 +116,147 @@ const survivors = (marker) =>
   spawnSync("pgrep", ["-f", marker], { encoding: "utf8" }).stdout.trim();
 const marker = () => `31.${Math.floor(Math.random() * 1e9)}`;
 
-test("a timeout kills the whole process tree and says so in the output", () => {
+for (const [name, runner] of SHELL_RUNNERS) {
+  test(`${name}: a timeout kills the whole process tree and says so in the output`, async () => {
+    const m = marker();
+    const started = Date.now();
+    const out = await runner(`sleep ${m} & sleep ${m} & wait`, tmpdir(), 300);
+    assert.equal(out.code, 124);
+    assert.match(out.output, /timed out after 300ms/);
+    assert.ok(Date.now() - started < 8000);
+    assert.equal(survivors(`sleep ${m}`), "");
+  });
+
+  test(`${name}: a timeout also ends a command that ignores TERM`, async () => {
+    const m = marker();
+    const out = await runner(`trap '' TERM; sleep ${m} & wait`, tmpdir(), 300);
+    assert.equal(out.code, 124);
+    assert.equal(survivors(`sleep ${m}`), "");
+  });
+
+  test(`${name} hands the command over unmangled and keeps its exit code`, async () => {
+    const out = await runner(`printf '%s|%s' "q'uote" '$HOME'; exit 7`, tmpdir(), 60_000);
+    assert.equal(out.code, 7);
+    assert.equal(out.output, "q'uote|$HOME");
+  });
+
+  test(`${name} adds nothing to the output and reports a signal as 128 + n`, async () => {
+    const out = await runner("printf ok; kill -TERM $$", tmpdir(), 60_000);
+    assert.equal(out.code, 143);
+    assert.equal(out.output, "ok");
+  });
+}
+
+test("shellRunnerAsync keeps a multibyte character whole across output chunks", async () => {
+  // One ASCII byte, then 70 000 bytes of "é": every character starts at an odd offset, so a pipe
+  // read of any even size splits one, and decoding each read alone would turn the halves into
+  // U+FFFD.
+  const text = `x${"é".repeat(35000)}`;
+  const file = join(mkdtempSync(join(tmpdir(), "gate-utf8-")), "out.txt");
+  writeFileSync(file, text);
+  const out = await g.shellRunnerAsync(`cat '${file}'`, tmpdir(), 60_000);
+  assert.equal(out.code, 0);
+  assert.equal(out.output, text);
+});
+
+test("a stop request ends a running command's whole process tree and rejects with its reason", async () => {
   const m = marker();
+  const controller = new AbortController();
   const started = Date.now();
-  const out = g.shellRunner(`sleep ${m} & sleep ${m} & wait`, tmpdir(), 300);
-  assert.equal(out.code, 124);
-  assert.match(out.output, /timed out after 300ms/);
-  assert.ok(Date.now() - started < 8000);
+  const running = g.shellRunnerAsync(
+    `trap '' TERM; sleep ${m} & sleep ${m} & wait`,
+    tmpdir(),
+    60_000,
+    controller.signal,
+  );
+  // Long enough for the supervisor to have started the shell and its two sleeps.
+  for (const deadline = Date.now() + 5000; survivors(`sleep ${m}`) === "";) {
+    assert.ok(Date.now() < deadline, "the command never started");
+    await delay(20);
+  }
+  controller.abort();
+  await assert.rejects(running, { name: "AbortError" });
+  assert.ok(Date.now() - started < 8000, `the stop took ${Date.now() - started} ms`);
   assert.equal(survivors(`sleep ${m}`), "");
 });
 
-test("a timeout also ends a command that ignores TERM", () => {
+test("a runner given a signal already aborted starts nothing", async () => {
   const m = marker();
-  const out = g.shellRunner(`trap '' TERM; sleep ${m} & wait`, tmpdir(), 300);
-  assert.equal(out.code, 124);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(g.shellRunnerAsync(`sleep ${m}`, tmpdir(), 60_000, controller.signal), {
+    name: "AbortError",
+  });
   assert.equal(survivors(`sleep ${m}`), "");
 });
 
-test("the shell runner hands the command over unmangled and keeps its exit code", () => {
-  const out = g.shellRunner(`printf '%s|%s' "q'uote" '$HOME'; exit 7`, tmpdir(), 5000);
-  assert.equal(out.code, 7);
-  assert.equal(out.output, "q'uote|$HOME");
+test("a gate stopped mid-run is neither a result nor retried, and no later gate runs", async () => {
+  // The runner the stop interrupts answers like a killed command, as the supervisor does: the
+  // stop must win over that answer whether a re-run, a later gate or nothing would follow it.
+  const stopAt = (stopper) => {
+    const controller = new AbortController();
+    const ran = [];
+    const run = async (command, _cwd, _timeoutMs, signal) => {
+      ran.push(command);
+      assert.equal(signal, controller.signal, "the gate's signal reached the runner");
+      if (command !== stopper) return { code: 0, output: "", ms: 1 };
+      controller.abort();
+      return { code: 143, output: "Terminated", ms: 1 };
+    };
+    return { ran, run, signal: controller.signal };
+  };
+  for (const [gates, expected] of [
+    [
+      [
+        { name: "a", command: "a" },
+        { name: "b", command: "b" },
+        { name: "c", command: "c" },
+      ],
+      ["a", "b"],
+    ],
+    [
+      [
+        { name: "a", command: "a" },
+        { name: "b", command: "b", retry: false },
+      ],
+      ["a", "b"],
+    ],
+  ]) {
+    const { ran, run, signal } = stopAt("b");
+    await assert.rejects(g.runGates(gates, "/", run, 1000, signal), { name: "AbortError" });
+    assert.deepEqual(ran, expected);
+  }
+  // A stop that came before the stage reached its gates starts none, even with a runner that
+  // would not look at the signal itself.
+  const controller = new AbortController();
+  controller.abort();
+  const ran = [];
+  const sync = (command) => (ran.push(command), { code: 0, output: "", ms: 1 });
+  await assert.rejects(
+    g.runGates([{ name: "a", command: "a" }], "/", sync, 1000, controller.signal),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(ran, []);
 });
 
-test("the shell runner adds nothing to the output and reports a signal as 128 + n", () => {
-  const out = g.shellRunner("printf ok; kill -TERM $$", tmpdir(), 5000);
-  assert.equal(out.code, 143);
-  assert.equal(out.output, "ok");
+test("the gate stage stops at a stop request and reports nothing", async () => {
+  const w = runWorktree();
+  const controller = new AbortController();
+  const m = marker();
+  const stage = gateStage(w, {
+    gates: [
+      { name: "slow", command: `sleep ${m}` },
+      { name: "after", command: "true" },
+    ],
+    signal: controller.signal,
+  });
+  for (const deadline = Date.now() + 5000; survivors(`sleep ${m}`) === "";) {
+    assert.ok(Date.now() < deadline, "the gate never started");
+    await delay(20);
+  }
+  controller.abort();
+  await assert.rejects(stage, { name: "AbortError" });
+  assert.equal(survivors(`sleep ${m}`), "");
 });
 
 test("added lines carry their new-file line numbers", () => {
@@ -279,6 +410,51 @@ test("undeclared files exclude the contract, sealed tests and exempt paths", () 
     ["src/b.ts"],
   );
   assert.deepEqual(g.undeclaredFiles(["x", "x"], [], null), ["x"]);
+});
+
+test("the run's own service files are matched by its slug and spec directory only", () => {
+  const own = g.runArtifactMatcher("specs/335-frost-sidebar.md", "frost-sidebar");
+  for (const path of [
+    "specs/runs/frost-sidebar.progress.md",
+    "specs/runs/frost-sidebar.evidence.md",
+    "specs/runs/frost-sidebar.md",
+    ".marvin/task/runs/frost-sidebar.verify.md",
+    ".marvin/task/runs/frost-sidebar.oracles.md",
+    ".marvin/task/verification.md",
+    ".marvin/critique/228-frost-sidebar.md",
+  ]) {
+    assert.equal(own(path), true, path);
+  }
+  for (const path of [
+    "specs/runs/other.progress.md",
+    "specs/frost-sidebar.progress.md",
+    "docs/specs/runs/frost-sidebar.progress.md",
+    ".marvin/critique/frost-sidebar.md",
+    ".marvin/critique/228-frost-sidebar-v2.md",
+    ".marvin/metrics/335-frost-sidebar.md",
+    ".marvin/memory/frost-sidebar.md",
+  ]) {
+    assert.equal(own(path), false, path);
+  }
+  assert.equal(g.runArtifactMatcher("../x.md", "frost-sidebar")("../runs/frost-sidebar.md"), false);
+  assert.equal(
+    g.runArtifactMatcher("specs/1-x.md", "Not A Slug")("specs/runs/Not A Slug.md"),
+    false,
+  );
+});
+
+test("a committed journal of the run is still undeclared: only an uncommitted one is tolerated", async () => {
+  // Committed, a journal or receipt is evidence the PR carries, which the executor could forge.
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.write("specs/runs/frost-sidebar.progress.md", "journal\n");
+  w.commit();
+  const report = await gateStage(w, {
+    contractFiles: ["src/a.ts"],
+    runArtifacts: { specPath: "specs/335-frost-sidebar.md", slug: "frost-sidebar" },
+  });
+  assert.deepEqual(report.undeclared, ["specs/runs/frost-sidebar.progress.md"]);
+  assert.equal(report.passed, false);
 });
 
 test("changed protected paths are matched case-insensitively and listed once", () => {
@@ -495,11 +671,11 @@ test("finding ids are unique across a report with every kind of finding", () => 
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("the gate stage finds a committed debugger statement and an undeclared file", () => {
+test("the gate stage finds a committed debugger statement and an undeclared file", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "const x = 1;\ndebugger;\n");
   w.commit();
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.equal(report.passed, false);
   assert.deepEqual(report.undeclared, ["src/a.ts"]);
   assert.deepEqual(report.protected, []);
@@ -514,16 +690,16 @@ test("the gate stage finds a committed debugger statement and an undeclared file
   );
 });
 
-test("the gate stage passes a declared, clean, committed change", () => {
+test("the gate stage passes a declared, clean, committed change", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "const x = 1;\n");
   w.commit();
-  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.ts"] });
   assert.equal(report.passed, true);
   assert.deepEqual(g.reportFindings(report), []);
 });
 
-test("the records marvin's own tools write for the task are not undeclared", () => {
+test("the records marvin's own tools write for the task are not undeclared", async () => {
   // task-deliver commits the metrics record, task-implement flips the spec's status and journals
   // into its runs/ directory, and the planner leaves critic receipts. The interactive scope gate
   // never counts them either.
@@ -534,12 +710,12 @@ test("the records marvin's own tools write for the task are not undeclared", () 
   w.write(".marvin/task/runs/demo.progress.md", "journal\n");
   w.write(".marvin/critique/001-demo.md", "receipt\n");
   w.commit();
-  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.ts"] });
   assert.deepEqual(report.undeclared, []);
   assert.equal(report.passed, true);
 });
 
-test("the rest of .marvin/ stays undeclared: the lessons store and every protected path", () => {
+test("the rest of .marvin/ stays undeclared: the lessons store and every protected path", async () => {
   // Lessons reach later children's prompts, so only the retro writes them, through finalize.
   const w = runWorktree();
   w.write("src/a.ts", "const x = 1;\n");
@@ -547,7 +723,7 @@ test("the rest of .marvin/ stays undeclared: the lessons store and every protect
   w.write(".marvin/config.json", "{}\n");
   w.write(".marvin/task-notes.md", "not the task directory\n");
   w.commit();
-  const report = gateStage(w, { contractFiles: ["src/a.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.ts"] });
   assert.deepEqual(report.undeclared, [
     ".marvin/config.json",
     ".marvin/memory/planted.md",
@@ -556,7 +732,7 @@ test("the rest of .marvin/ stays undeclared: the lessons store and every protect
   assert.equal(report.passed, false);
 });
 
-test("the gate stage finds committed protected paths with awkward names", () => {
+test("the gate stage finds committed protected paths with awkward names", async () => {
   const w = runWorktree();
   w.write(".husky/pré-commit", "echo ok\n");
   w.write('.husky/odd"name', "echo ok\n");
@@ -564,7 +740,7 @@ test("the gate stage finds committed protected paths with awkward names", () => 
   w.write("src/a.ts", "1\n");
   w.write("src/café.ts", "debugger;\n");
   w.commit();
-  const report = gateStage(w, { contractFiles: ["src/a.ts", "src/café.ts"] });
+  const report = await gateStage(w, { contractFiles: ["src/a.ts", "src/café.ts"] });
   assert.equal(report.passed, false);
   assert.deepEqual(
     report.checks.map((c) => [c.id, c.file]),
@@ -583,11 +759,11 @@ test("the gate stage finds committed protected paths with awkward names", () => 
   );
 });
 
-test("a path with a quote in its name is attributed to the right file by the check scan", () => {
+test("a path with a quote in its name is attributed to the right file by the check scan", async () => {
   const w = runWorktree();
   w.write('src/a"b.test.ts', "it.only('x');\nconst y = 1;\n");
   w.commit();
-  const report = gateStage(w, { contractFiles: ['src/a"b.test.ts'] });
+  const report = await gateStage(w, { contractFiles: ['src/a"b.test.ts'] });
   assert.deepEqual(
     report.checks.map((c) => [c.id, c.file, c.line, c.severity]),
     [["only", 'src/a"b.test.ts', 1, "blocker"]],
@@ -595,7 +771,7 @@ test("a path with a quote in its name is attributed to the right file by the che
   assert.deepEqual(report.blockers, []);
 });
 
-test("the gate stage runs oracles as gates, never re-runs one, and fails a changed sealed test", () => {
+test("the gate stage runs oracles as gates, never re-runs one, and fails a changed sealed test", async () => {
   const w = runWorktree();
   w.write("src/a.test.ts", "x\n");
   w.commit();
@@ -607,7 +783,7 @@ test("the gate stage runs oracles as gates, never re-runs one, and fails a chang
     },
   ];
   const flaky = "test -f .once || { touch .once; exit 1; }";
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     gates: [
       { name: "true", command: "true" },
       { name: "flaky", command: flaky },
@@ -634,9 +810,9 @@ test("the gate stage runs oracles as gates, never re-runs one, and fails a chang
   assert.equal(report.passed, false);
 });
 
-test("prepare steps run first, so an oracle can rely on what they build", () => {
+test("prepare steps run first, so an oracle can rely on what they build", async () => {
   const w = runWorktree();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     prepare: [{ name: "build", command: "echo built > .built" }],
     oracles: [{ criterion: "AC1", command: "test -f .built", reason: null }],
   });
@@ -650,15 +826,15 @@ test("prepare steps run first, so an oracle can rely on what they build", () => 
   );
   assert.equal(report.passed, true, JSON.stringify(report));
   assert.deepEqual(
-    gateStage(w).gates.map((x) => x.name),
+    (await gateStage(w)).gates.map((x) => x.name),
     ["true"],
     "no prepare option, no prepare entries",
   );
 });
 
-test("a failing prepare step is never retried, blocks, and leaves the oracles not run", () => {
+test("a failing prepare step is never retried, blocks, and leaves the oracles not run", async () => {
   const w = runWorktree();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     prepare: [
       { name: "build", command: "echo x >> .count; echo 'error: boom' >&2; exit 1" },
       { name: "codegen", command: "touch .codegen-ran" },
@@ -695,7 +871,7 @@ test("a failing prepare step is never retried, blocks, and leaves the oracles no
   );
 });
 
-test("a prepare step that overwrites a sealed test is caught by the bracket around the oracle", () => {
+test("a prepare step that overwrites a sealed test is caught by the bracket around the oracle", async () => {
   const w = runWorktree();
   w.write("src/a.test.mjs", "throw new Error('the real acceptance test');\n");
   w.commit("sealed acceptance test");
@@ -706,7 +882,7 @@ test("a prepare step that overwrites a sealed test is caught by the bracket arou
       criteria: ["AC1"],
     },
   ];
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     sealed,
     prepare: [{ name: "build", command: "echo 'process.exit(0)' > src/a.test.mjs" }],
     oracles: [{ criterion: "AC1", command: "node src/a.test.mjs", reason: null }],
@@ -736,9 +912,9 @@ test("a gate that was not run fails the report and is a finding", () => {
   );
 });
 
-test("a criterion with no runnable oracle is a gate blocker that names the reason", () => {
+test("a criterion with no runnable oracle is a gate blocker that names the reason", async () => {
   const w = runWorktree();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     oracles: [
       { criterion: "AC1", command: "true", reason: null },
       { criterion: "AC2", command: null, reason: "no-single-test-command" },
@@ -755,32 +931,32 @@ test("a criterion with no runnable oracle is a gate blocker that names the reaso
   assert.equal(g.reportFindings(report)[0].category, "gate");
 });
 
-test("a gate stage with a clean tree and a gate that leaves an untracked artefact still passes", () => {
+test("a gate stage with a clean tree and a gate that leaves an untracked artefact still passes", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "const x = 1;\n");
   w.commit();
-  const report = gateStage(w, {
+  const report = await gateStage(w, {
     contractFiles: ["src/a.ts"],
     gates: [{ name: "build", command: "mkdir -p coverage && echo x > coverage/lcov.info" }],
   });
   assert.equal(report.passed, true, JSON.stringify(report));
 });
 
-test("the gate stage refuses inputs that would make it protect or compare against nothing", () => {
+test("the gate stage refuses inputs that would make it protect or compare against nothing", async () => {
   const w = runWorktree();
-  const bad = (over, message) => assert.throws(() => gateStage(w, over), message);
-  bad({ protectedPatterns: [] }, /non-empty array/);
-  bad({ protectedPatterns: [7] }, /only strings/);
-  bad({ protectedPatterns: ["["] }, /regular expression|Invalid/i);
-  bad({ baseSha: "dev" }, /40-hex/);
-  bad({ baseSha: "0".repeat(40) }, /./);
-  bad({ gitDir: "relative/.git" }, /absolute/);
-  bad({ worktree: "relative" }, /absolute/);
-  bad({ protectedBaseline: null }, /protectedBaseline/);
-  bad({ protectedBaseline: { ".husky/x": 7 } }, /protectedBaseline/);
+  const bad = (over, message) => assert.rejects(() => gateStage(w, over), message);
+  await bad({ protectedPatterns: [] }, /non-empty array/);
+  await bad({ protectedPatterns: [7] }, /only strings/);
+  await bad({ protectedPatterns: ["["] }, /regular expression|Invalid/i);
+  await bad({ baseSha: "dev" }, /40-hex/);
+  await bad({ baseSha: "0".repeat(40) }, /./);
+  await bad({ gitDir: "relative/.git" }, /absolute/);
+  await bad({ worktree: "relative" }, /absolute/);
+  await bad({ protectedBaseline: null }, /protectedBaseline/);
+  await bad({ protectedBaseline: { ".husky/x": 7 } }, /protectedBaseline/);
 });
 
-test("sealed and contract paths must be canonical repo-relative POSIX paths", () => {
+test("sealed and contract paths must be canonical repo-relative POSIX paths", async () => {
   const w = runWorktree();
   const sealed = (path) => [{ path, sha256: "0".repeat(64), criteria: [] }];
   for (const path of [
@@ -796,31 +972,31 @@ test("sealed and contract paths must be canonical repo-relative POSIX paths", ()
     "src/a\u0000b",
     "src/a\nb",
   ]) {
-    assert.throws(
+    await assert.rejects(
       () => gateStage(w, { sealed: sealed(path) }),
       /not canonical/,
       JSON.stringify(path),
     );
-    assert.throws(
+    await assert.rejects(
       () => gateStage(w, { contractFiles: [path] }),
       /not canonical/,
       JSON.stringify(path),
     );
   }
-  assert.throws(() => gateStage(w, { contractFiles: [7] }), /not canonical/);
-  const ok = gateStage(w, {
+  await assert.rejects(() => gateStage(w, { contractFiles: [7] }), /not canonical/);
+  const ok = await gateStage(w, {
     sealed: sealed("src/a.test.mjs"),
     contractFiles: ["src/a.ts", ".husky/x"],
   });
   assert.deepEqual(ok.sealed, [{ path: "src/a.test.mjs", ok: false }]);
 });
 
-test("the stage reads the committed HEAD against the recorded base, not origin/<base>", () => {
+test("the stage reads the committed HEAD against the recorded base, not origin/<base>", async () => {
   const w = runWorktree();
   w.write("src/a.ts", "debugger;\n");
   w.commit();
   sh(w.path, "update-ref", "refs/remotes/origin/dev", "HEAD");
-  const report = gateStage(w);
+  const report = await gateStage(w);
   assert.deepEqual(
     report.checks.map((c) => c.id),
     ["debugger"],
@@ -828,12 +1004,12 @@ test("the stage reads the committed HEAD against the recorded base, not origin/<
   assert.deepEqual(report.undeclared, ["src/a.ts"]);
 });
 
-test("a file marked -diff in a committed .gitattributes (a lockfile) is scanned, with no false parse blocker", () => {
+test("a file marked -diff in a committed .gitattributes (a lockfile) is scanned, with no false parse blocker", async () => {
   const w = runWorktree();
   w.write(".gitattributes", "package-lock.json -diff\n");
   w.write("package-lock.json", '{ "a": 1 }\ndebugger;\n');
   w.commit();
-  const report = gateStage(w, { contractFiles: [".gitattributes", "package-lock.json"] });
+  const report = await gateStage(w, { contractFiles: [".gitattributes", "package-lock.json"] });
   assert.deepEqual(report.blockers, []);
   assert.deepEqual(
     report.checks.map((c) => [c.id, c.file, c.line]),
@@ -940,13 +1116,13 @@ function replaceHeadWithoutHook(w) {
   return { real, replacement };
 }
 
-test("a replace ref over the child's HEAD commit does not hide a protected path from the gate", () => {
+test("a replace ref over the child's HEAD commit does not hide a protected path from the gate", async () => {
   const w = runWorktree();
   w.write(".husky/pre-commit", "echo hi\n");
   w.write("src/a.ts", "export const a = 1;\n");
   w.commit("work");
   const options = { contractFiles: ["src/a.ts", ".husky/pre-commit"] };
-  assert.deepEqual(gateStage(w, options).protected, [".husky/pre-commit"]);
+  assert.deepEqual((await gateStage(w, options)).protected, [".husky/pre-commit"]);
 
   const { real, replacement } = replaceHeadWithoutHook(w);
   assert.notEqual(real, replacement);
@@ -957,7 +1133,7 @@ test("a replace ref over the child's HEAD commit does not hide a protected path 
   );
 
   assert.equal(w.git("status", "--porcelain"), "", "an ordinary git sees a clean worktree");
-  const report = gateStage(w, options);
+  const report = await gateStage(w, options);
   assert.deepEqual(report.protected, [".husky/pre-commit"]);
   assert.equal(report.passed, false);
 });

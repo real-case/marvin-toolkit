@@ -49,12 +49,14 @@ import {
   type ProtectedSnapshot,
   protectedChanges,
   reportFindings,
+  type GateRunner,
   runGateStage,
   type Runner,
   type SealedFile,
   SEVERITIES,
   sha256Bytes,
   shellRunner,
+  shellRunnerAsync,
   snapshotProtected,
 } from "./gate.js";
 import { launchDetached } from "./launch.js";
@@ -64,12 +66,15 @@ import {
   efficacy,
   type EfficacyItem,
   finalizeRun,
+  inferFormatCommand,
   type LessonDoc,
   lessonsMarkdown,
+  mergeBaseForFinalize,
   rankLessons,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
 import { physicalProblem } from "./plain-path.js";
+import { pendingToolCall, readLogTail, statusLine } from "./child-activity.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
 import { composePrompts, RUNTIME_VARS, type RuntimeVar } from "./prompt.js";
 import {
@@ -78,16 +83,24 @@ import {
   type PipelineEvent,
   type Role,
   type Run,
-  stateRoot,
+  checkedStateRoot,
 } from "./run-store.js";
-import { type AuthoredTest, isReseal, sealAuthoredTests, writeSealManifest } from "./seal.js";
+import {
+  type AuthoredTest,
+  isReseal,
+  sealAuthoredTests,
+  wholeFileTemplate,
+  writeSealManifest,
+} from "./seal.js";
 import { buildRoleSettings } from "./settings.js";
 import { classify, readChildState, summaryLine, type WaitResult } from "./wait.js";
 import {
   branchName,
   createRunWorktree,
+  diffGitCommon,
   diffSnapshots,
   renameRunBranch,
+  snapshotGitCommon,
   snapshotTree,
 } from "./worktree.js";
 
@@ -222,7 +235,15 @@ export interface RuntimeOptions {
   pollMs?: number;
   /** How long one `waitChild` waits before it reports the child still running. Default 110 min. */
   childDeadlineMs?: number;
-  /** Runs the bootstrap, the gates, the oracles and the red runs. Default `shellRunner`. */
+  /**
+   * How long a running child may go without a report before the engine writes a status note for
+   * it. Default `MARVIN_PIPELINE_HEARTBEAT_S` seconds, else 300, the heartbeat hook's interval.
+   */
+  statusAfterMs?: number;
+  /**
+   * Runs the bootstrap, the gates, the oracles and the red runs. Default `shellRunner`, except in
+   * the gate stage, which uses `shellRunnerAsync` so that a stop request can end a gate.
+   */
   runner?: Runner;
 }
 
@@ -506,8 +527,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const schemasDir = join(pipelineDir, "schemas");
   const hooksDir = join(pipelineDir, "hooks");
   const runner = o.runner ?? shellRunner;
+  const gateRunner: GateRunner = o.runner ?? shellRunnerAsync;
   const pollMs = o.pollMs ?? 1000;
   const childDeadlineMs = o.childDeadlineMs ?? CHILD_DEADLINE_MS;
+  const statusAfterMs =
+    o.statusAfterMs ?? (Number(process.env.MARVIN_PIPELINE_HEARTBEAT_S) || 300) * 1000;
   const at = (name: string) => join(runDir, name);
   const now = () => new Date().toISOString();
   /** The plugin a child loads with `--plugin-dir`, and whose skills its prompt points into. */
@@ -634,7 +658,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (!existsSync(saved.path)) throw new Error(`the run's worktree ${saved.path} is gone`);
       return saved;
     }
-    const worktreesRoot = join(stateRoot(), "worktrees");
+    const worktreesRoot = join(checkedStateRoot(), "worktrees");
     const path = join(worktreesRoot, basename(run.repoRoot), run.id);
     const made = existsSync(path)
       ? adoptWorktree(run, path, `autopilot/${run.id}`)
@@ -663,10 +687,20 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const marker = at("bootstrap.json");
     if (readJson(marker, z.object({ command: z.string() }))?.command === command) return;
     const timeout = config.pipeline.gate_timeout_minutes * 60_000;
+    // Kept from the first attempt: a bootstrap rerun after one that planted something would
+    // otherwise compare against a snapshot that already holds it.
+    const beforeFile = at("bootstrap.common-before.json");
+    if (!existsSync(beforeFile)) writeAtomic(beforeFile, snapshotGitCommon(worktree));
     const result = runner(`export HUSKY=0; ${command}`, worktree, timeout);
     if (result.code !== 0) {
       const tail = result.output.trimEnd().split("\n").slice(-20).join("\n");
       throw new Error(`bootstrap \`${command}\` failed (exit ${result.code}):\n${tail}`);
+    }
+    const planted = diffGitCommon(readFileSync(beforeFile, "utf8"), snapshotGitCommon(worktree));
+    if (planted.length > 0) {
+      throw new Error(
+        `bootstrap \`${command}\` changed the repository's shared git dir:\n${planted.join("\n")}`,
+      );
     }
     writeAtomic(marker, `${JSON.stringify({ command })}\n`);
   };
@@ -869,16 +903,18 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   };
 
   /**
-   * What a verifier may run beyond reading: the part of `gates.test_one` before `{file}`, so it
-   * can probe a single test. A prefix the allowlist cannot hold is left out and noted, never
-   * widened into something it did not say.
+   * What a verifier may run beyond reading: the part of `gates.test_one` before `{file}`, read for
+   * a whole-file run as the seal stage reads it (`wholeFileTemplate`), so it can probe a single
+   * test file and a `"{file}"` leaves no opening quote on the prefix. A template the seal stage
+   * refuses, or a prefix the allowlist cannot hold, is left out and noted, never widened into
+   * something it did not say.
    */
   const probePrefixes = (config: Config): string[] => {
     const template = config.gates?.test_one;
-    const cut = template?.indexOf("{file}") ?? -1;
-    if (!template || cut < 0) return [];
-    const prefix = template.slice(0, cut).trim();
+    if (!template?.includes("{file}")) return [];
     try {
+      const whole = wholeFileTemplate(template);
+      const prefix = whole.slice(0, whole.indexOf("{file}")).trim();
       validatePrefix(prefix);
       return [prefix];
     } catch (error) {
@@ -999,6 +1035,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     // relaunch keeps the snapshot an earlier call took, which predates any launch.
     const mainBefore = at(`${key}.main-before.txt`);
     if (!existsSync(mainBefore)) writeAtomic(mainBefore, snapshotTree(run.repoRoot));
+    // The shared git dir (hooks, config, info/) is outside both checkouts, so `git status` of
+    // either never shows a hook the child planted there.
+    const commonBefore = at(`${key}.common-before.json`);
+    if (!existsSync(commonBefore)) writeAtomic(commonBefore, snapshotGitCommon(run.repoRoot));
 
     const marker: SpawnMarker = { ref: step.ref, key, name, startedAt: now(), pid: null };
     writeAtomic(markerPath(step.ref), `${JSON.stringify(marker)}\n`);
@@ -1106,6 +1146,51 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  /**
+   * The engine's half of the heartbeat. The hook reminds a child only between tool calls, so a
+   * child inside one long call goes silent; while a child runs, the engine writes a status note
+   * (`data.status`) whenever neither the child's last report nor the engine's last note for it is
+   * younger than `statusAfterMs`, naming the call the child is in (`child-activity.ts`). The
+   * baseline is read back from the events, so a restarted engine does not repeat a note at once.
+   * Looks at the events at most every 30 s: the poll runs every second.
+   */
+  const childStatus = (child: Child, key: string) => {
+    const startedMs = Date.parse(child.startedAt);
+    let lastHeard = startedMs;
+    let checked = 0;
+    const lastHeardFromEvents = () => {
+      for (const e of readEventsTolerant(runDir)) {
+        const fromChild = e.kind === "report" && e.actor === child.name;
+        const ourNote = e.kind === "note" && e.data?.status === true && e.data?.key === key;
+        if (fromChild || ourNote) lastHeard = Math.max(lastHeard, Date.parse(e.ts));
+      }
+    };
+    return {
+      look: () => {
+        const nowMs = Date.now();
+        if (nowMs - checked < Math.min(30_000, statusAfterMs)) return;
+        checked = nowMs;
+        try {
+          lastHeardFromEvents();
+          if (nowMs - lastHeard < statusAfterMs) return;
+          const tail = readLogTail(at(`${key}.log.jsonl`));
+          const call = tail === null ? null : pendingToolCall(tail.text);
+          const text = statusLine(
+            child.name,
+            nowMs - startedMs,
+            nowMs - lastHeard,
+            call,
+            tail === null ? null : nowMs - tail.mtimeMs,
+          );
+          note(text, { notify: true, status: true, key, ...(call ? { tool: call.tool } : {}) });
+          lastHeard = nowMs;
+        } catch {
+          // A status note is a courtesy: nothing about it may stop the wait.
+        }
+      },
+    };
+  };
+
   const waitChild = async (run: Run, signal?: AbortSignal) => {
     let index = -1;
     run.children.forEach((c, i) => {
@@ -1117,10 +1202,12 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const config = configFor(run);
     const stallMs = config.pipeline.stall_minutes * 60_000;
     const started = Date.now();
+    const status = childStatus(child, key);
     let result: WaitResult;
     for (;;) {
       result = classify({ ...readChildState(runDir, key, Date.now()), stallMs });
       if (result.outcome !== "running" || Date.now() - started >= childDeadlineMs) break;
+      status.look();
       await delay(pollMs, undefined, { signal: signal ?? deps.signal });
     }
     if (result.outcome === "running") {
@@ -1149,6 +1236,16 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (leaked.length > 0) obs.leaked = leaked;
     } else {
       note(`no main-checkout snapshot for ${key}; its leak check was skipped`, { notify: true });
+    }
+    const commonBefore = at(`${key}.common-before.json`);
+    if (existsSync(commonBefore)) {
+      const planted = diffGitCommon(
+        readFileSync(commonBefore, "utf8"),
+        snapshotGitCommon(run.repoRoot),
+      );
+      if (planted.length > 0) obs.leaked = [...(obs.leaked ?? []), ...planted];
+    } else {
+      note(`no git common dir snapshot for ${key}; its check was skipped`, { notify: true });
     }
     // The verifier is read-only: the tree after it must be the tree the snapshot work recorded.
     if (child.role === "verifier") {
@@ -1413,7 +1510,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     return { text, findings };
   };
 
-  const gateWork = (run: Run): { run: Run; obs: Observation } => {
+  const gateWork = async (run: Run): Promise<{ run: Run; obs: Observation }> => {
     const config = configFor(run);
     const wt = worktreeRecord(run);
     const head = isolatedGit(wt.path, wt.gitDir)
@@ -1500,7 +1597,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
             },
           ],
     );
-    const report = runGateStage({
+    // A stop request ends the gate running at the time and rejects here, before anything below
+    // records a verdict; the engine that resumes the run repeats this step from the start.
+    const report = await runGateStage({
       worktree: wt.path,
       baseSha: from,
       gitDir: wt.gitDir,
@@ -1515,8 +1614,13 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline as ProtectedSnapshot, wt.baseSha, from),
       metricsRecord: carriedRecord(run, wt.path, spec.text),
-      run: runner,
+      runArtifacts:
+        run.specPath !== null && isCanonicalPath(run.specPath)
+          ? { specPath: run.specPath, slug: specIdentity(run).slug }
+          : null,
+      run: gateRunner,
       timeoutMs,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     });
     // Finalize builds on exactly the commit the last passing gate judged.
     const passed = report.passed && findings.length === 0;
@@ -1924,7 +2028,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
    * The run's last write, which `finalizeRun` makes. A run that ships builds on the commit the
    * last passing gate approved, recorded by the gate work; a run without a PR, and a halted one
    * with or without a PR (D16, D-HALTPR), keeps its retro in the run dir and touches no git, so
-   * it needs none. A replay is safe: `finalizeRun` recognises its own commit and pushes it again.
+   * it needs none. A replay is safe: `finalizeRun` records its commit before the branch moves, recognises it, and pushes it again.
    */
   const finalizeWork = (run: Run, data: Record<string, unknown> | undefined) => {
     const config = configFor(run);
@@ -1939,16 +2043,37 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       ships && gated && run.specPath !== null && isCanonicalPath(run.specPath)
         ? carriedRecord(run, wt.path, committedText(wt, gated.head, run.specPath))
         : null;
+    // The base goes in first when it merges cleanly, so the files finalize appends to are the
+    // base's own copies and the finalize commit cannot conflict with them.
+    const merge =
+      ships && gated && run.branch !== null
+        ? mergeBaseForFinalize({
+            runDir,
+            worktree: wt.path,
+            gitDir: wt.gitDir,
+            branch: run.branch,
+            base: run.base,
+            slug: specIdentity(run).slug,
+            gatedHead: gated.head,
+          })
+        : null;
+    if (merge?.state === "merged") {
+      note(`merged ${run.base} (${merge.base.slice(0, 8)}) into the run branch before finalize`, {
+        notify: true,
+      });
+    } else if (merge?.state === "skipped") {
+      note(`did not merge ${run.base} before finalize: ${merge.reason}`, { notify: true });
+    }
     const result = finalizeRun({
       run,
       runDir,
       worktree: wt.path,
       gitDir: wt.gitDir,
-      expectedHead: ships && gated ? gated.head : "",
+      expectedHead: ships && gated ? (merge?.head ?? gated.head) : "",
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), z.array(z.string())) ?? [],
-      formatCommand: config.pipeline.format_command,
+      formatCommand: config.pipeline.format_command ?? inferFormatCommand(run.repoRoot),
       metricsRecord,
       runCommand: runner,
     });
@@ -2032,9 +2157,17 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       case "commit_spec":
         return commitSpecWork(run);
       case "gate":
-        return gateWork(run);
-      case "seal":
-        return sealWork(run, data, step);
+      case "seal": {
+        // The gate and the red run execute the run's code and tests in the engine's own process
+        // tree, so they are checked the way a child is.
+        const commonBefore = snapshotGitCommon(run.repoRoot);
+        const done = kind === "gate" ? await gateWork(run) : sealWork(run, data, step);
+        const planted = diffGitCommon(commonBefore, snapshotGitCommon(run.repoRoot));
+        if (planted.length > 0 && (done.obs.kind === "gate" || done.obs.kind === "seal")) {
+          return { ...done, obs: { ...done.obs, leaked: planted } };
+        }
+        return done;
+      }
       case "ci":
         return ciWork(run);
       case "finalize":

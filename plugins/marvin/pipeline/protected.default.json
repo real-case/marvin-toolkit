@@ -3,6 +3,7 @@
   "^\\.marvin/pipeline/",
   "^\\.claude/settings[^/]*\\.json$",
   "^\\.claude/hooks/",
+  "^\\.claude/",
   "^\\.husky/",
   "^\\.mcp\\.json$",
   "^\\.git(/|$)"

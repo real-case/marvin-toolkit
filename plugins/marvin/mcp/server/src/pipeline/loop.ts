@@ -612,8 +612,13 @@ async function perform(
   const info: StepInfo = { ref: step.ref, replay };
   const { action } = step;
   switch (action.kind) {
-    case "spawn":
+    case "spawn": {
+      // A stop request ends the wait and leaves the step unperformed, so the engine that
+      // resumes the run waits out only what is left of it.
+      const wait = action.notBefore ? Date.parse(action.notBefore) - Date.now() : 0;
+      if (wait > 0) await delay(wait, undefined, { signal: deps.signal });
       return advance(deps.spawnChild(j.run, action, info));
+    }
     case "judgment": {
       const id = requestJudgment(runDir, action.judgment, action.payload, step.judgmentId);
       const ts = new Date().toISOString();

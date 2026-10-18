@@ -404,6 +404,13 @@ test("task-implement: the scope gate's allow covers exactly what the gate stage 
   assert.match(rule, /`allow` set to exactly those paths/, "allow is not bounded to those paths");
   assert.match(rule, /No other path goes into `allow`/, "allow may still absorb scope creep");
   assert.match(rule, /`needs_input`/, "a path still outside has no exit");
+  // The gate stage also tolerates the run's own journals while uncommitted (runArtifactMatcher),
+  // which a host spec directory puts outside `.marvin/`, where the executor's own gate counts them.
+  assert.match(
+    rule,
+    /`runs\/<slug>\.\*` journals beside the spec/,
+    "the run's journals are not named",
+  );
 
   // The gate stage declares the sealed tests beside the contract files and exempts by the
   // pipeline's own regex; the executor's TASK CONTEXT carries the sealed list.

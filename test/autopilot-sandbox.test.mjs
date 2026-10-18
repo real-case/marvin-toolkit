@@ -91,8 +91,11 @@ function sandboxEnv(home, stubBin) {
   };
 }
 
-/** The fixture project committed on `dev` of a bare origin, cloned as the main checkout. */
-function sandboxRepo(home, env) {
+/**
+ * The fixture project committed on `dev` of a bare origin, cloned as the main checkout.
+ * `project(repo, home)`, when given, edits the copied project before that commit.
+ */
+function sandboxRepo(home, env, project) {
   const git = (cwd, ...args) =>
     execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   writeFileSync(env.GIT_CONFIG_GLOBAL, "[user]\n\temail = sandbox@example.com\n\tname = Sandbox\n");
@@ -104,6 +107,7 @@ function sandboxRepo(home, env) {
   const repo = join(home, "autopilot-sandbox");
   git(home, "clone", "-q", origin, repo);
   cpSync(join(fixture, "project"), repo, { recursive: true });
+  project?.(repo, home);
   git(repo, "add", "-A");
   git(repo, "commit", "-q", "-m", "chore: sandbox project");
   git(repo, "push", "-q", "origin", "HEAD:dev");
@@ -138,8 +142,11 @@ function pipeFails(env, ...args) {
   return r.stderr;
 }
 
-/** The sandbox project on a bare origin and a run `init` made for it, with no engine yet. */
-function initSandboxRun() {
+/**
+ * The sandbox project on a bare origin and a run `init` made for it, with no engine yet.
+ * `project` edits the project before it is committed (`sandboxRepo`).
+ */
+function initSandboxRun({ project } = {}) {
   assert.ok(existsSync(cli), `no bundle at ${cli}: run npm run build`);
   const home = mkdtempSync(join(tmpdir(), "autopilot-sandbox-"));
   const stubBin = join(home, "bin");
@@ -150,7 +157,7 @@ function initSandboxRun() {
     });
   }
   const env = sandboxEnv(home, stubBin);
-  const { repo, origin, git } = sandboxRepo(home, env);
+  const { repo, origin, git } = sandboxRepo(home, env, project);
   const task = join(home, "task.txt");
   writeFileSync(task, "Add clamp(x, lo, hi) to src/math.mjs.\n");
   const { runId, runDir } = JSON.parse(
@@ -434,11 +441,13 @@ const restingOnPlanner = (runDir) =>
 
 /**
  * Waits for engine `pid`'s last words in engine.log, the stage it finished at or why it stopped,
- * or for the engine to be gone without them, and returns the log.
+ * or for the engine to be gone without them, and returns the log. Every engine of a run appends
+ * to the same file, so `since`, a length of it taken before `pid` started, leaves out what an
+ * earlier engine said.
  */
-async function engineFinished(runDir, pid) {
+async function engineFinished(runDir, pid, since = 0) {
   const log = join(runDir, "engine.log");
-  const said = () => (existsSync(log) ? readFileSync(log, "utf8") : "");
+  const said = () => (existsSync(log) ? readFileSync(log, "utf8").slice(since) : "");
   await until(
     () => /"stage": "(ready|done)"|marvin-pipe engine: /.test(said()) || !alive(pid),
     "the engine to finish the run",
@@ -626,4 +635,116 @@ test("S8: an engine killed mid-run is reported down, and the resume path finishe
   lines = awaitLines();
   assert.ok(lines.includes("STAGE ready"), lines.join("\n"));
   assert.ok(!lines.includes("ENGINE down"), lines.join("\n"));
+});
+
+/**
+ * Holds the project's `test` gate until `release()`: the gate command becomes a script that
+ * waits for a file before the fixture's own `node --test` runs, so the engine sits in the gate
+ * stage for as long as a test needs. `launches()` counts the gate's runs and `pid()` is the
+ * script's last process. Call `edit(repo, home)` as `initSandboxRun`'s `project`.
+ */
+function holdGate() {
+  let files = null;
+  const lines = (path) =>
+    files !== null && existsSync(path)
+      ? readFileSync(path, "utf8").split("\n").filter(Boolean)
+      : [];
+  return {
+    edit(repo, home) {
+      files = {
+        release: join(home, "gate.release"),
+        launches: join(home, "gate.launches"),
+        script: join(home, "held-gate.mjs"),
+      };
+      writeFileSync(
+        files.script,
+        [
+          'import { appendFileSync, existsSync } from "node:fs";',
+          'import { setTimeout as delay } from "node:timers/promises";',
+          `appendFileSync(${JSON.stringify(files.launches)}, \`\${process.pid}\\n\`);`,
+          `while (!existsSync(${JSON.stringify(files.release)})) await delay(50);`,
+          "",
+        ].join("\n"),
+      );
+      const path = join(repo, ".marvin", "config.json");
+      const config = JSON.parse(readFileSync(path, "utf8"));
+      config.gates.test = `node '${files.script}' && ${config.gates.test}`;
+      writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+    },
+    release: () => files !== null && writeFileSync(files.release, ""),
+    launches: () => lines(files?.launches).length,
+    pid: () => Number(lines(files?.launches).at(-1)),
+  };
+}
+
+test("S8: an engine stopped during the gate stage ends the gate, says so and frees the run, and a resume runs the gate again", async (t) => {
+  const gate = holdGate();
+  const s = initSandboxRun({ project: gate.edit });
+  const engines = [];
+  let finished = false;
+  t.after(() => {
+    gate.release();
+    for (const pid of finished ? [] : engines) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+  });
+  const start = () => {
+    const { pid } = JSON.parse(pipe(s.env, "start", "--run", s.runDir));
+    engines.push(pid);
+    return pid;
+  };
+
+  const first = start();
+  await until(() => gate.launches() === 1, "the engine to reach the held gate", 120_000);
+  assert.equal(readRun(s.runDir).stage, "gating", trailOf(s.runDir));
+  const held = gate.pid();
+  assert.ok(alive(held));
+
+  // A stop request to the engine alone, as `kill <pid>` sends it: the gate's own processes get
+  // no signal from outside, so only the engine can end them. Before the gate stage ran its
+  // commands asynchronously, the engine could not even run its handler until the gate returned.
+  process.kill(first, "SIGTERM");
+  await until(() => !alive(first), "the engine to stop", 20_000);
+  await until(() => !alive(held), "the held gate to be ended with the engine", 5_000);
+
+  // It said why it went down, released the run, and recorded no gate result: the run is still
+  // gating iteration 1, with no rejection and nothing for finalize to build on.
+  const trail = trailOf(s.runDir);
+  assert.ok(
+    events(s.runDir).some((e) => e.kind === "note" && e.text === "engine stopped on request"),
+    trail,
+  );
+  const stopped = readRun(s.runDir);
+  assert.equal(stopped.stage, "gating", trail);
+  assert.equal(stopped.iteration, 1);
+  assert.deepEqual(stopped.rejections, []);
+  assert.ok(!existsSync(join(s.runDir, "gated-head.json")), "the stopped gate left a verdict");
+  assert.equal(JSON.parse(pipe(s.env, "status", "--run", s.runDir)).engineAlive, false);
+
+  // The stopped engine's last words: the stop reached it as an abort, not as a fault.
+  const engineLog = readFileSync(join(s.runDir, "engine.log"), "utf8");
+  assert.match(engineLog, /marvin-pipe engine: This operation was aborted/);
+
+  // The next engine takes the run at once, runs the interrupted gate again from the start, and
+  // finishes the scripted run.
+  gate.release();
+  const log = await engineFinished(s.runDir, start(), engineLog.length);
+  finished = true;
+  const run = readRun(s.runDir);
+  assert.equal(run.stage, "ready", trailOf(s.runDir));
+  assert.match(log, /"stage": "ready"/);
+  assert.deepEqual(
+    run.children.map((c) => c.role),
+    SCRIPTED_CHILDREN,
+  );
+  assert.deepEqual(
+    run.rejections.map((r) => [r.iteration, r.source]),
+    [[1, "verifier"]],
+  );
+  // The interrupted gate, its re-run, and the gate of iteration 2.
+  assert.equal(gate.launches(), 3);
 });

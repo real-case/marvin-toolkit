@@ -1,7 +1,7 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, posix, resolve } from "node:path";
 import { createContext, Script } from "node:vm";
 import { SLUG_RE } from "../storage/metrics.js";
 import { classifyRecord } from "./metrics-carry.js";
@@ -89,18 +89,32 @@ export interface Finding {
   evidence: string;
   expected: string;
 }
-export type Runner = (
+export interface RunResult {
+  code: number;
+  output: string;
+  ms: number;
+}
+export type Runner = (command: string, cwd: string, timeoutMs: number) => RunResult;
+/**
+ * What the gate stage runs its commands with. It may answer at once (a `Runner`) or later, and
+ * one that takes the signal must end the command when it aborts and reject with its reason: a
+ * command a stop request interrupted has no result to judge.
+ */
+export type GateRunner = (
   command: string,
   cwd: string,
   timeoutMs: number,
-) => { code: number; output: string; ms: number };
+  signal?: AbortSignal,
+) => RunResult | Promise<RunResult>;
 
 const MAX_BUFFER = 64 * 1024 * 1024;
+/** How long the supervisor gets to end its command's group after a TERM before it is killed. */
+const SUPERVISOR_GRACE_MS = 5000;
 
 /**
  * The command runs under a small Node supervisor, spawned non-detached so that it stays in the
- * caller's process group (a TERM to the engine's group reaches it, as does `spawnSync`'s
- * timeout signal). The supervisor starts `/bin/sh -c <command>` detached, which puts the shell
+ * caller's process group (a TERM to the engine's group reaches it, as does the runner's own
+ * TERM on a timeout or a stop request). The supervisor starts `/bin/sh -c <command>` detached, which puts the shell
  * in its own session and process group, and on TERM or INT it signals that whole group: TERM,
  * then KILL a second later for a command that ignores TERM. Killing only the shell on a timeout
  * would leave the suite running next to its own retry, and writing to the worktree.
@@ -158,28 +172,131 @@ export const shellRunner: Runner = (command, cwd, timeoutMs) => {
   };
 };
 
+/**
+ * `shellRunner` without blocking the event loop, for the gate stage: a gate may run for an hour,
+ * and while `spawnSync` waits the engine cannot run its TERM handler, so a stop request (a
+ * shutdown, `kill <pid>`) waited for the gate to end, or for the KILL that followed, and the
+ * engine went down with no note and its lock held. Here the same supervisor runs the command;
+ * when `signal` aborts, the supervisor gets the TERM it already turns into TERM-then-KILL of the
+ * command's group, and the promise rejects with the signal's reason once it has exited.
+ *
+ * Its answers are `shellRunner`'s: the exit code (128 + n for a signal), stdout then stderr, and
+ * a timeout as 124 with the same line. Output is decoded once, at the end, so a character split
+ * across two pipe reads stays whole.
+ */
+export const shellRunnerAsync = (
+  command: string,
+  cwd: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<RunResult> =>
+  new Promise((resolvePromise, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const started = Date.now();
+    const supervisor = spawn(process.execPath, ["-e", SUPERVISOR, "--", command], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let size = 0;
+    let ended: "timeout" | "abort" | "overflow" | null = null;
+    let launchError: Error | null = null;
+    let grace: NodeJS.Timeout | undefined;
+    const end = (why: "timeout" | "abort" | "overflow") => {
+      if (ended !== null) return;
+      ended = why;
+      supervisor.kill("SIGTERM");
+      grace = setTimeout(() => supervisor.kill("SIGKILL"), SUPERVISOR_GRACE_MS);
+      grace.unref();
+    };
+    const collect = (into: Buffer[]) => (chunk: Buffer) => {
+      if (ended === "overflow") return;
+      size += chunk.length;
+      if (size > MAX_BUFFER) {
+        end("overflow");
+        return;
+      }
+      into.push(chunk);
+    };
+    supervisor.stdout.on("data", collect(stdout));
+    supervisor.stderr.on("data", collect(stderr));
+    const timer = setTimeout(() => end("timeout"), timeoutMs);
+    const onAbort = () => end("abort");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    supervisor.once("error", (error) => {
+      launchError = error;
+    });
+    supervisor.once("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(grace);
+      signal?.removeEventListener("abort", onAbort);
+      if (ended === "abort") {
+        reject(signal?.reason);
+        return;
+      }
+      const tail =
+        ended === "timeout"
+          ? `error: timed out after ${timeoutMs}ms\n`
+          : ended === "overflow"
+            ? `error: output exceeded ${MAX_BUFFER} bytes\n`
+            : launchError
+              ? `error: ${launchError.message}\n`
+              : "";
+      resolvePromise({
+        code: ended === "timeout" ? 124 : (code ?? 124),
+        output: `${Buffer.concat(stdout).toString("utf8")}${Buffer.concat(stderr).toString("utf8")}${tail}`,
+        ms: Date.now() - started,
+      });
+    });
+  });
+
 const relevantTail = (s: string) => {
   const lines = s.trimEnd().split("\n");
   const errors = lines.filter((l) => /\berror\b|\bfail(ed|ure)?\b|✗|×/i.test(l)).slice(-20);
   return (errors.length ? errors : lines.slice(-40)).join("\n");
 };
 
-export function runGates(
+/**
+ * Runs the gates one after another. A stop request on `signal` rejects with its reason, before a
+ * gate starts or after one returns: a gate it interrupted is neither a result nor re-run, and no
+ * later gate runs.
+ */
+export async function runGates(
   commands: readonly GateCommand[],
   cwd: string,
-  run: Runner,
+  run: GateRunner,
   timeoutMs: number,
-): GateResult[] {
-  return commands.map(({ name, command, retry = true }) => {
-    const first = run(command, cwd, timeoutMs);
-    if (first.code === 0) return { name, result: "pass", ms: first.ms, tail: "" };
-    if (!retry) return { name, result: "fail", ms: first.ms, tail: relevantTail(first.output) };
-    const second = run(command, cwd, timeoutMs);
-    if (second.code === 0) {
-      return { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) };
+  signal?: AbortSignal,
+): Promise<GateResult[]> {
+  const once = async (command: string) => {
+    signal?.throwIfAborted();
+    const result = await run(command, cwd, timeoutMs, signal);
+    signal?.throwIfAborted();
+    return result;
+  };
+  const results: GateResult[] = [];
+  for (const { name, command, retry = true } of commands) {
+    const first = await once(command);
+    if (first.code === 0) {
+      results.push({ name, result: "pass", ms: first.ms, tail: "" });
+      continue;
     }
-    return { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) };
-  });
+    if (!retry) {
+      results.push({ name, result: "fail", ms: first.ms, tail: relevantTail(first.output) });
+      continue;
+    }
+    const second = await once(command);
+    results.push(
+      second.code === 0
+        ? { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) }
+        : { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) },
+    );
+  }
+  return results;
 }
 
 const C_ESCAPES: Record<string, number> = {
@@ -363,6 +480,31 @@ export function undeclaredFiles(
   return [...new Set(changed)].filter(
     (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f),
   );
+}
+
+const JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
+
+/**
+ * The service files the run's own children write for its spec, wherever they land: the `runs/`
+ * journals beside the spec and under `.marvin/task/` (progress, evidence sidecar, oracles, verify
+ * runs, the latest per-spec run), the project's latest `verification.md`, and the critic receipts
+ * `.marvin/critique/<NNN>-<slug>.md`. The planner and the verify tool write them and nothing
+ * commits them, so outside `.gitignore` every one of them read as uncommitted work: two rejected
+ * iterations of a 2026-10-17 run held nothing else. They are tolerated only while uncommitted.
+ * Committed, they are what the PR would carry as evidence, which an executor could forge, so the
+ * committed diff still judges them as `undeclaredFiles` always has. Keyed on the run's own slug,
+ * so another task's journals and receipts still count. The metrics record is not among them: the
+ * carry check judges it.
+ */
+export function runArtifactMatcher(specPath: string, slug: string): (path: string) => boolean {
+  if (!isCanonicalPath(specPath) || !SLUG_RE.test(slug)) return () => false;
+  const dirs = new Set([posix.dirname(specPath), ".marvin/task"]);
+  const own = new Set([".marvin/task/verification.md"]);
+  for (const dir of dirs) {
+    for (const suffix of JOURNAL_SUFFIXES) own.add(`${dir}/runs/${slug}${suffix}.md`);
+  }
+  const receipt = new RegExp(`^\\.marvin/critique/\\d+-${slug}\\.md$`);
+  return (path) => own.has(path) || receipt.test(path);
 }
 
 /**
@@ -763,8 +905,19 @@ export interface GateStageOptions {
    * commits it. Any other change to it, and every other dirty path, stays a blocker.
    */
   metricsRecord?: { path: string; slug: string } | null;
-  run: Runner;
+  /**
+   * The run's spec and slug, whose own service files (`runArtifactMatcher`) are not uncommitted
+   * work. Committed, they still count. Null or absent: none is tolerated.
+   */
+  runArtifacts?: { specPath: string; slug: string } | null;
+  run: GateRunner;
   timeoutMs: number;
+  /**
+   * A stop request: the command running when it aborts is ended through `run`, and the stage
+   * rejects with its reason instead of reporting, so a stopped gate leaves no verdict and the
+   * engine that resumes the run runs the whole stage again.
+   */
+  signal?: AbortSignal;
 }
 
 const MAX_UNCOMMITTED_FINDINGS = 100;
@@ -789,6 +942,15 @@ function validateOptions(o: GateStageOptions): void {
   }
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
+  }
+  const artifacts = o.runArtifacts;
+  if (artifacts != null) {
+    if (!isCanonicalPath(artifacts.specPath)) {
+      throw new Error(`run spec path is not canonical: ${String(artifacts.specPath)}`);
+    }
+    if (typeof artifacts.slug !== "string" || !SLUG_RE.test(artifacts.slug)) {
+      throw new Error(`run slug is not kebab-case: ${String(artifacts.slug)}`);
+    }
   }
   const record = o.metricsRecord;
   if (record != null) {
@@ -827,7 +989,7 @@ function pointerProblem(worktree: string, gitDir: string): string | null {
   }
 }
 
-export function runGateStage(o: GateStageOptions): GateReport {
+export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
   validateOptions(o);
   const git = isolatedGit(o.worktree, o.gitDir);
   const blockers: GateBlocker[] = [];
@@ -864,10 +1026,17 @@ export function runGateStage(o: GateStageOptions): GateReport {
     !sealedPaths.has(path) &&
     !isProtectedPath(protectedRes, path) &&
     classifyRecord(git, headSha, o.worktree, path, record.slug).state === "appended";
+  const runArtifact =
+    o.runArtifacts != null
+      ? runArtifactMatcher(o.runArtifacts.specPath, o.runArtifacts.slug)
+      : () => false;
+  const ownArtifact = (path: string) =>
+    runArtifact(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const tolerated = (path: string) =>
     path.endsWith("/")
       ? o.protectedBaseline[path] === NESTED_REPO
       : carriedRecord(path) ||
+        ownArtifact(path) ||
         (exempt !== null &&
           exempt.test(path) &&
           !sealedPaths.has(path) &&
@@ -991,11 +1160,12 @@ export function runGateStage(o: GateStageOptions): GateReport {
       });
       continue;
     }
-    const ran = runGates(
+    const ran = await runGates(
       [{ name, command: step.command, retry: false }],
       o.worktree,
       o.run,
       o.timeoutMs,
+      o.signal,
     );
     prepareGates.push(...ran);
     const failure = ran.find((r) => r.result === "fail");
@@ -1014,12 +1184,13 @@ export function runGateStage(o: GateStageOptions): GateReport {
   for (const x of prepareFailed === null ? runnable : []) {
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
     oracleGates.push(
-      ...runGates(
+      ...(await runGates(
         [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
         o.worktree,
         o.run,
         o.timeoutMs,
-      ),
+        o.signal,
+      )),
     );
     const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
     for (const path of new Set([...before, ...after].map((f) => f.path))) {
@@ -1046,7 +1217,7 @@ export function runGateStage(o: GateStageOptions): GateReport {
   const gates = [
     ...prepareGates,
     ...oracleGates,
-    ...runGates(o.gates, o.worktree, o.run, o.timeoutMs),
+    ...(await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal)),
   ];
 
   const headAfter = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();

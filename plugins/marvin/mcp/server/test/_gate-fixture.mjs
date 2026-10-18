@@ -53,7 +53,10 @@ export function runWorktree(baseFiles = {}) {
   return w;
 }
 
-/** `runGateStage` on a run worktree with sensible defaults; `over` replaces any option. */
+/**
+ * `runGateStage` on a run worktree with sensible defaults; `over` replaces any option. It runs
+ * the commands through `shellRunnerAsync`, as the engine does.
+ */
 export const gateStage = (w, over = {}) =>
   g.runGateStage({
     worktree: w.path,
@@ -67,7 +70,7 @@ export const gateStage = (w, over = {}) =>
     exemptPattern: null,
     protectedPatterns: protectedDefaults,
     protectedBaseline: w.baseline,
-    run: g.shellRunner,
+    run: g.shellRunnerAsync,
     timeoutMs: 60_000,
     ...over,
   });

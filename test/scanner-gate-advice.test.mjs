@@ -55,8 +55,7 @@ test("a surviving chain is marked as the pre-0.29.0 route", () => {
 });
 
 test("changelog records the advice change", () => {
-  const m = changelog.match(/^## \[([^\]]+)\][^\n]*\n([\s\S]*?)(?=^## \[|$(?![\s\S]))/m);
+  const m = changelog.match(/^## \[0\.30\.1\][^\n]*\n([\s\S]*?)(?=^## \[|$(?![\s\S]))/m);
   assert.ok(m);
-  assert.equal(m[1], "0.29.5");
-  assert.ok(m[2].includes("gates.extra"));
+  assert.ok(m[1].includes("gates.extra"));
 });

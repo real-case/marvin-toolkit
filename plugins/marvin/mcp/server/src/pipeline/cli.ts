@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
-  mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -26,15 +25,17 @@ import {
   ROLES,
   TIERS,
   appendEvent,
+  checkedStateRoot,
   initRun,
   loadRun,
+  mkdirPrivate,
   newRunId,
   runDirFor,
   saveRun,
-  stateRoot,
   type Run,
   type Tier,
 } from "./run-store.js";
+import { isSafeBranchRef } from "../storage/slug.js";
 
 /**
  * `marvin-pipe` — the autopilot pipeline's command line, and the only way an orchestrator session
@@ -99,6 +100,9 @@ function init(flags: Flags): void {
     throw new Error(`--stage-a must be one of ${TIERS.join(", ")}, not ${stageA}`);
   }
   assertOrchestratorName(flag(flags, "orch"));
+  const base = flag(flags, "base");
+  if (!isSafeBranchRef(base))
+    throw new Error(`--base ${JSON.stringify(base)} is not a branch name`);
   const now = new Date();
   const id = newRunId(now);
   const runDir = runDirFor(repoRoot, id);
@@ -106,7 +110,7 @@ function init(flags: Flags): void {
   const run = initRun({
     id,
     repoRoot,
-    base: flag(flags, "base"),
+    base,
     lang: flag(flags, "lang"),
     orchestratorName: flag(flags, "orch"),
     task: readFileSync(flag(flags, "task-file"), "utf8"),
@@ -114,7 +118,7 @@ function init(flags: Flags): void {
     stageA: stageA as Tier,
     now,
   });
-  mkdirSync(runDir, { recursive: true });
+  mkdirPrivate(runDir);
   saveRun(runDir, run);
   print({ runId: id, runDir });
 }
@@ -252,7 +256,7 @@ function status(flags: Flags): void {
 
 /** Every run under the state root, newest first; `--repo` narrows to one repository's runs. */
 function list(flags: Flags): void {
-  const root = stateRoot();
+  const root = checkedStateRoot();
   const repo = optional(flags, "repo");
   const repoRoot = repo === undefined ? undefined : resolve(repo);
   const groups = repoRoot === undefined ? subdirs(root) : [basename(repoRoot)];
@@ -443,6 +447,15 @@ export async function main(argv: readonly string[]): Promise<number> {
 }
 
 // Only as the entry point, so that a test can import `main` and `rubricFor` without running one.
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === SELF) {
+function isEntry(argv1: string): boolean {
+  try {
+    return realpathSync(argv1) === realpathSync(SELF);
+  } catch {
+    return false;
+  }
+}
+
+// Compared as physical paths, so a symlinked bin entry or a symlinked plugin directory still runs.
+if (process.argv[1] !== undefined && isEntry(process.argv[1])) {
   process.exitCode = await main(process.argv.slice(2));
 }

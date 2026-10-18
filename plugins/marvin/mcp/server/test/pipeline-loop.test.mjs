@@ -1158,6 +1158,31 @@ test("restart after an interrupted spawn performs that spawn again, flagged as a
   assert.deepEqual(second.log.steps[0], { ref: first.log.steps.at(-1).ref, replay: true });
 });
 
+test("a spawn with notBefore waits until then, and a restart waits out only what is left", async () => {
+  const dir = newRun();
+  const fixturesDir = fixturesWith({ "spec_approval.json": { kind: "approve" } });
+  const first = scripted({ fixturesDir, crash: { spawn: "verifier" } });
+  await assert.rejects(loop.runEngine(dir, first.deps), /engine killed spawning verifier/);
+  // The step a usage limit leaves behind: the same spawn, held until the limit lifts.
+  const file = join(dir, "engine.journal.json");
+  const journal = JSON.parse(readFileSync(file, "utf8"));
+  const pending = journal.steps[journal.next];
+  assert.equal(pending.action.role, "verifier");
+  const notBefore = Date.now() + 300;
+  pending.action.notBefore = new Date(notBefore).toISOString();
+  writeFileSync(file, JSON.stringify(journal));
+  const second = scripted({ fixturesDir });
+  const spawnChild = second.deps.spawnChild;
+  let spawnedAt = 0;
+  second.deps.spawnChild = (run, action, step) => {
+    if (action.role === "verifier") spawnedAt = Date.now();
+    return spawnChild(run, action, step);
+  };
+  assert.equal((await loop.runEngine(dir, second.deps)).stage, "ready");
+  assert.ok(spawnedAt >= notBefore, `spawned ${notBefore - spawnedAt} ms early`);
+  assert.deepEqual(second.log.spawns, ["verifier", "retro"]);
+});
+
 test("a child wait that outlasts its deadline is waited on again, not decided", async () => {
   const dir = newRun();
   const fixturesDir = fixturesWith({ "spec_approval.json": { kind: "approve" } });

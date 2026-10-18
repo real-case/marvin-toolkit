@@ -59,6 +59,31 @@ The stages run in order:
 Reach for this pipeline when the work benefits from an explicit contract and a verifiable
 finish. For quick day-to-day changes, the task board and a direct commit are lighter.
 
+### Hand a task to the autopilot
+
+`/marvin:autopilot` runs the same pipeline without a human at each step:
+
+```text
+/marvin:autopilot add a --json flag to the handoff list
+```
+
+A detached engine, driven by the `marvin-pipe` CLI, starts headless `claude -p` children in
+a git worktree outside the repository: a planner writes and seals the spec, a test author
+writes the acceptance tests, an executor implements against them, the engine runs the
+gates and CI itself, a read-only verifier judges the result, and a retro records lessons.
+Your session stays the orchestrator. It answers the engine's judgments, asks you to approve
+the spec before any code is written, and reports in your language until the pull request is
+ready to merge. `/marvin:autopilot resume [run-id]` takes over a run another session
+started.
+
+Run state lives outside the repository under `MARVIN_PIPELINE_HOME`, by default
+`~/.local/state/marvin-pipeline`; a value that is set must be an absolute path, and the
+directories marvin creates there are readable by your user only. Each run's worktree and local branch are kept after the
+run ends, so remove them with `git worktree remove` and `git branch -D` once the pull request
+is merged. The children run as your OS user with your credentials; the
+[security policy](../SECURITY.md#trust-boundary) describes what their guards do and do not
+cover.
+
 ## Track work on the task board
 
 The board is a per-project tracker stored as markdown under `.marvin/track/`. Create a
