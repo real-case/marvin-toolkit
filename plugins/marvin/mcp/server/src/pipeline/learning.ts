@@ -7,12 +7,13 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
@@ -1245,17 +1246,25 @@ export function mergeBaseForFinalize(o: BaseMergeOptions): BaseMergeResult {
 
 /**
  * The formatter finalize runs when the host configured none (`pipeline.format_command` null):
- * prettier, when the host has it installed in the run worktree or the main checkout, over the
- * files finalize writes, skipping any type it does not know. A finalize commit the host's own
+ * the Prettier installed in the main checkout, run by the engine's own node over the files
+ * finalize writes, skipping any type it does not know. A finalize commit the host's own
  * `format:check` then rejects was the last thing a 2026-10-17 run halted on. An empty string
  * still means no formatting at all.
+ *
+ * Never the run worktree's `node_modules`: a child writes there, so a planted `.bin/prettier`
+ * would be code the engine runs outside the child's guards. The main checkout is outside every
+ * child's reach, and the binary must resolve, links followed, to inside its `node_modules`.
  */
-export function inferFormatCommand(worktree: string, repoRoot: string): string | null {
-  for (const root of [worktree, repoRoot]) {
-    const bin = join(root, "node_modules", ".bin", "prettier");
-    if (existsSync(bin)) return `${shellQuote(bin)} --write --ignore-unknown`;
+export function inferFormatCommand(repoRoot: string): string | null {
+  try {
+    const modules = realpathSync(join(repoRoot, "node_modules"));
+    const bin = realpathSync(join(modules, ".bin", "prettier"));
+    const inside = relative(modules, bin);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**

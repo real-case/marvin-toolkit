@@ -11,6 +11,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -2449,19 +2450,25 @@ test("a conflicting, unreachable or unsafe base is not merged, and says why", ()
   assert.match(o.reason, /^fetching dev failed/);
 });
 
-test("with no formatter configured, finalize uses the prettier the host installed, else none", () => {
-  const wt = tmp("pipe-fmt-wt-");
+test("with no formatter configured, finalize runs the main checkout's prettier, never the worktree's", () => {
   const repo = tmp("pipe-fmt-repo-");
-  assert.equal(l.inferFormatCommand(wt, repo), null);
+  assert.equal(l.inferFormatCommand(repo), null);
+  // The layout npm leaves: .bin/prettier links into the package.
+  mkdirSync(join(repo, "node_modules", "prettier", "bin"), { recursive: true });
   mkdirSync(join(repo, "node_modules", ".bin"), { recursive: true });
-  writeFileSync(join(repo, "node_modules", ".bin", "prettier"), "");
+  writeFileSync(join(repo, "node_modules", "prettier", "bin", "prettier.cjs"), "");
+  symlinkSync("../prettier/bin/prettier.cjs", join(repo, "node_modules", ".bin", "prettier"));
+  const real = realpathSync(join(repo, "node_modules", "prettier", "bin", "prettier.cjs"));
   assert.equal(
-    l.inferFormatCommand(wt, repo),
-    `'${join(repo, "node_modules", ".bin", "prettier")}' --write --ignore-unknown`,
+    l.inferFormatCommand(repo),
+    `'${process.execPath}' '${real}' --write --ignore-unknown`,
   );
-  mkdirSync(join(wt, "node_modules", ".bin"), { recursive: true });
-  writeFileSync(join(wt, "node_modules", ".bin", "prettier"), "");
-  assert.match(l.inferFormatCommand(wt, repo), new RegExp(`^'${wt}/node_modules`));
+  // A .bin entry that leads out of node_modules is not the host's installed prettier.
+  const planted = tmp("pipe-fmt-planted-");
+  mkdirSync(join(planted, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(planted, "evil.cjs"), "");
+  symlinkSync(join(planted, "evil.cjs"), join(planted, "node_modules", ".bin", "prettier"));
+  assert.equal(l.inferFormatCommand(planted), null);
 });
 
 test("a lesson body's glob and placeholder paths go in code spans, so a formatter keeps them", () => {

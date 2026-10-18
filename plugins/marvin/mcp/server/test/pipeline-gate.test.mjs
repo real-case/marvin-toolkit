@@ -441,10 +441,20 @@ test("the run's own service files are matched by its slug and spec directory onl
     g.runArtifactMatcher("specs/1-x.md", "Not A Slug")("specs/runs/Not A Slug.md"),
     false,
   );
-  assert.deepEqual(
-    g.undeclaredFiles(["src/b.ts", "specs/runs/frost-sidebar.progress.md"], [], null, own),
-    ["src/b.ts"],
-  );
+});
+
+test("a committed journal of the run is still undeclared: only an uncommitted one is tolerated", async () => {
+  // Committed, a journal or receipt is evidence the PR carries, which the executor could forge.
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.write("specs/runs/frost-sidebar.progress.md", "journal\n");
+  w.commit();
+  const report = await gateStage(w, {
+    contractFiles: ["src/a.ts"],
+    runArtifacts: { specPath: "specs/335-frost-sidebar.md", slug: "frost-sidebar" },
+  });
+  assert.deepEqual(report.undeclared, ["specs/runs/frost-sidebar.progress.md"]);
+  assert.equal(report.passed, false);
 });
 
 test("changed protected paths are matched case-insensitively and listed once", () => {

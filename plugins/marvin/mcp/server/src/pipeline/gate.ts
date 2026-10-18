@@ -474,12 +474,11 @@ export function undeclaredFiles(
   changed: readonly string[],
   declared: readonly string[],
   exemptPattern: string | null,
-  ownArtifact: (path: string) => boolean = () => false,
 ): string[] {
   const known = new Set(declared);
   const exempt = exemptPattern ? new RegExp(exemptPattern) : null;
   return [...new Set(changed)].filter(
-    (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f) && !ownArtifact(f),
+    (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f),
   );
 }
 
@@ -490,10 +489,12 @@ const JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
  * journals beside the spec and under `.marvin/task/` (progress, evidence sidecar, oracles, verify
  * runs, the latest per-spec run), the project's latest `verification.md`, and the critic receipts
  * `.marvin/critique/<NNN>-<slug>.md`. The planner and the verify tool write them and nothing
- * commits them, so outside `.gitignore` every one of them read as uncommitted work, and once an
- * executor committed them to clear that, as undeclared files: two rejected iterations of a
- * 2026-10-17 run held nothing else. Keyed on the run's own slug, so another task's journals and
- * receipts still count. The metrics record is not among them: the carry check judges it.
+ * commits them, so outside `.gitignore` every one of them read as uncommitted work: two rejected
+ * iterations of a 2026-10-17 run held nothing else. They are tolerated only while uncommitted.
+ * Committed, they are what the PR would carry as evidence, which an executor could forge, so the
+ * committed diff still judges them as `undeclaredFiles` always has. Keyed on the run's own slug,
+ * so another task's journals and receipts still count. The metrics record is not among them: the
+ * carry check judges it.
  */
 export function runArtifactMatcher(specPath: string, slug: string): (path: string) => boolean {
   if (!isCanonicalPath(specPath) || !SLUG_RE.test(slug)) return () => false;
@@ -905,8 +906,8 @@ export interface GateStageOptions {
    */
   metricsRecord?: { path: string; slug: string } | null;
   /**
-   * The run's spec and slug, whose own service files (`runArtifactMatcher`) are neither
-   * uncommitted work nor undeclared files. Null or absent: none is tolerated.
+   * The run's spec and slug, whose own service files (`runArtifactMatcher`) are not uncommitted
+   * work. Committed, they still count. Null or absent: none is tolerated.
    */
   runArtifacts?: { specPath: string; slug: string } | null;
   run: GateRunner;
@@ -1290,7 +1291,6 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
       changed,
       [...o.contractFiles, ...o.sealed.map((s) => s.path)],
       o.exemptPattern,
-      ownArtifact,
     ),
     protected: protectedPaths,
     protectedSources: Object.fromEntries(sources),

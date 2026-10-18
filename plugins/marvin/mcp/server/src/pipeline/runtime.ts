@@ -2073,7 +2073,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), z.array(z.string())) ?? [],
-      formatCommand: config.pipeline.format_command ?? inferFormatCommand(wt.path, run.repoRoot),
+      formatCommand: config.pipeline.format_command ?? inferFormatCommand(run.repoRoot),
       metricsRecord,
       runCommand: runner,
     });

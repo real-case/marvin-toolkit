@@ -404,8 +404,8 @@ test("task-implement: the scope gate's allow covers exactly what the gate stage 
   assert.match(rule, /`allow` set to exactly those paths/, "allow is not bounded to those paths");
   assert.match(rule, /No other path goes into `allow`/, "allow may still absorb scope creep");
   assert.match(rule, /`needs_input`/, "a path still outside has no exit");
-  // The gate stage also tolerates the run's own journals (runArtifactMatcher), which a host
-  // spec directory puts outside `.marvin/`, where the executor's own gate does count them.
+  // The gate stage also tolerates the run's own journals while uncommitted (runArtifactMatcher),
+  // which a host spec directory puts outside `.marvin/`, where the executor's own gate counts them.
   assert.match(
     rule,
     /`runs\/<slug>\.\*` journals beside the spec/,
@@ -416,7 +416,7 @@ test("task-implement: the scope gate's allow covers exactly what the gate stage 
   // pipeline's own regex; the executor's TASK CONTEXT carries the sealed list.
   assert.match(
     serverFile("pipeline", "gate.ts"),
-    /undeclaredFiles\(\s*changed,\s*\[\.\.\.o\.contractFiles, \.\.\.o\.sealed\.map\(\(s\) => s\.path\)\],\s*o\.exemptPattern,\s*ownArtifact,?\s*\)/,
+    /undeclaredFiles\(\s*changed,\s*\[\.\.\.o\.contractFiles, \.\.\.o\.sealed\.map\(\(s\) => s\.path\)\],\s*o\.exemptPattern,?\s*\)/,
     "the gate stage's declared set moved; revisit the scope rule",
   );
   assert.match(

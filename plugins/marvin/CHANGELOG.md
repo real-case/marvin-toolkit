@@ -27,14 +27,16 @@ human although nothing in the task needed one.
   driver, a link or submodule, or an uncommitted change on a merged path leaves the run as it
   was, with a note saying why. A replay recognises its merge through `base-merge.json`.
 - **Finalize formats its files when the host configured no formatter.** A `null`
-  `pipeline.format_command` now runs the host's installed Prettier
-  (`node_modules/.bin/prettier`, worktree first) with `--write --ignore-unknown`; `""` still
-  turns formatting off. Lesson bodies put bare glob and placeholder paths in code spans first, so
+  `pipeline.format_command` now runs the Prettier installed in the main checkout, never the run
+  worktree's (a child writes there), resolved through its links to inside `node_modules` and run
+  by the engine's node with `--write --ignore-unknown`; `""` still turns formatting off. Lesson bodies put bare glob and placeholder paths in code spans first, so
   Prettier no longer reads `(.marvin/critique/*) … (.marvin/metrics/*)` as emphasis.
-- **The scope gate tolerates the run's own service files.** The `runs/<slug>.*` journals beside
-  the spec and under `.marvin/task/`, `.marvin/task/verification.md` and the critic receipts
-  `.marvin/critique/<NNN>-<slug>.md` are neither uncommitted work nor undeclared files, for the
-  run's own slug only. Two of the run's three iterations were rejected for nothing else.
+- **The scope gate tolerates the run's own service files while they stay uncommitted.** The
+  `runs/<slug>.*` journals beside the spec and under `.marvin/task/`, `.marvin/task/verification.md`
+  and the critic receipts `.marvin/critique/<NNN>-<slug>.md` are not uncommitted work, for the
+  run's own slug only; two of the run's three iterations were rejected for nothing else.
+  Committed, they still count as undeclared files, since a committed one is evidence the PR
+  carries and an executor could forge.
 - **The planner looks for guard tests before it seals.** `planner.md` tells it to find the
   tests that enumerate or count what the change joins (a module allowlist, a counted docstring,
   an inventory) and put every file they force into the contract, since the scope gate leaves a

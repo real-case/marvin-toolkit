@@ -11125,49 +11125,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative8, options, skipNormalization) {
+    function resolveComponent(base, relative9, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse5(serialize(base, options), options);
-        relative8 = parse5(serialize(relative8, options), options);
+        relative9 = parse5(serialize(relative9, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative8.scheme) {
-        target.scheme = relative8.scheme;
-        target.userinfo = relative8.userinfo;
-        target.host = relative8.host;
-        target.port = relative8.port;
-        target.path = removeDotSegments(relative8.path || "");
-        target.query = relative8.query;
+      if (!options.tolerant && relative9.scheme) {
+        target.scheme = relative9.scheme;
+        target.userinfo = relative9.userinfo;
+        target.host = relative9.host;
+        target.port = relative9.port;
+        target.path = removeDotSegments(relative9.path || "");
+        target.query = relative9.query;
       } else {
-        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
-          target.userinfo = relative8.userinfo;
-          target.host = relative8.host;
-          target.port = relative8.port;
-          target.path = removeDotSegments(relative8.path || "");
-          target.query = relative8.query;
+        if (relative9.userinfo !== void 0 || relative9.host !== void 0 || relative9.port !== void 0) {
+          target.userinfo = relative9.userinfo;
+          target.host = relative9.host;
+          target.port = relative9.port;
+          target.path = removeDotSegments(relative9.path || "");
+          target.query = relative9.query;
         } else {
-          if (!relative8.path) {
+          if (!relative9.path) {
             target.path = base.path;
-            if (relative8.query !== void 0) {
-              target.query = relative8.query;
+            if (relative9.query !== void 0) {
+              target.query = relative9.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative8.path[0] === "/") {
-              target.path = removeDotSegments(relative8.path);
+            if (relative9.path[0] === "/") {
+              target.path = removeDotSegments(relative9.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative8.path;
+                target.path = "/" + relative9.path;
               } else if (!base.path) {
-                target.path = relative8.path;
+                target.path = relative9.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative9.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative8.query;
+            target.query = relative9.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -11175,7 +11175,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative8.fragment;
+      target.fragment = relative9.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -20183,11 +20183,11 @@ function scanChecks(lines, rules, budgetMs = CHECK_BUDGET_MS) {
 }
 var MARVIN_RECORDS = /^\.marvin\/(?:task|metrics|critique)\//;
 var MARVIN_METRICS = /^\.marvin\/metrics\/[^/]+\.md$/;
-function undeclaredFiles(changed, declared, exemptPattern, ownArtifact = () => false) {
+function undeclaredFiles(changed, declared, exemptPattern) {
   const known = new Set(declared);
   const exempt = exemptPattern ? new RegExp(exemptPattern) : null;
   return [...new Set(changed)].filter(
-    (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f) && !ownArtifact(f)
+    (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f)
   );
 }
 var JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
@@ -20752,8 +20752,7 @@ async function runGateStage(o) {
     undeclared: undeclaredFiles(
       changed,
       [...o.contractFiles, ...o.sealed.map((s) => s.path)],
-      o.exemptPattern,
-      ownArtifact
+      o.exemptPattern
     ),
     protected: protectedPaths,
     protectedSources: Object.fromEntries(sources),
@@ -23748,12 +23747,16 @@ function mergeBaseForFinalize(o) {
   }
   return { state: "merged", head: commit, base: baseTip };
 }
-function inferFormatCommand(worktree, repoRoot) {
-  for (const root of [worktree, repoRoot]) {
-    const bin = join(root, "node_modules", ".bin", "prettier");
-    if (existsSync(bin)) return `${shellQuote(bin)} --write --ignore-unknown`;
+function inferFormatCommand(repoRoot) {
+  try {
+    const modules = realpathSync(join(repoRoot, "node_modules"));
+    const bin = realpathSync(join(modules, ".bin", "prettier"));
+    const inside = relative(modules, bin);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
+  } catch {
+    return null;
   }
-  return null;
 }
 function codeSpanPaths(body) {
   const spanned = (token) => {
@@ -34022,7 +34025,7 @@ ${planted.join("\n")}`
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), external_exports.array(external_exports.string())) ?? [],
-      formatCommand: config2.pipeline.format_command ?? inferFormatCommand(wt.path, run2.repoRoot),
+      formatCommand: config2.pipeline.format_command ?? inferFormatCommand(run2.repoRoot),
       metricsRecord,
       runCommand: runner
     });
