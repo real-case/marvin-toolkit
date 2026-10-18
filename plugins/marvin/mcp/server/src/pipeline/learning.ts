@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -743,7 +744,7 @@ export function lessonStoreSink(source: string): AddLessonFn {
     const { slug } = addLesson(memoryDir, {
       type: lesson.type,
       title: lesson.title,
-      body: lesson.body,
+      body: codeSpanPaths(lesson.body),
       tags,
       source,
     });
@@ -1021,6 +1022,270 @@ const nulList = (text: string) => text.split("\0").filter(Boolean);
  * simply be made again. A push that fails after the commit leaves the commit in place; the next
  * call recognises it as its own and pushes it.
  */
+/** Written in the run dir when finalize merges the base, so that a replay can recognise it. */
+const BASE_MERGE_RECORD = "base-merge.json";
+
+export interface BaseMergeOptions {
+  runDir: string;
+  worktree: string;
+  gitDir: string;
+  branch: string;
+  base: string;
+  slug: string;
+  /** The commit the last passing gate approved: the merge's first parent. */
+  gatedHead: string;
+}
+
+export type BaseMergeResult =
+  /** The base tip is already in the run branch; finalize builds on `head`, the gated commit. */
+  | { state: "current"; head: string }
+  /** A merge commit of the gated commit and the base tip; finalize builds on it. */
+  | { state: "merged"; head: string; base: string }
+  /** No merge was made, for `reason`; finalize builds on the gated commit as it always did. */
+  | { state: "skipped"; head: string; reason: string };
+
+interface RawChange {
+  oldMode: string;
+  newMode: string;
+  oldOid: string;
+  newOid: string;
+  status: string;
+  path: string;
+}
+
+const REGULAR_MODES = new Set(["100644", "100755"]);
+const ZERO_OID = /^0+$/;
+const sameBytes = (a: Buffer | null, b: Buffer | null) =>
+  a === null ? b === null : b !== null && a.equals(b);
+
+/** `git diff-tree -r -z --raw --no-renames` between two commits, one record per path. */
+function rawChanges(git: IsolatedGit, from: string, to: string): RawChange[] {
+  const fields = git
+    .text("diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to)
+    .split("\0");
+  const out: RawChange[] = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const m = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(fields[i]!);
+    if (!m) break;
+    out.push({
+      oldMode: m[1]!,
+      newMode: m[2]!,
+      oldOid: m[3]!,
+      newOid: m[4]!,
+      status: m[5]!,
+      path: fields[i + 1]!,
+    });
+  }
+  return out;
+}
+
+/**
+ * Bring the base into the run branch before finalize writes, when that is a clean merge. Every
+ * append-only file finalize writes (`calibration.jsonl`, `checks.yaml`, the lesson index) is
+ * built from the commit it builds on, so a base that gained its own copy while the run was
+ * going made the finalize commit conflict with it: in a 2026-10-17 run two parallel runs each
+ * created `calibration.jsonl`, and the PR could not merge. Built on a merge commit, finalize
+ * appends to the base's copy instead.
+ *
+ * The merge is the base, already reviewed, joined to the commit the gate approved, and it is
+ * made the way the finalize commit is: `merge-tree --write-tree` for the tree, `commit-tree` for
+ * the commit, the worktree written from `cat-file` blobs and `update-ref` moving the branch only
+ * if it still names the gated commit, so no hook, filter or checkout runs. Anything that makes
+ * that unsafe or unclean leaves the run as it was and says why: a fetch that fails, a conflict
+ * (the CI wait after finalize then reports it, as before), a custom merge driver in the git
+ * config, a link or a submodule in what the base changed, or an uncommitted change on one of
+ * those paths. A replay recognises its own merge through `BASE_MERGE_RECORD`.
+ */
+export function mergeBaseForFinalize(o: BaseMergeOptions): BaseMergeResult {
+  if (!isSafeBranchRef(o.branch)) throw new Error(`run branch is not a safe ref: ${o.branch}`);
+  if (!isSafeBranchRef(o.base)) throw new Error(`run base is not a safe ref: ${o.base}`);
+  if (!FULL_SHA.test(o.gatedHead)) throw new Error("gatedHead must be a 40-hex commit SHA");
+  if (!PLAIN_TOKEN.test(o.slug)) throw new Error(`slug is not a plain token: ${o.slug}`);
+  const git = isolatedGit(o.worktree, o.gitDir, { HUSKY: "0" });
+  const skipped = (reason: string): BaseMergeResult => ({
+    state: "skipped",
+    head: o.gatedHead,
+    reason,
+  });
+  const headSha = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  assertPlain(o.runDir, BASE_MERGE_RECORD);
+  const recordPath = join(o.runDir, BASE_MERGE_RECORD);
+  const record = existsSync(recordPath)
+    ? (JSON.parse(readFileSync(recordPath, "utf8")) as Record<string, unknown>)
+    : null;
+  const recorded =
+    record !== null &&
+    record.gated === o.gatedHead &&
+    typeof record.commit === "string" &&
+    typeof record.base === "string" &&
+    FULL_SHA.test(record.commit) &&
+    FULL_SHA.test(record.base)
+      ? { commit: record.commit, base: record.base }
+      : null;
+  if (recorded !== null && headSha !== o.gatedHead) {
+    // Moved by an earlier call: the merge itself, or finalize's commit on top of it.
+    if (
+      headSha === recorded.commit ||
+      isOwnFinalizeCommit(git, o.runDir, headSha, recorded.commit)
+    ) {
+      return { state: "merged", head: recorded.commit, base: recorded.base };
+    }
+  }
+  if (headSha !== o.gatedHead) return { state: "current", head: o.gatedHead };
+
+  let baseTip: string;
+  try {
+    git.text("fetch", "--no-tags", "--quiet", "origin", "--", `refs/heads/${o.base}`);
+    baseTip = git.text("rev-parse", "--verify", "FETCH_HEAD^{commit}").trim();
+  } catch (error) {
+    return skipped(
+      `fetching ${o.base} failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  try {
+    git.text("merge-base", "--is-ancestor", baseTip, o.gatedHead);
+    return { state: "current", head: o.gatedHead };
+  } catch {
+    // not an ancestor: there is something to merge
+  }
+  let drivers = "";
+  try {
+    drivers = git.text("config", "--get-regexp", "^merge\\..*\\.driver$");
+  } catch {
+    // exit 1: no merge driver is configured
+  }
+  if (drivers.trim() !== "") return skipped("a custom merge driver is configured");
+
+  let tree: string;
+  try {
+    tree = git
+      .text("merge-tree", "--write-tree", "--name-only", "--no-messages", o.gatedHead, baseTip)
+      .split("\n")[0]!
+      .trim();
+  } catch (error) {
+    const out = (error as { stdout?: Buffer | string }).stdout?.toString() ?? "";
+    const files = out.split("\n").slice(1).filter(Boolean);
+    return skipped(
+      files.length
+        ? `${o.base} conflicts with the run branch in ${files.slice(0, 5).join(", ")}`
+        : `merge-tree failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!FULL_SHA.test(tree)) return skipped(`merge-tree printed no tree: ${tree}`);
+
+  const commit =
+    recorded?.base === baseTip
+      ? recorded.commit
+      : git
+          .text(
+            "commit-tree",
+            tree,
+            "-p",
+            o.gatedHead,
+            "-p",
+            baseTip,
+            "-m",
+            `chore(${o.slug}): merge ${o.base} before finalize`,
+            "-m",
+            COMMIT_TRAILER,
+          )
+          .trim();
+  const changes = rawChanges(git, o.gatedHead, commit);
+  for (const c of changes) {
+    const removal = c.status === "D";
+    if (
+      (!removal && !REGULAR_MODES.has(c.newMode)) ||
+      (!ZERO_OID.test(c.oldOid) && !REGULAR_MODES.has(c.oldMode))
+    ) {
+      return skipped(`${o.base} changes ${c.path}, which is not a regular file`);
+    }
+    assertPlain(o.worktree, c.path);
+    const onDisk = existsSync(join(o.worktree, c.path))
+      ? readFileSync(join(o.worktree, c.path))
+      : null;
+    const before = ZERO_OID.test(c.oldOid) ? null : git.bytes("cat-file", "blob", c.oldOid);
+    const after = removal ? null : git.bytes("cat-file", "blob", c.newOid);
+    if (!sameBytes(onDisk, before) && !sameBytes(onDisk, after)) {
+      return skipped(`${c.path} has an uncommitted change the merge would overwrite`);
+    }
+  }
+
+  // The record goes down before anything moves, as finalize's does.
+  writeWhole(
+    o.runDir,
+    BASE_MERGE_RECORD,
+    `${JSON.stringify({ gated: o.gatedHead, base: baseTip, commit })}\n`,
+  );
+  let indexInfo = "";
+  for (const c of changes) {
+    if (c.status === "D") {
+      removePlain(o.worktree, c.path);
+      indexInfo += `0 ${"0".repeat(40)}\t${c.path}\0`;
+    } else {
+      writeWhole(o.worktree, c.path, git.bytes("cat-file", "blob", c.newOid));
+      chmodSync(join(o.worktree, c.path), c.newMode === "100755" ? 0o755 : 0o644);
+      indexInfo += `${c.newMode} ${c.newOid}\t${c.path}\0`;
+    }
+  }
+  if (indexInfo) git.textIn(indexInfo, "update-index", "-z", "--index-info");
+  git.text("update-ref", `refs/heads/${o.branch}`, commit, o.gatedHead);
+  const parents = git.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+  if (
+    git.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== commit ||
+    parents.length !== 3 ||
+    parents[1] !== o.gatedHead ||
+    parents[2] !== baseTip
+  ) {
+    throw new Error(
+      `the base merge ${commit} is not the one HEAD names, on ${o.gatedHead} and ${baseTip}`,
+    );
+  }
+  return { state: "merged", head: commit, base: baseTip };
+}
+
+/**
+ * The formatter finalize runs when the host configured none (`pipeline.format_command` null):
+ * prettier, when the host has it installed in the run worktree or the main checkout, over the
+ * files finalize writes, skipping any type it does not know. A finalize commit the host's own
+ * `format:check` then rejects was the last thing a 2026-10-17 run halted on. An empty string
+ * still means no formatting at all.
+ */
+export function inferFormatCommand(worktree: string, repoRoot: string): string | null {
+  for (const root of [worktree, repoRoot]) {
+    const bin = join(root, "node_modules", ".bin", "prettier");
+    if (existsSync(bin)) return `${shellQuote(bin)} --write --ignore-unknown`;
+  }
+  return null;
+}
+
+/**
+ * A lesson body with every bare path that holds a glob or a placeholder (`.marvin/critique/*`,
+ * `specs/runs/<slug>.md`) put in a code span. Left bare, markdown reads two such globs in one
+ * paragraph as emphasis and a placeholder as an HTML tag, and the formatter finalize runs
+ * rewrites them (`*` became `_` in a 2026-10-17 lesson). Text already in a code span is kept.
+ */
+export function codeSpanPaths(body: string): string {
+  // Tokens are split off with single-quantifier patterns and judged in code: the body is a
+  // child's output, and a pattern with overlapping quantifiers backtracks on a long token.
+  const spanned = (token: string) => {
+    const punct = /[.,;:!?]$/.test(token) ? token.slice(-1) : "";
+    const core = punct ? token.slice(0, -1) : token;
+    const path = core.includes("/") && (core.includes("*") || core.includes("<"));
+    return path && !core.includes("`") ? `\`${core}\`${punct}` : token;
+  };
+  return body
+    .split(/(`[^`\n]*`)/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part
+            .split(/([\s()]+)/)
+            .map((token, j) => (j % 2 === 1 ? token : spanned(token)))
+            .join(""),
+    )
+    .join("");
+}
+
 export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const { run } = o;
   if (!PLAIN_TOKEN.test(run.id))

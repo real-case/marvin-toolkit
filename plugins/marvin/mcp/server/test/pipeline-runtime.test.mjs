@@ -1516,6 +1516,28 @@ test("the gate runs verify's plan, the spec's oracles and the scope, the spec de
   assert.equal(decide(run, tampered.obs, rubric, new Date()).run.stage, "executing");
 });
 
+test("the gate tolerates the run's own uncommitted journals and receipts, keyed on its spec", async () => {
+  const spec = "specs/1-tag-filter.md";
+  const s = await prepared({ config: { gates: { test: "true" } } });
+  write(s.wt, spec, specText());
+  write(s.wt, "src/a.mjs", "export const a = 1;\n");
+  sh(s.wt, "add", "-A");
+  sh(s.wt, "commit", "-m", "work");
+  write(s.wt, "specs/runs/tag-filter.progress.md", "journal\n");
+  write(s.wt, "specs/runs/tag-filter.evidence.md", "evidence\n");
+  write(s.wt, ".marvin/critique/001-tag-filter.md", "receipt\n");
+  const run = { ...s.run, stage: "gating", iteration: 1, specPath: spec, prUrl: PR };
+  const { obs } = await s.deps.work(run, "gate", undefined, step("gate-own"));
+  assert.equal(obs.report.passed, true, JSON.stringify(obs.report.blockers, null, 2));
+  // The positive control: a stray file beside them is still uncommitted work.
+  write(s.wt, "notes.txt", "scratch\n");
+  const stray = await s.deps.work(run, "gate", undefined, step("gate-stray"));
+  assert.deepEqual(
+    stray.obs.report.blockers.map((b) => b.claim),
+    ["uncommitted work: notes.txt"],
+  );
+});
+
 test("a spec the executor left uncommitted is a gate blocker, since finalize ships the committed one", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
   const s = await prepared({ config: { gates: { test: "true" } } });
@@ -1697,6 +1719,42 @@ test("a run halted after its PR opened finalizes like one without: nothing leave
   await assert.rejects(
     s.deps.work({ ...run, haltReason: null }, "finalize", { retro }, step("fin-2")),
     /a passing gate/,
+  );
+});
+
+test("finalize merges a base that moved before it writes, and says so", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  const s = await prepared({ files: { [spec]: specText() } });
+  const origin = sh(s.repo, "remote", "get-url", "origin");
+  // A parallel run lands its calibration record on dev while this one is in its retro.
+  const clone = mkdtempSync(join(tmpdir(), "pipe-dev-"));
+  sh(clone, "clone", "-q", "--branch", "dev", origin, ".");
+  write(clone, ".marvin/pipeline/calibration.jsonl", `${JSON.stringify({ runId: "r0" })}\n`);
+  sh(clone, "add", "-f", "-A");
+  sh(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parallel run");
+  sh(clone, "push", "-q", "origin", "HEAD:refs/heads/dev");
+  const devTip = sh(clone, "rev-parse", "HEAD");
+  const gated = sh(s.wt, "rev-parse", "HEAD");
+  writeFileSync(
+    join(s.runDir, "gated-head.json"),
+    `${JSON.stringify({ head: gated, iteration: 1, passed: true })}\n`,
+  );
+  const run = { ...s.run, stage: "finalizing", iteration: 1, specPath: spec, prUrl: PR };
+  const retro = { status: "done", summary: "s", checks: [], proposals: [], lessons: [], prune: [] };
+  const { obs } = await s.deps.work(run, "finalize", { retro }, step("fin"));
+  assert.deepEqual(obs, { kind: "finalized" });
+  const merge = sh(s.wt, "rev-parse", "HEAD^");
+  assert.deepEqual(sh(s.wt, "rev-list", "--parents", "-n", "1", merge).split(" ").slice(1), [
+    gated,
+    devTip,
+  ]);
+  const records = readFileSync(join(s.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line).runId);
+  assert.deepEqual(records, ["r0", "r1"]);
+  assert.ok(
+    events(s.runDir).some((e) => /^merged dev \([0-9a-f]{8}\) into the run branch/.test(e.text)),
   );
 });
 

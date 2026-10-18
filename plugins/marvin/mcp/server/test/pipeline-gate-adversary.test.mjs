@@ -141,6 +141,33 @@ test("uncommitted work under an exempt path is tolerated, except protected and s
   assert.ok(claims(sealedExempt).includes("uncommitted work: src/a.test.mjs"));
 });
 
+test("the run's own journals and receipts are not uncommitted work; another task's still are", async () => {
+  // A 2026-10-17 run had two iterations rejected for these alone: the planner and the verify
+  // tool write them, nothing commits them, and the host did not ignore them.
+  const w = runWorktree();
+  w.write("specs/runs/frost-sidebar.progress.md", "journal\n");
+  w.write("specs/runs/frost-sidebar.evidence.md", "evidence\n");
+  w.write(".marvin/critique/228-frost-sidebar.md", "receipt\n");
+  w.write(".marvin/task/runs/frost-sidebar.oracles.md", "oracles\n");
+  w.write(".marvin/task/verification.md", "latest\n");
+  const runArtifacts = { specPath: "specs/335-frost-sidebar.md", slug: "frost-sidebar" };
+  const quiet = await gateStage(w, { runArtifacts });
+  assert.equal(quiet.passed, true, JSON.stringify(claims(quiet)));
+  // Without the run's identity the same tree is what the gate rejected before.
+  const before = await gateStage(w);
+  assert.ok(claims(before).includes("uncommitted work: specs/runs/frost-sidebar.progress.md"));
+  assert.ok(claims(before).includes("uncommitted work: .marvin/critique/228-frost-sidebar.md"));
+
+  w.write("specs/runs/other-task.progress.md", "someone else's\n");
+  w.write(".marvin/critique/229-frost-sidebar-v2.md", "a longer slug\n");
+  const other = await gateStage(w, { runArtifacts });
+  assert.equal(other.passed, false);
+  assert.deepEqual(claims(other).sort(), [
+    "uncommitted work: .marvin/critique/229-frost-sidebar-v2.md",
+    "uncommitted work: specs/runs/other-task.progress.md",
+  ]);
+});
+
 test("a flood of uncommitted paths is capped, with the rest counted", async () => {
   const w = runWorktree();
   for (let i = 0; i < 105; i += 1) w.write(`junk/f${i}.txt`, "x\n");

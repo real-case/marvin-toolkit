@@ -16,6 +16,35 @@ export interface WaitResult {
 
 const STRUCTURED = new Set(["needs_input", "spec_ready", "done", "failed"]);
 
+/** The furthest reset a usage limit may name and still be waited out rather than halted on. */
+export const LIMIT_MAX_WAIT_MS = 6 * 60 * 60_000;
+/** Taken after a named reset, so the retry does not land on the limit's last second. */
+const LIMIT_RESET_MARGIN_MS = 60_000;
+
+/**
+ * When the usage limit a `limited` result names lifts, or null when its text names no time the
+ * engine can read. Two forms are read: the CLI's `…limit reached|<epoch seconds>`, and a clock
+ * time after "resets" (`resets 7pm`, `resets at 3:30 pm`), taken in the engine's own time zone,
+ * which is the CLI's, at its next occurrence after `now`. A time that is not in the future is
+ * not a reset.
+ */
+export function limitResetAt(detail: string, now: Date): Date | null {
+  const epoch = /\|(\d{10})\b/.exec(detail)?.[1];
+  if (epoch !== undefined) {
+    const at = Number(epoch) * 1000 + LIMIT_RESET_MARGIN_MS;
+    return at > now.getTime() ? new Date(at) : null;
+  }
+  const clock = /\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(detail);
+  if (!clock) return null;
+  const hour = Number(clock[1]);
+  const minute = Number(clock[2] ?? "0");
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  const at = new Date(now);
+  at.setHours((hour % 12) + (clock[3]?.toLowerCase() === "pm" ? 12 : 0), minute, 0, 0);
+  if (at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1);
+  return new Date(at.getTime() + LIMIT_RESET_MARGIN_MS);
+}
+
 export function lastResultEvent(log: string): Record<string, unknown> | null {
   const lines = log.trimEnd().split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
