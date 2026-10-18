@@ -30,6 +30,8 @@ caps:
   child_retries: 1
   limit_retries: 3 # waits a child gets after a usage limit before the run halts; its own count
   limit_wait_minutes: 30 # the wait when the limit message names no reset time
+  launch_retries: 3 # relaunches of a child that never got to work (an expired login, a provider outage), 1, 2 then 4 minutes apart; its own count
+  bookkeeping_rejections: 2 # rejections over the pipeline's own service files alone (a committed journal or receipt) that move no escalation rung and do not count against `rejections`
   dor_rounds: 2 # resumes a planner gets to fix a spec the DoR gate fails; its own count
   ci_wait_minutes: 60
   executor_questions: 3

@@ -193,6 +193,8 @@ Default matrix (`rubric.default.yaml`, deep-merged with `<repo>/.marvin/pipeline
 - **Rejections.** A gate, verifier or CI rejection advances the executor's rung along `escalation: [effort+1, model:opus, halt]`.
 - **Repeated findings.** If a rejection repeats a finding fingerprint (`category|file|criterion`) from the previous rejection, the rung skips past the remaining `effort+…` steps.
 - **Cap.** At `caps.rejections` (3), or on reaching `halt`, the engine raises a `halt` judgment.
+- **Bookkeeping rejections** (0.31.0). A rejection whose blocking findings are all scope findings on the pipeline's own service files (a committed critic receipt, `runs/<slug>.*` journal, `verification.md` or metrics record) advances no rung and is counted on `caps.bookkeeping_rejections` (2) instead of `caps.rejections`; past that cap it is a rejection like any other. The fix is `git rm --cached`, which a stronger model does no better, and the climb raised the verifier through its floor as well.
+- **Launch faults** (0.31.0). A child that ends within 30 s at no cost and with no output never got to work (an expired login, a provider outage); it is relaunched 1, 2 and 4 minutes later on `caps.launch_retries` (3) before the crash retry and the halt.
 - **Minor findings** never loop; they go into the PR body.
 - **The ceiling is Opus at effort `max`.** Fable is rejected by code (§5).
 

@@ -46,6 +46,16 @@ is safe while an engine runs.
 directory with `list`, and re-arm with the path `list` prints. It never dies on a bad line in
 `events.jsonl`; such a line is skipped.
 
+## A child that could not start
+
+`EVENT note <role> could not start (<the CLI's message>); retrying at …` means the child ended
+within seconds, at no cost and with no output: the CLI failed before its first request, usually an
+expired login (`Failed to authenticate: OAuth session expired and could not be refreshed`) or a
+provider outage. The engine relaunches it on its own budget (`caps.launch_retries`, three times,
+one, two and four minutes apart) before it spends the crash retry and halts. If the message names
+the login, tell the user now rather than after the halt: a `claude login` in any terminal fixes
+every later launch, and the pending relaunch picks it up.
+
 ## No messages from a child
 
 Children report every five minutes, nudged by a heartbeat hook. A silent child is not a stuck

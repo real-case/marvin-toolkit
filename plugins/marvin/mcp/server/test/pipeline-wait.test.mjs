@@ -84,6 +84,34 @@ test("classification covers every terminal state", () => {
     c(1, { type: "result", is_error: true, subtype: "error_during_execution" }),
     "failed",
   );
+  // The CLI's failure text is the detail; its subtype reads "success" even for an API error.
+  const auth = wait.classify({
+    exitCode: 1,
+    result: {
+      type: "result",
+      is_error: true,
+      subtype: "success",
+      terminal_reason: "api_error",
+      total_cost_usd: 0,
+      duration_ms: 218,
+      result: "Failed to authenticate: OAuth session expired and could not be refreshed",
+    },
+    idleMs: 0,
+    stallMs: 900_000,
+  });
+  assert.deepEqual(
+    [auth.outcome, auth.detail, auth.costUsd, auth.durationMs],
+    ["failed", "Failed to authenticate: OAuth session expired and could not be refreshed", 0, 218],
+  );
+  assert.equal(
+    wait.classify({
+      exitCode: 1,
+      result: { type: "result", is_error: true, subtype: "error_during_execution", result: "" },
+      idleMs: 0,
+      stallMs: 900_000,
+    }).detail,
+    "error_during_execution",
+  );
   assert.equal(c(0, ok(undefined)), "crashed");
   assert.equal(c(0, ok({ status: "needs_input", questions: [] })), "needs_input");
   assert.equal(c(0, ok({ status: "spec_ready" })), "spec_ready");
