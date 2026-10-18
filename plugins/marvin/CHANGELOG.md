@@ -43,6 +43,17 @@ human although nothing in the task needed one.
   missed one only a dodge or a halt. `executor.md` says the run's journals are never committed to
   clear a finding.
 
+## [0.29.10] — 2026-10-18
+
+Lets Claude Code load the bundled `gitmcp` server again.
+
+### Fixed
+
+- **`gitmcp` declares its transport.** Its `.mcp.json` entry carried a `url` and no `type`,
+  which current Claude Code rejects as an invalid server config (`invalid_union`) and drops
+  without a visible error, so the plugin's `gitmcp` tools never appeared. The entry now reads
+  `"type": "http"`, and the server connects over streamable HTTP.
+
 ## [0.29.9] — 2026-10-17
 
 Lets the autopilot seal stage run on a `gates.test_one` written for the per-test oracles.
