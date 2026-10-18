@@ -66,8 +66,10 @@ import {
   efficacy,
   type EfficacyItem,
   finalizeRun,
+  inferFormatCommand,
   type LessonDoc,
   lessonsMarkdown,
+  mergeBaseForFinalize,
   rankLessons,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
@@ -1612,6 +1614,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline as ProtectedSnapshot, wt.baseSha, from),
       metricsRecord: carriedRecord(run, wt.path, spec.text),
+      runArtifacts:
+        run.specPath !== null && isCanonicalPath(run.specPath)
+          ? { specPath: run.specPath, slug: specIdentity(run).slug }
+          : null,
       run: gateRunner,
       timeoutMs,
       ...(deps.signal ? { signal: deps.signal } : {}),
@@ -2037,16 +2043,37 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       ships && gated && run.specPath !== null && isCanonicalPath(run.specPath)
         ? carriedRecord(run, wt.path, committedText(wt, gated.head, run.specPath))
         : null;
+    // The base goes in first when it merges cleanly, so the files finalize appends to are the
+    // base's own copies and the finalize commit cannot conflict with them.
+    const merge =
+      ships && gated && run.branch !== null
+        ? mergeBaseForFinalize({
+            runDir,
+            worktree: wt.path,
+            gitDir: wt.gitDir,
+            branch: run.branch,
+            base: run.base,
+            slug: specIdentity(run).slug,
+            gatedHead: gated.head,
+          })
+        : null;
+    if (merge?.state === "merged") {
+      note(`merged ${run.base} (${merge.base.slice(0, 8)}) into the run branch before finalize`, {
+        notify: true,
+      });
+    } else if (merge?.state === "skipped") {
+      note(`did not merge ${run.base} before finalize: ${merge.reason}`, { notify: true });
+    }
     const result = finalizeRun({
       run,
       runDir,
       worktree: wt.path,
       gitDir: wt.gitDir,
-      expectedHead: ships && gated ? gated.head : "",
+      expectedHead: ships && gated ? (merge?.head ?? gated.head) : "",
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), z.array(z.string())) ?? [],
-      formatCommand: config.pipeline.format_command,
+      formatCommand: config.pipeline.format_command ?? inferFormatCommand(run.repoRoot),
       metricsRecord,
       runCommand: runner,
     });

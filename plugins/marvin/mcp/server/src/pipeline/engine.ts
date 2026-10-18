@@ -29,7 +29,7 @@ import {
   type Tier,
   transition,
 } from "./run-store.js";
-import type { WaitResult } from "./wait.js";
+import { LIMIT_MAX_WAIT_MS, limitResetAt, type WaitResult } from "./wait.js";
 
 export type JudgmentKind =
   "planner_questions" | "executor_questions" | "spec_approval" | "halt" | "no_ci" | "unverified";
@@ -71,6 +71,12 @@ export interface SpawnAction {
   iteration: number;
   context: Record<string, string>;
   resume: boolean;
+  /**
+   * An ISO time the spawn waits for: the retry of a child that hit a usage limit starts once the
+   * limit lifts. The wait is part of the journalled step, so a restarted engine waits out what
+   * is left of it. A replay of the spawn through `lastSpawn` drops it.
+   */
+  notBefore?: string;
 }
 export type Action =
   | SpawnAction
@@ -323,6 +329,8 @@ const STAGE_OF: Record<Role, Stage> = {
 const CHILD_FAULTS = new Set(["crashed", "failed", "limited", "stalled"]);
 /** The `retries` key counting a planner's rounds against the Definition-of-Ready gate. */
 const DOR_ROUNDS = "planner-dor";
+/** The `retries` key counting the waits a role got after a usage limit, apart from its retries. */
+const limitWaits = (role: Role) => `${role}-limited`;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /**
  * Gate findings that leave the run with no sealed spec to restore. `SPEC-uncommitted` and
@@ -587,7 +595,10 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       ...r,
       retries: Object.fromEntries(
         Object.entries(r.retries).filter(
-          ([name]) => name !== role && !(role === "planner" && name === DOR_ROUNDS),
+          ([name]) =>
+            name !== role &&
+            (role === null || name !== limitWaits(role)) &&
+            !(role === "planner" && name === DOR_ROUNDS),
         ),
       ),
       haltRole: null,
@@ -677,7 +688,37 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
           actions: [{ kind: "work", work: "finalize", data: { retro: null } }],
         };
       }
-      if (fault.kind === "limited" || fault.kind === "stalled" || spent) {
+      // A usage limit is waited out, on its own budget: the child did nothing wrong, and an
+      // orchestrator asked to retry it would retry it into the same limit. A reset further away
+      // than a working day (a weekly limit) is a human's call, as is a limit that keeps coming.
+      if (fault.kind === "limited") {
+        const waits = run.retries[limitWaits(role)] ?? 0;
+        const named = limitResetAt(fault.detail, now);
+        const until = named ?? new Date(now.getTime() + rubric.caps.limit_wait_minutes * 60_000);
+        if (
+          waits >= rubric.caps.limit_retries ||
+          until.getTime() - now.getTime() > LIMIT_MAX_WAIT_MS
+        ) {
+          return ask({ ...run, haltRole: role }, "halt", {
+            reason: fault.reason,
+            detail: fault.detail,
+          });
+        }
+        const r = { ...run, retries: { ...run.retries, [limitWaits(role)]: waits + 1 } };
+        return {
+          run: r,
+          actions: [
+            {
+              kind: "notify",
+              text: `${role} hit a usage limit; retrying at ${until.toISOString()} (${waits + 1} of ${rubric.caps.limit_retries})`,
+            },
+            { ...lastSpawnOf(run, role), notBefore: until.toISOString() },
+          ],
+        };
+      }
+      // A stall costs a retry like a crash: the engine already ended the silent child, and a
+      // fresh start of the same spawn is what an orchestrator's retry would run.
+      if (spent) {
         return ask({ ...run, haltRole: role }, "halt", {
           reason: fault.reason,
           detail: fault.detail,

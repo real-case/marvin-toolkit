@@ -1,7 +1,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, posix, resolve } from "node:path";
 import { createContext, Script } from "node:vm";
 import { SLUG_RE } from "../storage/metrics.js";
 import { classifyRecord } from "./metrics-carry.js";
@@ -482,6 +482,31 @@ export function undeclaredFiles(
   );
 }
 
+const JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
+
+/**
+ * The service files the run's own children write for its spec, wherever they land: the `runs/`
+ * journals beside the spec and under `.marvin/task/` (progress, evidence sidecar, oracles, verify
+ * runs, the latest per-spec run), the project's latest `verification.md`, and the critic receipts
+ * `.marvin/critique/<NNN>-<slug>.md`. The planner and the verify tool write them and nothing
+ * commits them, so outside `.gitignore` every one of them read as uncommitted work: two rejected
+ * iterations of a 2026-10-17 run held nothing else. They are tolerated only while uncommitted.
+ * Committed, they are what the PR would carry as evidence, which an executor could forge, so the
+ * committed diff still judges them as `undeclaredFiles` always has. Keyed on the run's own slug,
+ * so another task's journals and receipts still count. The metrics record is not among them: the
+ * carry check judges it.
+ */
+export function runArtifactMatcher(specPath: string, slug: string): (path: string) => boolean {
+  if (!isCanonicalPath(specPath) || !SLUG_RE.test(slug)) return () => false;
+  const dirs = new Set([posix.dirname(specPath), ".marvin/task"]);
+  const own = new Set([".marvin/task/verification.md"]);
+  for (const dir of dirs) {
+    for (const suffix of JOURNAL_SUFFIXES) own.add(`${dir}/runs/${slug}${suffix}.md`);
+  }
+  const receipt = new RegExp(`^\\.marvin/critique/\\d+-${slug}\\.md$`);
+  return (path) => own.has(path) || receipt.test(path);
+}
+
 /**
  * The protected-path regexes, case-insensitive like the boundary hook that enforces the same
  * list (the default macOS volume is). An empty list, a non-string or a pattern that does
@@ -880,6 +905,11 @@ export interface GateStageOptions {
    * commits it. Any other change to it, and every other dirty path, stays a blocker.
    */
   metricsRecord?: { path: string; slug: string } | null;
+  /**
+   * The run's spec and slug, whose own service files (`runArtifactMatcher`) are not uncommitted
+   * work. Committed, they still count. Null or absent: none is tolerated.
+   */
+  runArtifacts?: { specPath: string; slug: string } | null;
   run: GateRunner;
   timeoutMs: number;
   /**
@@ -912,6 +942,15 @@ function validateOptions(o: GateStageOptions): void {
   }
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
+  }
+  const artifacts = o.runArtifacts;
+  if (artifacts != null) {
+    if (!isCanonicalPath(artifacts.specPath)) {
+      throw new Error(`run spec path is not canonical: ${String(artifacts.specPath)}`);
+    }
+    if (typeof artifacts.slug !== "string" || !SLUG_RE.test(artifacts.slug)) {
+      throw new Error(`run slug is not kebab-case: ${String(artifacts.slug)}`);
+    }
   }
   const record = o.metricsRecord;
   if (record != null) {
@@ -987,10 +1026,17 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
     !sealedPaths.has(path) &&
     !isProtectedPath(protectedRes, path) &&
     classifyRecord(git, headSha, o.worktree, path, record.slug).state === "appended";
+  const runArtifact =
+    o.runArtifacts != null
+      ? runArtifactMatcher(o.runArtifacts.specPath, o.runArtifacts.slug)
+      : () => false;
+  const ownArtifact = (path: string) =>
+    runArtifact(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const tolerated = (path: string) =>
     path.endsWith("/")
       ? o.protectedBaseline[path] === NESTED_REPO
       : carriedRecord(path) ||
+        ownArtifact(path) ||
         (exempt !== null &&
           exempt.test(path) &&
           !sealedPaths.has(path) &&

@@ -515,14 +515,13 @@ test("finalize waits for CI again, then marks the PR ready", () => {
   assert.deepEqual(works(ready), ["mark_ready"]);
 });
 
-test("a crash is retried once, then halts; a usage limit halts at once", () => {
+test("a crash is retried once, then halts", () => {
   const started = approve(at("awaiting_approval", { tier: "light" }));
   assert.equal(started.run.lastSpawn.executor.role, "executor");
   const first = go(started.run, child("executor", null, "crashed"));
   assert.equal(spawnOf(first).role, "executor");
   assert.deepEqual(first.run.retries, { executor: 1 });
   assert.equal(judgmentOf(go(first.run, child("executor", null, "crashed"))), "halt");
-  assert.equal(judgmentOf(go(at("executing"), child("executor", null, "limited"))), "halt");
   const handMade = go(
     at("executing", {
       lastSpawn: {
@@ -698,8 +697,56 @@ test("a mutated tree or a leak halts at once even when the child's output is mal
   assert.equal(judgmentOf(leaked), "halt");
 });
 
-test("a stalled child halts at once", () => {
-  assert.equal(judgmentOf(go(executingRun(), child("executor", null, "stalled"))), "halt");
+const limited = (role, detail) => {
+  const obs = child(role, null, "limited");
+  return { ...obs, result: { ...obs.result, sessionId: null, detail } };
+};
+
+test("a stalled child is retried once like a crash, then halts", () => {
+  const run = executingRun();
+  const first = go(run, child("executor", null, "stalled"));
+  assert.equal(judgmentOf(first), undefined);
+  assert.deepEqual(spawnOf(first), run.lastSpawn.executor);
+  assert.deepEqual(first.run.retries, { executor: 1 });
+  const second = go(first.run, child("executor", null, "stalled"));
+  assert.equal(judgmentOf(second), "halt");
+  assert.equal(second.run.haltRole, "executor");
+});
+
+test("a usage limit is waited out on its own budget, then halts", () => {
+  const run = executingRun();
+  const first = go(run, limited("executor", "Claude usage limit reached"));
+  assert.equal(judgmentOf(first), undefined);
+  const wait = rubric.caps.limit_wait_minutes * 60_000;
+  assert.deepEqual(spawnOf(first), {
+    ...run.lastSpawn.executor,
+    notBefore: new Date(NOW.getTime() + wait).toISOString(),
+  });
+  assert.match(first.actions[0].text, /executor hit a usage limit; retrying at .* \(1 of 3\)/);
+  // A wait costs no retry: a crash after it still gets the one the rubric gives.
+  assert.deepEqual(first.run.retries, { "executor-limited": 1 });
+  let r = first.run;
+  for (let i = 1; i < rubric.caps.limit_retries; i++) {
+    r = go(r, limited("executor", "usage limit")).run;
+  }
+  assert.equal(r.retries["executor-limited"], rubric.caps.limit_retries);
+  const out = go(r, limited("executor", "usage limit"));
+  assert.equal(judgmentOf(out), "halt");
+  assert.deepEqual(out.actions[0].payload, { reason: "executor limited", detail: "usage limit" });
+  // The orchestrator's retry of that halt starts the waits over, as it does every other budget.
+  const retried = go(out.run, answer("halt", { kind: "retry" }));
+  assert.equal(retried.run.retries["executor-limited"], undefined);
+  assert.equal(spawnOf(retried).notBefore, undefined);
+});
+
+test("a usage limit that names its reset is waited out until then, unless it is days away", () => {
+  const run = executingRun();
+  const epoch = Math.floor(NOW.getTime() / 1000) + 2 * 3600;
+  const named = go(run, limited("executor", `Claude AI usage limit reached|${epoch}`));
+  assert.equal(spawnOf(named).notBefore, new Date(epoch * 1000 + 60_000).toISOString());
+  const weekly = Math.floor(NOW.getTime() / 1000) + 3 * 24 * 3600;
+  const far = go(run, limited("executor", `Claude AI usage limit reached|${weekly}`));
+  assert.equal(judgmentOf(far), "halt");
 });
 
 test("a retro that fails twice, or hits a usage limit, still finalizes without a retro", () => {
@@ -1062,10 +1109,12 @@ test("cancelling a halt after finalize closes the run; the retro is not run twic
 });
 
 test("cancelling a halt during the retro skips the retro instead of starting another", () => {
-  const stalled = go(
-    go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run,
-    child("retro", null, "stalled"),
-  );
+  // A stalled or limited retro no longer halts (it is retried, then skipped), so the halt here
+  // is one no retry budget covers: a retro that wrote outside its worktree.
+  const stalled = go(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run, {
+    ...child("retro", null, "stalled"),
+    leaked: ["?? notes.txt"],
+  });
   assert.equal(judgmentOf(stalled), "halt");
   const d = go(stalled.run, answer("halt", { kind: "cancel", reason: "stop" }));
   assert.deepEqual([d.run.stage, d.run.haltReason], ["finalizing", "stop"]);

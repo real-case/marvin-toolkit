@@ -530,9 +530,11 @@ last message is the executor object.
   the JavaScript regex `pipeline.scope_exempt_pattern` in `.marvin/config.json`. It reports any
   other changed path as a major finding whatever a SPEC GAP says, except the records marvin's tools
   write under `.marvin/task/`, `.marvin/metrics/` and `.marvin/critique/`, which the interactive
-  gate never counts either. The `spec` `action: "scope"` call knows only the contract `files` and
-  `scope.exempt`, so a FAIL naming a listed sealed test or a path that regex matches is not scope
-  creep: re-run it with `allow` set to exactly those paths, and record no SPEC GAP for them. No
+  gate never counts either, and this run's own `runs/<slug>.*` journals beside the spec, which it
+  tolerates for the run's slug only and only while they stay uncommitted. The `spec` `action: "scope"` call knows only the contract
+  `files` and `scope.exempt`, so a FAIL naming a listed sealed test, a path that regex matches or
+  one of those journals is not scope creep: re-run it with `allow` set to exactly those paths,
+  and record no SPEC GAP for them. Never commit a journal to clear a finding. No
   other path goes into `allow`. Revert every path still outside; if a criterion cannot be met
   without one, finish with status `needs_input` naming the file and the criterion.
 - **Step 6F / 9B — the self-check.** Call the `verify` tool yourself rather than

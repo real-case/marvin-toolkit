@@ -4,6 +4,56 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.30.0] — 2026-10-18
+
+Lets an autopilot run recover on its own from the four things that stopped a 2026-10-17 run for a
+human although nothing in the task needed one.
+
+### Changed
+
+- **A usage limit is waited out, and a stall is retried, before either halts.** A `limited` child
+  is spawned again once its limit lifts, at the reset its text names (`…limit reached|<epoch>`
+  or `resets 7pm`), else after `caps.limit_wait_minutes` (30), at most `caps.limit_retries` (3)
+  times on a budget of its own; a reset more than six hours away still halts. The wait is a
+  `notBefore` on the journalled spawn, so a restarted engine waits out only what is left. A
+  `stalled` child now costs a `child_retries` retry like a crash instead of halting at once, so
+  a stalled retro, like a crashed one, finalizes without its retro the second time.
+- **Finalize merges the base first when it merges cleanly.** Every append-only file finalize
+  writes is built from the commit it builds on, so a base that gained its own
+  `calibration.jsonl` (or `checks.yaml`, or lessons) while the run went on made the finalize
+  commit conflict with it. The engine now joins the base tip to the gated commit with plumbing
+  only (`merge-tree --write-tree`, `commit-tree`, blobs written from `cat-file`, `update-ref`
+  guarded on the gated commit) and finalizes on top. A conflict, a failed fetch, a custom merge
+  driver, a link or submodule, or an uncommitted change on a merged path leaves the run as it
+  was, with a note saying why. A replay recognises its merge through `base-merge.json`.
+- **Finalize formats its files when the host configured no formatter.** A `null`
+  `pipeline.format_command` now runs the Prettier installed in the main checkout, never the run
+  worktree's (a child writes there), resolved through its links to inside `node_modules` and run
+  by the engine's node with `--write --ignore-unknown`; `""` still turns formatting off. Lesson bodies put bare glob and placeholder paths in code spans first, so
+  Prettier no longer reads `(.marvin/critique/*) … (.marvin/metrics/*)` as emphasis.
+- **The scope gate tolerates the run's own service files while they stay uncommitted.** The
+  `runs/<slug>.*` journals beside the spec and under `.marvin/task/`, `.marvin/task/verification.md`
+  and the critic receipts `.marvin/critique/<NNN>-<slug>.md` are not uncommitted work, for the
+  run's own slug only; two of the run's three iterations were rejected for nothing else.
+  Committed, they still count as undeclared files, since a committed one is evidence the PR
+  carries and an executor could forge.
+- **The planner looks for guard tests before it seals.** `planner.md` tells it to find the
+  tests that enumerate or count what the change joins (a module allowlist, a counted docstring,
+  an inventory) and put every file they force into the contract, since the scope gate leaves a
+  missed one only a dodge or a halt. `executor.md` says the run's journals are never committed to
+  clear a finding.
+
+## [0.29.10] — 2026-10-18
+
+Lets Claude Code load the bundled `gitmcp` server again.
+
+### Fixed
+
+- **`gitmcp` declares its transport.** Its `.mcp.json` entry carried a `url` and no `type`,
+  which current Claude Code rejects as an invalid server config (`invalid_union`) and drops
+  without a visible error, so the plugin's `gitmcp` tools never appeared. The entry now reads
+  `"type": "http"`, and the server connects over streamable HTTP.
+
 ## [0.29.9] — 2026-10-17
 
 Lets the autopilot seal stage run on a `gates.test_one` written for the per-test oracles.

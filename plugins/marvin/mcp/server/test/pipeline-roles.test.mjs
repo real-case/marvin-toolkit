@@ -951,6 +951,13 @@ const PROMPT_RULES = [
   ["common", /finish your turn with it and your questions/, "needs_input requires a question"],
   ["planner", /status "spec_ready" and no questions/, "spec_ready must not carry questions"],
   ["planner", /`spec\.path` relative to the repo root/, "SpecPath is canonical and repo-relative"],
+  // The scope gate rejects every path outside the contract, so a guard test the planner missed
+  // cannot be fixed inside the run (a 2026-10-17 run had to dodge a storage-module allowlist).
+  [
+    "planner",
+    /Before you seal, find the guard tests the change joins[^.]*pin their list or count/,
+    "undeclared files are blocking scope findings",
+  ],
   ["executor", /Status "done" carries no questions and no dispute/, "ExecutorOutput refines"],
   ["executor", /status "needs_input" and fill `dispute`/, "needs_input takes a dispute alone"],
   ["executor", /`pr_url` = the draft PR's github\.com URL, which every "done" carries/, "decide()"],
