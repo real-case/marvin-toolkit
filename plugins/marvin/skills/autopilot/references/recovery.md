@@ -49,9 +49,10 @@ directory with `list`, and re-arm with the path `list` prints. It never dies on 
 ## No messages from a child
 
 Children report every five minutes, nudged by a heartbeat hook. A silent child is not a stuck
-run: the engine watches every child's output and raises a `halt` judgment (`<role> stalled`)
-when one stops producing any. Do not poke the child and do not message it; wait for the
-judgment.
+run: the engine watches every child's output, ends one that stops producing any, and starts
+the same spawn again once (`caps.child_retries`); only a second stall raises a `halt` judgment
+(`<role> stalled`). A usage limit is waited out the same way, on its own budget. Do not poke the
+child and do not message it; wait for the next event.
 
 ## A judgment you cannot answer
 

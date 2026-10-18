@@ -121,8 +121,9 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 ## 5. `halt`
 
-Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash or failure
-after its retry, a usage limit, a stalled child, a child that mutated the tree or wrote outside
+Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash, failure
+or stall after its retry, a usage limit the engine stopped waiting out (`caps.limit_retries` waits
+spent, or a reset more than six hours away), a child that mutated the tree or wrote outside
 its worktree, a planner or executor past its question cap, a planner whose spec still failed the Definition of Ready after its rounds (`caps.dor_rounds`),
 an approved spec the engine would not commit, a gate that found the spec unsealed on the run
 branch, the sealed tests revised too often, a closed PR, or CI red after finalize.
@@ -154,8 +155,14 @@ These halts deserve a look before you ask:
   refused, usually a contract that no longer hashes to its `contract_sha` because the spec was
   edited after it was sealed. Sealing happens before approval, so this halt cannot be retried;
   recommend `cancel`.
-- **A usage limit** (`<role> limited`). A retry will hit the same limit until it resets; say
-  when, if the detail names it, and suggest retrying then.
+- **A usage limit** (`<role> limited`). The engine already waited it out: until the reset the
+  limit's text named, else `caps.limit_wait_minutes`, at most `caps.limit_retries` times, each
+  announced as `EVENT note <role> hit a usage limit; retrying at …`. A halt here means the limit
+  kept coming or resets more than six hours away (a weekly limit). A retry starts the waits over;
+  say when the limit resets, if the detail names it.
+- **A stall** (`<role> stalled`). The engine already ended the silent child and started the same
+  spawn once more; this halt is the second stall in a row. Recommend `retry` when the detail
+  shows no tool call in flight; a child that stalls inside one command again is a hung command.
 
 ## 6. `unverified`
 

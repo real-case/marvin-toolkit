@@ -11,6 +11,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -2342,4 +2343,150 @@ test("a run that does not ship leaves the record alone and reports none", () => 
   assert.equal(out.metricsRecord, null);
   assert.equal(head(fx.wt), fx.gated);
   assert.ok(readFileSync(join(fx.wt, RECORD)).equals(before));
+});
+
+// ------------------------------------------------------------------ base merge before finalize
+
+/** Push `files` to dev on the fixture's origin from a separate clone, as a parallel run would. */
+function advanceDev(fx, files, message = "parallel work on dev") {
+  const clone = tmp("pipe-dev-");
+  sh(clone, "clone", "-q", "--branch", "dev", fx.origin, ".");
+  for (const [rel, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(clone, rel)), { recursive: true });
+    writeFileSync(join(clone, rel), content);
+  }
+  sh(clone, "add", "-A");
+  sh(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", message);
+  sh(clone, "push", "-q", "origin", "HEAD:refs/heads/dev");
+  return sh(clone, "rev-parse", "HEAD");
+}
+
+const mergeOpts = (fx, extra = {}) => ({
+  runDir: fx.runDir,
+  worktree: fx.wt,
+  gitDir: fx.gitDir,
+  branch: fx.branch,
+  base: "dev",
+  slug: "demo",
+  gatedHead: fx.gated,
+  ...extra,
+});
+
+const OTHER_RECORD = `${JSON.stringify({ runId: "r0", tier: "light" })}\n`;
+
+test("a base that gained its own calibration file is merged first, and finalize appends to it", () => {
+  // The 2026-10-17 run: a parallel run created calibration.jsonl on dev, the finalize commit
+  // created it again, and the PR conflicted (add/add) with nothing else wrong.
+  const fx = prFixture();
+  const devTip = advanceDev(fx, { ".marvin/pipeline/calibration.jsonl": OTHER_RECORD });
+  const merged = l.mergeBaseForFinalize(mergeOpts(fx));
+  assert.equal(merged.state, "merged");
+  assert.equal(merged.base, devTip);
+  assert.equal(head(fx.wt), merged.head);
+  assert.deepEqual(sh(fx.wt, "rev-list", "--parents", "-n", "1", "HEAD").split(" ").slice(1), [
+    fx.gated,
+    devTip,
+  ]);
+  assert.equal(status(fx.wt), "", "the worktree and the index follow the merge");
+  assert.equal(
+    readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8"),
+    OTHER_RECORD,
+  );
+
+  const out = l.finalizeRun(fx.opts({ expectedHead: merged.head }));
+  assert.equal(out.shipped, true);
+  const lines = readFileSync(join(fx.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
+    .trim()
+    .split("\n");
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0], OTHER_RECORD.trim());
+  assert.equal(JSON.parse(lines[1]).runId, "r1");
+  // dev is now an ancestor of the pushed branch, so the PR merges without a conflict.
+  sh(fx.wt, "merge-base", "--is-ancestor", devTip, "HEAD");
+  assert.equal(sh(fx.origin, "rev-parse", `refs/heads/${fx.branch}`), head(fx.wt));
+
+  // A replay of either step recognises what the first call made.
+  assert.deepEqual(l.mergeBaseForFinalize(mergeOpts(fx)), merged);
+});
+
+test("a base already in the run branch is current, and nothing moves", () => {
+  const fx = prFixture();
+  assert.deepEqual(l.mergeBaseForFinalize(mergeOpts(fx)), { state: "current", head: fx.gated });
+  assert.equal(head(fx.wt), fx.gated);
+});
+
+test("a conflicting, unreachable or unsafe base is not merged, and says why", () => {
+  const conflicted = prFixture();
+  writeFileSync(join(conflicted.wt, "README.md"), "the run's line\n");
+  sh(conflicted.wt, "add", "README.md");
+  sh(conflicted.wt, "commit", "-qm", "run writes a readme");
+  conflicted.gate();
+  advanceDev(conflicted, { "README.md": "dev's line\n" });
+  const c = l.mergeBaseForFinalize(mergeOpts(conflicted));
+  assert.equal(c.state, "skipped");
+  assert.match(c.reason, /dev conflicts with the run branch in README\.md/);
+  assert.equal(head(conflicted.wt), conflicted.gated);
+
+  const dirty = prFixture();
+  advanceDev(dirty, { "notes.md": "from dev\n" });
+  writeFileSync(join(dirty.wt, "notes.md"), "an untracked draft\n");
+  const d = l.mergeBaseForFinalize(mergeOpts(dirty));
+  assert.deepEqual(
+    [d.state, d.reason],
+    ["skipped", "notes.md has an uncommitted change the merge would overwrite"],
+  );
+  assert.equal(readFileSync(join(dirty.wt, "notes.md"), "utf8"), "an untracked draft\n");
+
+  const driver = prFixture();
+  advanceDev(driver, { "notes.md": "from dev\n" });
+  sh(driver.wt, "config", "merge.evil.driver", "touch /tmp/pwned-%A");
+  const v = l.mergeBaseForFinalize(mergeOpts(driver));
+  assert.deepEqual([v.state, v.reason], ["skipped", "a custom merge driver is configured"]);
+
+  const offline = prFixture();
+  sh(offline.wt, "remote", "set-url", "origin", join(tmp("pipe-gone-"), "missing.git"));
+  const o = l.mergeBaseForFinalize(mergeOpts(offline));
+  assert.equal(o.state, "skipped");
+  assert.match(o.reason, /^fetching dev failed/);
+});
+
+test("with no formatter configured, finalize runs the main checkout's prettier, never the worktree's", () => {
+  const repo = tmp("pipe-fmt-repo-");
+  assert.equal(l.inferFormatCommand(repo), null);
+  // The layout npm leaves: .bin/prettier links into the package.
+  mkdirSync(join(repo, "node_modules", "prettier", "bin"), { recursive: true });
+  mkdirSync(join(repo, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(repo, "node_modules", "prettier", "bin", "prettier.cjs"), "");
+  symlinkSync("../prettier/bin/prettier.cjs", join(repo, "node_modules", ".bin", "prettier"));
+  const real = realpathSync(join(repo, "node_modules", "prettier", "bin", "prettier.cjs"));
+  assert.equal(
+    l.inferFormatCommand(repo),
+    `'${process.execPath}' '${real}' --write --ignore-unknown`,
+  );
+  // A .bin entry that leads out of node_modules is not the host's installed prettier.
+  const planted = tmp("pipe-fmt-planted-");
+  mkdirSync(join(planted, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(planted, "evil.cjs"), "");
+  symlinkSync(join(planted, "evil.cjs"), join(planted, "node_modules", ".bin", "prettier"));
+  assert.equal(l.inferFormatCommand(planted), null);
+});
+
+test("a lesson body's glob and placeholder paths go in code spans, so a formatter keeps them", () => {
+  const body =
+    "The run journals (specs/runs/<slug>.progress.md and .evidence.md), critique receipts " +
+    "(.marvin/critique/*) and the task-metrics record (.marvin/metrics/*) are not in that list.";
+  assert.equal(
+    l.codeSpanPaths(body),
+    "The run journals (`specs/runs/<slug>.progress.md` and .evidence.md), critique receipts " +
+      "(`.marvin/critique/*`) and the task-metrics record (`.marvin/metrics/*`) are not in that list.",
+  );
+  const kept = "Already `src/**/*.ts` spanned, a*b is no path, and src/a.ts holds no glob.";
+  assert.equal(l.codeSpanPaths(kept), kept);
+  assert.equal(l.codeSpanPaths("Ends with src/*."), "Ends with `src/*`.");
+  // Linear on a long token full of slashes and no glob, which a backtracking pattern was not.
+  // The quadratic pattern this replaced took about 3 s here.
+  const long = `${"a/".repeat(60_000)}b`;
+  const started = Date.now();
+  assert.equal(l.codeSpanPaths(long), long);
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
 });

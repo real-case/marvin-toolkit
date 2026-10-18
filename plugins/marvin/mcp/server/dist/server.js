@@ -40189,7 +40189,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.29.10";
+var VERSION = "0.30.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

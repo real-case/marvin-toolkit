@@ -276,3 +276,28 @@ test("a child keeps the credentials its role needs: gh's token and the model pro
     names.map((n) => `value-of-${n}`),
   );
 });
+
+test("a usage limit's reset is read from the epoch form and from a clock time, else null", () => {
+  // Local time on purpose: the CLI names the reset in the engine's own time zone.
+  const now = new Date(2026, 9, 4, 10, 0, 0);
+  const epoch = Math.floor(now.getTime() / 1000) + 3600;
+  assert.equal(
+    wait.limitResetAt(`Claude AI usage limit reached|${epoch}`, now)?.getTime(),
+    epoch * 1000 + 60_000,
+  );
+  assert.equal(wait.limitResetAt(`limit reached|${epoch - 7200}`, now), null);
+  assert.equal(
+    wait.limitResetAt("5-hour limit reached ∙ resets 7pm", now)?.getTime(),
+    new Date(2026, 9, 4, 19, 1, 0).getTime(),
+  );
+  assert.equal(
+    wait.limitResetAt("You've hit your limit · resets at 9:30 am (Europe/Moscow)", now)?.getTime(),
+    new Date(2026, 9, 5, 9, 31, 0).getTime(),
+  );
+  assert.equal(
+    wait.limitResetAt("resets 12am", now)?.getTime(),
+    new Date(2026, 9, 5, 0, 1, 0).getTime(),
+  );
+  assert.equal(wait.limitResetAt("Claude usage limit reached", now), null);
+  assert.equal(wait.limitResetAt("resets 13pm", now), null);
+});

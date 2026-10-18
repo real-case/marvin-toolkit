@@ -412,6 +412,51 @@ test("undeclared files exclude the contract, sealed tests and exempt paths", () 
   assert.deepEqual(g.undeclaredFiles(["x", "x"], [], null), ["x"]);
 });
 
+test("the run's own service files are matched by its slug and spec directory only", () => {
+  const own = g.runArtifactMatcher("specs/335-frost-sidebar.md", "frost-sidebar");
+  for (const path of [
+    "specs/runs/frost-sidebar.progress.md",
+    "specs/runs/frost-sidebar.evidence.md",
+    "specs/runs/frost-sidebar.md",
+    ".marvin/task/runs/frost-sidebar.verify.md",
+    ".marvin/task/runs/frost-sidebar.oracles.md",
+    ".marvin/task/verification.md",
+    ".marvin/critique/228-frost-sidebar.md",
+  ]) {
+    assert.equal(own(path), true, path);
+  }
+  for (const path of [
+    "specs/runs/other.progress.md",
+    "specs/frost-sidebar.progress.md",
+    "docs/specs/runs/frost-sidebar.progress.md",
+    ".marvin/critique/frost-sidebar.md",
+    ".marvin/critique/228-frost-sidebar-v2.md",
+    ".marvin/metrics/335-frost-sidebar.md",
+    ".marvin/memory/frost-sidebar.md",
+  ]) {
+    assert.equal(own(path), false, path);
+  }
+  assert.equal(g.runArtifactMatcher("../x.md", "frost-sidebar")("../runs/frost-sidebar.md"), false);
+  assert.equal(
+    g.runArtifactMatcher("specs/1-x.md", "Not A Slug")("specs/runs/Not A Slug.md"),
+    false,
+  );
+});
+
+test("a committed journal of the run is still undeclared: only an uncommitted one is tolerated", async () => {
+  // Committed, a journal or receipt is evidence the PR carries, which the executor could forge.
+  const w = runWorktree();
+  w.write("src/a.ts", "const x = 1;\n");
+  w.write("specs/runs/frost-sidebar.progress.md", "journal\n");
+  w.commit();
+  const report = await gateStage(w, {
+    contractFiles: ["src/a.ts"],
+    runArtifacts: { specPath: "specs/335-frost-sidebar.md", slug: "frost-sidebar" },
+  });
+  assert.deepEqual(report.undeclared, ["specs/runs/frost-sidebar.progress.md"]);
+  assert.equal(report.passed, false);
+});
+
 test("changed protected paths are matched case-insensitively and listed once", () => {
   assert.deepEqual(
     g.protectedChanges(

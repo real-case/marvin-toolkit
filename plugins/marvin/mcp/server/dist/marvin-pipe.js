@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { spawn, spawnSync, execFileSync, execSync } from 'child_process';
-import { realpathSync, writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdtempSync, mkdirSync, readdirSync, appendFileSync, renameSync, cpSync, linkSync, rmSync, fstatSync, readSync, statSync, lstatSync, readlinkSync, chmodSync, rmdirSync, symlinkSync } from 'fs';
+import { realpathSync, writeFileSync, readFileSync, openSync, closeSync, existsSync, mkdtempSync, mkdirSync, readdirSync, appendFileSync, renameSync, cpSync, linkSync, rmSync, fstatSync, readSync, statSync, chmodSync, lstatSync, readlinkSync, rmdirSync, symlinkSync } from 'fs';
 import { isAbsolute, posix, resolve, join, dirname, basename, sep, normalize, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { setTimeout as setTimeout$1 } from 'timers/promises';
@@ -11125,49 +11125,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative8, options, skipNormalization) {
+    function resolveComponent(base, relative9, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse5(serialize(base, options), options);
-        relative8 = parse5(serialize(relative8, options), options);
+        relative9 = parse5(serialize(relative9, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative8.scheme) {
-        target.scheme = relative8.scheme;
-        target.userinfo = relative8.userinfo;
-        target.host = relative8.host;
-        target.port = relative8.port;
-        target.path = removeDotSegments(relative8.path || "");
-        target.query = relative8.query;
+      if (!options.tolerant && relative9.scheme) {
+        target.scheme = relative9.scheme;
+        target.userinfo = relative9.userinfo;
+        target.host = relative9.host;
+        target.port = relative9.port;
+        target.path = removeDotSegments(relative9.path || "");
+        target.query = relative9.query;
       } else {
-        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
-          target.userinfo = relative8.userinfo;
-          target.host = relative8.host;
-          target.port = relative8.port;
-          target.path = removeDotSegments(relative8.path || "");
-          target.query = relative8.query;
+        if (relative9.userinfo !== void 0 || relative9.host !== void 0 || relative9.port !== void 0) {
+          target.userinfo = relative9.userinfo;
+          target.host = relative9.host;
+          target.port = relative9.port;
+          target.path = removeDotSegments(relative9.path || "");
+          target.query = relative9.query;
         } else {
-          if (!relative8.path) {
+          if (!relative9.path) {
             target.path = base.path;
-            if (relative8.query !== void 0) {
-              target.query = relative8.query;
+            if (relative9.query !== void 0) {
+              target.query = relative9.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative8.path[0] === "/") {
-              target.path = removeDotSegments(relative8.path);
+            if (relative9.path[0] === "/") {
+              target.path = removeDotSegments(relative9.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative8.path;
+                target.path = "/" + relative9.path;
               } else if (!base.path) {
-                target.path = relative8.path;
+                target.path = relative9.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative9.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative8.query;
+            target.query = relative9.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -11175,7 +11175,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative8.fragment;
+      target.fragment = relative9.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -19025,6 +19025,8 @@ var Rubric = external_exports.object({
     planner_questions: external_exports.number().int().min(0),
     test_author_attempts: external_exports.number().int().min(1),
     child_retries: external_exports.number().int().min(0),
+    limit_retries: external_exports.number().int().min(0).default(3),
+    limit_wait_minutes: external_exports.number().int().min(1).default(30),
     dor_rounds: external_exports.number().int().min(0),
     ci_wait_minutes: external_exports.number().int().min(1),
     executor_questions: external_exports.number().int().min(0),
@@ -20188,6 +20190,17 @@ function undeclaredFiles(changed, declared, exemptPattern) {
     (f) => !known.has(f) && !MARVIN_RECORDS.test(f) && !exempt?.test(f)
   );
 }
+var JOURNAL_SUFFIXES = ["", ".progress", ".evidence", ".oracles", ".verify"];
+function runArtifactMatcher(specPath, slug) {
+  if (!isCanonicalPath(specPath) || !SLUG_RE.test(slug)) return () => false;
+  const dirs = /* @__PURE__ */ new Set([posix.dirname(specPath), ".marvin/task"]);
+  const own = /* @__PURE__ */ new Set([".marvin/task/verification.md"]);
+  for (const dir of dirs) {
+    for (const suffix of JOURNAL_SUFFIXES) own.add(`${dir}/runs/${slug}${suffix}.md`);
+  }
+  const receipt = new RegExp(`^\\.marvin/critique/\\d+-${slug}\\.md$`);
+  return (path) => own.has(path) || receipt.test(path);
+}
 function compileProtected(patterns) {
   if (!Array.isArray(patterns) || patterns.length === 0) {
     throw new Error("protectedPatterns must be a non-empty array of regex strings");
@@ -20445,6 +20458,15 @@ function validateOptions(o) {
   for (const path of o.contractFiles) {
     if (!isCanonicalPath(path)) throw new Error(`contract file is not canonical: ${String(path)}`);
   }
+  const artifacts = o.runArtifacts;
+  if (artifacts != null) {
+    if (!isCanonicalPath(artifacts.specPath)) {
+      throw new Error(`run spec path is not canonical: ${String(artifacts.specPath)}`);
+    }
+    if (typeof artifacts.slug !== "string" || !SLUG_RE.test(artifacts.slug)) {
+      throw new Error(`run slug is not kebab-case: ${String(artifacts.slug)}`);
+    }
+  }
   const record2 = o.metricsRecord;
   if (record2 != null) {
     if (!isCanonicalPath(record2.path) || !MARVIN_METRICS.test(record2.path)) {
@@ -20497,7 +20519,9 @@ async function runGateStage(o) {
   const range = `${o.baseSha}...${headSha2}`;
   const record2 = o.metricsRecord ?? null;
   const carriedRecord2 = (path) => record2 !== null && path === record2.path && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path) && classifyRecord(git4, headSha2, o.worktree, path, record2.slug).state === "appended";
-  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : carriedRecord2(path) || exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
+  const runArtifact = o.runArtifacts != null ? runArtifactMatcher(o.runArtifacts.specPath, o.runArtifacts.slug) : () => false;
+  const ownArtifact = (path) => runArtifact(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
+  const tolerated = (path) => path.endsWith("/") ? o.protectedBaseline[path] === NESTED_REPO : carriedRecord2(path) || ownArtifact(path) || exempt !== null && exempt.test(path) && !sealedPaths.has(path) && !isProtectedPath(protectedRes, path);
   const pointerBefore = pointerProblem(o.worktree, o.gitDir);
   if (pointerBefore !== null) {
     blockers.push({
@@ -23483,7 +23507,7 @@ function lessonStoreSink(source) {
     const { slug } = addLesson(memoryDir, {
       type: lesson.type,
       title: lesson.title,
-      body: lesson.body,
+      body: codeSpanPaths(lesson.body),
       tags,
       source
     });
@@ -23596,6 +23620,155 @@ function readFormatted(worktree, paths, expected) {
   return contents;
 }
 var nulList = (text2) => text2.split("\0").filter(Boolean);
+var BASE_MERGE_RECORD = "base-merge.json";
+var REGULAR_MODES = /* @__PURE__ */ new Set(["100644", "100755"]);
+var ZERO_OID = /^0+$/;
+var sameBytes = (a, b) => a === null ? b === null : b !== null && a.equals(b);
+function rawChanges(git4, from, to) {
+  const fields = git4.text("diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to).split("\0");
+  const out = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const m = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(fields[i]);
+    if (!m) break;
+    out.push({
+      oldMode: m[1],
+      newMode: m[2],
+      oldOid: m[3],
+      newOid: m[4],
+      status: m[5],
+      path: fields[i + 1]
+    });
+  }
+  return out;
+}
+function mergeBaseForFinalize(o) {
+  if (!isSafeBranchRef(o.branch)) throw new Error(`run branch is not a safe ref: ${o.branch}`);
+  if (!isSafeBranchRef(o.base)) throw new Error(`run base is not a safe ref: ${o.base}`);
+  if (!FULL_SHA3.test(o.gatedHead)) throw new Error("gatedHead must be a 40-hex commit SHA");
+  if (!PLAIN_TOKEN.test(o.slug)) throw new Error(`slug is not a plain token: ${o.slug}`);
+  const git4 = isolatedGit(o.worktree, o.gitDir, { HUSKY: "0" });
+  const skipped = (reason2) => ({
+    state: "skipped",
+    head: o.gatedHead,
+    reason: reason2
+  });
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  assertPlain(o.runDir, BASE_MERGE_RECORD);
+  const recordPath = join(o.runDir, BASE_MERGE_RECORD);
+  const record2 = existsSync(recordPath) ? JSON.parse(readFileSync(recordPath, "utf8")) : null;
+  const recorded = record2 !== null && record2.gated === o.gatedHead && typeof record2.commit === "string" && typeof record2.base === "string" && FULL_SHA3.test(record2.commit) && FULL_SHA3.test(record2.base) ? { commit: record2.commit, base: record2.base } : null;
+  if (recorded !== null && headSha2 !== o.gatedHead) {
+    if (headSha2 === recorded.commit || isOwnFinalizeCommit(git4, o.runDir, headSha2, recorded.commit)) {
+      return { state: "merged", head: recorded.commit, base: recorded.base };
+    }
+  }
+  if (headSha2 !== o.gatedHead) return { state: "current", head: o.gatedHead };
+  let baseTip;
+  try {
+    git4.text("fetch", "--no-tags", "--quiet", "origin", "--", `refs/heads/${o.base}`);
+    baseTip = git4.text("rev-parse", "--verify", "FETCH_HEAD^{commit}").trim();
+  } catch (error2) {
+    return skipped(
+      `fetching ${o.base} failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  try {
+    git4.text("merge-base", "--is-ancestor", baseTip, o.gatedHead);
+    return { state: "current", head: o.gatedHead };
+  } catch {
+  }
+  let drivers = "";
+  try {
+    drivers = git4.text("config", "--get-regexp", "^merge\\..*\\.driver$");
+  } catch {
+  }
+  if (drivers.trim() !== "") return skipped("a custom merge driver is configured");
+  let tree;
+  try {
+    tree = git4.text("merge-tree", "--write-tree", "--name-only", "--no-messages", o.gatedHead, baseTip).split("\n")[0].trim();
+  } catch (error2) {
+    const out = error2.stdout?.toString() ?? "";
+    const files = out.split("\n").slice(1).filter(Boolean);
+    return skipped(
+      files.length ? `${o.base} conflicts with the run branch in ${files.slice(0, 5).join(", ")}` : `merge-tree failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  if (!FULL_SHA3.test(tree)) return skipped(`merge-tree printed no tree: ${tree}`);
+  const commit = recorded?.base === baseTip ? recorded.commit : git4.text(
+    "commit-tree",
+    tree,
+    "-p",
+    o.gatedHead,
+    "-p",
+    baseTip,
+    "-m",
+    `chore(${o.slug}): merge ${o.base} before finalize`,
+    "-m",
+    COMMIT_TRAILER
+  ).trim();
+  const changes2 = rawChanges(git4, o.gatedHead, commit);
+  for (const c of changes2) {
+    const removal = c.status === "D";
+    if (!removal && !REGULAR_MODES.has(c.newMode) || !ZERO_OID.test(c.oldOid) && !REGULAR_MODES.has(c.oldMode)) {
+      return skipped(`${o.base} changes ${c.path}, which is not a regular file`);
+    }
+    assertPlain(o.worktree, c.path);
+    const onDisk = existsSync(join(o.worktree, c.path)) ? readFileSync(join(o.worktree, c.path)) : null;
+    const before = ZERO_OID.test(c.oldOid) ? null : git4.bytes("cat-file", "blob", c.oldOid);
+    const after = removal ? null : git4.bytes("cat-file", "blob", c.newOid);
+    if (!sameBytes(onDisk, before) && !sameBytes(onDisk, after)) {
+      return skipped(`${c.path} has an uncommitted change the merge would overwrite`);
+    }
+  }
+  writeWhole(
+    o.runDir,
+    BASE_MERGE_RECORD,
+    `${JSON.stringify({ gated: o.gatedHead, base: baseTip, commit })}
+`
+  );
+  let indexInfo = "";
+  for (const c of changes2) {
+    if (c.status === "D") {
+      removePlain(o.worktree, c.path);
+      indexInfo += `0 ${"0".repeat(40)}	${c.path}\0`;
+    } else {
+      writeWhole(o.worktree, c.path, git4.bytes("cat-file", "blob", c.newOid));
+      chmodSync(join(o.worktree, c.path), c.newMode === "100755" ? 493 : 420);
+      indexInfo += `${c.newMode} ${c.newOid}	${c.path}\0`;
+    }
+  }
+  if (indexInfo) git4.textIn(indexInfo, "update-index", "-z", "--index-info");
+  git4.text("update-ref", `refs/heads/${o.branch}`, commit, o.gatedHead);
+  const parents = git4.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+  if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== commit || parents.length !== 3 || parents[1] !== o.gatedHead || parents[2] !== baseTip) {
+    throw new Error(
+      `the base merge ${commit} is not the one HEAD names, on ${o.gatedHead} and ${baseTip}`
+    );
+  }
+  return { state: "merged", head: commit, base: baseTip };
+}
+function inferFormatCommand(repoRoot) {
+  try {
+    const modules = realpathSync(join(repoRoot, "node_modules"));
+    const bin = realpathSync(join(modules, ".bin", "prettier"));
+    const inside = relative(modules, bin);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
+  } catch {
+    return null;
+  }
+}
+function codeSpanPaths(body) {
+  const spanned = (token) => {
+    const punct = /[.,;:!?]$/.test(token) ? token.slice(-1) : "";
+    const core = punct ? token.slice(0, -1) : token;
+    const path = core.includes("/") && (core.includes("*") || core.includes("<"));
+    return path && !core.includes("`") ? `\`${core}\`${punct}` : token;
+  };
+  return body.split(/(`[^`\n]*`)/).map(
+    (part, i) => i % 2 === 1 ? part : part.split(/([\s()]+)/).map((token, j) => j % 2 === 1 ? token : spanned(token)).join("")
+  ).join("");
+}
 function finalizeRun(o) {
   const { run: run2 } = o;
   if (!PLAIN_TOKEN.test(run2.id))
@@ -23828,6 +24001,94 @@ function finalizeRun(o) {
     metricsRecord: carried
   };
 }
+var STRUCTURED = /* @__PURE__ */ new Set(["needs_input", "spec_ready", "done", "failed"]);
+var LIMIT_MAX_WAIT_MS = 6 * 60 * 6e4;
+var LIMIT_RESET_MARGIN_MS = 6e4;
+function limitResetAt(detail, now) {
+  const epoch = /\|(\d{10})\b/.exec(detail)?.[1];
+  if (epoch !== void 0) {
+    const at2 = Number(epoch) * 1e3 + LIMIT_RESET_MARGIN_MS;
+    return at2 > now.getTime() ? new Date(at2) : null;
+  }
+  const clock = /\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(detail);
+  if (!clock) return null;
+  const hour = Number(clock[1]);
+  const minute = Number(clock[2] ?? "0");
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  const at = new Date(now);
+  at.setHours(hour % 12 + (clock[3]?.toLowerCase() === "pm" ? 12 : 0), minute, 0, 0);
+  if (at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1);
+  return new Date(at.getTime() + LIMIT_RESET_MARGIN_MS);
+}
+function lastResultEvent(log) {
+  const lines = log.trimEnd().split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line?.startsWith("{")) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "result") return event;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+function classify(i) {
+  const none = {
+    sessionId: null,
+    costUsd: null,
+    durationMs: null,
+    cacheReadTokens: null,
+    structured: null
+  };
+  if (i.exitCode === null) {
+    return i.idleMs >= i.stallMs ? {
+      ...none,
+      outcome: "stalled",
+      detail: `no output for ${Math.round(i.idleMs / 6e4)} min`
+    } : { ...none, outcome: "running", detail: "" };
+  }
+  const r = i.result;
+  if (!r) return { ...none, outcome: "crashed", detail: `exit ${i.exitCode}, no result event` };
+  const usage = r.usage ?? {};
+  const meta = {
+    sessionId: typeof r.session_id === "string" ? r.session_id : null,
+    costUsd: typeof r.total_cost_usd === "number" ? r.total_cost_usd : null,
+    durationMs: typeof r.duration_ms === "number" ? r.duration_ms : null,
+    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : null
+  };
+  const text2 = String(r.result ?? "");
+  if (r.api_error_status === 429 || r.is_error === true && /usage limit|rate limit/i.test(text2)) {
+    return { ...meta, structured: null, outcome: "limited", detail: text2.slice(0, 200) };
+  }
+  if (r.is_error === true)
+    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
+  const s = r.structured_output;
+  if (!s || typeof s !== "object")
+    return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
+  const structured = s;
+  const status2 = String(structured.status ?? "");
+  if (!STRUCTURED.has(status2))
+    return { ...meta, structured, outcome: "crashed", detail: `unknown status "${status2}"` };
+  const failure = status2 === "failed" && typeof structured.failure === "string" ? structured.failure.trim().slice(0, 200) : "";
+  return { ...meta, structured, outcome: status2, detail: failure };
+}
+function readChildState(runDir, name, nowMs) {
+  const exitPath = join(runDir, `${name}.exit`);
+  const logPath = join(runDir, `${name}.log.jsonl`);
+  const raw = existsSync(exitPath) ? readFileSync(exitPath, "utf8").trim() : "";
+  const hasLog = existsSync(logPath);
+  const result = hasLog ? lastResultEvent(readFileSync(logPath, "utf8")) : null;
+  const exitCode = raw === "" ? result ? 0 : null : Number(raw);
+  return { exitCode, result, idleMs: hasLog ? nowMs - statSync(logPath).mtimeMs : 0 };
+}
+function summaryLine(name, r) {
+  const cost = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
+  const dur = r.durationMs === null ? "?" : `${Math.round(r.durationMs / 6e4)}m`;
+  const detail = r.detail ? ` detail=${JSON.stringify(r.detail)}` : "";
+  return `CHILD ${name} outcome=${r.outcome} cost=${cost} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
+}
 
 // src/pipeline/engine.ts
 var PR_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
@@ -23998,6 +24259,7 @@ var STAGE_OF = {
 };
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
 var DOR_ROUNDS = "planner-dor";
+var limitWaits = (role) => `${role}-limited`;
 var FULL_SHA4 = /^[0-9a-f]{40}$/;
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var refusalMessage = (role, detail) => [
@@ -24194,7 +24456,7 @@ function step(run2, obs, rubric, now) {
       ...r,
       retries: Object.fromEntries(
         Object.entries(r.retries).filter(
-          ([name]) => name !== role && !(role === "planner" && name === DOR_ROUNDS)
+          ([name]) => name !== role && (role === null || name !== limitWaits(role)) && !(role === "planner" && name === DOR_ROUNDS)
         )
       ),
       haltRole: null
@@ -24281,7 +24543,29 @@ function step(run2, obs, rubric, now) {
           actions: [{ kind: "work", work: "finalize", data: { retro: null } }]
         };
       }
-      if (fault.kind === "limited" || fault.kind === "stalled" || spent) {
+      if (fault.kind === "limited") {
+        const waits = run2.retries[limitWaits(role)] ?? 0;
+        const named = limitResetAt(fault.detail, now);
+        const until = named ?? new Date(now.getTime() + rubric.caps.limit_wait_minutes * 6e4);
+        if (waits >= rubric.caps.limit_retries || until.getTime() - now.getTime() > LIMIT_MAX_WAIT_MS) {
+          return ask({ ...run2, haltRole: role }, "halt", {
+            reason: fault.reason,
+            detail: fault.detail
+          });
+        }
+        const r2 = { ...run2, retries: { ...run2.retries, [limitWaits(role)]: waits + 1 } };
+        return {
+          run: r2,
+          actions: [
+            {
+              kind: "notify",
+              text: `${role} hit a usage limit; retrying at ${until.toISOString()} (${waits + 1} of ${rubric.caps.limit_retries})`
+            },
+            { ...lastSpawnOf(run2, role), notBefore: until.toISOString() }
+          ]
+        };
+      }
+      if (spent) {
         return ask({ ...run2, haltRole: role }, "halt", {
           reason: fault.reason,
           detail: fault.detail
@@ -25080,8 +25364,11 @@ async function perform(runDir, j, deps, replay) {
   const info = { ref: step2.ref, replay };
   const { action } = step2;
   switch (action.kind) {
-    case "spawn":
+    case "spawn": {
+      const wait2 = action.notBefore ? Date.parse(action.notBefore) - Date.now() : 0;
+      if (wait2 > 0) await setTimeout$1(wait2, void 0, { signal: deps.signal });
       return advance(deps.spawnChild(j.run, action, info));
+    }
     case "judgment": {
       const id = requestJudgment(runDir, action.judgment, action.payload, step2.judgmentId);
       const ts = (/* @__PURE__ */ new Date()).toISOString();
@@ -32349,76 +32636,6 @@ function buildRoleSettings(role, hooksDir) {
   ];
   return { outputStyle: "default", hooks: { PreToolUse: pre, PostToolUse: post } };
 }
-var STRUCTURED = /* @__PURE__ */ new Set(["needs_input", "spec_ready", "done", "failed"]);
-function lastResultEvent(log) {
-  const lines = log.trimEnd().split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]?.trim();
-    if (!line?.startsWith("{")) continue;
-    try {
-      const event = JSON.parse(line);
-      if (event.type === "result") return event;
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-function classify(i) {
-  const none = {
-    sessionId: null,
-    costUsd: null,
-    durationMs: null,
-    cacheReadTokens: null,
-    structured: null
-  };
-  if (i.exitCode === null) {
-    return i.idleMs >= i.stallMs ? {
-      ...none,
-      outcome: "stalled",
-      detail: `no output for ${Math.round(i.idleMs / 6e4)} min`
-    } : { ...none, outcome: "running", detail: "" };
-  }
-  const r = i.result;
-  if (!r) return { ...none, outcome: "crashed", detail: `exit ${i.exitCode}, no result event` };
-  const usage = r.usage ?? {};
-  const meta = {
-    sessionId: typeof r.session_id === "string" ? r.session_id : null,
-    costUsd: typeof r.total_cost_usd === "number" ? r.total_cost_usd : null,
-    durationMs: typeof r.duration_ms === "number" ? r.duration_ms : null,
-    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : null
-  };
-  const text2 = String(r.result ?? "");
-  if (r.api_error_status === 429 || r.is_error === true && /usage limit|rate limit/i.test(text2)) {
-    return { ...meta, structured: null, outcome: "limited", detail: text2.slice(0, 200) };
-  }
-  if (r.is_error === true)
-    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
-  const s = r.structured_output;
-  if (!s || typeof s !== "object")
-    return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
-  const structured = s;
-  const status2 = String(structured.status ?? "");
-  if (!STRUCTURED.has(status2))
-    return { ...meta, structured, outcome: "crashed", detail: `unknown status "${status2}"` };
-  const failure = status2 === "failed" && typeof structured.failure === "string" ? structured.failure.trim().slice(0, 200) : "";
-  return { ...meta, structured, outcome: status2, detail: failure };
-}
-function readChildState(runDir, name, nowMs) {
-  const exitPath = join(runDir, `${name}.exit`);
-  const logPath = join(runDir, `${name}.log.jsonl`);
-  const raw = existsSync(exitPath) ? readFileSync(exitPath, "utf8").trim() : "";
-  const hasLog = existsSync(logPath);
-  const result = hasLog ? lastResultEvent(readFileSync(logPath, "utf8")) : null;
-  const exitCode = raw === "" ? result ? 0 : null : Number(raw);
-  return { exitCode, result, idleMs: hasLog ? nowMs - statSync(logPath).mtimeMs : 0 };
-}
-function summaryLine(name, r) {
-  const cost = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
-  const dur = r.durationMs === null ? "?" : `${Math.round(r.durationMs / 6e4)}m`;
-  const detail = r.detail ? ` detail=${JSON.stringify(r.detail)}` : "";
-  return `CHILD ${name} outcome=${r.outcome} cost=${cost} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
-}
 
 // src/pipeline/runtime.ts
 var WorktreeRecord = external_exports.object({
@@ -33470,6 +33687,7 @@ ${planted.join("\n")}`
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
       metricsRecord: carriedRecord(run2, wt.path, spec.text),
+      runArtifacts: run2.specPath !== null && isCanonicalPath(run2.specPath) ? { specPath: run2.specPath, slug: specIdentity(run2).slug } : null,
       run: gateRunner,
       timeoutMs,
       ...deps.signal ? { signal: deps.signal } : {}
@@ -33782,16 +34000,32 @@ ${planted.join("\n")}`
       throw new Error("finalize needs the commit a passing gate approved, and none is recorded");
     }
     const metricsRecord = ships && gated && run2.specPath !== null && isCanonicalPath(run2.specPath) ? carriedRecord(run2, wt.path, committedText(wt, gated.head, run2.specPath)) : null;
+    const merge3 = ships && gated && run2.branch !== null ? mergeBaseForFinalize({
+      runDir,
+      worktree: wt.path,
+      gitDir: wt.gitDir,
+      branch: run2.branch,
+      base: run2.base,
+      slug: specIdentity(run2).slug,
+      gatedHead: gated.head
+    }) : null;
+    if (merge3?.state === "merged") {
+      note(`merged ${run2.base} (${merge3.base.slice(0, 8)}) into the run branch before finalize`, {
+        notify: true
+      });
+    } else if (merge3?.state === "skipped") {
+      note(`did not merge ${run2.base} before finalize: ${merge3.reason}`, { notify: true });
+    }
     const result = finalizeRun({
       run: run2,
       runDir,
       worktree: wt.path,
       gitDir: wt.gitDir,
-      expectedHead: ships && gated ? gated.head : "",
+      expectedHead: ships && gated ? merge3?.head ?? gated.head : "",
       retro: data?.retro ?? null,
       events: readEventsTolerant(runDir),
       exposedLessons: readJson(at("lessons-exposed.json"), external_exports.array(external_exports.string())) ?? [],
-      formatCommand: config2.pipeline.format_command,
+      formatCommand: config2.pipeline.format_command ?? inferFormatCommand(run2.repoRoot),
       metricsRecord,
       runCommand: runner
     });
