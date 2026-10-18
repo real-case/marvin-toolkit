@@ -18844,7 +18844,13 @@ var Run = external_exports.object({
     external_exports.object({
       iteration: external_exports.number().int(),
       source: external_exports.enum(["gate", "verifier", "ci"]),
-      fingerprints: external_exports.array(external_exports.string())
+      fingerprints: external_exports.array(external_exports.string()),
+      /**
+       * The rejection named only the pipeline's own service files (a committed journal or
+       * receipt), so it moved no rung and counts against `caps.bookkeeping_rejections` rather
+       * than `caps.rejections`. Absent from runs written before it existed.
+       */
+      bookkeeping: external_exports.boolean().optional()
     })
   ),
   retries: external_exports.record(external_exports.string(), external_exports.number().int()),
@@ -19027,6 +19033,10 @@ var Rubric = external_exports.object({
     child_retries: external_exports.number().int().min(0),
     limit_retries: external_exports.number().int().min(0).default(3),
     limit_wait_minutes: external_exports.number().int().min(1).default(30),
+    /** Relaunches a child that did no work gets, each after a growing wait; its own count. */
+    launch_retries: external_exports.number().int().min(0).default(3),
+    /** Rejections over the pipeline's own service files alone that leave the rung where it is. */
+    bookkeeping_rejections: external_exports.number().int().min(0).default(2),
     dor_rounds: external_exports.number().int().min(0),
     ci_wait_minutes: external_exports.number().int().min(1),
     executor_questions: external_exports.number().int().min(0),
@@ -19270,7 +19280,7 @@ function previewAssignments(run2, r) {
 }
 
 // src/pipeline/bench.ts
-var import_yaml4 = __toESM(require_dist());
+var import_yaml5 = __toESM(require_dist());
 var METRIC_EVENT_TAG = "metric-event";
 var TASK_METRICS_TAG = "task-metrics";
 var SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -20645,23 +20655,33 @@ async function runGateStage(o) {
   }
   const aroundOracle = /* @__PURE__ */ new Set();
   const oracleGates = [];
+  const byCommand = /* @__PURE__ */ new Map();
   for (const x of prepareFailed === null ? runnable : []) {
+    byCommand.set(x.command, [...byCommand.get(x.command) ?? [], x]);
+  }
+  for (const [command, group] of byCommand) {
+    const [first, ...rest] = group;
+    if (first === void 0) continue;
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    const [ran] = await runGates(
+      [{ name: `oracle:${first.criterion}`, command, retry: false }],
+      o.worktree,
+      o.run,
+      o.timeoutMs,
+      o.signal
+    );
+    if (ran === void 0) continue;
     oracleGates.push(
-      ...await runGates(
-        [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
-        o.worktree,
-        o.run,
-        o.timeoutMs,
-        o.signal
-      )
+      ran,
+      ...rest.map((x) => ({ ...ran, name: `oracle:${x.criterion}`, ms: 0, sharedWith: ran.name }))
     );
     const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    const criteria = group.map((x) => x.criterion).join(", ");
     for (const path of new Set([...before, ...after].map((f) => f.path))) {
       aroundOracle.add(path);
       blockers.push({
         category: "scope",
-        claim: `sealed file ${path} changed around oracle ${x.criterion}`,
+        claim: `sealed file ${path} changed around oracle ${criteria}`,
         file: path,
         evidence: "sha256 differs from the sealed value just before or after the oracle ran",
         expected: "sealed tests are byte-identical while their oracles run"
@@ -20762,227 +20782,103 @@ async function runGateStage(o) {
     blockers
   });
 }
-var SANDBOX_VARIABLE = "MARVIN_PIPELINE_SANDBOX";
-var MODEL_OVERRIDE_VARIABLE = "MARVIN_PIPELINE_MODEL_OVERRIDE";
-var SANDBOX_PR_URL = "https://github.com/sandbox/sandbox/pull/1";
-function sandboxSettings(env = process.env) {
-  const raw = env[SANDBOX_VARIABLE];
-  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
-    throw new Error(`${SANDBOX_VARIABLE} must be 1 or 0: ${raw}`);
-  }
-  const enabled = raw === "1";
-  const override = env[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
-  if (override !== null) {
-    modelFamily(override);
-    if (!enabled) {
-      throw new Error(
-        `${MODEL_OVERRIDE_VARIABLE} is honoured only with ${SANDBOX_VARIABLE}=1; unset it, or run in the sandbox`
-      );
-    }
-  }
-  if (enabled && !env.MARVIN_PIPELINE_FAKE_CI) {
-    throw new Error(
-      `${SANDBOX_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI: the sandbox pull request does not exist on GitHub`
-    );
-  }
-  return { enabled, modelOverride: override };
-}
-var BENCH_VARIABLE = "MARVIN_PIPELINE_BENCH";
-var ROLES_DIR_VARIABLE = "MARVIN_PIPELINE_ROLES_DIR";
-function benchSettings(env = process.env) {
-  const raw = env[BENCH_VARIABLE];
-  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
-    throw new Error(`${BENCH_VARIABLE} must be 1 or 0: ${raw}`);
-  }
-  const enabled = raw === "1";
-  const rolesDir = env[ROLES_DIR_VARIABLE]?.trim() || null;
-  if (enabled) {
-    if (!sandboxSettings(env).enabled) {
-      throw new Error(`${BENCH_VARIABLE}=1 is honoured only with ${SANDBOX_VARIABLE}=1`);
-    }
-    if (env.MARVIN_PIPELINE_FAKE_CI !== "green") {
-      throw new Error(`${BENCH_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI=green`);
-    }
-  }
-  if (rolesDir !== null) {
-    if (!enabled) {
-      throw new Error(`${ROLES_DIR_VARIABLE} is honoured only with ${BENCH_VARIABLE}=1`);
-    }
-    if (!isAbsolute(rolesDir) || !existsSync(join(rolesDir, "common.md"))) {
-      throw new Error(
-        `${ROLES_DIR_VARIABLE} must be an absolute directory holding common.md: ${rolesDir}`
-      );
-    }
-  }
-  return { enabled, rolesDir };
-}
-function effectiveAssignment(a, s) {
-  return s.enabled && s.modelOverride !== null ? { ...a, model: s.modelOverride } : a;
-}
-var SHIM = String.raw`
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
-const STATE = process.env.MARVIN_SANDBOX_GH_STATE;
-const URL = process.env.MARVIN_SANDBOX_GH_URL;
-const args = process.argv.slice(2);
-const git = (...a) => {
-  try {
-    return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return "";
+// src/pipeline/learning.ts
+var import_yaml4 = __toESM(require_dist());
+var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
+var INDEX_FILE = "MEMORY.md";
+var INDEX_HEADER = [
+  "# Marvin lessons",
+  "",
+  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
+  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
+  "in the linked file. Recalled at task intake.",
+  ""
+].join("\n");
+function uniqueSlug(memoryDir, base) {
+  const root = base || "lesson";
+  let slug = root;
+  let n = 2;
+  while (existsSync(join(memoryDir, `${slug}.md`))) {
+    slug = `${root}-${n}`;
+    n += 1;
   }
-};
-const fail = (text) => {
-  process.stderr.write(text + "\n");
-  process.exit(1);
-};
-const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
-const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
-const value = (long, short) => {
-  for (let i = 0; i < args.length; i += 1) {
-    const a = args[i];
-    if (a === long || (short && a === short)) return args[i + 1] ?? "";
-    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
-  }
-  return null;
-};
-const has = (name) => args.includes(name);
-const body = () => {
-  const file = value("--body-file", "-F");
-  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
-  return value("--body", "-b");
-};
-const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
-const fields = (pr) => ({
-  url: pr.url,
-  number: 1,
-  state: pr.state,
-  isDraft: pr.isDraft,
-  title: pr.title,
-  body: pr.body,
-  baseRefName: pr.base,
-  headRefName: pr.head,
-  headRefOid: git("rev-parse", "HEAD"),
-  mergeable: "MERGEABLE",
-  mergeStateStatus: "CLEAN",
-  reviewDecision: "",
-  statusCheckRollup: [],
-  comments: [],
-  reviews: [],
-});
-const emit = (pr) => {
-  const json = value("--json");
-  if (json === null) {
-    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
-    return;
-  }
-  const all = fields(pr);
-  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
-  const jq = value("--jq", "-q");
-  if (jq !== null) {
-    const m = /^\.(\w+)$/.exec(jq.trim());
-    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
-    const v = picked[m[1]];
-    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
-    return;
-  }
-  process.stdout.write(JSON.stringify(picked) + "\n");
-};
-const current = () => {
-  const pr = load();
-  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
-  return pr;
-};
-
-const sub = (args[0] ?? "") + " " + (args[1] ?? "");
-switch (sub) {
-  case "pr create": {
-    const existing = load();
-    if (existing && existing.head === branch()) {
-      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
-    }
-    const base = value("--base", "-B");
-    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
-    const pr = {
-      url: URL,
-      state: "OPEN",
-      isDraft: has("--draft") || has("-d"),
-      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
-      body: body() ?? "",
-      base,
-      head: value("--head", "-H") ?? branch(),
-    };
-    save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
-  }
-  case "pr view":
-    emit(current());
-    break;
-  case "pr list": {
-    const pr = load();
-    const mine = pr && pr.head === branch() ? [pr] : [];
-    if (value("--json") === null) {
-      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
-    } else {
-      const keys = value("--json").split(",").map((k) => k.trim());
-      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
-      process.stdout.write(JSON.stringify(rows) + "\n");
-    }
-    break;
-  }
-  case "pr edit": {
-    const pr = current();
-    const title = value("--title", "-t");
-    const text = body();
-    if (title !== null) pr.title = title;
-    if (text !== null) pr.body = text;
-    save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
-  }
-  case "pr ready": {
-    const pr = current();
-    pr.isDraft = false;
-    save(pr);
-    break;
-  }
-  case "pr diff": {
-    const pr = current();
-    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
-    break;
-  }
-  case "pr checks":
-    current();
-    fail('no checks reported on the "' + branch() + '" branch');
-    break;
-  case "run list":
-    process.stdout.write(value("--json") === null ? "" : "[]\n");
-    break;
-  default:
-    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
+  return slug;
 }
-`;
-function installSandboxGh(runDir, nodePath = process.execPath) {
-  const bin = join(runDir, "sandbox-bin");
-  mkdirSync(bin, { recursive: true });
-  const script = join(bin, "gh-shim.mjs");
-  writeFileSync(script, SHIM.trimStart());
-  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-  const gh2 = join(bin, "gh");
-  writeFileSync(gh2, `#!/bin/sh
-exec ${quote(nodePath)} ${quote(script)} "$@"
-`);
-  chmodSync(gh2, 493);
-  return {
-    PATH: `${bin}:${process.env.PATH ?? ""}`,
-    MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
-    MARVIN_SANDBOX_GH_URL: SANDBOX_PR_URL
+function addLesson(memoryDir, input) {
+  mkdirSync(memoryDir, { recursive: true });
+  const slug = uniqueSlug(memoryDir, slugify(input.title));
+  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const frontmatter = {
+    id: slug,
+    type: input.type,
+    title: input.title,
+    created,
+    tags: tags.length ? tags.join(", ") : void 0,
+    source: input.source?.trim() || "manual"
   };
+  const body = input.body.trim() ? `
+${input.body.trim()}
+` : "\n";
+  const path = join(memoryDir, `${slug}.md`);
+  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
+  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
+  return { slug, path };
 }
-function sandboxChildEnv(runDir, s) {
-  return s.enabled ? installSandboxGh(runDir) : {};
+function appendIndex(memoryDir, entry) {
+  const indexPath = join(memoryDir, INDEX_FILE);
+  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
+  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
+  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
+  if (!content.endsWith("\n")) content += "\n";
+  writeFileSync(indexPath, `${content}${line}
+`);
+}
+function readAllLessons(memoryDir) {
+  if (!existsSync(memoryDir)) return [];
+  const lessons = [];
+  for (const filename of readdirSync(memoryDir).sort()) {
+    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
+    const raw = readFileSync(join(memoryDir, filename), "utf8");
+    const { frontmatter, body } = parseFrontmatter(raw);
+    if (!frontmatter.title) continue;
+    lessons.push({
+      slug: filename.replace(/\.md$/, ""),
+      type: frontmatter.type ?? "process",
+      title: frontmatter.title,
+      created: frontmatter.created ?? "",
+      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      source: frontmatter.source ?? "manual",
+      body: body.trim()
+    });
+  }
+  return lessons;
+}
+function titleWords(title) {
+  return new Set(
+    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
+  );
+}
+function titleSimilarity(a, b) {
+  const wa = titleWords(a);
+  const wb = titleWords(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let hits = 0;
+  for (const w of wa) if (wb.has(w)) hits += 1;
+  return hits / (wa.size + wb.size - hits);
+}
+var NEAR_DUPLICATE_THRESHOLD = 0.5;
+function findNearDuplicate(memoryDir, title) {
+  const slug = slugify(title);
+  let best = null;
+  for (const l of readAllLessons(memoryDir)) {
+    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
+    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
+      best = { lesson: l, score };
+    }
+  }
+  return best?.lesson ?? null;
 }
 var git2 = (cwd, ...args) => execFileSync("git", [...HARDENED_GIT_OPTIONS, ...args], {
   cwd,
@@ -22015,6 +21911,1211 @@ function writeSealManifest(runDir, sealed) {
   renameSync(tmp, target);
 }
 
+// src/pipeline/learning.ts
+var CHECKS_PATH = ".marvin/pipeline/checks.yaml";
+var CALIBRATION_DIR = ".marvin/pipeline/calibration";
+var LEGACY_CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
+var MEMORY_DIR = ".marvin/memory";
+var MEMORY_INDEX_PATH = `${MEMORY_DIR}/MEMORY.md`;
+function rankLessons(lessons, o) {
+  const terms = new Set(
+    o.paths.flatMap((p) => p.toLowerCase().split(/[/._()-]+/)).filter((t) => t.length > 3)
+  );
+  const score = (l) => {
+    const hay = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
+    let s = [...terms].filter((t) => hay.includes(t)).length;
+    if (o.paths.some((p) => l.body.includes(p))) s += 5;
+    if (s > 0 && l.tags.includes(`role:${o.role}`)) s += 3;
+    return s;
+  };
+  return lessons.map((l) => ({ l, s: score(l) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, o.limit).map((x) => x.l);
+}
+var lessonsMarkdown = (ls) => ls.length ? ls.map((l) => `- ${l.title} \u2014 .marvin/memory/${l.id}.md`).join("\n") : "(none)";
+function sessionCostUsd(children) {
+  const lastOfSession = /* @__PURE__ */ new Map();
+  for (const c of children) {
+    if (c.sessionId != null && c.costUsd != null) lastOfSession.set(c.sessionId, c);
+  }
+  const charged = new Set(lastOfSession.values());
+  const out = /* @__PURE__ */ new Map();
+  for (const c of children) {
+    if (c.costUsd == null) continue;
+    if (c.sessionId == null || charged.has(c)) out.set(c, c.costUsd);
+  }
+  return out;
+}
+function aggregate(run2, events) {
+  const prints = run2.rejections.flatMap((r) => r.fingerprints);
+  const answers2 = events.filter((e) => e.kind === "answer");
+  const charged = sessionCostUsd(run2.children);
+  const perRole = /* @__PURE__ */ new Map();
+  for (const c of run2.children) {
+    const cur = perRole.get(c.role) ?? { costUsd: 0, cacheReadTokens: 0 };
+    perRole.set(c.role, {
+      costUsd: cur.costUsd + (charged.get(c) ?? 0),
+      cacheReadTokens: cur.cacheReadTokens + (c.cacheReadTokens ?? 0)
+    });
+  }
+  return {
+    tier: run2.tier,
+    tierReasons: run2.tierReasons,
+    iterations: run2.iteration,
+    rung: run2.rung,
+    rejections: run2.rejections,
+    findingCategories: [...new Set(prints.map((p) => p.split("|")[0] ?? "").filter(Boolean))],
+    repeatedFingerprints: [...new Set(prints.filter((p, i) => prints.indexOf(p) !== i))],
+    questions: {
+      byOrchestrator: answers2.filter((e) => e.data?.answeredBy === "orchestrator").length,
+      byUser: answers2.filter((e) => e.data?.answeredBy === "user").length
+    },
+    perRole: [...perRole.entries()].map(([role, v]) => ({ role, ...v })),
+    halted: run2.haltReason,
+    assumptions: run2.assumptions
+  };
+}
+function calibrationRecord(run2, agg, exposedLessons) {
+  return {
+    ts: run2.updatedAt,
+    runId: run2.id,
+    tier: run2.tier,
+    stageA: run2.stageA,
+    signalsReasons: run2.tierReasons,
+    aggregate: agg,
+    findingCategories: agg.findingCategories,
+    exposedLessons: [...exposedLessons]
+  };
+}
+var MIN_RECORDS = 5;
+function efficacy(records, items) {
+  const ordered = [...records].sort((a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+  return items.map((it) => {
+    const before = ordered.filter((r) => r.ts < it.createdAt).slice(-10);
+    const after = ordered.filter(
+      (r) => r.ts >= it.createdAt && (it.kind === "check" || r.exposedLessons.includes(it.id))
+    );
+    const rate2 = (rs) => rs.length ? rs.filter((r) => r.findingCategories.includes(it.targetCategory)).length / rs.length : 0;
+    const verdict = before.length < MIN_RECORDS || after.length < MIN_RECORDS ? "too-early" : rate2(after) >= rate2(before) ? "prune-candidate" : "keep";
+    return { id: it.id, exposure: after.length, before: rate2(before), after: rate2(after), verdict };
+  });
+}
+var MAX_PATTERN_LENGTH = 500;
+var CHECK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var CATEGORY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+var ONE_LINE = /^[^\r\n]+$/;
+function quantifierAt(source, i) {
+  const ch = source[i];
+  let length;
+  let repeats;
+  if (ch === "*" || ch === "+" || ch === "?") {
+    length = 1;
+    repeats = ch !== "?";
+  } else if (ch === "{") {
+    const braces = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i, i + 32));
+    if (!braces) return null;
+    length = braces[0].length;
+    repeats = braces[2] === void 0 ? Number(braces[1]) > 1 : braces[3] === "" || Number(braces[3]) > 1;
+  } else {
+    return null;
+  }
+  return { length: source[i + length] === "?" ? length + 1 : length, repeats };
+}
+function staticRegexHazard(source) {
+  const stack = [{ quantified: false, alternation: false }];
+  let i = 0;
+  while (i < source.length) {
+    const top = stack[stack.length - 1];
+    const ch = source[i];
+    if (ch === "\\") {
+      const next = source[i + 1];
+      if (next !== void 0 && (/[1-9]/.test(next) || next === "k" && source[i + 2] === "<")) {
+        return "it holds a backreference";
+      }
+      i += 2;
+    } else if (ch === "[") {
+      i += 1;
+      while (i < source.length && source[i] !== "]") i += source[i] === "\\" ? 2 : 1;
+      i += 1;
+    } else if (ch === "(") {
+      stack.push({ quantified: false, alternation: false });
+      i += 1;
+      if (source[i] === "?") {
+        i += 1;
+        const kind = source[i];
+        if (kind === ":" || kind === "=" || kind === "!") {
+          i += 1;
+        } else if (kind === "<") {
+          i += 1;
+          if (source[i] === "=" || source[i] === "!") i += 1;
+          else i = source.indexOf(">", i) + 1 || source.length;
+        }
+      }
+    } else if (ch === ")") {
+      const group = stack.length > 1 ? stack.pop() : top;
+      const parent = stack[stack.length - 1];
+      i += 1;
+      const quantifier = quantifierAt(source, i);
+      if (quantifier) {
+        if (quantifier.repeats && group.quantified) {
+          return "it has a nested quantifier: a repeated group that already holds a quantifier";
+        }
+        if (quantifier.repeats && group.alternation) {
+          return "it repeats a group that holds an alternation";
+        }
+        i += quantifier.length;
+      }
+      parent.quantified ||= group.quantified || quantifier !== null;
+      parent.alternation ||= group.alternation;
+    } else if (ch === "|") {
+      top.alternation = true;
+      i += 1;
+    } else {
+      const quantifier = quantifierAt(source, i);
+      if (quantifier) top.quantified = true;
+      i += quantifier ? quantifier.length : 1;
+    }
+  }
+  return null;
+}
+function regexHazard(source) {
+  return staticRegexHazard(source);
+}
+var regexSource = external_exports.string().min(1).max(MAX_PATTERN_LENGTH).superRefine((value, ctx) => {
+  try {
+    new RegExp(value);
+  } catch (error2) {
+    const why = error2 instanceof Error ? error2.message : String(error2);
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `not a valid regular expression: ${why}`
+    });
+    return;
+  }
+  const hazard = regexHazard(value);
+  if (hazard !== null) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `unsafe regular expression: ${hazard}`
+    });
+  }
+});
+var oneLine = external_exports.string().trim().min(1).max(200).regex(ONE_LINE, "must be a single line");
+var text = external_exports.string().trim().min(1);
+var RETRO_CAPS = { checks: 10, proposals: 20, lessons: 10, prune: 50 };
+var MAX_LESSON_BODY = 4e3;
+var RESERVED_LESSON_SLUG = "memory";
+var lessonTitle = oneLine.refine((title) => !/[[\]]/.test(title), "must not hold a square bracket").refine(
+  (title) => slugify(title) !== RESERVED_LESSON_SLUG,
+  `must not slug to "${RESERVED_LESSON_SLUG}", the name of the lesson index`
+);
+var lessonTag = external_exports.string().trim().min(1).max(64).regex(/^[^,\r\n]+$/, "must not hold a comma or a line break").refine((tag) => !/^target:/i.test(tag), "must not be a target: tag, the engine adds that one");
+var RetroSchema = external_exports.object({
+  checks: external_exports.array(
+    external_exports.object({
+      id: external_exports.string().regex(CHECK_ID, `must match ${CHECK_ID}`),
+      pattern: regexSource,
+      path_pattern: regexSource.optional(),
+      exclude_pattern: regexSource.optional(),
+      message: text,
+      severity: external_exports.enum(SEVERITIES).optional(),
+      category: external_exports.string().regex(CATEGORY, `must match ${CATEGORY}`).optional(),
+      evidence: external_exports.array(external_exports.string()).optional()
+    })
+  ).max(RETRO_CAPS.checks),
+  proposals: external_exports.array(
+    external_exports.object({
+      target: external_exports.enum(["marvin", "project"]),
+      file: oneLine,
+      change: text,
+      rationale: text,
+      evidence: external_exports.array(external_exports.string())
+    })
+  ).max(RETRO_CAPS.proposals),
+  lessons: external_exports.array(
+    external_exports.object({
+      type: external_exports.enum(LESSON_TYPES),
+      title: lessonTitle,
+      body: text.pipe(external_exports.string().max(MAX_LESSON_BODY)),
+      tags: external_exports.array(lessonTag),
+      target_category: external_exports.string().regex(CATEGORY, `must match ${CATEGORY}`),
+      evidence: external_exports.array(external_exports.string())
+    })
+  ).max(RETRO_CAPS.lessons),
+  prune: external_exports.array(external_exports.object({ id: oneLine, reason: text })).max(RETRO_CAPS.prune)
+});
+var NO_RETRO = { checks: [], proposals: [], lessons: [], prune: [] };
+function parseRetro(raw) {
+  if (typeof raw === "object" && raw !== null) {
+    for (const [key, cap] of Object.entries(RETRO_CAPS)) {
+      const list2 = raw[key];
+      if (Array.isArray(list2) && list2.length > cap) {
+        throw new Error(
+          `retro output rejected: ${key}: at most ${cap} allowed, got ${list2.length}`
+        );
+      }
+    }
+  }
+  const parsed = RetroSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const issues = parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
+  throw new Error(`retro output rejected: ${issues.join("; ")}`);
+}
+function removePlain(root, rel) {
+  assertPlain(root, rel);
+  rmSync(join(root, rel), { force: true });
+}
+function assertMemoryStore(root) {
+  assertPlain(root, MEMORY_DIR);
+  const dir = join(root, MEMORY_DIR);
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    const stat = lstatSync(join(dir, name));
+    if (stat.isSymbolicLink()) {
+      throw new Error(`refusing to use ${MEMORY_DIR}/${name}: it is a symbolic link`);
+    }
+  }
+  assertNotHardLinked(root, MEMORY_INDEX_PATH);
+}
+function ensureDir(root, rel) {
+  assertPlain(root, rel);
+  mkdirSync(join(root, rel), { recursive: true });
+}
+function writeWhole(root, rel, content) {
+  assertPlain(root, rel);
+  const path = join(root, rel);
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, content, { flag: "wx" });
+    renameSync(tmp, path);
+  } catch (error2) {
+    rmSync(tmp, { force: true });
+    throw error2;
+  }
+}
+var ExistingChecks = external_exports.array(external_exports.object({ id: external_exports.string() }).passthrough());
+function parseExistingChecks(text2, where) {
+  if (text2 === null) return [];
+  let doc;
+  try {
+    doc = (0, import_yaml4.parse)(text2);
+  } catch (error2) {
+    const why = error2 instanceof Error ? error2.message : String(error2);
+    throw new Error(`${where} is not valid YAML: ${why}`, { cause: error2 });
+  }
+  if (doc === null || doc === void 0) return [];
+  const rules = ExistingChecks.safeParse(doc);
+  if (!rules.success)
+    throw new Error(`${where} must be a YAML list of rules, each with a string id`);
+  return rules.data;
+}
+function mergeChecks(existing, retro) {
+  const ids = new Set(existing.map((c) => c.id));
+  const fresh = [];
+  for (const { evidence: _evidence, ...rule } of retro.checks) {
+    if (ids.has(rule.id)) continue;
+    ids.add(rule.id);
+    fresh.push(rule);
+  }
+  if (!fresh.length) return null;
+  const text2 = (0, import_yaml4.stringify)([...existing, ...fresh], { lineWidth: 0 });
+  return { text: text2, rules: (0, import_yaml4.parse)(text2) };
+}
+var proposalText = (n, p) => `# Proposal ${n} (${p.target})
+
+- File: ${p.file}
+- Change: ${p.change}
+- Rationale: ${p.rationale}
+- Evidence: ${p.evidence.join(", ")}
+`;
+var DUPLICATES_NOTE = "proposals/duplicate-lessons.md";
+function assertRunDirTargets(runDir, retro) {
+  assertPlain(runDir, "proposals");
+  retro.proposals.forEach((p, i) => assertPlain(runDir, `proposals/${i + 1}-${p.target}.md`));
+  assertPlain(runDir, "proposals/prune.md");
+  assertPlain(runDir, DUPLICATES_NOTE);
+}
+function writeRunDirFiles(runDir, retro) {
+  ensureDir(runDir, "proposals");
+  retro.proposals.forEach(
+    (p, i) => writeWhole(runDir, `proposals/${i + 1}-${p.target}.md`, proposalText(i + 1, p))
+  );
+  if (retro.prune.length) {
+    writeWhole(
+      runDir,
+      "proposals/prune.md",
+      `${retro.prune.map((p) => `- ${p.id}: ${p.reason}`).join("\n")}
+`
+    );
+  }
+}
+function addLessons(root, runDir, lessons, sink) {
+  const written = [];
+  const duplicates = [];
+  for (const lesson of lessons) {
+    const result = sink(root, lesson);
+    if (typeof result !== "object" || result === null) continue;
+    if ("duplicateOf" in result) duplicates.push({ title: lesson.title, of: result.duplicateOf });
+    else written.push(...result.added);
+  }
+  if (duplicates.length) {
+    writeWhole(
+      runDir,
+      DUPLICATES_NOTE,
+      `# Lessons skipped as near-duplicates
+
+${duplicates.map((d) => `- ${d.title} (near-duplicate of ${d.of})`).join("\n")}
+`
+    );
+  }
+  return { written, duplicates };
+}
+var DELIVERY_HEADING = /^## Delivery[ \t]*$/;
+var SECTION_HEADING = /^#{1,2}[ \t]/;
+var FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+var STATUS_KEY = /^status[ \t]*:/;
+function proseLines(lines, from) {
+  const prose = lines.map(() => false);
+  let fence2 = null;
+  for (let i = from; i < lines.length; i += 1) {
+    const m = FENCE.exec(lines[i]);
+    if (fence2 === null) {
+      const opens = m && !(m[1][0] === "`" && m[2].includes("`"));
+      if (opens) fence2 = { char: m[1][0], length: m[1].length };
+      else prose[i] = true;
+    } else if (m && m[1][0] === fence2.char && m[1].length >= fence2.length && m[2].trim() === "") {
+      fence2 = null;
+    }
+  }
+  return prose;
+}
+function finalizeSpec(specText, d) {
+  if (/[\r\n]/.test(d.pr) || /[\r\n]/.test(d.runId)) {
+    throw new Error("the delivery's PR and run id must not contain a line break");
+  }
+  const lines = specText.replace(/\r\n/g, "\n").split("\n");
+  if (lines[0] !== "---") throw new Error("spec has no front matter: it must start with ---");
+  const end = lines.indexOf("---", 1);
+  if (end === -1) throw new Error("spec front matter is not closed by a --- line");
+  let flipped = false;
+  for (let i = 1; i < end; i += 1) {
+    if (STATUS_KEY.test(lines[i])) {
+      lines[i] = "status: shipped";
+      flipped = true;
+    }
+  }
+  if (!flipped) throw new Error("spec front matter has no status line");
+  const prose = proseLines(lines, end + 1);
+  const out = [];
+  let cursor = 0;
+  let insertAt = -1;
+  for (let i = end + 1; i < lines.length; i += 1) {
+    if (!prose[i] || !DELIVERY_HEADING.test(lines[i])) continue;
+    let next = i + 1;
+    while (next < lines.length && !(prose[next] && SECTION_HEADING.test(lines[next]))) next += 1;
+    out.push(...lines.slice(cursor, i));
+    if (insertAt === -1) insertAt = out.length;
+    cursor = next;
+    i = next - 1;
+  }
+  out.push(...lines.slice(cursor));
+  if (insertAt === -1) insertAt = out.length;
+  const head = out.slice(0, insertAt).join("\n").trimEnd();
+  const tail = out.slice(insertAt).join("\n").replace(/^\s*\n/, "").trimEnd();
+  const section = `## Delivery
+
+- PR: ${d.pr}
+- Pipeline run: ${d.runId} (${d.iterations} iterations)
+`;
+  return `${head}
+
+${section}${tail ? `
+${tail}
+` : ""}`;
+}
+function calibrationPath(runId) {
+  if (!PLAIN_TOKEN.test(runId)) throw new Error(`run id is not a plain token: ${runId}`);
+  return `${CALIBRATION_DIR}/${runId}.json`;
+}
+var calibrationText = (record2) => `${JSON.stringify(record2, null, 2)}
+`;
+var JSON_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+function readCalibrationRecords(root) {
+  const byRun = /* @__PURE__ */ new Map();
+  const anonymous = [];
+  const take = (value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const runId = value.runId;
+    if (typeof runId === "string") {
+      if (!byRun.has(runId)) byRun.set(runId, value);
+    } else anonymous.push(value);
+  };
+  const parsed = (text2) => {
+    try {
+      return JSON.parse(text2);
+    } catch {
+      return void 0;
+    }
+  };
+  const dir = join(root, CALIBRATION_DIR);
+  let names;
+  try {
+    names = readdirSync(dir).filter((n) => JSON_FILE.test(n)).sort();
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    try {
+      if (!lstatSync(join(dir, name)).isFile()) continue;
+      take(parsed(readFileSync(join(dir, name), "utf8")));
+    } catch {
+    }
+  }
+  let legacy;
+  try {
+    const path = join(root, LEGACY_CALIBRATION_PATH);
+    legacy = lstatSync(path).isFile() ? readFileSync(path, "utf8") : "";
+  } catch {
+    legacy = "";
+  }
+  for (const line of legacy.split("\n").filter(Boolean)) take(parsed(line));
+  return [...byRun.values(), ...anonymous];
+}
+var targetTag = (category) => `target:${category}`;
+function lessonStoreSink(source) {
+  return (root, lesson) => {
+    assertMemoryStore(root);
+    const memoryDir = join(root, MEMORY_DIR);
+    const duplicate = findNearDuplicate(memoryDir, lesson.title);
+    if (duplicate) return { duplicateOf: duplicate.slug };
+    const tags = [.../* @__PURE__ */ new Set([...lesson.tags, targetTag(lesson.target_category)])];
+    const { slug } = addLesson(memoryDir, {
+      type: lesson.type,
+      title: lesson.title,
+      body: codeSpanPaths(lesson.body),
+      tags,
+      source
+    });
+    return { added: [`${MEMORY_DIR}/${slug}.md`, MEMORY_INDEX_PATH] };
+  };
+}
+var FORMAT_TIMEOUT_MS = 5 * 60 * 1e3;
+function classifyCarefully(classify2) {
+  try {
+    return classify2();
+  } catch (error2) {
+    const reason2 = error2 instanceof Error ? error2.message : String(error2);
+    return { state: "refused", reason: `it could not be judged (${reason2})` };
+  }
+}
+var COMMIT_TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
+var PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+var FULL_SHA3 = /^[0-9a-f]{40}$/;
+var FINALIZE_RECORD = "finalize-commit.json";
+var specSlug = (frontmatterSlug, specPath) => [frontmatterSlug, basename(specPath, ".md").replace(/^\d+-/, ""), "spec"].find(
+  (candidate) => candidate !== void 0 && PLAIN_TOKEN.test(candidate)
+);
+var outputTail = (output) => output.trimEnd().split("\n").slice(-20).join("\n").slice(-2e3);
+function treeEntries(git4, commit, rel, recursive) {
+  const out = git4.text(
+    "ls-tree",
+    ...recursive ? ["-r"] : [],
+    "-z",
+    "--full-tree",
+    commit,
+    "--",
+    rel
+  );
+  return out.split("\0").filter(Boolean).map((record2) => {
+    const m = /^(\d+) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(record2);
+    if (!m) throw new Error(`cannot read git ls-tree output: ${JSON.stringify(record2)}`);
+    return { mode: m[1], type: m[2], oid: m[3], path: m[4] };
+  });
+}
+function blobOf(git4, commit, entry) {
+  if (entry.type !== "blob" || entry.mode !== "100644" && entry.mode !== "100755") {
+    throw new Error(`refusing to use ${entry.path}: it is not a regular file in ${commit}`);
+  }
+  return git4.bytes("cat-file", "blob", entry.oid);
+}
+function committedFile(git4, commit, rel) {
+  const entry = treeEntries(git4, commit, rel, false).find((e) => e.path === rel);
+  return entry === void 0 ? null : blobOf(git4, commit, entry);
+}
+function assertCommittedTargets(git4, targets) {
+  const hidden = git4.text("ls-files", "-v", "-z", "--", ...targets).split("\0").filter(Boolean).filter((record2) => record2[0] !== record2[0].toUpperCase() || record2[0] === "S");
+  if (hidden.length) {
+    throw new Error(
+      `refusing to finalize: an index flag hides changes under ${targets.join(", ")}: ${hidden.map((r) => r.slice(2)).join(", ")}`
+    );
+  }
+  const dirty = git4.text("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored", "--", ...targets).split("\0").filter(Boolean);
+  if (dirty.length) {
+    throw new Error(
+      `refusing to finalize: uncommitted, untracked or ignored content under ${targets.join(", ")}: ${dirty.slice(0, 5).map((r) => r.slice(3)).join(", ")}`
+    );
+  }
+}
+function isOwnFinalizeCommit(git4, runDir, headSha2, expectedHead) {
+  try {
+    assertPlain(runDir, FINALIZE_RECORD);
+    const record2 = JSON.parse(readFileSync(join(runDir, FINALIZE_RECORD), "utf8"));
+    return record2.expectedHead === expectedHead && record2.commit === headSha2 && git4.text("rev-parse", "--verify", `${headSha2}^`).trim() === expectedHead;
+  } catch {
+    return false;
+  }
+}
+function verifyContents(contents, expected, who) {
+  const checks = contents.get(CHECKS_PATH);
+  if (expected.rules !== void 0 && checks !== void 0) {
+    let rules;
+    try {
+      rules = (0, import_yaml4.parse)(checks.toString("utf8"));
+    } catch {
+      rules = void 0;
+    }
+    if (!isDeepStrictEqual(rules, expected.rules)) {
+      throw new Error(
+        `${who} changed the rules in ${CHECKS_PATH}: a formatter may change layout, not rules`
+      );
+    }
+  }
+  const calibration = contents.get(expected.recordPath);
+  if (calibration !== void 0) {
+    let record2;
+    try {
+      record2 = JSON.parse(calibration.toString("utf8"));
+    } catch {
+      record2 = void 0;
+    }
+    if (!isDeepStrictEqual(record2, expected.record)) {
+      throw new Error(
+        `${who} changed the record in ${expected.recordPath}: a formatter may change layout, not the record`
+      );
+    }
+  }
+}
+function readFormatted(worktree, paths, expected) {
+  const contents = /* @__PURE__ */ new Map();
+  for (const rel of paths) {
+    assertPlain(worktree, rel);
+    assertNotHardLinked(worktree, rel);
+    let stat;
+    try {
+      stat = lstatSync(join(worktree, rel));
+    } catch {
+      throw new Error(`the format command removed ${rel}`);
+    }
+    if (!stat.isFile()) throw new Error(`the format command left ${rel} as something but a file`);
+    contents.set(rel, readFileSync(join(worktree, rel)));
+  }
+  verifyContents(contents, expected, "the format command");
+  return contents;
+}
+var nulList = (text2) => text2.split("\0").filter(Boolean);
+var BASE_MERGE_RECORD = "base-merge.json";
+var REGULAR_MODES = /* @__PURE__ */ new Set(["100644", "100755"]);
+var ZERO_OID = /^0+$/;
+var sameBytes = (a, b) => a === null ? b === null : b !== null && a.equals(b);
+function rawChanges(git4, from, to) {
+  const fields = git4.text("diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to).split("\0");
+  const out = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const m = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(fields[i]);
+    if (!m) break;
+    out.push({
+      oldMode: m[1],
+      newMode: m[2],
+      oldOid: m[3],
+      newOid: m[4],
+      status: m[5],
+      path: fields[i + 1]
+    });
+  }
+  return out;
+}
+function mergeBaseForFinalize(o) {
+  if (!isSafeBranchRef(o.branch)) throw new Error(`run branch is not a safe ref: ${o.branch}`);
+  if (!isSafeBranchRef(o.base)) throw new Error(`run base is not a safe ref: ${o.base}`);
+  if (!FULL_SHA3.test(o.gatedHead)) throw new Error("gatedHead must be a 40-hex commit SHA");
+  if (!PLAIN_TOKEN.test(o.slug)) throw new Error(`slug is not a plain token: ${o.slug}`);
+  const git4 = isolatedGit(o.worktree, o.gitDir, { HUSKY: "0" });
+  const skipped = (reason2) => ({
+    state: "skipped",
+    head: o.gatedHead,
+    reason: reason2
+  });
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  assertPlain(o.runDir, BASE_MERGE_RECORD);
+  const recordPath = join(o.runDir, BASE_MERGE_RECORD);
+  const record2 = existsSync(recordPath) ? JSON.parse(readFileSync(recordPath, "utf8")) : null;
+  const recorded = record2 !== null && record2.gated === o.gatedHead && typeof record2.commit === "string" && typeof record2.base === "string" && FULL_SHA3.test(record2.commit) && FULL_SHA3.test(record2.base) ? { commit: record2.commit, base: record2.base } : null;
+  if (recorded !== null && headSha2 !== o.gatedHead) {
+    if (headSha2 === recorded.commit || isOwnFinalizeCommit(git4, o.runDir, headSha2, recorded.commit)) {
+      return { state: "merged", head: recorded.commit, base: recorded.base };
+    }
+  }
+  if (headSha2 !== o.gatedHead) return { state: "current", head: o.gatedHead };
+  let baseTip;
+  try {
+    git4.text("fetch", "--no-tags", "--quiet", "origin", "--", `refs/heads/${o.base}`);
+    baseTip = git4.text("rev-parse", "--verify", "FETCH_HEAD^{commit}").trim();
+  } catch (error2) {
+    return skipped(
+      `fetching ${o.base} failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  try {
+    git4.text("merge-base", "--is-ancestor", baseTip, o.gatedHead);
+    return { state: "current", head: o.gatedHead };
+  } catch {
+  }
+  let drivers = "";
+  try {
+    drivers = git4.text("config", "--get-regexp", "^merge\\..*\\.driver$");
+  } catch {
+  }
+  if (drivers.trim() !== "") return skipped("a custom merge driver is configured");
+  let tree;
+  try {
+    tree = git4.text("merge-tree", "--write-tree", "--name-only", "--no-messages", o.gatedHead, baseTip).split("\n")[0].trim();
+  } catch (error2) {
+    const out = error2.stdout?.toString() ?? "";
+    const files = out.split("\n").slice(1).filter(Boolean);
+    return skipped(
+      files.length ? `${o.base} conflicts with the run branch in ${files.slice(0, 5).join(", ")}` : `merge-tree failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+  }
+  if (!FULL_SHA3.test(tree)) return skipped(`merge-tree printed no tree: ${tree}`);
+  const commit = recorded?.base === baseTip ? recorded.commit : git4.text(
+    "commit-tree",
+    tree,
+    "-p",
+    o.gatedHead,
+    "-p",
+    baseTip,
+    "-m",
+    `chore(${o.slug}): merge ${o.base} before finalize`,
+    "-m",
+    COMMIT_TRAILER
+  ).trim();
+  const changes2 = rawChanges(git4, o.gatedHead, commit);
+  for (const c of changes2) {
+    const removal = c.status === "D";
+    if (!removal && !REGULAR_MODES.has(c.newMode) || !ZERO_OID.test(c.oldOid) && !REGULAR_MODES.has(c.oldMode)) {
+      return skipped(`${o.base} changes ${c.path}, which is not a regular file`);
+    }
+    assertPlain(o.worktree, c.path);
+    const onDisk = existsSync(join(o.worktree, c.path)) ? readFileSync(join(o.worktree, c.path)) : null;
+    const before = ZERO_OID.test(c.oldOid) ? null : git4.bytes("cat-file", "blob", c.oldOid);
+    const after = removal ? null : git4.bytes("cat-file", "blob", c.newOid);
+    if (!sameBytes(onDisk, before) && !sameBytes(onDisk, after)) {
+      return skipped(`${c.path} has an uncommitted change the merge would overwrite`);
+    }
+  }
+  writeWhole(
+    o.runDir,
+    BASE_MERGE_RECORD,
+    `${JSON.stringify({ gated: o.gatedHead, base: baseTip, commit })}
+`
+  );
+  let indexInfo = "";
+  for (const c of changes2) {
+    if (c.status === "D") {
+      removePlain(o.worktree, c.path);
+      indexInfo += `0 ${"0".repeat(40)}	${c.path}\0`;
+    } else {
+      writeWhole(o.worktree, c.path, git4.bytes("cat-file", "blob", c.newOid));
+      chmodSync(join(o.worktree, c.path), c.newMode === "100755" ? 493 : 420);
+      indexInfo += `${c.newMode} ${c.newOid}	${c.path}\0`;
+    }
+  }
+  if (indexInfo) git4.textIn(indexInfo, "update-index", "-z", "--index-info");
+  git4.text("update-ref", `refs/heads/${o.branch}`, commit, o.gatedHead);
+  const parents = git4.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
+  if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== commit || parents.length !== 3 || parents[1] !== o.gatedHead || parents[2] !== baseTip) {
+    throw new Error(
+      `the base merge ${commit} is not the one HEAD names, on ${o.gatedHead} and ${baseTip}`
+    );
+  }
+  return { state: "merged", head: commit, base: baseTip };
+}
+function inferFormatCommand(repoRoot) {
+  try {
+    const modules = realpathSync(join(repoRoot, "node_modules"));
+    const bin = realpathSync(join(modules, ".bin", "prettier"));
+    const inside = relative(modules, bin);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
+  } catch {
+    return null;
+  }
+}
+function codeSpanPaths(body) {
+  const spanned = (token) => {
+    const punct = /[.,;:!?]$/.test(token) ? token.slice(-1) : "";
+    const core = punct ? token.slice(0, -1) : token;
+    const path = core.includes("/") && (core.includes("*") || core.includes("<"));
+    return path && !core.includes("`") ? `\`${core}\`${punct}` : token;
+  };
+  return body.split(/(`[^`\n]*`)/).map(
+    (part, i) => i % 2 === 1 ? part : part.split(/([\s()]+)/).map((token, j) => j % 2 === 1 ? token : spanned(token)).join("")
+  ).join("");
+}
+function finalizeRun(o) {
+  const { run: run2 } = o;
+  if (!PLAIN_TOKEN.test(run2.id))
+    throw new Error(`run id is not a plain token: ${JSON.stringify(run2.id)}`);
+  const retro = o.retro === null ? NO_RETRO : parseRetro(o.retro);
+  const record2 = calibrationRecord(run2, aggregate(run2, o.events), o.exposedLessons);
+  if (run2.prUrl === null || run2.haltReason !== null) {
+    assertRunDirTargets(o.runDir, retro);
+    assertPlain(o.runDir, "retro-output.json");
+    assertPlain(o.runDir, "calibration.json");
+    writeRunDirFiles(o.runDir, retro);
+    writeWhole(o.runDir, "retro-output.json", `${JSON.stringify(retro, null, 2)}
+`);
+    writeWhole(o.runDir, "calibration.json", `${JSON.stringify(record2, null, 2)}
+`);
+    return { shipped: false, commit: null, pushed: false, written: [], metricsRecord: null };
+  }
+  const { branch, specPath } = run2;
+  const { worktree } = o;
+  if (branch === null || !isSafeBranchRef(branch)) {
+    throw new Error(`run branch is not a safe ref: ${String(branch)}`);
+  }
+  if (specPath === null || !isCanonicalPath(specPath)) {
+    throw new Error(`run spec path is not a canonical repo-relative path: ${String(specPath)}`);
+  }
+  if (!isAbsolute(worktree) || !isAbsolute(o.gitDir)) {
+    throw new Error("worktree and gitDir must be absolute paths");
+  }
+  if (typeof o.expectedHead !== "string" || !FULL_SHA3.test(o.expectedHead)) {
+    throw new Error("expectedHead must be the 40-hex SHA of the commit the last gate approved");
+  }
+  const abs = (rel) => join(worktree, rel);
+  const recordPath = calibrationPath(run2.id);
+  const targets = [specPath, CHECKS_PATH, recordPath, MEMORY_INDEX_PATH];
+  for (const rel of targets) assertPlain(worktree, rel);
+  assertPlain(worktree, CALIBRATION_DIR);
+  assertPlain(worktree, MEMORY_DIR);
+  assertRunDirTargets(o.runDir, retro);
+  assertPlain(o.runDir, FINALIZE_RECORD);
+  for (const rel of targets) assertNotHardLinked(worktree, rel);
+  const git4 = isolatedGit(worktree, o.gitDir, { HUSKY: "0" });
+  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+  if (headSha2 !== o.expectedHead && !isOwnFinalizeCommit(git4, o.runDir, headSha2, o.expectedHead)) {
+    throw new Error(`HEAD is ${headSha2}, not the gated commit ${o.expectedHead}`);
+  }
+  let onBranch;
+  try {
+    onBranch = git4.text("symbolic-ref", "--short", "HEAD").trim();
+  } catch {
+    throw new Error(`the worktree is on no branch, and finalize pushes the run branch ${branch}`);
+  }
+  if (onBranch !== branch) {
+    throw new Error(`the worktree is on branch ${onBranch}, not the run branch ${branch}`);
+  }
+  assertCommittedTargets(git4, [specPath, ".marvin/pipeline", MEMORY_DIR]);
+  const specBase = committedFile(git4, headSha2, specPath);
+  if (specBase === null) throw new Error(`spec ${specPath} is not committed at ${headSha2}`);
+  const specText = specBase.toString("utf8");
+  const shipped = finalizeSpec(specText, {
+    pr: run2.prUrl,
+    iterations: run2.iteration,
+    runId: run2.id
+  });
+  const slug = specSlug(parseFrontmatter(specText).frontmatter.slug, specPath);
+  const checksBase = committedFile(git4, headSha2, CHECKS_PATH)?.toString("utf8") ?? null;
+  const merged = mergeChecks(parseExistingChecks(checksBase, CHECKS_PATH), retro);
+  const expected = { rules: merged?.rules, record: record2, recordPath };
+  const written = /* @__PURE__ */ new Set();
+  const restoreFromCommit = (rel) => {
+    const base = committedFile(git4, headSha2, rel);
+    if (base === null) removePlain(worktree, rel);
+    else writeWhole(worktree, rel, base);
+  };
+  const scratch = mkdtempSync(join(tmpdir(), "marvin-finalize-"));
+  const branchRef = `refs/heads/${branch}`;
+  let newCommit = null;
+  let carried = null;
+  try {
+    const memoryBase = /* @__PURE__ */ new Map();
+    for (const entry of treeEntries(git4, headSha2, MEMORY_DIR, true)) {
+      const content = blobOf(git4, headSha2, entry);
+      memoryBase.set(entry.path, content);
+      mkdirSync(dirname(join(scratch, entry.path)), { recursive: true });
+      writeFileSync(join(scratch, entry.path), content);
+    }
+    const sink = o.addLesson ?? lessonStoreSink(`pipeline:${run2.id}`);
+    writeRunDirFiles(o.runDir, retro);
+    addLessons(scratch, o.runDir, retro.lessons, sink);
+    const memoryChanges = [];
+    const memoryDir = join(scratch, MEMORY_DIR);
+    const memoryFiles = existsSync(memoryDir) ? readdirSync(memoryDir, { withFileTypes: true }) : [];
+    for (const entry of memoryFiles.filter((e) => e.isFile())) {
+      const rel = `${MEMORY_DIR}/${entry.name}`;
+      const content = readFileSync(join(scratch, rel));
+      if (!memoryBase.get(rel)?.equals(content)) memoryChanges.push([rel, content]);
+    }
+    const writes = [
+      ...merged ? [[CHECKS_PATH, merged.text]] : [],
+      [recordPath, calibrationText(record2)],
+      [specPath, shipped],
+      ...memoryChanges
+    ];
+    for (const [rel, content] of writes) {
+      written.add(rel);
+      writeWhole(worktree, rel, content);
+    }
+    const paths = [...written];
+    if (o.formatCommand?.trim()) {
+      const command = `${o.formatCommand} ${paths.map((rel) => shellQuote(abs(rel))).join(" ")}`;
+      const result = (o.runCommand ?? shellRunner)(command, worktree, FORMAT_TIMEOUT_MS);
+      if (result.code !== 0) {
+        throw new Error(
+          `format_command failed (exit ${result.code}): ${outputTail(result.output)}`
+        );
+      }
+    }
+    const headNow = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (headNow !== headSha2) {
+      throw new Error(
+        `HEAD moved from ${headSha2} to ${headNow} while finalize ran: the format command must not commit`
+      );
+    }
+    const branchNow = git4.text("symbolic-ref", "--short", "HEAD").trim();
+    if (branchNow !== branch) {
+      throw new Error(
+        `the worktree moved to branch ${branchNow} while finalize ran, not ${branch}`
+      );
+    }
+    const contents = readFormatted(worktree, paths, expected);
+    if (o.metricsRecord) {
+      const { path: rel, slug: recordSlug } = o.metricsRecord;
+      const judged = written.has(rel) ? { state: "refused", reason: "it is a path finalize writes itself" } : classifyCarefully(() => classifyRecord(git4, headSha2, worktree, rel, recordSlug));
+      carried = {
+        path: rel,
+        state: judged.state,
+        ...judged.state === "refused" ? { reason: judged.reason } : {}
+      };
+      if (judged.state === "appended") contents.set(rel, judged.bytes);
+    }
+    const plumbing = isolatedGit(worktree, o.gitDir, {
+      HUSKY: "0",
+      GIT_INDEX_FILE: join(scratch, "index")
+    });
+    plumbing.text("read-tree", headSha2);
+    const changed = [];
+    let indexInfo = "";
+    for (const [rel, bytes] of contents) {
+      const oid = git4.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
+      const committedEntry = treeEntries(git4, headSha2, rel, false).find((e) => e.path === rel);
+      if (committedEntry?.oid === oid) continue;
+      changed.push(rel);
+      indexInfo += `${committedEntry?.mode ?? "100644"} ${oid}	${rel}\0`;
+    }
+    if (changed.length > 0) {
+      plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
+      const tree = plumbing.text("write-tree").trim();
+      const subject = `chore(${slug}): ship spec; lessons and calibration from run ${run2.id}`;
+      newCommit = git4.text("commit-tree", tree, "-p", headSha2, "-m", subject, "-m", COMMIT_TRAILER).trim();
+      writeWhole(
+        o.runDir,
+        FINALIZE_RECORD,
+        `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}
+`
+      );
+      git4.text("update-ref", branchRef, newCommit, headSha2);
+      git4.text("reset", "-q", "--", ...changed);
+      const parents = git4.text("rev-list", "--parents", "-n", "1", newCommit).trim().split(" ");
+      if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== newCommit || parents.length !== 2 || parents[1] !== headSha2) {
+        throw new Error(
+          `the finalize commit ${newCommit} is not the one HEAD names, on top of ${headSha2}`
+        );
+      }
+      const listed2 = nulList(
+        git4.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headSha2, newCommit)
+      ).sort();
+      if (!isDeepStrictEqual(listed2, [...changed].sort())) {
+        throw new Error(
+          `the finalize commit changes ${listed2.join(", ")}, not only ${[...changed].join(", ")}`
+        );
+      }
+      const committedContents = /* @__PURE__ */ new Map();
+      for (const [rel, bytes] of contents) {
+        const blob = committedFile(git4, newCommit, rel);
+        if (blob === null || !blob.equals(bytes)) {
+          throw new Error(`${rel} in the finalize commit is not what finalize wrote`);
+        }
+        committedContents.set(rel, blob);
+      }
+      verifyContents(committedContents, expected, "the finalize commit");
+    }
+  } catch (error2) {
+    try {
+      const current = git4.text("rev-parse", "--verify", branchRef).trim();
+      if (current !== headSha2) git4.text("update-ref", branchRef, headSha2, current);
+    } catch {
+    }
+    for (const rel of written) {
+      try {
+        restoreFromCommit(rel);
+      } catch {
+      }
+    }
+    try {
+      git4.text("reset", "-q", "--", ...written);
+    } catch {
+    }
+    if (carried?.state === "appended") {
+      try {
+        git4.text("reset", "-q", "--", carried.path);
+      } catch {
+      }
+    }
+    throw error2;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  try {
+    git4.text("push", "origin", `${newCommit ?? headSha2}:${branchRef}`);
+  } catch (error2) {
+    const why = error2 instanceof Error ? error2.message : String(error2);
+    throw new Error(`push of ${branch} failed; the finalize commit stays in the worktree: ${why}`, {
+      cause: error2
+    });
+  }
+  return {
+    shipped: true,
+    commit: newCommit,
+    pushed: true,
+    written: [...written],
+    metricsRecord: carried
+  };
+}
+var SANDBOX_VARIABLE = "MARVIN_PIPELINE_SANDBOX";
+var MODEL_OVERRIDE_VARIABLE = "MARVIN_PIPELINE_MODEL_OVERRIDE";
+var SANDBOX_PR_URL = "https://github.com/sandbox/sandbox/pull/1";
+function sandboxSettings(env = process.env) {
+  const raw = env[SANDBOX_VARIABLE];
+  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${SANDBOX_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const override = env[MODEL_OVERRIDE_VARIABLE]?.trim() || null;
+  if (override !== null) {
+    modelFamily(override);
+    if (!enabled) {
+      throw new Error(
+        `${MODEL_OVERRIDE_VARIABLE} is honoured only with ${SANDBOX_VARIABLE}=1; unset it, or run in the sandbox`
+      );
+    }
+  }
+  if (enabled && !env.MARVIN_PIPELINE_FAKE_CI) {
+    throw new Error(
+      `${SANDBOX_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI: the sandbox pull request does not exist on GitHub`
+    );
+  }
+  return { enabled, modelOverride: override };
+}
+var BENCH_VARIABLE = "MARVIN_PIPELINE_BENCH";
+var ROLES_DIR_VARIABLE = "MARVIN_PIPELINE_ROLES_DIR";
+function benchSettings(env = process.env) {
+  const raw = env[BENCH_VARIABLE];
+  if (raw !== void 0 && raw !== "" && raw !== "1" && raw !== "0") {
+    throw new Error(`${BENCH_VARIABLE} must be 1 or 0: ${raw}`);
+  }
+  const enabled = raw === "1";
+  const rolesDir = env[ROLES_DIR_VARIABLE]?.trim() || null;
+  if (enabled) {
+    if (!sandboxSettings(env).enabled) {
+      throw new Error(`${BENCH_VARIABLE}=1 is honoured only with ${SANDBOX_VARIABLE}=1`);
+    }
+    if (env.MARVIN_PIPELINE_FAKE_CI !== "green") {
+      throw new Error(`${BENCH_VARIABLE}=1 needs MARVIN_PIPELINE_FAKE_CI=green`);
+    }
+  }
+  if (rolesDir !== null) {
+    if (!enabled) {
+      throw new Error(`${ROLES_DIR_VARIABLE} is honoured only with ${BENCH_VARIABLE}=1`);
+    }
+    if (!isAbsolute(rolesDir) || !existsSync(join(rolesDir, "common.md"))) {
+      throw new Error(
+        `${ROLES_DIR_VARIABLE} must be an absolute directory holding common.md: ${rolesDir}`
+      );
+    }
+  }
+  return { enabled, rolesDir };
+}
+function effectiveAssignment(a, s) {
+  return s.enabled && s.modelOverride !== null ? { ...a, model: s.modelOverride } : a;
+}
+var SHIM = String.raw`
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const STATE = process.env.MARVIN_SANDBOX_GH_STATE;
+const URL = process.env.MARVIN_SANDBOX_GH_URL;
+const args = process.argv.slice(2);
+const git = (...a) => {
+  try {
+    return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+};
+const fail = (text) => {
+  process.stderr.write(text + "\n");
+  process.exit(1);
+};
+const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
+const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
+const value = (long, short) => {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === long || (short && a === short)) return args[i + 1] ?? "";
+    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
+  }
+  return null;
+};
+const has = (name) => args.includes(name);
+const body = () => {
+  const file = value("--body-file", "-F");
+  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
+  return value("--body", "-b");
+};
+const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
+const fields = (pr) => ({
+  url: pr.url,
+  number: 1,
+  state: pr.state,
+  isDraft: pr.isDraft,
+  title: pr.title,
+  body: pr.body,
+  baseRefName: pr.base,
+  headRefName: pr.head,
+  headRefOid: git("rev-parse", "HEAD"),
+  mergeable: "MERGEABLE",
+  mergeStateStatus: "CLEAN",
+  reviewDecision: "",
+  statusCheckRollup: [],
+  comments: [],
+  reviews: [],
+});
+const emit = (pr) => {
+  const json = value("--json");
+  if (json === null) {
+    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
+    return;
+  }
+  const all = fields(pr);
+  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
+  const jq = value("--jq", "-q");
+  if (jq !== null) {
+    const m = /^\.(\w+)$/.exec(jq.trim());
+    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
+    const v = picked[m[1]];
+    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
+    return;
+  }
+  process.stdout.write(JSON.stringify(picked) + "\n");
+};
+const current = () => {
+  const pr = load();
+  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
+  return pr;
+};
+
+const sub = (args[0] ?? "") + " " + (args[1] ?? "");
+switch (sub) {
+  case "pr create": {
+    const existing = load();
+    if (existing && existing.head === branch()) {
+      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
+    }
+    const base = value("--base", "-B");
+    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
+    const pr = {
+      url: URL,
+      state: "OPEN",
+      isDraft: has("--draft") || has("-d"),
+      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
+      body: body() ?? "",
+      base,
+      head: value("--head", "-H") ?? branch(),
+    };
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr view":
+    emit(current());
+    break;
+  case "pr list": {
+    const pr = load();
+    const mine = pr && pr.head === branch() ? [pr] : [];
+    if (value("--json") === null) {
+      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
+    } else {
+      const keys = value("--json").split(",").map((k) => k.trim());
+      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
+      process.stdout.write(JSON.stringify(rows) + "\n");
+    }
+    break;
+  }
+  case "pr edit": {
+    const pr = current();
+    const title = value("--title", "-t");
+    const text = body();
+    if (title !== null) pr.title = title;
+    if (text !== null) pr.body = text;
+    save(pr);
+    process.stdout.write(pr.url + "\n");
+    break;
+  }
+  case "pr ready": {
+    const pr = current();
+    pr.isDraft = false;
+    save(pr);
+    break;
+  }
+  case "pr diff": {
+    const pr = current();
+    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
+    break;
+  }
+  case "pr checks":
+    current();
+    fail('no checks reported on the "' + branch() + '" branch');
+    break;
+  case "run list":
+    process.stdout.write(value("--json") === null ? "" : "[]\n");
+    break;
+  default:
+    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
+}
+`;
+function installSandboxGh(runDir, nodePath = process.execPath) {
+  const bin = join(runDir, "sandbox-bin");
+  mkdirSync(bin, { recursive: true });
+  const script = join(bin, "gh-shim.mjs");
+  writeFileSync(script, SHIM.trimStart());
+  const quote = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const gh2 = join(bin, "gh");
+  writeFileSync(gh2, `#!/bin/sh
+exec ${quote(nodePath)} ${quote(script)} "$@"
+`);
+  chmodSync(gh2, 493);
+  return {
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    MARVIN_SANDBOX_GH_STATE: join(runDir, "sandbox-gh.json"),
+    MARVIN_SANDBOX_GH_URL: SANDBOX_PR_URL
+  };
+}
+function sandboxChildEnv(runDir, s) {
+  return s.enabled ? installSandboxGh(runDir) : {};
+}
+
 // src/pipeline/bench.ts
 var RelPath = external_exports.string().min(1).refine((p) => !isAbsolute(p) && !p.split("/").includes("..") && !p.includes("\\"), {
   message: "must be a relative POSIX path inside the repository"
@@ -22044,7 +23145,7 @@ var Suite = external_exports.object({
 });
 function loadSuite(file) {
   const suiteFile = resolve(file);
-  const parsed = Suite.safeParse((0, import_yaml4.parse)(readFileSync(suiteFile, "utf8")));
+  const parsed = Suite.safeParse((0, import_yaml5.parse)(readFileSync(suiteFile, "utf8")));
   if (!parsed.success) throw new Error(`${suiteFile}: ${parsed.error.message}`);
   const replayDir = resolve(dirname(suiteFile), parsed.data.replay);
   if (!existsSync(join(replayDir, "project"))) {
@@ -22401,10 +23502,11 @@ async function decideJudgment(kind, payload, ctx) {
 function runMetrics(run2) {
   const perRole = {};
   for (const role of ROLES) perRole[role] = { children: 0, costUsd: 0, cacheReadTokens: 0 };
+  const charged = sessionCostUsd(run2.children);
   for (const c of run2.children) {
     const m = perRole[c.role] ?? { children: 0, costUsd: 0, cacheReadTokens: 0 };
     m.children += 1;
-    m.costUsd += c.costUsd ?? 0;
+    m.costUsd += charged.get(c) ?? 0;
     m.cacheReadTokens += c.cacheReadTokens ?? 0;
     perRole[c.role] = m;
   }
@@ -22970,1073 +24072,6 @@ async function runOne(x) {
     wallMs
   };
 }
-
-// src/pipeline/learning.ts
-var import_yaml5 = __toESM(require_dist());
-var LESSON_TYPES = ["bug-pattern", "gotcha", "convention", "pitfall", "process"];
-var INDEX_FILE = "MEMORY.md";
-var INDEX_HEADER = [
-  "# Marvin lessons",
-  "",
-  "Project memory \u2014 lessons learned during task execution and debugging, captured by the",
-  "`lessons` MCP tool and shared with the team via git. One line per lesson; the body lives",
-  "in the linked file. Recalled at task intake.",
-  ""
-].join("\n");
-function uniqueSlug(memoryDir, base) {
-  const root = base || "lesson";
-  let slug = root;
-  let n = 2;
-  while (existsSync(join(memoryDir, `${slug}.md`))) {
-    slug = `${root}-${n}`;
-    n += 1;
-  }
-  return slug;
-}
-function addLesson(memoryDir, input) {
-  mkdirSync(memoryDir, { recursive: true });
-  const slug = uniqueSlug(memoryDir, slugify(input.title));
-  const created = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
-  const frontmatter = {
-    id: slug,
-    type: input.type,
-    title: input.title,
-    created,
-    tags: tags.length ? tags.join(", ") : void 0,
-    source: input.source?.trim() || "manual"
-  };
-  const body = input.body.trim() ? `
-${input.body.trim()}
-` : "\n";
-  const path = join(memoryDir, `${slug}.md`);
-  writeFileSync(path, stringifyFrontmatter(frontmatter, body));
-  appendIndex(memoryDir, { slug, type: input.type, title: input.title, created, tags });
-  return { slug, path };
-}
-function appendIndex(memoryDir, entry) {
-  const indexPath = join(memoryDir, INDEX_FILE);
-  const tagsSuffix = entry.tags.length ? ` \xB7 ${entry.tags.join(", ")}` : "";
-  const line = `- [${entry.title}](${entry.slug}.md) \u2014 ${entry.type} \xB7 ${entry.created}${tagsSuffix}`;
-  let content = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : INDEX_HEADER;
-  if (!content.endsWith("\n")) content += "\n";
-  writeFileSync(indexPath, `${content}${line}
-`);
-}
-function readAllLessons(memoryDir) {
-  if (!existsSync(memoryDir)) return [];
-  const lessons = [];
-  for (const filename of readdirSync(memoryDir).sort()) {
-    if (!filename.endsWith(".md") || filename === INDEX_FILE) continue;
-    const raw = readFileSync(join(memoryDir, filename), "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
-    if (!frontmatter.title) continue;
-    lessons.push({
-      slug: filename.replace(/\.md$/, ""),
-      type: frontmatter.type ?? "process",
-      title: frontmatter.title,
-      created: frontmatter.created ?? "",
-      tags: frontmatter.tags ? frontmatter.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-      source: frontmatter.source ?? "manual",
-      body: body.trim()
-    });
-  }
-  return lessons;
-}
-function titleWords(title) {
-  return new Set(
-    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1)
-  );
-}
-function titleSimilarity(a, b) {
-  const wa = titleWords(a);
-  const wb = titleWords(b);
-  if (wa.size === 0 || wb.size === 0) return 0;
-  let hits = 0;
-  for (const w of wa) if (wb.has(w)) hits += 1;
-  return hits / (wa.size + wb.size - hits);
-}
-var NEAR_DUPLICATE_THRESHOLD = 0.5;
-function findNearDuplicate(memoryDir, title) {
-  const slug = slugify(title);
-  let best = null;
-  for (const l of readAllLessons(memoryDir)) {
-    const score = slug !== "" && (l.slug === slug || slugify(l.title) === slug) ? 1 : titleSimilarity(l.title, title);
-    if (score >= NEAR_DUPLICATE_THRESHOLD && (!best || score > best.score)) {
-      best = { lesson: l, score };
-    }
-  }
-  return best?.lesson ?? null;
-}
-
-// src/pipeline/learning.ts
-var CHECKS_PATH = ".marvin/pipeline/checks.yaml";
-var CALIBRATION_DIR = ".marvin/pipeline/calibration";
-var LEGACY_CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
-var MEMORY_DIR = ".marvin/memory";
-var MEMORY_INDEX_PATH = `${MEMORY_DIR}/MEMORY.md`;
-function rankLessons(lessons, o) {
-  const terms = new Set(
-    o.paths.flatMap((p) => p.toLowerCase().split(/[/._()-]+/)).filter((t) => t.length > 3)
-  );
-  const score = (l) => {
-    const hay = `${l.title} ${l.tags.join(" ")} ${l.body}`.toLowerCase();
-    let s = [...terms].filter((t) => hay.includes(t)).length;
-    if (o.paths.some((p) => l.body.includes(p))) s += 5;
-    if (s > 0 && l.tags.includes(`role:${o.role}`)) s += 3;
-    return s;
-  };
-  return lessons.map((l) => ({ l, s: score(l) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, o.limit).map((x) => x.l);
-}
-var lessonsMarkdown = (ls) => ls.length ? ls.map((l) => `- ${l.title} \u2014 .marvin/memory/${l.id}.md`).join("\n") : "(none)";
-function aggregate(run2, events) {
-  const prints = run2.rejections.flatMap((r) => r.fingerprints);
-  const answers2 = events.filter((e) => e.kind === "answer");
-  const perRole = /* @__PURE__ */ new Map();
-  for (const c of run2.children) {
-    const cur = perRole.get(c.role) ?? { costUsd: 0, cacheReadTokens: 0 };
-    perRole.set(c.role, {
-      costUsd: cur.costUsd + (c.costUsd ?? 0),
-      cacheReadTokens: cur.cacheReadTokens + (c.cacheReadTokens ?? 0)
-    });
-  }
-  return {
-    tier: run2.tier,
-    tierReasons: run2.tierReasons,
-    iterations: run2.iteration,
-    rung: run2.rung,
-    rejections: run2.rejections,
-    findingCategories: [...new Set(prints.map((p) => p.split("|")[0] ?? "").filter(Boolean))],
-    repeatedFingerprints: [...new Set(prints.filter((p, i) => prints.indexOf(p) !== i))],
-    questions: {
-      byOrchestrator: answers2.filter((e) => e.data?.answeredBy === "orchestrator").length,
-      byUser: answers2.filter((e) => e.data?.answeredBy === "user").length
-    },
-    perRole: [...perRole.entries()].map(([role, v]) => ({ role, ...v })),
-    halted: run2.haltReason,
-    assumptions: run2.assumptions
-  };
-}
-function calibrationRecord(run2, agg, exposedLessons) {
-  return {
-    ts: run2.updatedAt,
-    runId: run2.id,
-    tier: run2.tier,
-    stageA: run2.stageA,
-    signalsReasons: run2.tierReasons,
-    aggregate: agg,
-    findingCategories: agg.findingCategories,
-    exposedLessons: [...exposedLessons]
-  };
-}
-var MIN_RECORDS = 5;
-function efficacy(records, items) {
-  const ordered = [...records].sort((a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
-  return items.map((it) => {
-    const before = ordered.filter((r) => r.ts < it.createdAt).slice(-10);
-    const after = ordered.filter(
-      (r) => r.ts >= it.createdAt && (it.kind === "check" || r.exposedLessons.includes(it.id))
-    );
-    const rate2 = (rs) => rs.length ? rs.filter((r) => r.findingCategories.includes(it.targetCategory)).length / rs.length : 0;
-    const verdict = before.length < MIN_RECORDS || after.length < MIN_RECORDS ? "too-early" : rate2(after) >= rate2(before) ? "prune-candidate" : "keep";
-    return { id: it.id, exposure: after.length, before: rate2(before), after: rate2(after), verdict };
-  });
-}
-var MAX_PATTERN_LENGTH = 500;
-var CHECK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-var CATEGORY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-var ONE_LINE = /^[^\r\n]+$/;
-function quantifierAt(source, i) {
-  const ch = source[i];
-  let length;
-  let repeats;
-  if (ch === "*" || ch === "+" || ch === "?") {
-    length = 1;
-    repeats = ch !== "?";
-  } else if (ch === "{") {
-    const braces = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i, i + 32));
-    if (!braces) return null;
-    length = braces[0].length;
-    repeats = braces[2] === void 0 ? Number(braces[1]) > 1 : braces[3] === "" || Number(braces[3]) > 1;
-  } else {
-    return null;
-  }
-  return { length: source[i + length] === "?" ? length + 1 : length, repeats };
-}
-function staticRegexHazard(source) {
-  const stack = [{ quantified: false, alternation: false }];
-  let i = 0;
-  while (i < source.length) {
-    const top = stack[stack.length - 1];
-    const ch = source[i];
-    if (ch === "\\") {
-      const next = source[i + 1];
-      if (next !== void 0 && (/[1-9]/.test(next) || next === "k" && source[i + 2] === "<")) {
-        return "it holds a backreference";
-      }
-      i += 2;
-    } else if (ch === "[") {
-      i += 1;
-      while (i < source.length && source[i] !== "]") i += source[i] === "\\" ? 2 : 1;
-      i += 1;
-    } else if (ch === "(") {
-      stack.push({ quantified: false, alternation: false });
-      i += 1;
-      if (source[i] === "?") {
-        i += 1;
-        const kind = source[i];
-        if (kind === ":" || kind === "=" || kind === "!") {
-          i += 1;
-        } else if (kind === "<") {
-          i += 1;
-          if (source[i] === "=" || source[i] === "!") i += 1;
-          else i = source.indexOf(">", i) + 1 || source.length;
-        }
-      }
-    } else if (ch === ")") {
-      const group = stack.length > 1 ? stack.pop() : top;
-      const parent = stack[stack.length - 1];
-      i += 1;
-      const quantifier = quantifierAt(source, i);
-      if (quantifier) {
-        if (quantifier.repeats && group.quantified) {
-          return "it has a nested quantifier: a repeated group that already holds a quantifier";
-        }
-        if (quantifier.repeats && group.alternation) {
-          return "it repeats a group that holds an alternation";
-        }
-        i += quantifier.length;
-      }
-      parent.quantified ||= group.quantified || quantifier !== null;
-      parent.alternation ||= group.alternation;
-    } else if (ch === "|") {
-      top.alternation = true;
-      i += 1;
-    } else {
-      const quantifier = quantifierAt(source, i);
-      if (quantifier) top.quantified = true;
-      i += quantifier ? quantifier.length : 1;
-    }
-  }
-  return null;
-}
-function regexHazard(source) {
-  return staticRegexHazard(source);
-}
-var regexSource = external_exports.string().min(1).max(MAX_PATTERN_LENGTH).superRefine((value, ctx) => {
-  try {
-    new RegExp(value);
-  } catch (error2) {
-    const why = error2 instanceof Error ? error2.message : String(error2);
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: `not a valid regular expression: ${why}`
-    });
-    return;
-  }
-  const hazard = regexHazard(value);
-  if (hazard !== null) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: `unsafe regular expression: ${hazard}`
-    });
-  }
-});
-var oneLine = external_exports.string().trim().min(1).max(200).regex(ONE_LINE, "must be a single line");
-var text = external_exports.string().trim().min(1);
-var RETRO_CAPS = { checks: 10, proposals: 20, lessons: 10, prune: 50 };
-var MAX_LESSON_BODY = 4e3;
-var RESERVED_LESSON_SLUG = "memory";
-var lessonTitle = oneLine.refine((title) => !/[[\]]/.test(title), "must not hold a square bracket").refine(
-  (title) => slugify(title) !== RESERVED_LESSON_SLUG,
-  `must not slug to "${RESERVED_LESSON_SLUG}", the name of the lesson index`
-);
-var lessonTag = external_exports.string().trim().min(1).max(64).regex(/^[^,\r\n]+$/, "must not hold a comma or a line break").refine((tag) => !/^target:/i.test(tag), "must not be a target: tag, the engine adds that one");
-var RetroSchema = external_exports.object({
-  checks: external_exports.array(
-    external_exports.object({
-      id: external_exports.string().regex(CHECK_ID, `must match ${CHECK_ID}`),
-      pattern: regexSource,
-      path_pattern: regexSource.optional(),
-      exclude_pattern: regexSource.optional(),
-      message: text,
-      severity: external_exports.enum(SEVERITIES).optional(),
-      category: external_exports.string().regex(CATEGORY, `must match ${CATEGORY}`).optional(),
-      evidence: external_exports.array(external_exports.string()).optional()
-    })
-  ).max(RETRO_CAPS.checks),
-  proposals: external_exports.array(
-    external_exports.object({
-      target: external_exports.enum(["marvin", "project"]),
-      file: oneLine,
-      change: text,
-      rationale: text,
-      evidence: external_exports.array(external_exports.string())
-    })
-  ).max(RETRO_CAPS.proposals),
-  lessons: external_exports.array(
-    external_exports.object({
-      type: external_exports.enum(LESSON_TYPES),
-      title: lessonTitle,
-      body: text.pipe(external_exports.string().max(MAX_LESSON_BODY)),
-      tags: external_exports.array(lessonTag),
-      target_category: external_exports.string().regex(CATEGORY, `must match ${CATEGORY}`),
-      evidence: external_exports.array(external_exports.string())
-    })
-  ).max(RETRO_CAPS.lessons),
-  prune: external_exports.array(external_exports.object({ id: oneLine, reason: text })).max(RETRO_CAPS.prune)
-});
-var NO_RETRO = { checks: [], proposals: [], lessons: [], prune: [] };
-function parseRetro(raw) {
-  if (typeof raw === "object" && raw !== null) {
-    for (const [key, cap] of Object.entries(RETRO_CAPS)) {
-      const list2 = raw[key];
-      if (Array.isArray(list2) && list2.length > cap) {
-        throw new Error(
-          `retro output rejected: ${key}: at most ${cap} allowed, got ${list2.length}`
-        );
-      }
-    }
-  }
-  const parsed = RetroSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-  const issues = parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
-  throw new Error(`retro output rejected: ${issues.join("; ")}`);
-}
-function removePlain(root, rel) {
-  assertPlain(root, rel);
-  rmSync(join(root, rel), { force: true });
-}
-function assertMemoryStore(root) {
-  assertPlain(root, MEMORY_DIR);
-  const dir = join(root, MEMORY_DIR);
-  if (!existsSync(dir)) return;
-  for (const name of readdirSync(dir)) {
-    const stat = lstatSync(join(dir, name));
-    if (stat.isSymbolicLink()) {
-      throw new Error(`refusing to use ${MEMORY_DIR}/${name}: it is a symbolic link`);
-    }
-  }
-  assertNotHardLinked(root, MEMORY_INDEX_PATH);
-}
-function ensureDir(root, rel) {
-  assertPlain(root, rel);
-  mkdirSync(join(root, rel), { recursive: true });
-}
-function writeWhole(root, rel, content) {
-  assertPlain(root, rel);
-  const path = join(root, rel);
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  try {
-    writeFileSync(tmp, content, { flag: "wx" });
-    renameSync(tmp, path);
-  } catch (error2) {
-    rmSync(tmp, { force: true });
-    throw error2;
-  }
-}
-var ExistingChecks = external_exports.array(external_exports.object({ id: external_exports.string() }).passthrough());
-function parseExistingChecks(text2, where) {
-  if (text2 === null) return [];
-  let doc;
-  try {
-    doc = (0, import_yaml5.parse)(text2);
-  } catch (error2) {
-    const why = error2 instanceof Error ? error2.message : String(error2);
-    throw new Error(`${where} is not valid YAML: ${why}`, { cause: error2 });
-  }
-  if (doc === null || doc === void 0) return [];
-  const rules = ExistingChecks.safeParse(doc);
-  if (!rules.success)
-    throw new Error(`${where} must be a YAML list of rules, each with a string id`);
-  return rules.data;
-}
-function mergeChecks(existing, retro) {
-  const ids = new Set(existing.map((c) => c.id));
-  const fresh = [];
-  for (const { evidence: _evidence, ...rule } of retro.checks) {
-    if (ids.has(rule.id)) continue;
-    ids.add(rule.id);
-    fresh.push(rule);
-  }
-  if (!fresh.length) return null;
-  const text2 = (0, import_yaml5.stringify)([...existing, ...fresh], { lineWidth: 0 });
-  return { text: text2, rules: (0, import_yaml5.parse)(text2) };
-}
-var proposalText = (n, p) => `# Proposal ${n} (${p.target})
-
-- File: ${p.file}
-- Change: ${p.change}
-- Rationale: ${p.rationale}
-- Evidence: ${p.evidence.join(", ")}
-`;
-var DUPLICATES_NOTE = "proposals/duplicate-lessons.md";
-function assertRunDirTargets(runDir, retro) {
-  assertPlain(runDir, "proposals");
-  retro.proposals.forEach((p, i) => assertPlain(runDir, `proposals/${i + 1}-${p.target}.md`));
-  assertPlain(runDir, "proposals/prune.md");
-  assertPlain(runDir, DUPLICATES_NOTE);
-}
-function writeRunDirFiles(runDir, retro) {
-  ensureDir(runDir, "proposals");
-  retro.proposals.forEach(
-    (p, i) => writeWhole(runDir, `proposals/${i + 1}-${p.target}.md`, proposalText(i + 1, p))
-  );
-  if (retro.prune.length) {
-    writeWhole(
-      runDir,
-      "proposals/prune.md",
-      `${retro.prune.map((p) => `- ${p.id}: ${p.reason}`).join("\n")}
-`
-    );
-  }
-}
-function addLessons(root, runDir, lessons, sink) {
-  const written = [];
-  const duplicates = [];
-  for (const lesson of lessons) {
-    const result = sink(root, lesson);
-    if (typeof result !== "object" || result === null) continue;
-    if ("duplicateOf" in result) duplicates.push({ title: lesson.title, of: result.duplicateOf });
-    else written.push(...result.added);
-  }
-  if (duplicates.length) {
-    writeWhole(
-      runDir,
-      DUPLICATES_NOTE,
-      `# Lessons skipped as near-duplicates
-
-${duplicates.map((d) => `- ${d.title} (near-duplicate of ${d.of})`).join("\n")}
-`
-    );
-  }
-  return { written, duplicates };
-}
-var DELIVERY_HEADING = /^## Delivery[ \t]*$/;
-var SECTION_HEADING = /^#{1,2}[ \t]/;
-var FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-var STATUS_KEY = /^status[ \t]*:/;
-function proseLines(lines, from) {
-  const prose = lines.map(() => false);
-  let fence2 = null;
-  for (let i = from; i < lines.length; i += 1) {
-    const m = FENCE.exec(lines[i]);
-    if (fence2 === null) {
-      const opens = m && !(m[1][0] === "`" && m[2].includes("`"));
-      if (opens) fence2 = { char: m[1][0], length: m[1].length };
-      else prose[i] = true;
-    } else if (m && m[1][0] === fence2.char && m[1].length >= fence2.length && m[2].trim() === "") {
-      fence2 = null;
-    }
-  }
-  return prose;
-}
-function finalizeSpec(specText, d) {
-  if (/[\r\n]/.test(d.pr) || /[\r\n]/.test(d.runId)) {
-    throw new Error("the delivery's PR and run id must not contain a line break");
-  }
-  const lines = specText.replace(/\r\n/g, "\n").split("\n");
-  if (lines[0] !== "---") throw new Error("spec has no front matter: it must start with ---");
-  const end = lines.indexOf("---", 1);
-  if (end === -1) throw new Error("spec front matter is not closed by a --- line");
-  let flipped = false;
-  for (let i = 1; i < end; i += 1) {
-    if (STATUS_KEY.test(lines[i])) {
-      lines[i] = "status: shipped";
-      flipped = true;
-    }
-  }
-  if (!flipped) throw new Error("spec front matter has no status line");
-  const prose = proseLines(lines, end + 1);
-  const out = [];
-  let cursor = 0;
-  let insertAt = -1;
-  for (let i = end + 1; i < lines.length; i += 1) {
-    if (!prose[i] || !DELIVERY_HEADING.test(lines[i])) continue;
-    let next = i + 1;
-    while (next < lines.length && !(prose[next] && SECTION_HEADING.test(lines[next]))) next += 1;
-    out.push(...lines.slice(cursor, i));
-    if (insertAt === -1) insertAt = out.length;
-    cursor = next;
-    i = next - 1;
-  }
-  out.push(...lines.slice(cursor));
-  if (insertAt === -1) insertAt = out.length;
-  const head = out.slice(0, insertAt).join("\n").trimEnd();
-  const tail = out.slice(insertAt).join("\n").replace(/^\s*\n/, "").trimEnd();
-  const section = `## Delivery
-
-- PR: ${d.pr}
-- Pipeline run: ${d.runId} (${d.iterations} iterations)
-`;
-  return `${head}
-
-${section}${tail ? `
-${tail}
-` : ""}`;
-}
-function calibrationPath(runId) {
-  if (!PLAIN_TOKEN.test(runId)) throw new Error(`run id is not a plain token: ${runId}`);
-  return `${CALIBRATION_DIR}/${runId}.json`;
-}
-var calibrationText = (record2) => `${JSON.stringify(record2, null, 2)}
-`;
-var JSON_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
-function readCalibrationRecords(root) {
-  const byRun = /* @__PURE__ */ new Map();
-  const anonymous = [];
-  const take = (value) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
-    const runId = value.runId;
-    if (typeof runId === "string") {
-      if (!byRun.has(runId)) byRun.set(runId, value);
-    } else anonymous.push(value);
-  };
-  const parsed = (text2) => {
-    try {
-      return JSON.parse(text2);
-    } catch {
-      return void 0;
-    }
-  };
-  const dir = join(root, CALIBRATION_DIR);
-  let names;
-  try {
-    names = readdirSync(dir).filter((n) => JSON_FILE.test(n)).sort();
-  } catch {
-    names = [];
-  }
-  for (const name of names) {
-    try {
-      if (!lstatSync(join(dir, name)).isFile()) continue;
-      take(parsed(readFileSync(join(dir, name), "utf8")));
-    } catch {
-    }
-  }
-  let legacy;
-  try {
-    const path = join(root, LEGACY_CALIBRATION_PATH);
-    legacy = lstatSync(path).isFile() ? readFileSync(path, "utf8") : "";
-  } catch {
-    legacy = "";
-  }
-  for (const line of legacy.split("\n").filter(Boolean)) take(parsed(line));
-  return [...byRun.values(), ...anonymous];
-}
-var targetTag = (category) => `target:${category}`;
-function lessonStoreSink(source) {
-  return (root, lesson) => {
-    assertMemoryStore(root);
-    const memoryDir = join(root, MEMORY_DIR);
-    const duplicate = findNearDuplicate(memoryDir, lesson.title);
-    if (duplicate) return { duplicateOf: duplicate.slug };
-    const tags = [.../* @__PURE__ */ new Set([...lesson.tags, targetTag(lesson.target_category)])];
-    const { slug } = addLesson(memoryDir, {
-      type: lesson.type,
-      title: lesson.title,
-      body: codeSpanPaths(lesson.body),
-      tags,
-      source
-    });
-    return { added: [`${MEMORY_DIR}/${slug}.md`, MEMORY_INDEX_PATH] };
-  };
-}
-var FORMAT_TIMEOUT_MS = 5 * 60 * 1e3;
-function classifyCarefully(classify2) {
-  try {
-    return classify2();
-  } catch (error2) {
-    const reason2 = error2 instanceof Error ? error2.message : String(error2);
-    return { state: "refused", reason: `it could not be judged (${reason2})` };
-  }
-}
-var COMMIT_TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
-var PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-var FULL_SHA3 = /^[0-9a-f]{40}$/;
-var FINALIZE_RECORD = "finalize-commit.json";
-var specSlug = (frontmatterSlug, specPath) => [frontmatterSlug, basename(specPath, ".md").replace(/^\d+-/, ""), "spec"].find(
-  (candidate) => candidate !== void 0 && PLAIN_TOKEN.test(candidate)
-);
-var outputTail = (output) => output.trimEnd().split("\n").slice(-20).join("\n").slice(-2e3);
-function treeEntries(git4, commit, rel, recursive) {
-  const out = git4.text(
-    "ls-tree",
-    ...recursive ? ["-r"] : [],
-    "-z",
-    "--full-tree",
-    commit,
-    "--",
-    rel
-  );
-  return out.split("\0").filter(Boolean).map((record2) => {
-    const m = /^(\d+) (\w+) ([0-9a-f]+)\t([\s\S]+)$/.exec(record2);
-    if (!m) throw new Error(`cannot read git ls-tree output: ${JSON.stringify(record2)}`);
-    return { mode: m[1], type: m[2], oid: m[3], path: m[4] };
-  });
-}
-function blobOf(git4, commit, entry) {
-  if (entry.type !== "blob" || entry.mode !== "100644" && entry.mode !== "100755") {
-    throw new Error(`refusing to use ${entry.path}: it is not a regular file in ${commit}`);
-  }
-  return git4.bytes("cat-file", "blob", entry.oid);
-}
-function committedFile(git4, commit, rel) {
-  const entry = treeEntries(git4, commit, rel, false).find((e) => e.path === rel);
-  return entry === void 0 ? null : blobOf(git4, commit, entry);
-}
-function assertCommittedTargets(git4, targets) {
-  const hidden = git4.text("ls-files", "-v", "-z", "--", ...targets).split("\0").filter(Boolean).filter((record2) => record2[0] !== record2[0].toUpperCase() || record2[0] === "S");
-  if (hidden.length) {
-    throw new Error(
-      `refusing to finalize: an index flag hides changes under ${targets.join(", ")}: ${hidden.map((r) => r.slice(2)).join(", ")}`
-    );
-  }
-  const dirty = git4.text("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored", "--", ...targets).split("\0").filter(Boolean);
-  if (dirty.length) {
-    throw new Error(
-      `refusing to finalize: uncommitted, untracked or ignored content under ${targets.join(", ")}: ${dirty.slice(0, 5).map((r) => r.slice(3)).join(", ")}`
-    );
-  }
-}
-function isOwnFinalizeCommit(git4, runDir, headSha2, expectedHead) {
-  try {
-    assertPlain(runDir, FINALIZE_RECORD);
-    const record2 = JSON.parse(readFileSync(join(runDir, FINALIZE_RECORD), "utf8"));
-    return record2.expectedHead === expectedHead && record2.commit === headSha2 && git4.text("rev-parse", "--verify", `${headSha2}^`).trim() === expectedHead;
-  } catch {
-    return false;
-  }
-}
-function verifyContents(contents, expected, who) {
-  const checks = contents.get(CHECKS_PATH);
-  if (expected.rules !== void 0 && checks !== void 0) {
-    let rules;
-    try {
-      rules = (0, import_yaml5.parse)(checks.toString("utf8"));
-    } catch {
-      rules = void 0;
-    }
-    if (!isDeepStrictEqual(rules, expected.rules)) {
-      throw new Error(
-        `${who} changed the rules in ${CHECKS_PATH}: a formatter may change layout, not rules`
-      );
-    }
-  }
-  const calibration = contents.get(expected.recordPath);
-  if (calibration !== void 0) {
-    let record2;
-    try {
-      record2 = JSON.parse(calibration.toString("utf8"));
-    } catch {
-      record2 = void 0;
-    }
-    if (!isDeepStrictEqual(record2, expected.record)) {
-      throw new Error(
-        `${who} changed the record in ${expected.recordPath}: a formatter may change layout, not the record`
-      );
-    }
-  }
-}
-function readFormatted(worktree, paths, expected) {
-  const contents = /* @__PURE__ */ new Map();
-  for (const rel of paths) {
-    assertPlain(worktree, rel);
-    assertNotHardLinked(worktree, rel);
-    let stat;
-    try {
-      stat = lstatSync(join(worktree, rel));
-    } catch {
-      throw new Error(`the format command removed ${rel}`);
-    }
-    if (!stat.isFile()) throw new Error(`the format command left ${rel} as something but a file`);
-    contents.set(rel, readFileSync(join(worktree, rel)));
-  }
-  verifyContents(contents, expected, "the format command");
-  return contents;
-}
-var nulList = (text2) => text2.split("\0").filter(Boolean);
-var BASE_MERGE_RECORD = "base-merge.json";
-var REGULAR_MODES = /* @__PURE__ */ new Set(["100644", "100755"]);
-var ZERO_OID = /^0+$/;
-var sameBytes = (a, b) => a === null ? b === null : b !== null && a.equals(b);
-function rawChanges(git4, from, to) {
-  const fields = git4.text("diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to).split("\0");
-  const out = [];
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    const m = /^:(\d{6}) (\d{6}) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(fields[i]);
-    if (!m) break;
-    out.push({
-      oldMode: m[1],
-      newMode: m[2],
-      oldOid: m[3],
-      newOid: m[4],
-      status: m[5],
-      path: fields[i + 1]
-    });
-  }
-  return out;
-}
-function mergeBaseForFinalize(o) {
-  if (!isSafeBranchRef(o.branch)) throw new Error(`run branch is not a safe ref: ${o.branch}`);
-  if (!isSafeBranchRef(o.base)) throw new Error(`run base is not a safe ref: ${o.base}`);
-  if (!FULL_SHA3.test(o.gatedHead)) throw new Error("gatedHead must be a 40-hex commit SHA");
-  if (!PLAIN_TOKEN.test(o.slug)) throw new Error(`slug is not a plain token: ${o.slug}`);
-  const git4 = isolatedGit(o.worktree, o.gitDir, { HUSKY: "0" });
-  const skipped = (reason2) => ({
-    state: "skipped",
-    head: o.gatedHead,
-    reason: reason2
-  });
-  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-  assertPlain(o.runDir, BASE_MERGE_RECORD);
-  const recordPath = join(o.runDir, BASE_MERGE_RECORD);
-  const record2 = existsSync(recordPath) ? JSON.parse(readFileSync(recordPath, "utf8")) : null;
-  const recorded = record2 !== null && record2.gated === o.gatedHead && typeof record2.commit === "string" && typeof record2.base === "string" && FULL_SHA3.test(record2.commit) && FULL_SHA3.test(record2.base) ? { commit: record2.commit, base: record2.base } : null;
-  if (recorded !== null && headSha2 !== o.gatedHead) {
-    if (headSha2 === recorded.commit || isOwnFinalizeCommit(git4, o.runDir, headSha2, recorded.commit)) {
-      return { state: "merged", head: recorded.commit, base: recorded.base };
-    }
-  }
-  if (headSha2 !== o.gatedHead) return { state: "current", head: o.gatedHead };
-  let baseTip;
-  try {
-    git4.text("fetch", "--no-tags", "--quiet", "origin", "--", `refs/heads/${o.base}`);
-    baseTip = git4.text("rev-parse", "--verify", "FETCH_HEAD^{commit}").trim();
-  } catch (error2) {
-    return skipped(
-      `fetching ${o.base} failed: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-  }
-  try {
-    git4.text("merge-base", "--is-ancestor", baseTip, o.gatedHead);
-    return { state: "current", head: o.gatedHead };
-  } catch {
-  }
-  let drivers = "";
-  try {
-    drivers = git4.text("config", "--get-regexp", "^merge\\..*\\.driver$");
-  } catch {
-  }
-  if (drivers.trim() !== "") return skipped("a custom merge driver is configured");
-  let tree;
-  try {
-    tree = git4.text("merge-tree", "--write-tree", "--name-only", "--no-messages", o.gatedHead, baseTip).split("\n")[0].trim();
-  } catch (error2) {
-    const out = error2.stdout?.toString() ?? "";
-    const files = out.split("\n").slice(1).filter(Boolean);
-    return skipped(
-      files.length ? `${o.base} conflicts with the run branch in ${files.slice(0, 5).join(", ")}` : `merge-tree failed: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-  }
-  if (!FULL_SHA3.test(tree)) return skipped(`merge-tree printed no tree: ${tree}`);
-  const commit = recorded?.base === baseTip ? recorded.commit : git4.text(
-    "commit-tree",
-    tree,
-    "-p",
-    o.gatedHead,
-    "-p",
-    baseTip,
-    "-m",
-    `chore(${o.slug}): merge ${o.base} before finalize`,
-    "-m",
-    COMMIT_TRAILER
-  ).trim();
-  const changes2 = rawChanges(git4, o.gatedHead, commit);
-  for (const c of changes2) {
-    const removal = c.status === "D";
-    if (!removal && !REGULAR_MODES.has(c.newMode) || !ZERO_OID.test(c.oldOid) && !REGULAR_MODES.has(c.oldMode)) {
-      return skipped(`${o.base} changes ${c.path}, which is not a regular file`);
-    }
-    assertPlain(o.worktree, c.path);
-    const onDisk = existsSync(join(o.worktree, c.path)) ? readFileSync(join(o.worktree, c.path)) : null;
-    const before = ZERO_OID.test(c.oldOid) ? null : git4.bytes("cat-file", "blob", c.oldOid);
-    const after = removal ? null : git4.bytes("cat-file", "blob", c.newOid);
-    if (!sameBytes(onDisk, before) && !sameBytes(onDisk, after)) {
-      return skipped(`${c.path} has an uncommitted change the merge would overwrite`);
-    }
-  }
-  writeWhole(
-    o.runDir,
-    BASE_MERGE_RECORD,
-    `${JSON.stringify({ gated: o.gatedHead, base: baseTip, commit })}
-`
-  );
-  let indexInfo = "";
-  for (const c of changes2) {
-    if (c.status === "D") {
-      removePlain(o.worktree, c.path);
-      indexInfo += `0 ${"0".repeat(40)}	${c.path}\0`;
-    } else {
-      writeWhole(o.worktree, c.path, git4.bytes("cat-file", "blob", c.newOid));
-      chmodSync(join(o.worktree, c.path), c.newMode === "100755" ? 493 : 420);
-      indexInfo += `${c.newMode} ${c.newOid}	${c.path}\0`;
-    }
-  }
-  if (indexInfo) git4.textIn(indexInfo, "update-index", "-z", "--index-info");
-  git4.text("update-ref", `refs/heads/${o.branch}`, commit, o.gatedHead);
-  const parents = git4.text("rev-list", "--parents", "-n", "1", commit).trim().split(" ");
-  if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== commit || parents.length !== 3 || parents[1] !== o.gatedHead || parents[2] !== baseTip) {
-    throw new Error(
-      `the base merge ${commit} is not the one HEAD names, on ${o.gatedHead} and ${baseTip}`
-    );
-  }
-  return { state: "merged", head: commit, base: baseTip };
-}
-function inferFormatCommand(repoRoot) {
-  try {
-    const modules = realpathSync(join(repoRoot, "node_modules"));
-    const bin = realpathSync(join(modules, ".bin", "prettier"));
-    const inside = relative(modules, bin);
-    if (inside.startsWith("..") || isAbsolute(inside)) return null;
-    return `${shellQuote(process.execPath)} ${shellQuote(bin)} --write --ignore-unknown`;
-  } catch {
-    return null;
-  }
-}
-function codeSpanPaths(body) {
-  const spanned = (token) => {
-    const punct = /[.,;:!?]$/.test(token) ? token.slice(-1) : "";
-    const core = punct ? token.slice(0, -1) : token;
-    const path = core.includes("/") && (core.includes("*") || core.includes("<"));
-    return path && !core.includes("`") ? `\`${core}\`${punct}` : token;
-  };
-  return body.split(/(`[^`\n]*`)/).map(
-    (part, i) => i % 2 === 1 ? part : part.split(/([\s()]+)/).map((token, j) => j % 2 === 1 ? token : spanned(token)).join("")
-  ).join("");
-}
-function finalizeRun(o) {
-  const { run: run2 } = o;
-  if (!PLAIN_TOKEN.test(run2.id))
-    throw new Error(`run id is not a plain token: ${JSON.stringify(run2.id)}`);
-  const retro = o.retro === null ? NO_RETRO : parseRetro(o.retro);
-  const record2 = calibrationRecord(run2, aggregate(run2, o.events), o.exposedLessons);
-  if (run2.prUrl === null || run2.haltReason !== null) {
-    assertRunDirTargets(o.runDir, retro);
-    assertPlain(o.runDir, "retro-output.json");
-    assertPlain(o.runDir, "calibration.json");
-    writeRunDirFiles(o.runDir, retro);
-    writeWhole(o.runDir, "retro-output.json", `${JSON.stringify(retro, null, 2)}
-`);
-    writeWhole(o.runDir, "calibration.json", `${JSON.stringify(record2, null, 2)}
-`);
-    return { shipped: false, commit: null, pushed: false, written: [], metricsRecord: null };
-  }
-  const { branch, specPath } = run2;
-  const { worktree } = o;
-  if (branch === null || !isSafeBranchRef(branch)) {
-    throw new Error(`run branch is not a safe ref: ${String(branch)}`);
-  }
-  if (specPath === null || !isCanonicalPath(specPath)) {
-    throw new Error(`run spec path is not a canonical repo-relative path: ${String(specPath)}`);
-  }
-  if (!isAbsolute(worktree) || !isAbsolute(o.gitDir)) {
-    throw new Error("worktree and gitDir must be absolute paths");
-  }
-  if (typeof o.expectedHead !== "string" || !FULL_SHA3.test(o.expectedHead)) {
-    throw new Error("expectedHead must be the 40-hex SHA of the commit the last gate approved");
-  }
-  const abs = (rel) => join(worktree, rel);
-  const recordPath = calibrationPath(run2.id);
-  const targets = [specPath, CHECKS_PATH, recordPath, MEMORY_INDEX_PATH];
-  for (const rel of targets) assertPlain(worktree, rel);
-  assertPlain(worktree, CALIBRATION_DIR);
-  assertPlain(worktree, MEMORY_DIR);
-  assertRunDirTargets(o.runDir, retro);
-  assertPlain(o.runDir, FINALIZE_RECORD);
-  for (const rel of targets) assertNotHardLinked(worktree, rel);
-  const git4 = isolatedGit(worktree, o.gitDir, { HUSKY: "0" });
-  const headSha2 = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-  if (headSha2 !== o.expectedHead && !isOwnFinalizeCommit(git4, o.runDir, headSha2, o.expectedHead)) {
-    throw new Error(`HEAD is ${headSha2}, not the gated commit ${o.expectedHead}`);
-  }
-  let onBranch;
-  try {
-    onBranch = git4.text("symbolic-ref", "--short", "HEAD").trim();
-  } catch {
-    throw new Error(`the worktree is on no branch, and finalize pushes the run branch ${branch}`);
-  }
-  if (onBranch !== branch) {
-    throw new Error(`the worktree is on branch ${onBranch}, not the run branch ${branch}`);
-  }
-  assertCommittedTargets(git4, [specPath, ".marvin/pipeline", MEMORY_DIR]);
-  const specBase = committedFile(git4, headSha2, specPath);
-  if (specBase === null) throw new Error(`spec ${specPath} is not committed at ${headSha2}`);
-  const specText = specBase.toString("utf8");
-  const shipped = finalizeSpec(specText, {
-    pr: run2.prUrl,
-    iterations: run2.iteration,
-    runId: run2.id
-  });
-  const slug = specSlug(parseFrontmatter(specText).frontmatter.slug, specPath);
-  const checksBase = committedFile(git4, headSha2, CHECKS_PATH)?.toString("utf8") ?? null;
-  const merged = mergeChecks(parseExistingChecks(checksBase, CHECKS_PATH), retro);
-  const expected = { rules: merged?.rules, record: record2, recordPath };
-  const written = /* @__PURE__ */ new Set();
-  const restoreFromCommit = (rel) => {
-    const base = committedFile(git4, headSha2, rel);
-    if (base === null) removePlain(worktree, rel);
-    else writeWhole(worktree, rel, base);
-  };
-  const scratch = mkdtempSync(join(tmpdir(), "marvin-finalize-"));
-  const branchRef = `refs/heads/${branch}`;
-  let newCommit = null;
-  let carried = null;
-  try {
-    const memoryBase = /* @__PURE__ */ new Map();
-    for (const entry of treeEntries(git4, headSha2, MEMORY_DIR, true)) {
-      const content = blobOf(git4, headSha2, entry);
-      memoryBase.set(entry.path, content);
-      mkdirSync(dirname(join(scratch, entry.path)), { recursive: true });
-      writeFileSync(join(scratch, entry.path), content);
-    }
-    const sink = o.addLesson ?? lessonStoreSink(`pipeline:${run2.id}`);
-    writeRunDirFiles(o.runDir, retro);
-    addLessons(scratch, o.runDir, retro.lessons, sink);
-    const memoryChanges = [];
-    const memoryDir = join(scratch, MEMORY_DIR);
-    const memoryFiles = existsSync(memoryDir) ? readdirSync(memoryDir, { withFileTypes: true }) : [];
-    for (const entry of memoryFiles.filter((e) => e.isFile())) {
-      const rel = `${MEMORY_DIR}/${entry.name}`;
-      const content = readFileSync(join(scratch, rel));
-      if (!memoryBase.get(rel)?.equals(content)) memoryChanges.push([rel, content]);
-    }
-    const writes = [
-      ...merged ? [[CHECKS_PATH, merged.text]] : [],
-      [recordPath, calibrationText(record2)],
-      [specPath, shipped],
-      ...memoryChanges
-    ];
-    for (const [rel, content] of writes) {
-      written.add(rel);
-      writeWhole(worktree, rel, content);
-    }
-    const paths = [...written];
-    if (o.formatCommand?.trim()) {
-      const command = `${o.formatCommand} ${paths.map((rel) => shellQuote(abs(rel))).join(" ")}`;
-      const result = (o.runCommand ?? shellRunner)(command, worktree, FORMAT_TIMEOUT_MS);
-      if (result.code !== 0) {
-        throw new Error(
-          `format_command failed (exit ${result.code}): ${outputTail(result.output)}`
-        );
-      }
-    }
-    const headNow = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
-    if (headNow !== headSha2) {
-      throw new Error(
-        `HEAD moved from ${headSha2} to ${headNow} while finalize ran: the format command must not commit`
-      );
-    }
-    const branchNow = git4.text("symbolic-ref", "--short", "HEAD").trim();
-    if (branchNow !== branch) {
-      throw new Error(
-        `the worktree moved to branch ${branchNow} while finalize ran, not ${branch}`
-      );
-    }
-    const contents = readFormatted(worktree, paths, expected);
-    if (o.metricsRecord) {
-      const { path: rel, slug: recordSlug } = o.metricsRecord;
-      const judged = written.has(rel) ? { state: "refused", reason: "it is a path finalize writes itself" } : classifyCarefully(() => classifyRecord(git4, headSha2, worktree, rel, recordSlug));
-      carried = {
-        path: rel,
-        state: judged.state,
-        ...judged.state === "refused" ? { reason: judged.reason } : {}
-      };
-      if (judged.state === "appended") contents.set(rel, judged.bytes);
-    }
-    const plumbing = isolatedGit(worktree, o.gitDir, {
-      HUSKY: "0",
-      GIT_INDEX_FILE: join(scratch, "index")
-    });
-    plumbing.text("read-tree", headSha2);
-    const changed = [];
-    let indexInfo = "";
-    for (const [rel, bytes] of contents) {
-      const oid = git4.textIn(bytes, "hash-object", "-w", "--no-filters", "--stdin").trim();
-      const committedEntry = treeEntries(git4, headSha2, rel, false).find((e) => e.path === rel);
-      if (committedEntry?.oid === oid) continue;
-      changed.push(rel);
-      indexInfo += `${committedEntry?.mode ?? "100644"} ${oid}	${rel}\0`;
-    }
-    if (changed.length > 0) {
-      plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
-      const tree = plumbing.text("write-tree").trim();
-      const subject = `chore(${slug}): ship spec; lessons and calibration from run ${run2.id}`;
-      newCommit = git4.text("commit-tree", tree, "-p", headSha2, "-m", subject, "-m", COMMIT_TRAILER).trim();
-      writeWhole(
-        o.runDir,
-        FINALIZE_RECORD,
-        `${JSON.stringify({ expectedHead: o.expectedHead, commit: newCommit })}
-`
-      );
-      git4.text("update-ref", branchRef, newCommit, headSha2);
-      git4.text("reset", "-q", "--", ...changed);
-      const parents = git4.text("rev-list", "--parents", "-n", "1", newCommit).trim().split(" ");
-      if (git4.text("rev-parse", "--verify", "HEAD^{commit}").trim() !== newCommit || parents.length !== 2 || parents[1] !== headSha2) {
-        throw new Error(
-          `the finalize commit ${newCommit} is not the one HEAD names, on top of ${headSha2}`
-        );
-      }
-      const listed2 = nulList(
-        git4.text("diff-tree", "-r", "--name-only", "--no-renames", "-z", headSha2, newCommit)
-      ).sort();
-      if (!isDeepStrictEqual(listed2, [...changed].sort())) {
-        throw new Error(
-          `the finalize commit changes ${listed2.join(", ")}, not only ${[...changed].join(", ")}`
-        );
-      }
-      const committedContents = /* @__PURE__ */ new Map();
-      for (const [rel, bytes] of contents) {
-        const blob = committedFile(git4, newCommit, rel);
-        if (blob === null || !blob.equals(bytes)) {
-          throw new Error(`${rel} in the finalize commit is not what finalize wrote`);
-        }
-        committedContents.set(rel, blob);
-      }
-      verifyContents(committedContents, expected, "the finalize commit");
-    }
-  } catch (error2) {
-    try {
-      const current = git4.text("rev-parse", "--verify", branchRef).trim();
-      if (current !== headSha2) git4.text("update-ref", branchRef, headSha2, current);
-    } catch {
-    }
-    for (const rel of written) {
-      try {
-        restoreFromCommit(rel);
-      } catch {
-      }
-    }
-    try {
-      git4.text("reset", "-q", "--", ...written);
-    } catch {
-    }
-    if (carried?.state === "appended") {
-      try {
-        git4.text("reset", "-q", "--", carried.path);
-      } catch {
-      }
-    }
-    throw error2;
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-  try {
-    git4.text("push", "origin", `${newCommit ?? headSha2}:${branchRef}`);
-  } catch (error2) {
-    const why = error2 instanceof Error ? error2.message : String(error2);
-    throw new Error(`push of ${branch} failed; the finalize commit stays in the worktree: ${why}`, {
-      cause: error2
-    });
-  }
-  return {
-    shipped: true,
-    commit: newCommit,
-    pushed: true,
-    written: [...written],
-    metricsRecord: carried
-  };
-}
 var STRUCTURED = /* @__PURE__ */ new Set(["needs_input", "spec_ready", "done", "failed"]);
 var LIMIT_MAX_WAIT_MS = 6 * 60 * 6e4;
 var LIMIT_RESET_MARGIN_MS = 6e4;
@@ -24098,8 +24133,10 @@ function classify(i) {
   if (r.api_error_status === 429 || r.is_error === true && /usage limit|rate limit/i.test(text2)) {
     return { ...meta, structured: null, outcome: "limited", detail: text2.slice(0, 200) };
   }
-  if (r.is_error === true)
-    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
+  if (r.is_error === true) {
+    const detail = text2.trim() !== "" ? text2.trim().slice(0, 200) : String(r.subtype ?? "error");
+    return { ...meta, structured: null, outcome: "failed", detail };
+  }
   const s = r.structured_output;
   if (!s || typeof s !== "object")
     return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
@@ -24296,6 +24333,12 @@ var STAGE_OF = {
 var CHILD_FAULTS = /* @__PURE__ */ new Set(["crashed", "failed", "limited", "stalled"]);
 var DOR_ROUNDS = "planner-dor";
 var limitWaits = (role) => `${role}-limited`;
+var launchFaults = (role) => `${role}-launch`;
+var LAUNCH_FAULT_MS = 3e4;
+var LAUNCH_BACKOFF_MS = 6e4;
+var isLaunchFault = (result) => (result.outcome === "failed" || result.outcome === "crashed") && result.structured === null && (result.costUsd ?? 0) === 0 && result.durationMs !== null && result.durationMs < LAUNCH_FAULT_MS;
+var SERVICE_FILE = /^\.marvin\/(?:critique|metrics|handoff)\/|^\.marvin\/task\/verification\.md$|(?:^|\/)runs\/[^/]+\.md$/;
+var isBookkeeping = (f) => f.category === "scope" && f.file !== void 0 && SERVICE_FILE.test(f.file);
 var FULL_SHA4 = /^[0-9a-f]{40}$/;
 var SEAL_LOST = /* @__PURE__ */ new Set(["SPEC-path", "SPEC-unreadable", "SPEC-contract", "SPEC-unsealed"]);
 var refusalMessage = (role, detail) => [
@@ -24453,23 +24496,38 @@ function step(run2, obs, rubric, now) {
   const reject = (r, source, found) => {
     const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
+    const bookkept = r.rejections.filter((x) => x.bookkeeping === true).length;
+    const bookkeeping = fs.every(isBookkeeping) && bookkept < rubric.caps.bookkeeping_rejections;
     const last = r.rejections.at(-1)?.fingerprints ?? [];
-    let rung = r.rung + 1;
-    if (prints.some((p) => last.includes(p))) {
-      while (rubric.escalation[rung - 1]?.startsWith("effort")) rung += 1;
+    let rung = r.rung;
+    if (!bookkeeping) {
+      rung += 1;
+      if (prints.some((p) => last.includes(p))) {
+        while (rubric.escalation[rung - 1]?.startsWith("effort")) rung += 1;
+      }
     }
     const next = {
       ...r,
       rung,
       previousFindings: asRecords(fs),
-      rejections: [...r.rejections, { iteration: r.iteration, source, fingerprints: prints }]
+      rejections: [
+        ...r.rejections,
+        {
+          iteration: r.iteration,
+          source,
+          fingerprints: prints,
+          ...bookkeeping ? { bookkeeping: true } : {}
+        }
+      ]
     };
     const halted = (reason2) => ask({ ...next, haltRole: "executor" }, "halt", { reason: reason2, findings: fs });
+    const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
-    if (next.rejections.length >= rubric.caps.rejections || stepNow === void 0 || stepNow === "halt") {
-      return halted(`rejected ${next.rejections.length} times (last: ${source})`);
+    if (!bookkeeping && (counted >= rubric.caps.rejections || stepNow === void 0 || stepNow === "halt")) {
+      return halted(`rejected ${counted} times (last: ${source})`);
     }
     const exec = go({ ...next, iteration: r.iteration + 1 }, "executing");
+    const why = bookkeeping ? `${fs.length} blocking, all over pipeline service files; rung unchanged` : `${fs.length} blocking`;
     try {
       return {
         run: exec,
@@ -24477,7 +24535,7 @@ function step(run2, obs, rubric, now) {
           spawn5(exec, "executor", executorCtx(exec, fs)),
           {
             kind: "notify",
-            text: `${source} rejected iteration ${r.iteration} (${fs.length} blocking); executor ${exec.iteration} started on rung ${rung}`
+            text: `${source} rejected iteration ${r.iteration} (${why}); executor ${exec.iteration} started on rung ${rung}`
           }
         ]
       };
@@ -24492,7 +24550,7 @@ function step(run2, obs, rubric, now) {
       ...r,
       retries: Object.fromEntries(
         Object.entries(r.retries).filter(
-          ([name]) => name !== role && (role === null || name !== limitWaits(role)) && !(role === "planner" && name === DOR_ROUNDS)
+          ([name]) => name !== role && (role === null || name !== limitWaits(role) && name !== launchFaults(role)) && !(role === "planner" && name === DOR_ROUNDS)
         )
       ),
       haltRole: null
@@ -24573,6 +24631,23 @@ function step(run2, obs, rubric, now) {
     if (fault) {
       const tries = run2.retries[role] ?? 0;
       const spent = tries >= rubric.caps.child_retries;
+      if (fault.kind !== "limited" && isLaunchFault(result)) {
+        const launches = run2.retries[launchFaults(role)] ?? 0;
+        if (launches < rubric.caps.launch_retries) {
+          const until = new Date(now.getTime() + LAUNCH_BACKOFF_MS * 2 ** launches);
+          const r2 = { ...run2, retries: { ...run2.retries, [launchFaults(role)]: launches + 1 } };
+          return {
+            run: r2,
+            actions: [
+              {
+                kind: "notify",
+                text: `${role} could not start (${fault.detail || "no output"}); retrying at ${until.toISOString()} (${launches + 1} of ${rubric.caps.launch_retries})`
+              },
+              { ...lastSpawnOf(run2, role), notBefore: until.toISOString() }
+            ]
+          };
+        }
+      }
       if (role === "retro" && (spent || fault.kind === "limited")) {
         return {
           run: go(run2, "finalizing"),
@@ -33030,10 +33105,29 @@ ${planted.join("\n")}`
     writeAtomic2(marker, `${JSON.stringify({ command })}
 `);
   };
+  const checkTestOne = (run2, config2) => {
+    const template = config2.gates?.test_one;
+    if (!template) {
+      noteOnce(
+        "config:test_one",
+        `no gates.test_one in ${CONFIG_PATH} at ${run2.base}: a standard or heavy run stops at its seal stage, which runs each sealed test with it`
+      );
+      return;
+    }
+    try {
+      wholeFileTemplate(template);
+    } catch (error2) {
+      throw new Error(
+        `gates.test_one in ${CONFIG_PATH} at ${run2.base} cannot run a whole test file, which the seal stage and the verifier's probe need: ${errorText3(error2)}`,
+        { cause: error2 }
+      );
+    }
+  };
   const prepare = async (run2) => {
     const record2 = setUpWorktree(run2);
     const config2 = configFor(run2);
     if (!o.config) checkMainConfig(run2, record2);
+    checkTestOne(run2, config2);
     bootstrap(config2, record2.path);
     writeAtomic2(
       at("test-paths.json"),
@@ -33178,6 +33272,29 @@ ${planted.join("\n")}`
     }
   };
   const markerPath = (ref) => at(join("spawns", `${ref}.json`));
+  const childGhToken = (role, config2) => {
+    const command = config2.pipeline.github.token_command;
+    if (!command || READ_ONLY_ROLES.has(role)) return {};
+    try {
+      const token = execSync(command, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"]
+      }).trim();
+      return token === "" ? {} : { GH_TOKEN: token };
+    } catch (error2) {
+      noteOnce(
+        "config:token_command",
+        `github.token_command failed, so children use gh's own authentication: ${errorText3(error2).split("\n")[0]}`
+      );
+      return {};
+    }
+  };
+  const redactEnv = (env) => Object.fromEntries(
+    Object.entries(env).map(([k, v]) => [
+      k,
+      /TOKEN|SECRET|PASSWORD|KEY$/i.test(k) ? "<redacted>" : v
+    ])
+  );
   const runningRow = (run2, action, marker) => {
     const child = {
       name: marker.name,
@@ -33252,14 +33369,14 @@ ${planted.join("\n")}`
       branch: run2.branch
     });
     const sandboxEnv = sandboxChildEnv(runDir, sandbox);
-    const live = { ...real, env: { ...real.env, ...sandboxEnv } };
+    const live = { ...real, env: { ...real.env, ...sandboxEnv, ...childGhToken(role, config2) } };
     const fakeFile = process.env[fakeVariable(role)] || null;
     const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
     const cmd = fakeFile ? { ...live, argv: fakeArgv(fakeFile, role, run2, key, fakeScript) } : live;
     const sandboxed = sandbox.enabled ? { sandbox: { modelOverride: sandbox.modelOverride, planned: planned.assignment } } : {};
     writeAtomic2(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: live.argv, env: live.env, cwd: live.cwd, fake: fakeFile, ...fakeScript ? { fakeScript } : {}, ...sandboxed }, null, 2)}
+      `${JSON.stringify({ argv: live.argv, env: redactEnv(live.env), cwd: live.cwd, fake: fakeFile, ...fakeScript ? { fakeScript } : {}, ...sandboxed }, null, 2)}
 `
     );
     const mainBefore = at(`${key}.main-before.txt`);

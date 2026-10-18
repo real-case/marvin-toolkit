@@ -124,7 +124,8 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 ## 5. `halt`
 
-Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash, failure
+Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap (bookkeeping
+rejections, over the pipeline's own service files alone, do not count towards it), a crash, failure
 or stall after its retry, a usage limit the engine stopped waiting out (`caps.limit_retries` waits
 spent, or a reset more than six hours away), a child that mutated the tree or wrote outside
 its worktree, a planner or executor past its question cap, a planner whose spec still failed the Definition of Ready after its rounds (`caps.dor_rounds`),
@@ -166,6 +167,13 @@ These halts deserve a look before you ask:
 - **A stall** (`<role> stalled`). The engine already ended the silent child and started the same
   spawn once more; this halt is the second stall in a row. Recommend `retry` when the detail
   shows no tool call in flight; a child that stalls inside one command again is a hung command.
+- **A child that could not start** (`<role> failed` whose `detail` is the CLI's own message, such
+  as `Failed to authenticate: OAuth session expired and could not be refreshed`). The engine
+  already relaunched it `caps.launch_retries` times (3), one, two and four minutes apart, each
+  announced as `EVENT note <role> could not start (…); retrying at …`, and then spent the crash
+  retry too. The cause is outside the run: the login, the network, the provider. Tell the user
+  what the message says; once it is fixed (`claude login` for an expired session), recommend
+  `retry`, which starts the launch budget over.
 
 ## 6. `unverified`
 

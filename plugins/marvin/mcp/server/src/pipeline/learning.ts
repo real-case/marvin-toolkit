@@ -31,7 +31,7 @@ import {
 } from "./gate.js";
 import { classifyRecord, type RecordState, type RunRecord } from "./metrics-carry.js";
 import { assertNotHardLinked, assertPlain } from "./plain-path.js";
-import type { PipelineEvent, Role, Run } from "./run-store.js";
+import type { Child, PipelineEvent, Role, Run } from "./run-store.js";
 import { shellQuote } from "./seal.js";
 
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
@@ -97,14 +97,39 @@ export interface RetroAggregate {
  * `category|file|criterion`, so a finding's category is the part before the first `|`.
  * Who answered a question is `data.answeredBy` (`orchestrator` or `user`) on an `answer` event.
  */
+/**
+ * What each child row cost, with a resumed session counted once. The CLI's `total_cost_usd` is
+ * the session's running total, so every segment of a resumed child (a planner answered, an
+ * executor resumed on a question) reports the whole session so far: summed, the three segments of
+ * a 2026-10-17 executor read $20.75 for a session that cost $7.63, and a 25-second resume read
+ * $7.63 on its own. A session is charged its last reported total; a row without a session id
+ * (a child that died before the CLI named one) is charged as it stands. Cache reads are per
+ * segment and still sum.
+ */
+export function sessionCostUsd(children: readonly Child[]): Map<Child, number> {
+  // `== null` on purpose: the bench's run metrics read rows that carry no session id at all.
+  const lastOfSession = new Map<string, Child>();
+  for (const c of children) {
+    if (c.sessionId != null && c.costUsd != null) lastOfSession.set(c.sessionId, c);
+  }
+  const charged = new Set(lastOfSession.values());
+  const out = new Map<Child, number>();
+  for (const c of children) {
+    if (c.costUsd == null) continue;
+    if (c.sessionId == null || charged.has(c)) out.set(c, c.costUsd);
+  }
+  return out;
+}
+
 export function aggregate(run: Run, events: readonly PipelineEvent[]): RetroAggregate {
   const prints = run.rejections.flatMap((r) => r.fingerprints);
   const answers = events.filter((e) => e.kind === "answer");
+  const charged = sessionCostUsd(run.children);
   const perRole = new Map<Role, { costUsd: number; cacheReadTokens: number }>();
   for (const c of run.children) {
     const cur = perRole.get(c.role) ?? { costUsd: 0, cacheReadTokens: 0 };
     perRole.set(c.role, {
-      costUsd: cur.costUsd + (c.costUsd ?? 0),
+      costUsd: cur.costUsd + (charged.get(c) ?? 0),
       cacheReadTokens: cur.cacheReadTokens + (c.cacheReadTokens ?? 0),
     });
   }

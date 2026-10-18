@@ -156,6 +156,51 @@ const makeRun = (patch = {}) =>
     ...patch,
   });
 
+test("a resumed session is charged once, at its last running total; cache reads still sum", () => {
+  const segment = (role, sessionId, costUsd, cacheReadTokens, iteration = 0) => ({
+    name: `r1-${role}-${iteration}`,
+    role,
+    iteration,
+    sessionId,
+    pid: null,
+    assignment: { model: "opus", effort: "medium" },
+    startedAt: "t",
+    endedAt: "t",
+    status: "done",
+    costUsd,
+    cacheReadTokens,
+  });
+  const run = makeRun({
+    children: [
+      // One planner session, resumed twice: the CLI's total_cost_usd grows with the session.
+      segment("planner", "s-planner", 2.45, 2_602_700),
+      segment("planner", "s-planner", 2.97, 1_348_130),
+      // Two executor sessions: a failed first attempt and the retry that replaced it.
+      segment("executor", "s-exec-a", 1.25, 100, 1),
+      segment("executor", "s-exec-b", 0.75, 50, 1),
+      // A child that died before the CLI named a session is charged as it stands.
+      segment("verifier", null, 0.4, 10, 1),
+      segment("verifier", "s-ver", null, 7, 1),
+    ],
+  });
+  const agg = l.aggregate(run, []);
+  assert.deepEqual(agg.perRole, [
+    { role: "planner", costUsd: 2.97, cacheReadTokens: 3_950_830 },
+    { role: "executor", costUsd: 2, cacheReadTokens: 150 },
+    { role: "verifier", costUsd: 0.4, cacheReadTokens: 17 },
+  ]);
+  const charged = l.sessionCostUsd(run.children);
+  assert.deepEqual(
+    [...charged.entries()].map(([c, usd]) => [c.sessionId, usd]),
+    [
+      ["s-planner", 2.97],
+      ["s-exec-a", 1.25],
+      ["s-exec-b", 0.75],
+      [null, 0.4],
+    ],
+  );
+});
+
 test("the aggregate reads the run's own fields: categories, repeats, per-role cost, who answered", () => {
   const run = makeRun({
     tier: "heavy",

@@ -14,6 +14,7 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { modelFamily } from "./command.js";
 import { HARDENED_GIT_OPTIONS, hardenedGitEnv } from "./gate.js";
+import { sessionCostUsd } from "./learning.js";
 import { ROLES, TIERS, loadRun, type Run, type Tier } from "./run-store.js";
 import { MODEL_OVERRIDE_VARIABLE, sandboxSettings } from "./sandbox.js";
 import { formatTestOne } from "./seal.js";
@@ -630,10 +631,12 @@ export function runMetrics(run: Run): Pick<
 } {
   const perRole: Record<string, RoleMetrics> = {};
   for (const role of ROLES) perRole[role] = { children: 0, costUsd: 0, cacheReadTokens: 0 };
+  // A resumed session's rows carry its running total: charged once, as `aggregate` charges it.
+  const charged = sessionCostUsd(run.children);
   for (const c of run.children) {
     const m = perRole[c.role] ?? { children: 0, costUsd: 0, cacheReadTokens: 0 };
     m.children += 1;
-    m.costUsd += c.costUsd ?? 0;
+    m.costUsd += charged.get(c) ?? 0;
     m.cacheReadTokens += c.cacheReadTokens ?? 0;
     perRole[c.role] = m;
   }
