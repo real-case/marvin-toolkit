@@ -63,6 +63,10 @@ export const Rubric = z
         child_retries: z.number().int().min(0),
         limit_retries: z.number().int().min(0).default(3),
         limit_wait_minutes: z.number().int().min(1).default(30),
+        /** Relaunches a child that did no work gets, each after a growing wait; its own count. */
+        launch_retries: z.number().int().min(0).default(3),
+        /** Rejections over the pipeline's own service files alone that leave the rung where it is. */
+        bookkeeping_rejections: z.number().int().min(0).default(2),
         dor_rounds: z.number().int().min(0),
         ci_wait_minutes: z.number().int().min(1),
         executor_questions: z.number().int().min(0),

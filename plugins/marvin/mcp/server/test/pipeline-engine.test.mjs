@@ -749,6 +749,140 @@ test("a usage limit that names its reset is waited out until then, unless it is 
   assert.equal(judgmentOf(far), "halt");
 });
 
+/** A child that ended at once, at no cost and with no output: the CLI failed before any request. */
+const launchFault = (role, detail = "Failed to authenticate: OAuth session expired") => {
+  const obs = child(role, null, "failed");
+  return { ...obs, result: { ...obs.result, costUsd: 0, durationMs: 218, detail } };
+};
+
+test("a child that never got to work is relaunched after a growing wait, on its own budget", () => {
+  const run = executingRun();
+  const first = go(run, launchFault("executor"));
+  assert.equal(judgmentOf(first), undefined);
+  assert.deepEqual(spawnOf(first), {
+    ...run.lastSpawn.executor,
+    notBefore: new Date(NOW.getTime() + 60_000).toISOString(),
+  });
+  assert.match(
+    first.actions[0].text,
+    /executor could not start \(Failed to authenticate: OAuth session expired\); retrying at .* \(1 of 3\)/,
+  );
+  // A relaunch costs no crash retry: the child did nothing wrong.
+  assert.deepEqual(first.run.retries, { "executor-launch": 1 });
+  const second = go(first.run, launchFault("executor"));
+  assert.equal(spawnOf(second).notBefore, new Date(NOW.getTime() + 120_000).toISOString());
+  const third = go(second.run, launchFault("executor"));
+  assert.equal(spawnOf(third).notBefore, new Date(NOW.getTime() + 240_000).toISOString());
+  assert.equal(third.run.retries["executor-launch"], rubric.caps.launch_retries);
+  // Past the budget the fault is a crash like any other: one retry, then a halt with the reason.
+  const fourth = go(third.run, launchFault("executor"));
+  assert.equal(judgmentOf(fourth), undefined);
+  assert.equal(spawnOf(fourth).notBefore, undefined);
+  assert.equal(fourth.run.retries.executor, 1);
+  const halted = go(fourth.run, launchFault("executor"));
+  assert.equal(judgmentOf(halted), "halt");
+  assert.equal(payloadOf(halted).detail, "Failed to authenticate: OAuth session expired");
+  // The orchestrator's retry of that halt starts the launch budget over.
+  const retried = go(halted.run, answer("halt", { kind: "retry" }));
+  assert.equal(retried.run.retries["executor-launch"], undefined);
+});
+
+test("a failure that did work, or one without a result, is not a launch fault", () => {
+  const run = executingRun();
+  const worked = child("executor", null, "failed");
+  assert.deepEqual(go(run, worked).run.retries, { executor: 1 });
+  const costly = { ...worked, result: { ...worked.result, costUsd: 0, durationMs: 400_000 } };
+  assert.deepEqual(go(run, costly).run.retries, { executor: 1 });
+  const noResult = { ...worked, result: { ...worked.result, costUsd: null, durationMs: null } };
+  assert.deepEqual(go(run, noResult).run.retries, { executor: 1 });
+  // A usage limit keeps its own handling, whatever its cost and duration.
+  const limit = {
+    ...launchFault("executor", "usage limit"),
+    result: { ...launchFault("executor", "usage limit").result, outcome: "limited" },
+  };
+  assert.deepEqual(go(run, limit).run.retries, { "executor-limited": 1 });
+});
+
+const serviceFinding = (file, id = "S-1") =>
+  finding({ id, severity: "major", category: "scope", file, criterion: undefined });
+
+test("a rejection over pipeline service files alone moves no rung and spares the rejection cap", () => {
+  const run = executingRun();
+  const gated = go(run, child("executor", executorDone())).run;
+  const files = [
+    ".marvin/critique/228-x.md",
+    "specs/runs/x.progress.md",
+    ".marvin/task/runs/x.oracles.md",
+    ".marvin/metrics/001-x.md",
+    ".marvin/task/verification.md",
+  ];
+  const first = go(gated, {
+    kind: "gate",
+    report: report(false),
+    findings: files.map((f, i) => serviceFinding(f, `B-${i + 1}`)),
+  });
+  assert.equal(first.run.stage, "executing");
+  assert.equal(first.run.rung, 0);
+  assert.deepEqual(spawnOf(first).assignment, run.lastSpawn.executor.assignment);
+  assert.equal(first.run.rejections[0].bookkeeping, true);
+  assert.match(first.actions.at(-1).text, /all over pipeline service files; rung unchanged/);
+  // A second one is still free; the third is a rejection like any other and climbs.
+  const again = go(first.run, child("executor", executorDone())).run;
+  const second = go(again, {
+    kind: "gate",
+    report: report(false),
+    findings: [serviceFinding(".marvin/critique/229-x.md")],
+  });
+  assert.equal(second.run.rung, 0);
+  const once = go(second.run, child("executor", executorDone())).run;
+  const third = go(once, {
+    kind: "gate",
+    report: report(false),
+    findings: [serviceFinding(".marvin/critique/230-x.md")],
+  });
+  assert.equal(third.run.rung, 1);
+  assert.equal(third.run.rejections[2].bookkeeping, undefined);
+  // Two bookkeeping rejections and two real ones: the cap of three counts only the real ones.
+  const prev = [
+    { iteration: 1, source: "gate", fingerprints: ["a||"], bookkeeping: true },
+    { iteration: 2, source: "gate", fingerprints: ["b||"], bookkeeping: true },
+    { iteration: 3, source: "verifier", fingerprints: ["x||"] },
+  ];
+  const real = go(
+    at("verifying", { rung: 1, iteration: 4, rejections: prev }),
+    child("verifier", verdict("FAIL", [finding({ file: "src/b.ts" })])),
+  );
+  assert.equal(judgmentOf(real), undefined);
+  assert.equal(real.run.rung, 2);
+  const capped = go(
+    at("verifying", { rung: 2, iteration: 5, rejections: [...prev, real.run.rejections.at(-1)] }),
+    child("verifier", verdict("FAIL", [finding({ file: "src/c.ts" })])),
+  );
+  assert.equal(judgmentOf(capped), "halt");
+  assert.match(payloadOf(capped).reason, /rejected 3 times/);
+});
+
+test("a rejection that mixes a service file with real work climbs as before", () => {
+  const gated = go(executingRun(), child("executor", executorDone())).run;
+  const d = go(gated, {
+    kind: "gate",
+    report: report(false),
+    findings: [
+      serviceFinding(".marvin/critique/228-x.md"),
+      finding({ category: "gate", file: undefined }),
+    ],
+  });
+  assert.equal(d.run.rung, 1);
+  assert.equal(d.run.rejections[0].bookkeeping, undefined);
+  // A scope finding on ordinary work is not bookkeeping either.
+  const work = go(gated, {
+    kind: "gate",
+    report: report(false),
+    findings: [serviceFinding("src/runs/report.txt"), serviceFinding("docs/x.md", "S-2")],
+  });
+  assert.equal(work.run.rung, 1);
+});
+
 test("a retro that fails twice, or hits a usage limit, still finalizes without a retro", () => {
   const retro = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run;
   const first = go(retro, child("retro", null, "crashed"));

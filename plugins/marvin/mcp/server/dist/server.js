@@ -39924,7 +39924,13 @@ var Run = external_exports.object({
     external_exports.object({
       iteration: external_exports.number().int(),
       source: external_exports.enum(["gate", "verifier", "ci"]),
-      fingerprints: external_exports.array(external_exports.string())
+      fingerprints: external_exports.array(external_exports.string()),
+      /**
+       * The rejection named only the pipeline's own service files (a committed journal or
+       * receipt), so it moved no rung and counts against `caps.bookkeeping_rejections` rather
+       * than `caps.rejections`. Absent from runs written before it existed.
+       */
+      bookkeeping: external_exports.boolean().optional()
     })
   ),
   retries: external_exports.record(external_exports.string(), external_exports.number().int()),
@@ -40189,7 +40195,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.30.2";
+var VERSION = "0.31.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

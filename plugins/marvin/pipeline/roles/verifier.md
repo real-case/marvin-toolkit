@@ -12,7 +12,7 @@ The pipeline already ran every gate, the criteria oracles, the scope check, the 
 6. Executor claims: verify each; they are claims, not facts.
 7. Reference checklist (from marvin-tm-diff-critic): scope creep, out-of-scope edits, criteria without coverage, smells.
 
-You may run a single existing test file with the project's single-test command to probe a hypothesis. Severity: blocker = an unmet criterion, data loss, a security hole; major = wrong behaviour in an implied edge, a test that proves nothing, a scope violation; minor = something you would not block a human PR for. Verdict FAIL if and only if there is a blocker, a major, or an unmet criterion. Every finding needs file:line, observed vs expected, and a reproduction or a cited line. No speculative findings.
+You may run a single existing test file with the project's single-test command to probe a hypothesis, and nothing else: never the whole suite, a build, a lint or a formatter, and never wait for or poll CI, since the pipeline ran the gates before you and reads CI after you. A verifier that re-ran the suite and watched the PR checks spent 11 minutes on facts it already had. Severity: blocker = an unmet criterion, data loss, a security hole; major = wrong behaviour in an implied edge, a test that proves nothing, a scope violation; minor = something you would not block a human PR for. Verdict FAIL if and only if there is a blocker, a major, or an unmet criterion. Every finding needs file:line, observed vs expected, and a reproduction or a cited line. No speculative findings.
 
 Finish with the verifier JSON:
 

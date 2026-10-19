@@ -810,6 +810,49 @@ test("the gate stage runs oracles as gates, never re-runs one, and fails a chang
   assert.equal(report.passed, false);
 });
 
+test("criteria that resolve to one command share one run, each reporting the outcome", async () => {
+  const w = runWorktree();
+  const count = join(w.path, ".runs");
+  const once = `echo x >> ${count}; test $(wc -l < ${count}) -le 1`;
+  const report = await gateStage(w, {
+    oracles: [
+      { criterion: "AC1", command: once, reason: null },
+      { criterion: "AC2", command: "exit 1", reason: null },
+      { criterion: "AC3", command: once, reason: null },
+      { criterion: "AC4", command: once, reason: null },
+    ],
+  });
+  // `once` fails on its second run; three criteria naming it still pass because it ran once.
+  assert.equal(readFileSync(count, "utf8"), "x\n");
+  assert.deepEqual(
+    report.gates.map((x) => [x.name, x.result, x.sharedWith ?? null]),
+    [
+      ["oracle:AC1", "pass", null],
+      ["oracle:AC3", "pass", "oracle:AC1"],
+      ["oracle:AC4", "pass", "oracle:AC1"],
+      ["oracle:AC2", "fail", null],
+      ["true", "pass", null],
+    ],
+  );
+  assert.ok(report.gates[0].ms >= 0);
+  assert.equal(report.gates[1].ms, 0);
+  // A shared failure is every criterion's failure, with the same evidence.
+  const failing = await gateStage(w, {
+    oracles: [
+      { criterion: "AC1", command: "echo boom >&2; exit 1", reason: null },
+      { criterion: "AC2", command: "echo boom >&2; exit 1", reason: null },
+    ],
+  });
+  const findings = g.reportFindings(failing).filter((f) => f.id.startsWith("G-oracle"));
+  assert.deepEqual(
+    findings.map((f) => [f.id, f.severity, f.evidence]),
+    [
+      ["G-oracle:AC1", "blocker", "boom"],
+      ["G-oracle:AC2", "blocker", "boom"],
+    ],
+  );
+});
+
 test("prepare steps run first, so an oracle can rely on what they build", async () => {
   const w = runWorktree();
   const report = await gateStage(w, {

@@ -96,8 +96,13 @@ export function classify(i: {
   if (r.api_error_status === 429 || (r.is_error === true && /usage limit|rate limit/i.test(text))) {
     return { ...meta, structured: null, outcome: "limited", detail: text.slice(0, 200) };
   }
-  if (r.is_error === true)
-    return { ...meta, structured: null, outcome: "failed", detail: String(r.subtype ?? "error") };
+  if (r.is_error === true) {
+    // The CLI's own failure text ("Failed to authenticate: OAuth session expired …") is the one
+    // line that says what went wrong; its `subtype` is "success" even then, and a halt that
+    // showed it told the orchestrator nothing.
+    const detail = text.trim() !== "" ? text.trim().slice(0, 200) : String(r.subtype ?? "error");
+    return { ...meta, structured: null, outcome: "failed", detail };
+  }
   const s = r.structured_output;
   if (!s || typeof s !== "object")
     return { ...meta, structured: null, outcome: "crashed", detail: "no structured_output" };
