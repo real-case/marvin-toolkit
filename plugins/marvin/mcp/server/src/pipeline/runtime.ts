@@ -71,6 +71,7 @@ import {
   lessonsMarkdown,
   mergeBaseForFinalize,
   rankLessons,
+  readCalibrationRecords,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
 import { physicalProblem } from "./plain-path.js";
@@ -205,7 +206,6 @@ const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CONFIG_PATH = ".marvin/config.json";
 const SPEC_COMMIT_MARKER = "spec-commit.json";
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
-const CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
 const MEMORY_DIR = ".marvin/memory";
 const LESSON_LIMIT = 8;
 const GITLINK = "160000";
@@ -844,25 +844,20 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  /**
+   * The host's calibration records in the shape `efficacy` reads: one file per run under
+   * `calibration/` plus the lines of a legacy `calibration.jsonl` (ADR-0050), each kept only
+   * when it carries the three fields.
+   */
   const calibrationRecords = (run: Run) => {
-    let text: string;
-    try {
-      text = readFileSync(join(lessonRoot(run), CALIBRATION_PATH), "utf8");
-    } catch {
-      return [];
-    }
     const Record = z.object({
       ts: z.string(),
       findingCategories: z.array(z.string()),
       exposedLessons: z.array(z.string()),
     });
-    return text.split("\n").flatMap((line) => {
-      try {
-        const parsed = Record.safeParse(JSON.parse(line));
-        return parsed.success ? [parsed.data] : [];
-      } catch {
-        return [];
-      }
+    return readCalibrationRecords(lessonRoot(run)).flatMap((value) => {
+      const parsed = Record.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
     });
   };
 

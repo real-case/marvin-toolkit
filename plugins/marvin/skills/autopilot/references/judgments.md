@@ -103,10 +103,13 @@ Read the spec file yourself, then present, in `lang`:
 5. A table of the roles and what each runs as, from `assignments`: planner, test-author
    (`skip` on the light tier), executor, verifier, retro, each `model/effort`.
 6. Every answer you gave alone and every assumption, from your list and from `assumptions`.
-7. A cost estimate: the median total cost of earlier runs on this tier, from
-   `<repo>/.marvin/pipeline/calibration.jsonl` (one JSON record per line; a record's `tier`,
-   and its cost is the sum of `aggregate.perRole[].costUsd`). With fewer than three records on
-   the tier, say there is no estimate yet rather than guessing.
+7. A cost estimate: the median total cost of earlier runs on this tier, from the calibration
+   records under `<repo>/.marvin/pipeline/calibration/` (one JSON file per finished run,
+   `<run-id>.json`) plus, where a host still has one, the lines of the legacy
+   `<repo>/.marvin/pipeline/calibration.jsonl` (one JSON record per line; a run present in
+   both counts once, from its file). A record's `tier` selects it, and its cost is the sum of
+   `aggregate.perRole[].costUsd`. With fewer than three records on the tier, say there is no
+   estimate yet rather than guessing.
 
 Send a `PushNotification`, when available, then ask with `AskUserQuestion`:
 

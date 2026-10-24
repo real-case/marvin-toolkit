@@ -4,6 +4,31 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.32.0] — 2026-10-18
+
+Removes the one file two parallel autopilot runs could not both merge.
+
+### Changed
+
+- **A run's calibration record is its own file.** Finalize writes
+  `.marvin/pipeline/calibration/<run-id>.json` and never `calibration.jsonl` again (ADR-0050).
+  Two runs that start from one base and finalize before either pull request merges used to
+  append two lines at the end of one file, which git reports as a conflict, and GitHub's merge
+  applies no `merge=union` attribute; the base merge of 0.30.0 reached only the case where the
+  first pull request had already merged. Two files merge in either order. A second finalize of
+  the same run overwrites its own file, so a replay after a failed push still counts the run
+  once. The record itself is unchanged.
+- **Both layouts are read.** `readCalibrationRecords` in `pipeline/learning.ts` is the one reader:
+  the per-run files, then the lines of a legacy `calibration.jsonl`, with a run present in both
+  taken from its file. The efficacy report the retro prunes from and the orchestrator's cost
+  estimate at spec approval (`judgments.md` §4) go through it. A host's existing
+  `calibration.jsonl` is frozen, never rewritten or deleted by the engine, so a run branch an
+  earlier engine finalized still merges.
+- **The finalize commit's record check follows the layout.** `verifyContents` compares the
+  per-run file, parsed, with the record finalize computed: a formatter may change its layout and
+  not the record. The record is written in Prettier's own JSON layout, so a project formatter
+  leaves it as it is.
+
 ## [0.31.0] — 2026-10-18
 
 An audit of the six autopilot runs of 2026-10-13 to 2026-10-18 against the engine: every stop and

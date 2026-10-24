@@ -358,7 +358,8 @@ stripped without a word, like a mistyped gate name.
 Under npm 11, options that follow `npx --no <tool>` are read by npm, not by the tool, so a
 `format_command` of `npx --no prettier --write` prints the formatted files and writes none. End
 npm's options with `--`: `npx --no -- prettier --write --ignore-unknown`. `--ignore-unknown` keeps
-Prettier from failing on `calibration.jsonl`, which finalize hands it with the rest.
+Prettier from failing on a file it has no parser for; the calibration record finalize hands it is
+`.json` and is written in Prettier's own layout, so the formatter leaves it as it is.
 
 Marvin's own repository commits a complete example: `.marvin/config.json` and `.marvin/pipeline/`
 at its root, which `plugins/marvin/mcp/server/test/project-config.test.mjs` loads through the
