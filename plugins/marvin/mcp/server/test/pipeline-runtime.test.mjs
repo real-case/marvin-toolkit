@@ -379,6 +379,60 @@ test("the run works under the config its base commit holds, which is the one its
   );
 });
 
+test("a writing child gets the configured GitHub token as GH_TOKEN; the launch record redacts it", async () => {
+  const s = await prepared({
+    config: { pipeline: { github: { token_command: "echo gho_configured" } } },
+  });
+  const fixture = join(s.runDir, "fake.json");
+  writeFileSync(fixture, JSON.stringify({ status: "failed", summary: "fake" }));
+  for (const role of ROLES) process.env[fakeVariable(role)] = fixture;
+  try {
+    let run = s.run;
+    for (const action of engineContexts(s.run)) {
+      run = s.deps.spawnChild(run, action, step(`gh-${action.role}`));
+      const { env } = command(s.runDir, `r1-${action.role}-${action.iteration}`);
+      if (action.role === "verifier" || action.role === "retro") {
+        assert.equal(env.GH_TOKEN, undefined, `${action.role} is read-only and gets no token`);
+      } else {
+        assert.equal(env.GH_TOKEN, "<redacted>", `${action.role}'s record names the token only`);
+      }
+    }
+  } finally {
+    for (const role of ROLES) delete process.env[fakeVariable(role)];
+  }
+  // A token command that fails leaves gh's own authentication in force, and says so once.
+  const broken = await prepared({
+    config: { pipeline: { github: { token_command: "exit 3" } } },
+  });
+  process.env[fakeVariable("planner")] = fixture;
+  try {
+    const [plan] = engineContexts(broken.run);
+    broken.deps.spawnChild(broken.run, plan, step("gh-broken"));
+    assert.equal(command(broken.runDir, "r1-planner-0").env.GH_TOKEN, undefined);
+    assert.ok(events(broken.runDir).some((e) => /github\.token_command failed/.test(e.text)));
+  } finally {
+    delete process.env[fakeVariable("planner")];
+  }
+});
+
+test("a gates.test_one the seal stage would refuse stops prepare, before any child", async () => {
+  const s = setup({ config: { gates: { test_one: "node --test {file} {name}" } } });
+  await assert.rejects(
+    s.deps.prepare(s.run),
+    /gates\.test_one in \.marvin\/config\.json at dev cannot run a whole test file.*\{name\}/,
+  );
+  // A filter the seal stage drops, and a quoted {file}, are fine; an absent template is told.
+  const ok = setup({ config: { gates: { test_one: 'npx vitest run "{file}" -t "{name}"' } } });
+  await ok.deps.prepare(ok.run);
+  const none = setup({ config: {} });
+  await none.deps.prepare(none.run);
+  assert.ok(
+    events(none.runDir).some((e) =>
+      /no gates\.test_one in \.marvin\/config\.json at dev/.test(e.text),
+    ),
+  );
+});
+
 test("a pipeline config the main checkout holds and the base commit lacks stops prepare", async () => {
   // The marvin-toolkit layout: `.marvin/*` is ignored, so the file never reaches a worktree and
   // no child would ever see the gates it pins.
@@ -1729,7 +1783,7 @@ test("finalize merges a base that moved before it writes, and says so", async ()
   // A parallel run lands its calibration record on dev while this one is in its retro.
   const clone = mkdtempSync(join(tmpdir(), "pipe-dev-"));
   sh(clone, "clone", "-q", "--branch", "dev", origin, ".");
-  write(clone, ".marvin/pipeline/calibration.jsonl", `${JSON.stringify({ runId: "r0" })}\n`);
+  write(clone, ".marvin/pipeline/calibration/r0.json", `${JSON.stringify({ runId: "r0" })}\n`);
   sh(clone, "add", "-f", "-A");
   sh(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parallel run");
   sh(clone, "push", "-q", "origin", "HEAD:refs/heads/dev");
@@ -1748,10 +1802,13 @@ test("finalize merges a base that moved before it writes, and says so", async ()
     gated,
     devTip,
   ]);
-  const records = readFileSync(join(s.wt, ".marvin/pipeline/calibration.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line).runId);
+  // The base's record came in with the merge; the run's own is a second file beside it.
+  const records = readdirSync(join(s.wt, ".marvin/pipeline/calibration"))
+    .sort()
+    .map(
+      (name) =>
+        JSON.parse(readFileSync(join(s.wt, ".marvin/pipeline/calibration", name), "utf8")).runId,
+    );
   assert.deepEqual(records, ["r0", "r1"]);
   assert.ok(
     events(s.runDir).some((e) => /^merged dev \([0-9a-f]{8}\) into the run branch/.test(e.text)),

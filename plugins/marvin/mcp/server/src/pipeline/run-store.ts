@@ -97,6 +97,12 @@ export const Run = z.object({
       iteration: z.number().int(),
       source: z.enum(["gate", "verifier", "ci"]),
       fingerprints: z.array(z.string()),
+      /**
+       * The rejection named only the pipeline's own service files (a committed journal or
+       * receipt), so it moved no rung and counts against `caps.bookkeeping_rejections` rather
+       * than `caps.rejections`. Absent from runs written before it existed.
+       */
+      bookkeeping: z.boolean().optional(),
     }),
   ),
   retries: z.record(z.string(), z.number().int()),

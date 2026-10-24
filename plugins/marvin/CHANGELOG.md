@@ -4,6 +4,100 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.32.1] — 2026-10-24
+
+Makes the autopilot's `test` gate on marvin-toolkit itself take minutes instead of the 33 it took
+in run r20261014-1833-9f85, without changing what CI runs.
+
+### Changed
+
+- **The repository's `gates.test` runs the fast set.** The root `npm run test:fast` runs the
+  shared-library, widget, site and root suites whole and the server suite through its new
+  `npm run test:fast`, `plugins/marvin/mcp/server/scripts/test-fast.mjs`: every `test/*.test.mjs`
+  except the ten in its `SLOW` list (`spec`, `pipeline-learning`, `pipeline-runtime`,
+  `pipeline-seal`, `pipeline-gate-adversary`, `pipeline-metrics-carry`, `pipeline-gate`, `verify`,
+  `pipeline-worktree`, `summary-structured`), which spawn git, supervisors, whole red `node --test`
+  runs or the server itself per test and measured 17–152 s each alone, 713 of the suite's 802
+  sequential seconds. Concurrency alone could not help: the longest file is the critical path.
+  `npm test` is unchanged, CI runs it on every push, and `scripts/test-one.mjs` still runs any
+  single file. `test/test-fast.test.mjs` pins the list to the tree, and a `SLOW` entry that names
+  no file fails the run rather than running everything. `CLAUDE.md` and `docs/configuration.md`
+  describe the split.
+## [0.32.0] — 2026-10-18
+
+Removes the one file two parallel autopilot runs could not both merge.
+
+### Changed
+
+- **A run's calibration record is its own file.** Finalize writes
+  `.marvin/pipeline/calibration/<run-id>.json` and never `calibration.jsonl` again (ADR-0050).
+  Two runs that start from one base and finalize before either pull request merges used to
+  append two lines at the end of one file, which git reports as a conflict, and GitHub's merge
+  applies no `merge=union` attribute; the base merge of 0.30.0 reached only the case where the
+  first pull request had already merged. Two files merge in either order. A second finalize of
+  the same run overwrites its own file, so a replay after a failed push still counts the run
+  once. The record itself is unchanged.
+- **Both layouts are read.** `readCalibrationRecords` in `pipeline/learning.ts` is the one reader:
+  the per-run files, then the lines of a legacy `calibration.jsonl`, with a run present in both
+  taken from its file. The efficacy report the retro prunes from and the orchestrator's cost
+  estimate at spec approval (`judgments.md` §4) go through it. A host's existing
+  `calibration.jsonl` is frozen, never rewritten or deleted by the engine, so a run branch an
+  earlier engine finalized still merges.
+- **The finalize commit's record check follows the layout.** `verifyContents` compares the
+  per-run file, parsed, with the record finalize computed: a formatter may change its layout and
+  not the record. The record is written in Prettier's own JSON layout, so a project formatter
+  leaves it as it is.
+
+## [0.31.0] — 2026-10-18
+
+An audit of the six autopilot runs of 2026-10-13 to 2026-10-18 against the engine: every stop and
+every wasted iteration they show that the engine can avoid on its own now does not reach a human.
+
+### Changed
+
+- **A child that never got to work is relaunched after a growing wait.** A `claude -p` that ends
+  within 30 seconds at no cost and with no output failed before its first request (an expired
+  login, a provider outage); the one crash retry, taken a second later, met the same fault, and
+  the run halted on a `detail` of `success`. The engine now relaunches such a child one, two and
+  four minutes later on a budget of its own (`caps.launch_retries`, 3), announced as
+  `<role> could not start (<reason>); retrying at …`, before the crash retry and the halt. The
+  CLI's own message (`Failed to authenticate: OAuth session expired …`) is the detail a halt
+  shows, where its `subtype` was.
+- **A rejection over the pipeline's own service files alone moves no escalation rung.** An
+  executor that commits a critic receipt, a `runs/<slug>.*` journal, `verification.md` or the
+  metrics record is sent back as before, but at the same model and effort: the fix is
+  `git rm --cached`, which no stronger model does better, and the climb also raised the verifier
+  through its floor. Such a rejection is counted on `caps.bookkeeping_rejections` (2), not against
+  `caps.rejections`; past that cap it is a rejection like any other, so a run cannot loop on it.
+  The three 2026-10-17 iterations spent this way cost two rungs and an Opus verifier.
+- **Criteria that resolve to one command share one run in the gate stage.** A `kind: test` file
+  that proves seven criteria ran seven times (seven 70-second runs in the 2026-10-13 run). It
+  runs once; each criterion reports the outcome under its own name, duplicates with `ms: 0` and a
+  `sharedWith` naming the gate that ran, and a sealed-file change around the run is charged to
+  every criterion it proved.
+- **`gates.test_one` is checked at prepare.** A template the seal stage would refuse stopped a
+  run after its planner and test-author had finished, 54 minutes and $3 in. It now stops the run
+  before any child starts, with the same message; an absent template is told once, since the light
+  tier never seals.
+- **The verifier is told not to re-run the suite or wait for CI**, and the commit skill's pipeline
+  mode names the service files it never stages: a verifier that re-ran the tests and watched the
+  PR checks spent 11 minutes on facts the gate report already held.
+- **Writing children get the configured GitHub token.** `pipeline.github.token_command` now also
+  reaches the planner, the test-author and the executor as `GH_TOKEN`, so their `gh pr create`
+  and `git push` act as the account the run reads CI with. Two 2026-10-17 executors failed on the
+  pull request because the active `gh` account had no access to the repository, and the guard
+  rightly refused the child the token of another. The launch record (`<child>.command.json`)
+  names the variable and redacts its value.
+
+### Fixed
+
+- **A resumed session was charged once per segment.** The CLI's `total_cost_usd` is the session's
+  running total, so every resume of a planner or executor reported the whole session so far and
+  the aggregate, the calibration record and the bench summed them: a 2026-10-17 executor read
+  $20.75 for a session that cost $7.63, and the orchestrator's cost estimate at approval grew with
+  every question. A session is now charged once, at its last row. Cache reads are per segment and
+  still sum. Calibration records written before this version overstate resumed roles.
+
 ## [0.30.1] — 2026-10-18
 
 Brings the scanner-gate advice in line with `gates.extra`.

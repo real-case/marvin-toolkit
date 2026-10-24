@@ -166,7 +166,13 @@ overrides it. An interactive session never sets the variable, so none of this re
 - **No confirmation.** Skip step 5 and commit once the message is composed. The pipeline's own gate
   stage and verifier review the commit, and nobody is there to answer the question.
 - **Stage everything the work produced**, still by name. The pipeline judges the committed HEAD, and
-  an uncommitted path it does not exempt is a blocker.
+  an uncommitted path it does not exempt is a blocker. The pipeline's own service files are not
+  the work and are never staged, whatever `git status` shows: the critic receipts under
+  `.marvin/critique/`, the `runs/<slug>.*` journals beside the spec (under `.marvin/task/runs/`
+  or in a host spec directory such as `specs/runs/`), `.marvin/task/verification.md` and the
+  metrics record under `.marvin/metrics/`, whose appends the pipeline commits in its finalize
+  commit. The gate tolerates them while they stay uncommitted and rejects the iteration once one
+  is committed, so staging one costs a whole executor iteration for a `git rm --cached`.
 - **A sensitive-name match is judged, not dropped on its name.** Step 2's grep matches `token`,
   `secret` or `credentials` anywhere in a path, so it flags a `tokens.css` as readily as a key file,
   and a work file left out is a blocker on every later attempt, because each one commits through

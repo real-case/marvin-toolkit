@@ -31,11 +31,17 @@ import {
 } from "./gate.js";
 import { classifyRecord, type RecordState, type RunRecord } from "./metrics-carry.js";
 import { assertNotHardLinked, assertPlain } from "./plain-path.js";
-import type { PipelineEvent, Role, Run } from "./run-store.js";
+import type { Child, PipelineEvent, Role, Run } from "./run-store.js";
 import { shellQuote } from "./seal.js";
 
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
-const CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
+/** One calibration record per finished run lives here as `<run-id>.json` (ADR-0050). */
+const CALIBRATION_DIR = ".marvin/pipeline/calibration";
+/**
+ * The layout before ADR-0050: one JSONL file every run appended a line to, which two open run
+ * branches could not both merge. Read for the records it holds, never written again.
+ */
+const LEGACY_CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
 const MEMORY_DIR = ".marvin/memory";
 /** The index `addLesson` appends to; it changes whenever a lesson is added. */
 const MEMORY_INDEX_PATH = `${MEMORY_DIR}/MEMORY.md`;
@@ -91,14 +97,39 @@ export interface RetroAggregate {
  * `category|file|criterion`, so a finding's category is the part before the first `|`.
  * Who answered a question is `data.answeredBy` (`orchestrator` or `user`) on an `answer` event.
  */
+/**
+ * What each child row cost, with a resumed session counted once. The CLI's `total_cost_usd` is
+ * the session's running total, so every segment of a resumed child (a planner answered, an
+ * executor resumed on a question) reports the whole session so far: summed, the three segments of
+ * a 2026-10-17 executor read $20.75 for a session that cost $7.63, and a 25-second resume read
+ * $7.63 on its own. A session is charged its last reported total; a row without a session id
+ * (a child that died before the CLI named one) is charged as it stands. Cache reads are per
+ * segment and still sum.
+ */
+export function sessionCostUsd(children: readonly Child[]): Map<Child, number> {
+  // `== null` on purpose: the bench's run metrics read rows that carry no session id at all.
+  const lastOfSession = new Map<string, Child>();
+  for (const c of children) {
+    if (c.sessionId != null && c.costUsd != null) lastOfSession.set(c.sessionId, c);
+  }
+  const charged = new Set(lastOfSession.values());
+  const out = new Map<Child, number>();
+  for (const c of children) {
+    if (c.costUsd == null) continue;
+    if (c.sessionId == null || charged.has(c)) out.set(c, c.costUsd);
+  }
+  return out;
+}
+
 export function aggregate(run: Run, events: readonly PipelineEvent[]): RetroAggregate {
   const prints = run.rejections.flatMap((r) => r.fingerprints);
   const answers = events.filter((e) => e.kind === "answer");
+  const charged = sessionCostUsd(run.children);
   const perRole = new Map<Role, { costUsd: number; cacheReadTokens: number }>();
   for (const c of run.children) {
     const cur = perRole.get(c.role) ?? { costUsd: 0, cacheReadTokens: 0 };
     perRole.set(c.role, {
-      costUsd: cur.costUsd + (c.costUsd ?? 0),
+      costUsd: cur.costUsd + (charged.get(c) ?? 0),
       cacheReadTokens: cur.cacheReadTokens + (c.cacheReadTokens ?? 0),
     });
   }
@@ -683,48 +714,79 @@ export function finalizeSpec(
   return `${head}\n\n${section}${tail ? `\n${tail}\n` : ""}`;
 }
 
-/**
- * `calibration.jsonl` with a run's record added. A second record for the same run replaces the
- * first, so finalizing again after a failed push does not count the run twice.
- */
-function calibrationText(existing: string | null, record: CalibrationRecord): string {
-  const line = JSON.stringify(record);
-  const isThisRun = (candidate: string) => {
-    try {
-      return (JSON.parse(candidate) as { runId?: unknown }).runId === record.runId;
-    } catch {
-      return false;
-    }
-  };
-  const lines = existing === null ? [] : existing.split("\n").filter(Boolean);
-  const next = lines.some(isThisRun)
-    ? lines.map((candidate) => (isThisRun(candidate) ? line : candidate))
-    : [...lines, line];
-  return `${next.join("\n")}\n`;
+/** The repo-relative path of a run's calibration record (ADR-0050). */
+export function calibrationPath(runId: string): string {
+  if (!PLAIN_TOKEN.test(runId)) throw new Error(`run id is not a plain token: ${runId}`);
+  return `${CALIBRATION_DIR}/${runId}.json`;
 }
 
-/** The lines of a JSONL text as parsed values; a line that is not JSON stays the text it is. */
-const jsonLines = (text: string): unknown[] =>
-  text
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as unknown;
-      } catch {
-        return line;
-      }
-    });
+/** A run's record as finalize writes it: Prettier's own JSON layout, so a formatter has nothing to do. */
+const calibrationText = (record: CalibrationRecord) => `${JSON.stringify(record, null, 2)}\n`;
 
-/** Add a run's record to the worktree's `calibration.jsonl`. */
-export function appendCalibration(worktree: string, record: CalibrationRecord): void {
-  assertPlain(worktree, CALIBRATION_PATH);
-  const file = join(worktree, CALIBRATION_PATH);
-  writeWhole(
-    worktree,
-    CALIBRATION_PATH,
-    calibrationText(existsSync(file) ? readFileSync(file, "utf8") : null, record),
-  );
+/**
+ * Write a run's record to its own file under the worktree's `calibration/`. A second write for
+ * the same run replaces the file, so finalizing again after a failed push does not count the run
+ * twice; two runs write two files, so their branches never conflict on it.
+ */
+export function writeCalibration(worktree: string, record: CalibrationRecord): void {
+  const rel = calibrationPath(record.runId);
+  assertPlain(worktree, CALIBRATION_DIR);
+  assertPlain(worktree, rel);
+  writeWhole(worktree, rel, calibrationText(record));
+}
+
+const JSON_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+
+/**
+ * Every calibration record under `root`, in both layouts: the per-run files under
+ * `calibration/` (regular files only, in name order) and then the lines of a legacy
+ * `calibration.jsonl`, with a run recorded in both taken from its file. Fail-open per file and per
+ * line: a record that is not JSON, or not an object, is skipped, and a missing directory or file
+ * is no records. The values are parsed and otherwise unchecked; the caller shapes them.
+ */
+export function readCalibrationRecords(root: string): unknown[] {
+  const byRun = new Map<string, unknown>();
+  const anonymous: unknown[] = [];
+  const take = (value: unknown) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const runId = (value as { runId?: unknown }).runId;
+    if (typeof runId === "string") {
+      if (!byRun.has(runId)) byRun.set(runId, value);
+    } else anonymous.push(value);
+  };
+  const parsed = (text: string): unknown => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return undefined;
+    }
+  };
+  const dir = join(root, CALIBRATION_DIR);
+  let names: string[];
+  try {
+    names = readdirSync(dir)
+      .filter((n) => JSON_FILE.test(n))
+      .sort();
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    try {
+      if (!lstatSync(join(dir, name)).isFile()) continue;
+      take(parsed(readFileSync(join(dir, name), "utf8")));
+    } catch {
+      // a file that vanished or cannot be read is no record
+    }
+  }
+  let legacy: string;
+  try {
+    const path = join(root, LEGACY_CALIBRATION_PATH);
+    legacy = lstatSync(path).isFile() ? readFileSync(path, "utf8") : "";
+  } catch {
+    legacy = "";
+  }
+  for (const line of legacy.split("\n").filter(Boolean)) take(parsed(line));
+  return [...byRun.values(), ...anonymous];
 }
 
 /** The tag that records which finding category a lesson was written to reduce. */
@@ -920,12 +982,12 @@ function isOwnFinalizeCommit(
 
 /**
  * Whether `contents` (path to bytes) holds the rules finalize wrote in `checks.yaml` and the
- * records it wrote in `calibration.jsonl`. A formatter may change layout; it may not change
- * what a rule or a record says.
+ * record it wrote in the run's `calibration/<run-id>.json`. A formatter may change layout; it
+ * may not change what a rule or the record says.
  */
 function verifyContents(
   contents: ReadonlyMap<string, Buffer>,
-  expected: { rules: unknown; records: unknown[] },
+  expected: { rules: unknown; record: CalibrationRecord; recordPath: string },
   who: string,
 ): void {
   const checks = contents.get(CHECKS_PATH);
@@ -942,14 +1004,19 @@ function verifyContents(
       );
     }
   }
-  const calibration = contents.get(CALIBRATION_PATH);
-  if (
-    calibration !== undefined &&
-    !isDeepStrictEqual(jsonLines(calibration.toString("utf8")), expected.records)
-  ) {
-    throw new Error(
-      `${who} changed the records in ${CALIBRATION_PATH}: a formatter may change layout, not records`,
-    );
+  const calibration = contents.get(expected.recordPath);
+  if (calibration !== undefined) {
+    let record: unknown;
+    try {
+      record = JSON.parse(calibration.toString("utf8"));
+    } catch {
+      record = undefined;
+    }
+    if (!isDeepStrictEqual(record, expected.record)) {
+      throw new Error(
+        `${who} changed the record in ${expected.recordPath}: a formatter may change layout, not the record`,
+      );
+    }
   }
 }
 
@@ -962,7 +1029,7 @@ function verifyContents(
 function readFormatted(
   worktree: string,
   paths: readonly string[],
-  expected: { rules: unknown; records: unknown[] },
+  expected: { rules: unknown; record: CalibrationRecord; recordPath: string },
 ): Map<string, Buffer> {
   const contents = new Map<string, Buffer>();
   for (const rel of paths) {
@@ -984,7 +1051,7 @@ function readFormatted(
 const nulList = (text: string) => text.split("\0").filter(Boolean);
 
 /**
- * The run's last write. With a PR: apply the retro, add the calibration record, ship the spec,
+ * The run's last write. With a PR: apply the retro, write the calibration record, ship the spec,
  * format what was written, commit exactly those files on the run branch and push that branch.
  * Without one (D16) nothing leaves the run dir: the worktree is not touched, nothing is
  * committed or pushed.
@@ -996,8 +1063,8 @@ const nulList = (text: string) => text.split("\0").filter(Boolean);
  * `mark_ready`, and its last notify names the PR for the orchestrator to report.
  *
  * It builds on `expectedHead`, the commit the last gate approved, and only on what that commit
- * holds: `checks.yaml`, `calibration.jsonl`, the spec and the lesson store are read from the
- * commit, never from the working tree (lessons are added in a private copy of the committed
+ * holds: `checks.yaml`, the spec and the lesson store are read from the commit, never from the
+ * working tree (lessons are added in a private copy of the committed
  * store). A working tree that differs from the commit under those paths, hides a difference
  * behind an index flag, or holds a link or a hard link there is refused before anything is
  * written, since the finalize commit is not gated again.
@@ -1009,7 +1076,10 @@ const nulList = (text: string) => text.split("\0").filter(Boolean);
  * them, `commit-tree` makes the commit and `update-ref` moves the branch only if it still names
  * the gated commit. Before anything is pushed, the commit is checked: one parent, the gated
  * commit; exactly the written files changed; each blob byte-equal to what was written and
- * `checks.yaml` and `calibration.jsonl` still saying what finalize wrote.
+ * `checks.yaml` and the run's `calibration/<run-id>.json` still saying what finalize wrote.
+ *
+ * The calibration record is one file per run (ADR-0050): two runs finalizing from one base write
+ * two files, and a replay of this run writes the same file again.
  *
  * The run's metrics record rides along when it holds appends the metrics tool wrote after the
  * gated commit, which it always does on a delivered run: the delivery gate's terminal block names
@@ -1082,11 +1152,12 @@ function rawChanges(git: IsolatedGit, from: string, to: string): RawChange[] {
 
 /**
  * Bring the base into the run branch before finalize writes, when that is a clean merge. Every
- * append-only file finalize writes (`calibration.jsonl`, `checks.yaml`, the lesson index) is
- * built from the commit it builds on, so a base that gained its own copy while the run was
- * going made the finalize commit conflict with it: in a 2026-10-17 run two parallel runs each
- * created `calibration.jsonl`, and the PR could not merge. Built on a merge commit, finalize
- * appends to the base's copy instead.
+ * append-only file finalize writes (`checks.yaml`, the lesson index) is built from the commit it
+ * builds on, so a base that gained its own copy while the run was going made the finalize commit
+ * conflict with it: in a 2026-10-17 run two parallel runs each created the then shared
+ * `calibration.jsonl`, and the PR could not merge. Built on a merge commit, finalize appends to
+ * the base's copy instead. The calibration record has since become one file per run (ADR-0050),
+ * which no merge is needed for; the merge still serves the files that stay shared.
  *
  * The merge is the base, already reviewed, joined to the commit the gate approved, and it is
  * made the way the finalize commit is: `merge-tree --write-tree` for the tree, `commit-tree` for
@@ -1327,8 +1398,10 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     throw new Error("expectedHead must be the 40-hex SHA of the commit the last gate approved");
   }
   const abs = (rel: string) => join(worktree, rel);
-  const targets = [specPath, CHECKS_PATH, CALIBRATION_PATH, MEMORY_INDEX_PATH];
+  const recordPath = calibrationPath(run.id);
+  const targets = [specPath, CHECKS_PATH, recordPath, MEMORY_INDEX_PATH];
   for (const rel of targets) assertPlain(worktree, rel);
+  assertPlain(worktree, CALIBRATION_DIR);
   assertPlain(worktree, MEMORY_DIR);
   assertRunDirTargets(o.runDir, retro);
   assertPlain(o.runDir, FINALIZE_RECORD);
@@ -1361,9 +1434,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   const slug = specSlug(parseFrontmatter(specText).frontmatter.slug, specPath);
   const checksBase = committedFile(git, headSha, CHECKS_PATH)?.toString("utf8") ?? null;
   const merged = mergeChecks(parseExistingChecks(checksBase, CHECKS_PATH), retro);
-  const calibrationBase = committedFile(git, headSha, CALIBRATION_PATH)?.toString("utf8") ?? null;
-  const calibration = calibrationText(calibrationBase, record);
-  const expected = { rules: merged?.rules, records: jsonLines(calibration) };
+  const expected = { rules: merged?.rules, record, recordPath };
 
   const written = new Set<string>();
   const restoreFromCommit = (rel: string) => {
@@ -1400,7 +1471,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
 
     const writes: [string, string | Buffer][] = [
       ...(merged ? [[CHECKS_PATH, merged.text] as [string, string]] : []),
-      [CALIBRATION_PATH, calibration],
+      [recordPath, calibrationText(record)],
       [specPath, shipped],
       ...memoryChanges,
     ];

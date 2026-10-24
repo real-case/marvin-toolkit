@@ -71,6 +71,7 @@ import {
   lessonsMarkdown,
   mergeBaseForFinalize,
   rankLessons,
+  readCalibrationRecords,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
 import { physicalProblem } from "./plain-path.js";
@@ -205,7 +206,6 @@ const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CONFIG_PATH = ".marvin/config.json";
 const SPEC_COMMIT_MARKER = "spec-commit.json";
 const CHECKS_PATH = ".marvin/pipeline/checks.yaml";
-const CALIBRATION_PATH = ".marvin/pipeline/calibration.jsonl";
 const MEMORY_DIR = ".marvin/memory";
 const LESSON_LIMIT = 8;
 const GITLINK = "160000";
@@ -705,11 +705,37 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     writeAtomic(marker, `${JSON.stringify({ command })}\n`);
   };
 
+  /**
+   * `gates.test_one` as the seal stage and the verifier's probe will read it, checked before any
+   * child spends anything. The seal stage reads it first after the planner and the test-author
+   * have finished, and a template it refuses stopped a 2026-10-17 run there, 54 minutes and two
+   * children in. A template that is absent is told, not refused: the light tier never seals.
+   */
+  const checkTestOne = (run: Run, config: Config) => {
+    const template = config.gates?.test_one;
+    if (!template) {
+      noteOnce(
+        "config:test_one",
+        `no gates.test_one in ${CONFIG_PATH} at ${run.base}: a standard or heavy run stops at its seal stage, which runs each sealed test with it`,
+      );
+      return;
+    }
+    try {
+      wholeFileTemplate(template);
+    } catch (error) {
+      throw new Error(
+        `gates.test_one in ${CONFIG_PATH} at ${run.base} cannot run a whole test file, which the seal stage and the verifier's probe need: ${errorText(error)}`,
+        { cause: error },
+      );
+    }
+  };
+
   const prepare = async (run: Run): Promise<Run> => {
     // The worktree comes first: the config is the one its base commit holds.
     const record = setUpWorktree(run);
     const config = configFor(run);
     if (!o.config) checkMainConfig(run, record);
+    checkTestOne(run, config);
     bootstrap(config, record.path);
     writeAtomic(
       at("test-paths.json"),
@@ -818,25 +844,20 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  /**
+   * The host's calibration records in the shape `efficacy` reads: one file per run under
+   * `calibration/` plus the lines of a legacy `calibration.jsonl` (ADR-0050), each kept only
+   * when it carries the three fields.
+   */
   const calibrationRecords = (run: Run) => {
-    let text: string;
-    try {
-      text = readFileSync(join(lessonRoot(run), CALIBRATION_PATH), "utf8");
-    } catch {
-      return [];
-    }
     const Record = z.object({
       ts: z.string(),
       findingCategories: z.array(z.string()),
       exposedLessons: z.array(z.string()),
     });
-    return text.split("\n").flatMap((line) => {
-      try {
-        const parsed = Record.safeParse(JSON.parse(line));
-        return parsed.success ? [parsed.data] : [];
-      } catch {
-        return [];
-      }
+    return readCalibrationRecords(lessonRoot(run)).flatMap((value) => {
+      const parsed = Record.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
     });
   };
 
@@ -926,6 +947,41 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   // ---------------------------------------------------------------------------- children
 
   const markerPath = (ref: string) => at(join("spawns", `${ref}.json`));
+
+  /**
+   * The GitHub token `pipeline.github.token_command` prints, for a writing child's `gh pr create`
+   * and `git push`, so that they act as the account the run reads CI with. Without it the child's
+   * `gh` used whichever account was active, which in a 2026-10-17 run had no access to the
+   * repository: two executors failed on the pull request (the guard rightly refuses a child
+   * reading another account's token itself) and the run halted. Read-only roles get none; a
+   * command that fails leaves the child with `gh`'s own authentication, told once.
+   */
+  const childGhToken = (role: Role, config: Config): Record<string, string> => {
+    const command = config.pipeline.github.token_command;
+    if (!command || READ_ONLY_ROLES.has(role)) return {};
+    try {
+      const token = execSync(command, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+      return token === "" ? {} : { GH_TOKEN: token };
+    } catch (error) {
+      noteOnce(
+        "config:token_command",
+        `github.token_command failed, so children use gh's own authentication: ${errorText(error).split("\n")[0]}`,
+      );
+      return {};
+    }
+  };
+
+  /** The child's environment as `<key>.command.json` records it: a credential is named, not kept. */
+  const redactEnv = (env: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(env).map(([k, v]) => [
+        k,
+        /TOKEN|SECRET|PASSWORD|KEY$/i.test(k) ? "<redacted>" : v,
+      ]),
+    );
 
   const runningRow = (run: Run, action: SpawnAction, marker: SpawnMarker): Run => {
     const child: Child = {
@@ -1017,7 +1073,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       branch: run.branch,
     });
     const sandboxEnv = sandboxChildEnv(runDir, sandbox);
-    const live = { ...real, env: { ...real.env, ...sandboxEnv } };
+    const live = { ...real, env: { ...real.env, ...sandboxEnv, ...childGhToken(role, config) } };
     const fakeFile = process.env[fakeVariable(role)] || null;
     const fakeScript = fakeFile ? resolveOrNull(process.env[fakeScriptVariable(role)]) : null;
     const cmd: ChildCommand = fakeFile
@@ -1028,7 +1084,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       : {};
     writeAtomic(
       at(`${key}.command.json`),
-      `${JSON.stringify({ argv: live.argv, env: live.env, cwd: live.cwd, fake: fakeFile, ...(fakeScript ? { fakeScript } : {}), ...sandboxed }, null, 2)}\n`,
+      `${JSON.stringify({ argv: live.argv, env: redactEnv(live.env), cwd: live.cwd, fake: fakeFile, ...(fakeScript ? { fakeScript } : {}), ...sandboxed }, null, 2)}\n`,
     );
 
     // D19: the main checkout as it stood before this child, for the leak check after it. A

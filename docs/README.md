@@ -71,6 +71,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0047](./adr/0047-feature-red-phase.md) | A feature records one red phase, and the delivery gate reads it | Accepted |
 | [0048](./adr/0048-shell-quoted-test-one-placeholders.md) | A `test_one` placeholder is shell-quoted by marvin, not by the template author | Accepted |
 | [0049](./adr/0049-whole-file-reading-of-test-one.md) | The seal stage reads `test_one` for a whole file instead of refusing its per-test parts | Accepted |
+| [0050](./adr/0050-per-run-calibration-files.md) | One calibration file per finished run, not one appended log | Proposed |
 
 ## Work in progress
 

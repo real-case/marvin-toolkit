@@ -60,7 +60,7 @@ project root, one subdirectory per command group (ADR-0007):
 | `.marvin/security/` | `sec-*` scanners | scan / threat-model / compliance / pentest reports |
 | `.marvin/refactor/` | `refactor-*` family | numbered findings-register reports `NNN-audit-<slug>.md` / `NNN-smells-<slug>.md` (`F<n>` id, severity, effort, evidence, direction — ADR-0029) + sequenced step plans `NNN-plan-<slug>.md` (one shared number sequence) |
 | `.marvin/audit/` | the `audit-*` family (`audit-plan`, `audit-run`, `audit-summary`) | the formal project-audit programme: the plan `A-00-plan-<slug>.md`, one report per audit `A-XX-<slug>.md` **plus its rendered `A-XX-<slug>.pdf`**, and the consolidation `A-99-summary-<slug>.md`. Each report carries a fixed frontmatter (commit, tool versions, `coverage`, `confidence`), the seven-section skeleton and one ` ```json findings ` block whose vocabulary is ASCII regardless of the report's `LANG` — that block is the ONLY interface `audit-summary` reads, which is what lets audits run in isolated sessions and still be joined. Not a report group of the `report` tool, and not written by any tool: the three commands are skill-backed prompts and every byte under `.marvin/audit/` is written by the calling session |
-| `.marvin/pipeline/` | the autopilot engine's finalize (a human writes `rubric.yaml`) | the host's pipeline learning state, committed through the run's PR: `rubric.yaml` (project tier overrides merged over `rubric.default.yaml`), `checks.yaml` (leftover-pattern checks the retro adds) and `calibration.jsonl` (one record per finished run, the orchestrator's cost estimate). The gate reads `checks.yaml` from the run's base commit, never from its worktree. The run state itself (`run.json`, `events.jsonl`, child logs, judgments) lives **outside** the repository under `MARVIN_PIPELINE_HOME`, default `~/.local/state/marvin-pipeline`, and `run.json` has one writer, the engine. `rubric.yaml` is the one file read from the main checkout's working tree when a run starts (`rubricFor`), not from the base commit. Committed in this repository (`!.marvin/pipeline/` in `.gitignore`, plan Task 19) |
+| `.marvin/pipeline/` | the autopilot engine's finalize (a human writes `rubric.yaml`) | the host's pipeline learning state, committed through the run's PR: `rubric.yaml` (project tier overrides merged over `rubric.default.yaml`), `checks.yaml` (leftover-pattern checks the retro adds) and `calibration/<run-id>.json` (one file per finished run, the orchestrator's cost estimate and the efficacy reader's input, ADR-0050; a legacy `calibration.jsonl` from before that record is read but never written again, because two open run branches appending to one file conflicted at the PR). The gate reads `checks.yaml` from the run's base commit, never from its worktree. The run state itself (`run.json`, `events.jsonl`, child logs, judgments) lives **outside** the repository under `MARVIN_PIPELINE_HOME`, default `~/.local/state/marvin-pipeline`, and `run.json` has one writer, the engine. `rubric.yaml` is the one file read from the main checkout's working tree when a run starts (`rubricFor`), not from the base commit. Committed in this repository (`!.marvin/pipeline/` in `.gitignore`, plan Task 19) |
 | `.marvin/track/` | `track-*` tracker | task `.md` board (the `MARVIN_TASKS_DIR` default) |
 | `.marvin/memory/` | `lessons` tool (`marvin-debugger`, `task-deliver`) | team-shared lessons-learned: `MEMORY.md` index + typed lesson files (ADR-0021) |
 | `.marvin/handoff/` | `handoff` | session-continuation handoff docs `<NNN>-<slug>.md` (numeric-prefixed, creation order) |
@@ -302,9 +302,22 @@ lines differ, so use the main checkout.
 
 The repository commits its own `.marvin/config.json` (plan Task 19), and every marvin tool reads
 it, so `/marvin:task-verify` here runs the configured gates: `test` (which rebuilds the shared
-library and the server bundle, then runs `npm test`), `lint`, `build`, and seven extras that mirror
-CI (`lint:skills`, `lint:manifests`, `lint:docs`, `format:check`, `eval:self-test`, `eval:trigger`,
-`smoke`). Two consequences follow.
+library and the server bundle, then runs `npm run test:fast`), `lint`, `build`, and seven extras
+that mirror CI (`lint:skills`, `lint:manifests`, `lint:docs`, `format:check`, `eval:self-test`,
+`eval:trigger`, `smoke`). Three consequences follow.
+
+- The `test` gate is the fast set, not `npm test`. The root `test:fast` runs the shared library,
+  widget, site and root suites whole and the server suite through `npm run test:fast -w
+  @marvin-toolkit/server`, which is `plugins/marvin/mcp/server/scripts/test-fast.mjs`: every
+  `test/*.test.mjs` except the ten named in its `SLOW` list. Those ten spawn git, `node -e`
+  supervisors, whole `node --test` red runs or the server itself per test, and measured alone on
+  2026-10-18 they took 17–152 s each, 713 of the server suite's 802 sequential seconds (the
+  numbers are in the script's header); with them, the autopilot's `test` gate on this repository
+  took 33 minutes per executor iteration, and concurrency cannot help because the longest file is
+  the critical path. `npm test` is unchanged and CI runs it on every push, so a pull request is
+  still judged by the whole suite; the fast gate is what runs between commits.
+  `test/test-fast.test.mjs` pins the list to the tree: a `SLOW` entry that names no file fails the
+  run rather than running everything. Add a file to `SLOW` when it measures above about 15 s alone.
 
 - Verify with `execution: "sequential"`. In parallel the `test` and `build` gates both rewrite
   `plugins/marvin/mcp/server/dist/` (tsup cleans its output first) while e2e tests spawn

@@ -118,7 +118,7 @@ User ⇄ ORCHESTRATOR  /marvin:autopilot — interactive, Opus, user's language
           ├── verifier #n  -p read-only allowlist, fresh per iteration, gets gate facts → PASS/FAIL + findings
           ├── CI           engine: PR state + workflow runs (conflict ≠ pending)
           ├── retro        -p read-only → checks > proposals > lessons (+ prune proposals)
-          └── finalize     engine: apply retro, spec → shipped, calibration line, commit, push, CI, gh pr ready
+          └── finalize     engine: apply retro, spec → shipped, calibration record, commit, push, CI, gh pr ready
 ```
 
 Run state lives in `${MARVIN_PIPELINE_HOME:-~/.local/state/marvin-pipeline}/<repo-basename>/<run-id>/`:
@@ -193,6 +193,8 @@ Default matrix (`rubric.default.yaml`, deep-merged with `<repo>/.marvin/pipeline
 - **Rejections.** A gate, verifier or CI rejection advances the executor's rung along `escalation: [effort+1, model:opus, halt]`.
 - **Repeated findings.** If a rejection repeats a finding fingerprint (`category|file|criterion`) from the previous rejection, the rung skips past the remaining `effort+…` steps.
 - **Cap.** At `caps.rejections` (3), or on reaching `halt`, the engine raises a `halt` judgment.
+- **Bookkeeping rejections** (0.31.0). A rejection whose blocking findings are all scope findings on the pipeline's own service files (a committed critic receipt, `runs/<slug>.*` journal, `verification.md` or metrics record) advances no rung and is counted on `caps.bookkeeping_rejections` (2) instead of `caps.rejections`; past that cap it is a rejection like any other. The fix is `git rm --cached`, which a stronger model does no better, and the climb raised the verifier through its floor as well.
+- **Launch faults** (0.31.0). A child that ends within 30 s at no cost and with no output never got to work (an expired login, a provider outage); it is relaunched 1, 2 and 4 minutes later on `caps.launch_retries` (3) before the crash retry and the halt.
 - **Minor findings** never loop; they go into the PR body.
 - **The ceiling is Opus at effort `max`.** Fable is rejected by code (§5).
 
@@ -205,7 +207,7 @@ Default matrix (`rubric.default.yaml`, deep-merged with `<repo>/.marvin/pipeline
 | **Lesson:** prose, one rule each | `.marvin/memory/`, written by the engine through marvin's lesson storage with `projectRoot` = worktree | with the PR |
 | **Prune proposal:** a lesson or check whose efficacy shows no drop in its target findings after ≥ 5 exposed runs | `<runDir>/proposals/prune.md` | by the user |
 
-- Each run appends a calibration record to `.marvin/pipeline/calibration.jsonl`: tier, signals, rejections with fingerprints, questions by answerer, per-role cost/time/cache reads, and the lessons injected. Efficacy is computed from these records.
+- Each run writes a calibration record to `.marvin/pipeline/calibration/<run-id>.json`: tier, signals, rejections with fingerprints, questions by answerer, per-role cost/time/cache reads, and the lessons injected. Efficacy is computed from these records. (Until ADR-0050 the records were lines of one shared `calibration.jsonl`, which two run branches open at once could not both merge; a host's existing file is still read, never written.)
 - Lessons reach children deterministically: the engine selects the top-k by contract paths and role tags and renders them into each user prompt.
 
 ## 4. Decisions (accepted 2026-10-04)
@@ -3748,7 +3750,7 @@ The skill specifies, in order:
 - **`CHILD …` lines** arrive as `EVENT report CHILD <name> outcome=… cost=… dur=… session=…`. **`STAGE done`** (halted, cancelled, or `no_ci` proceed after finalize) gets the closed-run form of the final report, not just `STAGE ready`.
 - **"Change tier" is an approval.** `approve` with `tier` and `reason` approves at the new tier in one answer, so the skill confirms the change, showing that tier's assignments from the rubric, before it sends the answer.
 - **The orchestrator name must match `^[\w.-]+$`** (`assertOrchestratorName`). A session title with spaces is refused by `init`, so the skill sets a one-word title (`set_session_title`) or asks the user for one.
-- **Calibration cost estimate** reads `<repo>/.marvin/pipeline/calibration.jsonl` as committed on the base. A record's cost is the sum of `aggregate.perRole[].costUsd`. With fewer than three records for the tier, there is no estimate.
+- **Calibration cost estimate** reads the records under `<repo>/.marvin/pipeline/calibration/` (and a legacy `calibration.jsonl`, ADR-0050) as committed on the base. A record's cost is the sum of `aggregate.perRole[].costUsd`. With fewer than three records for the tier, there is no estimate.
 - **The skill is model-invocable**, not `disable-model-invocation`, so that the trigger eval measures it. Its description limits it to delegating the whole lifecycle; the dataset's near-misses are the in-session `task-start`, `task-implement` and `task-deliver`.
 - **Left for later stages.** Task 20 scenario 2 must check that the skill's status lines and final report are in the invocation language, and that `--answered-by` reaches `calibration.jsonl` through `aggregate`. No test drives the skill prose itself: the deterministic sandbox (Task 20 scenario 1, shipped as `test/autopilot-sandbox.test.mjs`) exercises the CLI with `MARVIN_PIPELINE_JUDGE=fixtures`, which never calls `judge`. Task 19 needs no skill change.
 

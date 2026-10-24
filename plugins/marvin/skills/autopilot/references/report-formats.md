@@ -14,6 +14,8 @@ then the fact.
 | `EVENT stage planning → awaiting_approval` | `Stage: planning → awaiting approval.` |
 | `EVENT report CHILD r…-executor-2 outcome=done cost=$1.84 dur=12m session=…` | `Executor #2 finished (done), $1.84, 12 min.` |
 | `EVENT note gate rejected iteration 1 (2 blocking); executor 2 started on rung 1` | `Gates rejected iteration 1 (2 blocking findings); executor #2 started one rung up.` |
+| `EVENT note gate rejected iteration 1 (3 blocking, all over pipeline service files; rung unchanged); executor 2 started on rung 0` | `Gates rejected iteration 1: three pipeline service files were committed; executor #2 started at the same rung.` |
+| `EVENT note executor could not start (Failed to authenticate: …); retrying at 2026-10-17T17:50:39Z (1 of 3)` | `Executor could not start (authentication failed); the engine retries at 17:50.` |
 | `EVENT note verifier PASS on iteration 2` | `Verifier: PASS on iteration 2. Waiting for CI.` |
 | child message `[r…-executor-2] done: … \| next: … \| blockers: …` | `Executor #2: <done>; next: <next>.` and the blocker, if any |
 | `ENGINE down`, after a restart | `The engine stopped (<reason>); restarted it.` |
@@ -69,12 +71,13 @@ Where each part comes from:
 | Not verified | `minorFindings` in `status` whose `id` ends in `-unverifiable` |
 | Minor findings | the other `minorFindings` |
 | Assumptions, halt reason | `assumptions`, `haltReason` in `status` |
-| Cost and cache reads per role | `children[]` in `status`: `role`, `assignment`, `costUsd`, `cacheReadTokens`. A null cost is unknown, not zero: say so rather than summing it as 0 |
+| Cost and cache reads per role | `children[]` in `status`: `role`, `assignment`, `costUsd`, `cacheReadTokens`. A null cost is unknown, not zero: say so rather than summing it as 0. Rows that share a `sessionId` are one resumed session, and each carries the session's running total: charge the session once, at its last row, and never sum its rows. Cache reads are per row and do sum |
 | Checks, lessons, proposals, prune | the retro child's output, `result.structured` (`checks`, `lessons`, `proposals`, `prune`) in `<runDir>/<retro child name>.result.json`; on a closed run also `<runDir>/retro-output.json` |
 | Proposal and prune files | `<runDir>/proposals/<n>-<target>.md`, `<runDir>/proposals/prune.md` |
 
 Checks (`.marvin/pipeline/checks.yaml`), lessons (`.marvin/memory/`) and the calibration record
-(`.marvin/pipeline/calibration.jsonl`) ship only with a PR, committed on its branch by finalize.
+(`.marvin/pipeline/calibration/<run-id>.json`) ship only with a PR, committed on its branch by
+finalize.
 A run that closed without a ready PR keeps its retro in the run directory and commits nothing:
 say so in the Learning section, and name the run-directory files instead.
 

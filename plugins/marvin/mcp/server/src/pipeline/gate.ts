@@ -32,6 +32,11 @@ export interface GateResult {
   result: "pass" | "fail" | "flaky" | "not-run";
   ms: number;
   tail: string;
+  /**
+   * The gate whose single run this result repeats: several criteria resolving to one command
+   * (one test file proving them all) run it once, and every one of them reports its outcome.
+   */
+  sharedWith?: string;
 }
 export interface AddedLine {
   file: string;
@@ -1179,25 +1184,38 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
       });
     }
   }
+  // Criteria that resolve to one command (a `kind: test` file that proves several of them) share
+  // one run: in a 2026-10-13 run seven criteria named one 70-second test file, and the stage ran
+  // it seven times. Each criterion still reports the outcome under its own name.
   const aroundOracle = new Set<string>();
   const oracleGates: GateResult[] = [];
+  const byCommand = new Map<string, typeof runnable>();
   for (const x of prepareFailed === null ? runnable : []) {
+    byCommand.set(x.command, [...(byCommand.get(x.command) ?? []), x]);
+  }
+  for (const [command, group] of byCommand) {
+    const [first, ...rest] = group;
+    if (first === undefined) continue;
     const before = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    const [ran] = await runGates(
+      [{ name: `oracle:${first.criterion}`, command, retry: false }],
+      o.worktree,
+      o.run,
+      o.timeoutMs,
+      o.signal,
+    );
+    if (ran === undefined) continue;
     oracleGates.push(
-      ...(await runGates(
-        [{ name: `oracle:${x.criterion}`, command: x.command, retry: false }],
-        o.worktree,
-        o.run,
-        o.timeoutMs,
-        o.signal,
-      )),
+      ran,
+      ...rest.map((x) => ({ ...ran, name: `oracle:${x.criterion}`, ms: 0, sharedWith: ran.name })),
     );
     const after = checkSealed(o.worktree, o.sealed).filter((f) => !f.ok);
+    const criteria = group.map((x) => x.criterion).join(", ");
     for (const path of new Set([...before, ...after].map((f) => f.path))) {
       aroundOracle.add(path);
       blockers.push({
         category: "scope",
-        claim: `sealed file ${path} changed around oracle ${x.criterion}`,
+        claim: `sealed file ${path} changed around oracle ${criteria}`,
         file: path,
         evidence: "sha256 differs from the sealed value just before or after the oracle ran",
         expected: "sealed tests are byte-identical while their oracles run",

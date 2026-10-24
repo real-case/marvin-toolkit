@@ -103,10 +103,13 @@ Read the spec file yourself, then present, in `lang`:
 5. A table of the roles and what each runs as, from `assignments`: planner, test-author
    (`skip` on the light tier), executor, verifier, retro, each `model/effort`.
 6. Every answer you gave alone and every assumption, from your list and from `assumptions`.
-7. A cost estimate: the median total cost of earlier runs on this tier, from
-   `<repo>/.marvin/pipeline/calibration.jsonl` (one JSON record per line; a record's `tier`,
-   and its cost is the sum of `aggregate.perRole[].costUsd`). With fewer than three records on
-   the tier, say there is no estimate yet rather than guessing.
+7. A cost estimate: the median total cost of earlier runs on this tier, from the calibration
+   records under `<repo>/.marvin/pipeline/calibration/` (one JSON file per finished run,
+   `<run-id>.json`) plus, where a host still has one, the lines of the legacy
+   `<repo>/.marvin/pipeline/calibration.jsonl` (one JSON record per line; a run present in
+   both counts once, from its file). A record's `tier` selects it, and its cost is the sum of
+   `aggregate.perRole[].costUsd`. With fewer than three records on the tier, say there is no
+   estimate yet rather than guessing.
 
 Send a `PushNotification`, when available, then ask with `AskUserQuestion`:
 
@@ -121,7 +124,8 @@ Pass no `--answered-by` on an approval: it is always the user's.
 
 ## 5. `halt`
 
-Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap, a crash, failure
+Payload: `{reason, detail?, findings?, failing?}`. Raised for a rejection cap (bookkeeping
+rejections, over the pipeline's own service files alone, do not count towards it), a crash, failure
 or stall after its retry, a usage limit the engine stopped waiting out (`caps.limit_retries` waits
 spent, or a reset more than six hours away), a child that mutated the tree or wrote outside
 its worktree, a planner or executor past its question cap, a planner whose spec still failed the Definition of Ready after its rounds (`caps.dor_rounds`),
@@ -163,6 +167,13 @@ These halts deserve a look before you ask:
 - **A stall** (`<role> stalled`). The engine already ended the silent child and started the same
   spawn once more; this halt is the second stall in a row. Recommend `retry` when the detail
   shows no tool call in flight; a child that stalls inside one command again is a hung command.
+- **A child that could not start** (`<role> failed` whose `detail` is the CLI's own message, such
+  as `Failed to authenticate: OAuth session expired and could not be refreshed`). The engine
+  already relaunched it `caps.launch_retries` times (3), one, two and four minutes apart, each
+  announced as `EVENT note <role> could not start (…); retrying at …`, and then spent the crash
+  retry too. The cause is outside the run: the login, the network, the provider. Tell the user
+  what the message says; once it is fixed (`claude login` for an expired session), recommend
+  `retry`, which starts the launch budget over.
 
 ## 6. `unverified`
 

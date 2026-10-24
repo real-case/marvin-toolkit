@@ -332,7 +332,7 @@ base commit's `.marvin/config.json`, never from a run's worktree.
 | `tracker_default` | `TBD` | The tracker id used in the branch name when the spec has none. |
 | `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing. |
 | `lockfile` | `null` | The lockfile `bootstrap` installs from, such as `package-lock.json`. |
-| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. `null` uses `gh`'s own authentication. |
+| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. The engine reads CI and marks the pull request ready with it, and hands it to the writing children (planner, test-author, executor) as `GH_TOKEN`, so that their `gh pr create` and `git push` act as that account rather than whichever one is active. `null` uses `gh`'s own authentication everywhere. |
 | `stall_minutes` | `15` | Minutes without output from a child before it counts as stalled. |
 | `no_ci_minutes` | `10` | Minutes after a push with no CI run appearing before the pipeline concludes the branch has no CI. |
 | `gate_timeout_minutes` | `20` | Minutes one gate command may run before it is killed. |
@@ -358,7 +358,8 @@ stripped without a word, like a mistyped gate name.
 Under npm 11, options that follow `npx --no <tool>` are read by npm, not by the tool, so a
 `format_command` of `npx --no prettier --write` prints the formatted files and writes none. End
 npm's options with `--`: `npx --no -- prettier --write --ignore-unknown`. `--ignore-unknown` keeps
-Prettier from failing on `calibration.jsonl`, which finalize hands it with the rest.
+Prettier from failing on a file it has no parser for; the calibration record finalize hands it is
+`.json` and is written in Prettier's own layout, so the formatter leaves it as it is.
 
 Marvin's own repository commits a complete example: `.marvin/config.json` and `.marvin/pipeline/`
 at its root, which `plugins/marvin/mcp/server/test/project-config.test.mjs` loads through the
@@ -480,6 +481,17 @@ workspace. Any other path exits 127, so the seal stage reads it as a test that d
 working directory matters as much as the runner: the server test driver starts the server in the
 test's directory, and from the repository root that server would read the repository's own
 committed `.marvin/config.json` instead of an empty project.
+
+Its `test` gate is also narrower than its CI. The gate runs `npm run test:fast`, which runs every
+workspace's suite whole except the server's, where `scripts/test-fast.mjs` leaves out ten files
+that spawn git, supervisors, whole red `node --test` runs or the server itself once per test:
+measured alone they are 17–152 s each and about 90 % of that suite's sequential time, and the
+autopilot's `test` gate, which reruns the suite after every executor iteration, took 33 minutes
+with them. `npm test` still runs everything and CI runs it on every push, so a pull request is
+judged by the whole suite; the fast set is what judges the commits in between. A project whose
+suite has the same shape can do the same: keep the full `test` script for CI, give the gate a
+script that excludes the slow files by name, and let a test fail the run when a named file no
+longer exists, so the list cannot quietly exclude nothing.
 
 ### Scanners as gates
 
