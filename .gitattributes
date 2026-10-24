@@ -8,7 +8,8 @@
 # content.
 *.png binary
 
-# The autopilot calibration log is append-only, one JSON record per line (plan Task 19). Two run
-# branches open at once both append at its end, and a branch that merges the base in to resolve a
-# conflict would otherwise stop on it; git's built-in union driver keeps both records instead.
+# The legacy autopilot calibration log, append-only, one JSON record per line (plan Task 19).
+# Since ADR-0050 a run's record is its own file under .marvin/pipeline/calibration/, which needs
+# no driver; the attribute stays for run branches an earlier engine finalized against this file,
+# so that a local merge of two of them keeps both records (GitHub's merge applies no driver).
 .marvin/pipeline/calibration.jsonl merge=union

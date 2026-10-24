@@ -424,7 +424,7 @@ test("over the tracked tests, the skip rule finds the skipped tests and no role 
   }
 });
 
-test("git versions the project settings, keeps the local spec corpus out, and unions the calibration log", () => {
+test("git versions the project settings, keeps the local spec corpus out, and unions the legacy calibration log", () => {
   const ignored = (path) => {
     try {
       git("check-ignore", "-q", "--no-index", path);
@@ -439,6 +439,7 @@ test("git versions the project settings, keeps the local spec corpus out, and un
     ".marvin/pipeline/rubric.yaml",
     ".marvin/pipeline/checks.yaml",
     ".marvin/pipeline/calibration.jsonl",
+    ".marvin/pipeline/calibration/r20261018-0000-abcd.json",
     ".marvin/memory/MEMORY.md",
     ".marvin/metrics/001-x.md",
   ]) {
@@ -458,7 +459,9 @@ test("git versions the project settings, keeps the local spec corpus out, and un
   ]) {
     assert.ok(tracked.includes(path), `${path} is committed`);
   }
-  // Two open run branches both append to the calibration log; a merge keeps both records.
+  // The legacy calibration log (before ADR-0050) is appended to by run branches an earlier
+  // engine finalized; a local merge of two such branches keeps both records. The per-run files
+  // need no attribute: two runs write two files.
   assert.match(
     git("check-attr", "merge", "--", ".marvin/pipeline/calibration.jsonl").toString("utf8"),
     /: merge: union$/m,

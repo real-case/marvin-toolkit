@@ -77,8 +77,9 @@ packages/marvin-widgets/__image_snapshots__/__diff_output__/
 #
 # The pipeline's project rules. `.marvin/pipeline/` holds `rubric.yaml` (tiering, read
 # from the main checkout when a run starts), `checks.yaml` (added-line checks, read from
-# the base commit) and `calibration.jsonl`; a run's finalize commits the last two through
-# its pull request.
+# the base commit) and `calibration/<run-id>.json` (one record per finished run, ADR-0050;
+# a legacy `calibration.jsonl` is read, never written); a run's finalize commits the last
+# two through its pull request.
 #
 # The spec corpus stays ignored. `.marvin/task/` is the local, interactive corpus. An
 # autopilot run stages its own spec with `git add -f` because finalize ships the
