@@ -302,9 +302,22 @@ lines differ, so use the main checkout.
 
 The repository commits its own `.marvin/config.json` (plan Task 19), and every marvin tool reads
 it, so `/marvin:task-verify` here runs the configured gates: `test` (which rebuilds the shared
-library and the server bundle, then runs `npm test`), `lint`, `build`, and seven extras that mirror
-CI (`lint:skills`, `lint:manifests`, `lint:docs`, `format:check`, `eval:self-test`, `eval:trigger`,
-`smoke`). Two consequences follow.
+library and the server bundle, then runs `npm run test:fast`), `lint`, `build`, and seven extras
+that mirror CI (`lint:skills`, `lint:manifests`, `lint:docs`, `format:check`, `eval:self-test`,
+`eval:trigger`, `smoke`). Three consequences follow.
+
+- The `test` gate is the fast set, not `npm test`. The root `test:fast` runs the shared library,
+  widget, site and root suites whole and the server suite through `npm run test:fast -w
+  @marvin-toolkit/server`, which is `plugins/marvin/mcp/server/scripts/test-fast.mjs`: every
+  `test/*.test.mjs` except the ten named in its `SLOW` list. Those ten spawn git, `node -e`
+  supervisors, whole `node --test` red runs or the server itself per test, and measured alone on
+  2026-10-18 they took 17–152 s each, 713 of the server suite's 802 sequential seconds (the
+  numbers are in the script's header); with them, the autopilot's `test` gate on this repository
+  took 33 minutes per executor iteration, and concurrency cannot help because the longest file is
+  the critical path. `npm test` is unchanged and CI runs it on every push, so a pull request is
+  still judged by the whole suite; the fast gate is what runs between commits.
+  `test/test-fast.test.mjs` pins the list to the tree: a `SLOW` entry that names no file fails the
+  run rather than running everything. Add a file to `SLOW` when it measures above about 15 s alone.
 
 - Verify with `execution: "sequential"`. In parallel the `test` and `build` gates both rewrite
   `plugins/marvin/mcp/server/dist/` (tsup cleans its output first) while e2e tests spawn

@@ -1,7 +1,7 @@
 {
   "name": "marvin-toolkit",
   "private": true,
-  "version": "0.32.0",
+  "version": "0.32.1",
   "description": "Marvin Toolkit — MCP-first Claude Code plugin marketplace (monorepo root)",
   "type": "module",
   "engines": {
@@ -16,6 +16,7 @@
     "dev:plugin": "npm run build -w @marvin-toolkit/mcp-shared && npm run build -w @marvin-toolkit/widgets && npm run build -w @marvin-toolkit/server && echo '\\nPlugin artefacts rebuilt. Restart the Claude Code session to load the new dist/server.js.'",
     "dev:watch": "node scripts/dev-watch.mjs",
     "test": "npm run test --workspaces --if-present && node --test test/*.test.mjs",
+    "test:fast": "npm run test -w @marvin-toolkit/mcp-shared -w @marvin-toolkit/widgets -w @marvin-toolkit/site && npm run test:fast -w @marvin-toolkit/server && node --test test/*.test.mjs",
     "lint": "eslint .",
     "lint:manifests": "node scripts/lint-manifests.mjs",
     "lint:skills": "node scripts/lint-skills.mjs",
