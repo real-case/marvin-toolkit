@@ -24,6 +24,11 @@ Run project quality gates with stack auto-detection. Verification gates delivery
   - **Bug**: regression test must exist; all pre-existing tests pass
   - **Standalone** (no pipeline context): run all checks, report results
 
+**Session status.** When a spec was found (feature or bug mode) and the session title carries a
+status prefix from `skills/task-start/references/session-status.md`, keep it at `[in progress]` while the gates run, and set
+`[waiting]` if the turn ends asking the user how to handle a FAIL. A standalone run is not a task
+and leaves the title alone, as do the terminal and pipeline mode.
+
 ## Workflow
 
 ### 1. Run the gates via the `verify` tool

@@ -71,7 +71,7 @@ test("init creates a run outside the repo; status and list read it back", () => 
   assert.equal(JSON.parse(pipe(home, "list")).length, 1);
 });
 
-test("init refuses a stage-a outside the tiers and an orchestrator name with spaces", () => {
+test("init refuses a stage-a outside the tiers and an orchestrator name a child cannot quote", () => {
   const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
   const t = join(home, "t.txt");
   writeFileSync(t, "x");
@@ -82,9 +82,24 @@ test("init refuses a stage-a outside the tiers and an orchestrator name with spa
     /--stage-a must be one of light, standard, heavy/,
   );
   assert.match(
-    pipeFails(home, ...base, "--orch", "two words", "--stage-a", "light", ...files),
+    pipeFails(home, ...base, "--orch", 'say "hi"', "--stage-a", "light", ...files),
     /invalid orchestrator name/,
   );
+  for (const bad of [" padded", "line\nbreak", "back\\slash", "tick`", "x".repeat(201)]) {
+    assert.match(
+      pipeFails(home, ...base, "--orch", bad, "--stage-a", "light", ...files),
+      /invalid orchestrator name/,
+    );
+  }
+});
+
+test("init and attach accept a session title with a status prefix as the orchestrator name", () => {
+  const home = mkdtempSync(join(tmpdir(), "pipe-home-"));
+  const { runDir } = initIn(home, "/x/r");
+  const title = "[waiting] Новая страница уведомлений";
+  pipe(home, "attach", "--run", runDir, "--orch", title);
+  assert.equal(readFileSync(join(runDir, "orchestrator.txt"), "utf8"), `${title}\n`);
+  assert.equal(JSON.parse(pipe(home, "status", "--run", runDir)).orchestrator, title);
 });
 
 test("an unknown command or flag fails with a usage line, never a stack trace", () => {
@@ -102,7 +117,7 @@ test("attach names a new orchestrator beside run.json, which it leaves alone", (
   assert.equal(readFileSync(join(runDir, "run.json"), "utf8"), before);
   assert.equal(readFileSync(join(runDir, "orchestrator.txt"), "utf8"), "Autopilot-2\n");
   assert.equal(JSON.parse(pipe(home, "status", "--run", runDir)).orchestrator, "Autopilot-2");
-  assert.match(pipeFails(home, "attach", "--run", runDir, "--orch", "a;b"), /invalid orchestrator/);
+  assert.match(pipeFails(home, "attach", "--run", runDir, "--orch", 'a"b'), /invalid orchestrator/);
 });
 
 test("judge validates the answer against the judgment kind and the run's state", () => {

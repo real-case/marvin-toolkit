@@ -438,9 +438,20 @@ export function childKey(before: readonly Child[], name: string): string {
  */
 export const ORCHESTRATOR_FILE = "orchestrator.txt";
 
-/** A name a child can address with SendMessage and a hook can quote: one word, no spaces. */
+/**
+ * A name a child can address with SendMessage and a hook can quote. In the desktop app the name is
+ * the session title, which carries a status prefix (`[in progress] New notifications page`), so
+ * spaces and brackets are allowed. Refused: an empty name, surrounding whitespace (the file is read
+ * back trimmed, so the child would address another name), control characters, and the quote,
+ * backslash and backtick that would break the heartbeat's quoted instruction.
+ */
 export function assertOrchestratorName(name: string): void {
-  if (!/^[\w.-]+$/.test(name)) {
+  if (
+    name.length > 200 ||
+    name !== name.trim() ||
+    // eslint-disable-next-line no-control-regex
+    !/^[^\u0000-\u001f\u007f"\\`]+$/.test(name)
+  ) {
     throw new Error(`invalid orchestrator name: ${JSON.stringify(name)}`);
   }
 }

@@ -49,10 +49,11 @@ do not retry it unchanged.
    when the tool is available; otherwise use the model your system prompt names. If it is not
    Opus, warn the user in one line that the orchestrator is meant to run on Opus, and continue.
 3. **Own name.** Children address you with `SendMessage` by your session name, so `--orch` must
-   be exactly that name, and the CLI accepts only `^[\w.-]+$` (no spaces). Use the Code-tab
-   session title or the CLI session's `-n` name. If you do not know it, or it has spaces, set a
-   one-word title yourself with `set_session_title` when that tool is available; otherwise ask
-   the user once to give the session a one-word name.
+   be exactly that name. The CLI refuses a name with surrounding spaces, a control character, or
+   `"`, `\` or `` ` ``. In the desktop Code tab, the name is the session status title (section
+   6): derive the task name, set the title to `[in progress] <task name>` with
+   `set_session_title`, and pass that title. In the terminal, use the CLI session's `-n` name; if
+   it has none, ask the user once to name the session.
 4. **Repository and base.** `--repo` is `git rev-parse --show-toplevel` of the current
    directory. `--base` is `base_branch` from `.marvin/config.json` when set, else the branch
    that `origin/HEAD` points at.
@@ -85,8 +86,9 @@ do not retry it unchanged.
    are open and none was named, ask which one.
 2. **Recover the context.** `PIPE status --run <runDir>` gives `lang`, `task.original`, the
    stage and the pending judgment.
-3. **Take the run over.** `PIPE attach --run <runDir> --orch <own name>`. Children spawned from
-   now on report to you. A child already running keeps the name it was launched with, but its
+3. **Take the run over.** In the desktop Code tab, first set the status title (section 6) from
+   `task.original` and the stage. Then `PIPE attach --run <runDir> --orch "<own name>"`.
+   Children spawned from now on report to you. A child already running keeps the name it was launched with, but its
    heartbeat reminders name you.
 4. **Restart the engine if needed.** If `status` says `engineAlive: false` and the stage is not
    terminal, run `PIPE start --run <runDir>`. A restart is safe: the engine resumes from disk.
@@ -157,6 +159,43 @@ When `await` prints `STAGE ready` or `STAGE done`, write the report in `lang` wi
 in `skills/autopilot/references/report-formats.md`, built from `PIPE status --run <runDir>` and
 the run files that reference names. Send a push notification (`PushNotification`, when
 available) with the one-line outcome. Do not re-arm `await` afterwards.
+
+## 6. Session status
+
+In the desktop Code tab the session title shows the run's state: `[<status>] <task name>`. The
+statuses, the task-name rule and when the protocol is skipped are in
+`skills/task-start/references/session-status.md`; read it from the plugin, the `skills/…` path
+resolves through all three entry points (ADR-0008). Read it before the first rename of a session.
+In the terminal there is no title tool: skip this section silently.
+
+The run sets the status:
+
+| What happened | Status |
+|---------------|--------|
+| the run starts or is resumed; `EVENT stage … →` `planning`, `test_authoring`, `executing`, `gating`, `verifying`, `retro` or `finalizing` | `[in progress]` |
+| you end a turn asking the user something a judgment needs (a question, the spec approval, a halt decision) | `[waiting]` |
+| the turn that passes the user's answer to `judge` begins | `[in progress]` |
+| `EVENT stage … → ci_wait` | `[ci]` |
+| `STAGE ready` | `[pr ready]` |
+| `STAGE done`, or the third `ENGINE down` in a row (section 3) | `[halted]` |
+
+A judgment you answer alone does not set `[waiting]`. `awaiting_answer` and `awaiting_approval`
+set it only when the judgment reaches the user.
+
+**The title is your address, so every rename is two calls, in this order:**
+
+1. `set_session_title` with `session_id: "self"` and the new title.
+2. `PIPE attach --run <runDir> --orch "<new title>"`, quoting the title for the shell.
+
+The attach rewrites the name the run's heartbeat reminders and message guard use, so children
+report to the new title from their next reminder on. A report sent between the two calls goes to
+the old name and is lost; that costs one progress line, never a judgment, because judgments
+travel through the run directory. If the rename fails or the user declines it, skip the attach:
+the old title is still your address. If the attach fails, set the old title back, so that the
+title and the run's name never disagree.
+
+`[merged]` and `[closed]` are outside the engine: set them only if this session merges the PR
+(`/marvin:pr-merge`) or learns its state from `gh pr view` after the run.
 
 ## Judgments
 

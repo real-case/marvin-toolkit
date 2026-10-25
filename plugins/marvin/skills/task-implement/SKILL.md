@@ -54,6 +54,14 @@ Read the resolved spec. Confirm:
 - Frontmatter `type` is `feature` or `bugfix` — if missing, stop and report the malformed spec.
 - **Seal gate (tool-backed).** Call the **`spec` MCP tool** with `action: "seal"` (`mode:` still works) and the resolved `specPath`. It checks two things and returns one verdict. It re-hashes the `spec-contract` block against the stamped `contract_sha`: a **FAIL** (`TAMPERED`) means the contract was edited after DoR sealed it — **stop and report; do not execute a tampered spec** — while a `PASS WITH WARNINGS` (unsealed, no `contract_sha`) is allowed but noted. It also refuses a spec whose lifecycle is over: a **FAIL** naming `shipped` or `superseded` means that work was already delivered, and the request in hand needs a new spec whose `supersedes:` points at it. Do **not** compute the hash or re-check the terminal statuses yourself — the tool owns both. If the `spec` tool is unavailable, report the spec as unverified rather than guessing. A non-FAIL seal also **creates this task's metrics record** under `.marvin/metrics/` if it does not exist yet (ADR-0044), so a run abandoned after this point is still visible in the series; the write is fail-open and cannot change the verdict above.
 
+**Session status.** In the desktop Code tab, once the seal gate has not FAILed, set the session
+title to `[in progress] <task name>` by the protocol in `skills/task-start/references/session-status.md` (read it from the plugin;
+the `skills/…` path resolves through all three entry points, ADR-0008), deriving the name from
+the spec's title unless the title already carries one. Keep it there: `[waiting]` when a turn
+ends on a question, a SPEC GAP or a blocker the user must settle, `[in progress]` when the answer
+is acted on. The chained `/marvin:task-verify` and `/marvin:task-deliver` move it on. In the
+terminal, and in pipeline mode, skip it silently.
+
 ### 2.5 Resume check
 
 The spec is resolved and validated, so now ask what this session is walking into. Call the `spec`
