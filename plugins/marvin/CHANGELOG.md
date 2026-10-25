@@ -4,6 +4,30 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.33.0] — 2026-10-25
+
+The session title now shows where a task stands. In the desktop app's Code tab, the task pipeline
+and `/marvin:autopilot` keep it at `[<status>] <task name>`, for example
+`[in progress] New notifications page`.
+
+### Added
+
+- **Session status protocol** — `skills/task-start/references/session-status.md`: eight statuses
+  (`[in progress]`, `[waiting]`, `[spec ready]`, `[ci]`, `[pr ready]`, `[merged]`, `[halted]`,
+  `[closed]`), the rule that derives the task name from the request, and when a rename happens.
+  `task-start`, `task-implement`, `task-verify`, `task-deliver`, `pr-merge` and `autopilot` apply
+  it through `set_session_title`. Where no title tool exists (the terminal CLI), in pipeline mode
+  and in subagents, the protocol is skipped silently.
+
+### Changed
+
+- **The autopilot orchestrator's name may be a status title.** Children find the orchestrator by
+  its session title, so `marvin-pipe init` and `attach` now accept spaces, brackets and any
+  script in `--orch`. They still refuse surrounding whitespace, control characters, `"`, `\` and
+  `` ` ``, and names over 200 characters. The orchestrator follows every rename with
+  `marvin-pipe attach --orch "<new title>"`, and a child's role prompt tells it to report to the
+  name in its latest heartbeat reminder.
+
 ## [0.32.1] — 2026-10-24
 
 Makes the autopilot's `test` gate on marvin-toolkit itself take minutes instead of the 33 it took

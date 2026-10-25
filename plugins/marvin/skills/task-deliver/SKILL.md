@@ -17,7 +17,7 @@ Commit changes and create a pull request. This is the final phase — it gates o
 
 Call the **`verify` MCP tool** with `action: "gate"`, passing `specSlug` **whenever a spec exists** — resolve it the way `/marvin:task-verify` does (the spec's frontmatter `slug`, else its filename slug) rather than passing it only when it happens to be at hand. Since ADR-0044 the slug decides more than which artifact is judged: a gate call that resolves no slug writes no metrics record, so an omitted slug silently drops the task out of the series. It reads the run for that spec (`.marvin/task/runs/<slug>.md`, else `.marvin/task/verification.md`), parses the machine-readable `verify-result` verdict, compares the recorded provenance against the working tree in front of it, and returns a `deliver-gate` decision — do **not** eyeball the prose verdict yourself.
 
-- **BLOCK** — no `verification.md`, no parseable verdict, verdict **FAIL**, no test evidence, or **stale** evidence. **Stop.** Relay the gate's reason and tell the user what it asks for. Do not deliver.
+- **BLOCK** — no `verification.md`, no parseable verdict, verdict **FAIL**, no test evidence, or **stale** evidence. **Stop.** Relay the gate's reason and tell the user what it asks for. Do not deliver. Set the session status first (step 3.5).
 - **ALLOW** — verdict **PASS** or **PASS WITH WARNINGS**. Proceed. On PASS WITH WARNINGS, surface the warnings and confirm the user wants to proceed.
 
 Three cases the reason will name, each needing a different answer:
@@ -109,6 +109,21 @@ Blocked: {item} — Cause: {what prevents it, and what would unblock it}
 - [ ] Regression test (bugfix only)
 - [ ] All existing tests pass
 ```
+
+### 3.5 Session status
+
+In the desktop Code tab, move the session title by the protocol in `skills/task-start/references/session-status.md` (read it
+from the plugin; the `skills/…` path resolves through all three entry points, ADR-0008), keeping
+the task name it already carries:
+
+- the gate in step 1 refused → `[halted]`;
+- a draft PR opened because a semantic gate is still red → `[waiting]`;
+- otherwise run `gh pr checks <number>` once: checks pending → `[ci]`; every check passed, or
+  the repository runs none → `[pr ready]`; a check already failed → `[in progress]`, and say so.
+
+Do not poll the checks. When the session later learns their outcome (the user asks, or an app
+notice reports it), move `[ci]` to `[pr ready]`, or to `[in progress]` while a red check is fixed.
+In the terminal, and in pipeline mode, skip this step silently.
 
 ### 4. Record delivery on the spec
 
