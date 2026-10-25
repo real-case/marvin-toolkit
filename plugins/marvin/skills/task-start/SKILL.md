@@ -26,6 +26,16 @@ human intent (Phase 1) and AI execution (Phase 2) — it must be specific enough
 If no arguments, ask the user what they want to build or fix.
 **Pipeline mode:** see *Input* below.
 
+## Session status
+
+In the desktop Code tab, keep the session title at `[<status>] <task name>` by the protocol in
+`skills/task-start/references/session-status.md` (read it from the plugin before the first rename; the `skills/…` path resolves
+through all three entry points, ADR-0008). Here: `[in progress]` once Step 0 leaves on Path C or
+D (Paths A and B hand the request to another command, which sets its own); `[waiting]` whenever a
+turn ends on a question or confirmation intake cannot go past, and `[in progress]` again when the
+answer is acted on; `[spec ready]` once Step 9F or 9B has sealed the spec. In the terminal, and in
+pipeline mode, skip it silently.
+
 ---
 
 ## Step 0: Routing

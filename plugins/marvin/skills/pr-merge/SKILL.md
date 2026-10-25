@@ -31,7 +31,7 @@ Note the `baseRefName` — that is the branch to return to after merging (typica
 
 Surface the merge readiness and let the user judge:
 
-- `state` must be `OPEN` and `isDraft` false — refuse to merge a draft or a closed PR.
+- `state` must be `OPEN` and `isDraft` false — refuse to merge a draft or a closed PR. An already `MERGED` or `CLOSED` PR still updates the session status (step 6).
 - `mergeable` / `mergeStateStatus` — flag conflicts (`CONFLICTING`), pending or failing checks (`BLOCKED`, `UNSTABLE`), or behind-base.
 - `reviewDecision` — note if it is `REVIEW_REQUIRED` or `CHANGES_REQUESTED`.
 
@@ -59,6 +59,15 @@ If the working tree is dirty and blocks the checkout, stop and tell the user —
 ### 5. Report
 
 Confirm the outcome: the merged PR (number + URL), the merge method used, that the head branch was deleted, and that the local checkout is now on `<baseRefName>` at the latest commit (`git log -1 --oneline`).
+
+### 6. Session status
+
+In the desktop Code tab, when the session title carries a status prefix from
+`skills/task-start/references/session-status.md` (read it from the plugin; the `skills/…` path resolves through all three entry
+points, ADR-0008), change it to `[merged]` after a successful merge, keeping the task name. When
+step 1 finds the PR already `MERGED` or `CLOSED`, set `[merged]` or `[closed]` from that state
+instead. A title without a prefix is the user's own: leave it alone. In the terminal there is no
+title tool: skip this step silently.
 
 ## Guidelines
 

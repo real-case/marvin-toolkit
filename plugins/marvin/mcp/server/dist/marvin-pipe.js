@@ -32924,7 +32924,8 @@ function childKey(before, name) {
 }
 var ORCHESTRATOR_FILE = "orchestrator.txt";
 function assertOrchestratorName(name) {
-  if (!/^[\w.-]+$/.test(name)) {
+  if (name.length > 200 || name !== name.trim() || // eslint-disable-next-line no-control-regex
+  !/^[^\u0000-\u001f\u007f"\\`]+$/.test(name)) {
     throw new Error(`invalid orchestrator name: ${JSON.stringify(name)}`);
   }
 }
