@@ -9,6 +9,7 @@ import { useHostTheme } from "./host-theme";
 import { createMockHost, type WidgetSeam } from "./mock-host";
 
 import { AuditWidget } from "../widgets/audit/AuditWidget";
+import { AutopilotStatusWidget } from "../widgets/autopilot-status/AutopilotStatusWidget";
 import { DashboardWidget } from "../widgets/dashboard/DashboardWidget";
 import { HandoffsWidget } from "../widgets/handoffs/HandoffsWidget";
 import { HelpWidget } from "../widgets/help/HelpWidget";
@@ -19,6 +20,7 @@ import { TaskSummaryWidget } from "../widgets/task-summary/TaskSummaryWidget";
 import { TrackerListWidget } from "../widgets/tracker-list/TrackerListWidget";
 
 import { auditListFixture } from "../widgets/audit/fixture";
+import { runningFixture } from "../widgets/autopilot-status/fixture";
 import { dashboardFixture } from "../widgets/dashboard/fixture";
 import { handoffsFixture } from "../widgets/handoffs/fixture";
 import { helpFixture } from "../widgets/help/fixture";
@@ -33,7 +35,7 @@ import { trackerListFixture } from "../widgets/tracker-list/fixture";
  *
  * Three groups, deliberately in one file:
  *   1. the resolver itself, driven through a real `App` and the mock host;
- *   2. a behavioural table over ALL NINE widgets, so the capability is proven
+ *   2. a behavioural table over ALL TEN widgets, so the capability is proven
  *      where it ships rather than on one representative;
  *   3. a structural scan asserting both wirings of every widget resolve AND
  *      forward the theme — the only reachable proof for the live path, which
@@ -141,7 +143,7 @@ describe("useHostTheme — the resolver", () => {
   });
 });
 
-// ── 2. the nine widgets ──────────────────────────────────────────────────────
+// ── 2. the ten widgets ───────────────────────────────────────────────────────
 
 interface WidgetRow {
   /** Widget directory name — also what the structural scan derives its names from. */
@@ -155,6 +157,11 @@ const WIDGETS: WidgetRow[] = [
     dir: "audit",
     mount: (seam) => <AuditWidget seam={seam} />,
     payload: payload(auditListFixture),
+  },
+  {
+    dir: "autopilot-status",
+    mount: (seam) => <AutopilotStatusWidget seam={seam} />,
+    payload: payload(runningFixture),
   },
   {
     dir: "dashboard",
@@ -301,7 +308,7 @@ function pascal(dir: string): string {
  * The braces are matched from the `{` that follows the parameter list's closing
  * `)` — never from the first `{` after the declaration, which on every seam
  * wiring is the destructured `{ seam }` parameter and yields an eight-character
- * "body" that reports a false negative on all nine widgets.
+ * "body" that reports a false negative on all ten widgets.
  */
 function functionBody(source: string, name: string): string {
   const declaration = source.indexOf(`function ${name}(`);
@@ -363,7 +370,7 @@ describe("wiring coverage", () => {
 
       // The EXACT statement, not a substring. A substring match on
       // `useHostTheme(` accepts `useHostTheme(app, false)` and
-      // `useHostTheme(null, isConnected)`, either of which would leave all nine
+      // `useHostTheme(null, isConnected)`, either of which would leave all ten
       // shipped documents ignoring the host theme with the whole suite green;
       // matching through the semicolon additionally rejects a `?? "light"`
       // default appended at the wiring site, which no behavioural test here can

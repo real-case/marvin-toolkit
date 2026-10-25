@@ -44,6 +44,7 @@ const OUT_DIR = join(here, "..", "public", "widget-demos");
  */
 export const PRIMARY_FIXTURE = {
   audit: "auditListFixture",
+  "autopilot-status": "runningFixture",
   dashboard: "dashboardFixture",
   handoffs: "handoffsFixture",
   help: "helpFixture",

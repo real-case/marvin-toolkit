@@ -17,8 +17,9 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const catalog = JSON.parse(readFileSync(join(here, "../src/data/catalog.json"), "utf8"));
 
-// All nine committed widgets are now present: spec 011 added task-detail (to `steer`) and
-// task-summary (to `review & share`), which the Phase-3 shell was missing.
+// All ten committed widgets are present: spec 011 added task-detail (to `steer`) and
+// task-summary (to `review & share`), which the Phase-3 shell was missing, and ADR-0051 added
+// autopilot-status (to `steer`).
 //
 // These are COMMANDS, not widget names — the two namespaces differ, and printing a widget name as
 // a command is how `/marvin:task-list` and `/marvin:task-detail` (neither of which exists) once
@@ -28,6 +29,7 @@ const catalog = JSON.parse(readFileSync(join(here, "../src/data/catalog.json"), 
 const WIDGET_LABELS = [
   "/marvin:help",
   "/marvin:dashboard",
+  "/marvin:autopilot",
   "/marvin:track-list",
   "/marvin:track-show",
   "/marvin:reports",
@@ -198,7 +200,7 @@ test("toolbox holds both themes and responds from 360 to 1440 without horizontal
 
 test("toolbox ships exactly one island and no eager widget embed", async ({ page }) => {
   await page.goto("/toolbox");
-  // One island: the demo canvas. The nine minis stay plain Astro markup on purpose — wrapping
+  // One island: the demo canvas. The ten minis stay plain Astro markup on purpose — wrapping
   // them would hand `.wgrid > * { min-width: 0 }` to the island wrapper and drop each mini a
   // level, reintroducing the 360px overflow trap.
   await expect(page.locator("astro-island")).toHaveCount(1);
