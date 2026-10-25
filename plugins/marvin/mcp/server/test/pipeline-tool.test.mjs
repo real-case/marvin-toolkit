@@ -456,9 +456,10 @@ const TOOLS = [
   "audit",
   "report",
   "pipeline",
+  "autopilot-report",
 ];
 
-test("the server registers fifteen tools, pipeline last, text-only", async () => {
+test("the server registers sixteen tools, pipeline text-only before autopilot-report", async () => {
   const listed = await withSession({}, (s) => s.request("tools/list", {}));
   assert.deepEqual(
     listed.tools.map((t) => t.name),

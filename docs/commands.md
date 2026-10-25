@@ -231,7 +231,7 @@ an `N archived` footer while the archive holds anything. The
 
 ## Widgets on rich hosts
 
-On an MCP host that supports the Apps widget layer, nine widgets render an interactive
+On an MCP host that supports the Apps widget layer, ten widgets render an interactive
 panel in addition to the text output ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
 The panel is additive, so a text-only host shows the same information as text.
 
@@ -246,10 +246,11 @@ The panel is additive, so a text-only host shows the same information as text.
 | `/marvin:dashboard` | The whole-toolbox status panel. |
 | `/marvin:help` | The welcome dashboard — summary, MCP servers, and the command index. |
 | `/marvin:reports` | The unified viewer over every generated `.marvin/` report. |
+| `/marvin:autopilot` | The run's status card, at least every five minutes ([ADR-0051](./adr/0051-periodic-autopilot-status-card.md)). |
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to fifteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to sixteen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -270,6 +271,7 @@ but they are not typed as slash commands.
 | `audit` | The structured `sec-*` findings recovered from `.marvin/security/`. |
 | `report` | The unified report list scanned from `.marvin/` — security, refactor, task, handoff, critique — plus the `triage` action that reconciles findings against the stored baseline. |
 | `pipeline` | The autopilot pipeline's read-only door — `paths` locates the `marvin-pipe` CLI and its assets, `status` reads one run back. Runs are driven by the CLI, never by this tool. |
+| `autopilot-report` | One periodic status report of an autopilot run as a card, written by `marvin-pipe await --report-min` ([ADR-0051](./adr/0051-periodic-autopilot-status-card.md)). |
 
 ## Agents
 

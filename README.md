@@ -10,7 +10,7 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **60 prompts, 15 MCP tools, 10 agents, and 9 interactive widgets**
+Under the hood it ships **60 prompts, 16 MCP tools, 10 agents, and 10 interactive widgets**
 across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
@@ -213,14 +213,15 @@ every setting.
 
 ## Interactive widgets
 
-On an MCP host that supports the Apps widget layer, nine widgets render an interactive
+On an MCP host that supports the Apps widget layer, ten widgets render an interactive
 panel in addition to the text output
 ([ADR-0024](./docs/adr/0024-mcp-apps-widget-architecture.md)). The panel is additive, so a
 text-only host shows the same information as text and no command depends on a rich host.
 The widget-backed commands are `/marvin:track-list` (which fronts both the board list and
 the tracked link-out view), `/marvin:track-show`, `/marvin:task-summary`,
 `/marvin:sec-report`, `/marvin:handoff-list`, `/marvin:dashboard`, `/marvin:help`, and
-`/marvin:reports`.
+`/marvin:reports`, and `/marvin:autopilot` shows its run as a status card at least every five
+minutes ([ADR-0051](./docs/adr/0051-periodic-autopilot-status-card.md)).
 
 ## Development lifecycle
 
@@ -303,6 +304,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0048](./docs/adr/0048-shell-quoted-test-one-placeholders.md) | A `test_one` placeholder is shell-quoted by marvin, not by the template author | Accepted |
 | [0049](./docs/adr/0049-whole-file-reading-of-test-one.md) | The seal stage reads `test_one` for a whole file instead of refusing its per-test parts | Accepted |
 | [0050](./docs/adr/0050-per-run-calibration-files.md) | One calibration file per finished run, not one appended log | Proposed |
+| [0051](./docs/adr/0051-periodic-autopilot-status-card.md) | The autopilot reports at least every five minutes, as one status card | Proposed |
 
 ## Contributing
 

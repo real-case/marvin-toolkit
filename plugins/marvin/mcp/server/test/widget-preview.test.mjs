@@ -197,7 +197,7 @@ test("resolves any bound widget through tools-list and rejects an unknown name",
     const bound = readdirSync(WIDGETS_DIR)
       .filter((f) => f.endsWith(".html"))
       .map((f) => f.replace(/\.html$/, ""));
-    assert.equal(bound.length, 9, "the committed widget set is the expected size");
+    assert.equal(bound.length, 10, "the committed widget set is the expected size");
     for (const name of bound) {
       assert.match(unknown.stderr, new RegExp(`\\b${name}\\b`), `lists the ${name} widget`);
     }

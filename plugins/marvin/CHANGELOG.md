@@ -4,6 +4,35 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.34.0] — 2026-10-25
+
+A running autopilot now reports at least every five minutes, and every report is the same status
+card: the task and a status pill, the seven pipeline stages, elapsed time, cost, iteration and
+rejections, a callout when the run needs an answer or has stopped, the events since the previous
+report, and when the next one is due ([ADR-0051](../../docs/adr/0051-periodic-autopilot-status-card.md)).
+
+### Added
+
+- **`marvin-pipe await --report-min <m>`** — events wait for the end of the interval and arrive
+  in one report, written to `<runDir>/status-reports/<n>.json` and announced as
+  `REPORT <n> <path>`. A new judgment, a dead engine or a terminal stage returns at once with a
+  report of its own; a repeat of one already reported returns its line alone, so a standing
+  judgment does not produce a card every minute. An interval with no events still produces a
+  report, which names the children still working. Without the flag `await` is unchanged.
+- **`autopilot-report` tool** (the sixteenth) — reads one report back, inside the state root,
+  with the orchestrator's translation of the event texts and callout, and returns the card: the
+  new `autopilot-status` widget on a host that renders MCP Apps, the same card in Markdown
+  elsewhere. A translation list of the wrong length is refused.
+- **`autopilot-status` widget** (the tenth) — variant A of the approved design, on the family's
+  `.mvroot` tokens, light and dark.
+
+### Changed
+
+- **`/marvin:autopilot` shows the card instead of one line per event.** The orchestrator arms
+  `await --report-min 5`, translates each report's events, and shows the card; the session-status
+  title follows the report's stage. An answer the engine refused and the reason the engine
+  stopped now arrive as events inside the report.
+
 ## [0.33.0] — 2026-10-25
 
 The session title now shows where a task stands. In the desktop app's Code tab, the task pipeline

@@ -201,10 +201,12 @@ async function awaitCommand(flags: Flags): Promise<void> {
   const runDir = runDirOf(flags);
   const deadlineMin = positive(flags, "deadline-min") ?? AWAIT_DEADLINE_MIN;
   const repeatSec = positive(flags, "repeat-sec");
+  const reportMin = positive(flags, "report-min");
   const lines = await awaitWork(runDir, {
     pollMs: AWAIT_POLL_MS,
     deadlineMs: deadlineMin * 60_000,
     ...(repeatSec !== undefined ? { repeatMs: repeatSec * 1000 } : {}),
+    ...(reportMin !== undefined ? { reportMs: reportMin * 60_000 } : {}),
   });
   process.stdout.write(`${lines.join("\n")}\n`);
 }
@@ -412,6 +414,7 @@ const OPTIONS = {
   "answered-by": { type: "string" },
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
+  "report-min": { type: "string" },
   spec: { type: "string" },
   suite: { type: "string" },
   variant: { type: "string" },

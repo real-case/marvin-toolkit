@@ -161,7 +161,7 @@ These halts deserve a look before you ask:
   recommend `cancel`.
 - **A usage limit** (`<role> limited`). The engine already waited it out: until the reset the
   limit's text named, else `caps.limit_wait_minutes`, at most `caps.limit_retries` times, each
-  announced as `EVENT note <role> hit a usage limit; retrying at …`. A halt here means the limit
+  reported as the event `<role> hit a usage limit; retrying at …`. A halt here means the limit
   kept coming or resets more than six hours away (a weekly limit). A retry starts the waits over;
   say when the limit resets, if the detail names it.
 - **A stall** (`<role> stalled`). The engine already ended the silent child and started the same
@@ -170,7 +170,7 @@ These halts deserve a look before you ask:
 - **A child that could not start** (`<role> failed` whose `detail` is the CLI's own message, such
   as `Failed to authenticate: OAuth session expired and could not be refreshed`). The engine
   already relaunched it `caps.launch_retries` times (3), one, two and four minutes apart, each
-  announced as `EVENT note <role> could not start (…); retrying at …`, and then spent the crash
+  reported as the event `<role> could not start (…); retrying at …`, and then spent the crash
   retry too. The cause is outside the run: the login, the network, the provider. Tell the user
   what the message says; once it is fixed (`claude login` for an expired session), recommend
   `retry`, which starts the launch budget over.
@@ -213,5 +213,5 @@ If the repository has no CI at all, say so: `proceed` is then the expected answe
 - `judgment <id> already answered`: a repeat of a judgment you already answered. Do nothing.
 - `judgment <other> is pending, not <id>`: an older judgment is open; handle that one.
 
-An answer the engine still refuses after `judge` accepted it is reported by `await` as
-`EVENT note answer to <id> refused: <reason>`, and the judgment is open again. Decide afresh.
+An answer the engine still refuses after `judge` accepted it arrives in the next report as the
+event `answer to <id> refused: <reason>`, and the judgment is open again. Decide afresh.
