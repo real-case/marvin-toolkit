@@ -525,3 +525,28 @@ test("report tool binds the ui:// widget and the resource serves the committed h
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * The status card's copy button writes a PNG through `navigator.clipboard.write`, which a host's
+ * iframe refuses without `allow="clipboard-write"`. The resource asks for it in `_meta.ui`, on the
+ * listing and on the read content item; a widget that asks for nothing carries no `_meta`.
+ */
+test("autopilot-status resource requests clipboard-write; others request nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-widget-"));
+  try {
+    await withSession({ env: { CLAUDE_PROJECT_DIR: dir, MARVIN_TASKS_DIR: dir } }, async (s) => {
+      const uri = "ui://marvin/autopilot-status.html";
+      const want = { permissions: { clipboardWrite: {} } };
+      const resources = await s.request("resources/list", {});
+      assert.deepEqual(resources.resources.find((r) => r.uri === uri)?._meta?.ui, want);
+      const read = await s.request("resources/read", { uri });
+      assert.deepEqual(read.contents[0]._meta?.ui, want);
+
+      assert.equal(resources.resources.find((r) => r.uri === URI)?._meta, undefined);
+      const plain = await s.request("resources/read", { uri: URI });
+      assert.equal(plain.contents[0]._meta, undefined);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

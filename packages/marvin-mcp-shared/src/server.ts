@@ -320,12 +320,13 @@ function registerTool<TInput extends z.ZodTypeAny>(
  */
 function registerResource(server: McpServer, def: ResourceDef): void {
   const mimeType = def.mimeType ?? "text/html";
+  const meta = def.meta ? { _meta: def.meta } : {};
   server.registerResource(
     def.name,
     def.uri,
-    { description: def.description, mimeType },
+    { description: def.description, mimeType, ...meta },
     async () => ({
-      contents: [{ uri: def.uri, mimeType, text: await def.read() }],
+      contents: [{ uri: def.uri, mimeType, text: await def.read(), ...meta }],
     }),
   );
 }

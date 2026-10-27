@@ -124,6 +124,12 @@ export interface ResourceDef {
   description?: string;
   /** Body MIME type. Defaults to `text/html` (the MCP Apps widget type). */
   mimeType?: string;
+  /**
+   * `_meta` sent with both the listing and the read content item, e.g. an MCP Apps widget's
+   * `{ ui: { permissions: { clipboardWrite: {} } } }`, which the host turns into the iframe's
+   * `allow` attribute. Omitted: neither carries a `_meta`.
+   */
+  meta?: Record<string, unknown>;
   /** Produce the resource body (e.g. the widget's bundled HTML). */
   read: () => string | Promise<string>;
 }
