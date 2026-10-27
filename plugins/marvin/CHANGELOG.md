@@ -25,6 +25,13 @@ the rejection cap.
   `.claude/` still covers none of them. The protected list itself, which the per-child boundary
   hook also enforces, is unchanged, and so is the hashing of ignored protected files.
 
+### Changed
+
+- **A repeated protected-path rejection that no executor can fix halts at once.** When a gate
+  rejects the same protected paths as the gate before it, and every one of them changed outside
+  the committed diff, the run halts on the second rejection instead of spending a third executor
+  on the cap; the reason names `pipeline.protected_volatile`.
+
 ## [0.34.0] — 2026-10-25
 
 A running autopilot now reports at least every five minutes, and every report is the same status

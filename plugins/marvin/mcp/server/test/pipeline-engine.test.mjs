@@ -883,6 +883,60 @@ test("a rejection that mixes a service file with real work climbs as before", ()
   assert.equal(work.run.rung, 1);
 });
 
+// r20261027-0958-32dd: the host's hooks rewrote five ignored files under `.claude/` in every
+// iteration, the gate rejected the same five three times, and no executor could have fixed them.
+const snapshotOnly = (file, i, evidence = "protected snapshot") =>
+  finding({
+    id: `P-${i + 1}`,
+    severity: "blocker",
+    category: "scope",
+    file,
+    criterion: undefined,
+    claim: `${file} is a protected path`,
+    evidence,
+  });
+const HOOK_STATE = [".claude/.rules-loaded/4186be39.json", ".claude/.tier1-stamp"];
+
+test("the same protected paths changed outside the committed diff in two gates in a row halt at once", () => {
+  const gated = go(executingRun(), child("executor", executorDone())).run;
+  const first = go(gated, {
+    kind: "gate",
+    report: report(false),
+    findings: HOOK_STATE.map((f, i) => snapshotOnly(f, i)),
+  });
+  assert.equal(judgmentOf(first), undefined, "the first one goes back to the executor");
+  const again = go(first.run, child("executor", executorDone())).run;
+  const second = go(again, {
+    kind: "gate",
+    report: report(false),
+    findings: HOOK_STATE.map((f, i) =>
+      snapshotOnly(f, i, i === 1 ? "protected snapshot, post-gate snapshot" : undefined),
+    ),
+  });
+  assert.equal(judgmentOf(second), "halt");
+  assert.equal(second.run.rejections.length, 2);
+  assert.match(payloadOf(second).reason, /outside the committed diff in 2 gates in a row/);
+  assert.match(payloadOf(second).reason, /protected_volatile/);
+});
+
+test("a repeated protected path the executor committed, or a changed set, still goes back to it", () => {
+  const gated = go(executingRun(), child("executor", executorDone())).run;
+  const rejectTwice = (firstFindings, secondFindings) => {
+    const first = go(gated, { kind: "gate", report: report(false), findings: firstFindings });
+    const again = go(first.run, child("executor", executorDone())).run;
+    return go(again, { kind: "gate", report: report(false), findings: secondFindings });
+  };
+  const committed = HOOK_STATE.map((f, i) =>
+    snapshotOnly(f, i, "protected snapshot, committed diff"),
+  );
+  assert.equal(judgmentOf(rejectTwice(committed, committed)), undefined);
+  const one = [snapshotOnly(HOOK_STATE[0], 0)];
+  const two = HOOK_STATE.map((f, i) => snapshotOnly(f, i));
+  assert.equal(judgmentOf(rejectTwice(one, two)), undefined);
+  const mixed = [...two, finding({ category: "gate", file: undefined })];
+  assert.equal(judgmentOf(rejectTwice(mixed, mixed)), undefined);
+});
+
 test("a retro that fails twice, or hits a usage limit, still finalizes without a retro", () => {
   const retro = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run;
   const first = go(retro, child("retro", null, "crashed"));

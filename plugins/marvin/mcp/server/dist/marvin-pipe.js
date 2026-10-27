@@ -20378,6 +20378,7 @@ function buildReport(parts) {
   const passed = parts.gates.every((g) => g.result === "pass" || g.result === "flaky") && parts.undeclared.length === 0 && parts.protected.length === 0 && parts.checks.every((c) => c.severity === "minor") && parts.sealed.every((s) => s.ok) && parts.blockers.length === 0;
   return { ...parts, passed };
 }
+var outsideCommittedDiff = (f) => /^P-\d+$/.test(f.id) && f.category === "scope" && f.file !== void 0 && !f.evidence.split(", ").includes("committed diff");
 function reportFindings(r) {
   const out = [];
   for (const g of r.gates) {
@@ -24543,6 +24544,10 @@ function step(run2, obs, rubric, now) {
     }
     return { run: reopened, actions: [action] };
   };
+  const sameSet = (a, b) => {
+    const key = (x) => [...new Set(x)].sort().join("\0");
+    return key(a) === key(b);
+  };
   const reject = (r, source, found) => {
     const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
@@ -24573,6 +24578,12 @@ function step(run2, obs, rubric, now) {
     const halted = (reason2) => ask({ ...next, haltRole: "executor" }, "halt", { reason: reason2, findings: fs });
     const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
+    const lastRejection = r.rejections.at(-1);
+    if (!bookkeeping && source === "gate" && lastRejection?.source === "gate" && fs.every(outsideCommittedDiff) && sameSet(prints, lastRejection.fingerprints)) {
+      return halted(
+        `the same ${fs.length} protected ${fs.length === 1 ? "path" : "paths"} changed outside the committed diff in 2 gates in a row, which no executor can fix: if the project's own hooks or gate scripts write them and git ignores them, declare them in pipeline.protected_volatile`
+      );
+    }
     if (!bookkeeping && (counted >= rubric.caps.rejections || stepNow === void 0 || stepNow === "halt")) {
       return halted(`rejected ${counted} times (last: ${source})`);
     }

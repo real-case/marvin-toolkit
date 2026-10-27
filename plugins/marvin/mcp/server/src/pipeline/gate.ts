@@ -797,6 +797,17 @@ export function buildReport(parts: Omit<GateReport, "passed">): GateReport {
   return { ...parts, passed };
 }
 
+/**
+ * A protected-path finding that only a snapshot saw: the file changed on disk, never in the
+ * committed diff. The executor did not commit it and, the path being protected, cannot remove it
+ * either, so a repeat of it is not the executor's to fix (`decide`'s early halt).
+ */
+export const outsideCommittedDiff = (f: Finding) =>
+  /^P-\d+$/.test(f.id) &&
+  f.category === "scope" &&
+  f.file !== undefined &&
+  !f.evidence.split(", ").includes("committed diff" satisfies ProtectedSource);
+
 export function reportFindings(r: GateReport): Finding[] {
   const out: Finding[] = [];
   for (const g of r.gates) {
