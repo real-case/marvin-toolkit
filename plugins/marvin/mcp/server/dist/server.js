@@ -28918,8 +28918,9 @@ function registerTool(server, def, onInvoke) {
 }
 function registerResource(server, def) {
   const mimeType = def.mimeType ?? "text/html";
-  server.registerResource(def.name, def.uri, { description: def.description, mimeType }, async () => ({
-    contents: [{ uri: def.uri, mimeType, text: await def.read() }]
+  const meta = def.meta ? { _meta: def.meta } : {};
+  server.registerResource(def.name, def.uri, { description: def.description, mimeType, ...meta }, async () => ({
+    contents: [{ uri: def.uri, mimeType, text: await def.read(), ...meta }]
   }));
 }
 
@@ -32224,7 +32225,10 @@ var WIDGETS = [
     name: "autopilot-status",
     uri: "ui://marvin/autopilot-status.html",
     file: join("widgets", "autopilot-status.html"),
-    description: "Marvin autopilot status \u2014 one periodic report of an autopilot run as a card: stage rail, elapsed time, cost, iteration, rejections, the interval's events and the next report's deadline (ADR-0051)."
+    description: "Marvin autopilot status \u2014 one periodic report of an autopilot run as a card: stage rail, elapsed time, cost, iteration, rejections, the interval's events and the next report's deadline (ADR-0051).",
+    // The card's copy button writes a PNG with `navigator.clipboard.write`, which a host's
+    // iframe refuses unless its `allow` attribute grants `clipboard-write`.
+    ui: { permissions: { clipboardWrite: {} } }
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -32242,6 +32246,7 @@ function buildWidgetResources(packRoot2) {
     uri: w.uri,
     description: w.description,
     mimeType: WIDGET_MIME,
+    ...w.ui ? { meta: { ui: w.ui } } : {},
     read: () => readFileSync(join(packRoot2, w.file), "utf8")
   }));
 }
@@ -40666,7 +40671,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.36.0";
+var VERSION = "0.36.1";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
