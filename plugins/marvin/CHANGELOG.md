@@ -4,6 +4,37 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.36.0] — 2026-10-27
+
+The autopilot status card is reworked after a design review. It no longer prints the task, which
+is the whole prompt the run started from and filled most of the card; it names the session
+instead, and it can show the whole run rather than one interval.
+
+### Added
+
+- **Session name** in the card's header: the orchestrator's session title without its status
+  prefix, at most two lines, then an ellipsis with the full name as a tooltip. The report's new
+  `sessionName` field carries it, read from `orchestrator.txt`.
+- **Full history.** The events block still opens on this interval; a toggle unfolds every earlier
+  report's events above a "since the last report" rule. The `autopilot-report` tool now keeps the
+  orchestrator's translations beside each report (`status-reports/<n>.text.json`) and hands the
+  widget the earlier events as `earlier` and `earlierOmitted`.
+- **Session footer**: the working child's role, model, effort and context use (a bar and
+  "42% · 84k / 200k", amber from 80%). The report's new `session` field is read by `sessionOf`
+  from the child's `stream-json` log: the newest top-level turn's tokens, and the context window
+  from a finished child of the same model; either is left out when no log says it.
+- **Copy as image** in the header: the card as it is on screen, unfolded history included, as a
+  PNG on the clipboard; where the host's iframe may not write the clipboard, saved as a file
+  through the host's `ui/download-file`.
+
+### Changed
+
+- The header reads `marvin · <run> · report #n`; the rail spans the card's full width, with the
+  first label starting and the last ending under its dot.
+- The footer that named the next report's deadline, or the final report and its PR, is replaced
+  by the session footer, on the card and in its Markdown.
+- Both new report fields default to null, so a report written before them still reads.
+
 ## [0.35.0] — 2026-10-27
 
 The autopilot gate no longer rejects a run over state the project's own hooks write under a

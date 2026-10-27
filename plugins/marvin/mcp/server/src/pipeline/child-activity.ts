@@ -69,6 +69,58 @@ export function pendingToolCall(log: string): ToolCall | null {
   return [...pending.values()].at(-1) ?? null;
 }
 
+/** What a child's log says about its context: the model, the tokens in its newest turn, the window. */
+export interface ContextUse {
+  model: string | null;
+  tokens: number | null;
+  window: number | null;
+}
+
+const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+
+/**
+ * The context the child's newest top-level assistant turn carried (its input, cache reads and
+ * cache writes together), the model it ran on, and the context window its `result` line reports
+ * for that model. A subagent's turns are skipped, as in {@link pendingToolCall}: they fill the
+ * subagent's context, not the child's. A field no line in `log` gives is null.
+ */
+export function contextUse(log: string): ContextUse {
+  const use: ContextUse = { model: null, tokens: null, window: null };
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (entry.type === "system" && entry.subtype === "init" && typeof entry.model === "string") {
+      use.model = entry.model;
+    } else if (entry.type === "assistant" && entry.parent_tool_use_id == null) {
+      const message = entry.message as
+        { model?: unknown; usage?: Record<string, unknown> } | undefined;
+      if (typeof message?.model === "string") use.model = message.model;
+      const u = message?.usage;
+      if (u) {
+        use.tokens =
+          count(u.input_tokens) +
+          count(u.cache_read_input_tokens) +
+          count(u.cache_creation_input_tokens);
+      }
+    } else if (
+      entry.type === "result" &&
+      typeof entry.modelUsage === "object" &&
+      entry.modelUsage
+    ) {
+      const usage = entry.modelUsage as Record<string, { contextWindow?: unknown }>;
+      const own = use.model === null ? undefined : usage[use.model];
+      const window = (own ?? Object.values(usage)[0])?.contextWindow;
+      if (typeof window === "number" && window > 0) use.window = window;
+    }
+  }
+  return use;
+}
+
 /**
  * The end of the child's log and when it was last written, or null when it cannot be read. Only
  * the tail is read: a call older than it is not found, which is the price of reading it often.

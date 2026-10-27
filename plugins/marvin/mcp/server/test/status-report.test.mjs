@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -64,6 +64,8 @@ const build = (run, o = {}) =>
     since: new Date(NOW.getTime() - 300_000),
     now: NOW,
     intervalMs: 300_000,
+    orchestrator: "Autopilot",
+    session: null,
     ...o,
   });
 const states = (report) => report.rail.map((s) => `${s.key}:${s.state}`);
@@ -243,4 +245,112 @@ test("a terminal stage writes one final report, then returns its line alone", as
   assert.equal(first[1], "STAGE ready");
   assert.equal(reportOf(first[0]).final, true);
   assert.deepEqual(await poll(), ["STAGE ready"]);
+});
+
+test("the session name drops the title's status prefix, and nothing left is null", () => {
+  assert.equal(sr.sessionName("[in progress] Отчёт автопилота"), "Отчёт автопилота");
+  assert.equal(sr.sessionName("autopilot-1"), "autopilot-1");
+  assert.equal(sr.sessionName("[waiting]  "), null);
+  assert.equal(build(baseRun(), { orchestrator: "[ci] Card" }).sessionName, "Card");
+});
+
+const line = (o) => JSON.stringify(o);
+const turn = (tokens, o = {}) =>
+  line({
+    type: "assistant",
+    parent_tool_use_id: null,
+    message: {
+      model: "claude-opus-5-5",
+      usage: { input_tokens: 2, cache_read_input_tokens: tokens, cache_creation_input_tokens: 10 },
+    },
+    ...o,
+  });
+
+test("the footer's session is the running child, its context from its newest top-level turn", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-session-"));
+  const run = baseRun({
+    children: [
+      child({ name: "r-1025-planner-0", role: "planner", status: "done" }),
+      child({
+        name: "r-1025-executor-1",
+        status: "running",
+        assignment: { model: "opus", effort: "medium" },
+      }),
+    ],
+  });
+  writeFileSync(
+    join(dir, "r-1025-planner-0.log.jsonl"),
+    [
+      line({ type: "system", subtype: "init", model: "claude-opus-5-5" }),
+      turn(1000),
+      line({ type: "result", modelUsage: { "claude-opus-5-5": { contextWindow: 1_000_000 } } }),
+    ].join("\n"),
+  );
+  writeFileSync(
+    join(dir, "r-1025-executor-1.log.jsonl"),
+    [
+      turn(200_000),
+      // A subagent's turn fills the subagent's context, not the child's.
+      turn(900_000, { parent_tool_use_id: "toolu_1" }),
+      "{not json",
+    ].join("\n"),
+  );
+  assert.deepEqual(sr.sessionOf(dir, run), {
+    name: "r-1025-executor-1",
+    role: "executor",
+    model: "claude-opus-5-5",
+    effort: "medium",
+    contextTokens: 200_012,
+    contextWindow: 1_000_000,
+  });
+});
+
+test("with no child running, the newest child is shown; an unreadable log leaves its figures null", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-session-"));
+  assert.equal(sr.sessionOf(dir, baseRun()), null);
+  const run = baseRun({
+    children: [
+      child({
+        name: "r-1025-verifier-1",
+        role: "verifier",
+        assignment: { model: "sonnet", effort: "low" },
+      }),
+    ],
+  });
+  assert.deepEqual(sr.sessionOf(dir, run), {
+    name: "r-1025-verifier-1",
+    role: "verifier",
+    model: "sonnet",
+    effort: "low",
+    contextTokens: null,
+    contextWindow: null,
+  });
+});
+
+test("await writes the session name from orchestrator.txt and the session from the logs", async () => {
+  const dir = newRun({
+    stage: "executing",
+    children: [child({ name: "r-1025-executor-1", status: "running" })],
+  });
+  writeFileSync(join(dir, "orchestrator.txt"), "[in progress] Карточка\n");
+  writeFileSync(join(dir, "r-1025-executor-1.log.jsonl"), turn(5000));
+  const release = loop.acquireLock(dir);
+  try {
+    const lines = await loop.awaitWork(dir, { pollMs: 1, deadlineMs: 60_000, reportMs: 1 });
+    const report = reportOf(lines[0]);
+    assert.equal(report.sessionName, "Карточка");
+    assert.equal(report.session.contextTokens, 5012);
+    assert.equal(report.session.model, "claude-opus-5-5");
+  } finally {
+    release();
+  }
+});
+
+test("a report written before the session fields existed still reads, with both null", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-report-"));
+  const { sessionName: _n, session: _s, ...old } = build(baseRun());
+  sr.writeReport(dir, { ...old, n: 1 });
+  const back = sr.readReport(dir, 1);
+  assert.equal(back.sessionName, null);
+  assert.equal(back.session, null);
 });

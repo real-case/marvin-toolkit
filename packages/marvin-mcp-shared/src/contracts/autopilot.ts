@@ -44,6 +44,22 @@ export const AutopilotEvent = z.object({
 });
 export type AutopilotEvent = z.infer<typeof AutopilotEvent>;
 
+/**
+ * The child session the card's footer describes: the one running, else the one that ran last.
+ * `model` is the model the session reported (`claude-opus-5-5`), else the one it was assigned
+ * (`opus`). The context figures come from the session's newest top-level assistant turn; the
+ * window from a finished session of the same model. Either is null when no log says it.
+ */
+export const AutopilotSession = z.object({
+  name: z.string(),
+  role: z.string(),
+  model: z.string(),
+  effort: z.string(),
+  contextTokens: z.number().int().min(0).nullable(),
+  contextWindow: z.number().int().min(1).nullable(),
+});
+export type AutopilotSession = z.infer<typeof AutopilotSession>;
+
 export const AutopilotReport = z.object({
   version: z.literal(1),
   runId: z.string(),
@@ -57,8 +73,14 @@ export const AutopilotReport = z.object({
   /** The run will not move again: ready, halted, or closed. */
   final: z.boolean(),
   lang: z.string(),
-  /** The task as the user wrote it. */
+  /** The task as the user wrote it. Kept for readers; the card shows `sessionName` instead. */
   task: z.string(),
+  /**
+   * The orchestrating session's name with its status prefix taken off (`[in progress] Report
+   * card` → `Report card`), or null when it has none left. A report written before the field
+   * existed reads as null.
+   */
+  sessionName: z.string().nullable().default(null),
   state: AutopilotState,
   /** The run's stage as `run.json` names it. */
   stage: z.string(),
@@ -103,15 +125,23 @@ export const AutopilotReport = z.object({
   events: z.array(AutopilotEvent).max(AUTOPILOT_EVENTS_MAX),
   omittedEvents: z.number().int().min(0),
   prUrl: z.string().nullable(),
+  /** The footer's session; null when no child has started, or for a report older than the field. */
+  session: AutopilotSession.nullable().default(null),
 });
 export type AutopilotReport = z.infer<typeof AutopilotReport>;
 
 /**
  * What the `autopilot-report` tool hands the widget: the report as the engine wrote it, with the
- * event texts and the callout replaced by the orchestrator's translation when it gave one.
+ * event texts and the callout replaced by the orchestrator's translation when it gave one, and
+ * the events of every earlier report of the run, oldest first, so the card can unfold the whole
+ * history. An earlier event reads in the language its own report was translated into, or in
+ * English when that report was never shown with a translation.
  */
 export const AutopilotReportPayload = z.object({
   report: AutopilotReport,
   runDir: z.string(),
+  earlier: z.array(AutopilotEvent).default([]),
+  /** Events the earlier reports counted in `omittedEvents` and so never carried. */
+  earlierOmitted: z.number().int().min(0).default(0),
 });
 export type AutopilotReportPayload = z.infer<typeof AutopilotReportPayload>;

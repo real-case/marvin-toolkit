@@ -612,8 +612,8 @@ var require_Node = __commonJS({
         };
         const res = toJS.toJS(this, "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
     };
@@ -720,13 +720,13 @@ var require_Alias = __commonJS({
         const anchor = anchors2 && source && anchors2.get(source);
         return anchor ? anchor.count * anchor.aliasCount : 0;
       } else if (identity.isCollection(node)) {
-        let count = 0;
+        let count2 = 0;
         for (const item of node.items) {
           const c = getAliasCount(doc, item, anchors2);
-          if (c > count)
-            count = c;
+          if (c > count2)
+            count2 = c;
         }
-        return count;
+        return count2;
       } else if (identity.isPair(node)) {
         const kc = getAliasCount(doc, node.key, anchors2);
         const vc = getAliasCount(doc, node.value, anchors2);
@@ -3641,8 +3641,8 @@ var require_Document = __commonJS({
         };
         const res = toJS.toJS(this.contents, jsonArg ?? "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
       /**
@@ -3718,12 +3718,12 @@ var require_errors = __commonJS({
         lineStr = prev + lineStr;
       }
       if (/[^ ]/.test(lineStr)) {
-        let count = 1;
+        let count2 = 1;
         const end = error2.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci));
+          count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer = " ".repeat(ci) + "^".repeat(count2);
         error2.message += `:
 
 ${lineStr}
@@ -9479,20 +9479,20 @@ var require_resolve = __commonJS({
       return false;
     }
     function countKeys(schema) {
-      let count = 0;
+      let count2 = 0;
       for (const key in schema) {
         if (key === "$ref")
           return Infinity;
-        count++;
+        count2++;
         if (SIMPLE_INLINED.has(key))
           continue;
         if (typeof schema[key] == "object") {
-          (0, util_1.eachItem)(schema[key], (sch) => count += countKeys(sch));
+          (0, util_1.eachItem)(schema[key], (sch) => count2 += countKeys(sch));
         }
-        if (count === Infinity)
+        if (count2 === Infinity)
           return Infinity;
       }
-      return count;
+      return count2;
     }
     function getFullPath(resolver, id = "", normalize2) {
       if (normalize2 !== false)
@@ -12943,8 +12943,8 @@ var require_contains = __commonJS({
         cxt.result(valid, () => cxt.reset());
         function validateItemsWithCount() {
           const schValid = gen.name("_valid");
-          const count = gen.let("count", 0);
-          validateItems(schValid, () => gen.if(schValid, () => checkLimits(count)));
+          const count2 = gen.let("count", 0);
+          validateItems(schValid, () => gen.if(schValid, () => checkLimits(count2)));
         }
         function validateItems(_valid, block) {
           gen.forRange("i", 0, len, (i) => {
@@ -12957,16 +12957,16 @@ var require_contains = __commonJS({
             block();
           });
         }
-        function checkLimits(count) {
-          gen.code((0, codegen_1._)`${count}++`);
+        function checkLimits(count2) {
+          gen.code((0, codegen_1._)`${count2}++`);
           if (max === void 0) {
-            gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true).break());
+            gen.if((0, codegen_1._)`${count2} >= ${min}`, () => gen.assign(valid, true).break());
           } else {
-            gen.if((0, codegen_1._)`${count} > ${max}`, () => gen.assign(valid, false).break());
+            gen.if((0, codegen_1._)`${count2} > ${max}`, () => gen.assign(valid, false).break());
             if (min === 1)
               gen.assign(valid, true);
             else
-              gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true));
+              gen.if((0, codegen_1._)`${count2} >= ${min}`, () => gen.assign(valid, true));
           }
         }
       }
@@ -18999,6 +18999,20 @@ function appendEvent(dir, event) {
   appendFileSync(join(dir, "events.jsonl"), `${JSON.stringify(event)}
 `);
 }
+function childKey(before, name) {
+  const attempt = before.filter((c) => c.name === name).length + 1;
+  return attempt === 1 ? name : `${name}.${attempt}`;
+}
+var ORCHESTRATOR_FILE = "orchestrator.txt";
+function orchestratorOf(runDir, run2) {
+  let text2;
+  try {
+    text2 = readFileSync(join(runDir, ORCHESTRATOR_FILE), "utf8").trim();
+  } catch {
+    return run2.orchestratorName;
+  }
+  return text2 === "" ? run2.orchestratorName : text2;
+}
 
 // src/pipeline/assess.ts
 var MODEL_EFFORT = `[A-Za-z0-9.-]+/(${EFFORTS.join("|")})`;
@@ -23566,7 +23580,7 @@ function runMetrics(run2) {
     m.cacheReadTokens += c.cacheReadTokens ?? 0;
     perRole[c.role] = m;
   }
-  const count = (source) => run2.rejections.filter((r) => r.source === source).length;
+  const count2 = (source) => run2.rejections.filter((r) => r.source === source).length;
   const executors = new Set(
     run2.children.filter((c) => c.role === "executor").map((c) => c.iteration)
   );
@@ -23577,9 +23591,9 @@ function runMetrics(run2) {
     gatesGreen: run2.gateReport?.passed === true,
     rejections: {
       total: run2.rejections.length,
-      gate: count("gate"),
-      verifier: count("verifier"),
-      ci: count("ci")
+      gate: count2("gate"),
+      verifier: count2("verifier"),
+      ci: count2("ci")
     },
     iterations: executors.size,
     perRole,
@@ -25223,6 +25237,14 @@ var AutopilotEvent = external_exports.object({
   kind: external_exports.string(),
   text: external_exports.string()
 });
+var AutopilotSession = external_exports.object({
+  name: external_exports.string(),
+  role: external_exports.string(),
+  model: external_exports.string(),
+  effort: external_exports.string(),
+  contextTokens: external_exports.number().int().min(0).nullable(),
+  contextWindow: external_exports.number().int().min(1).nullable()
+});
 var AutopilotReport = external_exports.object({
   version: external_exports.literal(1),
   runId: external_exports.string(),
@@ -25236,8 +25258,14 @@ var AutopilotReport = external_exports.object({
   /** The run will not move again: ready, halted, or closed. */
   final: external_exports.boolean(),
   lang: external_exports.string(),
-  /** The task as the user wrote it. */
+  /** The task as the user wrote it. Kept for readers; the card shows `sessionName` instead. */
   task: external_exports.string(),
+  /**
+   * The orchestrating session's name with its status prefix taken off (`[in progress] Report
+   * card` → `Report card`), or null when it has none left. A report written before the field
+   * existed reads as null.
+   */
+  sessionName: external_exports.string().nullable().default(null),
   state: AutopilotState,
   /** The run's stage as `run.json` names it. */
   stage: external_exports.string(),
@@ -25275,12 +25303,113 @@ var AutopilotReport = external_exports.object({
   /** The newest events of the interval, oldest first, English as the engine wrote them. */
   events: external_exports.array(AutopilotEvent).max(AUTOPILOT_EVENTS_MAX),
   omittedEvents: external_exports.number().int().min(0),
-  prUrl: external_exports.string().nullable()
+  prUrl: external_exports.string().nullable(),
+  /** The footer's session; null when no child has started, or for a report older than the field. */
+  session: AutopilotSession.nullable().default(null)
 });
 external_exports.object({
   report: AutopilotReport,
-  runDir: external_exports.string()
+  runDir: external_exports.string(),
+  earlier: external_exports.array(AutopilotEvent).default([]),
+  /** Events the earlier reports counted in `omittedEvents` and so never carried. */
+  earlierOmitted: external_exports.number().int().min(0).default(0)
 });
+var TAIL_BYTES = 512 * 1024;
+var oneLine2 = (text2, max = 100) => {
+  const flat = text2.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
+};
+function detailOf(input) {
+  if (typeof input !== "object" || input === null) return null;
+  const record2 = input;
+  for (const key of ["description", "command", "file_path", "path", "pattern", "url", "prompt"]) {
+    const value = record2[key];
+    if (typeof value === "string" && value.trim() !== "") return oneLine2(value);
+  }
+  return null;
+}
+function pendingToolCall(log) {
+  const pending = /* @__PURE__ */ new Map();
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.parent_tool_use_id != null) continue;
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (entry.type === "assistant" && part.type === "tool_use" && typeof part.id === "string") {
+        pending.set(part.id, { tool: String(part.name ?? "tool"), detail: detailOf(part.input) });
+      } else if (entry.type === "user" && part.type === "tool_result" && typeof part.tool_use_id === "string") {
+        pending.delete(part.tool_use_id);
+      }
+    }
+  }
+  return [...pending.values()].at(-1) ?? null;
+}
+var count = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+function contextUse(log) {
+  const use = { model: null, tokens: null, window: null };
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.type === "system" && entry.subtype === "init" && typeof entry.model === "string") {
+      use.model = entry.model;
+    } else if (entry.type === "assistant" && entry.parent_tool_use_id == null) {
+      const message = entry.message;
+      if (typeof message?.model === "string") use.model = message.model;
+      const u = message?.usage;
+      if (u) {
+        use.tokens = count(u.input_tokens) + count(u.cache_read_input_tokens) + count(u.cache_creation_input_tokens);
+      }
+    } else if (entry.type === "result" && typeof entry.modelUsage === "object" && entry.modelUsage) {
+      const usage = entry.modelUsage;
+      const own = use.model === null ? void 0 : usage[use.model];
+      const window = (own ?? Object.values(usage)[0])?.contextWindow;
+      if (typeof window === "number" && window > 0) use.window = window;
+    }
+  }
+  return use;
+}
+function readLogTail(path) {
+  let fd;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const { size, mtimeMs } = fstatSync(fd);
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    let text2 = buffer.toString("utf8");
+    if (length < size) text2 = text2.slice(text2.indexOf("\n") + 1);
+    return { text: text2, mtimeMs };
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+function statusLine(child, runningMs, quietMs, call, logIdleMs) {
+  const minutes2 = (ms) => Math.max(0, Math.round(ms / 6e4));
+  const head = `${child} still running after ${minutes2(runningMs)} min, no report for ${minutes2(quietMs)} min`;
+  if (call === null) {
+    return logIdleMs === null ? `${head}; no tool call in flight` : `${head}; no tool call in flight, log idle ${minutes2(logIdleMs)} min`;
+  }
+  const what = call.detail ? `${call.tool} (${call.detail})` : call.tool;
+  return logIdleMs === null ? `${head}; in ${what}` : `${head}; in ${what} for at least ${minutes2(logIdleMs)} min`;
+}
 
 // src/pipeline/status-report.ts
 var REPORTS_DIR = "status-reports";
@@ -25356,7 +25485,48 @@ function cost(run2) {
     complete: known.length === values.length
   };
 }
-var oneLine2 = (s) => s.replace(/\s+/g, " ").trim();
+var oneLine3 = (s) => s.replace(/\s+/g, " ").trim();
+function sessionName(orchestrator) {
+  const name = oneLine3(orchestrator.replace(/^\[[^\]]*\]\s*/, ""));
+  return name === "" ? null : name;
+}
+var WINDOW_LOOKBACK = 4;
+function sessionOf(runDir, run2) {
+  const children = run2.children;
+  let index = -1;
+  for (let i = children.length - 1; i >= 0; i -= 1) {
+    if (children[i]?.status === "running") {
+      index = i;
+      break;
+    }
+  }
+  if (index === -1) index = children.length - 1;
+  const child = children[index];
+  if (!child) return null;
+  const useOf = (i) => {
+    const c = children[i];
+    if (!c) return null;
+    const tail = readLogTail(join(runDir, `${childKey(children.slice(0, i), c.name)}.log.jsonl`));
+    return tail === null ? null : contextUse(tail.text);
+  };
+  const use = useOf(index);
+  const model = use?.model ?? child.assignment.model;
+  let window = use?.window ?? null;
+  for (let i = children.length - 1, read = 0; window === null && i >= 0; i -= 1) {
+    if (i === index || children[i]?.status === "running") continue;
+    if (read++ >= WINDOW_LOOKBACK) break;
+    const other = useOf(i);
+    if (other?.model === model) window = other.window;
+  }
+  return {
+    name: child.name,
+    role: child.role,
+    model,
+    effort: child.assignment.effort,
+    contextTokens: use?.tokens ?? null,
+    contextWindow: window
+  };
+}
 function buildReport2(i) {
   const { run: run2, now } = i;
   const { state, rail: steps } = position(run2, i.history);
@@ -25365,7 +25535,7 @@ function buildReport2(i) {
   const prevCost = i.previous?.costUsd ?? null;
   const last = run2.rejections[run2.rejections.length - 1];
   const kept = i.events.slice(-AUTOPILOT_EVENTS_MAX);
-  const callout = state === "halted" ? { kind: "halt", text: oneLine2(run2.haltReason ?? "closed without a ready PR") } : run2.pendingJudgment !== null ? { kind: "question", text: run2.pendingJudgment.kind } : null;
+  const callout = state === "halted" ? { kind: "halt", text: oneLine3(run2.haltReason ?? "closed without a ready PR") } : run2.pendingJudgment !== null ? { kind: "question", text: run2.pendingJudgment.kind } : null;
   return AutopilotReport.parse({
     version: 1,
     runId: run2.id,
@@ -25376,6 +25546,7 @@ function buildReport2(i) {
     final,
     lang: run2.lang,
     task: run2.task.original,
+    sessionName: sessionName(i.orchestrator),
     state,
     stage: run2.stage,
     rail: steps,
@@ -25400,10 +25571,11 @@ function buildReport2(i) {
     events: kept.map((e) => ({
       at: Number.isNaN(Date.parse(e.ts)) ? now.toISOString() : new Date(e.ts).toISOString(),
       kind: e.kind,
-      text: oneLine2(e.text)
+      text: oneLine3(e.text)
     })),
     omittedEvents: i.events.length - kept.length,
-    prUrl: run2.prUrl
+    prUrl: run2.prUrl,
+    session: i.session
   });
 }
 function lastReportNumber(runDir) {
@@ -25455,7 +25627,7 @@ function createExclusive(path, text2) {
   }
 }
 var errorText2 = (error2) => error2 instanceof Error ? error2.message : String(error2);
-var oneLine3 = (text2) => text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
+var oneLine4 = (text2) => text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
 function isAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
@@ -25661,7 +25833,7 @@ function refuseAnswer(runDir, id, reason2) {
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     kind: "note",
     actor: "engine",
-    text: `answer to ${id} refused: ${oneLine3(reason2)}`,
+    text: `answer to ${id} refused: ${oneLine4(reason2)}`,
     data: { notify: true, id }
   });
 }
@@ -25899,7 +26071,7 @@ function noteStop(runDir, error2, signal) {
       ts: (/* @__PURE__ */ new Date()).toISOString(),
       kind: "note",
       actor: "engine",
-      text: requested ? "engine stopped on request" : `engine stopped: ${oneLine3(errorText2(error2))}`,
+      text: requested ? "engine stopped on request" : `engine stopped: ${oneLine4(errorText2(error2))}`,
       ...requested ? {} : { data: { notify: true } }
     });
   } catch {
@@ -25954,7 +26126,7 @@ function readEventsFrom(runDir, cursor) {
   }
 }
 var notifying = (events) => events.filter((e) => e.data?.notify === true && EventKind.safeParse(e.kind).success);
-var eventLines = (events) => notifying(events).map((e) => `EVENT ${e.kind} ${oneLine3(e.text)}`);
+var eventLines = (events) => notifying(events).map((e) => `EVENT ${e.kind} ${oneLine4(e.text)}`);
 function standing(runDir) {
   const out = [];
   const pending = pendingJudgment(runDir);
@@ -26063,17 +26235,20 @@ async function awaitReport(runDir, o) {
       };
       if (write) {
         const n = lastReportNumber(runDir) + 1;
+        const run2 = loadRun(runDir);
         const path = writeReport(
           runDir,
           buildReport2({
-            run: loadRun(runDir),
+            run: run2,
             history: readEventsFrom(runDir, 0).events,
             events: interval,
             previous: readReport(runDir, n - 1),
             n,
             since: new Date(since),
             now: new Date(clock),
-            intervalMs: o.reportMs
+            intervalMs: o.reportMs,
+            orchestrator: orchestratorOf(runDir, run2),
+            session: sessionOf(runDir, run2)
           })
         );
         cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };
@@ -32998,73 +33173,6 @@ function launchDetached(cmd, runDir, name) {
   }
   return { pid: child.pid, logPath, errPath, exitPath };
 }
-var TAIL_BYTES = 512 * 1024;
-var oneLine4 = (text2, max = 100) => {
-  const flat = text2.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
-};
-function detailOf(input) {
-  if (typeof input !== "object" || input === null) return null;
-  const record2 = input;
-  for (const key of ["description", "command", "file_path", "path", "pattern", "url", "prompt"]) {
-    const value = record2[key];
-    if (typeof value === "string" && value.trim() !== "") return oneLine4(value);
-  }
-  return null;
-}
-function pendingToolCall(log) {
-  const pending = /* @__PURE__ */ new Map();
-  for (const line of log.split("\n")) {
-    if (line.trim() === "") continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (entry.parent_tool_use_id != null) continue;
-    const content = entry.message?.content;
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      if (entry.type === "assistant" && part.type === "tool_use" && typeof part.id === "string") {
-        pending.set(part.id, { tool: String(part.name ?? "tool"), detail: detailOf(part.input) });
-      } else if (entry.type === "user" && part.type === "tool_result" && typeof part.tool_use_id === "string") {
-        pending.delete(part.tool_use_id);
-      }
-    }
-  }
-  return [...pending.values()].at(-1) ?? null;
-}
-function readLogTail(path) {
-  let fd;
-  try {
-    fd = openSync(path, "r");
-  } catch {
-    return null;
-  }
-  try {
-    const { size, mtimeMs } = fstatSync(fd);
-    const length = Math.min(size, TAIL_BYTES);
-    const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, size - length);
-    let text2 = buffer.toString("utf8");
-    if (length < size) text2 = text2.slice(text2.indexOf("\n") + 1);
-    return { text: text2, mtimeMs };
-  } catch {
-    return null;
-  } finally {
-    closeSync(fd);
-  }
-}
-function statusLine(child, runningMs, quietMs, call, logIdleMs) {
-  const minutes2 = (ms) => Math.max(0, Math.round(ms / 6e4));
-  const head = `${child} still running after ${minutes2(runningMs)} min, no report for ${minutes2(quietMs)} min`;
-  if (call === null) {
-    return logIdleMs === null ? `${head}; no tool call in flight` : `${head}; no tool call in flight, log idle ${minutes2(logIdleMs)} min`;
-  }
-  const what = call.detail ? `${call.tool} (${call.detail})` : call.tool;
-  return logIdleMs === null ? `${head}; in ${what}` : `${head}; in ${what} for at least ${minutes2(logIdleMs)} min`;
-}
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
@@ -33292,11 +33400,6 @@ function stageGates(projectRoot, config2) {
     ...probe.kind === "missing" ? { missing: probe.token } : {}
   }));
 }
-function childKey(before, name) {
-  const attempt = before.filter((c) => c.name === name).length + 1;
-  return attempt === 1 ? name : `${name}.${attempt}`;
-}
-var ORCHESTRATOR_FILE = "orchestrator.txt";
 function assertOrchestratorName(name) {
   if (name.length > 200 || name !== name.trim() || // eslint-disable-next-line no-control-regex
   !/^[^\u0000-\u001f\u007f"\\`]+$/.test(name)) {
@@ -33307,15 +33410,6 @@ function writeOrchestrator(runDir, name) {
   assertOrchestratorName(name);
   writeAtomic2(join(runDir, ORCHESTRATOR_FILE), `${name}
 `);
-}
-function orchestratorOf(runDir, run2) {
-  let text2;
-  try {
-    text2 = readFileSync(join(runDir, ORCHESTRATOR_FILE), "utf8").trim();
-  } catch {
-    return run2.orchestratorName;
-  }
-  return text2 === "" ? run2.orchestratorName : text2;
 }
 var fakeVariable = (role) => `MARVIN_PIPELINE_FAKE_${role.toUpperCase().replace(/-/g, "_")}`;
 var fakeScriptVariable = (role) => `${fakeVariable(role)}_SCRIPT`;
