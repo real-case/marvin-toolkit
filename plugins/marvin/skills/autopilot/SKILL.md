@@ -28,7 +28,8 @@ to the run goes through a `marvin-pipe` command.
   Fable in code; do not test that.
 - **Language.** Every line the user sees is in `lang`. Everything you send to the engine (the
   English task, answers, reasons) is English, because every child works in English only.
-- **One line per event.** The user wants to know where the run is, not to read its log.
+- **One card per report.** The user hears from the run at least every five minutes, always as
+  the same status card (section 3), and never as a stream of log lines.
 
 ## Locate the CLI
 
@@ -95,42 +96,58 @@ do not retry it unchanged.
 5. **Arm `await`.** A judgment an earlier session was already shown is reported again within
    60 s.
 
-## 3. The `await` loop
+## 3. The `await` loop and the status card
 
 Arm it as a background Bash command, so that its exit wakes you:
 
 ```bash
-PIPE await --run <runDir>
+PIPE await --run <runDir> --report-min 5
 ```
 
-It blocks until there is something to report, for at most 110 minutes (inside the two-hour limit
-of a background command), prints one or more lines and exits. On every exit, handle **every**
-line in order. Then re-arm `await`, unless a `STAGE` line said `ready` or `done`.
+It blocks until a report is due or something needs you, prints one or more lines and exits. A
+report is due five minutes after the previous one, so the user hears from the run at least that
+often; a new judgment, a dead engine or a terminal stage returns at once, with a report of its
+own. Events are not printed one by one: they wait for the next report and arrive inside it. On
+every exit, handle **every** line in order. Then re-arm `await`, unless a `STAGE` line said
+`ready` or `done`.
 
 | Line | Meaning | What you do |
 |------|---------|-------------|
-| `EVENT stage <from> → <to>` | the run moved | one translated line |
-| `EVENT report CHILD <name> outcome=<o> cost=<$> dur=<m> session=<id>` | a child finished | one translated line: role, outcome, cost |
-| `EVENT question judgment <id>` | a judgment was raised | nothing; the `JUDGMENT` line is the one to act on |
-| `EVENT note answer to <id> refused: <reason>` | the engine set your answer aside; the judgment is open again | tell the user why; a fresh `JUDGMENT` line follows |
-| `EVENT note engine stopped: <reason>` | the engine died; comes with `ENGINE down` | keep the reason for the user |
-| `EVENT note <text>` | an engine milestone: gate and verifier results, a rejection and its rung, CI state, `halted: …`, `PR ready to merge` | one translated line |
-| `EVENT <kind> <text>` (`assignment`, `verdict`, `escalation`, `answer`) | other milestones | one translated line |
+| `REPORT <n> <path>` | status report `n` is written | show the card (below) |
 | `JUDGMENT <id> <kind> <request-path>` | the engine is blocked on you | `skills/autopilot/references/judgments.md`, then `judge` |
-| `ENGINE down` | no live engine, and the run is not finished | `PIPE start --run <runDir>`, and tell the user |
+| `ENGINE down` | no live engine, and the run is not finished | `PIPE start --run <runDir>`, and say so under the card |
 | `STAGE ready` | the PR is merge-ready | final report (section 5) |
 | `STAGE done` | the run closed without a ready PR: halted, cancelled, or CI never settled | final report, closed-run form |
-| `TIMEOUT rearm` | nothing happened before the deadline | nothing; re-arm |
+
+**Showing the card.** Read the report at `<path>`. Translate each text in `events` and the
+`callout` text into `lang`, keeping identifiers, paths and model names as they are. A `question`
+callout carries only the judgment's kind: put the question itself, from the request file, in one
+sentence. Then call the marvin MCP tool `autopilot-report` with `runDir`, `n` and
+`translations: {events: [...], callout: "..."}`, one event text per event, in order. The tool
+refuses a list of the wrong length rather than pairing texts with the wrong times. Its answer is
+the card:
+
+- When the result says the widget is already on screen (a `_rendered` key in
+  `structuredContent`), add nothing.
+- Otherwise its text is the card in Markdown: show it verbatim as your message, and add nothing
+  around it except the lines this section asks for.
+
+The report's events are where the engine's notes now arrive, so read them as well as showing
+them:
+
+- `answer to <id> refused: <reason>`: the engine set your answer aside and the judgment is open
+  again. Say why under the card; a fresh `JUDGMENT` line follows.
+- `engine stopped: <reason>`: it comes with `ENGINE down`. Keep the reason for the user.
 
 Repeats are normal, and must not reach the user twice:
 
-- `JUDGMENT` and `ENGINE down` are printed when new, then again every 60 s and at each deadline
-  while they stand. A repeat of one you have already handled (asked the user, or answered)
-  changes nothing. Do not ask the user a second time.
-- **Restarts are bounded.** After three `ENGINE down` lines with no `EVENT` line between them,
-  stop restarting. Tell the user that the engine keeps failing, quoting the last `engine
-  stopped:` note, or the tail of `<runDir>/engine.log` when there is none. What to try next is
-  in `skills/autopilot/references/recovery.md`.
+- `JUDGMENT` and `ENGINE down` are printed when new, then again every 60 s while they stand, on
+  their own and without a report. A repeat of one you have already handled (asked the user, or
+  answered) changes nothing. Do not ask the user a second time, and show no card for it.
+- **Restarts are bounded.** After three `ENGINE down` lines with no event in the reports
+  between them, stop restarting. Tell the user that the engine keeps failing, quoting the last
+  `engine stopped:` note, or the tail of `<runDir>/engine.log` when there is none. What to try
+  next is in `skills/autopilot/references/recovery.md`.
 
 Writing an answer:
 
@@ -172,10 +189,10 @@ The run sets the status:
 
 | What happened | Status |
 |---------------|--------|
-| the run starts or is resumed; `EVENT stage … →` `planning`, `test_authoring`, `executing`, `gating`, `verifying`, `retro` or `finalizing` | `[in progress]` |
+| the run starts or is resumed; a report's `stage` is `planning`, `test_authoring`, `executing`, `gating`, `verifying`, `retro` or `finalizing` | `[in progress]` |
 | you end a turn asking the user something a judgment needs (a question, the spec approval, a halt decision) | `[waiting]` |
 | the turn that passes the user's answer to `judge` begins | `[in progress]` |
-| `EVENT stage … → ci_wait` | `[ci]` |
+| a report's `stage` is `ci_wait` | `[ci]` |
 | `STAGE ready` | `[pr ready]` |
 | `STAGE done`, or the third `ENGINE down` in a row (section 3) | `[halted]` |
 

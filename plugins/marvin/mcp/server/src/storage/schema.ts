@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { validatePrefix } from "../pipeline/command.js";
+import { volatileEntryProblem } from "../pipeline/volatile.js";
 
 export const TaskType = z.enum(["bug", "feature", "chore", "spike"]);
 export type TaskType = z.infer<typeof TaskType>;
@@ -328,6 +329,27 @@ export const PipelineConfig = z.object({
   ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
   scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /**
+   * Protected paths that are the host's own state, not configuration: what its hooks and gate
+   * scripts write under a protected directory (`.claude/.rules-loaded/`, a stamp file). A
+   * trailing `/` covers a directory. The gate skips a covered path only while git ignores it,
+   * and refuses an entry that is executed or read as configuration (`NEVER_VOLATILE`).
+   */
+  protected_volatile: z
+    .array(z.string())
+    .superRefine((list, ctx) => {
+      list.forEach((entry, i) => {
+        const problem = volatileEntryProblem(entry);
+        if (problem !== null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `protected_volatile entry ${entry} is refused: ${problem}`,
+            path: [i],
+          });
+        }
+      });
+    })
+    .default([]),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: z.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */

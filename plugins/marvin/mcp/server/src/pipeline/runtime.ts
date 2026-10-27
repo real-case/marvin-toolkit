@@ -1680,6 +1680,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       exemptPattern: config.pipeline.scope_exempt_pattern,
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline as ProtectedSnapshot, wt.baseSha, from),
+      protectedVolatile: config.pipeline.protected_volatile,
       metricsRecord: carriedRecord(run, wt.path, spec.text),
       runArtifacts:
         run.specPath !== null && isCanonicalPath(run.specPath)

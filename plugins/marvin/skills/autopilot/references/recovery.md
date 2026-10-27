@@ -8,12 +8,12 @@ run files to unstick a run.
 
 ## The engine is down
 
-`await` prints `ENGINE down`, usually with `EVENT note engine stopped: <reason>`.
+`await` prints `ENGINE down`, usually with a report whose events hold `engine stopped: <reason>`.
 
 1. Run `start --run <runDir>`. If it fails with `an engine already holds <runDir>`, another
    engine took the run between the two looks: do nothing, and re-arm `await`.
-2. Re-arm `await`. A healthy restart produces an `EVENT` line soon after.
-3. After three `ENGINE down` lines with no `EVENT` between them, stop. The engine fails the same
+2. Re-arm `await`. A healthy restart produces events in the next report.
+3. After three `ENGINE down` lines with no event in the reports between them, stop. The engine fails the same
    way on every start, and restarting again only repeats it. Tell the user, in `lang`:
    - the last `engine stopped:` reason, or the last lines of `<runDir>/engine.log`;
    - the run directory, so they can inspect it;
@@ -48,7 +48,7 @@ directory with `list`, and re-arm with the path `list` prints. It never dies on 
 
 ## A child that could not start
 
-`EVENT note <role> could not start (<the CLI's message>); retrying at …` means the child ended
+The event `<role> could not start (<the CLI's message>); retrying at …` means the child ended
 within seconds, at no cost and with no output: the CLI failed before its first request, usually an
 expired login (`Failed to authenticate: OAuth session expired and could not be refreshed`) or a
 provider outage. The engine relaunches it on its own budget (`caps.launch_retries`, three times,

@@ -17,6 +17,7 @@ import {
   type Finding,
   type GateReport,
   isCanonicalPath,
+  outsideCommittedDiff,
   reportFindings,
   SEVERITIES,
 } from "./gate.js";
@@ -571,6 +572,10 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     }
     return { run: reopened, actions: [action] };
   };
+  const sameSet = (a: readonly string[], b: readonly string[]) => {
+    const key = (x: readonly string[]) => [...new Set(x)].sort().join("\0");
+    return key(a) === key(b);
+  };
   const reject = (r: Run, source: "gate" | "verifier" | "ci", found: Finding[]): Decision => {
     const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
@@ -605,6 +610,21 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
       ask({ ...next, haltRole: "executor" }, "halt", { reason, findings: fs });
     const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
+    // The same protected paths, changed outside the committed diff, rejected twice in a row: the
+    // host's own hooks or gate scripts rewrite them, and another iteration would be rejected the
+    // same way until the cap. Halting now spends no executor on it.
+    const lastRejection = r.rejections.at(-1);
+    if (
+      !bookkeeping &&
+      source === "gate" &&
+      lastRejection?.source === "gate" &&
+      fs.every(outsideCommittedDiff) &&
+      sameSet(prints, lastRejection.fingerprints)
+    ) {
+      return halted(
+        `the same ${fs.length} protected ${fs.length === 1 ? "path" : "paths"} changed outside the committed diff in 2 gates in a row, which no executor can fix: if the project's own hooks or gate scripts write them and git ignores them, declare them in pipeline.protected_volatile`,
+      );
+    }
     if (
       !bookkeeping &&
       (counted >= rubric.caps.rejections || stepNow === undefined || stepNow === "halt")

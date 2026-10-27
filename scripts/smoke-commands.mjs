@@ -111,6 +111,7 @@ const REQUIRED_TOOLS = [
   "audit",
   "report",
   "pipeline",
+  "autopilot-report",
 ];
 
 /**

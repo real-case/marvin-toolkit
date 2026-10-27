@@ -36,6 +36,7 @@ import {
   type Stage,
   TIERS,
 } from "./run-store.js";
+import { buildReport, lastReportNumber, readReport, writeReport } from "./status-report.js";
 
 /*
  * The engine's loop around `decide`: one process per run, guarded by a lock, that carries out each
@@ -867,10 +868,11 @@ function readEventsFrom(
   }
 }
 
+const notifying = (events: PipelineEvent[]) =>
+  events.filter((e) => e.data?.notify === true && EventKind.safeParse(e.kind).success);
+
 const eventLines = (events: PipelineEvent[]) =>
-  events
-    .filter((e) => e.data?.notify === true && EventKind.safeParse(e.kind).success)
-    .map((e) => `EVENT ${e.kind} ${oneLine(e.text)}`);
+  notifying(events).map((e) => `EVENT ${e.kind} ${oneLine(e.text)}`);
 
 /**
  * The conditions that hold until something changes them, each with a key that changes when the
@@ -930,6 +932,8 @@ export const REPEAT_MS = 60_000;
 const Cursor = z.object({
   offset: z.number().int().min(0),
   announced: z.record(z.string(), z.number()).catch({}),
+  /** When the last status report was written (ms since the epoch); absent before the first. */
+  reportedAt: z.number().optional().catch(undefined),
 });
 type Cursor = z.infer<typeof Cursor>;
 
@@ -952,11 +956,26 @@ function readCursor(runDir: string): Cursor {
  * failed before it took the lock is reported down again. With nothing at all to report by the
  * deadline, the result is `TIMEOUT rearm`. A terminal stage returns at once, every time, since
  * nothing will follow it.
+ *
+ * With `reportMs` the orchestrator is told at least that often, as one status report (ADR-0051).
+ * Events no longer return one by one: they wait in the log, behind the cursor, until the interval
+ * since the last report ends, and then go into a report written to `status-reports/<n>.json` and
+ * announced as `REPORT <n> <path>`. A standing condition that is new returns at once, with a
+ * report, which starts the next interval; a repeat of one already reported returns its line alone
+ * and leaves the events where they are, so a judgment that stands for an hour does not produce a
+ * card every minute. The interval of the first call starts when it is armed.
  */
 export async function awaitWork(
   runDir: string,
-  o: { pollMs: number; deadlineMs: number; repeatMs?: number; signal?: AbortSignal },
+  o: {
+    pollMs: number;
+    deadlineMs: number;
+    repeatMs?: number;
+    reportMs?: number;
+    signal?: AbortSignal;
+  },
 ): Promise<string[]> {
+  if (o.reportMs !== undefined) return awaitReport(runDir, { ...o, reportMs: o.reportMs });
   const started = Date.now();
   const repeatMs = o.repeatMs ?? REPEAT_MS;
   const saved = readCursor(runDir);
@@ -986,6 +1005,75 @@ export async function awaitWork(
       writeAtomic(join(runDir, CURSOR), `${JSON.stringify(cursor)}\n`);
       const lines = [...fresh, ...report.map((s) => s.line)];
       return lines.length > 0 ? lines : ["TIMEOUT rearm"];
+    }
+    await delay(pollMsOf(o), undefined, { signal: o.signal });
+  }
+}
+
+async function awaitReport(
+  runDir: string,
+  o: {
+    pollMs: number;
+    deadlineMs: number;
+    repeatMs?: number;
+    reportMs: number;
+    signal?: AbortSignal;
+  },
+): Promise<string[]> {
+  const started = Date.now();
+  const repeatMs = o.repeatMs ?? REPEAT_MS;
+  const saved = readCursor(runDir);
+  const announced = new Map(Object.entries(saved.announced));
+  const since = saved.reportedAt ?? started;
+  let offset = saved.offset;
+  const interval: PipelineEvent[] = [];
+  for (;;) {
+    const read = readEventsFrom(runDir, offset);
+    offset = read.cursor;
+    interval.push(...notifying(read.events));
+    const now = standing(runDir);
+    const keys = new Set(now.map((s) => s.key));
+    for (const key of [...announced.keys()]) if (!keys.has(key)) announced.delete(key);
+    const clock = Date.now();
+    const due = clock - started >= o.deadlineMs;
+    const held = (key: string) => {
+      const at = announced.get(key);
+      return at !== undefined && clock - at < repeatMs;
+    };
+    const report = now.filter((s) => s.always || due || !held(s.key));
+    const fresh = report.some((s) => !announced.has(s.key));
+    const write = fresh || due || clock - since >= o.reportMs;
+    if (write || report.length > 0) {
+      const kept = now.map((s): [string, number] => [
+        s.key,
+        report.includes(s) ? clock : (announced.get(s.key) ?? clock),
+      ]);
+      const lines = report.map((s) => s.line);
+      let cursor: Cursor = {
+        offset: saved.offset,
+        announced: Object.fromEntries(kept),
+        reportedAt: since,
+      };
+      if (write) {
+        const n = lastReportNumber(runDir) + 1;
+        const path = writeReport(
+          runDir,
+          buildReport({
+            run: loadRun(runDir),
+            history: readEventsFrom(runDir, 0).events,
+            events: interval,
+            previous: readReport(runDir, n - 1),
+            n,
+            since: new Date(since),
+            now: new Date(clock),
+            intervalMs: o.reportMs,
+          }),
+        );
+        cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };
+        lines.unshift(`REPORT ${n} ${path}`);
+      }
+      writeAtomic(join(runDir, CURSOR), `${JSON.stringify(cursor)}\n`);
+      return lines;
     }
     await delay(pollMsOf(o), undefined, { signal: o.signal });
   }

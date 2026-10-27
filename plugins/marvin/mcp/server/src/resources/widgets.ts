@@ -88,6 +88,13 @@ const WIDGETS: WidgetResource[] = [
     description:
       "Marvin reports — the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts — with KPI strip, group filter, and per-report freshness (ADR-0024).",
   },
+  {
+    name: "autopilot-status",
+    uri: "ui://marvin/autopilot-status.html",
+    file: join("widgets", "autopilot-status.html"),
+    description:
+      "Marvin autopilot status — one periodic report of an autopilot run as a card: stage rail, elapsed time, cost, iteration, rejections, the interval's events and the next report's deadline (ADR-0051).",
+  },
 ];
 
 /** The `ui://marvin/task-list.html` binding, exported for the tool `_meta`. */
@@ -112,6 +119,9 @@ export const DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
 
 /** The `ui://marvin/help.html` binding, exported for the tool `_meta`. */
 export const HELP_WIDGET_URI = "ui://marvin/help.html";
+
+/** The `ui://marvin/autopilot-status.html` binding, exported for the tool `_meta`. */
+export const AUTOPILOT_STATUS_WIDGET_URI = "ui://marvin/autopilot-status.html";
 
 /**
  * Build the `ResourceDef[]` the server registers. `packRoot` is the plugin root

@@ -6,7 +6,7 @@
 // WidgetCanvas island, which frames the committed widget document for whichever widget the picker
 // selects, and clones that widget's static mini for the Screenshot side and for the failure path.
 //
-// The nine minis are authored ONCE, here, as the MINIS array below and rendered by a single loop.
+// The ten minis are authored ONCE, here, as the MINIS array below and rendered by a single loop.
 // They deliberately stay plain Astro rather than being wrapped in islands: `.wgrid > *
 // { min-width: 0 }` targets direct grid children, and an <astro-island> wrapper would steal that
 // rule and drop each mini a level, reintroducing the 360px overflow the Phase-3 slices had to fix.
@@ -25,7 +25,7 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
 const commandCount = commands.length; // generated, never a literal (FR-20)
 const groupCount = groups.length; // generated, never a literal (FR-20)
 
-// The nine committed widgets as the arrive → steer → review journey (FR-16).
+// The ten committed widgets as the arrive → steer → review journey (FR-16).
 //
 // `widget` is the widget FILE name — what /widget-demos/<widget>.{html,json} is keyed by, and what
 // the canvas island matches on. `label` is the command a user actually types to reach it. The two
@@ -40,8 +40,8 @@ const groupCount = groups.length; // generated, never a literal (FR-20)
 // prints against the generated catalog; keep prose here free of literal slash-command spellings
 // for names that are not commands, since that guard reads comments too.
 //
-// `kind` selects one of three body shapes below. task-detail and task-summary are new artwork —
-// the approved mockup never drew them, but FR-16 covers all nine widgets.
+// `kind` selects one of three body shapes below. task-detail, task-summary and autopilot-status
+// are new artwork — the approved mockup never drew them, but FR-16 covers all ten widgets.
 const MINIS = [
   {
     widget: "help",
@@ -67,6 +67,19 @@ const MINIS = [
       { w: "34%", c: "var(--barA)" },
       { w: "30%", c: "var(--barB)" },
     ],
+  },
+  {
+    widget: "autopilot-status",
+    label: "/marvin:autopilot",
+    tag: "every 5 min",
+    kind: "rows" as const,
+    step: "steer",
+    rows: [
+      { name: "stage", dot: "dotv", badge: "execution", badgeClass: "b-acc" },
+      { name: "iteration", badge: "2", badgeClass: "b-blu" },
+      { name: "cost", badge: "$4.12", badgeClass: "b-acc" },
+    ],
+    note: "A running autopilot, as one card at least every five minutes.",
   },
   {
     widget: "task-list",
@@ -161,7 +174,7 @@ const steer = MINIS.filter((m) => m.step === "steer");
 const review = MINIS.filter((m) => m.step === "review");
 const help = MINIS.find((m) => m.widget === "help")!;
 
-// What the canvas picker offers — the same nine, same order. The label carries the tag as well as
+// What the canvas picker offers — the same ten, same order. The label carries the tag as well as
 // the command because two widgets legitimately answer the SAME command: /marvin:track-list shows
 // the board by default (task-list widget) and the tracked view when asked for it (tracker-list
 // widget), so command alone would render two identical chips.

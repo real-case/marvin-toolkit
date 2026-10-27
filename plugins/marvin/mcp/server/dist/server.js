@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, realpathSync, lstatSync, unlinkSync } from 'fs';
-import { join, dirname, basename, isAbsolute, relative, sep, posix, resolve } from 'path';
+import { join, dirname, posix, basename, isAbsolute, relative, sep, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
 import { execFileSync, spawn, spawnSync } from 'child_process';
@@ -3865,49 +3865,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative8, options, skipNormalization) {
+    function resolveComponent(base, relative9, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative8 = parse4(serialize(relative8, options), options);
+        relative9 = parse4(serialize(relative9, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative8.scheme) {
-        target.scheme = relative8.scheme;
-        target.userinfo = relative8.userinfo;
-        target.host = relative8.host;
-        target.port = relative8.port;
-        target.path = removeDotSegments(relative8.path || "");
-        target.query = relative8.query;
+      if (!options.tolerant && relative9.scheme) {
+        target.scheme = relative9.scheme;
+        target.userinfo = relative9.userinfo;
+        target.host = relative9.host;
+        target.port = relative9.port;
+        target.path = removeDotSegments(relative9.path || "");
+        target.query = relative9.query;
       } else {
-        if (relative8.userinfo !== void 0 || relative8.host !== void 0 || relative8.port !== void 0) {
-          target.userinfo = relative8.userinfo;
-          target.host = relative8.host;
-          target.port = relative8.port;
-          target.path = removeDotSegments(relative8.path || "");
-          target.query = relative8.query;
+        if (relative9.userinfo !== void 0 || relative9.host !== void 0 || relative9.port !== void 0) {
+          target.userinfo = relative9.userinfo;
+          target.host = relative9.host;
+          target.port = relative9.port;
+          target.path = removeDotSegments(relative9.path || "");
+          target.query = relative9.query;
         } else {
-          if (!relative8.path) {
+          if (!relative9.path) {
             target.path = base.path;
-            if (relative8.query !== void 0) {
-              target.query = relative8.query;
+            if (relative9.query !== void 0) {
+              target.query = relative9.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative8.path[0] === "/") {
-              target.path = removeDotSegments(relative8.path);
+            if (relative9.path[0] === "/") {
+              target.path = removeDotSegments(relative9.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative8.path;
+                target.path = "/" + relative9.path;
               } else if (!base.path) {
-                target.path = relative8.path;
+                target.path = relative9.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative8.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative9.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative8.query;
+            target.query = relative9.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3915,7 +3915,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative8.fragment;
+      target.fragment = relative9.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -11056,10 +11056,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep6, value } = collItem;
+        const { start, key, sep: sep7, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -11073,7 +11073,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep6) {
+          if (!keyProps.anchor && !keyProps.tag && !sep7) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -11097,7 +11097,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep7 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -11113,7 +11113,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep7, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -11202,7 +11202,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep6 = "";
+        let sep7 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -11216,13 +11216,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep6 + cb;
-              sep6 = "";
+                comment += sep7 + cb;
+              sep7 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep6 += source;
+                sep7 += source;
               hasSpace = true;
               break;
             default:
@@ -11264,18 +11264,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep6, value } = collItem;
+        const { start, key, sep: sep7, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep6 && !value) {
+          if (!props.anchor && !props.tag && !sep7 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11329,8 +11329,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep6 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
+        if (!isMap && !sep7 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep7, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11342,7 +11342,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep7 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11353,8 +11353,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep6)
-                for (const st of sep6) {
+              if (sep7)
+                for (const st of sep7) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11371,7 +11371,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep7, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -11549,7 +11549,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep6 = "";
+      let sep7 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -11566,24 +11566,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep6 === " ")
-            sep6 = "\n";
-          else if (!prevMoreIndented && sep6 === "\n")
-            sep6 = "\n\n";
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          if (sep7 === " ")
+            sep7 = "\n";
+          else if (!prevMoreIndented && sep7 === "\n")
+            sep7 = "\n\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep6 === "\n")
+          if (sep7 === "\n")
             value += "\n";
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          value += sep6 + content;
-          sep6 = " ";
+          value += sep7 + content;
+          sep7 = " ";
           prevMoreIndented = false;
         }
       }
@@ -11765,25 +11765,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match[1].replace(trimEnd, "");
-      let sep6 = " ";
+      let sep7 = " ";
       let pos = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep6 === "\n")
-            res += sep6;
+          if (sep7 === "\n")
+            res += sep7;
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          res += sep6 + lm;
-          sep6 = " ";
+          res += sep7 + lm;
+          sep7 = " ";
         }
         pos = line.lastIndex;
       }
       const last2 = /[ \t]*(.*)/sy;
       last2.lastIndex = pos;
       match = last2.exec(source);
-      return res + sep6 + (match?.[1] ?? "");
+      return res + sep7 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -12586,14 +12586,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep6, value }) {
+    function stringifyItem({ start, key, sep: sep7, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep6)
-        for (const st of sep6)
+      if (sep7)
+        for (const st of sep7)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -13755,18 +13755,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep6;
+          let sep7;
           if (scalar.end) {
-            sep6 = scalar.end;
-            sep6.push(this.sourceToken);
+            sep7 = scalar.end;
+            sep7.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep6 = [this.sourceToken];
+            sep7 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep6 }]
+            items: [{ start, key: scalar, sep: sep7 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -13919,15 +13919,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep6 = it.sep;
-                  sep6.push(this.sourceToken);
+                  const sep7 = it.sep;
+                  sep7.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep6 }]
+                    items: [{ start: start2, key, sep: sep7 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -14121,13 +14121,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep6 = fc.end.splice(1, fc.end.length);
-            sep6.push(this.sourceToken);
+            const sep7 = fc.end.splice(1, fc.end.length);
+            sep7.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep6 }]
+              items: [{ start, key: fc, sep: sep7 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -29339,6 +29339,30 @@ function validatePrefix(prefix) {
     throw new Error(`invalid allowlist prefix: ${prefix}`);
   }
 }
+function isCanonicalPath(path) {
+  return typeof path === "string" && path !== "" && !path.startsWith("/") && !path.includes("\\") && // eslint-disable-next-line no-control-regex
+  !/[\u0000-\u001f\u007f]/.test(path) && path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") && posix.normalize(path) === path;
+}
+
+// src/pipeline/volatile.ts
+var NEVER_VOLATILE = [
+  /(^|\/)\.git[^/]*$/i,
+  /(^|\/)CLAUDE(\.local)?\.md$/i,
+  /^\.claude\/(settings[^/]*\.json|hooks\/|agents\/|skills\/|commands\/|rules\/|output-styles\/|plugins\/)/i,
+  /^\.husky\//i,
+  /^\.marvin\//i,
+  /^\.mcp\.json$/i
+];
+var neverVolatile = (path) => NEVER_VOLATILE.some((re) => re.test(path));
+function volatileEntryProblem(entry) {
+  const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+  if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
+  if (neverVolatile(entry)) return "it is executed or read as configuration";
+  if (entry.endsWith("/") && !bare.includes("/")) {
+    return "it is a whole top-level directory; name the state under it";
+  }
+  return null;
+}
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
@@ -29506,6 +29530,24 @@ var PipelineConfig = external_exports.object({
   ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
   scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /**
+   * Protected paths that are the host's own state, not configuration: what its hooks and gate
+   * scripts write under a protected directory (`.claude/.rules-loaded/`, a stamp file). A
+   * trailing `/` covers a directory. The gate skips a covered path only while git ignores it,
+   * and refuses an entry that is executed or read as configuration (`NEVER_VOLATILE`).
+   */
+  protected_volatile: external_exports.array(external_exports.string()).superRefine((list, ctx) => {
+    list.forEach((entry, i) => {
+      const problem = volatileEntryProblem(entry);
+      if (problem !== null) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `protected_volatile entry ${entry} is refused: ${problem}`,
+          path: [i]
+        });
+      }
+    });
+  }).default([]),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: external_exports.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
@@ -30263,8 +30305,8 @@ function dedupe(numbers) {
   return [...new Set(numbers)];
 }
 function compact(text) {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > 80 ? `${oneLine.slice(0, 77)}\u2026` : oneLine;
+  const oneLine2 = text.replace(/\s+/g, " ").trim();
+  return oneLine2.length > 80 ? `${oneLine2.slice(0, 77)}\u2026` : oneLine2;
 }
 function readAdrCorpus(dir) {
   if (!existsSync(dir.abs)) return { records: [], malformed: [] };
@@ -32177,6 +32219,12 @@ var WIDGETS = [
     uri: REPORTS_WIDGET_URI,
     file: join("widgets", "reports.html"),
     description: "Marvin reports \u2014 the unified viewer over every generated .marvin/ report: security scans, refactor registers and plans, task specs, verification, handoffs, critique receipts \u2014 with KPI strip, group filter, and per-report freshness (ADR-0024)."
+  },
+  {
+    name: "autopilot-status",
+    uri: "ui://marvin/autopilot-status.html",
+    file: join("widgets", "autopilot-status.html"),
+    description: "Marvin autopilot status \u2014 one periodic report of an autopilot run as a card: stage rail, elapsed time, cost, iteration, rejections, the interval's events and the next report's deadline (ADR-0051)."
   }
 ];
 var TASK_LIST_WIDGET_URI = "ui://marvin/task-list.html";
@@ -32187,6 +32235,7 @@ var AUDIT_WIDGET_URI = "ui://marvin/audit.html";
 var TASK_SUMMARY_WIDGET_URI = "ui://marvin/task-summary.html";
 var DASHBOARD_WIDGET_URI = "ui://marvin/dashboard.html";
 var HELP_WIDGET_URI = "ui://marvin/help.html";
+var AUTOPILOT_STATUS_WIDGET_URI = "ui://marvin/autopilot-status.html";
 function buildWidgetResources(packRoot2) {
   return WIDGETS.map((w) => ({
     name: w.name,
@@ -33932,9 +33981,9 @@ function humanRunSkills(packRoot2) {
   return flagged;
 }
 function shortDesc(desc, max = 72) {
-  const oneLine = desc.replace(/\s+/g, " ").trim();
-  const firstClause = oneLine.split(/ — | – |\. /)[0] ?? oneLine;
-  const base = firstClause.length <= oneLine.length ? firstClause : oneLine;
+  const oneLine2 = desc.replace(/\s+/g, " ").trim();
+  const firstClause = oneLine2.split(/ — | – |\. /)[0] ?? oneLine2;
+  const base = firstClause.length <= oneLine2.length ? firstClause : oneLine2;
   if (base.length <= max) return base;
   const cut = base.slice(0, max);
   const lastSpace = cut.lastIndexOf(" ");
@@ -40025,10 +40074,10 @@ function runPipeline(input, packRoot2, env2) {
   }
   return status(input.runDir, env2);
 }
-function relativeStateRoot(env2) {
+function relativeStateRoot(env2, refuse2 = errText4) {
   const root = stateRoot(env2);
   if (isAbsolute(root)) return null;
-  return errText4(
+  return refuse2(
     `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. The state root is never resolved against the server's cwd, which is the session's project and not where runs live. Set it to an absolute path, or unset it for ~/.local/state/marvin-pipeline.`
   );
 }
@@ -40064,32 +40113,39 @@ function strictlyInside(root, path) {
   const rel = relative(root, path);
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
-function status(runDirArg, env2) {
+function checkedRunDir(runDirArg, env2, refuse2 = errText4) {
   if (!isAbsolute(runDirArg)) {
-    return errText4(
+    return refuse2(
       `\`runDir\` \`${runDirArg}\` is not an absolute path. It is never resolved against the server's cwd, which is not the run's; pass the path marvin-pipe init printed.`
     );
   }
-  const refused = relativeStateRoot(env2);
+  const refused = relativeStateRoot(env2, refuse2);
   if (refused) return refused;
   const root = resolve(stateRoot(env2));
   const runDir = resolve(runDirArg);
   if (!existsSync(root)) {
-    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root);
-    return errText4(
+    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root, refuse2);
+    return refuse2(
       `The state root \`${root}\` does not exist, so no run has been started under it.`
     );
   }
   const realRoot = realpathSync(root);
   if (strictlyInside(root, runDir) || strictlyInside(realRoot, runDir)) {
-    if (!existsSync(runDir)) return errText4(`There is no run directory at \`${runDir}\`.`);
+    if (!existsSync(runDir)) return refuse2(`There is no run directory at \`${runDir}\`.`);
   } else if (!existsSync(runDir)) {
-    return outsideRoot(runDirArg, root);
+    return outsideRoot(runDirArg, root, refuse2);
   }
-  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root);
+  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root, refuse2);
   const file = join(runDir, "run.json");
-  if (!existsSync(file)) return errText4(`There is no run.json in \`${runDir}\`.`);
-  if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root);
+  if (!existsSync(file)) return refuse2(`There is no run.json in \`${runDir}\`.`);
+  if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root, refuse2);
+  return { runDir };
+}
+function status(runDirArg, env2) {
+  const checked = checkedRunDir(runDirArg, env2);
+  if (!("runDir" in checked)) return checked;
+  const { runDir } = checked;
+  const file = join(runDir, "run.json");
   let run3;
   try {
     run3 = loadRun(runDir);
@@ -40174,9 +40230,9 @@ function renderStatus(s) {
     ...rows
   ].join("\n");
 }
-function outsideRoot(runDir, root) {
-  return errText4(
-    `\`${runDir}\` is not a run directory inside the pipeline state root \`${root}\` (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). status reads runs only from there, so nothing was read.`
+function outsideRoot(runDir, root, refuse2 = errText4) {
+  return refuse2(
+    `\`${runDir}\` is not a run directory inside the pipeline state root \`${root}\` (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). Runs are read only from there, so nothing was read.`
   );
 }
 function describeError(error2) {
@@ -40194,8 +40250,308 @@ ${text}` }],
   };
 }
 
+// ../../../../packages/marvin-mcp-shared/dist/autopilot-labels.js
+function duration3(ms, h, min) {
+  const total = Math.max(0, Math.round(ms / 6e4));
+  const hours = Math.floor(total / 60);
+  return hours === 0 ? `${total} ${min}` : `${hours} ${h} ${total % 60} ${min}`;
+}
+var RU = {
+  rail: {
+    planning: "\u041F\u043B\u0430\u043D",
+    test_authoring: "\u0422\u0435\u0441\u0442\u044B",
+    executing: "\u0418\u0441\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435",
+    gating: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438",
+    verifying: "\u0412\u0435\u0440\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440",
+    ci_wait: "CI",
+    retro: "\u0420\u0435\u0442\u0440\u043E"
+  },
+  state: {
+    running: "\u0418\u0434\u0451\u0442",
+    waiting: "\u0416\u0434\u0451\u0442 \u043E\u0442\u0432\u0435\u0442\u0430",
+    ready: "PR \u0433\u043E\u0442\u043E\u0432 \u043A \u0441\u043B\u0438\u044F\u043D\u0438\u044E",
+    halted: "\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D"
+  },
+  elapsed: "\u0412\u0440\u0435\u043C\u044F",
+  cost: "\u0421\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C",
+  iteration: "\u0418\u0442\u0435\u0440\u0430\u0446\u0438\u044F",
+  rejections: "\u041E\u0442\u043A\u0430\u0437\u044B",
+  since: (t) => `\u0441 ${t}`,
+  costDelta: (usd2) => `+${usd2} \u0437\u0430 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B`,
+  costPartial: "\u0447\u0430\u0441\u0442\u044C \u0441\u0443\u043C\u043C \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430",
+  rung: (n) => `\u0441\u0442\u0443\u043F\u0435\u043D\u044C ${n}`,
+  noRejections: "\u043D\u0435 \u0431\u044B\u043B\u043E",
+  lastRejection: (source, blocking) => `${source}: ${blocking} \u0431\u043B\u043E\u043A.`,
+  sources: { gate: "\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438", verifier: "\u0432\u0435\u0440\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440", ci: "CI" },
+  calloutTitle: { question: "\u041D\u0443\u0436\u0435\u043D \u043E\u0442\u0432\u0435\u0442", halt: "\u041F\u0440\u0438\u0447\u0438\u043D\u0430 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0438" },
+  eventsTitle: "\u0421 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430",
+  noEvents: "\u041D\u043E\u0432\u044B\u0445 \u0441\u043E\u0431\u044B\u0442\u0438\u0439 \u043D\u0435\u0442.",
+  working: "\u0420\u0430\u0431\u043E\u0442\u0430\u044E\u0442",
+  report: (n) => `\u043E\u0442\u0447\u0451\u0442 \u2116 ${n}`,
+  nextBy: (t) => `\u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u2264 ${t}`,
+  final: "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u043E\u0442\u0447\u0451\u0442",
+  duration: (ms) => duration3(ms, "\u0447", "\u043C\u0438\u043D")
+};
+var EN = {
+  rail: {
+    planning: "Plan",
+    test_authoring: "Tests",
+    executing: "Execution",
+    gating: "Gates",
+    verifying: "Verifier",
+    ci_wait: "CI",
+    retro: "Retro"
+  },
+  state: {
+    running: "Running",
+    waiting: "Awaiting an answer",
+    ready: "PR ready to merge",
+    halted: "Halted"
+  },
+  elapsed: "Elapsed",
+  cost: "Cost",
+  iteration: "Iteration",
+  rejections: "Rejections",
+  since: (t) => `since ${t}`,
+  costDelta: (usd2) => `+${usd2} this interval`,
+  costPartial: "some costs unknown",
+  rung: (n) => `rung ${n}`,
+  noRejections: "none",
+  lastRejection: (source, blocking) => `${source}: ${blocking} blocking`,
+  sources: { gate: "gates", verifier: "verifier", ci: "CI" },
+  calloutTitle: { question: "An answer is needed", halt: "Why it stopped" },
+  eventsTitle: "Since the last report",
+  noEvents: "No new events.",
+  working: "Working",
+  report: (n) => `report #${n}`,
+  nextBy: (t) => `next by ${t}`,
+  final: "Final report",
+  duration: (ms) => duration3(ms, "h", "min")
+};
+function autopilotLabels(lang) {
+  return lang.toLowerCase().startsWith("ru") ? RU : EN;
+}
+var autopilotUsd = (n) => `$${n.toFixed(2)}`;
+function autopilotTime(iso) {
+  const d = new Date(iso);
+  const two = (n) => String(n).padStart(2, "0");
+  return `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/autopilot.js
+var AUTOPILOT_RAIL = [
+  "planning",
+  "test_authoring",
+  "executing",
+  "gating",
+  "verifying",
+  "ci_wait",
+  "retro"
+];
+var AutopilotRailStep = external_exports.object({
+  key: external_exports.enum(AUTOPILOT_RAIL),
+  state: external_exports.enum(["done", "current", "waiting", "failed", "pending"])
+});
+var AutopilotState = external_exports.enum(["running", "waiting", "ready", "halted"]);
+var AUTOPILOT_EVENTS_MAX = 8;
+var AutopilotEvent = external_exports.object({
+  at: external_exports.string().datetime(),
+  kind: external_exports.string(),
+  text: external_exports.string()
+});
+var AutopilotReport = external_exports.object({
+  version: external_exports.literal(1),
+  runId: external_exports.string(),
+  /** 1 for a run's first report, then one more per report. */
+  n: external_exports.number().int().min(1),
+  at: external_exports.string().datetime(),
+  /** Where the interval this report covers began: the previous report, or the arming of await. */
+  since: external_exports.string().datetime(),
+  /** When the next report is due at the latest; null on a final report. */
+  nextBy: external_exports.string().datetime().nullable(),
+  /** The run will not move again: ready, halted, or closed. */
+  final: external_exports.boolean(),
+  lang: external_exports.string(),
+  /** The task as the user wrote it. */
+  task: external_exports.string(),
+  state: AutopilotState,
+  /** The run's stage as `run.json` names it. */
+  stage: external_exports.string(),
+  rail: external_exports.array(AutopilotRailStep).length(AUTOPILOT_RAIL.length),
+  startedAt: external_exports.string().datetime(),
+  elapsedMs: external_exports.number().int().min(0),
+  /** The sum over children whose cost is known; null when none is. */
+  costUsd: external_exports.number().nullable(),
+  /** False when some child's cost is unknown, so `costUsd` is a lower bound. */
+  costComplete: external_exports.boolean(),
+  /** The change since the previous report; null on the first report or with no cost on either. */
+  costDeltaUsd: external_exports.number().nullable(),
+  iteration: external_exports.number().int().min(0),
+  rung: external_exports.number().int().min(0),
+  rejections: external_exports.object({
+    total: external_exports.number().int().min(0),
+    last: external_exports.object({
+      source: external_exports.enum(["gate", "verifier", "ci"]),
+      blocking: external_exports.number().int().min(0)
+    }).nullable()
+  }),
+  /** Children running when the report was written, so a quiet interval still says who works. */
+  active: external_exports.array(external_exports.object({
+    name: external_exports.string(),
+    role: external_exports.string(),
+    runningMs: external_exports.number().int().min(0)
+  })),
+  /** The open judgment's kind, or null. */
+  judgment: external_exports.string().nullable(),
+  /** English, from the engine; the orchestrator translates it for the card. */
+  callout: external_exports.object({
+    kind: external_exports.enum(["question", "halt"]),
+    text: external_exports.string()
+  }).nullable(),
+  /** The newest events of the interval, oldest first, English as the engine wrote them. */
+  events: external_exports.array(AutopilotEvent).max(AUTOPILOT_EVENTS_MAX),
+  omittedEvents: external_exports.number().int().min(0),
+  prUrl: external_exports.string().nullable()
+});
+external_exports.object({
+  report: AutopilotReport,
+  runDir: external_exports.string()
+});
+
+// src/pipeline/status-report.ts
+var REPORTS_DIR = "status-reports";
+var reportPath = (runDir, n) => join(runDir, REPORTS_DIR, `${n}.json`);
+function lastReportNumber(runDir) {
+  const dir = join(runDir, REPORTS_DIR);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).map((f) => /^(\d+)\.json$/.exec(f)?.[1]).filter((m) => m !== void 0).reduce((max, m) => Math.max(max, Number(m)), 0);
+}
+function readReport(runDir, n) {
+  try {
+    return AutopilotReport.parse(JSON.parse(readFileSync(reportPath(runDir, n), "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+// src/tools/autopilot-report.ts
+var Translations = external_exports.object({
+  events: external_exports.array(external_exports.string().max(500)).optional().describe(
+    "The report's event texts in the user's language, one per event, in the report's order."
+  ),
+  callout: external_exports.string().max(1e3).optional().describe("The callout in the user's language: the question asked, or why the run stopped.")
+}).strict();
+var AutopilotReportInput = external_exports.object({
+  runDir: external_exports.string().describe(
+    "The run directory, as marvin-pipe init printed it. Absolute, inside the state root."
+  ),
+  n: external_exports.number().int().min(1).optional().describe("The report number await printed in its REPORT line. Defaults to the newest."),
+  translations: Translations.optional()
+});
+var FIELDS = Object.keys(AutopilotReportInput.shape).join(", ");
+var AutopilotReportInputStrict = strictInput(
+  AutopilotReportInput,
+  (keys) => `unknown argument ${keyList(keys)} for the autopilot-report tool \u2014 it accepts only: ${FIELDS}.`
+);
+function buildAutopilotReportTool(env2 = process.env) {
+  return defineTool({
+    name: "autopilot-report",
+    description: "Show one autopilot status report as a card: stage rail, elapsed time, cost, iteration, rejections, the events since the previous report and when the next one is due. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
+    inputSchema: AutopilotReportInputStrict,
+    meta: { ui: { resourceUri: AUTOPILOT_STATUS_WIDGET_URI } },
+    handler: (input) => Promise.resolve(runAutopilotReport(input, env2))
+  });
+}
+function runAutopilotReport(input, env2) {
+  const checked = checkedRunDir(input.runDir, env2, refuse);
+  if (!("runDir" in checked)) return checked;
+  const { runDir } = checked;
+  const n = input.n ?? lastReportNumber(runDir);
+  if (n === 0) return refuse(`No status report has been written in \`${runDir}\` yet.`);
+  const file = reportPath(runDir, n);
+  if (!existsSync(file)) return refuse(`There is no report ${n} in \`${runDir}\`.`);
+  if (!inside(realpathSync(runDir), realpathSync(file))) {
+    return refuse(`Report ${n} resolves outside \`${runDir}\`, so it was not read.`);
+  }
+  const report = readReport(runDir, n);
+  if (report === null) return refuse(`\`${file}\` is not a valid status report.`);
+  const t = input.translations;
+  if (t?.events !== void 0 && t.events.length !== report.events.length) {
+    return refuse(
+      `translations.events has ${t.events.length} texts; report ${n} has ${report.events.length} events. Pass one text per event, in order.`
+    );
+  }
+  if (t?.callout !== void 0 && report.callout === null) {
+    return refuse(`translations.callout was given, but report ${n} has no callout.`);
+  }
+  const shown = {
+    ...report,
+    events: report.events.map((e, i) => ({ ...e, text: oneLine(t?.events?.[i] ?? e.text) })),
+    callout: report.callout === null ? null : { ...report.callout, text: oneLine(t?.callout ?? report.callout.text) }
+  };
+  const payload = { report: shown, runDir };
+  return {
+    content: [{ type: "text", text: renderReport(shown) }],
+    structuredContent: payload
+  };
+}
+var oneLine = (s) => s.replace(/\s+/g, " ").trim();
+function inside(root, path) {
+  const rel = relative(root, path);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+var MARK = { done: "\u2713", current: "\u25CF", waiting: "\u25D0", failed: "\u2715", pending: "\u25CB" };
+function renderReport(r) {
+  const l = autopilotLabels(r.lang);
+  const head = `## ${l.state[r.state]} \xB7 ${r.runId} \xB7 ${l.report(r.n)}`;
+  const rail = r.rail.map((s) => {
+    const label = `${MARK[s.state]} ${l.rail[s.key]}`;
+    return s.state === "current" || s.state === "waiting" || s.state === "failed" ? `**${label}**` : label;
+  }).join(" \u2192 ");
+  const cost = r.costUsd === null ? "\u2014" : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : ` (${l.costPartial})`}`;
+  const costSub = r.costDeltaUsd === null ? "" : ` \xB7 ${l.costDelta(autopilotUsd(r.costDeltaUsd))}`;
+  const rejSub = r.rejections.last === null ? l.noRejections : l.lastRejection(l.sources[r.rejections.last.source], r.rejections.last.blocking);
+  const table = [
+    `| ${l.elapsed} | ${l.cost} | ${l.iteration} | ${l.rejections} |`,
+    "|---|---|---|---|",
+    `| ${l.duration(r.elapsedMs)} \xB7 ${l.since(autopilotTime(r.startedAt))} | ${cost}${costSub} | ${r.iteration} \xB7 ${l.rung(r.rung)} | ${r.rejections.total} \xB7 ${rejSub} |`
+  ];
+  const callout = r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
+  const events = r.events.length === 0 ? [
+    `_${l.noEvents}_`,
+    ...r.active.length === 0 ? [] : [
+      `${l.working}: ${r.active.map((a) => `${a.role} (\`${a.name}\`), ${l.duration(a.runningMs)}`).join("; ")}`
+    ]
+  ] : [
+    ...r.omittedEvents > 0 ? [`- \u2026 +${r.omittedEvents}`] : [],
+    ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`)
+  ];
+  const foot = r.final ? `${l.final}${r.prUrl ? ` \xB7 ${r.prUrl}` : ""}` : r.nextBy === null ? "" : l.nextBy(autopilotTime(r.nextBy));
+  return [
+    head,
+    `**${oneLine(r.task)}**`,
+    "",
+    rail,
+    "",
+    ...table,
+    ...callout,
+    "",
+    `**${l.eventsTitle}**`,
+    ...events,
+    ...foot === "" ? [] : ["", foot]
+  ].join("\n");
+}
+function refuse(text) {
+  return {
+    content: [{ type: "text", text: `# Autopilot report \u2014 refused
+
+${text}` }],
+    isError: true
+  };
+}
+
 // src/server.ts
-var VERSION = "0.33.0";
+var VERSION = "0.35.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
@@ -40227,7 +40583,10 @@ await runPackServer({
         buildReportTool(env),
         // The autopilot pipeline's read-only door: where the marvin-pipe CLI and its assets
         // are, resolved from packRoot rather than the session's cwd, and one run's status.
-        buildPipelineTool(packRoot)
+        buildPipelineTool(packRoot),
+        // One autopilot status report as a card (ADR-0051): written by marvin-pipe await,
+        // read back here, rendered by the autopilot-status widget or as Markdown.
+        buildAutopilotReportTool()
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

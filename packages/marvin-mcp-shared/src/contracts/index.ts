@@ -21,3 +21,4 @@ export * from "./help.js";
 export * from "./provenance.js";
 export * from "./critique.js";
 export * from "./metrics.js";
+export * from "./autopilot.js";

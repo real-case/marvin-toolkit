@@ -19933,6 +19933,30 @@ function classifyRecord(git4, commit, worktree, rel, slug) {
   return why === null ? { state: "appended", bytes } : refused(why);
 }
 
+// src/pipeline/volatile.ts
+var NEVER_VOLATILE = [
+  /(^|\/)\.git[^/]*$/i,
+  /(^|\/)CLAUDE(\.local)?\.md$/i,
+  /^\.claude\/(settings[^/]*\.json|hooks\/|agents\/|skills\/|commands\/|rules\/|output-styles\/|plugins\/)/i,
+  /^\.husky\//i,
+  /^\.marvin\//i,
+  /^\.mcp\.json$/i
+];
+var neverVolatile = (path) => NEVER_VOLATILE.some((re) => re.test(path));
+function volatileEntryProblem(entry) {
+  const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+  if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
+  if (neverVolatile(entry)) return "it is executed or read as configuration";
+  if (entry.endsWith("/") && !bare.includes("/")) {
+    return "it is a whole top-level directory; name the state under it";
+  }
+  return null;
+}
+function declaredVolatile(entries, path) {
+  if (neverVolatile(path)) return false;
+  return entries.some((e) => e.endsWith("/") ? path.startsWith(e) : path === e);
+}
+
 // src/pipeline/gate.ts
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
@@ -20320,6 +20344,23 @@ function snapshotProtected(worktree, gitDir, patterns) {
   }
   return out;
 }
+function ignoredPaths(worktree, gitDir, paths) {
+  if (paths.length === 0) return /* @__PURE__ */ new Set();
+  try {
+    const out = isolatedGit(worktree, gitDir).textIn(
+      `${paths.join("\0")}\0`,
+      "-c",
+      "core.excludesFile=",
+      "check-ignore",
+      "-z",
+      "--stdin"
+    );
+    return new Set(nul(out));
+  } catch (error2) {
+    if (error2.status === 1) return /* @__PURE__ */ new Set();
+    throw error2;
+  }
+}
 function diffProtected(a, b) {
   const keys = /* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].filter((k) => a[k] !== b[k]).sort();
@@ -20342,6 +20383,7 @@ function buildReport(parts) {
   const passed = parts.gates.every((g) => g.result === "pass" || g.result === "flaky") && parts.undeclared.length === 0 && parts.protected.length === 0 && parts.checks.every((c) => c.severity === "minor") && parts.sealed.every((s) => s.ok) && parts.blockers.length === 0;
   return { ...parts, passed };
 }
+var outsideCommittedDiff = (f) => /^P-\d+$/.test(f.id) && f.category === "scope" && f.file !== void 0 && !f.evidence.split(", ").includes("committed diff");
 function reportFindings(r) {
   const out = [];
   for (const g of r.gates) {
@@ -20462,6 +20504,10 @@ function validateOptions(o) {
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
   if (!isAbsolute(o.worktree)) throw new Error("worktree must be an absolute path");
   compileProtected(o.protectedPatterns);
+  for (const entry of o.protectedVolatile ?? []) {
+    const problem = typeof entry === "string" ? volatileEntryProblem(entry) : "it is not a string";
+    if (problem !== null) throw new Error(`volatile entry ${String(entry)} is refused: ${problem}`);
+  }
   for (const path of o.sealed.map((x) => x.path)) {
     if (!isCanonicalPath(path)) throw new Error(`sealed path is not canonical: ${String(path)}`);
   }
@@ -20581,8 +20627,17 @@ async function runGateStage(o) {
     sources.set(path, [...sources.get(path) ?? [], source]);
   };
   for (const path of protectedChanges(changed, o.protectedPatterns)) flag2(path, "committed diff");
+  const volatile = /* @__PURE__ */ new Set();
+  const judged = (paths) => {
+    const declared = paths.filter(
+      (p) => !p.endsWith("/") && declaredVolatile(o.protectedVolatile ?? [], p)
+    );
+    const ignored = ignoredPaths(o.worktree, o.gitDir, declared);
+    for (const p of ignored) volatile.add(p);
+    return paths.filter((p) => !ignored.has(p));
+  };
   const protectedBefore = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(o.protectedBaseline, protectedBefore)) {
+  for (const path of judged(diffProtected(o.protectedBaseline, protectedBefore))) {
     if (!path.endsWith("/")) flag2(path, "protected snapshot");
     else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -20762,7 +20817,7 @@ async function runGateStage(o) {
     };
   });
   const protectedAfter = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(protectedBefore, protectedAfter)) {
+  for (const path of judged(diffProtected(protectedBefore, protectedAfter))) {
     if (!path.endsWith("/")) flag2(path, "post-gate snapshot");
     else if (protectedAfter[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -20777,6 +20832,7 @@ async function runGateStage(o) {
     protected: protectedPaths,
     protectedSources: Object.fromEntries(sources),
     protectedPatterns: [...o.protectedPatterns],
+    volatile: [...volatile].sort(),
     checks: scanChecks(added, o.checks),
     sealed,
     blockers
@@ -24157,10 +24213,10 @@ function readChildState(runDir, name, nowMs) {
   return { exitCode, result, idleMs: hasLog ? nowMs - statSync(logPath).mtimeMs : 0 };
 }
 function summaryLine(name, r) {
-  const cost = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
+  const cost2 = r.costUsd === null ? "?" : `$${r.costUsd.toFixed(2)}`;
   const dur = r.durationMs === null ? "?" : `${Math.round(r.durationMs / 6e4)}m`;
   const detail = r.detail ? ` detail=${JSON.stringify(r.detail)}` : "";
-  return `CHILD ${name} outcome=${r.outcome} cost=${cost} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
+  return `CHILD ${name} outcome=${r.outcome} cost=${cost2} dur=${dur} session=${r.sessionId ?? "-"}${detail}`;
 }
 
 // src/pipeline/engine.ts
@@ -24493,6 +24549,10 @@ function step(run2, obs, rubric, now) {
     }
     return { run: reopened, actions: [action] };
   };
+  const sameSet = (a, b) => {
+    const key = (x) => [...new Set(x)].sort().join("\0");
+    return key(a) === key(b);
+  };
   const reject = (r, source, found) => {
     const fs = found.length ? found : [unspecified(source)];
     const prints = fs.map(fingerprint);
@@ -24523,6 +24583,12 @@ function step(run2, obs, rubric, now) {
     const halted = (reason2) => ask({ ...next, haltRole: "executor" }, "halt", { reason: reason2, findings: fs });
     const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
+    const lastRejection = r.rejections.at(-1);
+    if (!bookkeeping && source === "gate" && lastRejection?.source === "gate" && fs.every(outsideCommittedDiff) && sameSet(prints, lastRejection.fingerprints)) {
+      return halted(
+        `the same ${fs.length} protected ${fs.length === 1 ? "path" : "paths"} changed outside the committed diff in 2 gates in a row, which no executor can fix: if the project's own hooks or gate scripts write them and git ignores them, declare them in pipeline.protected_volatile`
+      );
+    }
     if (!bookkeeping && (counted >= rubric.caps.rejections || stepNow === void 0 || stepNow === "halt")) {
       return halted(`rejected ${counted} times (last: ${source})`);
     }
@@ -25136,6 +25202,232 @@ ${a.text}` }, true)]
   throw new Error(`no rule for stage ${run2.stage} and observation ${obs.kind}${detail}`);
 }
 
+// ../../../../packages/marvin-mcp-shared/dist/contracts/autopilot.js
+var AUTOPILOT_RAIL = [
+  "planning",
+  "test_authoring",
+  "executing",
+  "gating",
+  "verifying",
+  "ci_wait",
+  "retro"
+];
+var AutopilotRailStep = external_exports.object({
+  key: external_exports.enum(AUTOPILOT_RAIL),
+  state: external_exports.enum(["done", "current", "waiting", "failed", "pending"])
+});
+var AutopilotState = external_exports.enum(["running", "waiting", "ready", "halted"]);
+var AUTOPILOT_EVENTS_MAX = 8;
+var AutopilotEvent = external_exports.object({
+  at: external_exports.string().datetime(),
+  kind: external_exports.string(),
+  text: external_exports.string()
+});
+var AutopilotReport = external_exports.object({
+  version: external_exports.literal(1),
+  runId: external_exports.string(),
+  /** 1 for a run's first report, then one more per report. */
+  n: external_exports.number().int().min(1),
+  at: external_exports.string().datetime(),
+  /** Where the interval this report covers began: the previous report, or the arming of await. */
+  since: external_exports.string().datetime(),
+  /** When the next report is due at the latest; null on a final report. */
+  nextBy: external_exports.string().datetime().nullable(),
+  /** The run will not move again: ready, halted, or closed. */
+  final: external_exports.boolean(),
+  lang: external_exports.string(),
+  /** The task as the user wrote it. */
+  task: external_exports.string(),
+  state: AutopilotState,
+  /** The run's stage as `run.json` names it. */
+  stage: external_exports.string(),
+  rail: external_exports.array(AutopilotRailStep).length(AUTOPILOT_RAIL.length),
+  startedAt: external_exports.string().datetime(),
+  elapsedMs: external_exports.number().int().min(0),
+  /** The sum over children whose cost is known; null when none is. */
+  costUsd: external_exports.number().nullable(),
+  /** False when some child's cost is unknown, so `costUsd` is a lower bound. */
+  costComplete: external_exports.boolean(),
+  /** The change since the previous report; null on the first report or with no cost on either. */
+  costDeltaUsd: external_exports.number().nullable(),
+  iteration: external_exports.number().int().min(0),
+  rung: external_exports.number().int().min(0),
+  rejections: external_exports.object({
+    total: external_exports.number().int().min(0),
+    last: external_exports.object({
+      source: external_exports.enum(["gate", "verifier", "ci"]),
+      blocking: external_exports.number().int().min(0)
+    }).nullable()
+  }),
+  /** Children running when the report was written, so a quiet interval still says who works. */
+  active: external_exports.array(external_exports.object({
+    name: external_exports.string(),
+    role: external_exports.string(),
+    runningMs: external_exports.number().int().min(0)
+  })),
+  /** The open judgment's kind, or null. */
+  judgment: external_exports.string().nullable(),
+  /** English, from the engine; the orchestrator translates it for the card. */
+  callout: external_exports.object({
+    kind: external_exports.enum(["question", "halt"]),
+    text: external_exports.string()
+  }).nullable(),
+  /** The newest events of the interval, oldest first, English as the engine wrote them. */
+  events: external_exports.array(AutopilotEvent).max(AUTOPILOT_EVENTS_MAX),
+  omittedEvents: external_exports.number().int().min(0),
+  prUrl: external_exports.string().nullable()
+});
+external_exports.object({
+  report: AutopilotReport,
+  runDir: external_exports.string()
+});
+
+// src/pipeline/status-report.ts
+var REPORTS_DIR = "status-reports";
+var reportPath = (runDir, n) => join(runDir, REPORTS_DIR, `${n}.json`);
+var RAIL_OF = {
+  intake: "planning",
+  planning: "planning",
+  test_authoring: "test_authoring",
+  executing: "executing",
+  gating: "gating",
+  verifying: "verifying",
+  ci_wait: "ci_wait",
+  retro: "retro",
+  finalizing: "retro"
+};
+var RAIL_OF_JUDGMENT = {
+  planner_questions: "planning",
+  spec_approval: "planning",
+  executor_questions: "executing",
+  unverified: "verifying",
+  no_ci: "ci_wait"
+};
+function stageMove(e) {
+  if (e.kind !== "stage") return null;
+  const m = /^(\S+) → (\S+)$/.exec(e.text);
+  return m?.[1] && m[2] ? { from: m[1], to: m[2] } : null;
+}
+var railOf = (stage) => stage === null ? void 0 : RAIL_OF[stage];
+function cameFrom(history, stage) {
+  for (const e of [...history].reverse()) {
+    const move = stageMove(e);
+    if (move && move.to === stage) return move.from;
+  }
+  return null;
+}
+var indexOf = (key) => AUTOPILOT_RAIL.indexOf(key);
+function rail(current, mark, retroDone) {
+  return AUTOPILOT_RAIL.map((key, i) => {
+    if (i < current) return { key, state: "done" };
+    if (i === current) return { key, state: mark };
+    if (key === "retro" && retroDone) return { key, state: "done" };
+    return { key, state: "pending" };
+  });
+}
+function position(run2, history) {
+  const reached = (stage) => history.some((e) => stageMove(e)?.to === stage);
+  if (run2.stage === "ready" || run2.stage === "done" && run2.haltReason === null && run2.prUrl) {
+    return { state: "ready", rail: rail(AUTOPILOT_RAIL.length, "done", true) };
+  }
+  if (run2.stage === "halted" || run2.stage === "done" || run2.haltReason !== null) {
+    const from = cameFrom(history, "halted");
+    const key2 = railOf(from) ?? "planning";
+    return { state: "halted", rail: rail(indexOf(key2), "failed", reached("retro")) };
+  }
+  let key = RAIL_OF[run2.stage];
+  if (key === void 0) {
+    const from = cameFrom(history, run2.stage);
+    key = railOf(from) ?? RAIL_OF_JUDGMENT[run2.pendingJudgment?.kind ?? ""] ?? "planning";
+  }
+  const waiting = run2.pendingJudgment !== null;
+  return {
+    state: waiting ? "waiting" : "running",
+    rail: rail(indexOf(key), waiting ? "waiting" : "current", false)
+  };
+}
+function cost(run2) {
+  const last = /* @__PURE__ */ new Map();
+  run2.children.forEach((c, i) => last.set(c.sessionId ?? `row ${i}`, c.costUsd));
+  const values = [...last.values()];
+  const known = values.filter((v) => v !== null);
+  return {
+    usd: known.length === 0 ? null : Math.round(known.reduce((a, b) => a + b, 0) * 100) / 100,
+    complete: known.length === values.length
+  };
+}
+var oneLine2 = (s) => s.replace(/\s+/g, " ").trim();
+function buildReport2(i) {
+  const { run: run2, now } = i;
+  const { state, rail: steps } = position(run2, i.history);
+  const final = run2.stage === "ready" || run2.stage === "done";
+  const c = cost(run2);
+  const prevCost = i.previous?.costUsd ?? null;
+  const last = run2.rejections[run2.rejections.length - 1];
+  const kept = i.events.slice(-AUTOPILOT_EVENTS_MAX);
+  const callout = state === "halted" ? { kind: "halt", text: oneLine2(run2.haltReason ?? "closed without a ready PR") } : run2.pendingJudgment !== null ? { kind: "question", text: run2.pendingJudgment.kind } : null;
+  return AutopilotReport.parse({
+    version: 1,
+    runId: run2.id,
+    n: i.n,
+    at: now.toISOString(),
+    since: i.since.toISOString(),
+    nextBy: final || i.intervalMs === null ? null : new Date(now.getTime() + i.intervalMs).toISOString(),
+    final,
+    lang: run2.lang,
+    task: run2.task.original,
+    state,
+    stage: run2.stage,
+    rail: steps,
+    startedAt: new Date(run2.createdAt).toISOString(),
+    elapsedMs: Math.max(0, now.getTime() - Date.parse(run2.createdAt)),
+    costUsd: c.usd,
+    costComplete: c.complete,
+    costDeltaUsd: c.usd === null || prevCost === null ? null : Math.round((c.usd - prevCost) * 100) / 100,
+    iteration: run2.iteration,
+    rung: run2.rung,
+    rejections: {
+      total: run2.rejections.length,
+      last: last ? { source: last.source, blocking: last.fingerprints.length } : null
+    },
+    active: run2.children.filter((ch) => ch.status === "running").map((ch) => ({
+      name: ch.name,
+      role: ch.role,
+      runningMs: Math.max(0, now.getTime() - Date.parse(ch.startedAt))
+    })),
+    judgment: run2.pendingJudgment?.kind ?? null,
+    callout,
+    events: kept.map((e) => ({
+      at: Number.isNaN(Date.parse(e.ts)) ? now.toISOString() : new Date(e.ts).toISOString(),
+      kind: e.kind,
+      text: oneLine2(e.text)
+    })),
+    omittedEvents: i.events.length - kept.length,
+    prUrl: run2.prUrl
+  });
+}
+function lastReportNumber(runDir) {
+  const dir = join(runDir, REPORTS_DIR);
+  if (!existsSync(dir)) return 0;
+  return readdirSync(dir).map((f) => /^(\d+)\.json$/.exec(f)?.[1]).filter((m) => m !== void 0).reduce((max, m) => Math.max(max, Number(m)), 0);
+}
+function readReport(runDir, n) {
+  try {
+    return AutopilotReport.parse(JSON.parse(readFileSync(reportPath(runDir, n), "utf8")));
+  } catch {
+    return null;
+  }
+}
+function writeReport(runDir, report) {
+  mkdirSync(join(runDir, REPORTS_DIR), { recursive: true });
+  const path = reportPath(runDir, report.n);
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(report, null, 2)}
+`);
+  renameSync(tmp, path);
+  return path;
+}
+
 // src/pipeline/loop.ts
 var JOURNAL = "engine.journal.json";
 var JUDGMENTS = "judgments";
@@ -25163,7 +25455,7 @@ function createExclusive(path, text2) {
   }
 }
 var errorText2 = (error2) => error2 instanceof Error ? error2.message : String(error2);
-var oneLine2 = (text2) => text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
+var oneLine3 = (text2) => text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
 function isAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
@@ -25369,7 +25661,7 @@ function refuseAnswer(runDir, id, reason2) {
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     kind: "note",
     actor: "engine",
-    text: `answer to ${id} refused: ${oneLine2(reason2)}`,
+    text: `answer to ${id} refused: ${oneLine3(reason2)}`,
     data: { notify: true, id }
   });
 }
@@ -25607,7 +25899,7 @@ function noteStop(runDir, error2, signal) {
       ts: (/* @__PURE__ */ new Date()).toISOString(),
       kind: "note",
       actor: "engine",
-      text: requested ? "engine stopped on request" : `engine stopped: ${oneLine2(errorText2(error2))}`,
+      text: requested ? "engine stopped on request" : `engine stopped: ${oneLine3(errorText2(error2))}`,
       ...requested ? {} : { data: { notify: true } }
     });
   } catch {
@@ -25661,7 +25953,8 @@ function readEventsFrom(runDir, cursor) {
     closeSync(fd);
   }
 }
-var eventLines = (events) => events.filter((e) => e.data?.notify === true && EventKind.safeParse(e.kind).success).map((e) => `EVENT ${e.kind} ${oneLine2(e.text)}`);
+var notifying = (events) => events.filter((e) => e.data?.notify === true && EventKind.safeParse(e.kind).success);
+var eventLines = (events) => notifying(events).map((e) => `EVENT ${e.kind} ${oneLine3(e.text)}`);
 function standing(runDir) {
   const out = [];
   const pending = pendingJudgment(runDir);
@@ -25687,7 +25980,9 @@ function standing(runDir) {
 var REPEAT_MS = 6e4;
 var Cursor = external_exports.object({
   offset: external_exports.number().int().min(0),
-  announced: external_exports.record(external_exports.string(), external_exports.number()).catch({})
+  announced: external_exports.record(external_exports.string(), external_exports.number()).catch({}),
+  /** When the last status report was written (ms since the epoch); absent before the first. */
+  reportedAt: external_exports.number().optional().catch(void 0)
 });
 function readCursor(runDir) {
   try {
@@ -25697,6 +25992,7 @@ function readCursor(runDir) {
   }
 }
 async function awaitWork(runDir, o) {
+  if (o.reportMs !== void 0) return awaitReport(runDir, { ...o, reportMs: o.reportMs });
   const started = Date.now();
   const repeatMs = o.repeatMs ?? REPEAT_MS;
   const saved = readCursor(runDir);
@@ -25726,6 +26022,66 @@ async function awaitWork(runDir, o) {
 `);
       const lines = [...fresh, ...report.map((s) => s.line)];
       return lines.length > 0 ? lines : ["TIMEOUT rearm"];
+    }
+    await setTimeout$1(pollMsOf(o), void 0, { signal: o.signal });
+  }
+}
+async function awaitReport(runDir, o) {
+  const started = Date.now();
+  const repeatMs = o.repeatMs ?? REPEAT_MS;
+  const saved = readCursor(runDir);
+  const announced = new Map(Object.entries(saved.announced));
+  const since = saved.reportedAt ?? started;
+  let offset = saved.offset;
+  const interval = [];
+  for (; ; ) {
+    const read = readEventsFrom(runDir, offset);
+    offset = read.cursor;
+    interval.push(...notifying(read.events));
+    const now = standing(runDir);
+    const keys = new Set(now.map((s) => s.key));
+    for (const key of [...announced.keys()]) if (!keys.has(key)) announced.delete(key);
+    const clock = Date.now();
+    const due = clock - started >= o.deadlineMs;
+    const held = (key) => {
+      const at = announced.get(key);
+      return at !== void 0 && clock - at < repeatMs;
+    };
+    const report = now.filter((s) => s.always || due || !held(s.key));
+    const fresh = report.some((s) => !announced.has(s.key));
+    const write = fresh || due || clock - since >= o.reportMs;
+    if (write || report.length > 0) {
+      const kept = now.map((s) => [
+        s.key,
+        report.includes(s) ? clock : announced.get(s.key) ?? clock
+      ]);
+      const lines = report.map((s) => s.line);
+      let cursor = {
+        offset: saved.offset,
+        announced: Object.fromEntries(kept),
+        reportedAt: since
+      };
+      if (write) {
+        const n = lastReportNumber(runDir) + 1;
+        const path = writeReport(
+          runDir,
+          buildReport2({
+            run: loadRun(runDir),
+            history: readEventsFrom(runDir, 0).events,
+            events: interval,
+            previous: readReport(runDir, n - 1),
+            n,
+            since: new Date(since),
+            now: new Date(clock),
+            intervalMs: o.reportMs
+          })
+        );
+        cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };
+        lines.unshift(`REPORT ${n} ${path}`);
+      }
+      writeAtomic(join(runDir, CURSOR), `${JSON.stringify(cursor)}
+`);
+      return lines;
     }
     await setTimeout$1(pollMsOf(o), void 0, { signal: o.signal });
   }
@@ -26182,6 +26538,24 @@ var PipelineConfig = external_exports.object({
   ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
   scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /**
+   * Protected paths that are the host's own state, not configuration: what its hooks and gate
+   * scripts write under a protected directory (`.claude/.rules-loaded/`, a stamp file). A
+   * trailing `/` covers a directory. The gate skips a covered path only while git ignores it,
+   * and refuses an entry that is executed or read as configuration (`NEVER_VOLATILE`).
+   */
+  protected_volatile: external_exports.array(external_exports.string()).superRefine((list2, ctx) => {
+    list2.forEach((entry, i) => {
+      const problem = volatileEntryProblem(entry);
+      if (problem !== null) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `protected_volatile entry ${entry} is refused: ${problem}`,
+          path: [i]
+        });
+      }
+    });
+  }).default([]),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: external_exports.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
@@ -32625,7 +32999,7 @@ function launchDetached(cmd, runDir, name) {
   return { pid: child.pid, logPath, errPath, exitPath };
 }
 var TAIL_BYTES = 512 * 1024;
-var oneLine3 = (text2, max = 100) => {
+var oneLine4 = (text2, max = 100) => {
   const flat = text2.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
 };
@@ -32634,7 +33008,7 @@ function detailOf(input) {
   const record2 = input;
   for (const key of ["description", "command", "file_path", "path", "pattern", "url", "prompt"]) {
     const value = record2[key];
-    if (typeof value === "string" && value.trim() !== "") return oneLine3(value);
+    if (typeof value === "string" && value.trim() !== "") return oneLine4(value);
   }
   return null;
 }
@@ -33829,6 +34203,7 @@ ${planted.join("\n")}`
       exemptPattern: config2.pipeline.scope_exempt_pattern,
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
+      protectedVolatile: config2.pipeline.protected_volatile,
       metricsRecord: carriedRecord(run2, wt.path, spec.text),
       runArtifacts: run2.specPath !== null && isCanonicalPath(run2.specPath) ? { specPath: run2.specPath, slug: specIdentity(run2).slug } : null,
       run: gateRunner,
@@ -34404,10 +34779,12 @@ async function awaitCommand(flags) {
   const runDir = runDirOf(flags);
   const deadlineMin = positive(flags, "deadline-min") ?? AWAIT_DEADLINE_MIN;
   const repeatSec = positive(flags, "repeat-sec");
+  const reportMin = positive(flags, "report-min");
   const lines = await awaitWork(runDir, {
     pollMs: AWAIT_POLL_MS,
     deadlineMs: deadlineMin * 6e4,
-    ...repeatSec !== void 0 ? { repeatMs: repeatSec * 1e3 } : {}
+    ...repeatSec !== void 0 ? { repeatMs: repeatSec * 1e3 } : {},
+    ...reportMin !== void 0 ? { reportMs: reportMin * 6e4 } : {}
   });
   process.stdout.write(`${lines.join("\n")}
 `);
@@ -34582,6 +34959,7 @@ var OPTIONS = {
   "answered-by": { type: "string" },
   "deadline-min": { type: "string" },
   "repeat-sec": { type: "string" },
+  "report-min": { type: "string" },
   spec: { type: "string" },
   suite: { type: "string" },
   variant: { type: "string" },

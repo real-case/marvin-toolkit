@@ -6,7 +6,7 @@ import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mc
 import { loadRun, stateRoot, type Child, type Run } from "../pipeline/run-store.js";
 
 /**
- * The `pipeline` tool — the fifteenth tool, and the autopilot pipeline's only door into the MCP
+ * The `pipeline` tool — the fifteenth tool, and the autopilot pipeline's read-only door into the MCP
  * server. Everything that drives a run lives in the `marvin-pipe` CLI, because the engine is a
  * detached process that outlives any session; this tool only tells a session where that CLI and
  * its assets are, and what a run looks like. Two actions, both read-only:
@@ -115,10 +115,13 @@ function runPipeline(input: PipelineInput, packRoot: string, env: NodeJS.Process
  * `paths` must not hand a skill a root that means a different directory in every cwd, and
  * `status` must not read runs from under the session's project.
  */
-function relativeStateRoot(env: NodeJS.ProcessEnv): ToolResult | null {
+function relativeStateRoot(
+  env: NodeJS.ProcessEnv,
+  refuse: (text: string) => ToolResult = errText,
+): ToolResult | null {
   const root = stateRoot(env);
   if (isAbsolute(root)) return null;
-  return errText(
+  return refuse(
     `MARVIN_PIPELINE_HOME is set to ${JSON.stringify(root)}, which is not an absolute path. ` +
       "The state root is never resolved against the server's cwd, which is the session's " +
       "project and not where runs live. Set it to an absolute path, or unset it for " +
@@ -169,20 +172,30 @@ function strictlyInside(root: string, path: string): boolean {
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
-function status(runDirArg: string, env: NodeJS.ProcessEnv): ToolResult {
+/**
+ * The run directory a caller named, once it is known to hold a `run.json` inside the state root
+ * with every symlink resolved, or the refusal that says why not. Shared by `status` and the
+ * `autopilot-report` tool, which reads the same directories and must refuse the same paths;
+ * `refuse` words the refusal in the calling tool's voice.
+ */
+export function checkedRunDir(
+  runDirArg: string,
+  env: NodeJS.ProcessEnv,
+  refuse: (text: string) => ToolResult = errText,
+): { runDir: string } | ToolResult {
   if (!isAbsolute(runDirArg)) {
-    return errText(
+    return refuse(
       `\`runDir\` \`${runDirArg}\` is not an absolute path. It is never resolved against the ` +
         "server's cwd, which is not the run's; pass the path marvin-pipe init printed.",
     );
   }
-  const refused = relativeStateRoot(env);
+  const refused = relativeStateRoot(env, refuse);
   if (refused) return refused;
   const root = resolve(stateRoot(env));
   const runDir = resolve(runDirArg);
   if (!existsSync(root)) {
-    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root);
-    return errText(
+    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root, refuse);
+    return refuse(
       `The state root \`${root}\` does not exist, so no run has been started under it.`,
     );
   }
@@ -193,19 +206,27 @@ function status(runDirArg: string, env: NodeJS.ProcessEnv): ToolResult {
   // /private/var/folders), is caught below, once the run dir's own links are resolved.
   const realRoot = realpathSync(root);
   if (strictlyInside(root, runDir) || strictlyInside(realRoot, runDir)) {
-    if (!existsSync(runDir)) return errText(`There is no run directory at \`${runDir}\`.`);
+    if (!existsSync(runDir)) return refuse(`There is no run directory at \`${runDir}\`.`);
   } else if (!existsSync(runDir)) {
     // Written outside the root and absent: the same answer as a present path outside it, so a
     // refusal never says whether something outside the root exists.
-    return outsideRoot(runDirArg, root);
+    return outsideRoot(runDirArg, root, refuse);
   }
   // Then with symlinks resolved, for the directory and for run.json itself. This is the check
   // that decides: an alias written outside the root is accepted only when it lands inside, and
   // a link inside the root that points out of it would otherwise read whatever file it names.
-  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root);
+  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root, refuse);
   const file = join(runDir, "run.json");
-  if (!existsSync(file)) return errText(`There is no run.json in \`${runDir}\`.`);
-  if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root);
+  if (!existsSync(file)) return refuse(`There is no run.json in \`${runDir}\`.`);
+  if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root, refuse);
+  return { runDir };
+}
+
+function status(runDirArg: string, env: NodeJS.ProcessEnv): ToolResult {
+  const checked = checkedRunDir(runDirArg, env);
+  if (!("runDir" in checked)) return checked;
+  const { runDir } = checked;
+  const file = join(runDir, "run.json");
 
   let run: Run;
   try {
@@ -337,10 +358,14 @@ function renderStatus(s: StatusPayload): string {
   ].join("\n");
 }
 
-function outsideRoot(runDir: string, root: string): ToolResult {
-  return errText(
+function outsideRoot(
+  runDir: string,
+  root: string,
+  refuse: (text: string) => ToolResult = errText,
+): ToolResult {
+  return refuse(
     `\`${runDir}\` is not a run directory inside the pipeline state root \`${root}\` ` +
-      "(MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). status reads runs only " +
+      "(MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). Runs are read only " +
       "from there, so nothing was read.",
   );
 }
