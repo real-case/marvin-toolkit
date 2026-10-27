@@ -26,8 +26,22 @@ export interface AutopilotLabels {
   noEvents: string;
   working: string;
   report: (n: number) => string;
-  nextBy: (time: string) => string;
-  final: string;
+  /** The events block unfolded to the whole run. */
+  historyTitle: string;
+  /** The toggle that unfolds it, with the number of earlier events. */
+  historyShow: (n: number) => string;
+  historyHide: string;
+  /** The rule between the earlier events and this report's. */
+  historyDivider: string;
+  copyImage: string;
+  copied: string;
+  /** The clipboard was refused and the image was saved as a file instead. */
+  saved: string;
+  copyFailed: string;
+  /** A child's role, keyed as the engine names it (`test-author`). */
+  roles: Record<string, string>;
+  effort: string;
+  context: string;
   /** A duration, rounded to whole minutes: "38 min", "1 h 12 min". */
   duration: (ms: number) => string;
 }
@@ -70,8 +84,23 @@ const RU: AutopilotLabels = {
   noEvents: "Новых событий нет.",
   working: "Работают",
   report: (n) => `отчёт № ${n}`,
-  nextBy: (t) => `следующий ≤ ${t}`,
-  final: "Финальный отчёт",
+  historyTitle: "С начала работы",
+  historyShow: (n) => `Вся история · ${n}`,
+  historyHide: "Только с прошлого отчёта",
+  historyDivider: "с прошлого отчёта",
+  copyImage: "Скопировать как изображение",
+  copied: "Скопировано",
+  saved: "Сохранено файлом",
+  copyFailed: "Не удалось скопировать",
+  roles: {
+    planner: "Планировщик",
+    "test-author": "Автор тестов",
+    executor: "Исполнитель",
+    verifier: "Верификатор",
+    retro: "Ретро",
+  },
+  effort: "Effort",
+  context: "Контекст",
   duration: (ms) => duration(ms, "ч", "мин"),
 };
 
@@ -107,8 +136,23 @@ const EN: AutopilotLabels = {
   noEvents: "No new events.",
   working: "Working",
   report: (n) => `report #${n}`,
-  nextBy: (t) => `next by ${t}`,
-  final: "Final report",
+  historyTitle: "Since the start",
+  historyShow: (n) => `Full history · ${n}`,
+  historyHide: "Since the last report only",
+  historyDivider: "since the last report",
+  copyImage: "Copy as image",
+  copied: "Copied",
+  saved: "Saved as a file",
+  copyFailed: "Could not copy",
+  roles: {
+    planner: "Planner",
+    "test-author": "Test author",
+    executor: "Executor",
+    verifier: "Verifier",
+    retro: "Retro",
+  },
+  effort: "Effort",
+  context: "Context",
   duration: (ms) => duration(ms, "h", "min"),
 };
 
@@ -125,4 +169,34 @@ export function autopilotTime(iso: string): string {
   const d = new Date(iso);
   const two = (n: number) => String(n).padStart(2, "0");
   return `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+/** A model id as people say it: `claude-opus-5-5` → "Opus 5.5"; anything else as given. */
+export function autopilotModel(id: string): string {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id);
+  if (!m?.[1] || !m[2]) return id;
+  const family = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  return `${family} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+}
+
+/** A token count to the thousand: 286552 → "287k", 1000000 → "1M". */
+export function autopilotTokens(n: number): string {
+  if (n >= 1_000_000 && n % 1_000_000 === 0) return `${n / 1_000_000}M`;
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+}
+
+/**
+ * How full the session's context window is: "42% · 84k / 200k", or "287k" when the window is
+ * unknown. `percent` is null in the second case.
+ */
+export function autopilotContext(
+  tokens: number,
+  window: number | null,
+): { percent: number | null; text: string } {
+  if (window === null) return { percent: null, text: autopilotTokens(tokens) };
+  const percent = Math.min(100, Math.round((tokens / window) * 100));
+  return {
+    percent,
+    text: `${percent}% · ${autopilotTokens(tokens)} / ${autopilotTokens(window)}`,
+  };
 }

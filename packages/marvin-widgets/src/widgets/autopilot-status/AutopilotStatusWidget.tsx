@@ -1,28 +1,35 @@
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type {
+  AutopilotEvent,
   AutopilotRailStep,
   AutopilotReport,
   AutopilotReportPayload,
   AutopilotState,
 } from "@marvin-toolkit/mcp-shared/contracts";
 import {
+  autopilotContext,
   autopilotLabels,
+  autopilotModel,
   autopilotTime,
   autopilotUsd,
   type AutopilotLabels,
 } from "@marvin-toolkit/mcp-shared/autopilot-labels";
+import { blobBase64, copyElementAsImage } from "../../lib/copy-image";
 import { useHostTheme } from "../../lib/host-theme";
 import { MvRoot, MV_FONT_MONO, TOKENS, type MvTheme } from "../../theme";
 
 /**
- * The autopilot-status widget (ADR-0051) — one periodic report of an autopilot run as a card:
- * header with the status pill, the seven-stage rail, four figures (elapsed, cost, iteration,
- * rejections), a callout when the run needs an answer or has stopped, the interval's events, and
- * the footer with the next report's deadline. The approved layout is variant A of the design
- * canvas; the labels come from `autopilotLabels(report.lang)`, the same table the tool's
- * Markdown fallback uses, so the card and the text word one report alike.
+ * The autopilot-status widget (ADR-0051) — one periodic report of an autopilot run as a card. The
+ * header names the run and the session it reports to (never the task text: that is the whole
+ * prompt the run started from), with the status pill and a button that copies the card as an
+ * image. Below it: the seven-stage rail across the card's full width, four figures (elapsed,
+ * cost, iteration, rejections), a callout when the run needs an answer or has stopped, the
+ * events of this interval, which unfold to the whole run's history, and a footer naming the
+ * working session's model, effort and context use. The labels come from
+ * `autopilotLabels(report.lang)`, the same table the tool's Markdown fallback uses, so the card
+ * reads in the session's language.
  *
  * Split like its siblings into a pure {@link AutopilotStatusView} and the App wiring, and colored
  * only through `TOKENS`.
@@ -62,14 +69,25 @@ const DOT: Record<AutopilotRailStep["state"], { fill: string; ring: string | nul
   pending: { fill: TOKENS.bd2, ring: null },
 };
 
+/** Context use at or above this share is drawn amber. */
+const CONTEXT_WARN = 80;
+
+/**
+ * The rail spans the card's full width: the grid is widened by one sixth and pulled left by a
+ * twelfth, so the first and last column centers, where the dots sit, land on the card's edges.
+ * The first label starts under its dot and the last ends under its dot, so neither leaves the card.
+ */
 function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) {
+  const n = steps.length;
   return (
     <div
       data-testid="autopilot-rail"
       style={{
         position: "relative",
         display: "grid",
-        gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+        gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
+        width: `calc(100% + 100% / ${n - 1})`,
+        marginLeft: `calc(-100% / ${2 * (n - 1)})`,
       }}
     >
       <div
@@ -77,15 +95,21 @@ function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) 
         style={{
           position: "absolute",
           top: 5,
-          left: "7%",
-          right: "7%",
+          left: `calc(100% / ${2 * n})`,
+          right: `calc(100% / ${2 * n})`,
           height: 2,
           background: TOKENS.bd,
         }}
       />
-      {steps.map((s) => {
+      {steps.map((s, i) => {
         const dot = DOT[s.state];
         const strong = s.state !== "done" && s.state !== "pending";
+        const edge =
+          i === 0
+            ? "translateX(calc(50% - 6px))"
+            : i === n - 1
+              ? "translateX(calc(-50% + 6px))"
+              : undefined;
         return (
           <div
             key={s.key}
@@ -105,6 +129,7 @@ function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) 
               style={{
                 width: 12,
                 height: 12,
+                boxSizing: "border-box",
                 borderRadius: "50%",
                 background: dot.fill,
                 border: `2px solid ${TOKENS.srf}`,
@@ -117,7 +142,9 @@ function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) 
                 textAlign: "center",
                 color: strong ? TOKENS.t1 : s.state === "done" ? TOKENS.t2 : TOKENS.t3,
                 fontWeight: strong ? 600 : 400,
-                overflowWrap: "anywhere",
+                ...(edge
+                  ? { whiteSpace: "nowrap", transform: edge }
+                  : { overflowWrap: "anywhere" }),
               }}
             >
               {l.rail[s.key]}
@@ -175,15 +202,274 @@ function figures(r: AutopilotReport, l: AutopilotLabels) {
   ];
 }
 
+function EventRow({ e }: { e: AutopilotEvent }) {
+  return (
+    <div data-testid="autopilot-event" style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+      <span style={{ ...monoMeta, width: 38, flexShrink: 0 }}>{autopilotTime(e.at)}</span>
+      <span style={{ color: TOKENS.t2, minWidth: 0, overflowWrap: "anywhere" }}>{e.text}</span>
+    </div>
+  );
+}
+
+function Omitted({ count }: { count: number }) {
+  return count > 0 ? <span style={{ ...monoMeta, paddingLeft: 48 }}>… +{count}</span> : null;
+}
+
+function Events({
+  r,
+  earlier,
+  earlierOmitted,
+  l,
+}: {
+  r: AutopilotReport;
+  earlier: AutopilotEvent[];
+  earlierOmitted: number;
+  l: AutopilotLabels;
+}) {
+  const [open, setOpen] = useState(false);
+  const earlierCount = earlier.length + earlierOmitted;
+  const unfolded = open && earlierCount > 0;
+  return (
+    <div
+      data-testid="autopilot-events"
+      style={{ display: "flex", flexDirection: "column", gap: 6 }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+        }}
+      >
+        <span style={microlabelStyle}>{unfolded ? l.historyTitle : l.eventsTitle}</span>
+        {earlierCount > 0 ? (
+          <button
+            type="button"
+            data-testid="autopilot-history-toggle"
+            aria-expanded={unfolded}
+            onClick={() => setOpen((v) => !v)}
+            style={{
+              padding: "2px 0",
+              border: 0,
+              background: "none",
+              font: "inherit",
+              fontSize: "11px",
+              color: TOKENS.act,
+              cursor: "pointer",
+            }}
+          >
+            {unfolded ? l.historyHide : l.historyShow(earlierCount)}
+          </button>
+        ) : null}
+      </div>
+      {unfolded ? (
+        <>
+          <Omitted count={earlierOmitted} />
+          {earlier.map((e, i) => (
+            <EventRow key={`earlier-${e.at}-${i}`} e={e} />
+          ))}
+          <div
+            data-testid="autopilot-history-divider"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              margin: "2px 0",
+              fontSize: "11px",
+              color: TOKENS.t3,
+            }}
+          >
+            <span aria-hidden="true" style={{ flex: 1, height: 0.5, background: TOKENS.bd }} />
+            {l.historyDivider}
+            <span aria-hidden="true" style={{ flex: 1, height: 0.5, background: TOKENS.bd }} />
+          </div>
+        </>
+      ) : null}
+      {r.events.length === 0 ? (
+        <>
+          <span style={{ color: TOKENS.t3 }}>{l.noEvents}</span>
+          {r.active.length > 0 ? (
+            <span data-testid="autopilot-active" style={{ color: TOKENS.t2 }}>
+              {l.working}:{" "}
+              {r.active.map((a) => `${a.role} (${a.name}), ${l.duration(a.runningMs)}`).join("; ")}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Omitted count={r.omittedEvents} />
+          {r.events.map((e, i) => (
+            <EventRow key={`${e.at}-${i}`} e={e} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SessionFooter({ r, l }: { r: AutopilotReport; l: AutopilotLabels }) {
+  const s = r.session;
+  if (s === null) return null;
+  const context =
+    s.contextTokens === null ? null : autopilotContext(s.contextTokens, s.contextWindow);
+  const strong: CSSProperties = { color: TOKENS.t2, fontWeight: 600 };
+  return (
+    <footer
+      data-testid="autopilot-footer"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "6px 16px",
+        paddingTop: 12,
+        borderTop: `0.5px solid ${TOKENS.bd}`,
+        fontSize: "11px",
+        color: TOKENS.t3,
+      }}
+    >
+      <span style={strong}>{l.roles[s.role] ?? s.role}</span>
+      <span style={strong}>{autopilotModel(s.model)}</span>
+      <span>
+        {l.effort} <span style={strong}>{s.effort}</span>
+      </span>
+      {context ? (
+        <span
+          data-testid="autopilot-context"
+          style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}
+        >
+          {l.context}
+          {context.percent !== null ? (
+            <span
+              aria-hidden="true"
+              style={{
+                display: "block",
+                width: 72,
+                height: 4,
+                borderRadius: 2,
+                background: TOKENS.srf2,
+                overflow: "hidden",
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  width: `${context.percent}%`,
+                  height: "100%",
+                  background: context.percent >= CONTEXT_WARN ? TOKENS.amb : TOKENS.ac,
+                }}
+              />
+            </span>
+          ) : null}
+          <span style={{ fontFamily: MV_FONT_MONO, color: TOKENS.t2 }}>{context.text}</span>
+        </span>
+      ) : null}
+    </footer>
+  );
+}
+
+/** Saves a PNG through the host: what the copy button falls back to when the clipboard refuses. */
+export type SaveImage = (png: Blob, fileName: string) => Promise<boolean>;
+
+function CopyButton({
+  target,
+  l,
+  save,
+  fileName,
+}: {
+  target: { current: HTMLElement | null };
+  l: AutopilotLabels;
+  save?: SaveImage;
+  fileName: string;
+}) {
+  const [state, setState] = useState<"idle" | "copied" | "saved" | "failed">("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const timer = setTimeout(() => setState("idle"), 2500);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const label =
+    state === "copied"
+      ? l.copied
+      : state === "saved"
+        ? l.saved
+        : state === "failed"
+          ? l.copyFailed
+          : l.copyImage;
+  return (
+    <button
+      type="button"
+      data-testid="autopilot-copy"
+      data-copy-exclude=""
+      data-state={state}
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        const node = target.current;
+        if (!node) return;
+        copyElementAsImage(node, save && ((png) => save(png, fileName))).then(
+          (done) => setState(done),
+          () => setState("failed"),
+        );
+      }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        padding: 0,
+        border: `0.5px solid ${TOKENS.bd}`,
+        borderRadius: 6,
+        background: TOKENS.srf,
+        color: state === "failed" ? TOKENS.red : state === "idle" ? TOKENS.t2 : TOKENS.grn,
+        cursor: "pointer",
+      }}
+    >
+      <svg
+        aria-hidden="true"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {state === "copied" || state === "saved" ? (
+          <path d="M5 12.5l4.5 4.5L19 7.5" />
+        ) : (
+          <>
+            <rect x="8" y="8" width="13" height="13" rx="2" />
+            <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+            <circle cx="12.5" cy="12.5" r="1.3" />
+            <path d="M21 17l-3.5-3.5L11 20" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
 export interface AutopilotStatusViewProps {
   data: AutopilotReportPayload | null;
   connecting?: boolean;
   error?: string | null;
   /** Story/test pin; production follows the host's theme. */
   theme?: MvTheme;
+  /** The host's file download, when it offers one: used when the clipboard is refused. */
+  saveImage?: SaveImage;
 }
 
-export function AutopilotStatusView({ data, connecting, error, theme }: AutopilotStatusViewProps) {
+export function AutopilotStatusView({
+  data,
+  connecting,
+  error,
+  theme,
+  saveImage,
+}: AutopilotStatusViewProps) {
+  const card = useRef<HTMLElement | null>(null);
   if (error) {
     return (
       <MvRoot theme={theme}>
@@ -211,7 +497,7 @@ export function AutopilotStatusView({ data, connecting, error, theme }: Autopilo
 
   return (
     <MvRoot theme={theme}>
-      <section data-testid="autopilot-card" data-state={r.state} style={frameStyle}>
+      <section ref={card} data-testid="autopilot-card" data-state={r.state} style={frameStyle}>
         <header
           style={{
             display: "flex",
@@ -220,31 +506,51 @@ export function AutopilotStatusView({ data, connecting, error, theme }: Autopilo
             gap: 12,
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
             <span style={monoMeta}>
-              autopilot · {r.runId} · {l.report(r.n)}
+              marvin · {r.runId} · {l.report(r.n)}
             </span>
-            <h2
-              data-testid="autopilot-task"
-              style={{ margin: 0, fontSize: "15px", fontWeight: 600, lineHeight: 1.35 }}
-            >
-              {r.task}
-            </h2>
+            {r.sessionName ? (
+              <h2
+                data-testid="autopilot-session"
+                title={r.sessionName}
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  lineHeight: 1.35,
+                  display: "-webkit-box",
+                  WebkitBoxOrient: "vertical",
+                  WebkitLineClamp: 2,
+                  overflow: "hidden",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {r.sessionName}
+              </h2>
+            ) : null}
           </div>
-          <span
-            data-testid="autopilot-pill"
-            style={{
-              flexShrink: 0,
-              fontSize: "11px",
-              fontWeight: 600,
-              padding: "3px 9px",
-              borderRadius: 999,
-              background: pill.bg,
-              color: pill.fg,
-            }}
-          >
-            {l.state[r.state]}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <span
+              data-testid="autopilot-pill"
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                padding: "3px 9px",
+                borderRadius: 999,
+                background: pill.bg,
+                color: pill.fg,
+              }}
+            >
+              {l.state[r.state]}
+            </span>
+            <CopyButton
+              target={card}
+              l={l}
+              save={saveImage}
+              fileName={`marvin-${r.runId}-${r.n}.png`}
+            />
+          </div>
         </header>
 
         <Rail steps={r.rail} l={l} />
@@ -280,66 +586,14 @@ export function AutopilotStatusView({ data, connecting, error, theme }: Autopilo
           </div>
         ) : null}
 
-        <div
-          data-testid="autopilot-events"
-          style={{ display: "flex", flexDirection: "column", gap: 6 }}
-        >
-          <span style={microlabelStyle}>{l.eventsTitle}</span>
-          {r.events.length === 0 ? (
-            <>
-              <span style={{ color: TOKENS.t3 }}>{l.noEvents}</span>
-              {r.active.length > 0 ? (
-                <span data-testid="autopilot-active" style={{ color: TOKENS.t2 }}>
-                  {l.working}:{" "}
-                  {r.active
-                    .map((a) => `${a.role} (${a.name}), ${l.duration(a.runningMs)}`)
-                    .join("; ")}
-                </span>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {r.omittedEvents > 0 ? (
-                <span style={{ ...monoMeta, paddingLeft: 48 }}>… +{r.omittedEvents}</span>
-              ) : null}
-              {r.events.map((e, i) => (
-                <div
-                  key={`${e.at}-${i}`}
-                  data-testid="autopilot-event"
-                  style={{ display: "flex", gap: 10, alignItems: "baseline" }}
-                >
-                  <span style={{ ...monoMeta, width: 38, flexShrink: 0 }}>
-                    {autopilotTime(e.at)}
-                  </span>
-                  <span style={{ color: TOKENS.t2, minWidth: 0, overflowWrap: "anywhere" }}>
-                    {e.text}
-                  </span>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
+        <Events
+          r={r}
+          earlier={data.earlier ?? []}
+          earlierOmitted={data.earlierOmitted ?? 0}
+          l={l}
+        />
 
-        <footer
-          data-testid="autopilot-footer"
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 12,
-            paddingTop: 12,
-            borderTop: `0.5px solid ${TOKENS.bd}`,
-            fontSize: "11px",
-            color: TOKENS.t3,
-          }}
-        >
-          <span>{r.final ? l.final : l.report(r.n)}</span>
-          {r.final && r.prUrl ? (
-            <span style={{ ...monoMeta, overflowWrap: "anywhere" }}>{r.prUrl}</span>
-          ) : r.nextBy ? (
-            <span style={monoMeta}>{l.nextBy(autopilotTime(r.nextBy))}</span>
-          ) : null}
-        </footer>
+        <SessionFooter r={r} l={l} />
       </section>
     </MvRoot>
   );
@@ -353,6 +607,26 @@ export interface AutopilotStatusSeam {
 
 export interface AutopilotStatusWidgetProps {
   seam?: AutopilotStatusSeam;
+}
+
+/** The host's `ui/download-file` as a {@link SaveImage}, or undefined when the host lacks it. */
+function hostSave(app: App | null, connected: boolean): SaveImage | undefined {
+  if (!app || !connected || !app.getHostCapabilities()?.downloadFile) return undefined;
+  return async (png, fileName) => {
+    const result = await app.downloadFile({
+      contents: [
+        {
+          type: "resource",
+          resource: {
+            uri: `file:///${fileName}`,
+            mimeType: "image/png",
+            blob: await blobBase64(png),
+          },
+        },
+      ],
+    });
+    return result.isError !== true;
+  };
 }
 
 export function AutopilotStatusWidget({ seam }: AutopilotStatusWidgetProps) {
@@ -379,6 +653,7 @@ function AutopilotStatusLiveWidget() {
       connecting={!isConnected}
       error={error ? error.message : null}
       theme={theme}
+      saveImage={hostSave(app, isConnected)}
     />
   );
 }
@@ -410,5 +685,13 @@ function AutopilotStatusSeamWidget({ seam }: { seam: AutopilotStatusSeam }) {
   }, [seam]);
 
   const theme = useHostTheme(seam.app, connected);
-  return <AutopilotStatusView data={data} connecting={!connected} error={error} theme={theme} />;
+  return (
+    <AutopilotStatusView
+      data={data}
+      connecting={!connected}
+      error={error}
+      theme={theme}
+      saveImage={hostSave(seam.app, connected)}
+    />
+  );
 }

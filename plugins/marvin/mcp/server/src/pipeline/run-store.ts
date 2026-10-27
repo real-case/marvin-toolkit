@@ -310,3 +310,33 @@ export function readEvents(dir: string): PipelineEvent[] {
     .filter(Boolean)
     .map((l) => JSON.parse(l) as PipelineEvent);
 }
+
+/**
+ * The file key of a child launched as `name` after `before`: the name, and from the second
+ * launch under that name (a crash retry repeats the iteration, so it repeats the name) a
+ * `.<attempt>` suffix. It is derived from the children before it alone, so the spawn that wrote
+ * the files and the wait that reads them, in this engine or a restarted one, always agree.
+ */
+export function childKey(before: readonly Child[], name: string): string {
+  const attempt = before.filter((c) => c.name === name).length + 1;
+  return attempt === 1 ? name : `${name}.${attempt}`;
+}
+
+/**
+ * The file `marvin-pipe attach` writes when another session takes the run over. `run.json` has
+ * one writer, the engine, so a new orchestrator name cannot go there while an engine runs; it
+ * goes beside it, and every child spawned after it reports to the name it holds. A child already
+ * running keeps the name it was launched with.
+ */
+export const ORCHESTRATOR_FILE = "orchestrator.txt";
+
+/** The orchestrator children report to: the `attach`ed name, else the one the run began with. */
+export function orchestratorOf(runDir: string, run: Run): string {
+  let text: string;
+  try {
+    text = readFileSync(join(runDir, ORCHESTRATOR_FILE), "utf8").trim();
+  } catch {
+    return run.orchestratorName;
+  }
+  return text === "" ? run.orchestratorName : text;
+}

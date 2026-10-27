@@ -81,6 +81,9 @@ import { composePrompts, RUNTIME_VARS, type RuntimeVar } from "./prompt.js";
 import {
   appendEvent,
   type Child,
+  childKey,
+  ORCHESTRATOR_FILE,
+  orchestratorOf,
   type PipelineEvent,
   type Role,
   type Run,
@@ -104,6 +107,10 @@ import {
   snapshotGitCommon,
   snapshotTree,
 } from "./worktree.js";
+
+// Kept in run-store, where the status report reads them without this module; re-exported for
+// the callers that have always taken them from here.
+export { childKey, ORCHESTRATOR_FILE, orchestratorOf };
 
 /*
  * The engine's hands: `createRuntime` turns the deterministic modules into the `EngineDeps` the
@@ -420,25 +427,6 @@ export function stageGates(projectRoot: string, config: Config): StageGate[] {
 }
 
 /**
- * The file key of a child launched as `name` after `before`: the name, and from the second
- * launch under that name (a crash retry repeats the iteration, so it repeats the name) a
- * `.<attempt>` suffix. It is derived from the children before it alone, so the spawn that wrote
- * the files and the wait that reads them, in this engine or a restarted one, always agree.
- */
-export function childKey(before: readonly Child[], name: string): string {
-  const attempt = before.filter((c) => c.name === name).length + 1;
-  return attempt === 1 ? name : `${name}.${attempt}`;
-}
-
-/**
- * The file `marvin-pipe attach` writes when another session takes the run over. `run.json` has
- * one writer, the engine, so a new orchestrator name cannot go there while an engine runs; it
- * goes beside it, and every child spawned after it reports to the name it holds. A child already
- * running keeps the name it was launched with.
- */
-export const ORCHESTRATOR_FILE = "orchestrator.txt";
-
-/**
  * A name a child can address with SendMessage and a hook can quote. In the desktop app the name is
  * the session title, which carries a status prefix (`[in progress] New notifications page`), so
  * spaces and brackets are allowed. Refused: an empty name, surrounding whitespace (the file is read
@@ -459,17 +447,6 @@ export function assertOrchestratorName(name: string): void {
 export function writeOrchestrator(runDir: string, name: string): void {
   assertOrchestratorName(name);
   writeAtomic(join(runDir, ORCHESTRATOR_FILE), `${name}\n`);
-}
-
-/** The orchestrator children report to: the `attach`ed name, else the one the run began with. */
-export function orchestratorOf(runDir: string, run: Run): string {
-  let text: string;
-  try {
-    text = readFileSync(join(runDir, ORCHESTRATOR_FILE), "utf8").trim();
-  } catch {
-    return run.orchestratorName;
-  }
-  return text === "" ? run.orchestratorName : text;
 }
 
 /** The environment variable that replaces a role's child with a fixture (`test-author` → `TEST_AUTHOR`). */
