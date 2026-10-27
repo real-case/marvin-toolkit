@@ -23,11 +23,17 @@ const neverVolatile = (path: string) => NEVER_VOLATILE.some((re) => re.test(path
  * Why `entry` cannot be a `pipeline.protected_volatile` entry, or null if it can. An entry is a
  * repo-relative POSIX path: a trailing `/` makes it a directory and covers what lies under it,
  * anything else names one file. There are no globs, so an entry cannot cover more than it says.
+ * A top-level directory (`.claude/`, `.husky/`) is refused: it would leave `NEVER_VOLATILE`, a
+ * list of the executable locations known today, as the only thing between a child and whatever
+ * else that directory runs (`.claude/launch.json`, a hook script `settings.json` points at).
  */
 export function volatileEntryProblem(entry: string): string | null {
   const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
   if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
   if (neverVolatile(entry)) return "it is executed or read as configuration";
+  if (entry.endsWith("/") && !bare.includes("/")) {
+    return "it is a whole top-level directory; name the state under it";
+  }
   return null;
 }
 

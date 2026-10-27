@@ -256,7 +256,11 @@ test("P3d: a volatile declaration never covers an executable or configuring path
   w.write(".claude/.tier1-stamp", "x\n");
   w.git("add", "-f", ".claude/.tier1-stamp");
   w.git("commit", "-m", "work");
+  w.write(".claude/.rules-loaded/.gitignore", "*\n");
+  w.write(".claude/.rules-loaded/CLAUDE.md", "# rules\n");
   for (const entry of [
+    ".claude/",
+    ".husky/",
     ".husky/_/",
     ".claude/hooks/",
     ".claude/settings.json",
@@ -268,17 +272,30 @@ test("P3d: a volatile declaration never covers an executable or configuring path
       /volatile entry .* is refused/,
     );
   }
-  // `.claude/` is accepted as a directory, yet covers none of the executable paths under it.
-  const report = await gateStage(w, { protectedVolatile: [".claude/", ...HOST_STATE] });
+  // A declared directory still covers none of the ignore rules or instructions inside it.
+  const report = await gateStage(w, { protectedVolatile: HOST_STATE });
   assert.equal(report.passed, false);
   assert.deepEqual(report.protected, [
     ".claude/.gitignore",
+    ".claude/.rules-loaded/.gitignore",
+    ".claude/.rules-loaded/CLAUDE.md",
     ".claude/.tier1-stamp",
     ".claude/hooks/pre-commit",
     ".claude/settings.json",
     ".husky/_/h",
   ]);
   assert.deepEqual(report.volatile, [".claude/.rules-loaded/x.json"]);
+});
+
+test("P3e: a declared path ignored only through core.excludesFile, which a child can set, is still judged", async () => {
+  const w = runWorktree();
+  const excludes = join(mkdtempSync(join(tmpdir(), "pipe-excl-")), "ignore");
+  writeFileSync(excludes, ".claude/.tier1-stamp\n");
+  w.git("config", "core.excludesFile", excludes);
+  w.write(".claude/.tier1-stamp", "stamp 1\n");
+  const report = await gateStage(w, { protectedVolatile: [".claude/.tier1-stamp"] });
+  assert.deepEqual(report.protected, [".claude/.tier1-stamp"]);
+  assert.deepEqual(report.volatile, []);
 });
 
 test("C3: an ignored .gitattributes that turns a diff into 'Binary files differ' does not blind the scan", async () => {

@@ -19947,6 +19947,9 @@ function volatileEntryProblem(entry) {
   const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
   if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
   if (neverVolatile(entry)) return "it is executed or read as configuration";
+  if (entry.endsWith("/") && !bare.includes("/")) {
+    return "it is a whole top-level directory; name the state under it";
+  }
   return null;
 }
 function declaredVolatile(entries, path) {
@@ -20346,6 +20349,8 @@ function ignoredPaths(worktree, gitDir, paths) {
   try {
     const out = isolatedGit(worktree, gitDir).textIn(
       `${paths.join("\0")}\0`,
+      "-c",
+      "core.excludesFile=",
       "check-ignore",
       "-z",
       "--stdin"

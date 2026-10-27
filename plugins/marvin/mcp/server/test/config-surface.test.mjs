@@ -736,6 +736,8 @@ test("protected_volatile takes host state paths and refuses what is executed or 
     state,
   );
   for (const entry of [
+    ".claude/",
+    ".husky/",
     ".claude/hooks/",
     ".claude/settings.local.json",
     ".husky/_/",

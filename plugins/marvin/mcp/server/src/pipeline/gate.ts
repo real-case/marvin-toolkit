@@ -742,8 +742,13 @@ export function ignoredPaths(
 ): Set<string> {
   if (paths.length === 0) return new Set();
   try {
+    // A child can write the common git dir's config, so `core.excludesFile` is switched off.
+    // `$GIT_DIR/info/exclude` cannot be, and is trusted: a child writing it can only make a
+    // path the host itself declared volatile read as ignored.
     const out = isolatedGit(worktree, gitDir).textIn(
       `${paths.join("\0")}\0`,
+      "-c",
+      "core.excludesFile=",
       "check-ignore",
       "-z",
       "--stdin",

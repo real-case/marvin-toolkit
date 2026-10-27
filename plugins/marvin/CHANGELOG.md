@@ -21,8 +21,9 @@ the rejection cap.
   only while git ignores it, and lists it in the report as `volatile`. An entry that is executed
   or read as configuration (`.claude/settings*.json`, `.claude/hooks/`, `agents/`, `skills/`,
   `commands/`, `rules/`, `output-styles/`, `plugins/`, `CLAUDE.md`, `.husky/`, `.marvin/`,
-  `.mcp.json`, any `.git*` file) is refused when the config loads, and a broader entry such as
-  `.claude/` still covers none of them. The protected list itself, which the per-child boundary
+  `.mcp.json`, any `.git*` file) is refused when the config loads, and so is a whole top-level
+  directory such as `.claude/`, which would leave that list as the only guard. Whether git ignores
+  a path is judged without `core.excludesFile`, which a child can set. The protected list itself, which the per-child boundary
   hook also enforces, is unchanged, and so is the hashing of ignored protected files.
 
 ### Changed

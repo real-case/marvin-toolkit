@@ -29358,6 +29358,9 @@ function volatileEntryProblem(entry) {
   const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
   if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
   if (neverVolatile(entry)) return "it is executed or read as configuration";
+  if (entry.endsWith("/") && !bare.includes("/")) {
+    return "it is a whole top-level directory; name the state under it";
+  }
   return null;
 }
 
