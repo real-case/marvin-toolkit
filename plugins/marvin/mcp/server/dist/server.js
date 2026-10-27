@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { readFileSync, appendFileSync, mkdirSync, existsSync, writeFileSync, statSync, renameSync, readdirSync, realpathSync, lstatSync, unlinkSync } from 'fs';
-import { join, dirname, basename, isAbsolute, relative, sep, posix, resolve } from 'path';
+import { join, dirname, posix, basename, isAbsolute, relative, sep, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import process2 from 'process';
 import { execFileSync, spawn, spawnSync } from 'child_process';
@@ -29339,6 +29339,27 @@ function validatePrefix(prefix) {
     throw new Error(`invalid allowlist prefix: ${prefix}`);
   }
 }
+function isCanonicalPath(path) {
+  return typeof path === "string" && path !== "" && !path.startsWith("/") && !path.includes("\\") && // eslint-disable-next-line no-control-regex
+  !/[\u0000-\u001f\u007f]/.test(path) && path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..") && posix.normalize(path) === path;
+}
+
+// src/pipeline/volatile.ts
+var NEVER_VOLATILE = [
+  /(^|\/)\.git[^/]*$/i,
+  /(^|\/)CLAUDE(\.local)?\.md$/i,
+  /^\.claude\/(settings[^/]*\.json|hooks\/|agents\/|skills\/|commands\/|rules\/|output-styles\/|plugins\/)/i,
+  /^\.husky\//i,
+  /^\.marvin\//i,
+  /^\.mcp\.json$/i
+];
+var neverVolatile = (path) => NEVER_VOLATILE.some((re) => re.test(path));
+function volatileEntryProblem(entry) {
+  const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+  if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
+  if (neverVolatile(entry)) return "it is executed or read as configuration";
+  return null;
+}
 
 // src/storage/schema.ts
 var TaskType = external_exports.enum(["bug", "feature", "chore", "spike"]);
@@ -29506,6 +29527,24 @@ var PipelineConfig = external_exports.object({
   ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
   scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /**
+   * Protected paths that are the host's own state, not configuration: what its hooks and gate
+   * scripts write under a protected directory (`.claude/.rules-loaded/`, a stamp file). A
+   * trailing `/` covers a directory. The gate skips a covered path only while git ignores it,
+   * and refuses an entry that is executed or read as configuration (`NEVER_VOLATILE`).
+   */
+  protected_volatile: external_exports.array(external_exports.string()).superRefine((list, ctx) => {
+    list.forEach((entry, i) => {
+      const problem = volatileEntryProblem(entry);
+      if (problem !== null) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `protected_volatile entry ${entry} is refused: ${problem}`,
+          path: [i]
+        });
+      }
+    });
+  }).default([]),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: external_exports.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
@@ -40509,7 +40548,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.34.0";
+var VERSION = "0.35.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

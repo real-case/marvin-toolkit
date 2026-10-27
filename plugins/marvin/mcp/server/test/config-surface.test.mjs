@@ -550,6 +550,7 @@ const PIPELINE_DEFAULTS = {
   ci_poll_seconds: 60,
   test_path_pattern: "(^|/)(__tests__/|[^/]+\\.(test|spec)\\.[cm]?[jt]sx?$)",
   scope_exempt_pattern: null,
+  protected_volatile: [],
   format_command: null,
   conventions: "",
   allowed_commands: [
@@ -726,6 +727,35 @@ test("both subtrees can fail at once, one issue each, and a valid config records
     assert.equal(loaded.config.pipeline.stall_minutes, 30);
   });
   assert.deepEqual(loadConfig(join(tmpdir(), "marvin-no-such-config.json")).pipelineIssues, []);
+});
+
+test("protected_volatile takes host state paths and refuses what is executed or configures", async () => {
+  const state = [".claude/.rules-loaded/", ".claude/.tier1-stamp"];
+  assert.deepEqual(
+    Config.parse({ pipeline: { protected_volatile: state } }).pipeline.protected_volatile,
+    state,
+  );
+  for (const entry of [
+    ".claude/hooks/",
+    ".claude/settings.local.json",
+    ".husky/_/",
+    "/abs",
+    "a/../b",
+    "",
+  ]) {
+    await withConfigFile(
+      { ...SURVIVORS, pipeline: { protected_volatile: [entry] } },
+      (configPath) => {
+        const { config, pipelineIssues } = loadConfig(configPath);
+        assert.match(pipelineIssues.join("\n"), /pipeline\.protected_volatile\.0/, entry);
+        assert.deepEqual(
+          config.pipeline.protected_volatile,
+          [],
+          "the block resets to its defaults",
+        );
+      },
+    );
+  }
 });
 
 test("an unrelated schema error still falls back as a whole, bad pipeline or not", async () => {

@@ -19933,6 +19933,27 @@ function classifyRecord(git4, commit, worktree, rel, slug) {
   return why === null ? { state: "appended", bytes } : refused(why);
 }
 
+// src/pipeline/volatile.ts
+var NEVER_VOLATILE = [
+  /(^|\/)\.git[^/]*$/i,
+  /(^|\/)CLAUDE(\.local)?\.md$/i,
+  /^\.claude\/(settings[^/]*\.json|hooks\/|agents\/|skills\/|commands\/|rules\/|output-styles\/|plugins\/)/i,
+  /^\.husky\//i,
+  /^\.marvin\//i,
+  /^\.mcp\.json$/i
+];
+var neverVolatile = (path) => NEVER_VOLATILE.some((re) => re.test(path));
+function volatileEntryProblem(entry) {
+  const bare = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+  if (!isCanonicalPath(bare)) return "it is not a repo-relative POSIX path";
+  if (neverVolatile(entry)) return "it is executed or read as configuration";
+  return null;
+}
+function declaredVolatile(entries, path) {
+  if (neverVolatile(path)) return false;
+  return entries.some((e) => e.endsWith("/") ? path.startsWith(e) : path === e);
+}
+
 // src/pipeline/gate.ts
 var SEVERITIES = ["blocker", "major", "minor"];
 var MAX_BUFFER = 64 * 1024 * 1024;
@@ -20320,6 +20341,21 @@ function snapshotProtected(worktree, gitDir, patterns) {
   }
   return out;
 }
+function ignoredPaths(worktree, gitDir, paths) {
+  if (paths.length === 0) return /* @__PURE__ */ new Set();
+  try {
+    const out = isolatedGit(worktree, gitDir).textIn(
+      `${paths.join("\0")}\0`,
+      "check-ignore",
+      "-z",
+      "--stdin"
+    );
+    return new Set(nul(out));
+  } catch (error2) {
+    if (error2.status === 1) return /* @__PURE__ */ new Set();
+    throw error2;
+  }
+}
 function diffProtected(a, b) {
   const keys = /* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].filter((k) => a[k] !== b[k]).sort();
@@ -20462,6 +20498,10 @@ function validateOptions(o) {
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
   if (!isAbsolute(o.worktree)) throw new Error("worktree must be an absolute path");
   compileProtected(o.protectedPatterns);
+  for (const entry of o.protectedVolatile ?? []) {
+    const problem = typeof entry === "string" ? volatileEntryProblem(entry) : "it is not a string";
+    if (problem !== null) throw new Error(`volatile entry ${String(entry)} is refused: ${problem}`);
+  }
   for (const path of o.sealed.map((x) => x.path)) {
     if (!isCanonicalPath(path)) throw new Error(`sealed path is not canonical: ${String(path)}`);
   }
@@ -20581,8 +20621,17 @@ async function runGateStage(o) {
     sources.set(path, [...sources.get(path) ?? [], source]);
   };
   for (const path of protectedChanges(changed, o.protectedPatterns)) flag2(path, "committed diff");
+  const volatile = /* @__PURE__ */ new Set();
+  const judged = (paths) => {
+    const declared = paths.filter(
+      (p) => !p.endsWith("/") && declaredVolatile(o.protectedVolatile ?? [], p)
+    );
+    const ignored = ignoredPaths(o.worktree, o.gitDir, declared);
+    for (const p of ignored) volatile.add(p);
+    return paths.filter((p) => !ignored.has(p));
+  };
   const protectedBefore = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(o.protectedBaseline, protectedBefore)) {
+  for (const path of judged(diffProtected(o.protectedBaseline, protectedBefore))) {
     if (!path.endsWith("/")) flag2(path, "protected snapshot");
     else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -20762,7 +20811,7 @@ async function runGateStage(o) {
     };
   });
   const protectedAfter = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(protectedBefore, protectedAfter)) {
+  for (const path of judged(diffProtected(protectedBefore, protectedAfter))) {
     if (!path.endsWith("/")) flag2(path, "post-gate snapshot");
     else if (protectedAfter[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -20777,6 +20826,7 @@ async function runGateStage(o) {
     protected: protectedPaths,
     protectedSources: Object.fromEntries(sources),
     protectedPatterns: [...o.protectedPatterns],
+    volatile: [...volatile].sort(),
     checks: scanChecks(added, o.checks),
     sealed,
     blockers
@@ -26472,6 +26522,24 @@ var PipelineConfig = external_exports.object({
   ),
   /** JavaScript regex over repo-relative paths the scope gate tolerates as by-products. */
   scope_exempt_pattern: regexField("scope_exempt_pattern").nullable().default(null),
+  /**
+   * Protected paths that are the host's own state, not configuration: what its hooks and gate
+   * scripts write under a protected directory (`.claude/.rules-loaded/`, a stamp file). A
+   * trailing `/` covers a directory. The gate skips a covered path only while git ignores it,
+   * and refuses an entry that is executed or read as configuration (`NEVER_VOLATILE`).
+   */
+  protected_volatile: external_exports.array(external_exports.string()).superRefine((list2, ctx) => {
+    list2.forEach((entry, i) => {
+      const problem = volatileEntryProblem(entry);
+      if (problem !== null) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `protected_volatile entry ${entry} is refused: ${problem}`,
+          path: [i]
+        });
+      }
+    });
+  }).default([]),
   /** Formatter run, with each written file appended, over files the pipeline itself writes. */
   format_command: external_exports.string().min(1).nullable().default(null),
   /** Project conventions handed to the verifier. */
@@ -34119,6 +34187,7 @@ ${planted.join("\n")}`
       exemptPattern: config2.pipeline.scope_exempt_pattern,
       protectedPatterns: protectedPatterns(),
       protectedBaseline: rebaseline(wt, baseline, wt.baseSha, from),
+      protectedVolatile: config2.pipeline.protected_volatile,
       metricsRecord: carriedRecord(run2, wt.path, spec.text),
       runArtifacts: run2.specPath !== null && isCanonicalPath(run2.specPath) ? { specPath: run2.specPath, slug: specIdentity(run2).slug } : null,
       run: gateRunner,
