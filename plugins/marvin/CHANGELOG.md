@@ -4,6 +4,35 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.35.0] — 2026-10-27
+
+The autopilot gate no longer rejects a run over state the project's own hooks write under a
+protected directory. In vantage-erp-1 (run `r20261027-0958-32dd`) a hook wrote
+`.claude/.rules-loaded/<session>.json` for every child and the `tier1` gate script wrote
+`.claude/.tier1-stamp`; both are git-ignored and never reached the branch, yet the protected
+snapshot flagged them in every iteration, no executor could remove them, and the run stopped at
+the rejection cap.
+
+### Added
+
+- **`pipeline.protected_volatile`** in `.marvin/config.json` — paths that are the project's own
+  state rather than configuration, a trailing `/` for a directory. The gate skips a covered path
+  that changed outside the committed diff, in the baseline comparison and after the gates alike,
+  only while git ignores it, and lists it in the report as `volatile`. An entry that is executed
+  or read as configuration (`.claude/settings*.json`, `.claude/hooks/`, `agents/`, `skills/`,
+  `commands/`, `rules/`, `output-styles/`, `plugins/`, `CLAUDE.md`, `.husky/`, `.marvin/`,
+  `.mcp.json`, any `.git*` file) is refused when the config loads, and so is a whole top-level
+  directory such as `.claude/`, which would leave that list as the only guard. Whether git ignores
+  a path is judged without `core.excludesFile`, which a child can set. The protected list itself, which the per-child boundary
+  hook also enforces, is unchanged, and so is the hashing of ignored protected files.
+
+### Changed
+
+- **A repeated protected-path rejection that no executor can fix halts at once.** When a gate
+  rejects the same protected paths as the gate before it, and every one of them changed outside
+  the committed diff, the run halts on the second rejection instead of spending a third executor
+  on the cap; the reason names `pipeline.protected_volatile`.
+
 ## [0.34.0] — 2026-10-25
 
 A running autopilot now reports at least every five minutes, and every report is the same status

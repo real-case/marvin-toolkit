@@ -6,6 +6,7 @@ import { createContext, Script } from "node:vm";
 import { SLUG_RE } from "../storage/metrics.js";
 import { classifyRecord } from "./metrics-carry.js";
 import { isCanonicalPath } from "./plain-path.js";
+import { declaredVolatile, volatileEntryProblem } from "./volatile.js";
 
 // Re-exported: callers across the engine import it from here, where it was first defined.
 export { isCanonicalPath };
@@ -79,6 +80,11 @@ export interface GateReport {
   protectedSources: Record<string, ProtectedSource[]>;
   /** The patterns the protected paths were judged against. */
   protectedPatterns: string[];
+  /**
+   * Protected paths that changed but were not judged: declared volatile and ignored by git
+   * (`protectedVolatile`). Listed so that the verifier and the PR still see them.
+   */
+  volatile?: string[];
   checks: CheckHit[];
   sealed: { path: string; ok: boolean }[];
   blockers: GateBlocker[];
@@ -724,6 +730,37 @@ export function snapshotProtected(
   return out;
 }
 
+/**
+ * The paths of `paths` that git ignores, by the worktree's ignore rules. A tracked path is never
+ * ignored, and a path gone from disk is judged by the rules alone, so a state file a hook removed
+ * is as volatile as one it rewrote.
+ */
+export function ignoredPaths(
+  worktree: string,
+  gitDir: string,
+  paths: readonly string[],
+): Set<string> {
+  if (paths.length === 0) return new Set();
+  try {
+    // A child can write the common git dir's config, so `core.excludesFile` is switched off.
+    // `$GIT_DIR/info/exclude` cannot be, and is trusted: a child writing it can only make a
+    // path the host itself declared volatile read as ignored.
+    const out = isolatedGit(worktree, gitDir).textIn(
+      `${paths.join("\0")}\0`,
+      "-c",
+      "core.excludesFile=",
+      "check-ignore",
+      "-z",
+      "--stdin",
+    );
+    return new Set(nul(out));
+  } catch (error) {
+    // check-ignore exits 1 when it ignores none of the paths; anything else is a real failure.
+    if ((error as { status?: unknown }).status === 1) return new Set();
+    throw error;
+  }
+}
+
 /** The sorted paths whose fingerprint differs between two snapshots, or exist in only one. */
 export function diffProtected(a: ProtectedSnapshot, b: ProtectedSnapshot): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
@@ -764,6 +801,17 @@ export function buildReport(parts: Omit<GateReport, "passed">): GateReport {
     parts.blockers.length === 0;
   return { ...parts, passed };
 }
+
+/**
+ * A protected-path finding that only a snapshot saw: the file changed on disk, never in the
+ * committed diff. The executor did not commit it and, the path being protected, cannot remove it
+ * either, so a repeat of it is not the executor's to fix (`decide`'s early halt).
+ */
+export const outsideCommittedDiff = (f: Finding) =>
+  /^P-\d+$/.test(f.id) &&
+  f.category === "scope" &&
+  f.file !== undefined &&
+  !f.evidence.split(", ").includes("committed diff" satisfies ProtectedSource);
 
 export function reportFindings(r: GateReport): Finding[] {
   const out: Finding[] = [];
@@ -904,6 +952,13 @@ export interface GateStageOptions {
   /** `snapshotProtected` as it stood before the child ran. */
   protectedBaseline: ProtectedSnapshot;
   /**
+   * The host's volatile protected paths (`pipeline.protected_volatile`): state its own hooks and
+   * gate scripts write under a protected directory, such as `.claude/.rules-loaded/`. A protected
+   * path a snapshot finds changed is skipped when an entry covers it and git ignores it; a path
+   * in `NEVER_VOLATILE` never is. Absent: none.
+   */
+  protectedVolatile?: readonly string[];
+  /**
    * The run's metrics record (`metrics-carry.ts`), or null for none. Its one path is not
    * uncommitted work while its change against HEAD is an append the metrics tool would write:
    * the delivery gate appends the terminal block after the executor's last commit, and finalize
@@ -942,6 +997,10 @@ function validateOptions(o: GateStageOptions): void {
   if (!isAbsolute(o.gitDir)) throw new Error("gitDir must be an absolute path");
   if (!isAbsolute(o.worktree)) throw new Error("worktree must be an absolute path");
   compileProtected(o.protectedPatterns);
+  for (const entry of o.protectedVolatile ?? []) {
+    const problem = typeof entry === "string" ? volatileEntryProblem(entry) : "it is not a string";
+    if (problem !== null) throw new Error(`volatile entry ${String(entry)} is refused: ${problem}`);
+  }
   for (const path of o.sealed.map((x) => x.path)) {
     if (!isCanonicalPath(path)) throw new Error(`sealed path is not canonical: ${String(path)}`);
   }
@@ -1105,8 +1164,18 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
     sources.set(path, [...(sources.get(path) ?? []), source]);
   };
   for (const path of protectedChanges(changed, o.protectedPatterns)) flag(path, "committed diff");
+  const volatile = new Set<string>();
+  // The snapshot differences a volatile declaration covers and git ignores; the rest are judged.
+  const judged = (paths: string[]): string[] => {
+    const declared = paths.filter(
+      (p) => !p.endsWith("/") && declaredVolatile(o.protectedVolatile ?? [], p),
+    );
+    const ignored = ignoredPaths(o.worktree, o.gitDir, declared);
+    for (const p of ignored) volatile.add(p);
+    return paths.filter((p) => !ignored.has(p));
+  };
   const protectedBefore = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(o.protectedBaseline, protectedBefore)) {
+  for (const path of judged(diffProtected(o.protectedBaseline, protectedBefore))) {
     if (!path.endsWith("/")) flag(path, "protected snapshot");
     else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -1297,7 +1366,7 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
     };
   });
   const protectedAfter = snapshotProtected(o.worktree, o.gitDir, o.protectedPatterns);
-  for (const path of diffProtected(protectedBefore, protectedAfter)) {
+  for (const path of judged(diffProtected(protectedBefore, protectedAfter))) {
     if (!path.endsWith("/")) flag(path, "post-gate snapshot");
     else if (protectedAfter[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
@@ -1313,6 +1382,7 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
     protected: protectedPaths,
     protectedSources: Object.fromEntries(sources),
     protectedPatterns: [...o.protectedPatterns],
+    volatile: [...volatile].sort(),
     checks: scanChecks(added, o.checks),
     sealed,
     blockers,
