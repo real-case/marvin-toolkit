@@ -1,4 +1,5 @@
 import type {
+  AutopilotEvent,
   AutopilotReportPayload,
   AutopilotRailStep,
 } from "@marvin-toolkit/mcp-shared/contracts";
@@ -36,18 +37,50 @@ const base = {
   runId: "r-1025-1412-ab3c",
   lang: "ru",
   task: "Отчёт автопилота не реже раза в 5 минут",
+  sessionName: "Отчёт автопилота не реже раза в 5 минут",
   startedAt: "2026-10-25T14:14:00.000Z",
   prUrl: null,
   omittedEvents: 0,
   active: [],
   judgment: null,
   callout: null,
+  session: null,
 };
+
+const ev = (hhmm: string, text: string, kind = "note"): AutopilotEvent => ({
+  at: `2026-10-25T${hhmm}:00.000Z`,
+  kind,
+  text,
+});
+
+/** Reports 1–7 of the running run: what unfolds above this interval's events. */
+const EARLIER: AutopilotEvent[] = [
+  ev("14:14", "Запуск: уровень standard, базовая ветка dev.", "stage"),
+  ev("14:16", "Планировщик: план из 6 критериев приёмки."),
+  ev("14:21", "План принят, контракт запечатан.", "stage"),
+  ev("14:22", "Автор тестов: 6 приёмочных тестов."),
+  ev("14:29", "Тесты красные на текущем коде, как и ожидалось."),
+  ev("14:30", "Стадия: исполнение, итерация 1.", "stage"),
+  ev("14:38", "Исполнитель №1: AC-1 и AC-2 закрыты.", "report"),
+  ev("14:41", "Проверки: 2 блокирующих замечания по scope.", "rejection"),
+  ev("14:42", "Итерация 2, ступень 1.", "stage"),
+  ev("14:45", "Исполнитель №2 начал работу."),
+];
 
 export const runningFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
+  earlier: EARLIER,
+  earlierOmitted: 0,
   report: {
     ...base,
+    session: {
+      name: "r-1025-1412-ab3c-executor-2",
+      role: "executor",
+      model: "claude-opus-5-5",
+      effort: "medium",
+      contextTokens: 286_552,
+      contextWindow: 1_000_000,
+    },
     n: 8,
     at: "2026-10-25T14:52:00.000Z",
     since: "2026-10-25T14:47:00.000Z",
@@ -86,8 +119,19 @@ export const runningFixture: AutopilotReportPayload = {
 
 export const waitingFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
+  earlier: [ev("14:14", "Запуск: уровень standard, базовая ветка dev.", "stage")],
+  earlierOmitted: 0,
   report: {
     ...base,
+    // A running child has no result line yet, and no finished child of its model names the window.
+    session: {
+      name: "r-1025-1412-ab3c-planner-0",
+      role: "planner",
+      model: "opus",
+      effort: "high",
+      contextTokens: 24_310,
+      contextWindow: null,
+    },
     n: 2,
     at: "2026-10-25T14:23:00.000Z",
     since: "2026-10-25T14:19:00.000Z",
@@ -125,8 +169,18 @@ export const waitingFixture: AutopilotReportPayload = {
 
 export const readyFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
+  earlier: EARLIER,
+  earlierOmitted: 4,
   report: {
     ...base,
+    session: {
+      name: "r-1025-1412-ab3c-retro-2",
+      role: "retro",
+      model: "claude-sonnet-5-5",
+      effort: "low",
+      contextTokens: 41_900,
+      contextWindow: 200_000,
+    },
     n: 15,
     at: "2026-10-25T15:26:00.000Z",
     since: "2026-10-25T15:21:00.000Z",
@@ -156,8 +210,21 @@ export const readyFixture: AutopilotReportPayload = {
 
 export const haltedFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
+  earlier: EARLIER,
+  earlierOmitted: 0,
   report: {
     ...base,
+    // Longer than two lines at the card's width: the header clamps it with an ellipsis.
+    sessionName:
+      "COD-11 B7: снизить когнитивную сложность записи целей P&L (правки, свёртка, вывод строк, экспорт) в src/lib/advertising/pnlTargets без изменения поведения, каждая функция не сложнее 15 по sonarjs/cognitive-complexity, новых функций длиннее 100 строк нет",
+    session: {
+      name: "r-1025-1412-ab3c-executor-3",
+      role: "executor",
+      model: "claude-sonnet-5-5",
+      effort: "high",
+      contextTokens: 176_000,
+      contextWindow: 200_000,
+    },
     n: 11,
     at: "2026-10-25T15:08:00.000Z",
     since: "2026-10-25T15:03:00.000Z",
@@ -191,10 +258,13 @@ export const haltedFixture: AutopilotReportPayload = {
 /** A quiet interval in English: no events, one child still working. */
 export const quietFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
+  earlier: [],
+  earlierOmitted: 0,
   report: {
     ...runningFixture.report,
     lang: "en",
     task: "Report the autopilot at least every five minutes",
+    sessionName: "Autopilot report every five minutes",
     n: 9,
     at: "2026-10-25T14:57:00.000Z",
     since: "2026-10-25T14:52:00.000Z",

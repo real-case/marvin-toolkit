@@ -16,9 +16,10 @@ import { createMockHost } from "../../lib/mock-host";
 import { waitForCondition } from "../../lib/story-helpers";
 
 /**
- * Stories for the autopilot-status widget (ADR-0051): one per card state of the approved
- * variant A — running, waiting on an answer, ready, halted — plus a quiet English interval, the
- * running card pinned dark, and the connecting / no-data / error trio. The mock-host story drives
+ * Stories for the autopilot-status widget (ADR-0051): one per card state — running, waiting on
+ * an answer, ready, halted (with a session name long enough to clamp) — plus the running card
+ * with its history unfolded, a quiet English interval, the running card pinned dark, and the
+ * connecting / no-data / error trio. The mock-host story drives
  * the real ext-apps handshake and opts out of visual capture, since its settled DOM duplicates
  * `Running`.
  */
@@ -43,6 +44,22 @@ export const Running: Story = { args: { data: runningFixture } };
 export const RunningDark: Story = {
   args: { data: runningFixture },
   parameters: { hostTheme: "dark" },
+};
+
+/** The events unfolded to the whole run: the toggle is clicked before the capture. */
+export const RunningHistory: Story = {
+  args: { data: runningFixture },
+  play: async ({ canvasElement }) => {
+    const toggle = canvasElement.querySelector<HTMLButtonElement>(
+      '[data-testid="autopilot-history-toggle"]',
+    );
+    if (!toggle) throw new Error("RunningHistory: no history toggle");
+    toggle.click();
+    await waitForCondition(
+      () => canvasElement.querySelector('[data-testid="autopilot-history-divider"]') !== null,
+      "the history to unfold",
+    );
+  },
 };
 
 export const Waiting: Story = { args: { data: waitingFixture } };

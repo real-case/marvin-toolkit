@@ -30,13 +30,20 @@ import {
   appendEvent,
   EventKind,
   loadRun,
+  orchestratorOf,
   type PipelineEvent,
   Run,
   saveRun,
   type Stage,
   TIERS,
 } from "./run-store.js";
-import { buildReport, lastReportNumber, readReport, writeReport } from "./status-report.js";
+import {
+  buildReport,
+  lastReportNumber,
+  readReport,
+  sessionOf,
+  writeReport,
+} from "./status-report.js";
 
 /*
  * The engine's loop around `decide`: one process per run, guarded by a lock, that carries out each
@@ -1056,10 +1063,11 @@ async function awaitReport(
       };
       if (write) {
         const n = lastReportNumber(runDir) + 1;
+        const run = loadRun(runDir);
         const path = writeReport(
           runDir,
           buildReport({
-            run: loadRun(runDir),
+            run,
             history: readEventsFrom(runDir, 0).events,
             events: interval,
             previous: readReport(runDir, n - 1),
@@ -1067,6 +1075,8 @@ async function awaitReport(
             since: new Date(since),
             now: new Date(clock),
             intervalMs: o.reportMs,
+            orchestrator: orchestratorOf(runDir, run),
+            session: sessionOf(runDir, run),
           }),
         );
         cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };

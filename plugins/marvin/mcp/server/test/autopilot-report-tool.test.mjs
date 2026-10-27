@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { callTool, withSession } from "./_driver.mjs";
@@ -61,6 +61,15 @@ function seed(root, patch = {}) {
     since: new Date(NOW.getTime() - 300_000),
     now: NOW,
     intervalMs: 300_000,
+    orchestrator: "[waiting] Отчёт автопилота",
+    session: {
+      name: "r-1025-executor-2",
+      role: "executor",
+      model: "claude-opus-5-5",
+      effort: "medium",
+      contextTokens: 84_000,
+      contextWindow: 200_000,
+    },
   });
   sr.writeReport(runDir, report);
   return { runDir, report };
@@ -92,10 +101,13 @@ test(
     );
     assert.equal(report.callout.text, "Исполнитель спрашивает, где хранить отчёты.");
     const text = textOf(r);
-    assert.match(text, /^## Ждёт ответа · r-1025 · отчёт № 1/);
+    assert.match(text, /^## Ждёт ответа · r-1025 · отчёт № 1\n\*\*Отчёт автопилота\*\*\n/);
+    assert.match(text, /Исполнитель · Opus 5\.5 · Effort medium · Контекст 42% · 84k \/ 200k$/);
+    assert.deepEqual(r.structuredContent.earlier, []);
+    // The card names the session, never the task (the whole prompt the run started from).
+    assert.doesNotMatch(text, /\[waiting\]/);
     assert.match(text, /✓ План → ✓ Тесты → \*\*◐ Исполнение\*\* → ○ Проверки/);
     assert.match(text, /> \*\*Нужен ответ:\*\* Исполнитель спрашивает/);
-    assert.match(text, /следующий ≤ \d\d:\d\d/);
     // Without n, the newest report is read.
     assert.equal((await call({ runDir }, env)).structuredContent.report.n, 1);
   }),
@@ -133,7 +145,7 @@ test(
   }),
 );
 
-test("a quiet interval says who is working, and a final report names the PR", () => {
+test("a quiet interval says who is working, and the footer names the session", () => {
   const base = {
     version: 1,
     runId: "r",
@@ -144,6 +156,7 @@ test("a quiet interval says who is working, and a final report names the PR", ()
     final: false,
     lang: "en",
     task: "t",
+    sessionName: null,
     state: "running",
     stage: "executing",
     rail: [],
@@ -161,6 +174,7 @@ test("a quiet interval says who is working, and a final report names the PR", ()
     events: [],
     omittedEvents: 0,
     prUrl: null,
+    session: null,
   };
   const quiet = renderReport(base);
   assert.match(quiet, /_No new events\._/);
@@ -168,15 +182,61 @@ test("a quiet interval says who is working, and a final report names the PR", ()
   assert.match(quiet, /1 h 12 min/);
   assert.match(quiet, /\$4\.12 · \+\$0\.38 this interval/);
   assert.match(quiet, /1 · gates: 2 blocking/);
-  const final = renderReport({
+  assert.doesNotMatch(quiet, /Executor ·/, "no session, no footer");
+  const working = renderReport({
     ...base,
-    state: "ready",
-    final: true,
-    nextBy: null,
-    prUrl: "https://github.com/o/r/pull/266",
+    sessionName: "Report card",
+    session: {
+      name: "r-executor-2",
+      role: "test-author",
+      model: "opus",
+      effort: "high",
+      contextTokens: 286_552,
+      contextWindow: null,
+    },
   });
-  assert.match(final, /Final report · https:\/\/github\.com\/o\/r\/pull\/266$/);
+  assert.match(working, /^## Running · r · report #3\n\*\*Report card\*\*\n/);
+  assert.match(working, /\n\nTest author · opus · Effort high · Context 287k$/);
 });
+
+test(
+  "earlier reports unfold in the words they were shown in, English where none was given",
+  withHome(async (home) => {
+    const env = { MARVIN_PIPELINE_HOME: home };
+    const { runDir, report } = seed(home);
+    const second = (n) => ({
+      ...report,
+      n,
+      events: [{ at: NOW.toISOString(), kind: "note", text: `event of report ${n}` }],
+      omittedEvents: 1,
+      callout: null,
+    });
+    sr.writeReport(runDir, second(2));
+    sr.writeReport(runDir, second(3));
+    // Report 1 is shown translated; report 2 never is.
+    const first = await call(
+      { runDir, n: 1, translations: { events: ["Первое", "Второе"], callout: "Вопрос" } },
+      env,
+    );
+    assert.notEqual(first.isError, true, textOf(first));
+    assert.ok(existsSync(join(runDir, "status-reports", "1.text.json")));
+    assert.equal(existsSync(join(runDir, "status-reports", "2.text.json")), false);
+
+    const r = await call({ runDir, n: 3 }, env);
+    assert.deepEqual(
+      r.structuredContent.earlier.map((e) => e.text),
+      ["Первое", "Второе", "event of report 2"],
+    );
+    assert.equal(r.structuredContent.earlierOmitted, 1);
+    // A kept file that no longer matches its report falls back to the English.
+    writeFileSync(join(runDir, "status-reports", "1.text.json"), '{"events":["one"]}');
+    const stale = await call({ runDir, n: 2 }, env);
+    assert.deepEqual(
+      stale.structuredContent.earlier.map((e) => e.text),
+      ["executor 2 closed AC-3", "gate passed"],
+    );
+  }),
+);
 
 test("the bundle binds the autopilot-status widget and rejects an undeclared argument", async () => {
   const listed = await withSession({}, (s) => s.request("tools/list", {}));

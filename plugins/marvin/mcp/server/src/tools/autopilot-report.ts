@@ -1,10 +1,16 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { relative, sep, isAbsolute } from "node:path";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
-import type { AutopilotReport, AutopilotReportPayload } from "@marvin-toolkit/mcp-shared/contracts";
+import type {
+  AutopilotEvent,
+  AutopilotReport,
+  AutopilotReportPayload,
+} from "@marvin-toolkit/mcp-shared/contracts";
 import {
+  autopilotContext,
   autopilotLabels,
+  autopilotModel,
   autopilotTime,
   autopilotUsd,
 } from "@marvin-toolkit/mcp-shared/autopilot-labels";
@@ -26,9 +32,15 @@ import { checkedRunDir } from "./pipeline.js";
  * length is refused rather than paired up by position, because a shifted list would put every
  * text beside the wrong time.
  *
- * Read-only, like `pipeline status`, and confined to the same directories: the run directory must
- * hold a `run.json` inside the state root, and the report file must resolve inside the run
- * directory. The input is `.strict()`.
+ * The card can unfold the whole run, so the payload also carries the events of every earlier
+ * report. Their translations were given to earlier calls, so a call that passes `translations`
+ * keeps them beside the report as `<n>.text.json`, and a later call shows each earlier event in
+ * the words it was first shown in (English when its report was never translated). That file is
+ * the one thing this tool writes.
+ *
+ * Confined to the directories `pipeline status` reads: the run directory must hold a `run.json`
+ * inside the state root, and the report file must resolve inside the run directory. The input is
+ * `.strict()`.
  */
 
 const Translations = z
@@ -74,7 +86,7 @@ export function buildAutopilotReportTool(env: NodeJS.ProcessEnv = process.env): 
   return defineTool({
     name: "autopilot-report",
     description:
-      "Show one autopilot status report as a card: stage rail, elapsed time, cost, iteration, rejections, the events since the previous report and when the next one is due. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
+      "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
     inputSchema: AutopilotReportInputStrict,
     meta: { ui: { resourceUri: AUTOPILOT_STATUS_WIDGET_URI } },
     handler: (input) => Promise.resolve(runAutopilotReport(input, env)),
@@ -113,7 +125,9 @@ function runAutopilotReport(input: AutopilotReportInput, env: NodeJS.ProcessEnv)
         ? null
         : { ...report.callout, text: oneLine(t?.callout ?? report.callout.text) },
   };
-  const payload: AutopilotReportPayload = { report: shown, runDir };
+  if (t !== undefined) keepTexts(runDir, shown);
+  const history = earlierEvents(runDir, n);
+  const payload: AutopilotReportPayload = { report: shown, runDir, ...history };
   return {
     content: [{ type: "text", text: renderReport(shown) }],
     structuredContent: payload as unknown as Record<string, unknown>,
@@ -121,6 +135,73 @@ function runAutopilotReport(input: AutopilotReportInput, env: NodeJS.ProcessEnv)
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** Where the texts a report was shown with are kept: `<runDir>/status-reports/<n>.text.json`. */
+const textsPath = (runDir: string, n: number) =>
+  reportPath(runDir, n).replace(/\.json$/, ".text.json");
+
+interface ShownTexts {
+  events: string[];
+}
+
+/**
+ * Keeps the texts a report was shown with, so a later card can show its events in the same words.
+ * Best effort: a failed write only means a later card shows those events in English.
+ */
+function keepTexts(runDir: string, shown: AutopilotReport): void {
+  const path = textsPath(runDir, shown.n);
+  const kept: ShownTexts = { events: shown.events.map((e) => e.text) };
+  try {
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}\n`);
+    renameSync(tmp, path);
+  } catch {
+    // The card still shows; only the history loses this report's translation.
+  }
+}
+
+function keptTexts(runDir: string, n: number, length: number): string[] | null {
+  try {
+    const kept = JSON.parse(readFileSync(textsPath(runDir, n), "utf8")) as Partial<ShownTexts>;
+    const events = kept.events;
+    return Array.isArray(events) &&
+      events.length === length &&
+      events.every((e) => typeof e === "string")
+      ? events
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The events of reports 1 to n − 1, oldest first, each in the words it was shown in. */
+function earlierEvents(
+  runDir: string,
+  n: number,
+): { earlier: AutopilotEvent[]; earlierOmitted: number } {
+  const earlier: AutopilotEvent[] = [];
+  let earlierOmitted = 0;
+  for (let k = 1; k < n; k += 1) {
+    const report = readReport(runDir, k);
+    if (report === null) continue;
+    const texts = keptTexts(runDir, k, report.events.length);
+    earlier.push(...report.events.map((e, i) => ({ ...e, text: oneLine(texts?.[i] ?? e.text) })));
+    earlierOmitted += report.omittedEvents;
+  }
+  return { earlier, earlierOmitted };
+}
+
+/** The footer's line: who works, on what, and how full its context is. Empty with no session. */
+export function sessionLine(r: AutopilotReport): string {
+  const s = r.session;
+  if (s === null) return "";
+  const l = autopilotLabels(r.lang);
+  const parts = [l.roles[s.role] ?? s.role, autopilotModel(s.model), `${l.effort} ${s.effort}`];
+  if (s.contextTokens !== null) {
+    parts.push(`${l.context} ${autopilotContext(s.contextTokens, s.contextWindow).text}`);
+  }
+  return parts.join(" · ");
+}
 
 function inside(root: string, path: string): boolean {
   const rel = relative(root, path);
@@ -173,14 +254,10 @@ export function renderReport(r: AutopilotReport): string {
           ...(r.omittedEvents > 0 ? [`- … +${r.omittedEvents}`] : []),
           ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`),
         ];
-  const foot = r.final
-    ? `${l.final}${r.prUrl ? ` · ${r.prUrl}` : ""}`
-    : r.nextBy === null
-      ? ""
-      : l.nextBy(autopilotTime(r.nextBy));
+  const foot = sessionLine(r);
   return [
     head,
-    `**${oneLine(r.task)}**`,
+    ...(r.sessionName === null ? [] : [`**${r.sessionName}**`]),
     "",
     rail,
     "",

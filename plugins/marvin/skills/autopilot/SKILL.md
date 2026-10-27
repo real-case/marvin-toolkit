@@ -124,8 +124,11 @@ every exit, handle **every** line in order. Then re-arm `await`, unless a `STAGE
 callout carries only the judgment's kind: put the question itself, from the request file, in one
 sentence. Then call the marvin MCP tool `autopilot-report` with `runDir`, `n` and
 `translations: {events: [...], callout: "..."}`, one event text per event, in order. The tool
-refuses a list of the wrong length rather than pairing texts with the wrong times. Its answer is
-the card:
+refuses a list of the wrong length rather than pairing texts with the wrong times. Pass
+`translations` with every card that has events: the tool keeps them beside the report, and the
+card's history, which unfolds every earlier report, shows each event in the words it was first
+shown in. The card names the session by its title without the status prefix, so a rename reaches
+it through the `attach` that follows it (section 6). Its answer is the card:
 
 - When the result says the widget is already on screen (a `_rendered` key in
   `structuredContent`), add nothing.

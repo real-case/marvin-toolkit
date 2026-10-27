@@ -40288,8 +40288,23 @@ var RU = {
   noEvents: "\u041D\u043E\u0432\u044B\u0445 \u0441\u043E\u0431\u044B\u0442\u0438\u0439 \u043D\u0435\u0442.",
   working: "\u0420\u0430\u0431\u043E\u0442\u0430\u044E\u0442",
   report: (n) => `\u043E\u0442\u0447\u0451\u0442 \u2116 ${n}`,
-  nextBy: (t) => `\u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u2264 ${t}`,
-  final: "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u043E\u0442\u0447\u0451\u0442",
+  historyTitle: "\u0421 \u043D\u0430\u0447\u0430\u043B\u0430 \u0440\u0430\u0431\u043E\u0442\u044B",
+  historyShow: (n) => `\u0412\u0441\u044F \u0438\u0441\u0442\u043E\u0440\u0438\u044F \xB7 ${n}`,
+  historyHide: "\u0422\u043E\u043B\u044C\u043A\u043E \u0441 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430",
+  historyDivider: "\u0441 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430",
+  copyImage: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u0430\u043A \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435",
+  copied: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E",
+  saved: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E \u0444\u0430\u0439\u043B\u043E\u043C",
+  copyFailed: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C",
+  roles: {
+    planner: "\u041F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A",
+    "test-author": "\u0410\u0432\u0442\u043E\u0440 \u0442\u0435\u0441\u0442\u043E\u0432",
+    executor: "\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C",
+    verifier: "\u0412\u0435\u0440\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440",
+    retro: "\u0420\u0435\u0442\u0440\u043E"
+  },
+  effort: "Effort",
+  context: "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442",
   duration: (ms) => duration3(ms, "\u0447", "\u043C\u0438\u043D")
 };
 var EN = {
@@ -40324,8 +40339,23 @@ var EN = {
   noEvents: "No new events.",
   working: "Working",
   report: (n) => `report #${n}`,
-  nextBy: (t) => `next by ${t}`,
-  final: "Final report",
+  historyTitle: "Since the start",
+  historyShow: (n) => `Full history \xB7 ${n}`,
+  historyHide: "Since the last report only",
+  historyDivider: "since the last report",
+  copyImage: "Copy as image",
+  copied: "Copied",
+  saved: "Saved as a file",
+  copyFailed: "Could not copy",
+  roles: {
+    planner: "Planner",
+    "test-author": "Test author",
+    executor: "Executor",
+    verifier: "Verifier",
+    retro: "Retro"
+  },
+  effort: "Effort",
+  context: "Context",
   duration: (ms) => duration3(ms, "h", "min")
 };
 function autopilotLabels(lang) {
@@ -40336,6 +40366,27 @@ function autopilotTime(iso) {
   const d = new Date(iso);
   const two = (n) => String(n).padStart(2, "0");
   return `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+function autopilotModel(id) {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id);
+  if (!m?.[1] || !m[2])
+    return id;
+  const family = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  return `${family} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+}
+function autopilotTokens(n) {
+  if (n >= 1e6 && n % 1e6 === 0)
+    return `${n / 1e6}M`;
+  return n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+}
+function autopilotContext(tokens, window) {
+  if (window === null)
+    return { percent: null, text: autopilotTokens(tokens) };
+  const percent = Math.min(100, Math.round(tokens / window * 100));
+  return {
+    percent,
+    text: `${percent}% \xB7 ${autopilotTokens(tokens)} / ${autopilotTokens(window)}`
+  };
 }
 
 // ../../../../packages/marvin-mcp-shared/dist/contracts/autopilot.js
@@ -40359,6 +40410,14 @@ var AutopilotEvent = external_exports.object({
   kind: external_exports.string(),
   text: external_exports.string()
 });
+var AutopilotSession = external_exports.object({
+  name: external_exports.string(),
+  role: external_exports.string(),
+  model: external_exports.string(),
+  effort: external_exports.string(),
+  contextTokens: external_exports.number().int().min(0).nullable(),
+  contextWindow: external_exports.number().int().min(1).nullable()
+});
 var AutopilotReport = external_exports.object({
   version: external_exports.literal(1),
   runId: external_exports.string(),
@@ -40372,8 +40431,14 @@ var AutopilotReport = external_exports.object({
   /** The run will not move again: ready, halted, or closed. */
   final: external_exports.boolean(),
   lang: external_exports.string(),
-  /** The task as the user wrote it. */
+  /** The task as the user wrote it. Kept for readers; the card shows `sessionName` instead. */
   task: external_exports.string(),
+  /**
+   * The orchestrating session's name with its status prefix taken off (`[in progress] Report
+   * card` → `Report card`), or null when it has none left. A report written before the field
+   * existed reads as null.
+   */
+  sessionName: external_exports.string().nullable().default(null),
   state: AutopilotState,
   /** The run's stage as `run.json` names it. */
   stage: external_exports.string(),
@@ -40411,11 +40476,16 @@ var AutopilotReport = external_exports.object({
   /** The newest events of the interval, oldest first, English as the engine wrote them. */
   events: external_exports.array(AutopilotEvent).max(AUTOPILOT_EVENTS_MAX),
   omittedEvents: external_exports.number().int().min(0),
-  prUrl: external_exports.string().nullable()
+  prUrl: external_exports.string().nullable(),
+  /** The footer's session; null when no child has started, or for a report older than the field. */
+  session: AutopilotSession.nullable().default(null)
 });
 external_exports.object({
   report: AutopilotReport,
-  runDir: external_exports.string()
+  runDir: external_exports.string(),
+  earlier: external_exports.array(AutopilotEvent).default([]),
+  /** Events the earlier reports counted in `omittedEvents` and so never carried. */
+  earlierOmitted: external_exports.number().int().min(0).default(0)
 });
 
 // src/pipeline/status-report.ts
@@ -40456,7 +40526,7 @@ var AutopilotReportInputStrict = strictInput(
 function buildAutopilotReportTool(env2 = process.env) {
   return defineTool({
     name: "autopilot-report",
-    description: "Show one autopilot status report as a card: stage rail, elapsed time, cost, iteration, rejections, the events since the previous report and when the next one is due. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
+    description: "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
     inputSchema: AutopilotReportInputStrict,
     meta: { ui: { resourceUri: AUTOPILOT_STATUS_WIDGET_URI } },
     handler: (input) => Promise.resolve(runAutopilotReport(input, env2))
@@ -40489,13 +40559,58 @@ function runAutopilotReport(input, env2) {
     events: report.events.map((e, i) => ({ ...e, text: oneLine(t?.events?.[i] ?? e.text) })),
     callout: report.callout === null ? null : { ...report.callout, text: oneLine(t?.callout ?? report.callout.text) }
   };
-  const payload = { report: shown, runDir };
+  if (t !== void 0) keepTexts(runDir, shown);
+  const history = earlierEvents(runDir, n);
+  const payload = { report: shown, runDir, ...history };
   return {
     content: [{ type: "text", text: renderReport(shown) }],
     structuredContent: payload
   };
 }
 var oneLine = (s) => s.replace(/\s+/g, " ").trim();
+var textsPath = (runDir, n) => reportPath(runDir, n).replace(/\.json$/, ".text.json");
+function keepTexts(runDir, shown) {
+  const path = textsPath(runDir, shown.n);
+  const kept = { events: shown.events.map((e) => e.text) };
+  try {
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}
+`);
+    renameSync(tmp, path);
+  } catch {
+  }
+}
+function keptTexts(runDir, n, length) {
+  try {
+    const kept = JSON.parse(readFileSync(textsPath(runDir, n), "utf8"));
+    const events = kept.events;
+    return Array.isArray(events) && events.length === length && events.every((e) => typeof e === "string") ? events : null;
+  } catch {
+    return null;
+  }
+}
+function earlierEvents(runDir, n) {
+  const earlier = [];
+  let earlierOmitted = 0;
+  for (let k = 1; k < n; k += 1) {
+    const report = readReport(runDir, k);
+    if (report === null) continue;
+    const texts = keptTexts(runDir, k, report.events.length);
+    earlier.push(...report.events.map((e, i) => ({ ...e, text: oneLine(texts?.[i] ?? e.text) })));
+    earlierOmitted += report.omittedEvents;
+  }
+  return { earlier, earlierOmitted };
+}
+function sessionLine(r) {
+  const s = r.session;
+  if (s === null) return "";
+  const l = autopilotLabels(r.lang);
+  const parts = [l.roles[s.role] ?? s.role, autopilotModel(s.model), `${l.effort} ${s.effort}`];
+  if (s.contextTokens !== null) {
+    parts.push(`${l.context} ${autopilotContext(s.contextTokens, s.contextWindow).text}`);
+  }
+  return parts.join(" \xB7 ");
+}
 function inside(root, path) {
   const rel = relative(root, path);
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
@@ -40526,10 +40641,10 @@ function renderReport(r) {
     ...r.omittedEvents > 0 ? [`- \u2026 +${r.omittedEvents}`] : [],
     ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`)
   ];
-  const foot = r.final ? `${l.final}${r.prUrl ? ` \xB7 ${r.prUrl}` : ""}` : r.nextBy === null ? "" : l.nextBy(autopilotTime(r.nextBy));
+  const foot = sessionLine(r);
   return [
     head,
-    `**${oneLine(r.task)}**`,
+    ...r.sessionName === null ? [] : [`**${r.sessionName}**`],
     "",
     rail,
     "",
@@ -40551,7 +40666,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.35.0";
+var VERSION = "0.36.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

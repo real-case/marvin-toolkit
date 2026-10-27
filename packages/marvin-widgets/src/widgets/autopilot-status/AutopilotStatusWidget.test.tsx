@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen } from "@testing-library/preact";
 // Runtime zod import: tests are the one place the widget workspace imports a schema at runtime.
 import { AutopilotReportPayload } from "@marvin-toolkit/mcp-shared/contracts";
 import { AutopilotStatusView, AutopilotStatusWidget } from "./AutopilotStatusWidget";
@@ -22,13 +22,20 @@ describe("fixtures — AutopilotReportPayload contract", () => {
   }
 });
 
-describe("AutopilotStatusView — the variant A card", () => {
+describe("AutopilotStatusView — the card", () => {
   it("renders the header, the rail, the four figures and the events in Russian", () => {
     render(<AutopilotStatusView data={runningFixture} />);
     expect(screen.getByTestId("mv-root")).toBeTruthy();
     expect(screen.getByTestId("autopilot-pill").textContent).toBe("Идёт");
-    expect(screen.getByTestId("autopilot-task").textContent).toBe(
-      "Отчёт автопилота не реже раза в 5 минут",
+    // The header names the run and the session, never the task: that is the whole prompt.
+    expect(screen.getByTestId("autopilot-card").textContent).toContain(
+      "marvin · r-1025-1412-ab3c · отчёт № 8",
+    );
+    expect(screen.getByTestId("autopilot-session").textContent).toBe(
+      runningFixture.report.sessionName,
+    );
+    expect(screen.getByTestId("autopilot-copy").getAttribute("aria-label")).toBe(
+      "Скопировать как изображение",
     );
     const steps = screen.getAllByTestId("rail-step");
     expect(steps.map((s) => s.getAttribute("data-state"))).toEqual([
@@ -49,7 +56,37 @@ describe("AutopilotStatusView — the variant A card", () => {
     expect(figures[3]).toContain("проверки: 2 блок.");
     expect(screen.getAllByTestId("autopilot-event")).toHaveLength(3);
     expect(screen.queryByTestId("autopilot-callout")).toBeNull();
-    expect(screen.getByTestId("autopilot-footer").textContent).toMatch(/следующий ≤ \d\d:\d\d/);
+    const footer = screen.getByTestId("autopilot-footer").textContent;
+    expect(footer).toContain("Исполнитель");
+    expect(footer).toContain("Opus 5.5");
+    expect(footer).toContain("Effort medium");
+    expect(screen.getByTestId("autopilot-context").textContent).toContain("29% · 287k / 1M");
+  });
+
+  it("unfolds the whole run's history and folds it back", () => {
+    render(<AutopilotStatusView data={runningFixture} />);
+    const toggle = screen.getByTestId("autopilot-history-toggle");
+    expect(toggle.textContent).toBe("Вся история · 10");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getAllByTestId("autopilot-event")).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toBe("Только с прошлого отчёта");
+    expect(screen.getByTestId("autopilot-events").textContent).toContain("С начала работы");
+    const events = screen.getAllByTestId("autopilot-event").map((e) => e.textContent ?? "");
+    expect(events).toHaveLength(13);
+    expect(events[0]).toContain("Запуск");
+    expect(events[12]).toContain("продолжает: AC-4");
+    expect(screen.getByTestId("autopilot-history-divider").textContent).toBe("с прошлого отчёта");
+    fireEvent.click(toggle);
+    expect(screen.getAllByTestId("autopilot-event")).toHaveLength(3);
+    expect(screen.queryByTestId("autopilot-history-divider")).toBeNull();
+  });
+
+  it("counts earlier events no report carried, and offers no toggle without history", () => {
+    render(<AutopilotStatusView data={readyFixture} />);
+    expect(screen.getByTestId("autopilot-history-toggle").textContent).toBe("Вся история · 14");
+    render(<AutopilotStatusView data={quietFixture} />);
+    expect(screen.getAllByTestId("autopilot-history-toggle")).toHaveLength(1);
   });
 
   it("shows the question callout while the run waits", () => {
@@ -60,20 +97,37 @@ describe("AutopilotStatusView — the variant A card", () => {
     expect(screen.getAllByTestId("rail-step")[0]?.getAttribute("data-state")).toBe("waiting");
   });
 
-  it("marks the halted stage failed, says why, and ends with a final report", () => {
+  it("marks the halted stage failed, says why, and clamps a long session name", () => {
     render(<AutopilotStatusView data={haltedFixture} />);
     expect(screen.getAllByTestId("rail-step")[3]?.getAttribute("data-state")).toBe("failed");
     expect(screen.getByTestId("autopilot-callout").textContent).toContain("Причина остановки");
     expect(screen.getAllByTestId("autopilot-figure")[1]?.textContent).toContain("$5.60+");
-    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Финальный отчёт");
+    const name = screen.getByTestId("autopilot-session");
+    // jsdom drops -webkit-line-clamp, so the clamp itself is the Halted story's visual baseline;
+    // here the full name stays reachable as the tooltip.
+    expect(name.style.overflow).toBe("hidden");
+    expect(name.getAttribute("title")).toBe(haltedFixture.report.sessionName);
+    expect(screen.getByTestId("autopilot-context").textContent).toContain("88% · 176k / 200k");
   });
 
-  it("names the pull request on a ready card", () => {
+  it("marks every stage done on a ready card", () => {
     render(<AutopilotStatusView data={readyFixture} />);
     expect(
       screen.getAllByTestId("rail-step").every((s) => s.getAttribute("data-state") === "done"),
     ).toBe(true);
-    expect(screen.getByTestId("autopilot-footer").textContent).toContain("/pull/266");
+  });
+
+  it("shows the tokens alone when the context window is unknown", () => {
+    render(<AutopilotStatusView data={waitingFixture} />);
+    expect(screen.getByTestId("autopilot-context").textContent).toBe("Контекст24k");
+    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Планировщик");
+  });
+
+  it("leaves the footer out when no session has started, and the name when there is none", () => {
+    const report = { ...runningFixture.report, session: null, sessionName: null };
+    render(<AutopilotStatusView data={{ ...runningFixture, report }} />);
+    expect(screen.queryByTestId("autopilot-footer")).toBeNull();
+    expect(screen.queryByTestId("autopilot-session")).toBeNull();
   });
 
   it("says a quiet interval had no events and who is still working, in English", () => {
@@ -81,6 +135,8 @@ describe("AutopilotStatusView — the variant A card", () => {
     expect(screen.getByTestId("autopilot-events").textContent).toContain("No new events.");
     expect(screen.getByTestId("autopilot-active").textContent).toContain("executor");
     expect(screen.getByTestId("autopilot-pill").textContent).toBe("Running");
+    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Executor");
+    expect(screen.getByTestId("autopilot-copy").getAttribute("aria-label")).toBe("Copy as image");
   });
 
   it("shows connecting, no-data and error states", () => {

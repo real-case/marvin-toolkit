@@ -13,9 +13,11 @@ import {
   AutopilotReport,
   type AutopilotRailKey,
   type AutopilotRailStep,
+  type AutopilotSession,
   type AutopilotState,
 } from "@marvin-toolkit/mcp-shared/contracts/autopilot";
-import type { PipelineEvent, Run, Stage } from "./run-store.js";
+import { contextUse, readLogTail } from "./child-activity.js";
+import { childKey, type PipelineEvent, type Run, type Stage } from "./run-store.js";
 
 /**
  * The periodic status report (ADR-0051): what `marvin-pipe await --report-min <m>` writes when
@@ -135,6 +137,62 @@ function cost(run: Run): { usd: number | null; complete: boolean } {
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
+/**
+ * The session name the card shows: the orchestrator's name without the status prefix the desktop
+ * app's title carries (`[in progress] Report card` → `Report card`), since the card has its own
+ * status pill. Null when nothing is left.
+ */
+export function sessionName(orchestrator: string): string | null {
+  const name = oneLine(orchestrator.replace(/^\[[^\]]*\]\s*/, ""));
+  return name === "" ? null : name;
+}
+
+/** How many finished children of the same model are read for a context window, newest first. */
+const WINDOW_LOOKBACK = 4;
+
+/**
+ * The child the card's footer describes, read from the run directory: the newest running child,
+ * else the newest child. Its model and context come from its `stream-json` log; a running child
+ * has no `result` line yet, so its window is taken from the newest finished child that ran the
+ * same model. Never throws: an unreadable log leaves the figures null.
+ */
+export function sessionOf(runDir: string, run: Run): AutopilotSession | null {
+  const children = run.children;
+  let index = -1;
+  for (let i = children.length - 1; i >= 0; i -= 1) {
+    if (children[i]?.status === "running") {
+      index = i;
+      break;
+    }
+  }
+  if (index === -1) index = children.length - 1;
+  const child = children[index];
+  if (!child) return null;
+  const useOf = (i: number) => {
+    const c = children[i];
+    if (!c) return null;
+    const tail = readLogTail(join(runDir, `${childKey(children.slice(0, i), c.name)}.log.jsonl`));
+    return tail === null ? null : contextUse(tail.text);
+  };
+  const use = useOf(index);
+  const model = use?.model ?? child.assignment.model;
+  let window = use?.window ?? null;
+  for (let i = children.length - 1, read = 0; window === null && i >= 0; i -= 1) {
+    if (i === index || children[i]?.status === "running") continue;
+    if (read++ >= WINDOW_LOOKBACK) break;
+    const other = useOf(i);
+    if (other?.model === model) window = other.window;
+  }
+  return {
+    name: child.name,
+    role: child.role,
+    model,
+    effort: child.assignment.effort,
+    contextTokens: use?.tokens ?? null,
+    contextWindow: window,
+  };
+}
+
 export interface ReportInput {
   run: Run;
   /** Every event of the run so far: the stage history the rail is read from. */
@@ -147,6 +205,10 @@ export interface ReportInput {
   now: Date;
   /** The interval; null when the report is written without one. */
   intervalMs: number | null;
+  /** The orchestrating session's name, as `orchestratorOf` reads it. */
+  orchestrator: string;
+  /** The footer's session, as `sessionOf` reads it. */
+  session: AutopilotSession | null;
 }
 
 export function buildReport(i: ReportInput): AutopilotReport {
@@ -175,6 +237,7 @@ export function buildReport(i: ReportInput): AutopilotReport {
     final,
     lang: run.lang,
     task: run.task.original,
+    sessionName: sessionName(i.orchestrator),
     state,
     stage: run.stage,
     rail: steps,
@@ -206,6 +269,7 @@ export function buildReport(i: ReportInput): AutopilotReport {
     })),
     omittedEvents: i.events.length - kept.length,
     prUrl: run.prUrl,
+    session: i.session,
   });
 }
 
