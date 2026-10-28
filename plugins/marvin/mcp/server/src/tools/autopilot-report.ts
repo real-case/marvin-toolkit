@@ -6,13 +6,18 @@ import type {
   AutopilotEvent,
   AutopilotReport,
   AutopilotReportPayload,
+  AutopilotSummary,
 } from "@marvin-toolkit/mcp-shared/contracts";
 import {
   autopilotContext,
+  autopilotCriterionMet,
   autopilotLabels,
   autopilotModel,
+  autopilotRoleName,
   autopilotTime,
+  autopilotTokenTotal,
   autopilotUsd,
+  type AutopilotLabels,
 } from "@marvin-toolkit/mcp-shared/autopilot-labels";
 import { keyList, strictInput } from "../lib/strict-input.js";
 import { lastReportNumber, readReport, reportPath } from "../pipeline/status-report.js";
@@ -86,7 +91,7 @@ export function buildAutopilotReportTool(env: NodeJS.ProcessEnv = process.env): 
   return defineTool({
     name: "autopilot-report",
     description:
-      "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
+      "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. A final report shows the run summed up instead: stage times, tokens by kind and role, the PR, the acceptance criteria with their proof, questions, the retro's additions and assumptions. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
     inputSchema: AutopilotReportInputStrict,
     meta: { ui: { resourceUri: AUTOPILOT_STATUS_WIDGET_URI } },
     handler: (input) => Promise.resolve(runAutopilotReport(input, env)),
@@ -210,8 +215,151 @@ function inside(root: string, path: string): boolean {
 
 const MARK = { done: "✓", current: "●", waiting: "◐", failed: "✕", pending: "○" } as const;
 
+/** The events block, shared by the periodic and the final card. */
+function eventLines(r: AutopilotReport, l: AutopilotLabels): string[] {
+  return r.events.length === 0
+    ? [
+        `_${l.noEvents}_`,
+        ...(r.active.length === 0
+          ? []
+          : [
+              `${l.working}: ${r.active
+                .map((a) => `${a.role} (\`${a.name}\`), ${l.duration(a.runningMs)}`)
+                .join("; ")}`,
+            ]),
+      ]
+    : [
+        ...(r.omittedEvents > 0 ? [`- … +${r.omittedEvents}`] : []),
+        ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`),
+      ];
+}
+
+const rejectionSub = (r: AutopilotReport, l: AutopilotLabels) =>
+  r.rejections.last === null
+    ? l.noRejections
+    : l.lastRejection(l.sources[r.rejections.last.source], r.rejections.last.blocking);
+
+/**
+ * The final card in Markdown (ADR-0051): the same sections in the same order as the widget's
+ * final layout, each left out when its source was absent, and no session footer.
+ */
+function renderFinal(r: AutopilotReport, s: AutopilotSummary): string {
+  const l = autopilotLabels(r.lang);
+  const f = l.final;
+  const head = [
+    `## ${f.title} · ${l.state[r.state]}`,
+    ...(r.sessionName === null ? [] : [`**${r.sessionName}**`]),
+    `\`${r.runId}\` · ${autopilotTime(r.startedAt)} → ${autopilotTime(r.at)}`,
+  ];
+  const rail = r.rail
+    .map((step, i) => {
+      const ms = s.stages[i]?.ms ?? null;
+      const label = `${MARK[step.state]} ${l.rail[step.key]}${ms === null ? "" : ` (${l.duration(ms)})`}`;
+      return step.state === "failed" ? `**${label}**` : label;
+    })
+    .join(" → ");
+  const cost = r.costUsd === null ? "—" : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : "+"}`;
+  const costSub = [
+    ...(s.roles === null ? [] : [f.roles(s.roles)]),
+    ...(r.costComplete ? [] : [l.costPartial]),
+  ].join(", ");
+  const table = [
+    `| ${l.elapsed} | ${l.cost} | ${f.iterations} | ${l.rejections} |`,
+    "|---|---|---|---|",
+    `| ${l.duration(r.elapsedMs)}${s.activeMs === null ? "" : ` · ${f.active(l.duration(s.activeMs))}`} | ${cost}${costSub === "" ? "" : ` · ${costSub}`} | ${r.iteration} · ${l.rung(r.rung)} | ${r.rejections.total} · ${rejectionSub(r, l)} |`,
+  ];
+  const callout =
+    r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
+  const t = s.tokens;
+  const tokens =
+    t === null || t.total === null
+      ? []
+      : [
+          "",
+          `**${f.tokensTitle(autopilotTokenTotal(t.total))}**`,
+          (["cacheRead", "cacheWrite", "input", "output"] as const)
+            .filter((k) => t[k] !== null)
+            .map((k) => `${f.tokenKinds[k]} ${autopilotTokenTotal(t[k]!)}`)
+            .join(" · "),
+          ...(t.byRole.length === 0
+            ? []
+            : [
+                "",
+                `| ${f.columns.role} | ${f.columns.model} | ${f.columns.tokens} | ${f.columns.peak} |`,
+                "|---|---|---:|---:|",
+                ...t.byRole.map((row) => {
+                  const peak =
+                    row.peakContext === null
+                      ? "—"
+                      : autopilotContext(row.peakContext, row.contextWindow).text;
+                  return `| ${autopilotRoleName(f, row.role, row.sessions)} | ${autopilotModel(row.model)} | ${row.total === null ? "—" : autopilotTokenTotal(row.total)} | ${peak} |`;
+                }),
+              ]),
+        ];
+  const pr = s.pr;
+  const prBlock =
+    pr === null || r.state !== "ready"
+      ? []
+      : [
+          "",
+          `> **${f.prReady(pr.number)}**${r.prUrl === null ? "" : ` · [${f.openPr}](${r.prUrl})`}`,
+          `> ${[
+            ...(pr.files === null ? [] : [f.prFiles(pr.files)]),
+            ...(pr.additions === null || pr.deletions === null
+              ? []
+              : [`+${pr.additions} −${pr.deletions}`]),
+            ...(pr.checksTotal === null || pr.checksPassed === null
+              ? []
+              : [f.ci(pr.checksPassed, pr.checksTotal)]),
+            f.intoBase(pr.base),
+          ].join(" · ")}`,
+        ];
+  const criteria =
+    s.criteria === null || s.criteria.length === 0
+      ? []
+      : [
+          "",
+          `**${f.criteriaTitle(criteriaMet(r, s.criteria), s.criteria.length)}**`,
+          ...s.criteria.map(
+            (c) =>
+              `- ${autopilotCriterionMet(r.state, c) ? "✓" : "○"} \`${c.id}\` ${c.text}${c.proof === null ? "" : ` · \`${f.proof[c.proof]}\``}`,
+          ),
+        ];
+  const boxes = [
+    ...(s.questions === null
+      ? []
+      : [
+          `**${f.questionsTitle}:** ${f.questions(s.questions.byOrchestrator, s.questions.byUser)}`,
+        ]),
+    ...(s.retro === null
+      ? []
+      : [`**${f.retroTitle}:** ${f.retro(s.retro.checks, s.retro.lessons)}`]),
+  ];
+  const assumptions = s.assumptions.flatMap((a) => ["", `> **${f.assumptionTitle}:** ${a}`]);
+  return [
+    ...head,
+    "",
+    rail,
+    "",
+    ...table,
+    ...callout,
+    ...tokens,
+    ...prBlock,
+    ...criteria,
+    ...(boxes.length === 0 ? [] : ["", ...boxes]),
+    ...assumptions,
+    "",
+    `**${l.eventsTitle}**`,
+    ...eventLines(r, l),
+  ].join("\n");
+}
+
+const criteriaMet = (r: AutopilotReport, cs: NonNullable<AutopilotSummary["criteria"]>) =>
+  cs.filter((c) => autopilotCriterionMet(r.state, c)).length;
+
 /** The card in Markdown: the same blocks in the same order as the widget. */
 export function renderReport(r: AutopilotReport): string {
+  if (r.final && r.summary) return renderFinal(r, r.summary);
   const l = autopilotLabels(r.lang);
   const head = `## #${r.n} · ${l.state[r.state]} · ${r.runId}`;
   const rail = r.rail
@@ -227,10 +375,7 @@ export function renderReport(r: AutopilotReport): string {
       ? "—"
       : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : ` (${l.costPartial})`}`;
   const costSub = r.costDeltaUsd === null ? "" : ` · ${l.costDelta(autopilotUsd(r.costDeltaUsd))}`;
-  const rejSub =
-    r.rejections.last === null
-      ? l.noRejections
-      : l.lastRejection(l.sources[r.rejections.last.source], r.rejections.last.blocking);
+  const rejSub = rejectionSub(r, l);
   const table = [
     `| ${l.elapsed} | ${l.cost} | ${l.iteration} | ${l.rejections} |`,
     "|---|---|---|---|",
@@ -238,22 +383,7 @@ export function renderReport(r: AutopilotReport): string {
   ];
   const callout =
     r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
-  const events =
-    r.events.length === 0
-      ? [
-          `_${l.noEvents}_`,
-          ...(r.active.length === 0
-            ? []
-            : [
-                `${l.working}: ${r.active
-                  .map((a) => `${a.role} (\`${a.name}\`), ${l.duration(a.runningMs)}`)
-                  .join("; ")}`,
-              ]),
-        ]
-      : [
-          ...(r.omittedEvents > 0 ? [`- … +${r.omittedEvents}`] : []),
-          ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`),
-        ];
+  const events = eventLines(r, l);
   const foot = sessionLine(r);
   return [
     head,

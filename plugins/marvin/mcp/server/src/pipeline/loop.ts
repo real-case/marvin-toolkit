@@ -39,6 +39,7 @@ import {
 } from "./run-store.js";
 import {
   buildReport,
+  finalFacts,
   lastReportNumber,
   readReport,
   sessionOf,
@@ -1077,6 +1078,7 @@ async function awaitReport(
             intervalMs: o.reportMs,
             orchestrator: orchestratorOf(runDir, run),
             session: sessionOf(runDir, run),
+            facts: run.stage === "ready" || run.stage === "done" ? finalFacts(runDir, run) : null,
           }),
         );
         cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };
