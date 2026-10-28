@@ -4,6 +4,29 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.36.2] — 2026-10-28
+
+### Changed
+
+- **Autopilot status card**, second design pass. The header's meta line leads with the report
+  number: "#8 • marvin • r-1025-1412-ab3c". The stage rail's line is filled from the first stage
+  to the current one, so progress reads at a glance; after a halt it stops at the failed stage
+  even when the retro ran. The footer no longer names the child's role and reads as one phrase,
+  "Opus 5.5 medium effort", beside the context bar. The Markdown fallback follows: its heading is
+  "## #8 · Running · r-…" and its footer line drops the role. The `report` and `roles` labels are
+  gone; `modelEffort` replaces `effort`.
+
+## [0.36.1] — 2026-10-27
+
+### Fixed
+
+- **Copy as image** on the autopilot status card failed in a host's chat: the widget resource
+  never asked for `clipboard-write`, so the host built its iframe without that permission and the
+  PNG write was refused. The `autopilot-status` resource now declares
+  `_meta.ui.permissions.clipboardWrite`, on the listing and on the read content item; the shared
+  `ResourceDef` gained an optional `meta` that carries it. A host may still decline the permission,
+  and then the card falls back to the host's file download as before.
+
 ## [0.36.0] — 2026-10-27
 
 The autopilot status card is reworked after a design review. It no longer prints the task, which

@@ -191,12 +191,12 @@ function earlierEvents(
   return { earlier, earlierOmitted };
 }
 
-/** The footer's line: who works, on what, and how full its context is. Empty with no session. */
+/** The footer's line: the working session's model, effort and context use. Empty with no session. */
 export function sessionLine(r: AutopilotReport): string {
   const s = r.session;
   if (s === null) return "";
   const l = autopilotLabels(r.lang);
-  const parts = [l.roles[s.role] ?? s.role, autopilotModel(s.model), `${l.effort} ${s.effort}`];
+  const parts = [l.modelEffort(autopilotModel(s.model), s.effort)];
   if (s.contextTokens !== null) {
     parts.push(`${l.context} ${autopilotContext(s.contextTokens, s.contextWindow).text}`);
   }
@@ -213,7 +213,7 @@ const MARK = { done: "✓", current: "●", waiting: "◐", failed: "✕", pendi
 /** The card in Markdown: the same blocks in the same order as the widget. */
 export function renderReport(r: AutopilotReport): string {
   const l = autopilotLabels(r.lang);
-  const head = `## ${l.state[r.state]} · ${r.runId} · ${l.report(r.n)}`;
+  const head = `## #${r.n} · ${l.state[r.state]} · ${r.runId}`;
   const rail = r.rail
     .map((s) => {
       const label = `${MARK[s.state]} ${l.rail[s.key]}`;

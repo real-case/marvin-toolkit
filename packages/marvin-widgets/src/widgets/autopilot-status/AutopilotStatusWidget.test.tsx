@@ -29,7 +29,7 @@ describe("AutopilotStatusView — the card", () => {
     expect(screen.getByTestId("autopilot-pill").textContent).toBe("Идёт");
     // The header names the run and the session, never the task: that is the whole prompt.
     expect(screen.getByTestId("autopilot-card").textContent).toContain(
-      "marvin · r-1025-1412-ab3c · отчёт № 8",
+      "#8 • marvin • r-1025-1412-ab3c",
     );
     expect(screen.getByTestId("autopilot-session").textContent).toBe(
       runningFixture.report.sessionName,
@@ -48,6 +48,8 @@ describe("AutopilotStatusView — the card", () => {
       "pending",
     ]);
     expect(steps[2]?.textContent).toBe("Исполнение");
+    // The line is filled up to the current stage: two of the six spans.
+    expect(screen.getByTestId("rail-progress").style.width).toBe("calc(100% * 2 / 7)");
     const figures = screen.getAllByTestId("autopilot-figure").map((f) => f.textContent);
     expect(figures[0]).toContain("38 мин");
     expect(figures[1]).toContain("$4.12");
@@ -57,9 +59,8 @@ describe("AutopilotStatusView — the card", () => {
     expect(screen.getAllByTestId("autopilot-event")).toHaveLength(3);
     expect(screen.queryByTestId("autopilot-callout")).toBeNull();
     const footer = screen.getByTestId("autopilot-footer").textContent;
-    expect(footer).toContain("Исполнитель");
-    expect(footer).toContain("Opus 5.5");
-    expect(footer).toContain("Effort medium");
+    expect(footer).toContain("Opus 5.5 medium effort");
+    expect(footer).not.toContain("Исполнитель");
     expect(screen.getByTestId("autopilot-context").textContent).toContain("29% · 287k / 1M");
   });
 
@@ -100,6 +101,8 @@ describe("AutopilotStatusView — the card", () => {
   it("marks the halted stage failed, says why, and clamps a long session name", () => {
     render(<AutopilotStatusView data={haltedFixture} />);
     expect(screen.getAllByTestId("rail-step")[3]?.getAttribute("data-state")).toBe("failed");
+    // The retro ran after the halt, but the fill stops at the failed stage.
+    expect(screen.getByTestId("rail-progress").style.width).toBe("calc(100% * 3 / 7)");
     expect(screen.getByTestId("autopilot-callout").textContent).toContain("Причина остановки");
     expect(screen.getAllByTestId("autopilot-figure")[1]?.textContent).toContain("$5.60+");
     const name = screen.getByTestId("autopilot-session");
@@ -120,7 +123,7 @@ describe("AutopilotStatusView — the card", () => {
   it("shows the tokens alone when the context window is unknown", () => {
     render(<AutopilotStatusView data={waitingFixture} />);
     expect(screen.getByTestId("autopilot-context").textContent).toBe("Контекст24k");
-    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Планировщик");
+    expect(screen.getByTestId("autopilot-footer").textContent).toContain("opus high effort");
   });
 
   it("leaves the footer out when no session has started, and the name when there is none", () => {
@@ -135,7 +138,7 @@ describe("AutopilotStatusView — the card", () => {
     expect(screen.getByTestId("autopilot-events").textContent).toContain("No new events.");
     expect(screen.getByTestId("autopilot-active").textContent).toContain("executor");
     expect(screen.getByTestId("autopilot-pill").textContent).toBe("Running");
-    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Executor");
+    expect(screen.getByTestId("autopilot-footer").textContent).toContain("Opus 5.5 medium effort");
     expect(screen.getByTestId("autopilot-copy").getAttribute("aria-label")).toBe("Copy as image");
   });
 

@@ -76,9 +76,13 @@ const CONTEXT_WARN = 80;
  * The rail spans the card's full width: the grid is widened by one sixth and pulled left by a
  * twelfth, so the first and last column centers, where the dots sit, land on the card's edges.
  * The first label starts under its dot and the last ends under its dot, so neither leaves the card.
+ * The line is filled from the first dot to the first step not done: the run's current stage, or the
+ * whole line once every step is done. A retro that ran after a halt does not extend it.
  */
 function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) {
   const n = steps.length;
+  const firstOpen = steps.findIndex((s) => s.state !== "done");
+  const reached = firstOpen === -1 ? n - 1 : firstOpen;
   return (
     <div
       data-testid="autopilot-rail"
@@ -99,6 +103,18 @@ function Rail({ steps, l }: { steps: AutopilotRailStep[]; l: AutopilotLabels }) 
           right: `calc(100% / ${2 * n})`,
           height: 2,
           background: TOKENS.bd,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        data-testid="rail-progress"
+        style={{
+          position: "absolute",
+          top: 5,
+          left: `calc(100% / ${2 * n})`,
+          width: `calc(100% * ${reached} / ${n})`,
+          height: 2,
+          background: TOKENS.grn,
         }}
       />
       {steps.map((s, i) => {
@@ -328,11 +344,7 @@ function SessionFooter({ r, l }: { r: AutopilotReport; l: AutopilotLabels }) {
         color: TOKENS.t3,
       }}
     >
-      <span style={strong}>{l.roles[s.role] ?? s.role}</span>
-      <span style={strong}>{autopilotModel(s.model)}</span>
-      <span>
-        {l.effort} <span style={strong}>{s.effort}</span>
-      </span>
+      <span style={strong}>{l.modelEffort(autopilotModel(s.model), s.effort)}</span>
       {context ? (
         <span
           data-testid="autopilot-context"
@@ -508,7 +520,7 @@ export function AutopilotStatusView({
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
             <span style={monoMeta}>
-              marvin · {r.runId} · {l.report(r.n)}
+              #{r.n} • marvin • {r.runId}
             </span>
             {r.sessionName ? (
               <h2

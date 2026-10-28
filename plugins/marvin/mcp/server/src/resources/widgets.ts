@@ -24,6 +24,8 @@ interface WidgetResource {
   /** Committed HTML path relative to the plugin root (`packRoot`). */
   file: string;
   description: string;
+  /** `_meta.ui` the host reads when it builds the widget's iframe (sandbox permissions). */
+  ui?: Record<string, unknown>;
 }
 
 const WIDGETS: WidgetResource[] = [
@@ -94,6 +96,9 @@ const WIDGETS: WidgetResource[] = [
     file: join("widgets", "autopilot-status.html"),
     description:
       "Marvin autopilot status — one periodic report of an autopilot run as a card: stage rail, elapsed time, cost, iteration, rejections, the interval's events and the next report's deadline (ADR-0051).",
+    // The card's copy button writes a PNG with `navigator.clipboard.write`, which a host's
+    // iframe refuses unless its `allow` attribute grants `clipboard-write`.
+    ui: { permissions: { clipboardWrite: {} } },
   },
 ];
 
@@ -133,6 +138,7 @@ export function buildWidgetResources(packRoot: string): ResourceDef[] {
     uri: w.uri,
     description: w.description,
     mimeType: WIDGET_MIME,
+    ...(w.ui ? { meta: { ui: w.ui } } : {}),
     read: () => readFileSync(join(packRoot, w.file), "utf8"),
   }));
 }

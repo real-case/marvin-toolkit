@@ -101,8 +101,8 @@ test(
     );
     assert.equal(report.callout.text, "Исполнитель спрашивает, где хранить отчёты.");
     const text = textOf(r);
-    assert.match(text, /^## Ждёт ответа · r-1025 · отчёт № 1\n\*\*Отчёт автопилота\*\*\n/);
-    assert.match(text, /Исполнитель · Opus 5\.5 · Effort medium · Контекст 42% · 84k \/ 200k$/);
+    assert.match(text, /^## #1 · Ждёт ответа · r-1025\n\*\*Отчёт автопилота\*\*\n/);
+    assert.match(text, /\n\nOpus 5\.5 medium effort · Контекст 42% · 84k \/ 200k$/);
     assert.deepEqual(r.structuredContent.earlier, []);
     // The card names the session, never the task (the whole prompt the run started from).
     assert.doesNotMatch(text, /\[waiting\]/);
@@ -195,8 +195,8 @@ test("a quiet interval says who is working, and the footer names the session", (
       contextWindow: null,
     },
   });
-  assert.match(working, /^## Running · r · report #3\n\*\*Report card\*\*\n/);
-  assert.match(working, /\n\nTest author · opus · Effort high · Context 287k$/);
+  assert.match(working, /^## #3 · Running · r\n\*\*Report card\*\*\n/);
+  assert.match(working, /\n\nopus high effort · Context 287k$/);
 });
 
 test(
