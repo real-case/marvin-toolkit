@@ -6,6 +6,15 @@ follows semver independently of the surrounding marketplace.
 
 ## [0.36.2] — 2026-10-28
 
+### Fixed
+
+- **The gate no longer halts a run on a diff it parsed correctly.** The leftover-construct scan
+  read the patch at zero context, while its line-count cross-check reads `--numstat`, which uses
+  the default context. On some rewrites git aligns a blank line differently in the two, so the
+  counts disagreed and every retry was rejected with "check diff could not be parsed" until the
+  rejection cap (a 1,700-line `Pages.tsx` refactor: 1,000 added lines against 998). The scan now
+  reads the patch at the same context as the count.
+
 ### Changed
 
 - **Autopilot status card**, second design pass. The header's meta line leads with the report
