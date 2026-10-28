@@ -39,6 +39,7 @@ import {
 } from "./run-store.js";
 import {
   buildReport,
+  finalFacts,
   lastReportNumber,
   readReport,
   sessionOf,
@@ -623,8 +624,12 @@ async function perform(
     case "spawn": {
       // A stop request ends the wait and leaves the step unperformed, so the engine that
       // resumes the run waits out only what is left of it.
-      const wait = action.notBefore ? Date.parse(action.notBefore) - Date.now() : 0;
-      if (wait > 0) await delay(wait, undefined, { signal: deps.signal });
+      // A timer can fire a millisecond before the wall clock reaches its deadline, so the wait
+      // repeats until it has.
+      const until = action.notBefore ? Date.parse(action.notBefore) : 0;
+      for (let wait = until - Date.now(); wait > 0; wait = until - Date.now()) {
+        await delay(wait, undefined, { signal: deps.signal });
+      }
       return advance(deps.spawnChild(j.run, action, info));
     }
     case "judgment": {
@@ -1077,6 +1082,7 @@ async function awaitReport(
             intervalMs: o.reportMs,
             orchestrator: orchestratorOf(runDir, run),
             session: sessionOf(runDir, run),
+            facts: run.stage === "ready" || run.stage === "done" ? finalFacts(runDir, run) : null,
           }),
         );
         cursor = { offset, announced: Object.fromEntries(kept), reportedAt: clock };

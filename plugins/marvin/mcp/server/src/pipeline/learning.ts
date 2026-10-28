@@ -519,7 +519,7 @@ function parseExistingChecks(text: string | null, where: string): Record<string,
 function mergeChecks(
   existing: readonly Record<string, unknown>[],
   retro: RetroOutput,
-): { text: string; rules: unknown } | null {
+): { text: string; rules: unknown; added: number } | null {
   const ids = new Set(existing.map((c) => c.id));
   const fresh: CheckRule[] = [];
   for (const { evidence: _evidence, ...rule } of retro.checks) {
@@ -529,7 +529,7 @@ function mergeChecks(
   }
   if (!fresh.length) return null;
   const text = stringify([...existing, ...fresh], { lineWidth: 0 });
-  return { text, rules: parse(text) as unknown };
+  return { text, rules: parse(text) as unknown, added: fresh.length };
 }
 
 /** A lesson was added (the files it wrote, relative to the root) or the store already had it. */
@@ -576,14 +576,18 @@ function addLessons(
   runDir: string,
   lessons: readonly RetroLesson[],
   sink: AddLessonFn,
-): ApplyResult {
+): ApplyResult & { added: number } {
   const written: string[] = [];
   const duplicates: ApplyResult["duplicates"] = [];
+  let added = 0;
   for (const lesson of lessons) {
     const result = sink(root, lesson);
     if (typeof result !== "object" || result === null) continue;
     if ("duplicateOf" in result) duplicates.push({ title: lesson.title, of: result.duplicateOf });
-    else written.push(...result.added);
+    else {
+      written.push(...result.added);
+      added += 1;
+    }
   }
   if (duplicates.length) {
     writeWhole(
@@ -592,7 +596,7 @@ function addLessons(
       `# Lessons skipped as near-duplicates\n\n${duplicates.map((d) => `- ${d.title} (near-duplicate of ${d.of})`).join("\n")}\n`,
     );
   }
-  return { written, duplicates };
+  return { written, duplicates, added };
 }
 
 function applyParsed(o: {
@@ -880,6 +884,12 @@ const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /** Written in the run dir after the finalize commit, so that a retry can recognise it. */
 const FINALIZE_RECORD = "finalize-commit.json";
+/**
+ * Written in the run dir by a run that ships: how many checks and lessons its retro added to the
+ * repository, for the final status report (ADR-0051). A run that keeps its retro in the run dir
+ * adds nothing to the repository and writes none.
+ */
+export const RETRO_APPLIED = "retro-applied.json";
 
 const specSlug = (frontmatterSlug: string | undefined, specPath: string) =>
   [frontmatterSlug, basename(specPath, ".md").replace(/^\d+-/, ""), "spec"].find(
@@ -1405,6 +1415,7 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
   assertPlain(worktree, MEMORY_DIR);
   assertRunDirTargets(o.runDir, retro);
   assertPlain(o.runDir, FINALIZE_RECORD);
+  assertPlain(o.runDir, RETRO_APPLIED);
   for (const rel of targets) assertNotHardLinked(worktree, rel);
 
   const git = isolatedGit(worktree, o.gitDir, { HUSKY: "0" });
@@ -1457,7 +1468,12 @@ export function finalizeRun(o: FinalizeOptions): FinalizeResult {
     }
     const sink = o.addLesson ?? lessonStoreSink(`pipeline:${run.id}`);
     writeRunDirFiles(o.runDir, retro);
-    addLessons(scratch, o.runDir, retro.lessons, sink);
+    const lessons = addLessons(scratch, o.runDir, retro.lessons, sink);
+    writeWhole(
+      o.runDir,
+      RETRO_APPLIED,
+      `${JSON.stringify({ checks: merged?.added ?? 0, lessons: lessons.added })}\n`,
+    );
     const memoryChanges: [string, Buffer][] = [];
     const memoryDir = join(scratch, MEMORY_DIR);
     const memoryFiles = existsSync(memoryDir)

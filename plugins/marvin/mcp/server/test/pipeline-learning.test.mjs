@@ -1296,6 +1296,11 @@ test("finalizing a run with a PR commits exactly the files it wrote and pushes t
   const slug = ".marvin/memory/t.md";
   assert.equal(out.shipped, true);
   assert.equal(out.pushed, true);
+  // The final status report reads what the retro added from the run dir.
+  assert.deepEqual(JSON.parse(readFileSync(join(fx.runDir, l.RETRO_APPLIED), "utf8")), {
+    checks: 1,
+    lessons: 1,
+  });
   assert.equal(out.commit, head(fx.wt));
   assert.notEqual(out.commit, headBefore);
   assert.equal(commitCount(fx), 2);

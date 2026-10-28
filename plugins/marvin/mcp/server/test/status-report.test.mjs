@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
@@ -353,4 +353,229 @@ test("a report written before the session fields existed still reads, with both 
   const back = sr.readReport(dir, 1);
   assert.equal(back.sessionName, null);
   assert.equal(back.session, null);
+});
+
+const at = (min) => new Date(START.getTime() + min * 60_000).toISOString();
+const moveAt = (from, to, min) => ({ ...move(from, to), ts: at(min) });
+
+test("a final report sums the run up: stage times, active time, roles, questions, assumptions", () => {
+  const run = baseRun({
+    stage: "ready",
+    prUrl: "https://github.com/o/r/pull/266",
+    assumptions: ["the interval comes from\n--report-min", "  "],
+    children: [
+      child({ name: "p", role: "planner", startedAt: at(0), endedAt: at(5) }),
+      child({ name: "e1", role: "executor", startedAt: at(10), endedAt: at(20) }),
+      child({ name: "v", role: "verifier", startedAt: at(15), endedAt: at(25) }),
+    ],
+  });
+  const history = [
+    moveAt("intake", "planning", 1),
+    moveAt("planning", "awaiting_answer", 4),
+    moveAt("awaiting_answer", "planning", 6),
+    moveAt("planning", "executing", 8),
+    moveAt("executing", "gating", 20),
+    moveAt("gating", "verifying", 22),
+    moveAt("verifying", "ci_wait", 30),
+    moveAt("ci_wait", "retro", 34),
+    moveAt("retro", "finalizing", 36),
+    moveAt("finalizing", "ready", 37),
+    { ...note("answered"), kind: "answer", data: { answeredBy: "orchestrator" } },
+    { ...note("answered"), kind: "answer", data: { answeredBy: "user" } },
+    { ...note("answered"), kind: "answer", data: { answeredBy: "orchestrator" } },
+  ];
+  const facts = {
+    tokens: null,
+    pr: null,
+    criteria: [{ id: "AC1", text: "x", proof: "green" }],
+    retro: { checks: 1, lessons: 0 },
+  };
+  const r = build(run, { history, facts, now: new Date(at(37)) });
+  const s = r.summary;
+  assert.deepEqual(
+    s.stages.map((x) => [x.key, x.ms === null ? null : x.ms / 60_000]),
+    [
+      // Intake counts toward planning; the wait for an answer counts toward nothing.
+      ["planning", 1 + 3 + 2],
+      ["test_authoring", null],
+      ["executing", 12],
+      ["gating", 2],
+      ["verifying", 8],
+      ["ci_wait", 4],
+      ["retro", 3],
+    ],
+  );
+  assert.equal(s.activeMs, 20 * 60_000, "0–5 and 10–25, overlaps counted once");
+  assert.equal(s.roles, 3);
+  assert.deepEqual(s.questions, { byOrchestrator: 2, byUser: 1 });
+  assert.deepEqual(s.assumptions, ["the interval comes from --report-min"]);
+  assert.deepEqual(s.criteria, facts.criteria);
+  assert.deepEqual(s.retro, facts.retro);
+  assert.equal(build(baseRun({ stage: "executing" }), { facts }).summary, null);
+  assert.equal(build(baseRun({ stage: "ready" })).summary.tokens, null, "no facts, no tokens");
+});
+
+const result = (modelUsage) => line({ type: "result", modelUsage });
+
+test("final facts: tokens by kind and role from the whole logs, a resumed session once", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-final-"));
+  const run = baseRun({
+    stage: "ready",
+    children: [
+      child({ name: "r-1025-planner-0", role: "planner", sessionId: "s-p" }),
+      child({ name: "r-1025-executor-1", sessionId: "s-e" }),
+      child({ name: "r-1025-executor-1", sessionId: "s-e" }),
+      child({ name: "r-1025-executor-2", sessionId: "s-e2" }),
+      child({ name: "r-1025-retro-0", role: "retro", sessionId: "s-r" }),
+    ],
+  });
+  const usage = (n) => ({
+    inputTokens: n,
+    outputTokens: 2 * n,
+    cacheReadInputTokens: 10 * n,
+    cacheCreationInputTokens: 3 * n,
+    contextWindow: 200_000,
+  });
+  writeFileSync(
+    join(dir, "r-1025-planner-0.log.jsonl"),
+    [turn(40_000), turn(20_000), result({ "claude-opus-5-5": usage(100) })].join("\n"),
+  );
+  // The first row of a resumed session is superseded by its last, whose result is cumulative.
+  writeFileSync(
+    join(dir, "r-1025-executor-1.log.jsonl"),
+    [turn(170_000), result({ "claude-opus-5-5": usage(999) })].join("\n"),
+  );
+  const keys = run.children.map((_, i) =>
+    rs.childKey(run.children.slice(0, i), run.children[i].name),
+  );
+  writeFileSync(
+    join(dir, `${keys[2]}.log.jsonl`),
+    [turn(30_000), result({ "claude-opus-5-5": usage(200), "claude-haiku-5-5": usage(10) })].join(
+      "\n",
+    ),
+  );
+  writeFileSync(join(dir, `${keys[3]}.log.jsonl`), [turn(50_000)].join("\n"));
+  writeFileSync(join(dir, "retro-applied.json"), '{"checks":1,"lessons":2}\n');
+  const facts = sr.finalFacts(dir, run, () => {
+    throw new Error("gh is not installed");
+  });
+  const t = facts.tokens;
+  assert.equal(t.input, 100 + 210);
+  assert.equal(t.output, 2 * 310);
+  assert.equal(t.cacheRead, 10 * 310);
+  assert.equal(t.cacheWrite, 3 * 310);
+  assert.equal(t.total, 16 * 310);
+  assert.deepEqual(
+    t.byRole.map((r) => [r.role, r.sessions, r.model, r.total, r.peakContext, r.contextWindow]),
+    [
+      ["planner", 1, "claude-opus-5-5", 1600, 40_012, 200_000],
+      ["executor", 2, "claude-opus-5-5", 3360, 170_012, 200_000],
+      ["retro", 1, "m", null, null, null],
+    ],
+  );
+  assert.deepEqual(facts.retro, { checks: 1, lessons: 2 });
+  assert.equal(facts.pr, null, "no PR");
+  assert.equal(facts.criteria, null, "no spec");
+});
+
+test("final facts: the PR from gh, and its figures null when gh cannot say", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pipe-final-"));
+  const run = baseRun({ stage: "ready", prUrl: "https://github.com/o/r/pull/266" });
+  const calls = [];
+  const facts = sr.finalFacts(dir, run, (args, cwd) => {
+    calls.push([args.slice(0, 3), cwd]);
+    return JSON.stringify({
+      changedFiles: 9,
+      additions: 412,
+      deletions: 38,
+      baseRefName: "dev",
+      statusCheckRollup: [
+        { conclusion: "SUCCESS" },
+        { conclusion: "SKIPPED" },
+        { state: "SUCCESS" },
+        { conclusion: "FAILURE" },
+      ],
+    });
+  });
+  assert.deepEqual(calls, [[["pr", "view", run.prUrl], "/repo"]]);
+  assert.deepEqual(facts.pr, {
+    number: 266,
+    files: 9,
+    additions: 412,
+    deletions: 38,
+    checksPassed: 3,
+    checksTotal: 4,
+    base: "dev",
+  });
+  assert.equal(facts.retro, null, "no record of the retro");
+  const blind = sr.finalFacts(dir, run, () => "not json");
+  assert.deepEqual(blind.pr, {
+    number: 266,
+    files: null,
+    additions: null,
+    deletions: null,
+    checksPassed: null,
+    checksTotal: null,
+    base: "dev",
+  });
+});
+
+test("final facts: criteria from the shipped spec, proven by the seal or the oracle journal", async () => {
+  const wt = mkdtempSync(join(tmpdir(), "pipe-final-wt-"));
+  const spec = await importTs("src/storage/spec.ts");
+  const oracles = await importTs("src/storage/oracles.ts");
+  const block = [
+    "files:",
+    "  - { id: F1, path: a.ts, action: edit }",
+    "criteria:",
+    "  - id: AC1",
+    "    statement: the report is written every five minutes",
+    "    implemented_by: [F1]",
+    "    oracle: { kind: test, ref: test/a.test.mjs }",
+    "  - id: AC2",
+    "    statement: a question ends the wait",
+    "    implemented_by: [F1]",
+    "    oracle: { kind: test, ref: test/a.test.mjs }",
+    "  - id: AC3",
+    "    statement: the card unfolds",
+    "    implemented_by: [F1]",
+    "    oracle: { kind: test, ref: test/a.test.mjs }",
+  ].join("\n");
+  const sha = spec.contractHash(block);
+  mkdirSync(join(wt, ".marvin", "task"), { recursive: true });
+  writeFileSync(
+    join(wt, ".marvin", "task", "007-report.md"),
+    `---\nslug: report\ncontract_sha: ${sha}\n---\n\n# Report\n\n\`\`\`yaml spec-contract\n${block}\n\`\`\`\n`,
+  );
+  const entry = (criterion, expect, status) => ({
+    slug: "report",
+    contract_sha: sha,
+    criterion,
+    expect,
+    status,
+    command: "node --test",
+    source: null,
+    code: status === "pass" ? 0 : 1,
+    signal: null,
+    test_file: "test/a.test.mjs",
+    test_sha: "abc",
+    head_sha: null,
+    ran_at: NOW.toISOString(),
+  });
+  const runs = join(wt, ".marvin", "task", "runs");
+  oracles.recordOracleRun(runs, entry("AC2", "fail", "fail"));
+  oracles.recordOracleRun(runs, entry("AC2", "pass", "pass"));
+  oracles.recordOracleRun(runs, entry("AC3", "pass", "pass"));
+  const run = baseRun({
+    stage: "ready",
+    worktree: wt,
+    specPath: ".marvin/task/007-report.md",
+    sealed: [{ path: "test/a.test.mjs", sha256: "x", criteria: ["AC1"] }],
+  });
+  const facts = sr.finalFacts(mkdtempSync(join(tmpdir(), "pipe-final-")), run, () => "{}");
+  assert.deepEqual(facts.criteria, [
+    { id: "AC1", text: "the report is written every five minutes", proof: "red_green" },
+    { id: "AC2", text: "a question ends the wait", proof: "red_green" },
+    { id: "AC3", text: "the card unfolds", proof: "green" },
+  ]);
 });

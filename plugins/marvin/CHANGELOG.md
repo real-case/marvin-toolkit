@@ -4,6 +4,37 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.37.0] — 2026-10-28
+
+### Added
+
+- **The autopilot's final report card.** A run that is over no longer reports like any
+  five-minute interval. Its final report carries a new optional `summary` block on the
+  `AutopilotReport` contract, and the `autopilot-status` widget switches to a final layout: the
+  header reads "Autopilot · final report" with the run id and its start and end times; each rail
+  stage shows its time; the figures give the active time and the number of roles; a token section
+  shows the total, a stacked bar and legend for cache read, cache write, input and output, and,
+  behind a toggle, a table by role with the model, the tokens and the peak context (amber at 80%
+  or more); a green block names the PR with its files, added and removed lines, CI checks and base
+  branch, and links to it; the acceptance criteria follow as a fixed grid with their
+  `red→green` or `green` proof behind a toggle; then the questions by who answered them, what the
+  retro added, and one amber block per assumption, before the events. The final card has no
+  session footer. The `autopilot-report` tool's Markdown renders the same sections, and both
+  surfaces take their words from new `ru`/`en` labels in `autopilotLabels(lang).final`.
+- The figures come from what the engine already keeps. Stage times, active time, roles,
+  questions and assumptions are derived from `run.json` and the events; tokens by kind, model and
+  peak context from each child's whole `stream-json` log (a resumed session counted once, as its
+  cost is); the criteria from the shipped spec, proven by the seal stage's red run or the oracle
+  journal; the PR from `gh pr view`; and what the retro added from a new `retro-applied.json`
+  that finalize writes in the run directory. A source that is absent leaves its field null and
+  the card hides that part; a final report written before the field keeps the periodic layout.
+
+### Fixed
+
+- A spawn held by `notBefore` (a usage limit) no longer starts a millisecond early: a Node
+  timer can fire before the wall clock reaches its deadline, so the engine now waits again until
+  it has.
+
 ## [0.36.2] — 2026-10-28
 
 ### Fixed

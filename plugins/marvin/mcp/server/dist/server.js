@@ -2219,20 +2219,20 @@ var require_resolve = __commonJS({
       return false;
     }
     function countKeys(schema) {
-      let count = 0;
+      let count2 = 0;
       for (const key in schema) {
         if (key === "$ref")
           return Infinity;
-        count++;
+        count2++;
         if (SIMPLE_INLINED.has(key))
           continue;
         if (typeof schema[key] == "object") {
-          (0, util_1.eachItem)(schema[key], (sch) => count += countKeys(sch));
+          (0, util_1.eachItem)(schema[key], (sch) => count2 += countKeys(sch));
         }
-        if (count === Infinity)
+        if (count2 === Infinity)
           return Infinity;
       }
-      return count;
+      return count2;
     }
     function getFullPath(resolver, id = "", normalize) {
       if (normalize !== false)
@@ -5683,8 +5683,8 @@ var require_contains = __commonJS({
         cxt.result(valid, () => cxt.reset());
         function validateItemsWithCount() {
           const schValid = gen.name("_valid");
-          const count = gen.let("count", 0);
-          validateItems(schValid, () => gen.if(schValid, () => checkLimits(count)));
+          const count2 = gen.let("count", 0);
+          validateItems(schValid, () => gen.if(schValid, () => checkLimits(count2)));
         }
         function validateItems(_valid, block) {
           gen.forRange("i", 0, len, (i) => {
@@ -5697,16 +5697,16 @@ var require_contains = __commonJS({
             block();
           });
         }
-        function checkLimits(count) {
-          gen.code((0, codegen_1._)`${count}++`);
+        function checkLimits(count2) {
+          gen.code((0, codegen_1._)`${count2}++`);
           if (max === void 0) {
-            gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true).break());
+            gen.if((0, codegen_1._)`${count2} >= ${min}`, () => gen.assign(valid, true).break());
           } else {
-            gen.if((0, codegen_1._)`${count} > ${max}`, () => gen.assign(valid, false).break());
+            gen.if((0, codegen_1._)`${count2} > ${max}`, () => gen.assign(valid, false).break());
             if (min === 1)
               gen.assign(valid, true);
             else
-              gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true));
+              gen.if((0, codegen_1._)`${count2} >= ${min}`, () => gen.assign(valid, true));
           }
         }
       }
@@ -7706,8 +7706,8 @@ var require_Node = __commonJS({
         };
         const res = toJS.toJS(this, "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
     };
@@ -7814,13 +7814,13 @@ var require_Alias = __commonJS({
         const anchor = anchors2 && source && anchors2.get(source);
         return anchor ? anchor.count * anchor.aliasCount : 0;
       } else if (identity.isCollection(node)) {
-        let count = 0;
+        let count2 = 0;
         for (const item of node.items) {
           const c = getAliasCount(doc, item, anchors2);
-          if (c > count)
-            count = c;
+          if (c > count2)
+            count2 = c;
         }
-        return count;
+        return count2;
       } else if (identity.isPair(node)) {
         const kc = getAliasCount(doc, node.key, anchors2);
         const vc = getAliasCount(doc, node.value, anchors2);
@@ -10735,8 +10735,8 @@ var require_Document = __commonJS({
         };
         const res = toJS.toJS(this.contents, jsonArg ?? "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
       /**
@@ -10812,12 +10812,12 @@ var require_errors2 = __commonJS({
         lineStr = prev + lineStr;
       }
       if (/[^ ]/.test(lineStr)) {
-        let count = 1;
+        let count2 = 1;
         const end = error2.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci));
+          count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer = " ".repeat(ci) + "^".repeat(count2);
         error2.message += `:
 
 ${lineStr}
@@ -27848,7 +27848,7 @@ var ExperimentalMcpServerTasks = class {
 
 // ../../../../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
 function toolInputElementCount(value, max) {
-  let count = 0;
+  let count2 = 0;
   const stack = [value];
   while (stack.length > 0) {
     const node = stack.pop();
@@ -27856,8 +27856,8 @@ function toolInputElementCount(value, max) {
       continue;
     if (Array.isArray(node)) {
       for (const child of node) {
-        if (++count > max)
-          return count;
+        if (++count2 > max)
+          return count2;
         if (child !== null && typeof child === "object")
           stack.push(child);
       }
@@ -27865,15 +27865,15 @@ function toolInputElementCount(value, max) {
       for (const key in node) {
         if (!Object.prototype.hasOwnProperty.call(node, key))
           continue;
-        if (++count > max)
-          return count;
+        if (++count2 > max)
+          return count2;
         const child = node[key];
         if (child !== null && typeof child === "object")
           stack.push(child);
       }
     }
   }
-  return count;
+  return count2;
 }
 function resolveMaxToolInputElements(value) {
   if (value === void 0 || value === Infinity)
@@ -40256,6 +40256,90 @@ ${text}` }],
 }
 
 // ../../../../packages/marvin-mcp-shared/dist/autopilot-labels.js
+function ruPlural(n, one, few, many) {
+  const tens = n % 100;
+  const ones = n % 10;
+  if (tens >= 11 && tens <= 14)
+    return many;
+  if (ones === 1)
+    return one;
+  return ones >= 2 && ones <= 4 ? few : many;
+}
+var enPlural = (n, one, many) => n === 1 ? one : many;
+var RU_FINAL = {
+  title: "\u0410\u0432\u0442\u043E\u043F\u0438\u043B\u043E\u0442 \xB7 \u0438\u0442\u043E\u0433\u043E\u0432\u044B\u0439 \u043E\u0442\u0447\u0451\u0442",
+  iterations: "\u0418\u0442\u0435\u0440\u0430\u0446\u0438\u0438",
+  active: (d) => `\u0430\u043A\u0442\u0438\u0432\u043D\u043E ${d}`,
+  roles: (n) => `${n} ${ruPlural(n, "\u0440\u043E\u043B\u044C", "\u0440\u043E\u043B\u0438", "\u0440\u043E\u043B\u0435\u0439")}`,
+  tokensTitle: (total) => `\u0422\u043E\u043A\u0435\u043D\u044B \xB7 ${total}`,
+  tokenKinds: {
+    cacheRead: "\u0427\u0442\u0435\u043D\u0438\u0435 \u043A\u044D\u0448\u0430",
+    cacheWrite: "\u0417\u0430\u043F\u0438\u0441\u044C \u043A\u044D\u0448\u0430",
+    input: "\u0412\u0445\u043E\u0434",
+    output: "\u0412\u044B\u0445\u043E\u0434"
+  },
+  byRoleShow: "\u041F\u043E \u0440\u043E\u043B\u044F\u043C",
+  byRoleHide: "\u0421\u043A\u0440\u044B\u0442\u044C \u043F\u043E \u0440\u043E\u043B\u044F\u043C",
+  columns: { role: "\u0420\u043E\u043B\u044C", model: "\u041C\u043E\u0434\u0435\u043B\u044C", tokens: "\u0422\u043E\u043A\u0435\u043D\u044B", peak: "\u041F\u0438\u043A \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430" },
+  roleNames: {
+    planner: "\u041F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A",
+    "test-author": "\u0410\u0432\u0442\u043E\u0440 \u0442\u0435\u0441\u0442\u043E\u0432",
+    executor: "\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C",
+    verifier: "\u0412\u0435\u0440\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440",
+    retro: "\u0420\u0435\u0442\u0440\u043E"
+  },
+  prReady: (n) => n === null ? "PR \u0433\u043E\u0442\u043E\u0432 \u043A \u0441\u043B\u0438\u044F\u043D\u0438\u044E" : `PR #${n} \u0433\u043E\u0442\u043E\u0432 \u043A \u0441\u043B\u0438\u044F\u043D\u0438\u044E`,
+  prFiles: (n) => `${n} ${ruPlural(n, "\u0444\u0430\u0439\u043B", "\u0444\u0430\u0439\u043B\u0430", "\u0444\u0430\u0439\u043B\u043E\u0432")}`,
+  ci: (passed, total) => `CI: ${passed} \u0438\u0437 ${total}`,
+  intoBase: (base) => `\u0432 ${base}`,
+  openPr: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C PR",
+  criteriaTitle: (proven, total) => `\u041A\u0440\u0438\u0442\u0435\u0440\u0438\u0438 \u043F\u0440\u0438\u0451\u043C\u043A\u0438 \xB7 ${proven} \u0438\u0437 ${total}`,
+  proofShow: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u0430",
+  proofHide: "\u0421\u043A\u0440\u044B\u0442\u044C \u0434\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u0430",
+  proof: { red_green: "red\u2192green", green: "green" },
+  questionsTitle: "\u0412\u043E\u043F\u0440\u043E\u0441\u044B",
+  questions: (o, u) => o + u === 0 ? "\u0412\u043E\u043F\u0440\u043E\u0441\u043E\u0432 \u043D\u0435 \u0431\u044B\u043B\u043E." : `${o + u} ${ruPlural(o + u, "\u0432\u043E\u043F\u0440\u043E\u0441", "\u0432\u043E\u043F\u0440\u043E\u0441\u0430", "\u0432\u043E\u043F\u0440\u043E\u0441\u043E\u0432")}: \u043E\u0440\u043A\u0435\u0441\u0442\u0440\u0430\u0442\u043E\u0440 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u043D\u0430 ${o}, \u0432\u044B \u043D\u0430 ${u}.`,
+  retroTitle: "\u0420\u0435\u0442\u0440\u043E",
+  retro: (c, l) => c + l === 0 ? "\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E." : `+${c} ${ruPlural(c, "\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430", "\u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438", "\u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A")} \u0432 checks.yaml, +${l} ${ruPlural(l, "\u0443\u0440\u043E\u043A", "\u0443\u0440\u043E\u043A\u0430", "\u0443\u0440\u043E\u043A\u043E\u0432")} \u0432 .marvin/memory.`,
+  assumptionTitle: "\u0414\u043E\u043F\u0443\u0449\u0435\u043D\u0438\u0435 \xB7 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0440\u0438 \u0440\u0435\u0432\u044C\u044E"
+};
+var EN_FINAL = {
+  title: "Autopilot \xB7 final report",
+  iterations: "Iterations",
+  active: (d) => `active ${d}`,
+  roles: (n) => `${n} ${enPlural(n, "role", "roles")}`,
+  tokensTitle: (total) => `Tokens \xB7 ${total}`,
+  tokenKinds: {
+    cacheRead: "Cache read",
+    cacheWrite: "Cache write",
+    input: "Input",
+    output: "Output"
+  },
+  byRoleShow: "By role",
+  byRoleHide: "Hide roles",
+  columns: { role: "Role", model: "Model", tokens: "Tokens", peak: "Peak context" },
+  roleNames: {
+    planner: "Planner",
+    "test-author": "Test author",
+    executor: "Executor",
+    verifier: "Verifier",
+    retro: "Retro"
+  },
+  prReady: (n) => n === null ? "PR ready to merge" : `PR #${n} ready to merge`,
+  prFiles: (n) => `${n} ${enPlural(n, "file", "files")}`,
+  ci: (passed, total) => `CI: ${passed} of ${total}`,
+  intoBase: (base) => `into ${base}`,
+  openPr: "Open PR",
+  criteriaTitle: (proven, total) => `Acceptance criteria \xB7 ${proven} of ${total}`,
+  proofShow: "Show evidence",
+  proofHide: "Hide evidence",
+  proof: { red_green: "red\u2192green", green: "green" },
+  questionsTitle: "Questions",
+  questions: (o, u) => o + u === 0 ? "No questions." : `${o + u} ${enPlural(o + u, "question", "questions")}: the orchestrator answered ${o}, you answered ${u}.`,
+  retroTitle: "Retro",
+  retro: (c, l) => c + l === 0 ? "Nothing added." : `+${c} ${enPlural(c, "check", "checks")} in checks.yaml, +${l} ${enPlural(l, "lesson", "lessons")} in .marvin/memory.`,
+  assumptionTitle: "Assumption \xB7 check at review"
+};
 function duration3(ms, h, min) {
   const total = Math.max(0, Math.round(ms / 6e4));
   const hours = Math.floor(total / 60);
@@ -40302,7 +40386,8 @@ var RU = {
   copyFailed: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C",
   modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442",
-  duration: (ms) => duration3(ms, "\u0447", "\u043C\u0438\u043D")
+  duration: (ms) => duration3(ms, "\u0447", "\u043C\u0438\u043D"),
+  final: RU_FINAL
 };
 var EN = {
   rail: {
@@ -40345,7 +40430,8 @@ var EN = {
   copyFailed: "Could not copy",
   modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "Context",
-  duration: (ms) => duration3(ms, "h", "min")
+  duration: (ms) => duration3(ms, "h", "min"),
+  final: EN_FINAL
 };
 function autopilotLabels(lang) {
   return lang.toLowerCase().startsWith("ru") ? RU : EN;
@@ -40368,6 +40454,11 @@ function autopilotTokens(n) {
     return `${n / 1e6}M`;
   return n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
 }
+function autopilotTokenTotal(n) {
+  if (n < 1e6)
+    return autopilotTokens(n);
+  return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M`;
+}
 function autopilotContext(tokens, window) {
   if (window === null)
     return { percent: null, text: autopilotTokens(tokens) };
@@ -40377,6 +40468,14 @@ function autopilotContext(tokens, window) {
     text: `${percent}% \xB7 ${autopilotTokens(tokens)} / ${autopilotTokens(window)}`
   };
 }
+function autopilotRoleName(f, role, sessions) {
+  const name = f.roleNames[role] ?? role;
+  return sessions > 1 ? `${name} \xD7 ${sessions}` : name;
+}
+var autopilotCriterionMet = (state, c) => state === "ready" || c.proof !== null;
+
+// src/pipeline/status-report.ts
+__toESM(require_dist2());
 
 // ../../../../packages/marvin-mcp-shared/dist/contracts/autopilot.js
 var AUTOPILOT_RAIL = [
@@ -40406,6 +40505,66 @@ var AutopilotSession = external_exports.object({
   effort: external_exports.string(),
   contextTokens: external_exports.number().int().min(0).nullable(),
   contextWindow: external_exports.number().int().min(1).nullable()
+});
+var count = external_exports.number().int().min(0);
+var AutopilotRoleTokens = external_exports.object({
+  role: external_exports.string(),
+  /** How many sessions of the role ran: "Executor × 2". */
+  sessions: external_exports.number().int().min(1),
+  /** The model the newest session reported, else the one it was assigned. */
+  model: external_exports.string(),
+  /** Every kind together; null when no session of the role logged a result. */
+  total: count.nullable(),
+  /** The largest context one top-level turn carried, and the window it was measured against. */
+  peakContext: count.nullable(),
+  contextWindow: external_exports.number().int().min(1).nullable()
+});
+var AutopilotSummary = external_exports.object({
+  /** Time spent in each rail stage, in the rail's order; null for a stage the run never entered. */
+  stages: external_exports.array(external_exports.object({ key: external_exports.enum(AUTOPILOT_RAIL), ms: count.nullable() })).length(AUTOPILOT_RAIL.length),
+  /** Wall-clock time in which at least one child ran. */
+  activeMs: count.nullable(),
+  /** How many roles ran a child. */
+  roles: count.nullable(),
+  /**
+   * Tokens by kind over every child, from the `result` line of each child's `stream-json` log.
+   * A kind is null when no child's log reported it; `byRole` lists the roles in the order they
+   * first ran.
+   */
+  tokens: external_exports.object({
+    total: count.nullable(),
+    cacheRead: count.nullable(),
+    cacheWrite: count.nullable(),
+    input: count.nullable(),
+    output: count.nullable(),
+    byRole: external_exports.array(AutopilotRoleTokens)
+  }).nullable(),
+  /** The pull request as GitHub reports it; null with no PR, or when `gh` could not say. */
+  pr: external_exports.object({
+    number: external_exports.number().int().min(1).nullable(),
+    files: count.nullable(),
+    additions: count.nullable(),
+    deletions: count.nullable(),
+    checksPassed: count.nullable(),
+    checksTotal: count.nullable(),
+    base: external_exports.string()
+  }).nullable(),
+  /**
+   * The spec's acceptance criteria with the proof the oracle journal holds under the sealed
+   * contract: `red_green` for a red run followed by a green one on the same test, `green` for a
+   * passing newest run alone, null for neither. Null when the spec could not be read.
+   */
+  criteria: external_exports.array(external_exports.object({
+    id: external_exports.string(),
+    text: external_exports.string(),
+    proof: external_exports.enum(["red_green", "green"]).nullable()
+  })).nullable(),
+  /** Questions the children asked, by who answered them. */
+  questions: external_exports.object({ byOrchestrator: count, byUser: count }).nullable(),
+  /** What the retro added to the repository; null when the run did not ship one. */
+  retro: external_exports.object({ checks: count, lessons: count }).nullable(),
+  /** Assumptions the run made without asking, for the reviewer to check. */
+  assumptions: external_exports.array(external_exports.string())
 });
 var AutopilotReport = external_exports.object({
   version: external_exports.literal(1),
@@ -40467,7 +40626,12 @@ var AutopilotReport = external_exports.object({
   omittedEvents: external_exports.number().int().min(0),
   prUrl: external_exports.string().nullable(),
   /** The footer's session; null when no child has started, or for a report older than the field. */
-  session: AutopilotSession.nullable().default(null)
+  session: AutopilotSession.nullable().default(null),
+  /**
+   * The run summed up; only a final report carries it. Null on every periodic report, and on a
+   * report older than the field.
+   */
+  summary: AutopilotSummary.nullable().default(null)
 });
 external_exports.object({
   report: AutopilotReport,
@@ -40515,7 +40679,7 @@ var AutopilotReportInputStrict = strictInput(
 function buildAutopilotReportTool(env2 = process.env) {
   return defineTool({
     name: "autopilot-report",
-    description: "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
+    description: "Show one autopilot status report as a card: session name, stage rail, elapsed time, cost, iteration, rejections, the events since the previous report (the whole run's history unfolds in the widget), and the working session's model, effort and context use. A final report shows the run summed up instead: stage times, tokens by kind and role, the PR, the acceptance criteria with their proof, questions, the retro's additions and assumptions. The report is written by `marvin-pipe await --report-min`, which prints `REPORT <n> <path>`; pass the run directory and n, plus your translation of the event texts and callout into the user's language.",
     inputSchema: AutopilotReportInputStrict,
     meta: { ui: { resourceUri: AUTOPILOT_STATUS_WIDGET_URI } },
     handler: (input) => Promise.resolve(runAutopilotReport(input, env2))
@@ -40605,23 +40769,8 @@ function inside(root, path) {
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 var MARK = { done: "\u2713", current: "\u25CF", waiting: "\u25D0", failed: "\u2715", pending: "\u25CB" };
-function renderReport(r) {
-  const l = autopilotLabels(r.lang);
-  const head = `## #${r.n} \xB7 ${l.state[r.state]} \xB7 ${r.runId}`;
-  const rail = r.rail.map((s) => {
-    const label = `${MARK[s.state]} ${l.rail[s.key]}`;
-    return s.state === "current" || s.state === "waiting" || s.state === "failed" ? `**${label}**` : label;
-  }).join(" \u2192 ");
-  const cost = r.costUsd === null ? "\u2014" : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : ` (${l.costPartial})`}`;
-  const costSub = r.costDeltaUsd === null ? "" : ` \xB7 ${l.costDelta(autopilotUsd(r.costDeltaUsd))}`;
-  const rejSub = r.rejections.last === null ? l.noRejections : l.lastRejection(l.sources[r.rejections.last.source], r.rejections.last.blocking);
-  const table = [
-    `| ${l.elapsed} | ${l.cost} | ${l.iteration} | ${l.rejections} |`,
-    "|---|---|---|---|",
-    `| ${l.duration(r.elapsedMs)} \xB7 ${l.since(autopilotTime(r.startedAt))} | ${cost}${costSub} | ${r.iteration} \xB7 ${l.rung(r.rung)} | ${r.rejections.total} \xB7 ${rejSub} |`
-  ];
-  const callout = r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
-  const events = r.events.length === 0 ? [
+function eventLines(r, l) {
+  return r.events.length === 0 ? [
     `_${l.noEvents}_`,
     ...r.active.length === 0 ? [] : [
       `${l.working}: ${r.active.map((a) => `${a.role} (\`${a.name}\`), ${l.duration(a.runningMs)}`).join("; ")}`
@@ -40630,6 +40779,108 @@ function renderReport(r) {
     ...r.omittedEvents > 0 ? [`- \u2026 +${r.omittedEvents}`] : [],
     ...r.events.map((e) => `- \`${autopilotTime(e.at)}\` ${e.text}`)
   ];
+}
+var rejectionSub = (r, l) => r.rejections.last === null ? l.noRejections : l.lastRejection(l.sources[r.rejections.last.source], r.rejections.last.blocking);
+function renderFinal(r, s) {
+  const l = autopilotLabels(r.lang);
+  const f = l.final;
+  const head = [
+    `## ${f.title} \xB7 ${l.state[r.state]}`,
+    ...r.sessionName === null ? [] : [`**${r.sessionName}**`],
+    `\`${r.runId}\` \xB7 ${autopilotTime(r.startedAt)} \u2192 ${autopilotTime(r.at)}`
+  ];
+  const rail = r.rail.map((step, i) => {
+    const ms = s.stages[i]?.ms ?? null;
+    const label = `${MARK[step.state]} ${l.rail[step.key]}${ms === null ? "" : ` (${l.duration(ms)})`}`;
+    return step.state === "failed" ? `**${label}**` : label;
+  }).join(" \u2192 ");
+  const cost = r.costUsd === null ? "\u2014" : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : "+"}`;
+  const costSub = [
+    ...s.roles === null ? [] : [f.roles(s.roles)],
+    ...r.costComplete ? [] : [l.costPartial]
+  ].join(", ");
+  const table = [
+    `| ${l.elapsed} | ${l.cost} | ${f.iterations} | ${l.rejections} |`,
+    "|---|---|---|---|",
+    `| ${l.duration(r.elapsedMs)}${s.activeMs === null ? "" : ` \xB7 ${f.active(l.duration(s.activeMs))}`} | ${cost}${costSub === "" ? "" : ` \xB7 ${costSub}`} | ${r.iteration} \xB7 ${l.rung(r.rung)} | ${r.rejections.total} \xB7 ${rejectionSub(r, l)} |`
+  ];
+  const callout = r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
+  const t = s.tokens;
+  const tokens = t === null || t.total === null ? [] : [
+    "",
+    `**${f.tokensTitle(autopilotTokenTotal(t.total))}**`,
+    ["cacheRead", "cacheWrite", "input", "output"].filter((k) => t[k] !== null).map((k) => `${f.tokenKinds[k]} ${autopilotTokenTotal(t[k])}`).join(" \xB7 "),
+    ...t.byRole.length === 0 ? [] : [
+      "",
+      `| ${f.columns.role} | ${f.columns.model} | ${f.columns.tokens} | ${f.columns.peak} |`,
+      "|---|---|---:|---:|",
+      ...t.byRole.map((row) => {
+        const peak = row.peakContext === null ? "\u2014" : autopilotContext(row.peakContext, row.contextWindow).text;
+        return `| ${autopilotRoleName(f, row.role, row.sessions)} | ${autopilotModel(row.model)} | ${row.total === null ? "\u2014" : autopilotTokenTotal(row.total)} | ${peak} |`;
+      })
+    ]
+  ];
+  const pr = s.pr;
+  const prBlock = pr === null || r.state !== "ready" ? [] : [
+    "",
+    `> **${f.prReady(pr.number)}**${r.prUrl === null ? "" : ` \xB7 [${f.openPr}](${r.prUrl})`}`,
+    `> ${[
+      ...pr.files === null ? [] : [f.prFiles(pr.files)],
+      ...pr.additions === null || pr.deletions === null ? [] : [`+${pr.additions} \u2212${pr.deletions}`],
+      ...pr.checksTotal === null || pr.checksPassed === null ? [] : [f.ci(pr.checksPassed, pr.checksTotal)],
+      f.intoBase(pr.base)
+    ].join(" \xB7 ")}`
+  ];
+  const criteria = s.criteria === null || s.criteria.length === 0 ? [] : [
+    "",
+    `**${f.criteriaTitle(criteriaMet(r, s.criteria), s.criteria.length)}**`,
+    ...s.criteria.map(
+      (c) => `- ${autopilotCriterionMet(r.state, c) ? "\u2713" : "\u25CB"} \`${c.id}\` ${c.text}${c.proof === null ? "" : ` \xB7 \`${f.proof[c.proof]}\``}`
+    )
+  ];
+  const boxes = [
+    ...s.questions === null ? [] : [
+      `**${f.questionsTitle}:** ${f.questions(s.questions.byOrchestrator, s.questions.byUser)}`
+    ],
+    ...s.retro === null ? [] : [`**${f.retroTitle}:** ${f.retro(s.retro.checks, s.retro.lessons)}`]
+  ];
+  const assumptions = s.assumptions.flatMap((a) => ["", `> **${f.assumptionTitle}:** ${a}`]);
+  return [
+    ...head,
+    "",
+    rail,
+    "",
+    ...table,
+    ...callout,
+    ...tokens,
+    ...prBlock,
+    ...criteria,
+    ...boxes.length === 0 ? [] : ["", ...boxes],
+    ...assumptions,
+    "",
+    `**${l.eventsTitle}**`,
+    ...eventLines(r, l)
+  ].join("\n");
+}
+var criteriaMet = (r, cs) => cs.filter((c) => autopilotCriterionMet(r.state, c)).length;
+function renderReport(r) {
+  if (r.final && r.summary) return renderFinal(r, r.summary);
+  const l = autopilotLabels(r.lang);
+  const head = `## #${r.n} \xB7 ${l.state[r.state]} \xB7 ${r.runId}`;
+  const rail = r.rail.map((s) => {
+    const label = `${MARK[s.state]} ${l.rail[s.key]}`;
+    return s.state === "current" || s.state === "waiting" || s.state === "failed" ? `**${label}**` : label;
+  }).join(" \u2192 ");
+  const cost = r.costUsd === null ? "\u2014" : `${autopilotUsd(r.costUsd)}${r.costComplete ? "" : ` (${l.costPartial})`}`;
+  const costSub = r.costDeltaUsd === null ? "" : ` \xB7 ${l.costDelta(autopilotUsd(r.costDeltaUsd))}`;
+  const rejSub = rejectionSub(r, l);
+  const table = [
+    `| ${l.elapsed} | ${l.cost} | ${l.iteration} | ${l.rejections} |`,
+    "|---|---|---|---|",
+    `| ${l.duration(r.elapsedMs)} \xB7 ${l.since(autopilotTime(r.startedAt))} | ${cost}${costSub} | ${r.iteration} \xB7 ${l.rung(r.rung)} | ${r.rejections.total} \xB7 ${rejSub} |`
+  ];
+  const callout = r.callout === null ? [] : ["", `> **${l.calloutTitle[r.callout.kind]}:** ${r.callout.text}`];
+  const events = eventLines(r, l);
   const foot = sessionLine(r);
   return [
     head,
@@ -40655,7 +40906,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.36.2";
+var VERSION = "0.37.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
