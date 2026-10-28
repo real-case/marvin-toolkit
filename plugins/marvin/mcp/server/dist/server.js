@@ -40292,7 +40292,6 @@ var RU = {
   eventsTitle: "\u0421 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430",
   noEvents: "\u041D\u043E\u0432\u044B\u0445 \u0441\u043E\u0431\u044B\u0442\u0438\u0439 \u043D\u0435\u0442.",
   working: "\u0420\u0430\u0431\u043E\u0442\u0430\u044E\u0442",
-  report: (n) => `\u043E\u0442\u0447\u0451\u0442 \u2116 ${n}`,
   historyTitle: "\u0421 \u043D\u0430\u0447\u0430\u043B\u0430 \u0440\u0430\u0431\u043E\u0442\u044B",
   historyShow: (n) => `\u0412\u0441\u044F \u0438\u0441\u0442\u043E\u0440\u0438\u044F \xB7 ${n}`,
   historyHide: "\u0422\u043E\u043B\u044C\u043A\u043E \u0441 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430",
@@ -40301,14 +40300,7 @@ var RU = {
   copied: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E",
   saved: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E \u0444\u0430\u0439\u043B\u043E\u043C",
   copyFailed: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C",
-  roles: {
-    planner: "\u041F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A",
-    "test-author": "\u0410\u0432\u0442\u043E\u0440 \u0442\u0435\u0441\u0442\u043E\u0432",
-    executor: "\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C",
-    verifier: "\u0412\u0435\u0440\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440",
-    retro: "\u0420\u0435\u0442\u0440\u043E"
-  },
-  effort: "Effort",
+  modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442",
   duration: (ms) => duration3(ms, "\u0447", "\u043C\u0438\u043D")
 };
@@ -40343,7 +40335,6 @@ var EN = {
   eventsTitle: "Since the last report",
   noEvents: "No new events.",
   working: "Working",
-  report: (n) => `report #${n}`,
   historyTitle: "Since the start",
   historyShow: (n) => `Full history \xB7 ${n}`,
   historyHide: "Since the last report only",
@@ -40352,14 +40343,7 @@ var EN = {
   copied: "Copied",
   saved: "Saved as a file",
   copyFailed: "Could not copy",
-  roles: {
-    planner: "Planner",
-    "test-author": "Test author",
-    executor: "Executor",
-    verifier: "Verifier",
-    retro: "Retro"
-  },
-  effort: "Effort",
+  modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "Context",
   duration: (ms) => duration3(ms, "h", "min")
 };
@@ -40610,7 +40594,7 @@ function sessionLine(r) {
   const s = r.session;
   if (s === null) return "";
   const l = autopilotLabels(r.lang);
-  const parts = [l.roles[s.role] ?? s.role, autopilotModel(s.model), `${l.effort} ${s.effort}`];
+  const parts = [l.modelEffort(autopilotModel(s.model), s.effort)];
   if (s.contextTokens !== null) {
     parts.push(`${l.context} ${autopilotContext(s.contextTokens, s.contextWindow).text}`);
   }
@@ -40623,7 +40607,7 @@ function inside(root, path) {
 var MARK = { done: "\u2713", current: "\u25CF", waiting: "\u25D0", failed: "\u2715", pending: "\u25CB" };
 function renderReport(r) {
   const l = autopilotLabels(r.lang);
-  const head = `## ${l.state[r.state]} \xB7 ${r.runId} \xB7 ${l.report(r.n)}`;
+  const head = `## #${r.n} \xB7 ${l.state[r.state]} \xB7 ${r.runId}`;
   const rail = r.rail.map((s) => {
     const label = `${MARK[s.state]} ${l.rail[s.key]}`;
     return s.state === "current" || s.state === "waiting" || s.state === "failed" ? `**${label}**` : label;
@@ -40671,7 +40655,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.36.1";
+var VERSION = "0.36.2";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

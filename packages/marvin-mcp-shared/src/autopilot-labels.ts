@@ -25,7 +25,6 @@ export interface AutopilotLabels {
   eventsTitle: string;
   noEvents: string;
   working: string;
-  report: (n: number) => string;
   /** The events block unfolded to the whole run. */
   historyTitle: string;
   /** The toggle that unfolds it, with the number of earlier events. */
@@ -38,9 +37,8 @@ export interface AutopilotLabels {
   /** The clipboard was refused and the image was saved as a file instead. */
   saved: string;
   copyFailed: string;
-  /** A child's role, keyed as the engine names it (`test-author`). */
-  roles: Record<string, string>;
-  effort: string;
+  /** The working session's model and effort: "Opus 5.5 medium effort". */
+  modelEffort: (model: string, effort: string) => string;
   context: string;
   /** A duration, rounded to whole minutes: "38 min", "1 h 12 min". */
   duration: (ms: number) => string;
@@ -83,7 +81,6 @@ const RU: AutopilotLabels = {
   eventsTitle: "С прошлого отчёта",
   noEvents: "Новых событий нет.",
   working: "Работают",
-  report: (n) => `отчёт № ${n}`,
   historyTitle: "С начала работы",
   historyShow: (n) => `Вся история · ${n}`,
   historyHide: "Только с прошлого отчёта",
@@ -92,14 +89,7 @@ const RU: AutopilotLabels = {
   copied: "Скопировано",
   saved: "Сохранено файлом",
   copyFailed: "Не удалось скопировать",
-  roles: {
-    planner: "Планировщик",
-    "test-author": "Автор тестов",
-    executor: "Исполнитель",
-    verifier: "Верификатор",
-    retro: "Ретро",
-  },
-  effort: "Effort",
+  modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "Контекст",
   duration: (ms) => duration(ms, "ч", "мин"),
 };
@@ -135,7 +125,6 @@ const EN: AutopilotLabels = {
   eventsTitle: "Since the last report",
   noEvents: "No new events.",
   working: "Working",
-  report: (n) => `report #${n}`,
   historyTitle: "Since the start",
   historyShow: (n) => `Full history · ${n}`,
   historyHide: "Since the last report only",
@@ -144,14 +133,7 @@ const EN: AutopilotLabels = {
   copied: "Copied",
   saved: "Saved as a file",
   copyFailed: "Could not copy",
-  roles: {
-    planner: "Planner",
-    "test-author": "Test author",
-    executor: "Executor",
-    verifier: "Verifier",
-    retro: "Retro",
-  },
-  effort: "Effort",
+  modelEffort: (model, effort) => `${model} ${effort} effort`,
   context: "Context",
   duration: (ms) => duration(ms, "h", "min"),
 };
