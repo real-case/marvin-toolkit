@@ -1180,7 +1180,9 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
     else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
 
-  const patch = git.text("diff", "--unified=0", ...PATCH_FLAGS, range);
+  // Default context on purpose: git can align a rewrite differently at -U0 than numstat does,
+  // and the count check below would then halt every retry on a diff it parsed correctly.
+  const patch = git.text("diff", ...PATCH_FLAGS, range);
   const added = addedLines(patch);
   const numstat = git.text("diff", "--numstat", "-z", "--text", "--no-renames", range);
   for (const path of addedLineMismatches(added, numstat)) {

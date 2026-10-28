@@ -20655,7 +20655,7 @@ async function runGateStage(o) {
     if (!path.endsWith("/")) flag2(path, "protected snapshot");
     else if (protectedBefore[path] === NESTED_REPO) blockers.push(nestedRepo(path));
   }
-  const patch = git4.text("diff", "--unified=0", ...PATCH_FLAGS, range);
+  const patch = git4.text("diff", ...PATCH_FLAGS, range);
   const added = addedLines(patch);
   const numstat = git4.text("diff", "--numstat", "-z", "--text", "--no-renames", range);
   for (const path of addedLineMismatches(added, numstat)) {

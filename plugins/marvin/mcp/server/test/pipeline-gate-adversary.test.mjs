@@ -360,6 +360,94 @@ test("the check scan reports a path whose added lines it could not account for",
   assert.deepEqual(g.addedLineMismatches([line("src/b.ts", 1)], ""), ["src/b.ts"]);
 });
 
+// A real rewrite (COD-11 B1, Pages.tsx) trimmed to the hunk where git aligns a blank line
+// differently with zero context than with the default three: -U0 reports 4 added lines,
+// --numstat 3. The scan must count added lines the way numstat does, or every retry halts.
+const ZERO_CONTEXT_BEFORE = [
+  "    setImporting(false);",
+  "    setCreatingGroup(false);",
+  "  };",
+  "",
+  "  // Rename opens the dialog here (a row never collects a name); everything",
+  "  // else is the shared funnel action, so the rail and the detail pane behave identically.",
+  "  const rowActions: FunnelRowActions = {",
+  '          <ResizableHandle key="handle" withHandle />',
+  '          <ResizablePanel key="detail" id="detail" order={2} defaultSize={100 - leftPct} className="min-w-0">',
+  '            <div className="h-full overflow-y-auto">{detail}</div>',
+  "          </ResizablePanel>",
+  "        </ResizablePanelGroup>",
+  "      )}",
+  "      {isMobile && <MobileBottomNav />}",
+  "      <RenameFunnelDialog",
+  "        page={renaming}",
+  "        onClose={() => setRenaming(null)}",
+  "        onSave={(name) => { if (renaming) funnelActions.rename(renaming, name); }}",
+  "      />",
+  "      <ShareFunnelDialog",
+  "        page={sharing}",
+  "        url={sharing ? funnelActions.linkFor(sharing) : ''}",
+  "        onClose={() => setSharing(null)}",
+  "      />",
+  "      <AbTestGroupDialog",
+  "        open={groupingPage !== null}",
+  "        pageName={groupingPage?.name ?? ''}",
+  "        groups={groups}",
+  "        currentGroupId={groupingPage ? groups.find((g) => g.members.some((m) => m.id === groupingPage.id))?.id ?? null : null}",
+  "        onPick={(groupId, current) => { if (groupingPage) funnelActions.setGroup(groupingPage, groupId, current); }}",
+  "        onClose={() => setGroupingPage(null)}",
+];
+const ZERO_CONTEXT_AFTER = [
+  "",
+  "",
+  "",
+  "",
+  '          <ResizablePanel key="detail" id="detail" order={2} defaultSize={100 - leftPct} className="min-w-0">',
+  '            <div className="h-full overflow-y-auto">{detail}</div>',
+  "          </ResizablePanel>",
+  "        </ResizablePanelGroup>",
+  "      )}",
+  "      {isMobile && <MobileBottomNav />}",
+  "      <RenameFunnelDialog",
+  "        page={renaming}",
+  "        onClose={() => setRenaming(null)}",
+  "        onSave={(name) => { if (renaming) funnelActions.rename(renaming, name); }}",
+  "      />",
+  "      <ShareFunnelDialog",
+  "        page={sharing}",
+  "        url={sharing ? funnelActions.linkFor(sharing) : ''}",
+  "        onClose={() => setSharing(null)}",
+  "      />",
+  "      <AbTestGroupDialog",
+  "        open={groupingPage !== null}",
+  "        pageName={groupingPage?.name ?? ''}",
+  "        groups={groups}",
+  "        currentGroupId={groupingPage ? groups.find((g) => g.members.some((m) => m.id === groupingPage.id))?.id ?? null : null}",
+  "        onPick={(groupId, current) => { if (groupingPage) funnelActions.setGroup(groupingPage, groupId, current); }}",
+  "        onClose={() => setGroupingPage(null)}",
+];
+
+test("a rewrite git aligns differently at zero context is still parsed, and its added lines scanned", async () => {
+  const w = runWorktree({ "src/view.tsx": ZERO_CONTEXT_BEFORE.join("\n") + "\n" });
+  w.write("src/view.tsx", ZERO_CONTEXT_AFTER.join("\n") + "\n");
+  w.write("src/other.ts", "debugger;\n");
+  w.commit();
+  const zero = sh(w.path, "diff", "--unified=0", `${w.baseSha}...HEAD`, "--", "src/view.tsx");
+  const counted = Number(
+    sh(w.path, "diff", "--numstat", `${w.baseSha}...HEAD`, "--", "src/view.tsx").split("\t")[0],
+  );
+  assert.notEqual(
+    zero.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++ ")).length,
+    counted,
+    "the fixture still makes -U0 and --numstat disagree",
+  );
+  const report = await gateStage(w, { contractFiles: ["src/view.tsx", "src/other.ts"] });
+  assert.deepEqual(claims(report), []);
+  assert.deepEqual(
+    report.checks.map((c) => [c.file, c.id]),
+    [["src/other.ts", "debugger"]],
+  );
+});
+
 // ── oracles run first, each bracketed by sealed hashes ──────────────────────
 
 test("an ordinary gate that overwrites a sealed test cannot turn its oracle green", async () => {
