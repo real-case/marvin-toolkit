@@ -26024,8 +26024,10 @@ async function perform(runDir, j, deps, replay) {
   const { action } = step2;
   switch (action.kind) {
     case "spawn": {
-      const wait2 = action.notBefore ? Date.parse(action.notBefore) - Date.now() : 0;
-      if (wait2 > 0) await setTimeout$1(wait2, void 0, { signal: deps.signal });
+      const until = action.notBefore ? Date.parse(action.notBefore) : 0;
+      for (let wait2 = until - Date.now(); wait2 > 0; wait2 = until - Date.now()) {
+        await setTimeout$1(wait2, void 0, { signal: deps.signal });
+      }
       return advance(deps.spawnChild(j.run, action, info));
     }
     case "judgment": {

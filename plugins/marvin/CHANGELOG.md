@@ -29,6 +29,12 @@ follows semver independently of the surrounding marketplace.
   that finalize writes in the run directory. A source that is absent leaves its field null and
   the card hides that part; a final report written before the field keeps the periodic layout.
 
+### Fixed
+
+- A spawn held by `notBefore` (a usage limit) no longer starts a millisecond early: a Node
+  timer can fire before the wall clock reaches its deadline, so the engine now waits again until
+  it has.
+
 ## [0.36.2] — 2026-10-28
 
 ### Fixed
