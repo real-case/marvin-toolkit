@@ -330,7 +330,7 @@ base commit's `.marvin/config.json`, never from a run's worktree.
 |-----|---------|---------|
 | `branch_template` | `feature/{tracker}--{slug}` | The name of a run's branch. `{tracker}` is the spec's tracker id, or `tracker_default` when it names none; `{slug}` is the spec's slug. |
 | `tracker_default` | `TBD` | The tracker id used in the branch name when the spec has none. |
-| `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing. |
+| `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing; a run worktree has no `node_modules` of its own, so when the root `package.json` declares dependencies and none are installed, a run with `null` stops before any child starts and names the install its lockfile calls for. |
 | `lockfile` | `null` | The lockfile `bootstrap` installs from, such as `package-lock.json`. |
 | `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. The engine reads CI and marks the pull request ready with it, and hands it to the writing children (planner, test-author, executor) as `GH_TOKEN`, so that their `gh pr create` and `git push` act as that account rather than whichever one is active. `null` uses `gh`'s own authentication everywhere. |
 | `stall_minutes` | `15` | Minutes without output from a child before it counts as stalled. |

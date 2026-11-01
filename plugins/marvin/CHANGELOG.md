@@ -4,6 +4,29 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [Unreleased]
+
+### Fixed
+
+- **An autopilot run that cannot install its dependencies stops before any child.** A run
+  worktree has no `node_modules`, and with no `pipeline.bootstrap` a project with dependencies
+  could run no gate: five runs in two repositories (2026-10-20/21) found that out at their first
+  gate, after the planner had run. `prepare` now refuses such a run and names the install
+  its lockfile calls for (`bun install --frozen-lockfile`, `pnpm install --frozen-lockfile`,
+  `yarn install --immutable` or `npm ci`). A bun, pnpm or yarn lockfile with no matching
+  `pipeline.allowed_commands` prefix is told to the orchestrator: the writing roles could not run
+  the project's scripts.
+- **A spec whose contract names a protected path goes back to the planner before approval.** No
+  child may change `.claude/`, `.husky/`, `.mcp.json`, `.git`, `.marvin/config.json` or
+  `.marvin/pipeline/`, and the gate rejects them in any diff, so such a spec could only end at the
+  rejection cap: a 2026-10-28 run spent three iterations that way. The engine now sends it
+  back as a Definition-of-Ready failure, with nothing written, asking for those files to move to
+  "Deferred slices". The planner's prompt names the protected paths, and a test keeps that list in
+  step with `protected.default.json`.
+- **The engine's own spec and seal commits carry the `Co-Authored-By` trailer**, as its merge and
+  finalize commits already did. A host that checks attribution on every commit failed a run on
+  them alone.
+
 ## [0.37.0] — 2026-10-28
 
 ### Added
