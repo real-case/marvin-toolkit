@@ -9,6 +9,7 @@
  */
 import { gitSubcommand, readPayload } from "../../hooks/lib/hook-io.mjs";
 import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
+import { parseGhApi, readViolation } from "./lib/gh-api.mjs";
 import { commandSegments, commandStart, execContexts, programName, words } from "./lib/shell.mjs";
 
 const GIT_READ = new Set([
@@ -41,7 +42,8 @@ const WRITERS = new Set([
   "install",
   "patch",
 ]);
-const GH_READ = new Set(["pr view", "pr diff", "pr checks", "run view", "run list"]);
+/** `gh` subcommands besides `gh api` that only read; both are REST calls. */
+const GH_READ = new Set(["run view", "run list"]);
 const SAFE_REDIRECT_TARGETS = new Set(["/dev/null", "/dev/stdout", "/dev/stderr"]);
 const SNAPSHOT_UPDATE = /^(-u|--update|--updateSnapshot|--update-snapshots?)(=.*)?$/;
 
@@ -50,16 +52,6 @@ function abbreviates(text, full, min) {
   if (!text.startsWith("--")) return false;
   const name = text.slice(2).split("=")[0];
   return name.length >= min && full.startsWith(name);
-}
-
-/** `-XPUT`, `--method=PUT`, `--field=…`, `--raw-field=…`, `--input=…` as separated forms. */
-function separateAttached(args) {
-  return args.flatMap((w) => {
-    const long = /^(--method|--field|--raw-field|--input)=(.*)$/s.exec(w);
-    if (long) return [long[1], long[2]];
-    const short = /^(-X|-f|-F)(.+)$/s.exec(w);
-    return short ? [short[1], short[2]] : [w];
-  });
 }
 
 function runsTests(program, rest, all) {
@@ -168,14 +160,8 @@ function segmentViolation(segment) {
   }
   if (program === "gh") {
     if (rest[0] === "api") {
-      const args = separateAttached(rest.slice(1));
-      const m = args.findIndex((w) => w === "-X" || w === "--method");
-      if (m >= 0 && (args[m + 1] ?? "").toUpperCase() !== "GET")
-        return "gh api with a non-GET method";
-      if (args.some((w) => ["-f", "-F", "--field", "--raw-field", "--input"].includes(w))) {
-        return "gh api with a request body";
-      }
-      return "gh api is not available to pipeline children";
+      const request = parseGhApi(command.slice(2));
+      return "error" in request ? request.error : readViolation(request);
     }
     const sub = `${rest[0] ?? ""} ${rest[1] ?? ""}`.trim();
     if (!GH_READ.has(sub)) return `gh ${sub} is not a read`;

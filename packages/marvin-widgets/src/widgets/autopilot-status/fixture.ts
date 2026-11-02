@@ -2,6 +2,7 @@ import type {
   AutopilotEvent,
   AutopilotReportPayload,
   AutopilotRailStep,
+  AutopilotSummary,
 } from "@marvin-toolkit/mcp-shared/contracts";
 
 /**
@@ -45,6 +46,7 @@ const base = {
   judgment: null,
   callout: null,
   session: null,
+  summary: null,
 };
 
 const ev = (hhmm: string, text: string, kind = "note"): AutopilotEvent => ({
@@ -167,6 +169,86 @@ export const waitingFixture: AutopilotReportPayload = {
   },
 };
 
+const min = (n: number) => n * 60_000;
+
+/** The run summed up, as the design draws it: illustrative figures, not engine output. */
+const READY_SUMMARY: AutopilotSummary = {
+  stages: RAIL.map((key, i) => ({ key, ms: min([7, 9, 28, 6, 8, 10, 4][i]!) })),
+  activeMs: min(58),
+  roles: 5,
+  tokens: {
+    total: 11_300_000,
+    cacheRead: 9_800_000,
+    cacheWrite: 1_100_000,
+    input: 210_000,
+    output: 190_000,
+    byRole: [
+      {
+        role: "planner",
+        sessions: 1,
+        model: "claude-opus-5-5",
+        total: 1_600_000,
+        peakContext: 90_000,
+        contextWindow: 1_000_000,
+      },
+      {
+        role: "test-author",
+        sessions: 1,
+        model: "claude-opus-5-5",
+        total: 1_300_000,
+        peakContext: 70_000,
+        contextWindow: 1_000_000,
+      },
+      {
+        role: "executor",
+        sessions: 2,
+        model: "claude-opus-5-5",
+        total: 6_400_000,
+        peakContext: 290_000,
+        contextWindow: 1_000_000,
+      },
+      {
+        role: "verifier",
+        sessions: 1,
+        model: "claude-sonnet-5-5",
+        total: 1_400_000,
+        peakContext: 168_000,
+        contextWindow: 200_000,
+      },
+      {
+        role: "retro",
+        sessions: 1,
+        model: "claude-sonnet-5-5",
+        total: 600_000,
+        peakContext: 42_000,
+        contextWindow: 200_000,
+      },
+    ],
+  },
+  pr: {
+    number: 266,
+    files: 9,
+    additions: 412,
+    deletions: 38,
+    checksPassed: 5,
+    checksTotal: 5,
+    base: "dev",
+  },
+  criteria: [
+    { id: "AC1", text: "Отчёт пишется не реже раза в 5 минут", proof: "red_green" },
+    { id: "AC2", text: "Новый вопрос прерывает ожидание сразу", proof: "red_green" },
+    { id: "AC3", text: "Остановка движка завершает ожидание отчётом", proof: "red_green" },
+    { id: "AC4", text: "Перевод событий хранится рядом с отчётом", proof: "green" },
+    { id: "AC5", text: "Карточка разворачивает историю прогона", proof: "green" },
+    { id: "AC6", text: "Текстовый вариант совпадает с карточкой", proof: "green" },
+  ],
+  questions: { byOrchestrator: 2, byUser: 0 },
+  retro: { checks: 1, lessons: 1 },
+  assumptions: [
+    "Интервал отчёта берётся из --report-min; при значении меньше 1 минуты используется 1 минута.",
+  ],
+};
+
 export const readyFixture: AutopilotReportPayload = {
   runDir: RUN_DIR,
   earlier: EARLIER,
@@ -197,6 +279,7 @@ export const readyFixture: AutopilotReportPayload = {
     rung: 1,
     rejections: { total: 1, last: { source: "gate", blocking: 2 } },
     prUrl: "https://github.com/real-case/marvin-toolkit/pull/266",
+    summary: READY_SUMMARY,
     events: [
       {
         at: "2026-10-25T15:22:00.000Z",
@@ -274,5 +357,37 @@ export const quietFixture: AutopilotReportPayload = {
     elapsedMs: 43 * 60_000,
     active: [{ name: "r-1025-1412-ab3c-executor-2", role: "executor", runningMs: 25 * 60_000 }],
     events: [],
+  },
+};
+
+/** The ready card in English, with the gaps a run can leave: no tokens, no CI, no retro. */
+export const readyEnglishFixture: AutopilotReportPayload = {
+  ...readyFixture,
+  earlier: [],
+  earlierOmitted: 0,
+  report: {
+    ...readyFixture.report,
+    lang: "en",
+    sessionName: "Autopilot report every five minutes",
+    costComplete: false,
+    events: [{ at: "2026-10-25T15:26:00.000Z", kind: "note", text: "PR ready to merge." }],
+    summary: {
+      ...READY_SUMMARY,
+      stages: READY_SUMMARY.stages.map((x) =>
+        x.key === "test_authoring" ? { ...x, ms: null } : x,
+      ),
+      tokens: null,
+      pr: { ...READY_SUMMARY.pr!, checksPassed: null, checksTotal: null },
+      criteria: [
+        {
+          id: "AC1",
+          text: "The report is written at least every five minutes",
+          proof: "red_green",
+        },
+        { id: "AC2", text: "A new question ends the wait at once", proof: null },
+      ],
+      retro: null,
+      assumptions: [],
+    },
   },
 };

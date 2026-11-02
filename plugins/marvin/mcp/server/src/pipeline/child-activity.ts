@@ -121,6 +121,82 @@ export function contextUse(log: string): ContextUse {
   return use;
 }
 
+/** The four token kinds a session is billed for. */
+export interface TokenKinds {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** What a whole child log says about its tokens, for the final report. */
+export interface LogUsage {
+  model: string | null;
+  /** The session's tokens by kind from its `result` line; null when it wrote none. */
+  kinds: TokenKinds | null;
+  /** The largest context one top-level assistant turn carried; null with no such turn. */
+  peak: number | null;
+  window: number | null;
+}
+
+const KIND_KEYS: Record<keyof TokenKinds, [string, string]> = {
+  input: ["inputTokens", "input_tokens"],
+  output: ["outputTokens", "output_tokens"],
+  cacheRead: ["cacheReadInputTokens", "cache_read_input_tokens"],
+  cacheWrite: ["cacheCreationInputTokens", "cache_creation_input_tokens"],
+};
+
+/**
+ * A session's tokens by kind, its peak context and its model, read from the whole log. The kinds
+ * come from the `result` line: summed over its `modelUsage`, which counts subagents' models too,
+ * else from its `usage`. The peak is taken over top-level turns only, as in {@link contextUse}.
+ */
+export function logUsage(log: string): LogUsage {
+  const use = contextUse(log);
+  let peak: number | null = null;
+  let kinds: TokenKinds | null = null;
+  for (const line of log.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (entry.type === "assistant" && entry.parent_tool_use_id == null) {
+      const u = (entry.message as { usage?: Record<string, unknown> } | undefined)?.usage;
+      if (u) {
+        const tokens =
+          count(u.input_tokens) +
+          count(u.cache_read_input_tokens) +
+          count(u.cache_creation_input_tokens);
+        peak = Math.max(peak ?? 0, tokens);
+      }
+    } else if (entry.type === "result") {
+      const byModel =
+        typeof entry.modelUsage === "object" && entry.modelUsage
+          ? Object.values(entry.modelUsage as Record<string, Record<string, unknown>>)
+          : [];
+      const sources =
+        byModel.length > 0
+          ? byModel.map((m) => [m, 0] as const)
+          : typeof entry.usage === "object" && entry.usage
+            ? [[entry.usage as Record<string, unknown>, 1] as const]
+            : [];
+      if (sources.length > 0) {
+        const sum = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+        for (const [record, style] of sources) {
+          for (const key of Object.keys(sum) as (keyof TokenKinds)[]) {
+            sum[key] += count(record[KIND_KEYS[key][style]]);
+          }
+        }
+        kinds = sum;
+      }
+    }
+  }
+  return { model: use.model, kinds, peak, window: use.window };
+}
+
 /**
  * The end of the child's log and when it was last written, or null when it cannot be read. Only
  * the tail is read: a call older than it is not found, which is the price of reading it often.

@@ -79,3 +79,17 @@ the previous report, and a footer that names the next report's deadline.
 - Report files accumulate in the run directory, outside the repository, a few kilobytes each.
 - The tool count in the docs, the site's catalogue and the server's registration test moves from
   fifteen to sixteen, and the widget count from nine to ten.
+
+## Notes
+
+- **2026-10-28 — the final report (0.37.0).** A final report (`final: true`) now carries an
+  optional `summary` block, and the widget and the Markdown card switch to a final layout when it
+  is present: stage times under the rail, the active time and the number of roles under the
+  figures, tokens by kind and by role with each role's peak context, the pull request's size and
+  checks, the acceptance criteria with their red→green proof, the questions by who answered them,
+  what the retro added, and each assumption; the session footer is dropped. `buildReport` stays
+  pure: the parts it cannot derive from `run.json` and the events come in as `FinalFacts`, read by
+  `finalFacts` from each child's whole `stream-json` log, the shipped spec and the oracle journal,
+  `gh pr view`, and a `retro-applied.json` that finalize now writes in the run directory. Every
+  field is nullable and null means the source was absent, so a report written before the field,
+  or a run whose logs or `gh` could not be read, shows the parts that are known.

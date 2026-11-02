@@ -553,15 +553,7 @@ const PIPELINE_DEFAULTS = {
   protected_volatile: [],
   format_command: null,
   conventions: "",
-  allowed_commands: [
-    "git",
-    "gh pr create",
-    "gh pr view",
-    "gh pr edit",
-    "npm run",
-    "npm ci",
-    "npx --no",
-  ],
+  allowed_commands: ["git", "npm run", "npm ci", "npx --no"],
 };
 
 test("an empty config parses to every pipeline default, inner ones included", () => {

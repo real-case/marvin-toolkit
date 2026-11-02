@@ -60,6 +60,86 @@ export const AutopilotSession = z.object({
 });
 export type AutopilotSession = z.infer<typeof AutopilotSession>;
 
+const count = z.number().int().min(0);
+
+/** One role's tokens over the run: every child of that role, a resumed session counted once. */
+export const AutopilotRoleTokens = z.object({
+  role: z.string(),
+  /** How many sessions of the role ran: "Executor × 2". */
+  sessions: z.number().int().min(1),
+  /** The model the newest session reported, else the one it was assigned. */
+  model: z.string(),
+  /** Every kind together; null when no session of the role logged a result. */
+  total: count.nullable(),
+  /** The largest context one top-level turn carried, and the window it was measured against. */
+  peakContext: count.nullable(),
+  contextWindow: z.number().int().min(1).nullable(),
+});
+export type AutopilotRoleTokens = z.infer<typeof AutopilotRoleTokens>;
+
+/**
+ * What a final report adds (ADR-0051): the whole run, summed up for the reviewer. Every field is
+ * nullable, and null means its source was absent, never zero: the card hides what is missing.
+ */
+export const AutopilotSummary = z.object({
+  /** Time spent in each rail stage, in the rail's order; null for a stage the run never entered. */
+  stages: z
+    .array(z.object({ key: z.enum(AUTOPILOT_RAIL), ms: count.nullable() }))
+    .length(AUTOPILOT_RAIL.length),
+  /** Wall-clock time in which at least one child ran. */
+  activeMs: count.nullable(),
+  /** How many roles ran a child. */
+  roles: count.nullable(),
+  /**
+   * Tokens by kind over every child, from the `result` line of each child's `stream-json` log.
+   * A kind is null when no child's log reported it; `byRole` lists the roles in the order they
+   * first ran.
+   */
+  tokens: z
+    .object({
+      total: count.nullable(),
+      cacheRead: count.nullable(),
+      cacheWrite: count.nullable(),
+      input: count.nullable(),
+      output: count.nullable(),
+      byRole: z.array(AutopilotRoleTokens),
+    })
+    .nullable(),
+  /** The pull request as GitHub reports it; null with no PR, or when `gh` could not say. */
+  pr: z
+    .object({
+      number: z.number().int().min(1).nullable(),
+      files: count.nullable(),
+      additions: count.nullable(),
+      deletions: count.nullable(),
+      checksPassed: count.nullable(),
+      checksTotal: count.nullable(),
+      base: z.string(),
+    })
+    .nullable(),
+  /**
+   * The spec's acceptance criteria with the proof the oracle journal holds under the sealed
+   * contract: `red_green` for a red run followed by a green one on the same test, `green` for a
+   * passing newest run alone, null for neither. Null when the spec could not be read.
+   */
+  criteria: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string(),
+        proof: z.enum(["red_green", "green"]).nullable(),
+      }),
+    )
+    .nullable(),
+  /** Questions the children asked, by who answered them. */
+  questions: z.object({ byOrchestrator: count, byUser: count }).nullable(),
+  /** What the retro added to the repository; null when the run did not ship one. */
+  retro: z.object({ checks: count, lessons: count }).nullable(),
+  /** Assumptions the run made without asking, for the reviewer to check. */
+  assumptions: z.array(z.string()),
+});
+export type AutopilotSummary = z.infer<typeof AutopilotSummary>;
+
 export const AutopilotReport = z.object({
   version: z.literal(1),
   runId: z.string(),
@@ -127,6 +207,11 @@ export const AutopilotReport = z.object({
   prUrl: z.string().nullable(),
   /** The footer's session; null when no child has started, or for a report older than the field. */
   session: AutopilotSession.nullable().default(null),
+  /**
+   * The run summed up; only a final report carries it. Null on every periodic report, and on a
+   * report older than the field.
+   */
+  summary: AutopilotSummary.nullable().default(null),
 });
 export type AutopilotReport = z.infer<typeof AutopilotReport>;
 

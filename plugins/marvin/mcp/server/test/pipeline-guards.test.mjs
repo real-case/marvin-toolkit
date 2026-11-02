@@ -89,8 +89,8 @@ test("child git guard allows the run's own git and gh workflow", () => {
     "git merge origin/dev",
     "git branch --show-current",
     "git config --get user.name",
-    "gh pr create --draft --base dev --title t --body b",
-    "gh pr view 3",
+    "gh api 'repos/{owner}/{repo}/pulls' -f base=dev -f head=feature/OSI-1--x -f title=t -f body=b -F draft=true",
+    "gh api 'repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open' --jq '.[0].html_url // empty'",
   ]);
 });
 
@@ -188,57 +188,63 @@ test("git config is read-only, checkout restores paths only, branch only lists",
   ]);
 });
 
-test("gh is limited to the run's PR and runs, against the run's base", () => {
+const PULLS = "gh api 'repos/{owner}/{repo}/pulls'";
+const OPEN = `${PULLS} -f base=dev -f head=feature/OSI-1--x -f title=t`;
+
+test("gh is REST only: reads of this repository, and one PR from the run branch into the base", () => {
   denies(git, [
     "gh api user",
+    "gh api graphql -f query=x",
+    "gh api repos/o/r/pulls/3",
+    "gh api 'repos/{owner}/{repo}/../../o/r/pulls'",
+    "gh api 'repos/{owner}/{repo}/pulls/3' --hostname evil.example",
+    "gh api 'repos/{owner}/{repo}/pulls' --input body.json",
+    "gh api -X PUT 'repos/{owner}/{repo}/pulls/3/merge'",
+    "gh api -XPATCH 'repos/{owner}/{repo}/pulls/3' -f title=t",
+    "gh api --method=DELETE 'repos/{owner}/{repo}/git/refs/heads/dev'",
+    "gh api 'repos/{owner}/{repo}/issues' -f title=t",
+    "gh api 'repos/{owner}/{repo}/pulls/3' -f state=closed",
+    "gh api 'repos/{owner}/{repo}/pulls/3' -iX GET",
+    "gh api 'repos/{owner}/{repo}/pulls/3' --unknown",
+    "gh api 'repos/{owner}/{repo}/pulls/3' -H 'X-HTTP-Method-Override: DELETE'",
+    "gh api 'repos/{owner}/{repo}/pulls/3' 'repos/{owner}/{repo}/pulls/4'",
+    'gh api "$ENDPOINT"',
+    "gh api -X \"$M\" 'repos/{owner}/{repo}/pulls/3'",
+    `${PULLS} -f head=feature/OSI-1--x -f title=t`,
+    `${PULLS} -f base=main -f head=feature/OSI-1--x -f title=t`,
+    `${PULLS} -f base=dev -f head=dev -f title=t`,
+    `${PULLS} -f base=dev -f title=t`,
+    `${PULLS} -F head={branch} -f base=dev -f title=t`,
+    `${OPEN} -f base=main`,
+    `${OPEN} -f maintainer=x -f reviewers=y`,
+    `${OPEN} -F head=@head.txt`,
+    `${OPEN} -F title=@title.txt`,
+    'gh api "repos/{owner}/{repo}/pulls" -f base=dev -f head="$B" -f title=t',
+    "gh pr create --draft --base dev --title t --body b",
+    "gh pr view 3",
+    "gh pr diff 3",
+    "gh pr checks 3",
+    "gh pr edit --title t",
+    "gh pr list --head feature/OSI-1--x",
     "gh pr merge 3",
     "gh pr ready 3",
-    "gh pr comment 3 -b x",
-    "gh pr close 3",
     "gh repo delete o/r",
     "gh workflow run x",
     "gh issue create",
     "gh run rerun 5",
-    "gh pr",
-    "gh --repo o/r pr view 3",
-    "gh pr create --title t --body b",
-    "gh pr create --base main --title t --body b",
-    "gh pr create -B main",
-    "gh pr create -Bmain",
-    "gh pr create --base=main",
-    "gh pr create --base dev --base main",
-    "gh pr create --base dev --head dev",
-    "gh pr create --base dev -R o/r",
-    "gh pr edit 3 --base main",
-    "gh pr edit 3 --repo=o/r --title t",
   ]);
   allows(git, [
-    "gh pr create --base=dev --head feature/OSI-1--x --fill",
-    "gh pr create -B dev --draft --fill",
-    "gh pr view 3 --json url -R o/r",
-    "gh pr edit --title t",
-    "gh pr edit --base dev --title t",
-    "gh pr edit feature/OSI-1--x --title t",
-    "gh pr edit -t t --remove-milestone",
-    "gh pr diff 3",
-    "gh pr checks 3 --watch",
-    "gh pr list --head feature/OSI-1--x",
+    "gh api 'repos/{owner}/{repo}/pulls/3'",
+    "gh api repos/{owner}/{repo}/pulls/3 -H 'Accept: application/vnd.github.diff'",
+    "gh api 'repos/{owner}/{repo}/commits/abc/check-runs' --jq '.check_runs[].conclusion'",
+    "gh api -X GET 'repos/{owner}/{repo}/actions/runs?branch=x' --paginate",
+    OPEN,
+    `${OPEN} -F draft=true --jq .html_url`,
+    `gh api --method POST 'repos/{owner}/{repo}/pulls' --raw-field=base=dev --field=head=feature/OSI-1--x -f title="$(git log -1 --format=%s)"`,
     "gh run view 5 --log-failed",
     "gh run list",
   ]);
-  assert.notEqual(git("gh pr create --base dev --fill", { base: "", branch: "" }), null);
-});
-
-test("gh pr edit edits only the run's own PR", () => {
-  denies(git, [
-    "gh pr edit 3 --title t",
-    "gh pr edit 3 --base dev",
-    "gh pr edit https://github.com/o/r/pull/3 --title t",
-    "gh pr edit --title t 3",
-    "gh pr edit --add-reviewer someone 3",
-    "gh pr edit -- 3",
-    "gh pr edit other-branch --title t",
-  ]);
+  assert.notEqual(git(OPEN, { base: "", branch: "" }), null);
 });
 
 test("a PR body file is read only inside the run's worktree", () => {
@@ -246,20 +252,20 @@ test("a PR body file is read only inside the run's worktree", () => {
   const run = { ...RUN, root, cwd: root };
   const inRun = (command) => git(command, run);
   allows(inRun, [
-    "gh pr create --base dev --title t --body-file body.md",
-    `gh pr create --base dev --title t --body-file ${join(root, "body.md")}`,
-    "gh pr edit --body-file=./notes/body.md",
-    "gh pr edit -F body.md",
-    "gh pr create --base dev --title t -F -",
+    `${OPEN} -F body=@body.md`,
+    `${OPEN} -F body=@${join(root, "body.md")}`,
+    `${OPEN} --field=body=@./notes/body.md`,
+    `${OPEN} -F body=@-`,
+    `${OPEN} -f body=@/etc/passwd`,
   ]);
   denies(inRun, [
-    "gh pr create --base dev --title t --body-file ~/.ssh/id_ed25519",
-    "gh pr create --base dev --title t --body-file /etc/passwd",
-    "gh pr edit --body-file ../outside.md",
-    "gh pr edit -F../outside.md",
-    "gh pr edit --body-file=/Users/x/.config/gh/hosts.yml",
+    `${OPEN} -F body=@~/.ssh/id_ed25519`,
+    `${OPEN} -F body=@/etc/passwd`,
+    `${OPEN} -F body=@../outside.md`,
+    `${OPEN} -Fbody=@/Users/x/.config/gh/hosts.yml`,
+    `${OPEN} -F "body=@$F"`,
   ]);
-  assert.notEqual(git("gh pr edit --body-file body.md"), null, "no worktree to judge against");
+  assert.notEqual(git(`${OPEN} -F body=@body.md`), null, "no worktree to judge against");
 });
 
 test("the git guard cannot be sidestepped through shell syntax", () => {
@@ -346,7 +352,7 @@ test("the git guard cannot be sidestepped through shell syntax", () => {
     "git push origin HEAD > /dev/null 2>&1",
     "git branch --show-current 2>/dev/null",
     "git config --get user.name 2>/dev/null",
-    'gh pr list --head "$(git branch --show-current)" --json url',
+    'gh run list --branch "$(git branch --show-current)" --json url',
     "echo $((1 + 2))",
     "bash scripts/check.sh < input.txt",
     "git status && git add -A && git commit -m x",
@@ -518,6 +524,11 @@ test("read-only guard closes the write paths the review found", () => {
     "gh api -fquery=x graphql",
     "gh api --input=body.json repos/o/r/issues",
     "gh api user",
+    "gh api 'repos/{owner}/{repo}/pulls' -f base=dev -f head=x -f title=t",
+    "gh api -X GET 'repos/{owner}/{repo}/pulls' -f state=open",
+    "gh api repos/o/r/pulls/3",
+    "gh pr view 12 --json state",
+    "gh pr diff 12",
     "echo x>src/a.ts",
     'git diff > "src/a.ts"',
     "git diff &>src/a.ts",
@@ -547,7 +558,9 @@ test("read-only guard closes the write paths the review found", () => {
     "npx vitest run src/a.test.ts",
     "npm test -- src/a.test.ts",
     "git diff $(git merge-base HEAD origin/dev)",
-    "gh pr view 12 --json state",
+    "gh api 'repos/{owner}/{repo}/pulls/12' --jq .state",
+    "gh api repos/{owner}/{repo}/pulls/12 -H 'Accept: application/vnd.github.diff'",
+    "gh run view 5 --log-failed",
   ]);
 });
 

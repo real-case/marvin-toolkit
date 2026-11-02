@@ -1,7 +1,8 @@
 import { execFileSync, execSync } from "node:child_process";
+import { fetchPull, prRef, repoPath, type RestPull } from "./github.js";
 
 export type CiState = "green" | "red" | "pending" | "conflict" | "no_ci" | "closed";
-interface Pr {
+export interface Pr {
   state: string;
   mergeable: string;
   mergeStateStatus: string;
@@ -50,16 +51,30 @@ export function fetchCi(o: { worktree: string; prUrl: string; tokenCommand: stri
   };
   const gh = (...args: string[]) =>
     execFileSync("gh", args, { cwd: o.worktree, env, encoding: "utf8" });
-  const pr = JSON.parse(
-    gh("pr", "view", o.prUrl, "--json", "state,mergeable,mergeStateStatus,headRefOid,headRefName"),
-  ) as Pr & { headRefName: string };
+  const ref = prRef(o.prUrl);
+  const rest = fetchPull(gh, ref);
   const runs = JSON.parse(
     gh(
       "api",
-      `repos/{owner}/{repo}/actions/runs?branch=${encodeURIComponent(pr.headRefName)}&per_page=50`,
+      `${repoPath(ref)}/actions/runs?branch=${encodeURIComponent(rest.head.ref)}&per_page=50`,
       "--jq",
       ".workflow_runs",
     ),
   ) as WorkflowRun[];
-  return { pr, runs };
+  return { pr: prFromRest(rest), runs };
+}
+
+/**
+ * A REST pull request in the shape `classifyCi` reads, which is the shape `gh pr view --json`
+ * printed before the engine moved to REST: upper-case state, a merged PR as `MERGED`, and
+ * `mergeable` as `MERGEABLE`, `CONFLICTING` or, while GitHub is still computing it, `UNKNOWN`.
+ */
+export function prFromRest(rest: RestPull): Pr {
+  return {
+    state: rest.merged ? "MERGED" : rest.state.toUpperCase(),
+    mergeable:
+      rest.mergeable === true ? "MERGEABLE" : rest.mergeable === false ? "CONFLICTING" : "UNKNOWN",
+    mergeStateStatus: (rest.mergeable_state ?? "unknown").toUpperCase(),
+    headRefOid: rest.head.sha,
+  };
 }

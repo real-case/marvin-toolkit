@@ -187,6 +187,26 @@ test("resume carries the session id", () => {
   );
 });
 
+test("a fresh child names its own session id; a resume names only the one it continues", () => {
+  const fresh = cmd.buildChildCommand({
+    ...base,
+    role: "planner",
+    allowedTools: writing,
+    sessionId: "6f1c2b8e-1a2b-4c3d-8e4f-0a1b2c3d4e5f",
+  }).argv;
+  assert.equal(after(fresh, "--session-id"), "6f1c2b8e-1a2b-4c3d-8e4f-0a1b2c3d4e5f");
+  assert.ok(!fresh.includes("--resume"));
+  const resumed = cmd.buildChildCommand({
+    ...base,
+    role: "planner",
+    allowedTools: writing,
+    sessionId: "6f1c2b8e-1a2b-4c3d-8e4f-0a1b2c3d4e5f",
+    resumeSessionId: "c354963a",
+  }).argv;
+  assert.equal(after(resumed, "--resume"), "c354963a");
+  assert.ok(!resumed.includes("--session-id"));
+});
+
 test("no command ever bypasses permissions", () => {
   for (const role of ["planner", "executor", "test-author"]) {
     assert.ok(

@@ -6,6 +6,7 @@ import { AutopilotStatusView, AutopilotStatusWidget } from "./AutopilotStatusWid
 import {
   haltedFixture,
   quietFixture,
+  readyEnglishFixture,
   readyFixture,
   runningFixture,
   waitingFixture,
@@ -13,7 +14,14 @@ import {
 import { createMockHost } from "../../lib/mock-host";
 
 describe("fixtures — AutopilotReportPayload contract", () => {
-  const fixtures = { runningFixture, waitingFixture, readyFixture, haltedFixture, quietFixture };
+  const fixtures = {
+    runningFixture,
+    waitingFixture,
+    readyFixture,
+    readyEnglishFixture,
+    haltedFixture,
+    quietFixture,
+  };
   for (const [name, fixture] of Object.entries(fixtures)) {
     it(`${name} parses against the contract`, () => {
       const parsed = AutopilotReportPayload.safeParse(fixture);
@@ -149,6 +157,148 @@ describe("AutopilotStatusView — the card", () => {
     expect(screen.getByTestId("autopilot-connecting").textContent).toBe("No autopilot report.");
     rerender(<AutopilotStatusView data={null} error="boom" />);
     expect(screen.getByTestId("autopilot-error").textContent).toContain("boom");
+  });
+});
+
+describe("AutopilotStatusView — the final card", () => {
+  it("sums the run up in the order of the design, with no footer", () => {
+    render(<AutopilotStatusView data={readyFixture} />);
+    const card = screen.getByTestId("autopilot-card");
+    expect(screen.getByTestId("autopilot-final-title").textContent).toBe(
+      "Автопилот · итоговый отчёт",
+    );
+    expect(screen.getByTestId("autopilot-period").textContent).toMatch(
+      /^r-1025-1412-ab3c · \d\d:\d\d → \d\d:\d\d$/,
+    );
+    expect(card.textContent).not.toContain("#15 • marvin");
+    expect(screen.getAllByTestId("rail-duration").map((d) => d.textContent)).toEqual([
+      "7 мин",
+      "9 мин",
+      "28 мин",
+      "6 мин",
+      "8 мин",
+      "10 мин",
+      "4 мин",
+    ]);
+    const figures = screen.getAllByTestId("autopilot-figure").map((f) => f.textContent);
+    expect(figures[0]).toContain("1 ч 12 мин");
+    expect(figures[0]).toContain("активно 58 мин");
+    expect(figures[1]).toContain("$7.48");
+    expect(figures[1]).toContain("5 ролей");
+    expect(figures[1]).not.toContain("за интервал");
+    expect(figures[2]).toContain("Итерации");
+    expect(figures[2]).toContain("ступень 1");
+    expect(figures[3]).toContain("проверки: 2 блок.");
+    expect(screen.getByTestId("autopilot-tokens").textContent).toContain("Токены · 11.3M");
+    expect(screen.getAllByTestId("autopilot-token-kind").map((k) => k.textContent)).toEqual([
+      "Чтение кэша9.8M",
+      "Запись кэша1.1M",
+      "Вход210k",
+      "Выход190k",
+    ]);
+    const outcome = screen.getByTestId("autopilot-outcome").textContent;
+    expect(outcome).toContain("PR #266 готов к слиянию");
+    expect(outcome).toContain("9 файлов · +412 −38 · CI: 5 из 5 · в dev");
+    expect(screen.getByTestId("autopilot-open-pr").getAttribute("href")).toBe(
+      readyFixture.report.prUrl,
+    );
+    expect(screen.getByTestId("autopilot-criteria").textContent).toContain(
+      "Критерии приёмки · 6 из 6",
+    );
+    expect(screen.getAllByTestId("autopilot-criterion")).toHaveLength(6);
+    expect(screen.getByTestId("autopilot-questions").textContent).toContain(
+      "оркестратор ответил на 2, вы на 0",
+    );
+    expect(screen.getByTestId("autopilot-retro").textContent).toContain(
+      "+1 проверка в checks.yaml, +1 урок в .marvin/memory.",
+    );
+    expect(screen.getAllByTestId("autopilot-assumption")).toHaveLength(1);
+    expect(screen.queryByTestId("autopilot-footer")).toBeNull();
+    const order = [
+      "autopilot-rail",
+      "autopilot-tokens",
+      "autopilot-outcome",
+      "autopilot-criteria",
+      "autopilot-questions",
+      "autopilot-assumption",
+      "autopilot-events",
+    ].map((id) => screen.getAllByTestId(id)[0]!);
+    for (let i = 1; i < order.length; i += 1) {
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("unfolds the tokens by role, amber at 80% of the window, and the evidence", () => {
+    render(<AutopilotStatusView data={readyFixture} />);
+    expect(screen.queryByTestId("autopilot-tokens-roles")).toBeNull();
+    fireEvent.click(screen.getByTestId("autopilot-tokens-toggle"));
+    const rows = screen.getAllByTestId("autopilot-token-role").map((r) => r.textContent);
+    expect(rows).toEqual([
+      "ПланировщикOpus 5.51.6M9%",
+      "Автор тестовOpus 5.51.3M7%",
+      "Исполнитель × 2Opus 5.56.4M29%",
+      "ВерификаторSonnet 5.51.4M84%",
+      "РетроSonnet 5.5600k21%",
+    ]);
+    const bars = screen
+      .getAllByTestId("autopilot-token-role")
+      .map((r) => (r.querySelector("[aria-hidden] > span") as HTMLElement).style.background);
+    expect(bars[3]).toBe("var(--amb)");
+    expect(bars[2]).toBe("var(--ac)");
+    expect(screen.queryByTestId("autopilot-proof")).toBeNull();
+    fireEvent.click(screen.getByTestId("autopilot-proof-toggle"));
+    const proofs = screen.getAllByTestId("autopilot-proof");
+    expect(proofs.map((p) => p.getAttribute("data-proof"))).toEqual([
+      "red_green",
+      "red_green",
+      "red_green",
+      "green",
+      "green",
+      "green",
+    ]);
+    expect(proofs[0]!.textContent).toBe("red→green");
+    expect(proofs[0]!.style.background).toBe("var(--acbg)");
+    expect(proofs[5]!.style.background).toBe("var(--grnbg)");
+  });
+
+  it("opens the PR through the host when the host can", () => {
+    const opened: string[] = [];
+    render(<AutopilotStatusView data={readyFixture} openLink={(u) => opened.push(u)} />);
+    fireEvent.click(screen.getByTestId("autopilot-open-pr"));
+    expect(opened).toEqual([readyFixture.report.prUrl]);
+  });
+
+  it("hides what the run left absent, in English", () => {
+    render(<AutopilotStatusView data={readyEnglishFixture} />);
+    expect(screen.getByTestId("autopilot-final-title").textContent).toBe(
+      "Autopilot · final report",
+    );
+    expect(screen.queryByTestId("autopilot-tokens")).toBeNull();
+    expect(screen.queryByTestId("autopilot-retro")).toBeNull();
+    expect(screen.queryByTestId("autopilot-assumption")).toBeNull();
+    expect(screen.getAllByTestId("rail-duration")[1]?.textContent).toBe("");
+    expect(screen.getAllByTestId("autopilot-figure")[1]?.textContent).toContain(
+      "5 roles, some costs unknown",
+    );
+    expect(screen.getByTestId("autopilot-outcome").textContent).toContain(
+      "9 files · +412 −38 · into dev",
+    );
+    // A ready run's criteria are all met; only the proven one offers evidence.
+    expect(screen.getByTestId("autopilot-criteria").textContent).toContain(
+      "Acceptance criteria · 2 of 2",
+    );
+    fireEvent.click(screen.getByTestId("autopilot-proof-toggle"));
+    expect(screen.getAllByTestId("autopilot-proof")).toHaveLength(1);
+  });
+
+  it("keeps the periodic layout for a final report without a summary", () => {
+    const report = { ...readyFixture.report, summary: null };
+    render(<AutopilotStatusView data={{ ...readyFixture, report }} />);
+    expect(screen.queryByTestId("autopilot-final-title")).toBeNull();
+    expect(screen.getByTestId("autopilot-footer")).toBeTruthy();
+    expect(screen.queryAllByTestId("rail-duration")).toHaveLength(0);
   });
 });
 

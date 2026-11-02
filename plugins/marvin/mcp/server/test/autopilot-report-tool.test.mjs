@@ -238,6 +238,132 @@ test(
   }),
 );
 
+test("a final report renders the summary sections and no footer", () => {
+  const rail = [
+    "planning",
+    "test_authoring",
+    "executing",
+    "gating",
+    "verifying",
+    "ci_wait",
+    "retro",
+  ];
+  const summary = {
+    stages: rail.map((key, i) => ({ key, ms: i === 1 ? null : (i + 1) * 60_000 })),
+    activeMs: 58 * 60_000,
+    roles: 5,
+    tokens: {
+      total: 11_300_000,
+      cacheRead: 9_800_000,
+      cacheWrite: 1_100_000,
+      input: 210_000,
+      output: 190_000,
+      byRole: [
+        {
+          role: "executor",
+          sessions: 2,
+          model: "claude-opus-5-5",
+          total: 6_400_000,
+          peakContext: 176_000,
+          contextWindow: 200_000,
+        },
+      ],
+    },
+    pr: {
+      number: 266,
+      files: 9,
+      additions: 412,
+      deletions: 38,
+      checksPassed: 5,
+      checksTotal: 5,
+      base: "dev",
+    },
+    criteria: [
+      { id: "AC1", text: "written every five minutes", proof: "red_green" },
+      { id: "AC2", text: "the card unfolds", proof: null },
+    ],
+    questions: { byOrchestrator: 2, byUser: 0 },
+    retro: { checks: 1, lessons: 1 },
+    assumptions: ["the interval comes from --report-min"],
+  };
+  const report = {
+    version: 1,
+    runId: "r-1025",
+    n: 15,
+    at: "2026-10-25T15:26:00Z",
+    since: "2026-10-25T15:21:00Z",
+    nextBy: null,
+    final: true,
+    lang: "en",
+    task: "t",
+    sessionName: "Report card",
+    state: "ready",
+    stage: "ready",
+    rail: rail.map((key) => ({ key, state: "done" })),
+    startedAt: "2026-10-25T14:14:00Z",
+    elapsedMs: 72 * 60_000,
+    costUsd: 7.48,
+    costComplete: true,
+    costDeltaUsd: 0.62,
+    iteration: 2,
+    rung: 1,
+    rejections: { total: 1, last: { source: "gate", blocking: 2 } },
+    active: [],
+    judgment: null,
+    callout: null,
+    events: [{ at: "2026-10-25T15:26:00Z", kind: "note", text: "PR ready to merge." }],
+    omittedEvents: 0,
+    prUrl: "https://github.com/o/r/pull/266",
+    session: {
+      name: "r-retro",
+      role: "retro",
+      model: "claude-sonnet-5-5",
+      effort: "low",
+      contextTokens: 1,
+      contextWindow: 2,
+    },
+    summary,
+  };
+  const text = renderReport(report);
+  assert.match(
+    text,
+    /^## Autopilot · final report · PR ready to merge\n\*\*Report card\*\*\n`r-1025` · /,
+  );
+  assert.match(text, /✓ Plan \(1 min\) → ✓ Tests → ✓ Execution \(3 min\)/);
+  assert.match(text, /\| Elapsed \| Cost \| Iterations \| Rejections \|/);
+  assert.match(
+    text,
+    /1 h 12 min · active 58 min \| \$7\.48 · 5 roles \| 2 · rung 1 \| 1 · gates: 2 blocking/,
+  );
+  assert.match(
+    text,
+    /\*\*Tokens · 11\.3M\*\*\nCache read 9\.8M · Cache write 1\.1M · Input 210k · Output 190k/,
+  );
+  assert.match(text, /\| Executor × 2 \| Opus 5\.5 \| 6\.4M \| 88% · 176k \/ 200k \|/);
+  assert.match(
+    text,
+    /> \*\*PR #266 ready to merge\*\* · \[Open PR\]\(https:\/\/github\.com\/o\/r\/pull\/266\)/,
+  );
+  assert.match(text, /> 9 files · \+412 −38 · CI: 5 of 5 · into dev/);
+  assert.match(
+    text,
+    /\*\*Acceptance criteria · 2 of 2\*\*\n- ✓ `AC1` written every five minutes · `red→green`\n- ✓ `AC2` the card unfolds\n/,
+  );
+  assert.match(
+    text,
+    /\*\*Questions:\*\* 2 questions: the orchestrator answered 2, you answered 0\./,
+  );
+  assert.match(text, /\*\*Retro:\*\* \+1 check in checks\.yaml, \+1 lesson in \.marvin\/memory\./);
+  assert.match(
+    text,
+    /> \*\*Assumption · check at review:\*\* the interval comes from --report-min/,
+  );
+  assert.match(text, /- `\d\d:\d\d` PR ready to merge\.$/);
+  assert.doesNotMatch(text, /effort/, "no session footer");
+  // A final report without the summary, written before the field existed, reads as before.
+  assert.match(renderReport({ ...report, summary: null }), /^## #15 · PR ready to merge · r-1025/);
+});
+
 test("the bundle binds the autopilot-status widget and rejects an undeclared argument", async () => {
   const listed = await withSession({}, (s) => s.request("tools/list", {}));
   const tool = listed.tools.find((t) => t.name === "autopilot-report");

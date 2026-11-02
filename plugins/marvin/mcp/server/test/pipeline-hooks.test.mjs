@@ -14,7 +14,7 @@ test("read-only guard allows reading and probing", () => {
   for (const c of [
     "git diff dev...HEAD --stat",
     "npx vitest run src/a.test.ts",
-    "gh pr view 12 --json state",
+    "gh api 'repos/{owner}/{repo}/pulls/12' --jq .state",
     "git log --oneline -5 2>&1 | tail -5",
     "cat a.ts > /dev/null",
   ]) {

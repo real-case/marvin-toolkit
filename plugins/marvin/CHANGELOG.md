@@ -4,7 +4,87 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [0.38.0] — 2026-11-02
+
+### Changed
+
+- **The autopilot reaches GitHub through REST only, so it runs inside a Claude Code cloud
+  session.** There GitHub's GraphQL API is refused ("GitHub GraphQL is not available from Claude
+  Code sessions; use the REST API"), and every `gh pr view`, `gh pr create`, `gh pr checks` and
+  `gh pr diff` is a GraphQL call. The engine's CI look now reads the pull request from
+  `gh api repos/<owner>/<repo>/pulls/<n>` (`state`, `merged`, `mergeable`, `mergeable_state`,
+  `head.sha`, `head.ref`, mapped onto the shape it always judged; a `mergeable` GitHub has not
+  computed yet is not a conflict); mark-ready reads the draft state the same way; and the final
+  report card takes its size from the same call and its checks from the head commit's check runs
+  and commit statuses. One code path serves every host, local runs included.
+- **A pipeline child's GitHub surface is `gh api`.** `/marvin:pr-create`'s pipeline mode looks
+  for an open PR with `gh api 'repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open'` and
+  opens the draft with `gh api 'repos/{owner}/{repo}/pulls' -f base=… -f head=… -f title=…
+  -F body=@<file> -F draft=true`; the executor role names the same lookup. The child guard admits
+  `gh api` GETs of the current repository (the endpoint must start with gh's own
+  `repos/{owner}/{repo}/` placeholders) and one write, `POST …/pulls` from the run branch into the
+  run's base, with its body file inside the worktree, an `Accept` header the only header, and no
+  `--input` or `--hostname`; it refuses every `gh pr` subcommand. The read-only guard admits the
+  same GETs. Every writing child is granted `Bash(gh api:*)` whatever `pipeline.allowed_commands`
+  lists, and the read-only roles get it in place of `gh pr view` and `gh pr diff`. The default
+  `allowed_commands` drops its three `gh pr` entries. The sandbox `gh` shim answers the REST calls.
+- **Marking a draft ready is the one call with no REST form.** `gh pr ready` is still tried; where
+  it is refused, as in a cloud session, the PR stays a draft, the run finishes, and a note asks the
+  user to mark it ready on GitHub.
+
+### Fixed
+
+- **A child no longer resumes the orchestrator's conversation.** In a cloud container every
+  nested `claude -p` inherited `CLAUDE_CODE_SESSION_ID` and reported the parent's session id, which
+  the engine recorded and passed to `--resume` on a retry. Each child now runs under a
+  `--session-id` the engine generates and records at launch (a replay reuses it from the spawn
+  marker), the recorded id wins over the one the stream reports, and `CLAUDE_CODE_SESSION_ID`,
+  `CLAUDE_CODE_REMOTE_SESSION_ID` and `CLAUDE_CODE_CHILD_SESSION` are removed from a child's
+  environment. The transport and messaging variables (`ANTHROPIC_BASE_URL`,
+  `CLAUDE_SESSION_INGRESS_TOKEN_FILE`, `CLAUDE_CODE_MESSAGING_*`) stay, because a child reaches
+  the model and SendMessage through them.
+
+## [0.37.0] — 2026-10-28
+
+### Added
+
+- **The autopilot's final report card.** A run that is over no longer reports like any
+  five-minute interval. Its final report carries a new optional `summary` block on the
+  `AutopilotReport` contract, and the `autopilot-status` widget switches to a final layout: the
+  header reads "Autopilot · final report" with the run id and its start and end times; each rail
+  stage shows its time; the figures give the active time and the number of roles; a token section
+  shows the total, a stacked bar and legend for cache read, cache write, input and output, and,
+  behind a toggle, a table by role with the model, the tokens and the peak context (amber at 80%
+  or more); a green block names the PR with its files, added and removed lines, CI checks and base
+  branch, and links to it; the acceptance criteria follow as a fixed grid with their
+  `red→green` or `green` proof behind a toggle; then the questions by who answered them, what the
+  retro added, and one amber block per assumption, before the events. The final card has no
+  session footer. The `autopilot-report` tool's Markdown renders the same sections, and both
+  surfaces take their words from new `ru`/`en` labels in `autopilotLabels(lang).final`.
+- The figures come from what the engine already keeps. Stage times, active time, roles,
+  questions and assumptions are derived from `run.json` and the events; tokens by kind, model and
+  peak context from each child's whole `stream-json` log (a resumed session counted once, as its
+  cost is); the criteria from the shipped spec, proven by the seal stage's red run or the oracle
+  journal; the PR from `gh pr view`; and what the retro added from a new `retro-applied.json`
+  that finalize writes in the run directory. A source that is absent leaves its field null and
+  the card hides that part; a final report written before the field keeps the periodic layout.
+
+### Fixed
+
+- A spawn held by `notBefore` (a usage limit) no longer starts a millisecond early: a Node
+  timer can fire before the wall clock reaches its deadline, so the engine now waits again until
+  it has.
+
 ## [0.36.2] — 2026-10-28
+
+### Fixed
+
+- **The gate no longer halts a run on a diff it parsed correctly.** The leftover-construct scan
+  read the patch at zero context, while its line-count cross-check reads `--numstat`, which uses
+  the default context. On some rewrites git aligns a blank line differently in the two, so the
+  counts disagreed and every retry was rejected with "check diff could not be parsed" until the
+  rejection cap (a 1,700-line `Pages.tsx` refactor: 1,000 added lines against 998). The scan now
+  reads the patch at the same context as the count.
 
 ### Changed
 
