@@ -991,7 +991,7 @@ const PROMPT_RULES = [
   // A re-seal raises the iteration without a delivery, so the iteration number says nothing.
   [
     "executor",
-    /no pull request yet \(`gh pr view` finds none\)[^.]*whatever the iteration number/,
+    /no pull request yet \(`gh api [^`]*pulls\?head=[^`]*` prints nothing\)[^.]*whatever the iteration number/,
     "the first spawn after a re-seal may still have no pull request",
   ],
   // Only the verifier's own faults and `T-revise` are re-sealed; the gate's never are.
@@ -1203,7 +1203,7 @@ test("a dispute answered with revise_tests restarts the executor with no pull re
   const executor = flat(roleText("executor"));
   assert.doesNotMatch(executor, /\b(iteration 1|later iterations|first iteration)\b/i);
   assert.match(executor, /`T-revise`/);
-  const probe = /\(`(gh pr view)` finds none\)/.exec(executor)?.[1];
+  const probe = /\(`(gh api [^`]+)` prints nothing\)/.exec(executor)?.[1];
   assert.ok(probe, "executor.md names no probe for an existing pull request");
   assert.equal(childGitViolation(probe, RUN_BRANCH), null, probe);
 });

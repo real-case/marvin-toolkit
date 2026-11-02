@@ -215,7 +215,9 @@ the old title is still your address. If the attach fails, set the old title back
 title and the run's name never disagree.
 
 `[merged]` and `[closed]` are outside the engine: set them only if this session merges the PR
-(`/marvin:pr-merge`) or learns its state from `gh pr view` after the run.
+(`/marvin:pr-merge`) or learns its state after the run, through
+`gh api repos/{owner}/{repo}/pulls/<n> --jq '{state, merged}'`: in a Claude Code cloud session
+GitHub's GraphQL API, which `gh pr view` uses, is refused.
 
 ## Judgments
 

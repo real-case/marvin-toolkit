@@ -84,6 +84,21 @@ is merged. The children run as your OS user with your credentials; the
 [security policy](../SECURITY.md#trust-boundary) describes what their guards do and do not
 cover.
 
+The autopilot also runs inside a Claude Code cloud session. Two things differ there, and the
+engine handles both. GitHub's GraphQL API is refused, so the engine and its children reach
+GitHub only through the REST API (`gh api`), on every host: no step runs `gh pr view`, `gh pr
+create` or `gh pr checks`. The one action GitHub offers no REST form for is marking a draft pull
+request ready; in a cloud session that call is refused, the run still finishes, and its last
+note asks you to mark the pull request ready on GitHub. And a nested `claude -p` inherits the
+cloud session's identity, so the engine gives every child its own `--session-id` and removes
+`CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_REMOTE_SESSION_ID` and `CLAUDE_CODE_CHILD_SESSION` from
+its environment, keeping the transport and messaging variables a child needs to reach the model
+and send messages back. A child may print "Ignoring … permissions.allow entries from
+.claude/settings.json: this workspace has not been trusted". That is expected and needs no
+`hasTrustDialogAccepted` setting: a child's permissions come from the `--allowedTools` its
+command line passes and its guards from the `--settings` file the engine writes, and both apply
+in an untrusted workspace.
+
 ## Track work on the task board
 
 The board is a per-project tracker stored as markdown under `.marvin/track/`. Create a

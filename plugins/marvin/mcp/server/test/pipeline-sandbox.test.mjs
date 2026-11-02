@@ -67,7 +67,7 @@ test("the effective assignment swaps the model only, and only with an override i
   assert.equal(effectiveAssignment(a, { enabled: false, modelOverride: "haiku" }), a);
 });
 
-test("the gh shim plays one draft PR through view, create, edit, diff and ready", () => {
+test("the gh shim plays one draft PR through the REST calls a child makes", () => {
   assert.match(SANDBOX_PR_URL, PR_URL_PATTERN, "the executor's pr_url rule accepts the shim's URL");
   const home = mkdtempSync(join(tmpdir(), "pipe-sandbox-"));
   const env = {
@@ -95,54 +95,57 @@ test("the gh shim plays one draft PR through view, create, edit, diff and ready"
   const shimEnv = { ...env, ...installSandboxGh(runDir) };
   const gh = (...a) => spawnSync("gh", a, { cwd: repo, env: shimEnv, encoding: "utf8" });
 
-  const none = gh("pr", "view");
-  assert.equal(none.status, 1);
-  assert.match(none.stderr, /no pull requests found for branch "feature\/x"/);
-  assert.equal(gh("pr", "create", "--title", "t").status, 1, "a PR names its base");
+  const PULLS = "repos/{owner}/{repo}/pulls";
+  const LOOKUP = `${PULLS}?head={owner}:{branch}&state=open`;
+  const api = (...a) => gh("api", ...a);
+
+  const none = api(LOOKUP, "--jq", ".[0].html_url // empty");
+  assert.equal(none.status, 0, none.stderr);
+  assert.equal(none.stdout, "", "no PR yet");
+  assert.equal(
+    api(PULLS, "-f", "head=feature/x", "-f", "title=t").status,
+    1,
+    "a PR names its base",
+  );
 
   const body = join(home, "body.md");
   writeFileSync(body, "## Summary\nb\n");
-  const created = gh(
-    "pr",
-    "create",
-    "--base",
-    "dev",
-    "--draft",
-    "--title",
-    "feat: b",
-    "--body-file",
-    body,
-  );
+  const open = (...extra) =>
+    api(PULLS, "-f", "base=dev", "-f", "head=feature/x", "-f", "title=feat: b", ...extra);
+  const created = open("-F", `body=@${body}`, "-F", "draft=true", "--jq", ".html_url");
   assert.equal(created.status, 0, created.stderr);
   assert.equal(created.stdout.trim(), SANDBOX_PR_URL);
-  assert.match(gh("pr", "create", "--base", "dev").stderr, /already exists/);
+  assert.match(open().stderr, /already exists/);
+  assert.equal(api(LOOKUP, "--jq", ".[0].html_url // empty").stdout.trim(), SANDBOX_PR_URL);
 
-  const view = JSON.parse(
-    gh("pr", "view", "--json", "url,isDraft,body,headRefOid,baseRefName").stdout,
-  );
-  assert.deepEqual(view, {
-    url: SANDBOX_PR_URL,
-    isDraft: true,
-    body: "## Summary\nb\n",
-    headRefOid: git("rev-parse", "HEAD"),
-    baseRefName: "dev",
+  const view = JSON.parse(api(`${PULLS}/1`).stdout);
+  assert.equal(view.html_url, SANDBOX_PR_URL);
+  assert.equal(view.draft, true);
+  assert.equal(view.body, "## Summary\nb\n");
+  assert.deepEqual(view.head, { ref: "feature/x", sha: git("rev-parse", "HEAD") });
+  assert.equal(view.base.ref, "dev");
+  assert.equal(api(`${PULLS}/1`, "--jq", ".head.ref").stdout.trim(), "feature/x");
+  assert.match(api(`${PULLS}/1`, "-H", "Accept: application/vnd.github.diff").stdout, /\+b/);
+  assert.deepEqual(JSON.parse(api("repos/{owner}/{repo}/actions/runs?branch=feature/x").stdout), {
+    total_count: 0,
+    workflow_runs: [],
   });
-  assert.equal(
-    gh("pr", "view", SANDBOX_PR_URL, "--json", "url", "--jq", ".url").stdout.trim(),
-    SANDBOX_PR_URL,
-  );
-  assert.equal(gh("pr", "edit", "--title", "feat: b2").status, 0);
-  assert.equal(JSON.parse(gh("pr", "view", "--json", "title").stdout).title, "feat: b2");
-  assert.match(gh("pr", "diff").stdout, /\+b/);
-  assert.deepEqual(JSON.parse(gh("pr", "list", "--json", "url").stdout), [{ url: SANDBOX_PR_URL }]);
-  assert.equal(gh("pr", "ready").status, 0);
+  assert.equal(gh("pr", "ready", SANDBOX_PR_URL).status, 0);
   assert.equal(JSON.parse(readFileSync(join(runDir, "sandbox-gh.json"), "utf8")).isDraft, false);
 
   // Anything the shim does not play fails, as the child guard would refuse it.
-  const merge = gh("pr", "merge");
-  assert.equal(merge.status, 1);
-  assert.match(merge.stderr, /not available in the autopilot sandbox/);
+  for (const call of [
+    ["pr", "view"],
+    ["pr", "merge"],
+    ["api", "graphql"],
+    ["api", "-X", "PATCH", `${PULLS}/1`],
+  ]) {
+    const refused = gh(...call);
+    assert.equal(refused.status, 1, call.join(" "));
+  }
+  assert.match(gh("pr", "view").stderr, /not available in the autopilot sandbox/);
   // Another branch has no PR.
   git("checkout", "-q", "dev");
-  assert.equal(gh("pr", "view").status, 1);
+  assert.equal(api(LOOKUP, "--jq", ".[0].html_url // empty").stdout, "");
+  assert.equal(api(`${PULLS}/1`).status, 1);
 });

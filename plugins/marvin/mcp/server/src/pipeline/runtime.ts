@@ -1,5 +1,5 @@
 import { execFileSync, execSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -28,6 +28,7 @@ import { ensureRecord } from "../storage/metrics.js";
 import { specReadiness } from "../tools/spec.js";
 import { readSignals, readySpec, sealIssue, type Rubric } from "./assess.js";
 import { type CiState, classifyCi, fetchCi } from "./ci.js";
+import { fetchPull, prRef } from "./github.js";
 import {
   buildChildCommand,
   type ChildCommand,
@@ -150,6 +151,11 @@ const SpawnMarker = z.object({
   name: z.string(),
   startedAt: z.string(),
   pid: z.number().int().nullable(),
+  /**
+   * The session id the engine gave the child (`--session-id`, or the one `--resume` continues).
+   * Optional so a marker written before it existed still parses; a replay reuses it.
+   */
+  sessionId: z.string().optional(),
 });
 type SpawnMarker = z.infer<typeof SpawnMarker>;
 
@@ -494,11 +500,11 @@ function fakeArgv(
   const before = script
     ? `require("node:child_process").execFileSync(process.execPath, ${JSON.stringify([script, String(earlier + 1)])}, { stdio: ["ignore", "ignore", "inherit"] });`
     : "";
-  return [
-    process.execPath,
-    "-e",
-    `${before}process.stdout.write(${JSON.stringify(`${JSON.stringify(event)}\n`)})`,
-  ];
+  // Like a real `claude -p` in a cloud container, a fake reports the session it inherited when
+  // its environment names one (`CLAUDE_CODE_SESSION_ID`, which `childEnvironment` strips), and
+  // `MARVIN_PIPELINE_FAKE_SESSION_ID` makes it report a fixed id whatever the engine assigned.
+  const report = `const e = ${JSON.stringify(event)}; e.session_id = process.env.CLAUDE_CODE_SESSION_ID || process.env.MARVIN_PIPELINE_FAKE_SESSION_ID || e.session_id; process.stdout.write(JSON.stringify(e) + "\\n");`;
+  return [process.execPath, "-e", `${before}${report}`];
 }
 
 export function createRuntime(o: RuntimeOptions): EngineDeps {
@@ -937,7 +943,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
   const markerPath = (ref: string) => at(join("spawns", `${ref}.json`));
 
   /**
-   * The GitHub token `pipeline.github.token_command` prints, for a writing child's `gh pr create`
+   * The GitHub token `pipeline.github.token_command` prints, for a writing child's `gh api` calls
    * and `git push`, so that they act as the account the run reads CI with. Without it the child's
    * `gh` used whichever account was active, which in a 2026-10-17 run had no access to the
    * repository: two executors failed on the pull request (the guard rightly refuses a child
@@ -976,7 +982,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       name: marker.name,
       role: action.role,
       iteration: action.iteration,
-      sessionId: null,
+      sessionId: marker.sessionId ?? null,
       pid: marker.pid,
       assignment: action.assignment,
       startedAt: marker.startedAt,
@@ -1042,6 +1048,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
         if (c.role === role && c.sessionId) resumeSessionId = c.sessionId;
       if (!resumeSessionId) throw new Error(`cannot resume ${role}: no earlier ${role} session`);
     }
+    // A fresh child gets a session id the engine chose rather than the one its stream reports: in
+    // a Claude Code cloud session every nested `claude -p` reported the PARENT's id (probe of
+    // 2026-11-02), so a retry resumed by the reported id would continue the orchestrator's
+    // conversation. A resume continues the id the engine recorded.
+    const sessionId = resumeSessionId ?? randomUUID();
     const real = buildChildCommand({
       role,
       name,
@@ -1054,7 +1065,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       settingsPath,
       systemPromptPath,
       schema,
-      ...(resumeSessionId ? { resumeSessionId } : {}),
+      ...(resumeSessionId ? { resumeSessionId } : { sessionId }),
       allowedTools,
       ...(role === "test-author" ? { testPathPattern: config.pipeline.test_path_pattern } : {}),
       pluginDir: childPluginDir(),
@@ -1084,7 +1095,14 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const commonBefore = at(`${key}.common-before.json`);
     if (!existsSync(commonBefore)) writeAtomic(commonBefore, snapshotGitCommon(run.repoRoot));
 
-    const marker: SpawnMarker = { ref: step.ref, key, name, startedAt: now(), pid: null };
+    const marker: SpawnMarker = {
+      ref: step.ref,
+      key,
+      name,
+      startedAt: now(),
+      pid: null,
+      sessionId,
+    };
     writeAtomic(markerPath(step.ref), `${JSON.stringify(marker)}\n`);
     const { pid } = launchDetached(cmd, runDir, key);
     const launched = { ...marker, pid };
@@ -1318,7 +1336,10 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
     const updated: Child = {
       ...child,
-      sessionId: obs.result.sessionId ?? child.sessionId,
+      // The id the engine assigned at launch wins over the one the stream reports, which a
+      // cloud container fills with the parent's; only a row from before ids were assigned
+      // takes the stream's.
+      sessionId: child.sessionId ?? obs.result.sessionId,
       costUsd: obs.result.costUsd,
       cacheReadTokens: obs.result.cacheReadTokens,
       status: obs.result.outcome,
@@ -2151,11 +2172,22 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
       });
-    // A replay finds the PR already out of draft and leaves it.
-    const view = z
-      .object({ isDraft: z.boolean() })
-      .parse(JSON.parse(gh("pr", "view", run.prUrl, "--json", "isDraft")));
-    if (view.isDraft) gh("pr", "ready", run.prUrl);
+    // A replay finds the PR already out of draft and leaves it. The read is REST; the one write
+    // has no REST form, so `gh pr ready` (GraphQL) stays, and where GraphQL is refused, as in a
+    // Claude Code cloud session, the PR stays a draft and the user is told, rather than the run
+    // failing on a PR that is otherwise done.
+    const pull = fetchPull(gh, prRef(run.prUrl));
+    if (!pull.draft) return { run };
+    try {
+      gh("pr", "ready", run.prUrl);
+    } catch (error) {
+      const stderr = String((error as { stderr?: unknown }).stderr ?? "").trim();
+      const why = (stderr || errorText(error)).split("\n")[0];
+      noteOnce(
+        step.ref,
+        `the pull request stays a draft: GitHub has no REST call that marks it ready, and gh pr ready failed (${why}); mark it ready on GitHub`,
+      );
+    }
     return { run };
   };
 

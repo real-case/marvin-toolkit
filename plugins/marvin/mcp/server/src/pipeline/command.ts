@@ -14,6 +14,8 @@ export interface ChildLaunchSpec {
   systemPromptPath: string;
   schema: string;
   resumeSessionId?: string;
+  /** The id a fresh child runs under (`--session-id`); ignored when `resumeSessionId` is set. */
+  sessionId?: string;
   allowedTools?: readonly string[];
   testPathPattern?: string;
   pluginDir: string;
@@ -54,8 +56,8 @@ export const READ_BASE_TOOLS = [
   "Bash(git ls-files:*)",
   "Bash(git merge-base:*)",
   "Bash(git rev-parse:*)",
-  "Bash(gh pr view:*)",
-  "Bash(gh pr diff:*)",
+  // REST only (`github.ts`); the readonly guard admits GETs of this repository alone.
+  "Bash(gh api:*)",
 ] as const;
 
 /** Throws unless `prefix` can stand in a `Bash(<prefix>:*)` allowlist entry. */
@@ -76,7 +78,16 @@ export function readOnlyAllowedTools(probePrefixes: readonly string[]): string[]
   return [...READ_BASE_TOOLS, ...probePrefixes.map((p) => `Bash(${p}:*)`)];
 }
 
-export const WRITING_BASE_TOOLS = ["mcp__plugin_marvin_marvin", "SendMessage"] as const;
+/**
+ * `gh api` is granted to every writing child whatever `allowed_commands` lists, because it is
+ * how a child reads its PR and opens it (REST only, `github.ts`); the child guard bounds it to
+ * GETs of this repository and the one `POST …/pulls` from the run branch.
+ */
+export const WRITING_BASE_TOOLS = [
+  "mcp__plugin_marvin_marvin",
+  "SendMessage",
+  "Bash(gh api:*)",
+] as const;
 
 export function writingAllowedTools(commandPrefixes: readonly string[]): string[] {
   commandPrefixes.forEach((p) => validatePrefix(p));
@@ -220,6 +231,7 @@ export function buildChildCommand(s: ChildLaunchSpec): ChildCommand {
   }
 
   if (s.resumeSessionId) argv.push("--resume", s.resumeSessionId);
+  else if (s.sessionId) argv.push("--session-id", s.sessionId);
 
   const env: Record<string, string> = {
     MARVIN_PIPELINE: "1",

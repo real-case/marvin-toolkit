@@ -26,6 +26,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const packDir = join(repoRoot, "plugins", "marvin");
 const serverSrc = join(packDir, "mcp", "server", "src");
+const { childGitViolation } = await import(
+  join(packDir, "pipeline", "hooks", "child-git-guard.mjs")
+);
 
 const SKILLS = ["task-implement", "task-deliver", "commit", "pr-create"];
 const HEADING = "## Pipeline mode";
@@ -161,9 +164,22 @@ test("pr-create: config base, draft once, Pipeline body section, no issue questi
   const s = flat(raw);
   assert.match(s, /no confirmation/i, "the confirmation is not skipped");
   assert.match(s, /`base_branch`/, "the base is not the configured one");
-  assert.match(s, /`--base`/, "--base is not named");
-  assert.match(s, /`--draft`/, "--draft is not named");
-  assert.match(s, /`gh pr view`/, "an existing PR is not looked for first");
+  assert.match(s, /never `gh pr`/, "GraphQL-backed gh pr is not ruled out");
+  const lookup = /`(gh api '[^`]*pulls\?head=[^`]*)`/.exec(s)?.[1];
+  assert.ok(lookup, "an existing PR is not looked for first");
+  const open = /^\s*(gh api '[^\n]*pulls' [^\n]*)$/m.exec(raw)?.[1];
+  assert.ok(open, "the REST call that opens the PR is not shown");
+  assert.match(open, /-f base=<base>/, "the base is not named");
+  assert.match(open, /-F draft=true/, "the PR is not opened as a draft");
+  // Both commands, filled in, pass the child guard that will judge them.
+  const run = { base: "dev", branch: "feature/T-1--x", root: repoRoot, cwd: repoRoot };
+  const filled = open
+    .replace("<base>", run.base)
+    .replace("<branch>", run.branch)
+    .replace("'<title>'", "'feat: x'")
+    .replace("<body file>", "body.md");
+  assert.equal(childGitViolation(lookup, run), null, lookup);
+  assert.equal(childGitViolation(filled, run), null, filled);
   assert.match(raw, /^\s*## Pipeline$/m, "the body's Pipeline section is missing");
   for (const field of ["Run:", "Tier:", "Iteration:"]) {
     assert.ok(raw.includes(`- ${field}`), `the Pipeline section lacks "${field}"`);

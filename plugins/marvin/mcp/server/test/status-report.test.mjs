@@ -483,21 +483,32 @@ test("final facts: the PR from gh, and its figures null when gh cannot say", () 
   const run = baseRun({ stage: "ready", prUrl: "https://github.com/o/r/pull/266" });
   const calls = [];
   const facts = sr.finalFacts(dir, run, (args, cwd) => {
-    calls.push([args.slice(0, 3), cwd]);
-    return JSON.stringify({
-      changedFiles: 9,
-      additions: 412,
-      deletions: 38,
-      baseRefName: "dev",
-      statusCheckRollup: [
-        { conclusion: "SUCCESS" },
-        { conclusion: "SKIPPED" },
-        { state: "SUCCESS" },
-        { conclusion: "FAILURE" },
-      ],
-    });
+    calls.push([args, cwd]);
+    const path = args[1];
+    if (path === "repos/o/r/pulls/266")
+      return JSON.stringify({
+        changed_files: 9,
+        additions: 412,
+        deletions: 38,
+        base: { ref: "dev" },
+        head: { sha: "abc123", ref: "feature/x" },
+      });
+    if (path.startsWith("repos/o/r/commits/abc123/check-runs"))
+      return JSON.stringify({
+        check_runs: [
+          { conclusion: "success" },
+          { conclusion: "skipped" },
+          { conclusion: "failure" },
+        ],
+      });
+    if (path === "repos/o/r/commits/abc123/status")
+      return JSON.stringify({ statuses: [{ state: "success" }] });
+    throw new Error(`unexpected gh ${args.join(" ")}`);
   });
-  assert.deepEqual(calls, [[["pr", "view", run.prUrl], "/repo"]]);
+  assert.ok(
+    calls.every(([args, cwd]) => args[0] === "api" && cwd === "/repo"),
+    "REST only, from the worktree",
+  );
   assert.deepEqual(facts.pr, {
     number: 266,
     files: 9,
