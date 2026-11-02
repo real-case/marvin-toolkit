@@ -371,7 +371,7 @@ export const PipelineConfig = z.object({
         }
       });
     })
-    .default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"]),
+    .default(["git", "npm run", "npm ci", "npx --no"]),
 });
 export type PipelineConfig = z.infer<typeof PipelineConfig>;
 

@@ -116,10 +116,13 @@ export function effectiveAssignment(a: Assignment, s: SandboxSettings): Assignme
 
 /**
  * The `gh` shim, run by node. Its state is one JSON file beside it, so the PR an executor opened
- * is the PR the next executor and the verifier find. It mimics the shapes the pipeline's skills
- * and roles rely on: `pr view` fails with "no pull requests found" until `pr create` succeeds,
- * `pr create` prints the URL and refuses a second PR, and `--json` / `--jq .field` answer from
- * the recorded PR and the worktree's git. Everything else fails, as the child guard would refuse it.
+ * is the PR the next executor and the verifier find. It answers the REST calls the pipeline's
+ * children make through `gh api` (`github.ts` says why REST only): the open-PR lookup by head
+ * (`pulls?head=…`), which lists nothing until a PR exists; `POST …/pulls`, which records the PR,
+ * prints it and refuses a second one; `GET …/pulls/<n>`, as JSON or, with the diff media type, as
+ * the branch's diff; and empty workflow runs and check runs. `--jq` takes `.a.b`, `.[0].a` and a
+ * trailing `// empty`. `pr ready` flips the draft. Everything else fails, as the child guard would
+ * refuse it.
  */
 const SHIM = String.raw`
 import { execFileSync } from "node:child_process";
@@ -141,130 +144,120 @@ const fail = (text) => {
 };
 const load = () => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : null);
 const save = (pr) => writeFileSync(STATE, JSON.stringify(pr, null, 2) + "\n");
-const value = (long, short) => {
-  for (let i = 0; i < args.length; i += 1) {
-    const a = args[i];
-    if (a === long || (short && a === short)) return args[i + 1] ?? "";
-    if (a.startsWith(long + "=")) return a.slice(long.length + 1);
-  }
-  return null;
-};
-const has = (name) => args.includes(name);
-const body = () => {
-  const file = value("--body-file", "-F");
-  if (file !== null) return file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8");
-  return value("--body", "-b");
-};
 const branch = () => git("rev-parse", "--abbrev-ref", "HEAD");
-const fields = (pr) => ({
-  url: pr.url,
+const rest = (pr) => ({
+  html_url: pr.url,
   number: 1,
-  state: pr.state,
-  isDraft: pr.isDraft,
+  state: pr.state === "OPEN" ? "open" : "closed",
+  merged: false,
+  draft: pr.isDraft,
   title: pr.title,
   body: pr.body,
-  baseRefName: pr.base,
-  headRefName: pr.head,
-  headRefOid: git("rev-parse", "HEAD"),
-  mergeable: "MERGEABLE",
-  mergeStateStatus: "CLEAN",
-  reviewDecision: "",
-  statusCheckRollup: [],
-  comments: [],
-  reviews: [],
+  mergeable: true,
+  mergeable_state: "clean",
+  base: { ref: pr.base },
+  head: { ref: pr.head, sha: git("rev-parse", "HEAD") },
 });
-const emit = (pr) => {
-  const json = value("--json");
-  if (json === null) {
-    process.stdout.write(pr.title + "\n" + pr.url + "\n" + (pr.isDraft ? "draft" : "open") + "\n");
-    return;
-  }
-  const all = fields(pr);
-  const picked = Object.fromEntries(json.split(",").map((k) => [k.trim(), all[k.trim()] ?? null]));
-  const jq = value("--jq", "-q");
-  if (jq !== null) {
-    const m = /^\.(\w+)$/.exec(jq.trim());
-    if (!m) fail("gh (autopilot sandbox): only --jq .<field> is supported, not " + jq);
-    const v = picked[m[1]];
-    process.stdout.write((typeof v === "string" ? v : JSON.stringify(v)) + "\n");
-    return;
-  }
-  process.stdout.write(JSON.stringify(picked) + "\n");
-};
 const current = () => {
   const pr = load();
-  if (!pr || pr.head !== branch()) fail('no pull requests found for branch "' + branch() + '"');
+  if (!pr || pr.head !== branch()) fail("gh: Not Found (HTTP 404)");
   return pr;
 };
+const jq = (value, filter) => {
+  let f = filter.trim();
+  let orEmpty = false;
+  if (f.endsWith("// empty")) {
+    orEmpty = true;
+    f = f.slice(0, -"// empty".length).trim();
+  }
+  if (!/^(\.[A-Za-z_]\w*|\.\[\d+\])+$|^\.$/.test(f)) {
+    fail("gh (autopilot sandbox): --jq takes .a.b, .[0].a and // empty only, not " + filter);
+  }
+  let v = value;
+  for (const step of f.match(/\.[A-Za-z_]\w*|\.\[\d+\]/g) ?? []) {
+    if (v === null || v === undefined) break;
+    v = step.startsWith(".[") ? v[Number(step.slice(2, -1))] : v[step.slice(1)];
+  }
+  if (v === null || v === undefined) return orEmpty ? "" : "null\n";
+  return (typeof v === "string" ? v : JSON.stringify(v)) + "\n";
+};
 
-const sub = (args[0] ?? "") + " " + (args[1] ?? "");
-switch (sub) {
-  case "pr create": {
+const api = () => {
+  let method = null;
+  let filter = null;
+  let diff = false;
+  const fields = {};
+  const positional = [];
+  for (let i = 1; i < args.length; i += 1) {
+    const a = args[i];
+    const next = () => args[++i] ?? "";
+    if (a === "-X" || a === "--method") method = next().toUpperCase();
+    else if (a === "-q" || a === "--jq") filter = next();
+    else if (a === "-H" || a === "--header") diff ||= /vnd\.github(\.v3)?\.diff/.test(next());
+    else if (a === "-f" || a === "--raw-field" || a === "-F" || a === "--field") {
+      const typed = a === "-F" || a === "--field";
+      const kv = next();
+      const at = kv.indexOf("=");
+      let v = kv.slice(at + 1);
+      if (typed && v.startsWith("@")) v = readFileSync(v === "@-" ? 0 : v.slice(1), "utf8");
+      else if (typed && (v === "true" || v === "false")) v = v === "true";
+      fields[kv.slice(0, at)] = v;
+    } else if (a.startsWith("-")) fail("gh (autopilot sandbox): gh api " + a + " is not supported");
+    else positional.push(a);
+  }
+  const endpoint = (positional[0] ?? "").replace(/^\//, "");
+  const m = /^repos\/\{owner\}\/\{repo\}\/([^?]*)(?:\?(.*))?$/.exec(endpoint);
+  if (!m) fail("gh (autopilot sandbox): only repos/{owner}/{repo}/… is supported, not " + endpoint);
+  const [, path, query = ""] = m;
+  method ??= Object.keys(fields).length ? "POST" : "GET";
+  const out = (value) => {
+    process.stdout.write(filter === null ? JSON.stringify(value) + "\n" : jq(value, filter));
+  };
+  if (method === "POST" && path === "pulls") {
     const existing = load();
-    if (existing && existing.head === branch()) {
-      fail('a pull request for branch "' + branch() + '" into branch "' + existing.base + '" already exists:\n' + existing.url);
+    if (existing && existing.head === fields.head) {
+      fail("gh: Validation Failed (HTTP 422): A pull request already exists for " + fields.head + ".");
     }
-    const base = value("--base", "-B");
-    if (!base) fail("gh (autopilot sandbox): pr create needs --base");
+    if (!fields.base || !fields.head) fail("gh: Validation Failed (HTTP 422): base and head are required");
     const pr = {
       url: URL,
       state: "OPEN",
-      isDraft: has("--draft") || has("-d"),
-      title: value("--title", "-t") ?? git("log", "-1", "--format=%s"),
-      body: body() ?? "",
-      base,
-      head: value("--head", "-H") ?? branch(),
+      isDraft: fields.draft === true,
+      title: fields.title ?? git("log", "-1", "--format=%s"),
+      body: fields.body ?? "",
+      base: fields.base,
+      head: fields.head,
     };
     save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
+    return out(rest(pr));
   }
-  case "pr view":
-    emit(current());
-    break;
-  case "pr list": {
+  if (method !== "GET") fail("gh (autopilot sandbox): gh api " + method + " " + endpoint + " is not supported");
+  if (path === "pulls") {
+    const head = new URLSearchParams(query).get("head");
     const pr = load();
-    const mine = pr && pr.head === branch() ? [pr] : [];
-    if (value("--json") === null) {
-      for (const p of mine) process.stdout.write("1\t" + p.title + "\t" + p.head + "\n");
-    } else {
-      const keys = value("--json").split(",").map((k) => k.trim());
-      const rows = mine.map((p) => Object.fromEntries(keys.map((k) => [k, fields(p)[k] ?? null])));
-      process.stdout.write(JSON.stringify(rows) + "\n");
-    }
-    break;
+    const name = head === null ? branch() : head.slice(head.indexOf(":") + 1).replace("{branch}", branch());
+    return out(pr && pr.head === name && pr.state === "OPEN" ? [rest(pr)] : []);
   }
-  case "pr edit": {
+  if (/^pulls\/\d+$/.test(path)) {
     const pr = current();
-    const title = value("--title", "-t");
-    const text = body();
-    if (title !== null) pr.title = title;
-    if (text !== null) pr.body = text;
-    save(pr);
-    process.stdout.write(pr.url + "\n");
-    break;
+    if (diff) return process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
+    return out(rest(pr));
   }
-  case "pr ready": {
-    const pr = current();
-    pr.isDraft = false;
-    save(pr);
-    break;
-  }
-  case "pr diff": {
-    const pr = current();
-    process.stdout.write(git("diff", "origin/" + pr.base + "...HEAD") + "\n");
-    break;
-  }
-  case "pr checks":
-    current();
-    fail('no checks reported on the "' + branch() + '" branch');
-    break;
-  case "run list":
-    process.stdout.write(value("--json") === null ? "" : "[]\n");
-    break;
-  default:
-    fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
-}
+  if (path === "actions/runs") return out({ total_count: 0, workflow_runs: [] });
+  if (/^commits\/[^/]+\/check-runs$/.test(path)) return out({ total_count: 0, check_runs: [] });
+  if (/^commits\/[^/]+\/status$/.test(path)) return out({ state: "pending", statuses: [] });
+  fail("gh (autopilot sandbox): gh api GET " + endpoint + " is not supported");
+};
+
+const sub = (args[0] ?? "") + " " + (args[1] ?? "");
+if (args[0] === "api") api();
+else if (sub === "pr ready") {
+  const pr = load();
+  if (!pr) fail("gh: no pull request");
+  pr.isDraft = false;
+  save(pr);
+} else if (sub === "run list") process.stdout.write(args.includes("--json") ? "[]\n" : "");
+else fail("gh " + sub.trim() + ": not available in the autopilot sandbox");
 `;
 
 /**

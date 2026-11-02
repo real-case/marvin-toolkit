@@ -6,6 +6,6 @@
   },
   "pipeline": {
     "tracker_default": "SANDBOX",
-    "allowed_commands": ["git", "gh pr create", "gh pr view", "gh pr edit", "node --test"]
+    "allowed_commands": ["git", "node --test"]
   }
 }
