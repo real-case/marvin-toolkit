@@ -67,7 +67,7 @@ Here is a complete example with every field set:
     "bootstrap": "npm ci --prefer-offline",
     "lockfile": "package-lock.json",
     "stall_minutes": 15,
-    "allowed_commands": ["git", "gh pr create", "npm run", "npx --no"]
+    "allowed_commands": ["git", "npm run", "npx --no"]
   },
   "statuses": [
     { "key": "backlog", "role": "todo" },
@@ -332,7 +332,7 @@ base commit's `.marvin/config.json`, never from a run's worktree.
 | `tracker_default` | `TBD` | The tracker id used in the branch name when the spec has none. |
 | `bootstrap` | `null` | A command run once in a fresh run worktree before any child starts, such as `npm ci --prefer-offline`. `null` runs nothing; a run worktree has no `node_modules` of its own, so when the root `package.json` declares dependencies and none are installed, a run with `null` stops before any child starts and names the install its lockfile calls for. |
 | `lockfile` | `null` | The lockfile `bootstrap` installs from, such as `package-lock.json`. |
-| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. The engine reads CI and marks the pull request ready with it, and hands it to the writing children (planner, test-author, executor) as `GH_TOKEN`, so that their `gh pr create` and `git push` act as that account rather than whichever one is active. `null` uses `gh`'s own authentication everywhere. |
+| `github.token_command` | `null` | A command that prints the GitHub token for the pipeline's `gh` calls, such as `gh auth token --user <login>`. The engine reads CI and marks the pull request ready with it, and hands it to the writing children (planner, test-author, executor) as `GH_TOKEN`, so that their `gh api` calls and `git push` act as that account rather than whichever one is active. `null` uses `gh`'s own authentication everywhere. |
 | `stall_minutes` | `15` | Minutes without output from a child before it counts as stalled. |
 | `no_ci_minutes` | `10` | Minutes after a push with no CI run appearing before the pipeline concludes the branch has no CI. |
 | `gate_timeout_minutes` | `20` | Minutes one gate command may run before it is killed. |
@@ -342,7 +342,7 @@ base commit's `.marvin/config.json`, never from a run's worktree.
 | `protected_volatile` | `[]` | Paths under a protected directory that are the project's own state rather than configuration: what its hooks and gate scripts write, such as `.claude/.rules-loaded/` or a stamp file. An entry ending in `/` covers a directory; any other entry names one file. The gate skips a covered path that changed outside the committed diff only while git ignores it, and lists it in the report as `volatile`. An entry that is executed or read as configuration is refused when the config loads: `.claude/settings*.json`, `.claude/hooks/`, `agents/`, `skills/`, `commands/`, `rules/`, `output-styles/`, `plugins/`, `CLAUDE.md`, `.husky/`, `.marvin/`, `.mcp.json` and every `.git*` file. So is a whole top-level directory such as `.claude/`: name the state under it, so that what the gate skips never depends on that list alone. Git's ignore rules are read without `core.excludesFile`. |
 | `format_command` | `null` | A formatter run over the files the pipeline itself writes, with each path appended. `null` runs the Prettier installed in the main checkout (`node_modules/.bin/prettier`, which must resolve to inside its `node_modules`; never the run worktree's, which a child can write) with `--write --ignore-unknown`, and nothing when there is none; `""` turns formatting off. |
 | `conventions` | `""` | Project conventions, as prose, handed to the verifier. |
-| `allowed_commands` | `["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"]` | The command prefixes the writing roles (planner, test-author, executor) may run in Bash. `npx --no` runs a tool that is already installed and never downloads one. |
+| `allowed_commands` | `["git", "npm run", "npm ci", "npx --no"]` | The command prefixes the writing roles (planner, test-author, executor) may run in Bash. `npx --no` runs a tool that is already installed and never downloads one. `gh api` is granted to every writing role whatever this list says, because it is how a child reads and opens its pull request; the child guard limits it to reads of this repository and one `POST repos/{owner}/{repo}/pulls` from the run branch into the run's base. A `gh pr …` entry grants nothing a guard will let through. |
 
 Two things differ from the rest of the file. The two pattern keys are regular expressions, not
 the globs of [`scope.exempt`](#scope), and a pattern that does not compile is refused when the

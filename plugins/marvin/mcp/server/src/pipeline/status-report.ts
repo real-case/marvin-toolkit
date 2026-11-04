@@ -23,6 +23,7 @@ import { parseFrontmatter } from "../storage/frontmatter.js";
 import { readOracleRuns, redGreenProof } from "../storage/oracles.js";
 import { SpecContract, contractHash, extractContractBlock } from "../storage/spec.js";
 import { contextUse, logUsage, readLogTail, type LogUsage } from "./child-activity.js";
+import { parsePrUrl, repoPath } from "./github.js";
 import { childKey, type PipelineEvent, type Run, type Stage } from "./run-store.js";
 
 /**
@@ -451,14 +452,18 @@ const ghRunner: GhRunner = (args, cwd) =>
     timeout: 20_000,
   });
 
-const PASSED_CHECK = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
+const PASSED_CHECK = new Set(["success", "skipped", "neutral"]);
 
-/** The pull request's size and checks as `gh` reports them; each figure null when it cannot say. */
+/**
+ * The pull request's size and checks, read through GitHub's REST API (`github.ts` says why not
+ * `gh pr view`); each figure null when it cannot say. The checks are the head commit's check runs
+ * and its commit statuses together, which is what `statusCheckRollup` counted.
+ */
 function prOf(run: Run, gh: GhRunner): AutopilotSummary["pr"] {
   if (run.prUrl === null) return null;
-  const number = Number(/\/pull\/(\d+)/.exec(run.prUrl)?.[1] ?? NaN);
+  const ref = parsePrUrl(run.prUrl);
   const pr: NonNullable<AutopilotSummary["pr"]> = {
-    number: Number.isInteger(number) && number > 0 ? number : null,
+    number: ref?.number ?? null,
     files: null,
     additions: null,
     deletions: null,
@@ -466,33 +471,38 @@ function prOf(run: Run, gh: GhRunner): AutopilotSummary["pr"] {
     checksTotal: null,
     base: run.base,
   };
+  if (ref === null) return pr;
+  const cwd = run.worktree ?? run.repoRoot;
+  const api = (path: string) =>
+    JSON.parse(gh(["api", `${repoPath(ref)}/${path}`], cwd)) as Record<string, unknown>;
+  const int = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : null);
+  let head: string | null = null;
   try {
-    const view = JSON.parse(
-      gh(
-        [
-          "pr",
-          "view",
-          run.prUrl,
-          "--json",
-          "changedFiles,additions,deletions,baseRefName,statusCheckRollup",
-        ],
-        run.worktree ?? run.repoRoot,
-      ),
-    ) as Record<string, unknown>;
-    const int = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : null);
-    pr.files = int(view.changedFiles);
+    const view = api(`pulls/${ref.number}`);
+    pr.files = int(view.changed_files);
     pr.additions = int(view.additions);
     pr.deletions = int(view.deletions);
-    if (typeof view.baseRefName === "string" && view.baseRefName !== "") pr.base = view.baseRefName;
-    if (Array.isArray(view.statusCheckRollup)) {
-      const checks = view.statusCheckRollup as Record<string, unknown>[];
-      pr.checksTotal = checks.length;
-      pr.checksPassed = checks.filter(
-        (c) => PASSED_CHECK.has(String(c.conclusion ?? "")) || c.state === "SUCCESS",
-      ).length;
-    }
+    const base = (view.base as { ref?: unknown } | undefined)?.ref;
+    if (typeof base === "string" && base !== "") pr.base = base;
+    const sha = (view.head as { sha?: unknown } | undefined)?.sha;
+    if (typeof sha === "string" && sha !== "") head = sha;
   } catch {
     // The figures stay null: the card shows the PR without them.
+  }
+  if (head === null) return pr;
+  try {
+    const runs = api(`commits/${head}/check-runs?per_page=100`).check_runs;
+    const statuses = api(`commits/${head}/status`).statuses;
+    if (Array.isArray(runs) && Array.isArray(statuses)) {
+      const checks = runs as Record<string, unknown>[];
+      const states = statuses as Record<string, unknown>[];
+      pr.checksTotal = checks.length + states.length;
+      pr.checksPassed =
+        checks.filter((c) => PASSED_CHECK.has(String(c.conclusion ?? ""))).length +
+        states.filter((c) => c.state === "success").length;
+    }
+  } catch {
+    // The checks stay null.
   }
   return pr;
 }

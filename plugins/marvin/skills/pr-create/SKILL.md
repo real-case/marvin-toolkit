@@ -102,12 +102,25 @@ chained from `/marvin:task-deliver`, where nobody is present to answer. The work
 except where this section overrides it. An interactive session never sets the variable, so none of
 this reaches one.
 
+- **GitHub through REST only.** Reach GitHub with `gh api`, never `gh pr`: a Claude Code cloud
+  session refuses GraphQL, which every `gh pr` subcommand uses, so the pipeline's guard refuses
+  `gh pr` everywhere and one form works in both places. Quote the endpoint and keep gh's own
+  `{owner}/{repo}` placeholders in it; the guard refuses any other repository.
 - **The base is the run's.** Use the base the TASK CONTEXT names, which the pipeline took from
-  `base_branch` in `.marvin/config.json`, and never ask. The pipeline's guard refuses `gh pr create`
-  with any other `--base`.
-- **One pull request, opened as a draft.** Run `gh pr view` first: when the branch already has an
-  open PR, the push has updated it, so report its URL and create nothing. Otherwise add `--draft`.
-  The pipeline marks the PR ready itself once its verifier has passed and CI is green.
+  `base_branch` in `.marvin/config.json`, and never ask. The pipeline's guard refuses a pull request
+  with any other `base`, or from any branch but the run's.
+- **One pull request, opened as a draft.** Look for one first:
+  `gh api 'repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open' --jq '.[0].html_url // empty'`.
+  When it prints a URL, the push has updated that PR, so report it and create nothing. Otherwise
+  write the body to a file inside the worktree and open the PR in place of Submit step 3, with the
+  base and the branch written out:
+
+  ```bash
+  gh api 'repos/{owner}/{repo}/pulls' -f base=<base> -f head=<branch> -f title='<title>' -F body=@<body file> -F draft=true --jq .html_url
+  ```
+
+  It prints the PR's URL. Delete the body file once the PR exists. The pipeline marks the PR ready
+  itself once its verifier has passed and CI is green.
 - **No confirmation.** Skip Submit step 4; the pipeline's verifier reads the PR instead.
 - **No second gate run.** Skip Submit step 1 and fill `## Verification` from the last full `verify`
   run (`.marvin/task/runs/<slug>.md`): the run the delivery gate judged, or the red run

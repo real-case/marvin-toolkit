@@ -29567,7 +29567,7 @@ var PipelineConfig = external_exports.object({
         });
       }
     });
-  }).default(["git", "gh pr create", "gh pr view", "gh pr edit", "npm run", "npm ci", "npx --no"])
+  }).default(["git", "npm run", "npm ci", "npx --no"])
 });
 var Config = external_exports.object({
   base_branch: external_exports.string().default("dev"),
@@ -40906,7 +40906,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.37.0";
+var VERSION = "0.38.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

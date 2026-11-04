@@ -5,7 +5,7 @@
  * A child may follow instructions injected through repository content, so the rules are
  * allowlists wherever git's grammar allows one: `git push` has exactly one accepted
  * shape, `git checkout` restores paths only, `git branch` and `git config` read only,
- * `gh` runs a fixed set of PR/run subcommands, and a git subcommand the guard does not
+ * `gh` makes REST reads of its own repository and opens the run's PR, and a git subcommand the guard does not
  * know — possibly an alias for `switch` — is refused. Around that sit the forms that
  * would carry git past those rules: wrappers and interpreters, subshells, substitutions,
  * a quoted or escaped command name, `git -c`/`-C`/`--git-dir`, environment overrides
@@ -20,6 +20,7 @@
 import { isAbsolute, resolve } from "node:path";
 import { gitSubcommand, readPayload } from "../../hooks/lib/hook-io.mjs";
 import { denyPipeline, isPipelineEntry, pipelineMain } from "./lib/deny.mjs";
+import { parseGhApi, readViolation } from "./lib/gh-api.mjs";
 import { physicalPath, relativeInside } from "./lib/paths.mjs";
 import {
   ASSIGNMENT,
@@ -172,15 +173,17 @@ const GIT_DENIED = new Map([
   ["update-ref", "git update-ref rewrites a branch the pipeline owns"],
 ]);
 
-const GH_ALLOWED = new Set([
-  "pr create",
-  "pr view",
-  "pr edit",
-  "pr diff",
-  "pr checks",
-  "pr list",
-  "run view",
-  "run list",
+/** `gh` subcommands besides `gh api`; both are REST calls. */
+const GH_ALLOWED = new Set(["run view", "run list"]);
+
+/** The fields a child may send when it opens the run's pull request. */
+const PR_CREATE_FIELDS = new Set([
+  "title",
+  "body",
+  "base",
+  "head",
+  "draft",
+  "maintainer_can_modify",
 ]);
 
 const texts = (tokens) => tokens.map((t) => t.text);
@@ -418,33 +421,15 @@ function flagValues(t, long, short) {
   return values;
 }
 
-/** `gh pr edit` flags that take no value; every other flag takes the next word unless `=` joins it. */
-const GH_EDIT_SWITCHES = new Set(["--remove-milestone", "--help", "-h"]);
-
-/** The words of `gh pr edit` that are not flags or flag values: the PR it would edit. */
-function prEditTargets(t) {
-  const targets = [];
-  for (let i = 0; i < t.length; i += 1) {
-    const a = t[i];
-    if (a === "--") {
-      targets.push(...t.slice(i + 1));
-      break;
-    }
-    if (!a.startsWith("-")) targets.push(a);
-    else if (!GH_EDIT_SWITCHES.has(a) && !a.includes("=") && !/^-[A-Za-z]./.test(a)) i += 1;
-  }
-  return targets;
-}
-
 /**
- * Why a `--body-file` would publish a file from outside the worktree, or null. The PR body
+ * Why a PR body file would publish a file from outside the worktree, or null. The PR body
  * is public, so a body file is read only inside the run's worktree (`-` is the command's
  * own input); without the worktree and the shell's directory it cannot be judged.
  */
 function bodyFileViolation(files, { root, cwd }) {
   for (const file of files) {
     if (file === "-") continue;
-    const refusal = `gh --body-file may only read a file inside the run's worktree (${file})`;
+    const refusal = `gh may only read a PR body from a file inside the run's worktree (${file})`;
     if (typeof root !== "string" || root === "" || typeof cwd !== "string" || cwd === "") {
       return refusal;
     }
@@ -458,37 +443,57 @@ function bodyFileViolation(files, { root, cwd }) {
   return null;
 }
 
-function ghViolation(command, { base, branch, root, cwd }) {
+/**
+ * Why a `gh api` call is not one a writing child may make, or null: a GET of this repository,
+ * or the one write, `POST repos/{owner}/{repo}/pulls` from the run branch into the run's base.
+ * A body read from a file (`-F body=@<file>`) must sit inside the worktree, because the PR body
+ * is public. There is no PR edit: a PR is opened once and the pipeline's own steps do the rest.
+ */
+function ghApiViolation(tokens, { base, branch, root, cwd }) {
+  const request = parseGhApi(tokens);
+  if ("error" in request) return request.error;
+  if (request.method === "GET") return readViolation(request);
+  if (
+    request.method !== "POST" ||
+    !/^repos\/\{owner\}\/\{repo\}\/pulls\/?$/.test(request.endpoint)
+  ) {
+    return `gh api ${request.method} ${request.endpoint}: a child's one write is POST repos/{owner}/{repo}/pulls`;
+  }
+  const seen = new Set();
+  for (const field of request.fields) {
+    if (!PR_CREATE_FIELDS.has(field.key)) return `gh api: opening a PR takes no ${field.key} field`;
+    if (seen.has(field.key)) return `gh api: the ${field.key} field is given twice`;
+    seen.add(field.key);
+    const file = field.typed && field.value.startsWith("@") ? field.value.slice(1) : null;
+    if (field.key === "title" || field.key === "body") {
+      if (file !== null && field.key === "title")
+        return "gh api: the title is not read from a file";
+      if (file !== null && !field.dynamic) {
+        const outside = bodyFileViolation([file], { root, cwd });
+        if (outside) return outside;
+      } else if (file !== null) {
+        return "gh api: a body file named through an expansion cannot be judged";
+      }
+      continue;
+    }
+    if (field.dynamic || file !== null) return `gh api: the ${field.key} field must be written out`;
+  }
+  const value = (key) => request.fields.find((f) => f.key === key)?.value;
+  if (value("base") === undefined || base === "" || value("base") !== base) {
+    return `gh api: a PR must name the run's base: -f base=${base || "<base>"}`;
+  }
+  if (value("head") === undefined || branch === "" || value("head") !== branch) {
+    return `gh api: a PR may only be opened from the run branch: -f head=${branch || "<unnamed yet>"}`;
+  }
+  return null;
+}
+
+function ghViolation(command, run) {
   const t = texts(command.slice(1));
+  if (t[0] === "api" && !isDynamic(command[1])) return ghApiViolation(command.slice(2), run);
   const sub = `${t[0] ?? ""} ${t[1] ?? ""}`.trim();
   if (!GH_ALLOWED.has(sub) || command.slice(1, 3).some(isDynamic)) {
-    return `gh ${sub} is not available to pipeline children (gh pr create|view|edit|diff|checks|list, gh run view|list only)`;
-  }
-  if (sub !== "pr create" && sub !== "pr edit") return null;
-  const rest = t.slice(2);
-  if (rest.some((a) => /^-[A-Za-z]*[BHR]/.test(a) && !/^-[BHR]/.test(a))) {
-    return `gh ${sub} with a bundled -B/-H/-R flag the guard cannot read`;
-  }
-  if (flagValues(rest, "--repo", "-R").length > 0)
-    return `gh ${sub} --repo targets another repository`;
-  const bases = flagValues(rest, "--base", "-B");
-  if (sub === "pr create" && bases.length === 0) {
-    return `gh pr create must name the run's base: --base ${base || "<base>"}`;
-  }
-  if (bases.some((b) => base === "" || b !== base)) {
-    return `gh ${sub} may only target the run's base (${base || "unknown"})`;
-  }
-  if (
-    sub === "pr edit" &&
-    prEditTargets(rest).some((target) => branch === "" || target !== branch)
-  ) {
-    return "gh pr edit may only edit the run's own PR: name no PR, or the run branch";
-  }
-  const bodyFile = bodyFileViolation(flagValues(rest, "--body-file", "-F"), { root, cwd });
-  if (bodyFile) return bodyFile;
-  const heads = sub === "pr create" ? flagValues(rest, "--head", "-H") : [];
-  if (heads.some((h) => branch === "" || h !== branch)) {
-    return `gh pr create may only open a PR from the run branch (${branch || "unnamed yet"})`;
+    return `gh ${sub} is not available to pipeline children (gh api on repos/{owner}/{repo}/…, gh run view|list only)`;
   }
   return null;
 }

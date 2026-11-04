@@ -27,6 +27,46 @@ follows semver independently of the surrounding marketplace.
   finalize commits already did. A host that checks attribution on every commit failed a run on
   them alone.
 
+## [0.38.0] — 2026-11-02
+
+### Changed
+
+- **The autopilot reaches GitHub through REST only, so it runs inside a Claude Code cloud
+  session.** There GitHub's GraphQL API is refused ("GitHub GraphQL is not available from Claude
+  Code sessions; use the REST API"), and every `gh pr view`, `gh pr create`, `gh pr checks` and
+  `gh pr diff` is a GraphQL call. The engine's CI look now reads the pull request from
+  `gh api repos/<owner>/<repo>/pulls/<n>` (`state`, `merged`, `mergeable`, `mergeable_state`,
+  `head.sha`, `head.ref`, mapped onto the shape it always judged; a `mergeable` GitHub has not
+  computed yet is not a conflict); mark-ready reads the draft state the same way; and the final
+  report card takes its size from the same call and its checks from the head commit's check runs
+  and commit statuses. One code path serves every host, local runs included.
+- **A pipeline child's GitHub surface is `gh api`.** `/marvin:pr-create`'s pipeline mode looks
+  for an open PR with `gh api 'repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open'` and
+  opens the draft with `gh api 'repos/{owner}/{repo}/pulls' -f base=… -f head=… -f title=…
+  -F body=@<file> -F draft=true`; the executor role names the same lookup. The child guard admits
+  `gh api` GETs of the current repository (the endpoint must start with gh's own
+  `repos/{owner}/{repo}/` placeholders) and one write, `POST …/pulls` from the run branch into the
+  run's base, with its body file inside the worktree, an `Accept` header the only header, and no
+  `--input` or `--hostname`; it refuses every `gh pr` subcommand. The read-only guard admits the
+  same GETs. Every writing child is granted `Bash(gh api:*)` whatever `pipeline.allowed_commands`
+  lists, and the read-only roles get it in place of `gh pr view` and `gh pr diff`. The default
+  `allowed_commands` drops its three `gh pr` entries. The sandbox `gh` shim answers the REST calls.
+- **Marking a draft ready is the one call with no REST form.** `gh pr ready` is still tried; where
+  it is refused, as in a cloud session, the PR stays a draft, the run finishes, and a note asks the
+  user to mark it ready on GitHub.
+
+### Fixed
+
+- **A child no longer resumes the orchestrator's conversation.** In a cloud container every
+  nested `claude -p` inherited `CLAUDE_CODE_SESSION_ID` and reported the parent's session id, which
+  the engine recorded and passed to `--resume` on a retry. Each child now runs under a
+  `--session-id` the engine generates and records at launch (a replay reuses it from the spawn
+  marker), the recorded id wins over the one the stream reports, and `CLAUDE_CODE_SESSION_ID`,
+  `CLAUDE_CODE_REMOTE_SESSION_ID` and `CLAUDE_CODE_CHILD_SESSION` are removed from a child's
+  environment. The transport and messaging variables (`ANTHROPIC_BASE_URL`,
+  `CLAUDE_SESSION_INGRESS_TOKEN_FILE`, `CLAUDE_CODE_MESSAGING_*`) stay, because a child reaches
+  the model and SendMessage through them.
+
 ## [0.37.0] — 2026-10-28
 
 ### Added

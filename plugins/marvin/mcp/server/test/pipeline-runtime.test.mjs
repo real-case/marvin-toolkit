@@ -204,9 +204,11 @@ async function waitFor(deps, run) {
 }
 
 /**
- * Puts a `gh` ahead of the module's failing stub for the duration of `fn`. It answers
- * `pr view` with `view` and `api` with `runs`, both of which `fn` may change through the
- * `answer` it is given, and logs every call, one line of arguments each, to the returned `calls`.
+ * Puts a `gh` ahead of the module's failing stub for the duration of `fn`. It answers only REST
+ * calls, as a Claude Code cloud session does: `api …/actions/runs` with `runs`, `api …/pulls/<n>`
+ * with `view` (the REST pull request), and `pr ready` with success unless `readyRefused` is set,
+ * when it fails with the cloud session's GraphQL refusal. `fn` may change all three through the
+ * `answer` it is given, and every call is logged, one line of arguments each, to `calls`.
  */
 async function withGh(fn) {
   const dir = mkdtempSync(join(tmpdir(), "pipe-gh-"));
@@ -218,17 +220,19 @@ async function withGh(fn) {
       "#!/bin/sh",
       `printf '%s\\n' "$*" >> '${log}'`,
       'case "$1 $2" in',
-      `  "pr view") cat '${join(dir, "view.json")}' ;;`,
-      '  "pr ready") exit 0 ;;',
-      `  "api "*) cat '${join(dir, "runs.json")}' ;;`,
+      `  "api "*/actions/runs*) cat '${join(dir, "runs.json")}' ;;`,
+      `  "api "*/pulls/*) cat '${join(dir, "view.json")}' ;;`,
+      `  "pr ready") if [ -e '${join(dir, "ready.refused")}' ]; then echo "GitHub GraphQL is not available from Claude Code sessions; use the REST API" >&2; exit 1; fi ;;`,
       '  *) echo "unexpected gh $*" >&2; exit 1 ;;',
       "esac",
     ].join("\n"),
     { mode: 0o755 },
   );
-  const answer = ({ view, runs = [] }) => {
+  const answer = ({ view, runs = [], readyRefused = false }) => {
     writeFileSync(join(dir, "view.json"), JSON.stringify(view));
     writeFileSync(join(dir, "runs.json"), JSON.stringify(runs));
+    if (readyRefused) writeFileSync(join(dir, "ready.refused"), "");
+    else rmSync(join(dir, "ready.refused"), { force: true });
   };
   const calls = () => readFileSync(log, "utf8").split("\n").filter(Boolean);
   const path = process.env.PATH;
@@ -523,7 +527,12 @@ test("a fake executor is launched with a static system prompt and its result is 
     assert.deepEqual(obs.result.structured.claims, ["src/a.mjs adds x"]);
     assert.equal(obs.leaked, undefined);
     assert.equal(done.children[0].status, "done");
-    assert.equal(done.children[0].sessionId, "fake-r1-executor-1");
+    // The row keeps the id the engine launched it with, not the one the stream reported.
+    assert.equal(obs.result.sessionId, "fake-r1-executor-1");
+    assert.equal(
+      done.children[0].sessionId,
+      after(command(s.runDir, "r1-executor-1").argv, "--session-id"),
+    );
     assert.ok(existsSync(join(s.runDir, "r1-executor-1.result.json")));
     assert.ok(
       events(s.runDir).some(
@@ -685,6 +694,99 @@ test("every role launches with its name, env, settings, schema and allowlist, an
   }
 });
 
+test("every child runs under its own engine-assigned session, whatever its stream reports", async () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const asked = {
+    status: "needs_input",
+    summary: "one point",
+    questions: [{ id: "Q1", text: "?", recommendation: "yes", why_blocking: "b" }],
+  };
+  const PARENT = "parent-session-0000";
+  const saved = {
+    CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID,
+    CLAUDE_CODE_REMOTE_SESSION_ID: process.env.CLAUDE_CODE_REMOTE_SESSION_ID,
+    MARVIN_PIPELINE_FAKE_SESSION_ID: process.env.MARVIN_PIPELINE_FAKE_SESSION_ID,
+  };
+  const restore = () => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  try {
+    // A cloud container: the engine's own environment names the orchestrator's session.
+    process.env.CLAUDE_CODE_SESSION_ID = PARENT;
+    process.env.CLAUDE_CODE_REMOTE_SESSION_ID = PARENT;
+    const a = await prepared();
+    let run = { ...a.run, stage: "planning" };
+    await withFake(a.runDir, "planner", [asked, asked], async () => {
+      const one = await waitFor(
+        a.deps,
+        a.deps.spawnChild(
+          run,
+          spawnAction("planner", 0, { task: "t", critic_cap: "1" }),
+          step("s1"),
+        ),
+      );
+      const two = await waitFor(
+        a.deps,
+        a.deps.spawnChild(
+          one.run,
+          spawnAction("planner", 1, { task: "t", critic_cap: "1" }),
+          step("s2"),
+        ),
+      );
+      // The identity variables never reach a child, so neither reports the parent.
+      assert.notEqual(one.obs.result.sessionId, PARENT);
+      assert.notEqual(two.obs.result.sessionId, PARENT);
+      run = two.run;
+    });
+    const [first, second] = run.children;
+    assert.match(first.sessionId, UUID);
+    assert.match(second.sessionId, UUID);
+    assert.notEqual(first.sessionId, second.sessionId);
+    assert.equal(after(command(a.runDir, first.name).argv, "--session-id"), first.sessionId);
+    assert.equal(after(command(a.runDir, second.name).argv, "--session-id"), second.sessionId);
+
+    // A stream that reports one shared id anyway still leaves each child its own, and a resume
+    // continues the last child's session, never the id the stream reported.
+    delete process.env.CLAUDE_CODE_SESSION_ID;
+    delete process.env.CLAUDE_CODE_REMOTE_SESSION_ID;
+    process.env.MARVIN_PIPELINE_FAKE_SESSION_ID = PARENT;
+    const b = await prepared();
+    let other = { ...b.run, stage: "planning" };
+    await withFake(b.runDir, "planner", [asked, asked, asked], async () => {
+      for (const [i, ref] of [
+        [0, "t1"],
+        [1, "t2"],
+      ]) {
+        const out = await waitFor(
+          b.deps,
+          b.deps.spawnChild(
+            other,
+            spawnAction("planner", i, { task: "t", critic_cap: "1" }),
+            step(ref),
+          ),
+        );
+        assert.equal(out.obs.result.sessionId, PARENT, "the stream reports the shared id");
+        other = out.run;
+      }
+      const ids = other.children.map((c) => c.sessionId);
+      assert.equal(new Set(ids).size, 2, "two children never share a session");
+      assert.ok(!ids.includes(PARENT));
+      b.deps.spawnChild(
+        other,
+        spawnAction("planner", 1, { message: "ANSWERS:\nQ1: yes" }, true),
+        step("t3"),
+      );
+      const key = childKey(other.children, "r1-planner-1");
+      assert.equal(after(command(b.runDir, key).argv, "--resume"), ids[1]);
+    });
+  } finally {
+    restore();
+  }
+});
+
 test("the verifier's probe is the whole-file prefix of a test_one that quotes {file} and filters by {name}", async () => {
   const s = await prepared({
     config: { gates: { test_one: 'npx vitest run "{file}" -t "{name}"' } },
@@ -727,7 +829,10 @@ test("a resume continues the role's last session with the message alone; spec_re
     );
     const key = childKey(first.run.children, "r1-planner-0");
     assert.equal(key, "r1-planner-0.2");
-    assert.equal(after(command(s.runDir, key).argv, "--resume"), "fake-r1-planner-0");
+    const own = first.run.children.find((c) => c.name === "r1-planner-0").sessionId;
+    assert.equal(after(command(s.runDir, "r1-planner-0").argv, "--session-id"), own);
+    assert.equal(after(command(s.runDir, key).argv, "--resume"), own);
+    assert.ok(!command(s.runDir, key).argv.includes("--session-id"), "a resume names one id");
     assert.equal(readFileSync(join(s.runDir, `${key}.prompt.md`), "utf8"), "ANSWERS:\nQ1: yes");
     const second = await waitFor(s.deps, resumed);
     assert.equal(second.obs.result.outcome, "spec_ready");
@@ -2150,11 +2255,13 @@ test("a CI look reads green only for the commit the run expects GitHub to have",
     ciSince: "2026-10-09T10:00:00.000Z",
   };
   const pr = (sha) => ({
-    state: "OPEN",
-    mergeable: "MERGEABLE",
-    mergeStateStatus: "CLEAN",
-    headRefOid: sha,
-    headRefName: "b",
+    state: "open",
+    merged: false,
+    draft: false,
+    mergeable: true,
+    mergeable_state: "clean",
+    head: { sha, ref: "b" },
+    base: { ref: "dev" },
   });
   const green = (sha) => [
     { head_sha: sha, status: "completed", conclusion: "success", name: "ci" },
@@ -2176,7 +2283,7 @@ test("a CI look reads green only for the commit the run expects GitHub to have",
     assert.deepEqual(fresh.obs, { kind: "ci", state: "green", failing: [] });
 
     // A closed PR is closed whatever its head.
-    answer({ view: { ...pr(older), state: "CLOSED" }, runs: [] });
+    answer({ view: { ...pr(older), state: "closed" }, runs: [] });
     const closed = await s.deps.work(
       { ...run, ciSince: "2026-10-09T10:10:00.000Z" },
       "ci",
@@ -2184,6 +2291,19 @@ test("a CI look reads green only for the commit the run expects GitHub to have",
       step("closed"),
     );
     assert.equal(closed.obs.state, "closed");
+
+    // GitHub cannot yet say whether the PR merges: that is not a conflict.
+    answer({
+      view: { ...pr(head), mergeable: null, mergeable_state: "unknown" },
+      runs: green(head),
+    });
+    const unknown = await s.deps.work(
+      { ...run, ciSince: "2026-10-09T10:15:00.000Z" },
+      "ci",
+      undefined,
+      step("unknown"),
+    );
+    assert.equal(unknown.obs.state, "green");
   });
 });
 
@@ -2216,16 +2336,32 @@ test("mark_ready takes a draft PR out of draft once, and leaves a ready one alon
   const s = await prepared();
   const run = { ...s.run, stage: "ready", iteration: 1, prUrl: PR };
   await withGh(async ({ answer, calls }) => {
-    answer({ view: { isDraft: true } });
+    answer({ view: { draft: true } });
     await s.deps.work(run, "mark_ready", undefined, step("ready-1"));
     assert.deepEqual(
       calls().filter((c) => c.startsWith("pr ready")),
       [`pr ready ${PR}`],
     );
+    assert.ok(calls().includes("api repos/o/r/pulls/1"), "the draft state is read through REST");
+    assert.ok(!calls().some((c) => c.startsWith("pr view")), "no GraphQL read");
     // The replay finds the PR out of draft.
-    answer({ view: { isDraft: false } });
+    answer({ view: { draft: false } });
     await s.deps.work(run, "mark_ready", undefined, step("ready-1", true));
     assert.equal(calls().filter((c) => c.startsWith("pr ready")).length, 1);
+  });
+});
+
+test("mark_ready refused for want of GraphQL leaves the PR a draft and says so, without failing", async () => {
+  const s = await prepared();
+  const run = { ...s.run, stage: "ready", iteration: 1, prUrl: PR };
+  await withGh(async ({ answer }) => {
+    answer({ view: { draft: true }, readyRefused: true });
+    const out = await s.deps.work(run, "mark_ready", undefined, step("ready-cloud"));
+    assert.equal(out.run.prUrl, PR);
+    const told = events(s.runDir).filter((e) => /stays a draft/.test(e.text));
+    assert.equal(told.length, 1);
+    assert.match(told[0].text, /GraphQL is not available/);
+    assert.equal(told[0].data.notify, true);
   });
 });
 
