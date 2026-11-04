@@ -879,7 +879,12 @@ function classifyCarefully(classify: () => RecordState): RecordState {
     return { state: "refused", reason: `it could not be judged (${reason})` };
   }
 }
-const COMMIT_TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
+/**
+ * The trailer of every commit the engine makes on a run branch: the approved spec, the sealed
+ * tests, the base merge and the finalize commit. A host that checks agent attribution per commit
+ * (one 2026-10-21 run's own criterion did) otherwise fails the run on the engine's commits alone.
+ */
+export const COMMIT_TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>";
 const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /** Written in the run dir after the finalize commit, so that a retry can recognise it. */

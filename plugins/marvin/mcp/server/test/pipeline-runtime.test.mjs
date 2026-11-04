@@ -39,6 +39,7 @@ const { runEngine } = await importTs("src/pipeline/loop.ts");
 const { Config } = await importTs("src/storage/schema.ts");
 const { contractHash } = await importTs("src/storage/spec.ts");
 const { launchDetached } = await importTs("src/pipeline/launch.ts");
+const { COMMIT_TRAILER } = await importTs("src/pipeline/learning.ts");
 const { buildVerifyTool } = await importTs("src/tools/verify.ts");
 const { loadEnv } = await importTs("src/lib/env.ts");
 
@@ -435,6 +436,46 @@ test("a gates.test_one the seal stage would refuse stops prepare, before any chi
       /no gates\.test_one in \.marvin\/config\.json at dev/.test(e.text),
     ),
   );
+});
+
+test("dependencies no bootstrap installs stop prepare, before any child", async () => {
+  // A bun project with no pipeline.bootstrap: the run worktree has no
+  // node_modules and no gate can run.
+  const manifest = JSON.stringify({ devDependencies: { vitest: "^3.0.0" } });
+  const bun = { "package.json": manifest, "bun.lock": "{}\n" };
+  const s = setup({ files: bun });
+  await assert.rejects(
+    s.deps.prepare(s.run),
+    /no node_modules and no pipeline\.bootstrap .*`bun install --frozen-lockfile` for its bun lockfile\) in \.marvin\/config\.json at dev/,
+  );
+  // A bootstrap is enough; npm's lockfile names its own install.
+  const npm = setup({ files: { "package.json": manifest, "package-lock.json": "{}\n" } });
+  await assert.rejects(npm.deps.prepare(npm.run), /set pipeline\.bootstrap \(`npm ci` for its npm/);
+  const ok = setup({ files: bun, config: { pipeline: { bootstrap: "mkdir node_modules" } } });
+  await ok.deps.prepare(ok.run);
+  // A manifest without dependencies needs nothing installed.
+  const bare = setup({ files: { "package.json": JSON.stringify({ name: "x" }) } });
+  await bare.deps.prepare(bare.run);
+});
+
+test("a package manager the writing roles may not run is told at prepare", async () => {
+  const files = { "package.json": JSON.stringify({ name: "x" }), "bun.lock": "{}\n" };
+  const told = (s) =>
+    events(s.runDir).some((e) =>
+      /lockfile is bun's, and pipeline\.allowed_commands has no `bun` prefix.*add `bun run` in \.marvin\/config\.json at dev/.test(
+        e.text,
+      ),
+    );
+  const s = await prepared({ files });
+  assert.ok(told(s), "the default allowlist cannot run bun");
+  const ok = await prepared({
+    files,
+    config: { pipeline: { allowed_commands: ["git", "bun run"] } },
+  });
+  assert.ok(!told(ok));
+  // npm is what the default allowlist already covers.
+  const npm = await prepared({ files: { "package.json": "{}", "package-lock.json": "{}\n" } });
+  assert.ok(!events(npm.runDir).some((e) => /allowed_commands has no/.test(e.text)));
 });
 
 test("a pipeline config the main checkout holds and the base commit lacks stops prepare", async () => {
@@ -942,6 +983,47 @@ test("spec_ready on an unsealed spec: the engine stamps the seal once the Defini
   }
 });
 
+test("spec_ready on a spec whose contract names a protected path writes nothing and carries the failure", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  // `./` and a case the boundary hook would also match: the gate normalises both the same way.
+  const original = specText({
+    files: ["src/a.mjs", "./.claude/skills/x/SKILL.md", ".Husky/pre-push"],
+  });
+  const s = await prepared({ files: { [spec]: original } });
+  const ready = { status: "spec_ready", summary: "s", spec: { path: spec } };
+  const run = { ...s.run, stage: "planning" };
+  await withFake(s.runDir, "planner", [ready], async () => {
+    const { obs } = await waitFor(
+      s.deps,
+      s.deps.spawnChild(run, spawnAction("planner", 0, { task: "t", critic_cap: "1" }), step("p1")),
+    );
+    assert.equal(obs.result.outcome, "spec_ready");
+    assert.equal(obs.signals, undefined);
+    assert.equal(obs.dorFailures.length, 1);
+    assert.match(
+      obs.dorFailures[0],
+      /^the contract names protected paths \.claude\/skills\/x\/SKILL\.md, \.Husky\/pre-push \(patterns: .*\), which no child may change .*Deferred slices/,
+    );
+    assert.equal(readFileSync(join(s.wt, spec), "utf8"), original);
+  });
+  // The same contract without them goes on to approval.
+  const clean = await prepared({
+    files: { [spec]: specText({ files: ["src/a.mjs", "docs/.claude.md"] }) },
+  });
+  await withFake(clean.runDir, "planner", [ready], async () => {
+    const { obs } = await waitFor(
+      clean.deps,
+      clean.deps.spawnChild(
+        { ...clean.run, stage: "planning" },
+        spawnAction("planner", 0, { task: "t", critic_cap: "1" }),
+        step("p1"),
+      ),
+    );
+    assert.equal(obs.dorFailures, undefined);
+    assert.equal(obs.signals.files, 2);
+  });
+});
+
 test("spec_ready on an unsealed spec that fails the Definition of Ready writes nothing and carries the failures", async () => {
   const spec = ".marvin/task/001-tag-filter.md";
   const original = specText({ tamper: true });
@@ -1332,6 +1414,7 @@ test("commit_spec commits the approved spec, ignored or not, and its metrics rec
   assert.equal(sh(s.wt, "rev-parse", "HEAD^"), base);
   assert.equal(sh(s.wt, "branch", "--show-current"), "autopilot/r1");
   assert.equal(sh(s.wt, "log", "-1", "--format=%s"), "chore(tag-filter): approved spec");
+  assert.equal(sh(s.wt, "log", "-1", "--format=%b").trim(), COMMIT_TRAILER);
   assert.deepEqual(sh(s.wt, "show", "--name-only", "--format=", "HEAD").split("\n"), [
     RECORD,
     SPEC,
@@ -1601,6 +1684,7 @@ test("seal commits only the sealed tests, under the subject executor.md looks fo
       ["test/a.test.mjs"],
     );
     assert.equal(sh(s.wt, "log", "-1", "--format=%s"), "test(tag-filter): sealed acceptance tests");
+    assert.equal(sh(s.wt, "log", "-1", "--format=%b").trim(), COMMIT_TRAILER);
     assert.equal(sh(s.wt, "show", "--name-only", "--format=", "HEAD"), "test/a.test.mjs");
     assert.deepEqual(JSON.parse(readFileSync(join(s.runDir, "sealed.json"), "utf8")), [
       "test/a.test.mjs",

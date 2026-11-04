@@ -33559,6 +33559,43 @@ function prFromRest(rest) {
     headRefOid: rest.head.sha
   };
 }
+var MANAGERS = [
+  { lockfiles: ["bun.lock", "bun.lockb"], install: "bun install --frozen-lockfile", runner: "bun" },
+  { lockfiles: ["pnpm-lock.yaml"], install: "pnpm install --frozen-lockfile", runner: "pnpm" },
+  { lockfiles: ["yarn.lock"], install: "yarn install --immutable", runner: "yarn" },
+  { lockfiles: ["package-lock.json", "npm-shrinkwrap.json"], install: "npm ci", runner: "npm" }
+];
+function packageManager(worktree) {
+  return MANAGERS.find((m) => m.lockfiles.some((f) => existsSync(join(worktree, f)))) ?? null;
+}
+function declaresDependencies(worktree) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(worktree, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  if (typeof manifest !== "object" || manifest === null) return false;
+  return ["dependencies", "devDependencies", "optionalDependencies"].some((key) => {
+    const deps = manifest[key];
+    return typeof deps === "object" && deps !== null && Object.keys(deps).length > 0;
+  });
+}
+function dependencyGap(worktree, bootstrap) {
+  if (bootstrap) return null;
+  if (existsSync(join(worktree, "node_modules"))) return null;
+  if (!declaresDependencies(worktree)) return null;
+  const manager = packageManager(worktree);
+  const suggestion = manager ? ` (\`${manager.install}\` for its ${manager.runner} lockfile)` : "";
+  return `the run worktree has no node_modules and no pipeline.bootstrap installs them, so no gate and no child can run the project's tests: set pipeline.bootstrap${suggestion}`;
+}
+function runnerGap(worktree, allowed) {
+  const manager = packageManager(worktree);
+  if (!manager || manager.runner === "npm") return null;
+  const covers = (prefix) => prefix === manager.runner || prefix.startsWith(`${manager.runner} `);
+  if (allowed.some(covers)) return null;
+  return `the project's lockfile is ${manager.runner}'s, and pipeline.allowed_commands has no \`${manager.runner}\` prefix, so the planner, test-author and executor cannot run its scripts: add \`${manager.runner} run\``;
+}
 var WRAPPER = [
   'out="$1"; err="$2"; exitf="$3"; shift 3',
   '"$@" < /dev/null > "$out" 2> "$err" &',
@@ -33942,6 +33979,15 @@ function createRuntime(o) {
     );
   };
   const protectedPatterns = () => external_exports.array(external_exports.string()).parse(JSON.parse(readFileSync(join(pipelineDir, "protected.default.json"), "utf8")));
+  const protectedContract = (paths) => {
+    const patterns = protectedPatterns();
+    const named = paths.map((raw) => posix.normalize(raw).replace(/^\.\//, "")).filter((p) => isCanonicalPath(p));
+    const hit = protectedChanges(named, patterns);
+    return {
+      length: hit.length,
+      failure: `the contract names protected ${hit.length === 1 ? "path" : "paths"} ${hit.join(", ")} (patterns: ${patterns.join(", ")}), which no child may change and the gate rejects in any diff: take ${hit.length === 1 ? "it" : "them"} out of the contract, and if the task needs ${hit.length === 1 ? "it" : "them"}, record that part under Deferred slices for a human to do after the PR`
+    };
+  };
   const adoptWorktree = (run2, path, branch) => {
     const refuse = (why) => new Error(`refusing to adopt ${path} as run ${run2.id}'s worktree: ${why}`);
     let top;
@@ -34026,11 +34072,20 @@ ${planted.join("\n")}`
       );
     }
   };
+  const checkEnvironment = (run2, config2, worktree) => {
+    const missing = dependencyGap(worktree, config2.pipeline.bootstrap);
+    if (missing !== null) throw new Error(`${missing} in ${CONFIG_PATH} at ${run2.base}`);
+    const runner2 = runnerGap(worktree, config2.pipeline.allowed_commands);
+    if (runner2 !== null) {
+      noteOnce("config:allowed_commands", `${runner2} in ${CONFIG_PATH} at ${run2.base}`);
+    }
+  };
   const prepare = async (run2) => {
     const record2 = setUpWorktree(run2);
     const config2 = configFor(run2);
     if (!o.config) checkMainConfig(run2, record2);
     checkTestOne(run2, config2);
+    checkEnvironment(run2, config2, record2.path);
     bootstrap(config2, record2.path);
     writeAtomic2(
       at("test-paths.json"),
@@ -34321,6 +34376,8 @@ ${planted.join("\n")}`
       const original = readFileSync(abs, "utf8");
       const ready = readySpec(original, (text2) => specReadiness(text2, wt, configFor(run2).spec));
       if ("failures" in ready) return { result, dorFailures: ready.failures };
+      const guarded = protectedContract(readSignals(ready.text, rubric).paths);
+      if (guarded.length > 0) return { result, dorFailures: [guarded.failure] };
       if (ready.sealed) {
         try {
           const record2 = runRecord(wt, path, ready.text);
@@ -34795,7 +34852,7 @@ ${planted.join("\n")}`
       g.text("add", "--", ...paths);
       const staged = g.text("diff", "--cached", "--name-only", "-z", "--", ...paths).split("\0").filter(Boolean);
       if (staged.length > 0) {
-        g.text("commit", "-q", "-m", subject, "--only", "--", ...paths);
+        g.text("commit", "-q", "-m", subject, "-m", COMMIT_TRAILER, "--only", "--", ...paths);
         head = headNow();
         refuseStrays(head);
       }
@@ -34959,7 +35016,7 @@ ${planted.join("\n")}`
       if (indexInfo === "") return settle2(headBefore);
       plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
       const tree = plumbing.text("write-tree").trim();
-      const commit = g.text("commit-tree", tree, "-p", headBefore, "-m", subject).trim();
+      const commit = g.text("commit-tree", tree, "-p", headBefore, "-m", subject, "-m", COMMIT_TRAILER).trim();
       g.text("update-ref", `refs/heads/${branch}`, commit, headBefore);
       verify(commit);
       return settle2(commit);
