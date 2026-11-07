@@ -29,6 +29,7 @@ import { specReadiness } from "../tools/spec.js";
 import { readSignals, readySpec, sealIssue, type Rubric } from "./assess.js";
 import { type CiState, classifyCi, fetchCi } from "./ci.js";
 import { fetchPull, prRef } from "./github.js";
+import { dependencyGap, runnerGap } from "./preflight.js";
 import {
   buildChildCommand,
   type ChildCommand,
@@ -64,6 +65,7 @@ import { launchDetached } from "./launch.js";
 import { benchSettings, effectiveAssignment, sandboxChildEnv, sandboxSettings } from "./sandbox.js";
 import {
   aggregate,
+  COMMIT_TRAILER,
   efficacy,
   type EfficacyItem,
   finalizeRun,
@@ -613,6 +615,24 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       .array(z.string())
       .parse(JSON.parse(readFileSync(join(pipelineDir, "protected.default.json"), "utf8")));
 
+  /**
+   * The contract files a spec names that are protected paths, normalised as the gate reads them,
+   * and the Definition-of-Ready failure the planner is resumed with. A 2026-10-28 run's approved
+   * spec required a hook step and a skill under `.claude/`; three iterations later the gate's
+   * rejection of exactly those files stopped it.
+   */
+  const protectedContract = (paths: readonly string[]) => {
+    const patterns = protectedPatterns();
+    const named = paths
+      .map((raw) => posix.normalize(raw).replace(/^\.\//, ""))
+      .filter((p) => isCanonicalPath(p));
+    const hit = protectedChanges(named, patterns);
+    return {
+      length: hit.length,
+      failure: `the contract names protected ${hit.length === 1 ? "path" : "paths"} ${hit.join(", ")} (patterns: ${patterns.join(", ")}), which no child may change and the gate rejects in any diff: take ${hit.length === 1 ? "it" : "them"} out of the contract, and if the task needs ${hit.length === 1 ? "it" : "them"}, record that part under Deferred slices for a human to do after the PR`,
+    };
+  };
+
   // ------------------------------------------------------------------------------- prepare
 
   /**
@@ -724,12 +744,27 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  /**
+   * What the worktree needs to run the project at all (`preflight.ts`), checked before any child
+   * spends anything: dependencies nothing would install stop the run, a package manager the
+   * writing roles may not run is told.
+   */
+  const checkEnvironment = (run: Run, config: Config, worktree: string) => {
+    const missing = dependencyGap(worktree, config.pipeline.bootstrap);
+    if (missing !== null) throw new Error(`${missing} in ${CONFIG_PATH} at ${run.base}`);
+    const runner = runnerGap(worktree, config.pipeline.allowed_commands);
+    if (runner !== null) {
+      noteOnce("config:allowed_commands", `${runner} in ${CONFIG_PATH} at ${run.base}`);
+    }
+  };
+
   const prepare = async (run: Run): Promise<Run> => {
     // The worktree comes first: the config is the one its base commit holds.
     const record = setUpWorktree(run);
     const config = configFor(run);
     if (!o.config) checkMainConfig(run, record);
     checkTestOne(run, config);
+    checkEnvironment(run, config, record.path);
     bootstrap(config, record.path);
     writeAtomic(
       at("test-paths.json"),
@@ -1126,7 +1161,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
    * back reaches `decide` as `dorFailures`, which resumes the planner with them. The metrics record
    * the tool's seal would create is created before the spec is written: a replay takes a sealed
    * spec as it is and would never create it. A spec the engine cannot read is a crash of the turn
-   * that named it, which costs a retry, never the engine.
+   * that named it, which costs a retry, never the engine. A contract that names a protected path
+   * fails there too, before anything is written: no child may change one and the gate rejects it
+   * in any diff, so such a spec could only end at the rejection cap after its approval.
    */
   const withSignals = (
     run: Run,
@@ -1148,6 +1185,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       const original = readFileSync(abs, "utf8");
       const ready = readySpec(original, (text) => specReadiness(text, wt, configFor(run).spec));
       if ("failures" in ready) return { result, dorFailures: ready.failures };
+      const guarded = protectedContract(readSignals(ready.text, rubric).paths);
+      if (guarded.length > 0) return { result, dorFailures: [guarded.failure] };
       if (ready.sealed) {
         try {
           const record = runRecord(wt, path, ready.text);
@@ -1761,7 +1800,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
         .filter(Boolean);
       // A re-seal of files already committed as they are has nothing to add.
       if (staged.length > 0) {
-        g.text("commit", "-q", "-m", subject, "--only", "--", ...paths);
+        g.text("commit", "-q", "-m", subject, "-m", COMMIT_TRAILER, "--only", "--", ...paths);
         head = headNow();
         refuseStrays(head);
       }
@@ -1964,7 +2003,9 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (indexInfo === "") return settle(headBefore);
       plumbing.textIn(indexInfo, "update-index", "-z", "--index-info");
       const tree = plumbing.text("write-tree").trim();
-      const commit = g.text("commit-tree", tree, "-p", headBefore, "-m", subject).trim();
+      const commit = g
+        .text("commit-tree", tree, "-p", headBefore, "-m", subject, "-m", COMMIT_TRAILER)
+        .trim();
       g.text("update-ref", `refs/heads/${branch}`, commit, headBefore);
       verify(commit);
       return settle(commit);
