@@ -6,6 +6,17 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+### Added
+
+- **The delivery gate checks a spec's declared names against the code** (ADR-0052). Until now
+  `contract.signature` was checked once, for being non-empty, and nothing compared it with what
+  was delivered: a renamed or missing entry point passed every gate. The `deliver-gate` block now
+  carries `contract_surface` (`matched`, `missing` or `unknown`): the names the signature declares
+  at column 0 are looked for in the contract's implementation files, which exclude tests,
+  documentation and deleted files. A `missing` answer names the absent names in the ALLOW reason
+  and, like `red_green`, never changes the decision. Measured on 110 specs from five projects:
+  no false warnings on marvin's own specs, and every `missing` answer elsewhere was real drift.
+
 ### Fixed
 
 - **An autopilot run that cannot install its dependencies stops before any child.** A run

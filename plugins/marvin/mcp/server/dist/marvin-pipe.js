@@ -26929,7 +26929,7 @@ function detectMakefile(projectRoot) {
 
 // src/lib/oracles.ts
 var import_yaml7 = __toESM(require_dist());
-function parseContractCriteria(blockText) {
+function parseContract(blockText) {
   let parsed;
   try {
     parsed = SpecContract.safeParse((0, import_yaml7.parse)(blockText));
@@ -26941,7 +26941,11 @@ function parseContractCriteria(blockText) {
   if (!parsed.success) {
     return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
   }
-  return { criteria: parsed.data.criteria };
+  return { contract: parsed.data };
+}
+function parseContractCriteria(blockText) {
+  const parsed = parseContract(blockText);
+  return "error" in parsed ? parsed : { criteria: parsed.contract.criteria };
 }
 function resolveCriteria(criteria, opts) {
   return criteria.filter((criterion) => criterion.oracle.kind !== "prose-review").map((criterion) => ({ criterion, resolved: resolveOracleCommand(criterion, opts) }));

@@ -48,7 +48,9 @@ Field limits:
   statement.
 - `intent`: at most two sentences on what changes in this file (the gate warns over 60 words). A
   test file's intent names the criteria it covers and any non-obvious fixture.
-- `contract.signature`: the exact surface, with no comments that restate criteria.
+- `contract.signature`: the exact surface, with no comments that restate criteria. Start each public
+  name's declaration at column 0 (`export function name(…)`, `name(…): T`, `Name = …`): the delivery
+  gate looks for those names in the implementation files, and does not read indented or prose lines.
 - `oracle.run`: omit it when `gates.test_one` in `.marvin/config.json` derives it.
 - `satisfies`: optional. `implemented_by` is the hand-written direction; a declared `satisfies`
   list must agree with it, or the gate fails.
