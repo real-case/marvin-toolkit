@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { z } from "zod";
 import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
@@ -17,7 +17,12 @@ import {
   type GateSpec,
   type PlannedGate,
 } from "../lib/gate-plan.js";
-import { parseContractCriteria, resolveCriteria } from "../lib/oracles.js";
+import {
+  checkContractSurface,
+  type SurfaceCheck,
+  type SurfaceStatus,
+} from "../lib/contract-surface.js";
+import { parseContract, resolveCriteria } from "../lib/oracles.js";
 import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
 import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
 import { loadConfig } from "../storage/config.js";
@@ -39,6 +44,7 @@ import {
   resolveSpecBySlug,
   specSearchDirs,
   type Criterion,
+  type SpecContract,
 } from "../storage/spec.js";
 
 /**
@@ -798,6 +804,7 @@ interface SealedSpec {
   type: string;
   contractSha: string;
   criteria: Criterion[];
+  contract: SpecContract;
 }
 
 /**
@@ -854,14 +861,15 @@ function readSealedSpec(
         `the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`,
     };
   }
-  const parsed = parseContractCriteria(blockText);
+  const parsed = parseContract(blockText);
   if ("error" in parsed) return { error: parsed.error };
   return {
     slug,
     path,
     type: (frontmatter.type ?? "").trim(),
     contractSha: actual,
-    criteria: parsed.criteria,
+    criteria: parsed.contract.criteria,
+    contract: parsed.contract,
   };
 }
 
@@ -1072,6 +1080,41 @@ function redGreenStatus(
   return { status: unproven.length ? "missing" : "proven", unproven };
 }
 
+/**
+ * Whether the names `contract.signature` declares occur in the contract's implementation files
+ * (ADR-0052), judged by `checkContractSurface`. Advisory exactly as `red_green` is, and `unknown`
+ * for the same inputs: no slug, and a spec whose contract is missing, unsealed or tampered.
+ */
+function contractSurfaceStatus(
+  projectRoot: string,
+  specSlug: string | undefined,
+  specConfig?: SpecConfig,
+): SurfaceCheck {
+  const none: SurfaceCheck = { status: "unknown", missing: [], reason: "no resolved spec slug" };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  if ("error" in spec) return { ...none, reason: spec.error };
+  return checkContractSurface(spec.contract, (path) => readProjectFile(projectRoot, path));
+}
+
+/**
+ * A contract path's text, or null when it cannot be read. A path that resolves outside the project
+ * is null rather than read: the contract is authored text, and this gate has no reason to open a
+ * file it does not own.
+ */
+function readProjectFile(projectRoot: string, path: string): string | null {
+  const root = resolve(projectRoot);
+  const abs = resolve(root, path);
+  const rel = relative(root, abs);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+  try {
+    return statSync(abs).isFile() ? readFileSync(abs, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+
 function errText(text: string): ToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -1165,7 +1208,15 @@ function deliverGate(
   // would refuse delivery for the resolver's silence rather than for a missing
   // proof, and the first response would be to disable it.
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
-  const extras: GateExtras = { artifactPath, allowStale, redGreen: redGreen.status };
+  // Advisory for the same reason (ADR-0052): the signature is free text, and a name the reader
+  // cannot see in it is a gap in the reader, not a defect in the code.
+  const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const extras: GateExtras = {
+    artifactPath,
+    allowStale,
+    redGreen: redGreen.status,
+    surface: surface.status,
+  };
 
   // A rejected slug decides WHICH artifact this gate judged, so it belongs on
   // every decision below rather than only on the ALLOW that already concatenates
@@ -1307,7 +1358,13 @@ function deliverGate(
       ? ` · no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}` +
         ` — record one with \`verify action: "oracles"\` (this does not block delivery)`
       : "";
-  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}`, {
+  const surfaceNote =
+    surface.status === "missing"
+      ? ` · contract.signature declares ${surface.missing.map((n) => `\`${n}\``).join(", ")}, ` +
+        `found in none of the contract's implementation files — correct the code or the ` +
+        `signature, and say which in the pull request (this does not block delivery)`
+      : "";
+  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}${surfaceNote}`, {
     ...extras,
     staleness,
   });
@@ -1358,6 +1415,7 @@ interface GateExtras {
   allowStale: boolean;
   staleness?: Staleness;
   redGreen?: RedGreen;
+  surface?: SurfaceStatus;
 }
 
 /** Render an ALLOW/BLOCK delivery decision with a machine-readable block. */
@@ -1367,16 +1425,18 @@ function gateResult(
   reason: string,
   extras: GateExtras,
 ): ToolResult {
-  // `staleness` and `red_green` are SIBLINGS of the two-valued decision, never a
-  // third decision value: /marvin:task-deliver branches exactly two ways.
+  // `staleness`, `red_green` and `contract_surface` are SIBLINGS of the two-valued
+  // decision, never a third decision value: /marvin:task-deliver branches exactly two ways.
   const staleness: Staleness = extras.staleness ?? "unknown";
   const redGreen: RedGreen = extras.redGreen ?? "unknown";
+  const surface: SurfaceStatus = extras.surface ?? "unknown";
   const machine = JSON.stringify({
     decision,
     verdict,
     reason,
     staleness,
     red_green: redGreen,
+    contract_surface: surface,
     artifactPath: extras.artifactPath,
     allowStale: extras.allowStale,
   });
@@ -1387,6 +1447,7 @@ function gateResult(
     `**Verdict:** ${verdict ?? "—"}`,
     `**Freshness:** ${staleness}`,
     `**Red-green:** ${redGreen}`,
+    `**Contract surface:** ${surface}`,
     `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
     ``,

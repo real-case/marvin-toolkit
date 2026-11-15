@@ -12,11 +12,14 @@ import { SpecContract, extractContractBlock, type Criterion } from "../storage/s
  * them arrives as parameters: `gates.test_one` as `testOne`, the detected stack as `stack`.
  */
 
+/** The parsed spec-contract block, or the one-line reason it cannot be read. */
+export type ParsedContract = { contract: SpecContract } | { error: string };
+
 /** The parsed criteria of a spec-contract block, or the one-line reason it cannot be read. */
 export type ContractCriteria = { criteria: Criterion[] } | { error: string };
 
-/** Parse the YAML text of a ```yaml spec-contract block into its criteria. */
-export function parseContractCriteria(blockText: string): ContractCriteria {
+/** Parse the YAML text of a ```yaml spec-contract block into the whole contract. */
+export function parseContract(blockText: string): ParsedContract {
   let parsed;
   try {
     parsed = SpecContract.safeParse(parseYaml(blockText));
@@ -28,7 +31,13 @@ export function parseContractCriteria(blockText: string): ContractCriteria {
   if (!parsed.success) {
     return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
   }
-  return { criteria: parsed.data.criteria };
+  return { contract: parsed.data };
+}
+
+/** Parse the YAML text of a ```yaml spec-contract block into its criteria. */
+export function parseContractCriteria(blockText: string): ContractCriteria {
+  const parsed = parseContract(blockText);
+  return "error" in parsed ? parsed : { criteria: parsed.contract.criteria };
 }
 
 /** One criterion with the command (or the refusal) the shared resolver gave it. */

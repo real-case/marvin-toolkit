@@ -2978,7 +2978,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3005,7 +3005,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3832,7 +3832,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -4201,7 +4201,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -26630,7 +26630,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -26647,7 +26647,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -26725,7 +26725,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -26987,12 +26987,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval2);
+      const timeoutId = setTimeout(resolve3, interval2);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -28110,7 +28110,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -28771,12 +28771,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -35514,9 +35514,6 @@ function detectMakefile(projectRoot) {
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
 
-// src/lib/oracles.ts
-var import_yaml2 = __toESM(require_dist2());
-
 // src/lib/shell-quote.ts
 var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
 function encodeForContext(value, context) {
@@ -35715,8 +35712,112 @@ function redGreenProof(runs, contractSha, criterionId) {
   return "missing";
 }
 
+// src/lib/contract-surface.ts
+var ID = "[A-Za-z_$][\\w$]*";
+var DECLARATIONS = [
+  // export default async function* name
+  new RegExp(
+    `^(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:async\\s+)?function\\*?\\s+(${ID})`
+  ),
+  // export const|let|var|class|interface|type|enum name
+  new RegExp(
+    `^(?:export\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:const|let|var|class|interface|type|enum)\\s+(${ID})`
+  ),
+  // def name, fn name, pub(crate) async fn name, func (r *T) name, struct name, trait name
+  new RegExp(
+    `^(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?(?:def|fn|func|struct|trait)\\s+(?:\\([^)]*\\)\\s*)?(${ID})`
+  ),
+  // name(args) and name<T>(args): the call-shaped declaration most signatures use
+  new RegExp(`^(${ID})\\s*(?:<[^>]*>)?\\s*\\(`),
+  // Name = …, the alias form schema signatures use
+  new RegExp(`^(${ID})\\s*=(?!=)`),
+  // CONSTANT: Type. Upper case only: a lower-case `name:` line is a prose label as often as a field.
+  /^([A-Z][A-Z0-9_]*)\??\s*:(?!:)/
+];
+var NOT_A_NAME = /* @__PURE__ */ new Set([
+  "if",
+  "for",
+  "while",
+  "switch",
+  "return",
+  "catch",
+  "new",
+  "await",
+  "import",
+  "export",
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS"
+]);
+var REMOVAL = /\b(removed|deleted|dropped)\b/i;
+var LINE_COMMENT = /(^|\s)(\/\/|#)(.*)$/;
+function surfaceNames(signature) {
+  const text = signature.replace(/\/\*[\s\S]*?\*\//g, "");
+  const declared = [];
+  const removed = [];
+  let removing = false;
+  for (const raw of text.split("\n")) {
+    if (raw.trim() === "") {
+      removing = false;
+      continue;
+    }
+    if (/^\s*(\/\/|#)/.test(raw)) {
+      removing = REMOVAL.test(raw);
+      continue;
+    }
+    if (/^\s/.test(raw)) continue;
+    const comment = LINE_COMMENT.exec(raw);
+    const line = (comment ? raw.slice(0, comment.index) : raw).trimEnd();
+    const name = declaredName(line);
+    if (name === null) continue;
+    const target = removing || comment !== null && REMOVAL.test(comment[3] ?? "") ? removed : declared;
+    if (!target.includes(name)) target.push(name);
+  }
+  return { declared: declared.filter((n) => !removed.includes(n)), removed };
+}
+function declaredName(line) {
+  for (const re of DECLARATIONS) {
+    const m = re.exec(line);
+    if (m && m[1] !== void 0) return NOT_A_NAME.has(m[1]) ? null : m[1];
+  }
+  return null;
+}
+var DOC_FILE = /\.(md|mdx|markdown|txt|rst|adoc)$/i;
+var TEST_FILE = /(^|\/)(test|tests|__tests__|e2e|spec)\/|(^|\/)test_[^/]+$|[._-](test|spec)\.[^/]+$/i;
+function implementationFiles(contract) {
+  const tests = new Set(
+    contract.criteria.map((c) => oracleTestFile(c)).filter((f) => f !== null)
+  );
+  return contract.files.filter((f) => f.action !== "delete").map((f) => f.path).filter((p) => !DOC_FILE.test(p) && !TEST_FILE.test(p) && !tests.has(p));
+}
+var unknown2 = (reason) => ({ status: "unknown", missing: [], reason });
+function occurs(name, text) {
+  const escaped = name.replace(/\$/g, "\\$");
+  return new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`).test(text);
+}
+function checkContractSurface(contract, readFile) {
+  if (!contract.contract || contract.contract.kind === "none") {
+    return unknown2("the contract declares no callable surface");
+  }
+  const { declared } = surfaceNames(contract.contract.signature ?? "");
+  if (declared.length === 0) {
+    return unknown2("no declaration could be read from contract.signature");
+  }
+  const texts = implementationFiles(contract).map((p) => readFile(p)).filter((t) => t !== null);
+  if (texts.length === 0) {
+    return unknown2("none of the contract's implementation files could be read");
+  }
+  const missing = declared.filter((name) => !texts.some((t) => occurs(name, t)));
+  return missing.length === 0 ? { status: "matched", missing: [], reason: null } : { status: "missing", missing, reason: null };
+}
+
 // src/lib/oracles.ts
-function parseContractCriteria(blockText) {
+var import_yaml2 = __toESM(require_dist2());
+function parseContract(blockText) {
   let parsed;
   try {
     parsed = SpecContract.safeParse((0, import_yaml2.parse)(blockText));
@@ -35728,7 +35829,7 @@ function parseContractCriteria(blockText) {
   if (!parsed.success) {
     return { error: `spec-contract block is invalid: ${parsed.error.issues[0]?.message ?? "?"}` };
   }
-  return { criteria: parsed.data.criteria };
+  return { contract: parsed.data };
 }
 function resolveCriteria(criteria, opts) {
   return criteria.filter((criterion) => criterion.oracle.kind !== "prose-review").map((criterion) => ({ criterion, resolved: resolveOracleCommand(criterion, opts) }));
@@ -36758,12 +36859,12 @@ function spawnCommand(command, cwd) {
   const start = performance.now();
   const since = () => Math.round(performance.now() - start);
   const asError = (err3) => err3 instanceof Error ? err3 : new Error(String(err3));
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let child;
     try {
       child = spawn(command, { cwd, shell: true });
     } catch (err3) {
-      resolve2({
+      resolve3({
         code: null,
         signal: null,
         stdout: "",
@@ -36779,7 +36880,7 @@ function spawnCommand(command, cwd) {
     const settle = (o) => {
       if (settled) return;
       settled = true;
-      resolve2(o);
+      resolve3(o);
     };
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
@@ -36952,14 +37053,15 @@ function readSealedSpec(slug, projectRoot, specConfig) {
       error: `spec \`${slug}\` has been edited since it was sealed \u2014 stamped \`${stamped}\`, the block now hashes to \`${actual}\`. Refused: nothing was run and nothing was journalled. Restore the contract, or re-run /marvin:task-start's seal step to stamp the new one deliberately.`
     };
   }
-  const parsed = parseContractCriteria(blockText);
+  const parsed = parseContract(blockText);
   if ("error" in parsed) return { error: parsed.error };
   return {
     slug,
     path,
     type: (frontmatter.type ?? "").trim(),
     contractSha: actual,
-    criteria: parsed.criteria
+    criteria: parsed.contract.criteria,
+    contract: parsed.contract
   };
 }
 function testFileHash(projectRoot, file) {
@@ -37102,6 +37204,25 @@ function redGreenStatus(projectRoot, specSlug, specConfig) {
   const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
   return { status: unproven.length ? "missing" : "proven", unproven };
 }
+function contractSurfaceStatus(projectRoot, specSlug, specConfig) {
+  const none = { status: "unknown", missing: [], reason: "no resolved spec slug" };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  if ("error" in spec) return { ...none, reason: spec.error };
+  return checkContractSurface(spec.contract, (path) => readProjectFile(projectRoot, path));
+}
+function readProjectFile(projectRoot, path) {
+  const root = resolve(projectRoot);
+  const abs = resolve(root, path);
+  const rel = relative(root, abs);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+  try {
+    return statSync(abs).isFile() ? readFileSync(abs, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
 function errText2(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -37157,7 +37278,13 @@ function deliverGate(projectRoot, opts) {
   const runPath = slug ? join(projectRoot, ".marvin", "task", "runs", `${slug}.md`) : null;
   const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
-  const extras = { artifactPath, allowStale, redGreen: redGreen.status };
+  const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const extras = {
+    artifactPath,
+    allowStale,
+    redGreen: redGreen.status,
+    surface: surface.status
+  };
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
   const decide = (decision, verdict2, reason, extra = extras) => {
     const answer = gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
@@ -37239,7 +37366,8 @@ function deliverGate(projectRoot, opts) {
   }
   const freshness = staleness === "fresh" ? " \xB7 the evidence matches this working tree" : staleness === "stale" ? ` \xB7 STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`)` : " \xB7 freshness not checked (this run recorded no provenance)";
   const redGreenNote = redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
-  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}`, {
+  const surfaceNote = surface.status === "missing" ? ` \xB7 contract.signature declares ${surface.missing.map((n) => `\`${n}\``).join(", ")}, found in none of the contract's implementation files \u2014 correct the code or the signature, and say which in the pull request (this does not block delivery)` : "";
+  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}${surfaceNote}`, {
     ...extras,
     staleness
   });
@@ -37260,12 +37388,14 @@ function quoteNotRunWarnings(warnings) {
 function gateResult(decision, verdict, reason, extras) {
   const staleness = extras.staleness ?? "unknown";
   const redGreen = extras.redGreen ?? "unknown";
+  const surface = extras.surface ?? "unknown";
   const machine = JSON.stringify({
     decision,
     verdict,
     reason,
     staleness,
     red_green: redGreen,
+    contract_surface: surface,
     artifactPath: extras.artifactPath,
     allowStale: extras.allowStale
   });
@@ -37276,6 +37406,7 @@ function gateResult(decision, verdict, reason, extras) {
     `**Verdict:** ${verdict ?? "\u2014"}`,
     `**Freshness:** ${staleness}`,
     `**Red-green:** ${redGreen}`,
+    `**Contract surface:** ${surface}`,
     `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
     ``

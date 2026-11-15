@@ -305,6 +305,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0049](./docs/adr/0049-whole-file-reading-of-test-one.md) | The seal stage reads `test_one` for a whole file instead of refusing its per-test parts | Accepted |
 | [0050](./docs/adr/0050-per-run-calibration-files.md) | One calibration file per finished run, not one appended log | Accepted |
 | [0051](./docs/adr/0051-periodic-autopilot-status-card.md) | The autopilot reports at least every five minutes, as one status card | Accepted |
+| [0052](./docs/adr/0052-contract-surface-at-delivery.md) | The delivery gate checks the contract's declared names against the code | Proposed |
 
 ## Contributing
 
