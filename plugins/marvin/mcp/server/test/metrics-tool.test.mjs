@@ -502,8 +502,8 @@ test("rollup on a bare project still writes a block whose sources are all absent
 test("the metrics tool is registered between spec and lessons, text-only", async () => {
   const listed = await withSession({}, (s) => s.request("tools/list", {}));
   const names = listed.tools.map((t) => t.name);
-  // Sixteen since `autopilot-report` (ADR-0051); pipeline-tool.test.mjs pins the list.
-  assert.equal(names.length, 16);
+  // Seventeen since `hunt` (ADR-0053); pipeline-tool.test.mjs pins the list.
+  assert.equal(names.length, 17);
   assert.equal(names[names.indexOf("spec") + 1], "metrics");
   assert.equal(names[names.indexOf("metrics") + 1], "lessons");
   const tool = listed.tools.find((t) => t.name === "metrics");

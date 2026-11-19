@@ -140,8 +140,8 @@ export const PROMPTS: PromptDef[] = [
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
     description:
-      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
+      "Marvin welcome banner + dashboard — project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/hunt/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, hunt, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned — do not summarise it, reformat it, or add a preamble.",
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -389,6 +389,33 @@ export const PROMPTS: PromptDef[] = [
     description:
       "A-99 — consolidate finished audit reports into one prioritised register: deduplicate findings several audits reached, resolve severity conflicts with a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce the top five for management. Reads reports and never re-analyses code.",
     skill: "audit-summary",
+  },
+
+  // ── hunt (bug hunter: ledger, flow map, verification protocol, ADR-0053/0054) ─
+  // Detect-only in this release: findings are recorded and proven, never fixed.
+  {
+    name: "hunt-init",
+    description:
+      "Set up the bug hunter for this project — detect the stack, propose scope, severity floors, budgets and authority (detect-only by default), write the `hunt` key of .marvin/config.json and create .marvin/hunt/. Changes no source code.",
+    skill: "hunt-init",
+  },
+  {
+    name: "hunt-code",
+    description:
+      "Hunt for defects by reading code — map the flows, rank hotspots, hunt each batch against the defect taxonomy, challenge every claim with a skeptic and a referee, and prove bugs with a reproducing test before they count. Records findings in the .marvin/hunt/ ledger; never fixes them.",
+    skill: "hunt-code",
+  },
+  {
+    name: "hunt-triage",
+    description:
+      "Triage the bug-hunter ledger — deduplicate, group systemic patterns, re-verify stale findings, rank by severity, confidence and journey priority, and write one report under .marvin/hunt/reports/.",
+    skill: "hunt-triage",
+  },
+  {
+    name: "hunt-status",
+    description:
+      "Bug-hunter status — open findings by status, the top confirmed ones, recent runs and coverage.",
+    body: callTool("hunt", { action: "status" }),
   },
 
   // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─

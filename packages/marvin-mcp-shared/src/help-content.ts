@@ -25,6 +25,7 @@ export const GROUP_BLURBS: Record<string, string> = {
   sec: "Security scanners — secrets, deps, threat models & more",
   refactor: "Code-health — audit, smells, plan, apply",
   audit: "Formal project audit — plan the programme, run one audit, consolidate",
+  hunt: "Bug hunter — find, challenge and prove defects; triage the ledger",
   track: "Lightweight board tracker — create, move, list, configure",
 };
 
@@ -97,6 +98,11 @@ export const COMMAND_BLURBS: Record<string, string> = {
   "audit-plan": "Plan the audit programme",
   "audit-run": "Run one audit, A-01…A-22",
   "audit-summary": "Consolidate audit reports",
+  // hunt
+  "hunt-init": "Set up the bug hunter",
+  "hunt-code": "Hunt defects in code, prove them",
+  "hunt-triage": "Rank and report the ledger",
+  "hunt-status": "Open findings, runs, coverage",
   // track
   "track-menu": "Board action menu",
   "track-new": "New board task",
@@ -222,6 +228,15 @@ export const COMMAND_DETAILS: Record<string, string> = {
     "Execute ONE audit of the A-01…A-22 programme end to end and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
   "audit-summary":
     "A-99 — consolidate finished audit reports into one prioritised register: deduplicate, resolve severity conflicts, order by finding dependencies, and produce the top five. Reads reports, never code.",
+  // hunt
+  "hunt-init":
+    "Detect the stack and write the bug hunter's settings — scope, severity floors, budgets, authority (detect-only by default) — into .marvin/config.json, and create .marvin/hunt/.",
+  "hunt-code":
+    "Read the code for defects: map the flows, rank hotspots, hunt in batches, challenge each claim with a skeptic and a referee, and prove bugs with a reproducing test. Records findings; never fixes them.",
+  "hunt-triage":
+    "Deduplicate the ledger, group systemic patterns, re-verify stale findings, rank what is open and write one report under .marvin/hunt/reports/.",
+  "hunt-status":
+    "Show open findings by status, the top confirmed ones, recent hunt runs and file coverage.",
   // track
   "track-menu": "Open the board action menu.",
   "track-new": "Create a board task — bug, feature, chore, or spike — through an interactive form.",
@@ -276,6 +291,9 @@ export const COMMAND_EXAMPLES: Record<string, string> = {
   // audit
   "audit-run": "/marvin:audit-run A-14",
   "audit-plan": "/marvin:audit-plan due diligence, code + CI only",
+  // hunt
+  "hunt-code": "/marvin:hunt-code src/billing",
+  "hunt-triage": "/marvin:hunt-triage",
   // track
   "track-new": "/marvin:track-new bug login 500s",
   "track-start": "/marvin:track-start 12",
@@ -563,6 +581,27 @@ export const COMMAND_PROMPTS: Record<string, readonly string[]> = {
     "marvin, сведи результаты аудитов",
     "marvin, consolidate the audit reports",
     "marvin, what do we fix first?",
+  ],
+  // hunt
+  "hunt-init": [
+    "marvin, настрой охотника за багами",
+    "marvin, set up the bug hunter",
+    "marvin, configure hunt for this repo",
+  ],
+  "hunt-code": [
+    "marvin, найди баги в коде",
+    "marvin, hunt for bugs in src/billing",
+    "marvin, find real defects and prove them with tests",
+  ],
+  "hunt-triage": [
+    "marvin, разбери найденные баги",
+    "marvin, triage the hunt findings",
+    "marvin, which bugs are worth fixing first?",
+  ],
+  "hunt-status": [
+    "marvin, что нашёл охотник?",
+    "marvin, hunt status",
+    "marvin, how many open findings are there?",
   ],
   "track-menu": [
     "marvin, open the board menu",

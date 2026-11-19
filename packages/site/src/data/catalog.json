@@ -1,9 +1,9 @@
 {
   "version": "0.38.0",
   "counts": {
-    "prompts": 60,
-    "tools": 16,
-    "agents": 10,
+    "prompts": 64,
+    "tools": 17,
+    "agents": 14,
     "widgets": 10,
     "version": "0.38.0",
     "license": "MIT"
@@ -43,6 +43,11 @@
       "key": "audit",
       "blurb": "Formal project audit — plan the programme, run one audit, consolidate",
       "count": 3
+    },
+    {
+      "key": "hunt",
+      "blurb": "Bug hunter — find, challenge and prove defects; triage the ledger",
+      "count": 4
     },
     {
       "key": "track",
@@ -714,6 +719,56 @@
         "marvin, сведи результаты аудитов",
         "marvin, consolidate the audit reports",
         "marvin, what do we fix first?"
+      ],
+      "human": false
+    },
+    {
+      "name": "hunt-init",
+      "group": "hunt",
+      "blurb": "Set up the bug hunter",
+      "description": "Detect the stack and write the bug hunter's settings — scope, severity floors, budgets, authority (detect-only by default) — into .marvin/config.json, and create .marvin/hunt/.",
+      "phrases": [
+        "marvin, настрой охотника за багами",
+        "marvin, set up the bug hunter",
+        "marvin, configure hunt for this repo"
+      ],
+      "human": false
+    },
+    {
+      "name": "hunt-code",
+      "group": "hunt",
+      "blurb": "Hunt defects in code, prove them",
+      "description": "Read the code for defects: map the flows, rank hotspots, hunt in batches, challenge each claim with a skeptic and a referee, and prove bugs with a reproducing test. Records findings; never fixes them.",
+      "phrases": [
+        "marvin, найди баги в коде",
+        "marvin, hunt for bugs in src/billing",
+        "marvin, find real defects and prove them with tests"
+      ],
+      "example": "/marvin:hunt-code src/billing",
+      "human": false
+    },
+    {
+      "name": "hunt-triage",
+      "group": "hunt",
+      "blurb": "Rank and report the ledger",
+      "description": "Deduplicate the ledger, group systemic patterns, re-verify stale findings, rank what is open and write one report under .marvin/hunt/reports/.",
+      "phrases": [
+        "marvin, разбери найденные баги",
+        "marvin, triage the hunt findings",
+        "marvin, which bugs are worth fixing first?"
+      ],
+      "example": "/marvin:hunt-triage",
+      "human": false
+    },
+    {
+      "name": "hunt-status",
+      "group": "hunt",
+      "blurb": "Open findings, runs, coverage",
+      "description": "Show open findings by status, the top confirmed ones, recent hunt runs and file coverage.",
+      "phrases": [
+        "marvin, что нашёл охотник?",
+        "marvin, hunt status",
+        "marvin, how many open findings are there?"
       ],
       "human": false
     },

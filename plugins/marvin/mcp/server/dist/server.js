@@ -29024,8 +29024,8 @@ var PROMPTS = [
     // Thin tool wrapper (inline body) — the marvin dashboard + command index,
     // derived from this registry (ADR-0024). Optional `section` filter.
     name: "help",
-    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/track).",
-    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned \u2014 do not summarise it, reformat it, or add a preamble."
+    description: "Marvin welcome banner + dashboard \u2014 project summary, configured MCP servers, the command groups, and the full per-command reference, optionally filtered to one group (core/adr/pr/task/sec/refactor/audit/hunt/track).",
+    body: "Invoke the `help` MCP tool from the `marvin` server. If the user named a section (core, adr, pr, task, sec, refactor, audit, hunt, track) in their message, pass it as `section`; otherwise call with no arguments. Present the tool's text result exactly as it was returned \u2014 do not summarise it, reformat it, or add a preamble."
   },
   {
     // Thin tool wrapper (inline body) — the whole-toolbox state report backed
@@ -29233,6 +29233,28 @@ var PROMPTS = [
     description: "A-99 \u2014 consolidate finished audit reports into one prioritised register: deduplicate findings several audits reached, resolve severity conflicts with a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce the top five for management. Reads reports and never re-analyses code.",
     skill: "audit-summary"
   },
+  // ── hunt (bug hunter: ledger, flow map, verification protocol, ADR-0053/0054) ─
+  // Detect-only in this release: findings are recorded and proven, never fixed.
+  {
+    name: "hunt-init",
+    description: "Set up the bug hunter for this project \u2014 detect the stack, propose scope, severity floors, budgets and authority (detect-only by default), write the `hunt` key of .marvin/config.json and create .marvin/hunt/. Changes no source code.",
+    skill: "hunt-init"
+  },
+  {
+    name: "hunt-code",
+    description: "Hunt for defects by reading code \u2014 map the flows, rank hotspots, hunt each batch against the defect taxonomy, challenge every claim with a skeptic and a referee, and prove bugs with a reproducing test before they count. Records findings in the .marvin/hunt/ ledger; never fixes them.",
+    skill: "hunt-code"
+  },
+  {
+    name: "hunt-triage",
+    description: "Triage the bug-hunter ledger \u2014 deduplicate, group systemic patterns, re-verify stale findings, rank by severity, confidence and journey priority, and write one report under .marvin/hunt/reports/.",
+    skill: "hunt-triage"
+  },
+  {
+    name: "hunt-status",
+    description: "Bug-hunter status \u2014 open findings by status, the top confirmed ones, recent runs and coverage.",
+    body: callTool("hunt", { action: "status" })
+  },
   // ── track (lightweight task tracker; inline tool wrappers, ADR-0032) ─
   // Seven commands over the same tools: the prompts route, the tools decide.
   {
@@ -29316,6 +29338,7 @@ function loadEnv(env2 = process.env) {
   const usageDir = env2.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
   const reportDir = env2.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
   const metricsDir = env2.MARVIN_METRICS_DIR ?? join(projectDir, ".marvin", "metrics");
+  const huntDir = env2.MARVIN_HUNT_DIR ?? join(projectDir, ".marvin", "hunt");
   return {
     projectDir,
     tasksDir,
@@ -29326,7 +29349,8 @@ function loadEnv(env2 = process.env) {
     critiqueDir,
     usageDir,
     reportDir,
-    metricsDir
+    metricsDir,
+    huntDir
   };
 }
 function validatePrefix(prefix) {
@@ -33339,8 +33363,18 @@ function gitState(projectDir) {
     branch: inGitRepo(projectDir) ? currentBranch(projectDir) : null
   };
 }
-var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "audit", "track"];
-var GROUP_ORDER2 = ["core", "adr", "pr", "task", "sec", "refactor", "audit", "track"];
+var GROUP_PREFIXES = ["adr", "pr", "task", "sec", "refactor", "audit", "hunt", "track"];
+var GROUP_ORDER2 = [
+  "core",
+  "adr",
+  "pr",
+  "task",
+  "sec",
+  "refactor",
+  "audit",
+  "hunt",
+  "track"
+];
 function groupOf(name) {
   const prefix = name.split("-")[0] ?? "";
   return prefix !== name && GROUP_PREFIXES.includes(prefix) ? prefix : "core";
@@ -33465,6 +33499,7 @@ var GROUP_BLURBS = {
   sec: "Security scanners \u2014 secrets, deps, threat models & more",
   refactor: "Code-health \u2014 audit, smells, plan, apply",
   audit: "Formal project audit \u2014 plan the programme, run one audit, consolidate",
+  hunt: "Bug hunter \u2014 find, challenge and prove defects; triage the ledger",
   track: "Lightweight board tracker \u2014 create, move, list, configure"
 };
 var COMMAND_BLURBS = {
@@ -33528,6 +33563,11 @@ var COMMAND_BLURBS = {
   "audit-plan": "Plan the audit programme",
   "audit-run": "Run one audit, A-01\u2026A-22",
   "audit-summary": "Consolidate audit reports",
+  // hunt
+  "hunt-init": "Set up the bug hunter",
+  "hunt-code": "Hunt defects in code, prove them",
+  "hunt-triage": "Rank and report the ledger",
+  "hunt-status": "Open findings, runs, coverage",
   // track
   "track-menu": "Board action menu",
   "track-new": "New board task",
@@ -33598,6 +33638,11 @@ var COMMAND_DETAILS = {
   "audit-plan": "Choose which of the twenty-two audits this project needs, order them into waves by data dependency, resolve the shared parameters once, and emit a paste-ready invocation per run.",
   "audit-run": "Execute ONE audit of the A-01\u2026A-22 programme end to end and release it as .md plus .pdf with a machine-readable findings register. Strictly read-only on the audited repository.",
   "audit-summary": "A-99 \u2014 consolidate finished audit reports into one prioritised register: deduplicate, resolve severity conflicts, order by finding dependencies, and produce the top five. Reads reports, never code.",
+  // hunt
+  "hunt-init": "Detect the stack and write the bug hunter's settings \u2014 scope, severity floors, budgets, authority (detect-only by default) \u2014 into .marvin/config.json, and create .marvin/hunt/.",
+  "hunt-code": "Read the code for defects: map the flows, rank hotspots, hunt in batches, challenge each claim with a skeptic and a referee, and prove bugs with a reproducing test. Records findings; never fixes them.",
+  "hunt-triage": "Deduplicate the ledger, group systemic patterns, re-verify stale findings, rank what is open and write one report under .marvin/hunt/reports/.",
+  "hunt-status": "Show open findings by status, the top confirmed ones, recent hunt runs and file coverage.",
   // track
   "track-menu": "Open the board action menu.",
   "track-new": "Create a board task \u2014 bug, feature, chore, or spike \u2014 through an interactive form.",
@@ -33643,6 +33688,9 @@ var COMMAND_EXAMPLES = {
   // audit
   "audit-run": "/marvin:audit-run A-14",
   "audit-plan": "/marvin:audit-plan due diligence, code + CI only",
+  // hunt
+  "hunt-code": "/marvin:hunt-code src/billing",
+  "hunt-triage": "/marvin:hunt-triage",
   // track
   "track-new": "/marvin:track-new bug login 500s",
   "track-start": "/marvin:track-start 12",
@@ -33920,6 +33968,27 @@ var COMMAND_PROMPTS = {
     "marvin, \u0441\u0432\u0435\u0434\u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0430\u0443\u0434\u0438\u0442\u043E\u0432",
     "marvin, consolidate the audit reports",
     "marvin, what do we fix first?"
+  ],
+  // hunt
+  "hunt-init": [
+    "marvin, \u043D\u0430\u0441\u0442\u0440\u043E\u0439 \u043E\u0445\u043E\u0442\u043D\u0438\u043A\u0430 \u0437\u0430 \u0431\u0430\u0433\u0430\u043C\u0438",
+    "marvin, set up the bug hunter",
+    "marvin, configure hunt for this repo"
+  ],
+  "hunt-code": [
+    "marvin, \u043D\u0430\u0439\u0434\u0438 \u0431\u0430\u0433\u0438 \u0432 \u043A\u043E\u0434\u0435",
+    "marvin, hunt for bugs in src/billing",
+    "marvin, find real defects and prove them with tests"
+  ],
+  "hunt-triage": [
+    "marvin, \u0440\u0430\u0437\u0431\u0435\u0440\u0438 \u043D\u0430\u0439\u0434\u0435\u043D\u043D\u044B\u0435 \u0431\u0430\u0433\u0438",
+    "marvin, triage the hunt findings",
+    "marvin, which bugs are worth fixing first?"
+  ],
+  "hunt-status": [
+    "marvin, \u0447\u0442\u043E \u043D\u0430\u0448\u0451\u043B \u043E\u0445\u043E\u0442\u043D\u0438\u043A?",
+    "marvin, hunt status",
+    "marvin, how many open findings are there?"
   ],
   "track-menu": [
     "marvin, open the board menu",
@@ -40258,48 +40327,48 @@ function checkedRunDir(runDirArg, env2, refuse2 = errText4) {
   const refused = relativeStateRoot(env2, refuse2);
   if (refused) return refused;
   const root = resolve(stateRoot(env2));
-  const runDir = resolve(runDirArg);
+  const runDir2 = resolve(runDirArg);
   if (!existsSync(root)) {
-    if (!strictlyInside(root, runDir)) return outsideRoot(runDirArg, root, refuse2);
+    if (!strictlyInside(root, runDir2)) return outsideRoot(runDirArg, root, refuse2);
     return refuse2(
       `The state root \`${root}\` does not exist, so no run has been started under it.`
     );
   }
   const realRoot = realpathSync(root);
-  if (strictlyInside(root, runDir) || strictlyInside(realRoot, runDir)) {
-    if (!existsSync(runDir)) return refuse2(`There is no run directory at \`${runDir}\`.`);
-  } else if (!existsSync(runDir)) {
+  if (strictlyInside(root, runDir2) || strictlyInside(realRoot, runDir2)) {
+    if (!existsSync(runDir2)) return refuse2(`There is no run directory at \`${runDir2}\`.`);
+  } else if (!existsSync(runDir2)) {
     return outsideRoot(runDirArg, root, refuse2);
   }
-  if (!strictlyInside(realRoot, realpathSync(runDir))) return outsideRoot(runDirArg, root, refuse2);
-  const file = join(runDir, "run.json");
-  if (!existsSync(file)) return refuse2(`There is no run.json in \`${runDir}\`.`);
+  if (!strictlyInside(realRoot, realpathSync(runDir2))) return outsideRoot(runDirArg, root, refuse2);
+  const file = join(runDir2, "run.json");
+  if (!existsSync(file)) return refuse2(`There is no run.json in \`${runDir2}\`.`);
   if (!strictlyInside(realRoot, realpathSync(file))) return outsideRoot(runDirArg, root, refuse2);
-  return { runDir };
+  return { runDir: runDir2 };
 }
 function status(runDirArg, env2) {
   const checked = checkedRunDir(runDirArg, env2);
   if (!("runDir" in checked)) return checked;
-  const { runDir } = checked;
-  const file = join(runDir, "run.json");
+  const { runDir: runDir2 } = checked;
+  const file = join(runDir2, "run.json");
   let run3;
   try {
-    run3 = loadRun(runDir);
+    run3 = loadRun(runDir2);
   } catch (error2) {
     return errText4(`\`${file}\` is not a valid run: ${describeError(error2)}`);
   }
-  const payload = statusPayload(runDir, run3);
+  const payload = statusPayload(runDir2, run3);
   return {
     content: [{ type: "text", text: renderStatus(payload) }],
     structuredContent: payload
   };
 }
-function statusPayload(runDir, run3) {
+function statusPayload(runDir2, run3) {
   const byStatus = {};
   for (const child of run3.children) byStatus[child.status] = (byStatus[child.status] ?? 0) + 1;
   const costs = run3.children.map((c) => c.costUsd).filter((c) => c !== null);
   return {
-    runDir,
+    runDir: runDir2,
     id: run3.id,
     stage: run3.stage,
     haltReason: run3.haltReason,
@@ -40366,9 +40435,9 @@ function renderStatus(s) {
     ...rows
   ].join("\n");
 }
-function outsideRoot(runDir, root, refuse2 = errText4) {
+function outsideRoot(runDir2, root, refuse2 = errText4) {
   return refuse2(
-    `\`${runDir}\` is not a run directory inside the pipeline state root \`${root}\` (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). Runs are read only from there, so nothing was read.`
+    `\`${runDir2}\` is not a run directory inside the pipeline state root \`${root}\` (MARVIN_PIPELINE_HOME, else ~/.local/state/marvin-pipeline). Runs are read only from there, so nothing was read.`
   );
 }
 function describeError(error2) {
@@ -40774,15 +40843,15 @@ external_exports.object({
 
 // src/pipeline/status-report.ts
 var REPORTS_DIR = "status-reports";
-var reportPath = (runDir, n) => join(runDir, REPORTS_DIR, `${n}.json`);
-function lastReportNumber(runDir) {
-  const dir = join(runDir, REPORTS_DIR);
+var reportPath = (runDir2, n) => join(runDir2, REPORTS_DIR, `${n}.json`);
+function lastReportNumber(runDir2) {
+  const dir = join(runDir2, REPORTS_DIR);
   if (!existsSync(dir)) return 0;
   return readdirSync(dir).map((f) => /^(\d+)\.json$/.exec(f)?.[1]).filter((m) => m !== void 0).reduce((max, m) => Math.max(max, Number(m)), 0);
 }
-function readReport(runDir, n) {
+function readReport(runDir2, n) {
   try {
-    return AutopilotReport.parse(JSON.parse(readFileSync(reportPath(runDir, n), "utf8")));
+    return AutopilotReport.parse(JSON.parse(readFileSync(reportPath(runDir2, n), "utf8")));
   } catch {
     return null;
   }
@@ -40819,15 +40888,15 @@ function buildAutopilotReportTool(env2 = process.env) {
 function runAutopilotReport(input, env2) {
   const checked = checkedRunDir(input.runDir, env2, refuse);
   if (!("runDir" in checked)) return checked;
-  const { runDir } = checked;
-  const n = input.n ?? lastReportNumber(runDir);
-  if (n === 0) return refuse(`No status report has been written in \`${runDir}\` yet.`);
-  const file = reportPath(runDir, n);
-  if (!existsSync(file)) return refuse(`There is no report ${n} in \`${runDir}\`.`);
-  if (!inside(realpathSync(runDir), realpathSync(file))) {
-    return refuse(`Report ${n} resolves outside \`${runDir}\`, so it was not read.`);
+  const { runDir: runDir2 } = checked;
+  const n = input.n ?? lastReportNumber(runDir2);
+  if (n === 0) return refuse(`No status report has been written in \`${runDir2}\` yet.`);
+  const file = reportPath(runDir2, n);
+  if (!existsSync(file)) return refuse(`There is no report ${n} in \`${runDir2}\`.`);
+  if (!inside(realpathSync(runDir2), realpathSync(file))) {
+    return refuse(`Report ${n} resolves outside \`${runDir2}\`, so it was not read.`);
   }
-  const report = readReport(runDir, n);
+  const report = readReport(runDir2, n);
   if (report === null) return refuse(`\`${file}\` is not a valid status report.`);
   const t = input.translations;
   if (t?.events !== void 0 && t.events.length !== report.events.length) {
@@ -40843,18 +40912,18 @@ function runAutopilotReport(input, env2) {
     events: report.events.map((e, i) => ({ ...e, text: oneLine(t?.events?.[i] ?? e.text) })),
     callout: report.callout === null ? null : { ...report.callout, text: oneLine(t?.callout ?? report.callout.text) }
   };
-  if (t !== void 0) keepTexts(runDir, shown);
-  const history = earlierEvents(runDir, n);
-  const payload = { report: shown, runDir, ...history };
+  if (t !== void 0) keepTexts(runDir2, shown);
+  const history = earlierEvents(runDir2, n);
+  const payload = { report: shown, runDir: runDir2, ...history };
   return {
     content: [{ type: "text", text: renderReport(shown) }],
     structuredContent: payload
   };
 }
 var oneLine = (s) => s.replace(/\s+/g, " ").trim();
-var textsPath = (runDir, n) => reportPath(runDir, n).replace(/\.json$/, ".text.json");
-function keepTexts(runDir, shown) {
-  const path = textsPath(runDir, shown.n);
+var textsPath = (runDir2, n) => reportPath(runDir2, n).replace(/\.json$/, ".text.json");
+function keepTexts(runDir2, shown) {
+  const path = textsPath(runDir2, shown.n);
   const kept = { events: shown.events.map((e) => e.text) };
   try {
     const tmp = `${path}.${process.pid}.tmp`;
@@ -40864,22 +40933,22 @@ function keepTexts(runDir, shown) {
   } catch {
   }
 }
-function keptTexts(runDir, n, length) {
+function keptTexts(runDir2, n, length) {
   try {
-    const kept = JSON.parse(readFileSync(textsPath(runDir, n), "utf8"));
+    const kept = JSON.parse(readFileSync(textsPath(runDir2, n), "utf8"));
     const events = kept.events;
     return Array.isArray(events) && events.length === length && events.every((e) => typeof e === "string") ? events : null;
   } catch {
     return null;
   }
 }
-function earlierEvents(runDir, n) {
+function earlierEvents(runDir2, n) {
   const earlier = [];
   let earlierOmitted = 0;
   for (let k = 1; k < n; k += 1) {
-    const report = readReport(runDir, k);
+    const report = readReport(runDir2, k);
     if (report === null) continue;
-    const texts = keptTexts(runDir, k, report.events.length);
+    const texts = keptTexts(runDir2, k, report.events.length);
     earlier.push(...report.events.map((e, i) => ({ ...e, text: oneLine(texts?.[i] ?? e.text) })));
     earlierOmitted += report.omittedEvents;
   }
@@ -41036,6 +41105,2975 @@ ${text}` }],
   };
 }
 
+// ../../../../packages/marvin-mcp-shared/dist/contracts/adr.js
+var AdrStatus = external_exports.enum(["proposed", "accepted", "deprecated", "superseded", "rejected"]);
+var AdrRecord = external_exports.object({
+  number: external_exports.number().int().positive(),
+  slug: external_exports.string().min(1),
+  title: external_exports.string().min(1),
+  status: AdrStatus,
+  /** `YYYY-MM-DD`; null when the record carries no parseable date. */
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  /** Numbers of the records this one supersedes (paired links, ADR-0027). */
+  supersedes: external_exports.array(external_exports.number().int().positive()),
+  /** Numbers of the records that supersede this one. */
+  superseded_by: external_exports.array(external_exports.number().int().positive()),
+  path: external_exports.string().min(1)
+});
+var AdrMalformed = external_exports.object({
+  filename: external_exports.string().min(1),
+  /** Filename number when the `NNNN-` prefix was still parseable. */
+  number: external_exports.number().int().positive().nullable(),
+  reason: external_exports.string().min(1)
+});
+external_exports.object({
+  dir: external_exports.string().min(1),
+  records: external_exports.array(AdrRecord),
+  counts: external_exports.record(AdrStatus, external_exports.number().int().nonnegative()),
+  malformed: external_exports.array(AdrMalformed)
+});
+var AdrAuditKind = external_exports.enum([
+  "malformed",
+  "invalid-status",
+  "duplicate-number",
+  "numbering-hole",
+  "dangling-reference",
+  "broken-supersede-pair",
+  "placeholder-residue",
+  "stale-index"
+]);
+var AdrAuditFinding = external_exports.object({
+  kind: AdrAuditKind,
+  /** Errors fail the audit; warnings inform without failing it. */
+  severity: external_exports.enum(["error", "warning"]),
+  message: external_exports.string().min(1),
+  /** Record number the finding points at; null for corpus-level findings. */
+  number: external_exports.number().int().positive().nullable(),
+  path: external_exports.string().nullable()
+});
+external_exports.object({
+  dir: external_exports.string().min(1),
+  /** Parsed records + malformed files = every corpus file the audit saw. */
+  checked: external_exports.number().int().nonnegative(),
+  findings: external_exports.array(AdrAuditFinding),
+  /** True when no error-severity finding exists. */
+  ok: external_exports.boolean()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/spec-audit.js
+var SpecAuditKind = external_exports.enum([
+  "malformed",
+  "invalid-status",
+  "duplicate-number",
+  "numbering-hole",
+  "slug-collision",
+  "dangling-depends-on",
+  "missing-seal"
+]);
+var SpecAuditFinding = external_exports.object({
+  kind: SpecAuditKind,
+  /** Errors fail the audit; warnings inform without failing it. */
+  severity: external_exports.enum(["error", "warning"]),
+  message: external_exports.string().min(1),
+  /** The spec the finding points at; null for corpus-level findings. */
+  slug: external_exports.string().nullable(),
+  /** Ordering prefix; null for a corpus-level finding or a legacy unnumbered spec. */
+  number: external_exports.number().int().nonnegative().nullable(),
+  path: external_exports.string().nullable()
+});
+external_exports.object({
+  /** Project-root-relative resolved spec directory. */
+  dir: external_exports.string().min(1),
+  /** Parsed records + unreadable files = every corpus file the audit saw. */
+  checked: external_exports.number().int().nonnegative(),
+  findings: external_exports.array(SpecAuditFinding),
+  /** True when no error-severity finding exists. */
+  ok: external_exports.boolean()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/links.js
+var LinkKind = external_exports.enum(["pr", "tracker", "adr", "spec", "branch", "commit", "external"]);
+var LinkRef = external_exports.object({
+  kind: LinkKind,
+  label: external_exports.string().min(1),
+  url: external_exports.string().url().optional(),
+  ref: external_exports.string().optional()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/task.js
+var TaskType2 = external_exports.enum(["bug", "feature", "chore", "spike"]);
+var StatusRole2 = external_exports.enum(["todo", "wip", "review", "done", "blocked"]);
+var TaskStatusRef = external_exports.object({
+  key: external_exports.string().min(1),
+  role: StatusRole2
+});
+var TrackerId2 = external_exports.string().regex(/^[A-Z]+-\d+$/, "expected SHORT-123 format");
+var PrState = external_exports.enum(["open", "merged", "closed"]);
+var PrRef = external_exports.object({
+  url: external_exports.string().url(),
+  number: external_exports.number().int().positive().optional(),
+  state: PrState.optional()
+});
+var TaskCard = external_exports.object({
+  id: external_exports.string().regex(/^\d{3}$/, "zero-padded 3-digit id"),
+  type: TaskType2,
+  status: TaskStatusRef,
+  title: external_exports.string().min(1),
+  branch: external_exports.string(),
+  tracker_id: TrackerId2.optional(),
+  /** Derived from `tracker_id` + config template; `null` when unconfigured. */
+  tracker_url: external_exports.string().url().nullable(),
+  /** Stored field written by the `task` tool's `link-pr` action (ADR-0025).
+   *  `null` when no PR exists yet; never live-resolved. */
+  pr: PrRef.nullable(),
+  /** Slug of the pipeline spec backing this task, when one exists. */
+  spec_slug: external_exports.string().optional(),
+  created: external_exports.string().datetime(),
+  updated: external_exports.string().datetime()
+});
+TaskCard.extend({
+  body_markdown: external_exports.string()
+});
+external_exports.object({
+  tasks: external_exports.array(TaskCard),
+  counts: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative()),
+  role_counts: external_exports.record(StatusRole2, external_exports.number().int().nonnegative())
+});
+external_exports.object({
+  tasks: external_exports.array(TaskCard)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/summary.js
+var OracleKind = external_exports.enum(["test", "command", "prose-review"]);
+var AcOutcome = external_exports.object({
+  id: external_exports.string().regex(/^AC\d+$/i, "criterion id like AC1"),
+  statement: external_exports.string().min(1),
+  oracle_kind: OracleKind,
+  oracle_ref: external_exports.string().optional(),
+  outcome: external_exports.enum(["pass", "fail", "unknown"])
+});
+var GateName = external_exports.enum(["test", "lint", "typecheck", "build"]);
+var GateOutcome = external_exports.object({
+  name: GateName,
+  status: external_exports.enum(["pass", "fail", "skip"]),
+  detail: external_exports.string().optional()
+});
+var CommitRef = external_exports.object({ sha: external_exports.string(), subject: external_exports.string() });
+var LessonRef = external_exports.object({ id: external_exports.string(), title: external_exports.string() });
+external_exports.object({
+  slug: external_exports.string(),
+  title: external_exports.string(),
+  status: external_exports.string(),
+  acceptance: external_exports.array(AcOutcome),
+  gates: external_exports.array(GateOutcome),
+  commits: external_exports.array(CommitRef),
+  lessons: external_exports.array(LessonRef),
+  links: external_exports.array(LinkRef)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/handoff.js
+var HandoffCard = external_exports.object({
+  id: external_exports.string().regex(/^\d{3}$/, "zero-padded 3-digit id"),
+  slug: external_exports.string(),
+  objective: external_exports.string().min(1),
+  branch: external_exports.string(),
+  base: external_exports.string().optional(),
+  pr_url: external_exports.string().url().nullable(),
+  spec_slug: external_exports.string().optional(),
+  created: external_exports.string().datetime()
+});
+var HandoffDetail = HandoffCard.extend({
+  continue_prompt: external_exports.string(),
+  body_markdown: external_exports.string()
+});
+external_exports.object({
+  handoffs: external_exports.array(HandoffCard)
+});
+external_exports.object({
+  handoffs: external_exports.array(HandoffDetail)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/lessons.js
+var LessonsStats = external_exports.object({
+  total: external_exports.number().int().nonnegative(),
+  by_type: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative()),
+  by_tag: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative())
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/audit.js
+var Severity2 = external_exports.enum(["critical", "high", "medium", "low", "info"]);
+var AuditKind2 = external_exports.enum([
+  "scan",
+  "secrets",
+  "deps",
+  "iac",
+  "ci",
+  "threat-model",
+  "compliance",
+  "pentest",
+  "gate",
+  "fix"
+]);
+var Finding = external_exports.object({
+  id: external_exports.string(),
+  severity: Severity2,
+  title: external_exports.string().min(1),
+  /** Taxonomy ref, e.g. `OWASP A01:2025` or `CWE-89`. */
+  category: external_exports.string(),
+  file: external_exports.string().optional(),
+  line: external_exports.number().int().positive().optional(),
+  evidence: external_exports.string().optional(),
+  remediation: external_exports.string().optional(),
+  links: external_exports.array(LinkRef).optional()
+});
+var AuditReport = external_exports.object({
+  kind: AuditKind2,
+  scanned_at: external_exports.string().datetime(),
+  target: external_exports.string().optional(),
+  summary: external_exports.record(Severity2, external_exports.number().int().nonnegative()),
+  findings: external_exports.array(Finding)
+});
+external_exports.object({
+  reports: external_exports.array(AuditReport)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/refactor.js
+var RefactorEffort = external_exports.enum(["trivial", "small", "medium", "large"]);
+var RefactorEvidence = external_exports.object({
+  file: external_exports.string().min(1),
+  line: external_exports.number().int().positive().optional(),
+  /** The measurable signal or short note tied to this location (e.g. "changed 47× in 12 mo"). */
+  note: external_exports.string().optional()
+});
+external_exports.object({
+  /** Register id, report-scoped (`F1`, `F2`, …). */
+  id: external_exports.string().regex(/^F\d+$/, "register id like F1"),
+  title: external_exports.string().min(1),
+  severity: Severity2,
+  effort: RefactorEffort,
+  /** Every finding is evidenced — at least one location. */
+  evidence: external_exports.array(RefactorEvidence).min(1),
+  /** Suggested refactoring direction, one or two lines. */
+  direction: external_exports.string().min(1),
+  /** Source report path relative to the project root, e.g. `.marvin/refactor/001-audit-core.md`. */
+  source_report: external_exports.string().min(1)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/report.js
+var ReportGroup = external_exports.enum(["security", "refactor", "task", "handoff", "critique"]);
+var ReportBodyKind = external_exports.enum(["findings", "checks", "document"]);
+var ReportEffort = external_exports.enum(["S", "M", "L"]);
+var TriageState2 = external_exports.enum(["new", "persisting", "regressed"]);
+var ReportFinding = Finding.extend({
+  category: external_exports.string().optional(),
+  effort: ReportEffort.optional(),
+  /** Suggested refactoring direction (refactor registers). */
+  direction: external_exports.string().optional(),
+  /** Ready-to-run continuation command, supplied by the tool as data. */
+  fixCommand: external_exports.string().optional(),
+  /**
+   * Server-computed identity — sha256 over kind, path, category and title slug,
+   * first 16 hex chars. Deliberately excludes the line number: folding it in
+   * would make every finding below an unrelated insertion look new.
+   */
+  fingerprint: external_exports.string(),
+  /** Filled by the reconciliation pass only — absent means "not reconciled". */
+  firstSeen: external_exports.string().datetime().optional(),
+  /** Filled by the reconciliation pass only — absent means "not reconciled". */
+  state: TriageState2.optional()
+});
+var FindingsBody = external_exports.object({
+  findings: external_exports.array(ReportFinding),
+  /** How many further findings the source file holds beyond this list. */
+  truncated: external_exports.number().int().nonnegative().optional()
+});
+var ReportCheckStatus = external_exports.enum(["pass", "fail", "pending"]);
+var ChecksBody = external_exports.object({
+  checks: external_exports.array(external_exports.object({
+    name: external_exports.string().min(1),
+    status: ReportCheckStatus,
+    note: external_exports.string().optional()
+  }))
+});
+var DocumentBody = external_exports.object({
+  markdown: external_exports.string()
+});
+var ReportBody = external_exports.union([FindingsBody, ChecksBody, DocumentBody]);
+var FindingsSummary = external_exports.object({
+  kind: external_exports.literal("findings"),
+  counts: external_exports.object({
+    critical: external_exports.number().int().nonnegative(),
+    high: external_exports.number().int().nonnegative(),
+    medium: external_exports.number().int().nonnegative(),
+    low: external_exports.number().int().nonnegative()
+  })
+});
+var ChecksSummary = external_exports.object({
+  kind: external_exports.literal("checks"),
+  done: external_exports.number().int().nonnegative(),
+  total: external_exports.number().int().nonnegative(),
+  failed: external_exports.number().int().nonnegative()
+});
+var DocumentSummary = external_exports.object({
+  kind: external_exports.literal("document"),
+  tag: external_exports.string().min(1)
+});
+var ReportSummary = external_exports.discriminatedUnion("kind", [
+  FindingsSummary,
+  ChecksSummary,
+  DocumentSummary
+]);
+var ReportEnvelope = external_exports.object({
+  /** Stable key — the project-relative path, e.g. `.marvin/security/scan-report.md`. */
+  id: external_exports.string().min(1),
+  group: ReportGroup,
+  kind: ReportBodyKind,
+  title: external_exports.string().min(1),
+  /** Project-relative source file path. */
+  path: external_exports.string().min(1),
+  /** Producing command, e.g. `sec-scan`. */
+  generatedBy: external_exports.string().min(1),
+  /** ISO timestamp — the source file's mtime. */
+  generatedAt: external_exports.string().datetime(),
+  /** Server-computed freshness verdict (the widget renders, never decides). */
+  stale: external_exports.boolean(),
+  summary: ReportSummary,
+  body: ReportBody,
+  links: external_exports.array(LinkRef).default([]),
+  /** Ready-to-run regeneration command, e.g. `/marvin:sec-scan`. */
+  rerunCommand: external_exports.string().optional()
+});
+external_exports.object({
+  reports: external_exports.array(ReportEnvelope),
+  /** Deep-link: envelope id to pre-select in the widget. */
+  selected: external_exports.string().optional()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/help.js
+var HelpServer = external_exports.object({
+  name: external_exports.string().min(1),
+  enabled: external_exports.boolean()
+});
+var HelpStatus = external_exports.object({
+  key: external_exports.string().min(1),
+  role: StatusRole2,
+  count: external_exports.number().int().nonnegative()
+});
+var HelpGroup = external_exports.object({
+  group: external_exports.string().min(1),
+  blurb: external_exports.string()
+});
+var HelpCommand = external_exports.object({
+  group: external_exports.string().min(1),
+  name: external_exports.string().min(1),
+  blurb: external_exports.string(),
+  description: external_exports.string(),
+  example: external_exports.string().optional(),
+  phrases: external_exports.array(external_exports.string()),
+  human: external_exports.boolean()
+});
+external_exports.object({
+  version: external_exports.string(),
+  slogan: external_exports.string(),
+  project: external_exports.string(),
+  git: external_exports.object({
+    branch: external_exports.string().nullable(),
+    base_branch: external_exports.string(),
+    has_git: external_exports.boolean(),
+    has_gh: external_exports.boolean()
+  }),
+  statuses: external_exports.array(HelpStatus),
+  artifacts: external_exports.object({
+    specs: external_exports.number().int().nonnegative(),
+    handoffs: external_exports.number().int().nonnegative(),
+    audits: external_exports.number().int().nonnegative(),
+    lessons: external_exports.number().int().nonnegative()
+  }),
+  servers: external_exports.array(HelpServer),
+  groups: external_exports.array(HelpGroup),
+  commands: external_exports.array(HelpCommand)
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/critique.js
+external_exports.enum([
+  "PASS",
+  "PASS WITH WARNINGS",
+  "BLOCK",
+  "NEEDS_CONTEXT",
+  "UNABLE"
+]);
+var TerminalVerdict = external_exports.enum(["PASS", "PASS WITH WARNINGS", "BLOCK", "UNABLE"]);
+var AxisVerdict = external_exports.object({
+  verdict: TerminalVerdict,
+  blockers: external_exports.number().int().nonnegative(),
+  warnings: external_exports.number().int().nonnegative()
+});
+var CritiqueCritic = external_exports.enum(["marvin-tm-spec-critic", "marvin-tm-diff-critic"]);
+var CritiqueInability = external_exports.object({
+  blocker: external_exports.string().min(1),
+  attempted: external_exports.string().min(1),
+  recommendation: external_exports.string().min(1)
+});
+external_exports.object({
+  critic: CritiqueCritic,
+  /** The spec slug this critique belongs to — non-empty, always. */
+  subject: external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "subject must be a spec slug"),
+  judged_at: external_exports.string().datetime(),
+  compliance: AxisVerdict,
+  quality: AxisVerdict,
+  inability: CritiqueInability.optional()
+}).superRefine((value, ctx) => {
+  const unable = value.compliance.verdict === "UNABLE" || value.quality.verdict === "UNABLE";
+  if (unable && !value.inability) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["inability"],
+      message: "an UNABLE axis requires an inability object (blocker, attempted, recommendation)"
+    });
+  }
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/metrics.js
+var Slug = external_exports.string().min(1).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be kebab-case");
+var MetricEventKind = external_exports.enum([
+  "fix-round",
+  "spec-gap",
+  "open-item",
+  "critic-dispatch",
+  "critic-verdict",
+  "gate-call"
+]);
+var MetricEventSource = external_exports.enum([
+  "task-start",
+  "task-implement",
+  "task-deliver",
+  "marvin-tm-executor"
+]);
+var FixLoop = external_exports.enum(["verify-gate", "critic", "red-green"]);
+var OpenItemClassification = external_exports.enum(["deferred", "blocked"]);
+var DorVerdict = external_exports.enum(["PASS", "PASS WITH WARNINGS", "FAIL"]);
+var MetricGate = external_exports.enum(["dor"]);
+var MetricEventShape2 = external_exports.object({
+  slug: Slug,
+  source: MetricEventSource,
+  /** The writer's own step id — `"7F"`, `"8B"`, `"6F"`, `"fix-cycle"`, `"§3"`. */
+  step: external_exports.string().min(1),
+  kind: MetricEventKind,
+  /** The seal in force, when the writer knows one. */
+  contract_sha: external_exports.string().nullable().optional(),
+  /** ISO 8601, stamped by the tool. */
+  at: external_exports.string().datetime(),
+  /** One line, where the kind carries one. Never a credential, token or customer datum. */
+  detail: external_exports.string().min(1).optional(),
+  // fix-round
+  loop: FixLoop.optional(),
+  round: external_exports.number().int().positive().optional(),
+  // open-item
+  classification: OpenItemClassification.optional(),
+  // critic-dispatch / critic-verdict
+  critic: CritiqueCritic.optional(),
+  /** The dispatch number for this critic on this task; a NEEDS_CONTEXT re-dispatch reuses it. */
+  pass: external_exports.number().int().positive().optional(),
+  /** A `TerminalVerdict` on a `critic-verdict`, a `DorVerdict` on a `gate-call`. */
+  verdict: external_exports.string().min(1).optional(),
+  blockers: external_exports.number().int().nonnegative().optional(),
+  warnings: external_exports.number().int().nonnegative().optional(),
+  // gate-call
+  gate: MetricGate.optional(),
+  /** The call number for this gate on this task, incremented per re-run. */
+  call: external_exports.number().int().positive().optional()
+});
+var REQUIRED_EVENT_FIELDS2 = {
+  "fix-round": ["loop", "round"],
+  "spec-gap": ["detail"],
+  "open-item": ["classification", "detail"],
+  "critic-dispatch": ["critic", "pass"],
+  "critic-verdict": ["critic", "pass", "verdict", "blockers", "warnings"],
+  "gate-call": ["gate", "call", "verdict"]
+};
+MetricEventShape2.superRefine((value, ctx) => {
+  for (const field of REQUIRED_EVENT_FIELDS2[value.kind]) {
+    if (value[field] === void 0 || value[field] === null) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [field],
+        message: `a ${value.kind} event requires ${field}`
+      });
+    }
+  }
+  if (value.kind === "critic-verdict" && value.verdict !== void 0) {
+    if (!TerminalVerdict.safeParse(value.verdict).success) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a critic-verdict records a terminal verdict: ${TerminalVerdict.options.join(" | ")}`
+      });
+    }
+  }
+  if (value.kind === "gate-call" && value.verdict !== void 0) {
+    if (!DorVerdict.safeParse(value.verdict).success) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["verdict"],
+        message: `a gate-call records the gate's verdict: ${DorVerdict.options.join(" | ")}`
+      });
+    }
+  }
+});
+var SourcePresence = external_exports.enum(["present", "absent"]);
+var MetricsSources = external_exports.object({
+  spec: SourcePresence,
+  progress: SourcePresence,
+  oracles: SourcePresence,
+  verify_journal: SourcePresence,
+  verify_result: SourcePresence,
+  critique: SourcePresence,
+  events: SourcePresence,
+  git: SourcePresence
+});
+var NullableMs = external_exports.number().nullable();
+var NullableInt = external_exports.number().int().nullable();
+var CriticDispatchMs = external_exports.object({
+  critic: CritiqueCritic,
+  pass: external_exports.number().int().positive(),
+  ms: external_exports.number()
+});
+var TaskMetricsTime = external_exports.object({
+  /** T1 — step 1.5 to the last task-start step. */
+  intake_ms: NullableMs,
+  /** T2 — step 2.5 to the last recorded criterion. */
+  implement_ms: NullableMs,
+  /** T3 — the last recorded criterion to the first green full verification run. */
+  first_green_ms: NullableMs,
+  /** T4 — T1 + T2 + T3, null when any addend is null. */
+  active_ms: NullableMs,
+  /** T5 — wallClockMs / sumOfGatesMs of the final run. */
+  gate_efficiency: external_exports.number().nullable(),
+  /** T6 — each criterion's latest oracle run at the current seal. */
+  oracle_ms: external_exports.array(external_exports.object({ criterion: external_exports.string().min(1), ms: external_exports.number() })),
+  /** T7 — each gate of the final run. */
+  gate_ms: external_exports.array(external_exports.object({ gate: external_exports.string().min(1), ms: external_exports.number() })),
+  /** T8 — inside critic dispatches, per (critic, pass) pair and in total. */
+  critic_ms: external_exports.object({ total: NullableMs, dispatches: external_exports.array(CriticDispatchMs) })
+});
+var OracleStrength = external_exports.object({
+  criteria: external_exports.number().int().nonnegative(),
+  executable: external_exports.number().int().nonnegative(),
+  share: external_exports.number()
+});
+var RedGreenCompleteness = external_exports.object({
+  criteria: external_exports.number().int().nonnegative(),
+  proven: external_exports.number().int().nonnegative(),
+  share: external_exports.number()
+});
+var CriticAxes = external_exports.object({ compliance: AxisVerdict, quality: AxisVerdict });
+var TaskMetricsQuality = external_exports.object({
+  /**
+   * Q1 — changed files against the base minus the contract's declared paths.
+   * `changed` counts every judged file, exempt ones included; `undeclared` is
+   * what remains after the declared and the exempt are removed.
+   */
+  scope_drift: external_exports.object({
+    declared: external_exports.number().int().nonnegative(),
+    changed: external_exports.number().int().nonnegative(),
+    undeclared: external_exports.array(external_exports.string().min(1)),
+    /**
+     * Changed files the contract did not declare that matched a
+     * `scope.exempt` pattern — by-products, removed from `undeclared`
+     * (ADR-0045). Null when the project configures no `scope.exempt`: the
+     * source is absent, so no count of zero is claimed. Missing on records
+     * rolled up before the field existed; a reader treats that as null.
+     */
+    exempt: external_exports.array(external_exports.string().min(1)).nullable().optional()
+  }).nullable(),
+  /** Q2 — criteria with an executable (test or command) oracle. */
+  oracle_strength: OracleStrength.nullable(),
+  /** Q3 — bugfix only: criteria with a red→green pair at the current seal. */
+  red_green: RedGreenCompleteness.nullable(),
+  /** Q4 — gates recorded `not-run` in the final run. */
+  not_run: external_exports.object({
+    gates: external_exports.number().int().nonnegative(),
+    not_run: external_exports.number().int().nonnegative(),
+    share: external_exports.number()
+  }).nullable(),
+  /** Q5 — ALLOW decisions taken over stale evidence through `allowStale`. */
+  freshness_waivers: NullableInt,
+  /** Q6 — both axes of each critic's newest receipt. */
+  critics: external_exports.object({ spec: CriticAxes.nullable(), diff: CriticAxes.nullable() }),
+  /** Q7 — SPEC GAPs recorded. */
+  spec_gaps: NullableInt,
+  /** Q8 — items left open at a loop's limit, by classification. */
+  open_items: external_exports.object({ deferred: external_exports.number().int().nonnegative(), blocked: external_exports.number().int().nonnegative() }).nullable(),
+  /** Q9 — whether the DoR gate passed on its first call. */
+  dor_first_call: external_exports.boolean().nullable(),
+  /** Q10 — the resolution rung of each criterion's latest oracle run; `unresolved` counts a null source. */
+  oracle_resolution: external_exports.object({
+    by_source: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative()),
+    unresolved: external_exports.number().int().nonnegative()
+  }).nullable(),
+  /**
+   * Q13/Q14 — the spec's size at roll-up time (ADR-0046): UTF-8 bytes, words,
+   * and the budget `3 KB + 400 B per file + 500 B per criterion` its contract
+   * earns (null when the contract is unusable). Null when no spec was read.
+   * Missing on records rolled up before the field existed; a reader treats that
+   * as null.
+   */
+  spec_size: external_exports.object({
+    bytes: external_exports.number().int().nonnegative(),
+    words: external_exports.number().int().nonnegative(),
+    budget: external_exports.number().int().positive().nullable()
+  }).nullable().optional()
+});
+var TaskMetricsRework = external_exports.object({
+  /** R1 — distinct non-null seals recorded in the progress journal. */
+  seals: NullableInt,
+  /** R1 — `seals - 1`, floored at zero. */
+  reseals: NullableInt,
+  /** R2 — the highest pass number each critic reached. */
+  critic_passes: external_exports.object({ spec: NullableInt, diff: NullableInt }),
+  /** R3 — fix-cycle rounds spent, per loop. */
+  fix_rounds: external_exports.object({
+    verify_gate: external_exports.number().int().nonnegative(),
+    critic: external_exports.number().int().nonnegative(),
+    red_green: external_exports.number().int().nonnegative()
+  }).nullable(),
+  /** R4 — verification runs before the first green full run. */
+  runs_before_green: NullableInt,
+  /**
+   * R5 — did a critic's highest DISPATCH pass exceed its budget (two for the
+   * spec critic, one on the light tier, three for the diff critic)? Null per
+   * critic when no dispatch of it was recorded. Missing on records rolled up
+   * before the field existed; a reader treats that as null.
+   */
+  critic_budget_exceeded: external_exports.object({ spec: external_exports.boolean().nullable(), diff: external_exports.boolean().nullable() }).optional()
+});
+var TaskMetrics = external_exports.object({
+  slug: Slug,
+  contract_sha: external_exports.string().nullable(),
+  type: external_exports.string().nullable(),
+  risk: external_exports.string().nullable(),
+  breaking: external_exports.boolean().nullable(),
+  spike_required: external_exports.boolean().nullable(),
+  created: external_exports.string().nullable(),
+  /** ISO 8601, when the block was derived. */
+  rolled_up_at: external_exports.string().datetime(),
+  head_sha: external_exports.string().nullable(),
+  base_branch: external_exports.string().min(1),
+  sources: MetricsSources,
+  time: TaskMetricsTime,
+  quality: TaskMetricsQuality,
+  rework: TaskMetricsRework,
+  notes: external_exports.array(external_exports.string())
+});
+var SeriesStat = external_exports.object({
+  count: external_exports.number().int().nonnegative(),
+  mean: external_exports.number().nullable(),
+  median: external_exports.number().nullable(),
+  max: external_exports.number().nullable()
+});
+var MetricsSeriesCoverage = external_exports.object({
+  /** Record files considered after the filters. */
+  records: external_exports.number().int().nonnegative(),
+  /** Records with at least one terminal block. */
+  rolled_up: external_exports.number().int().nonnegative(),
+  /** Records with live events and no terminal block — recorded, not rolled up. */
+  events_only: external_exports.number().int().nonnegative(),
+  /**
+   * Records holding neither a terminal block nor a live event — a file the seal
+   * anchor created for a run that then recorded nothing (ADR-0044). Without this
+   * bucket such a record is counted in `records` and in neither of the two above,
+   * so the coverage line silently loses it.
+   */
+  empty: external_exports.number().int().nonnegative(),
+  shipped_specs: external_exports.number().int().nonnegative().nullable(),
+  shipped_with_record: external_exports.number().int().nonnegative().nullable()
+});
+var SeriesRecordRow = external_exports.object({
+  slug: Slug,
+  filename: external_exports.string().min(1),
+  type: external_exports.string().nullable(),
+  rolled_up_at: external_exports.string().nullable(),
+  active_ms: external_exports.number().nullable(),
+  events: external_exports.number().int().nonnegative()
+});
+var EscapedDefects = external_exports.object({
+  by_spec: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative()),
+  pairs: external_exports.array(external_exports.object({ bugfix: Slug, credited: external_exports.array(Slug) }))
+});
+external_exports.object({
+  generated_at: external_exports.string().datetime(),
+  /** Project-relative metrics directory. */
+  dir: external_exports.string().min(1),
+  filters: external_exports.object({
+    type: external_exports.string().nullable(),
+    since: external_exports.string().nullable(),
+    slug: external_exports.string().nullable()
+  }),
+  coverage: MetricsSeriesCoverage,
+  time: external_exports.record(external_exports.string(), SeriesStat),
+  quality: external_exports.record(external_exports.string(), SeriesStat),
+  rework: external_exports.record(external_exports.string(), SeriesStat),
+  /** Null when there is no spec corpus to join. */
+  escaped_defects: EscapedDefects.nullable(),
+  records: external_exports.array(SeriesRecordRow),
+  /** `slug` mode only: the one record's last terminal block. */
+  record: TaskMetrics.nullable()
+});
+var MetricsSummary = external_exports.object({
+  records: external_exports.number().int().nonnegative(),
+  rolled_up: external_exports.number().int().nonnegative(),
+  /**
+   * Records the seal anchor created that nothing has written to (ADR-0044). It
+   * sits beside `records` for one reason: without it the dashboard's record
+   * total reads as "tasks measured" while counting empty files.
+   */
+  empty: external_exports.number().int().nonnegative(),
+  newest: external_exports.object({ slug: Slug, rolled_up_at: external_exports.string().min(1) }).nullable(),
+  median_active_ms: external_exports.number().nullable(),
+  median_spec_gaps: external_exports.number().nullable()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/dashboard.js
+var GateCommands2 = external_exports.object({
+  test: external_exports.string().min(1).optional(),
+  lint: external_exports.string().min(1).optional(),
+  typecheck: external_exports.string().min(1).optional(),
+  build: external_exports.string().min(1).optional()
+});
+var StatusDef2 = external_exports.object({
+  key: external_exports.string().min(1),
+  role: StatusRole2,
+  /** Exact remote workflow name; filled at tracker-connection time. */
+  tracker_status: external_exports.string().optional()
+});
+var VerificationFreshness = external_exports.object({
+  exists: external_exports.boolean(),
+  /** Whole days since the last write; null when the file does not exist. */
+  age_days: external_exports.number().int().nonnegative().nullable()
+});
+var AdrCorpusSummary = external_exports.object({
+  /** Resolved corpus directory, project-root-relative. */
+  dir: external_exports.string().min(1),
+  total: external_exports.number().int().nonnegative(),
+  counts: external_exports.record(AdrStatus, external_exports.number().int().nonnegative()),
+  /** Files the tolerant parser could not read (surfaced, never dropped). */
+  malformed: external_exports.number().int().nonnegative()
+});
+var UsageTopEntry = external_exports.object({
+  kind: external_exports.enum(["prompt", "tool"]),
+  name: external_exports.string().min(1),
+  count: external_exports.number().int().positive()
+});
+var UsageSummary = external_exports.object({
+  /** Well-formed events read from the log (malformed lines are skipped). */
+  events: external_exports.number().int().nonnegative(),
+  /** ISO timestamps of the first and last events; null while the log is empty. */
+  window: external_exports.object({ from: external_exports.string(), to: external_exports.string() }).nullable(),
+  /** Most-invoked prompts/tools, descending. */
+  top: external_exports.array(UsageTopEntry)
+});
+var DashboardSpec = external_exports.object({
+  slug: external_exports.string().min(1),
+  title: external_exports.string().min(1),
+  id: external_exports.string().optional()
+});
+var DashboardHandoff = external_exports.object({
+  slug: external_exports.string().min(1),
+  objective: external_exports.string().min(1),
+  /** Whole days since the handoff was written; null when the age is unknown. */
+  age_days: external_exports.number().int().nonnegative().nullable()
+});
+var DashboardAuditArea = external_exports.object({
+  /** Whole days since the newest report in the area; null when none exists. */
+  scanned_age_days: external_exports.number().int().nonnegative().nullable(),
+  total: external_exports.number().int().nonnegative(),
+  by_severity: external_exports.record(Severity2, external_exports.number().int().nonnegative()),
+  /** Filename of the newest report in the area, when one exists. */
+  newest_report: external_exports.string().min(1).optional()
+});
+var DashboardAudits = external_exports.object({
+  security: DashboardAuditArea.nullable(),
+  refactor: DashboardAuditArea.nullable()
+});
+external_exports.object({
+  version: external_exports.string(),
+  paths: external_exports.object({
+    project: external_exports.string(),
+    tasks_dir: external_exports.string(),
+    config_path: external_exports.string()
+  }),
+  config: external_exports.object({
+    base_branch: external_exports.string(),
+    tracker_url_template: external_exports.string().nullable(),
+    gates: GateCommands2.optional(),
+    statuses: external_exports.array(StatusDef2)
+  }),
+  board_counts: external_exports.record(external_exports.string(), external_exports.number().int().nonnegative()),
+  board_role_counts: external_exports.record(StatusRole2, external_exports.number().int().nonnegative()),
+  git: external_exports.object({
+    has_git: external_exports.boolean(),
+    has_gh: external_exports.boolean(),
+    branch: external_exports.string().nullable()
+  }),
+  artifacts: external_exports.object({
+    specs: external_exports.number().int().nonnegative(),
+    handoffs: external_exports.number().int().nonnegative(),
+    audits: external_exports.number().int().nonnegative(),
+    lessons: external_exports.number().int().nonnegative(),
+    /** ADR-0030 extension — emitted by the `dashboard` tool. */
+    verification: VerificationFreshness.optional()
+  }),
+  command_groups: external_exports.array(external_exports.object({ group: external_exports.string(), count: external_exports.number().int().nonnegative() })),
+  // ── whole-toolbox sections (ADR-0030) — optional so the `help` tool's
+  // narrower payload keeps conforming; the `dashboard` tool emits them all.
+  adr: AdrCorpusSummary.optional(),
+  /** Lessons-store statistics (the shared `LessonsStats`, ADR-0028). */
+  lessons: LessonsStats.optional(),
+  usage: UsageSummary.optional(),
+  // ── v2 sections (ADR-0024 data-first staging) — optional, so a v1-narrow
+  // producer keeps conforming (ADR-0030); the reworked `dashboard` tool emits them.
+  /** Configured MCP servers with their enabled state (reused `HelpServer`). */
+  servers: external_exports.array(HelpServer).optional(),
+  /** Current-work digest: active board cards (full `TaskCard`s) + pipeline specs. */
+  current_tasks: external_exports.object({ board: external_exports.array(TaskCard), specs: external_exports.array(DashboardSpec) }).optional(),
+  /** Recent session-continuation handoffs, newest first. */
+  handoffs: external_exports.array(DashboardHandoff).optional(),
+  /** Audit findings by severity per area (security / refactor). */
+  audits: DashboardAudits.optional(),
+  /**
+   * The task-metrics series in one line (ADR-0043 §5): record and roll-up
+   * counts, the newest record, the median active time and spec gaps per task.
+   * Optional and additive — the widget and the site's embeds are untouched
+   * until a later pass renders it.
+   */
+  metrics: MetricsSummary.optional()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/provenance.js
+external_exports.object({
+  /** `git rev-parse HEAD` at collection time. */
+  head_sha: external_exports.string().nullable(),
+  /** The checked-out branch; recorded for the human, decides nothing. */
+  branch: external_exports.string().nullable(),
+  /** Whether any tracked or untracked path outside `.marvin/` differed from HEAD. */
+  dirty: external_exports.boolean().nullable(),
+  /**
+   * 16 hex of a sha256 over a structural path list — one line per changed or
+   * untracked path, carrying its status and git's content id for the
+   * working-tree bytes. Never patch text: the input is O(paths changed), so it
+   * cannot outgrow a pipe buffer, and it still moves on an edit that leaves the
+   * line counts identical.
+   */
+  worktree_digest: external_exports.string().nullable(),
+  /** ISO-8601 collection timestamp. */
+  generated_at: external_exports.string()
+});
+
+// ../../../../packages/marvin-mcp-shared/dist/contracts/hunt.js
+var HUNT_STATE_VERSION = 1;
+var HuntCheck = external_exports.enum(["code", "user-behavior", "ux", "design"]);
+var FindingClass = external_exports.enum([
+  "bug",
+  "ux-issue",
+  "design-deviation",
+  "a11y",
+  "perf",
+  "spec-drift",
+  "risk"
+]);
+var HuntSeverity = external_exports.enum(["critical", "high", "medium", "low"]);
+var HuntConfidence = external_exports.enum(["confirmed", "high", "medium", "low"]);
+var FindingStatus = external_exports.enum([
+  "candidate",
+  "confirmed",
+  "rejected",
+  "suspected",
+  "flaky",
+  "fixed",
+  "ticketed",
+  "deferred",
+  "wont-fix",
+  "regressed"
+]);
+var VerdictStage = external_exports.enum(["skeptic", "referee", "prove", "human"]);
+var VerdictRuling = external_exports.enum([
+  "upheld",
+  "dismissed",
+  "red",
+  "green",
+  "flaky",
+  "confirm",
+  "reject",
+  "wont-fix"
+]);
+var FailureKind = external_exports.enum(["real-defect", "test-drift", "environment", "data"]);
+var TestCoverage = external_exports.enum(["covered", "partial", "wrong-assertion", "none"]);
+var RelPath = external_exports.string().min(1).refine((p) => !p.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(p) && !p.split(/[\\/]/).includes(".."), {
+  message: "must be a repository-relative path without '..'"
+});
+var HuntFileRef = external_exports.object({
+  path: RelPath,
+  line: external_exports.number().int().min(1).optional(),
+  end_line: external_exports.number().int().min(1).optional()
+}).strict();
+var FindingLocation = external_exports.object({
+  files: external_exports.array(HuntFileRef).default([]),
+  route: external_exports.string().min(1).optional(),
+  flow: external_exports.string().min(1).optional(),
+  step: external_exports.string().min(1).optional(),
+  component: external_exports.string().min(1).optional(),
+  token: external_exports.string().min(1).optional()
+}).strict();
+var EvidenceKind = external_exports.enum([
+  "test-output",
+  "trace",
+  "screenshot",
+  "recording",
+  "console",
+  "network",
+  "log",
+  "code"
+]);
+var Evidence = external_exports.object({
+  kind: EvidenceKind,
+  /** Repository-relative, normally under `.marvin/hunt/evidence/<finding-id>/`. */
+  path: RelPath.optional(),
+  /** A short excerpt, masked of secrets and PII by the writer (NFR-09). */
+  excerpt: external_exports.string().max(4e3).optional()
+}).strict().refine((e) => e.path !== void 0 || e.excerpt !== void 0, {
+  message: "evidence needs a path or an excerpt"
+});
+var ClaimReproduction = external_exports.object({
+  steps: external_exports.array(external_exports.string().min(1)).default([]),
+  /** Where the hunter suggests the reproducing test should live (CODE-E01). Never proof. */
+  proposed_test_path: RelPath.optional(),
+  /** CODE-E04: the input or state sequence that reaches the defect, and why guards do not stop it. */
+  path_feasibility: external_exports.string().min(1).optional()
+}).strict();
+var Reproduction = ClaimReproduction.extend({
+  /** The reproducing test a `prove` verdict ran and found on disk (CODE-E01, VER-03). */
+  test_path: RelPath.optional(),
+  /** A replayable e2e scenario (user-behavior), likewise only from a `prove` verdict. */
+  scenario: RelPath.optional()
+}).strict();
+var VerdictEntry = external_exports.object({
+  stage: VerdictStage,
+  ruling: VerdictRuling,
+  /** Which agent or person ruled; must differ from the finding's `producer` (VER-01). */
+  by: external_exports.string().min(1),
+  reasoning: external_exports.string().min(1),
+  failure_kind: FailureKind.optional(),
+  /**
+   * `prove` only: the reproducing test or scenario this ruling ran, when the claim did not
+   * carry one. The fold writes it onto the finding's `reproduction` (VER-03).
+   */
+  test_path: RelPath.optional(),
+  scenario: RelPath.optional(),
+  /**
+   * `human` only: whether the person was asked through the client and confirmed. `false` means
+   * the client could not elicit, so `by` is the caller's word alone; status and triage count it.
+   */
+  attested: external_exports.boolean().optional(),
+  at: external_exports.string().min(1),
+  run_id: external_exports.string().min(1).optional()
+}).strict();
+var FindingLinks = external_exports.object({
+  related: external_exports.array(external_exports.string().min(1)).default([]),
+  root_cause: external_exports.string().min(1).optional(),
+  duplicate_of: external_exports.string().min(1).optional(),
+  /** Board task id (`task` tool), MAR-01. */
+  task: external_exports.string().min(1).optional(),
+  commit: external_exports.string().min(1).optional(),
+  /** MAR-04: an ADR or spec the finding violates, by repository path. */
+  adr: RelPath.optional(),
+  spec: RelPath.optional()
+}).strict();
+var FindingClaim = external_exports.object({
+  check: HuntCheck,
+  class: FindingClass,
+  /** Taxonomy category id from the check's reference, e.g. `CODE-D04`. */
+  category: external_exports.string().min(1).max(64),
+  title: external_exports.string().min(1).max(160),
+  summary: external_exports.string().min(1).max(2e3),
+  location: FindingLocation,
+  expected: external_exports.string().min(1),
+  actual: external_exports.string().min(1),
+  reproduction: ClaimReproduction.default({}),
+  evidence: external_exports.array(Evidence).default([]),
+  severity: HuntSeverity,
+  /** `confirmed` is the tool's to give, through the verification protocol, never a producer's. */
+  confidence: HuntConfidence.exclude(["confirmed"]),
+  /** The named heuristic, WCAG criterion, token or component rule (VER-07). */
+  rule: external_exports.string().min(1).optional(),
+  /** VER-06: guarding code checked, framework behaviour checked, similar patterns searched. */
+  not_false_positive: external_exports.string().min(1).optional(),
+  test_coverage: TestCoverage.optional(),
+  /** Every occurrence of a systemic pattern (CODE-D25, TRI-04), beyond `location.files`. */
+  occurrences: external_exports.array(HuntFileRef).default([]),
+  /** The agent that produced the claim, e.g. `marvin-hunt-hunter`. */
+  producer: external_exports.string().min(1),
+  links: FindingLinks.default({})
+}).strict();
+var HuntFinding = FindingClaim.extend({
+  /**
+   * `BH-` plus the first eight hex digits of the fingerprint: derived, never allocated, so two
+   * branches that each record a different finding cannot mint the same id.
+   */
+  id: external_exports.string().regex(/^BH-[0-9a-f]{8,16}$/),
+  reproduction: Reproduction.default({}),
+  confidence: HuntConfidence,
+  fingerprint: external_exports.string().regex(/^[0-9a-f]{16}$/),
+  status: FindingStatus,
+  verdicts: external_exports.array(VerdictEntry).default([]),
+  first_seen_run: external_exports.string().min(1),
+  last_seen_run: external_exports.string().min(1),
+  head_sha: external_exports.string().nullable(),
+  created_at: external_exports.string().min(1),
+  updated_at: external_exports.string().min(1)
+}).strict();
+var LedgerLine = external_exports.discriminatedUnion("type", [
+  external_exports.object({
+    v: external_exports.literal(HUNT_STATE_VERSION),
+    type: external_exports.literal("finding"),
+    at: external_exports.string().min(1),
+    finding: HuntFinding
+  }).strict(),
+  external_exports.object({
+    v: external_exports.literal(HUNT_STATE_VERSION),
+    type: external_exports.literal("verdict"),
+    at: external_exports.string().min(1),
+    id: external_exports.string().min(1),
+    verdict: VerdictEntry
+  }).strict(),
+  external_exports.object({
+    v: external_exports.literal(HUNT_STATE_VERSION),
+    type: external_exports.literal("status"),
+    at: external_exports.string().min(1),
+    id: external_exports.string().min(1),
+    status: FindingStatus,
+    reason: external_exports.string().min(1),
+    run_id: external_exports.string().min(1).optional()
+  }).strict(),
+  external_exports.object({
+    v: external_exports.literal(HUNT_STATE_VERSION),
+    type: external_exports.literal("link"),
+    at: external_exports.string().min(1),
+    id: external_exports.string().min(1),
+    links: FindingLinks.partial()
+  }).strict(),
+  external_exports.object({
+    v: external_exports.literal(HUNT_STATE_VERSION),
+    type: external_exports.literal("seen"),
+    at: external_exports.string().min(1),
+    id: external_exports.string().min(1),
+    run_id: external_exports.string().min(1),
+    head_sha: external_exports.string().nullable()
+  }).strict()
+]);
+var FlowProvenance = external_exports.enum(["code", "runtime", "both", "manual"]);
+var FlowMeta = {
+  provenance: FlowProvenance,
+  confidence: external_exports.enum(["high", "medium", "low"]),
+  sources: external_exports.array(HuntFileRef).default([]),
+  /** FLW-08: a human entry, kept across regenerations. */
+  pinned: external_exports.boolean().default(false)
+};
+var ScreenState = external_exports.enum([
+  "loading",
+  "empty",
+  "populated",
+  "partial",
+  "error",
+  "offline",
+  "unauthorized",
+  "not-found",
+  "read-only"
+]);
+var FlowNode = external_exports.object({
+  id: external_exports.string().min(1),
+  route: external_exports.string().min(1),
+  params: external_exports.array(external_exports.string()).default([]),
+  guards: external_exports.array(external_exports.string()).default([]),
+  role: external_exports.string().min(1).optional(),
+  data: external_exports.array(external_exports.string()).default([]),
+  states: external_exports.array(ScreenState).default([]),
+  entry: external_exports.boolean().default(false),
+  ...FlowMeta
+}).strict();
+var Assertion = external_exports.object({
+  kind: external_exports.enum(["url", "text", "request", "db-row", "toast", "state", "other"]),
+  value: external_exports.string().min(1)
+}).strict();
+var FlowTransition = external_exports.object({
+  id: external_exports.string().min(1),
+  from: external_exports.string().min(1),
+  to: external_exports.string().min(1).optional(),
+  action: external_exports.enum([
+    "click",
+    "submit",
+    "navigate",
+    "back",
+    "refresh",
+    "deep-link",
+    "keyboard",
+    "other"
+  ]),
+  trigger: external_exports.string().min(1).optional(),
+  preconditions: external_exports.array(external_exports.string()).default([]),
+  side_effects: external_exports.array(external_exports.string()).default([]),
+  expected: external_exports.array(Assertion).default([]),
+  handler: HuntFileRef.optional(),
+  ...FlowMeta
+}).strict();
+var Journey = external_exports.object({
+  id: external_exports.string().min(1),
+  goal: external_exports.string().min(1),
+  persona: external_exports.string().min(1).optional(),
+  priority: external_exports.enum(["core", "secondary", "edge"]),
+  steps: external_exports.array(external_exports.string().min(1)).min(1),
+  ...FlowMeta
+}).strict();
+var FlowMap = external_exports.object({
+  version: external_exports.literal(HUNT_STATE_VERSION),
+  generated_at: external_exports.string().min(1).optional(),
+  run_id: external_exports.string().min(1).optional(),
+  head_sha: external_exports.string().nullable().optional(),
+  nodes: external_exports.array(FlowNode).default([]),
+  transitions: external_exports.array(FlowTransition).default([]),
+  journeys: external_exports.array(Journey).default([]),
+  /** CODE-F09: unreachable screens, orphan routes, dead handlers, links to nowhere. */
+  anomalies: external_exports.array(external_exports.string().min(1)).default([])
+}).strict();
+var CoverageEntry = external_exports.object({
+  path: RelPath,
+  last_audited_at: external_exports.string().min(1),
+  last_run: external_exports.string().min(1),
+  /** The git blob of the file when audited; a different blob now means "changed since". */
+  blob: external_exports.string().nullable(),
+  audits: external_exports.number().int().min(1),
+  findings: external_exports.number().int().min(0)
+}).strict();
+var Coverage = external_exports.object({
+  version: external_exports.literal(HUNT_STATE_VERSION),
+  files: external_exports.array(CoverageEntry).default([])
+}).strict();
+var Authority = external_exports.enum(["detect-only", "approve", "autonomous"]);
+var HuntConfig = external_exports.object({
+  version: external_exports.literal(HUNT_STATE_VERSION).default(HUNT_STATE_VERSION),
+  scope: external_exports.object({
+    /** Glob-ish path prefixes or patterns; empty means the whole repository (CFG-01). */
+    paths: external_exports.array(external_exports.string().min(1)).default([]),
+    /** Added to the default exclusions (CFG-02). */
+    exclude: external_exports.array(external_exports.string().min(1)).default([])
+  }).strict().default({}),
+  /** CFG-03; ADR-0053 sets High for code and user-behavior, Medium for ux and design. */
+  severity_floor: external_exports.object({
+    code: HuntSeverity.default("high"),
+    "user-behavior": HuntSeverity.default("high"),
+    ux: HuntSeverity.default("medium"),
+    design: HuntSeverity.default("medium")
+  }).strict().default({}),
+  /** CFG-04; detect-only by default (NFR-01), with separate switches for tickets and fixes. */
+  authority: external_exports.object({
+    mode: Authority.default("detect-only"),
+    tickets: external_exports.boolean().default(false),
+    fixes: external_exports.boolean().default(false)
+  }).strict().default({}),
+  /** CFG-08. */
+  budgets: external_exports.object({
+    max_minutes: external_exports.number().int().min(1).default(30),
+    max_rounds: external_exports.number().int().min(1).default(3),
+    max_findings_per_round: external_exports.number().int().min(1).default(25),
+    max_hotspots: external_exports.number().int().min(1).default(40),
+    batch_size: external_exports.number().int().min(1).default(8),
+    max_fixes: external_exports.number().int().min(0).default(0)
+  }).strict().default({}),
+  /** CFG-09. */
+  constraints: external_exports.object({
+    frozen_paths: external_exports.array(external_exports.string().min(1)).default([]),
+    no_public_api_breaks: external_exports.boolean().default(true)
+  }).strict().default({}),
+  /**
+   * Words that raise a file's hotspot score (CODE-P01). Matched against whole identifier
+   * segments, never substrings. Absent means the generic default list; vendor names belong here.
+   */
+  risk_terms: external_exports.array(external_exports.string().min(1)).optional(),
+  /** Hotspot ranking window in months (CODE-P01). */
+  history_months: external_exports.number().int().min(1).max(120).default(12),
+  /**
+   * CFG-05/06/07 belong to the runtime checks (phases 2–4). They are accepted and kept now so a
+   * config written ahead of those phases survives, and validated when the checks ship.
+   */
+  runtime: external_exports.record(external_exports.unknown()).optional(),
+  personas: external_exports.array(external_exports.record(external_exports.unknown())).optional(),
+  design: external_exports.record(external_exports.unknown()).optional()
+}).strict();
+var HuntScope = external_exports.object({
+  kind: external_exports.enum(["repo", "paths", "diff"]),
+  paths: external_exports.array(external_exports.string()).default([]),
+  base: external_exports.string().min(1).optional(),
+  files: external_exports.array(RelPath)
+}).strict();
+var HotspotSignals = external_exports.object({
+  churn: external_exports.number().int().min(0),
+  authors: external_exports.number().int().min(0),
+  fix_commits: external_exports.number().int().min(0),
+  lines: external_exports.number().int().min(0),
+  days_since_change: external_exports.number().int().min(0).nullable(),
+  risk_terms: external_exports.array(external_exports.string()),
+  audit: external_exports.enum(["never", "changed", "stale", "fresh"]),
+  has_test: external_exports.boolean()
+}).strict();
+var Hotspot = external_exports.object({
+  path: RelPath,
+  rank: external_exports.number().int().min(1),
+  score: external_exports.number(),
+  signals: HotspotSignals,
+  /** CODE-P07: the signals that converged on this rank, in words. */
+  why: external_exports.array(external_exports.string()),
+  batch: external_exports.number().int().min(1)
+}).strict();
+var RunStep = external_exports.object({
+  step: external_exports.string().min(1),
+  at: external_exports.string().min(1),
+  note: external_exports.string().optional(),
+  round: external_exports.number().int().min(1).optional(),
+  batch: external_exports.number().int().min(1).optional()
+}).strict();
+var HuntRun = external_exports.object({
+  version: external_exports.literal(HUNT_STATE_VERSION),
+  id: external_exports.string().regex(/^\d{8}-\d{6}-[a-z-]+$/),
+  check: external_exports.union([HuntCheck, external_exports.literal("triage")]),
+  state: external_exports.enum(["running", "finished", "abandoned"]),
+  started_at: external_exports.string().min(1),
+  finished_at: external_exports.string().min(1).optional(),
+  branch: external_exports.string().nullable(),
+  head_sha: external_exports.string().nullable(),
+  dirty: external_exports.boolean(),
+  scope: HuntScope,
+  authority: Authority,
+  baseline: external_exports.object({
+    verdict: external_exports.string(),
+    head_sha: external_exports.string().nullable(),
+    gates: external_exports.array(external_exports.object({ name: external_exports.string(), status: external_exports.string() }).strict()),
+    stale: external_exports.boolean()
+  }).strict().optional(),
+  hotspots: external_exports.array(Hotspot).default([]),
+  steps: external_exports.array(RunStep).default([]),
+  recorded: external_exports.array(external_exports.string()).default([]),
+  summary: external_exports.string().optional()
+}).strict();
+
+// src/lib/hunt-ledger.ts
+function fingerprintClaim(claim) {
+  const primary = claim.location.files[0]?.path ?? claim.location.route ?? claim.location.component;
+  return fingerprintFinding({
+    kind: `hunt:${claim.check}:${claim.class}`,
+    file: primary,
+    category: claim.category,
+    title: claim.title
+  });
+}
+function idForFingerprint(fingerprint, taken) {
+  for (let n = 8; n <= fingerprint.length; n += 2) {
+    const id = `BH-${fingerprint.slice(0, n)}`;
+    const owner = taken?.get(id);
+    if (owner === void 0 || owner === fingerprint) return id;
+  }
+  return `BH-${fingerprint}`;
+}
+function mergeLinks(base, patch) {
+  const related = patch.related ? [.../* @__PURE__ */ new Set([...base.related, ...patch.related])] : base.related;
+  return { ...base, ...patch, related };
+}
+function foldLedger(lines) {
+  const findings = /* @__PURE__ */ new Map();
+  const byFingerprint = /* @__PURE__ */ new Map();
+  const conflicts = [];
+  for (const line of lines) {
+    if (line.type === "finding") {
+      const incoming = line.finding;
+      const prior = findings.get(incoming.id);
+      if (prior && prior.fingerprint !== incoming.fingerprint) {
+        conflicts.push({
+          id: incoming.id,
+          kept: prior.fingerprint,
+          dropped: incoming.fingerprint
+        });
+        continue;
+      }
+      if (prior) {
+        findings.set(prior.id, {
+          ...prior,
+          last_seen_run: incoming.last_seen_run,
+          head_sha: incoming.head_sha,
+          updated_at: line.at
+        });
+        continue;
+      }
+      findings.set(incoming.id, incoming);
+      if (!byFingerprint.has(incoming.fingerprint)) {
+        byFingerprint.set(incoming.fingerprint, incoming.id);
+      }
+      continue;
+    }
+    const f = findings.get(line.id);
+    if (!f) continue;
+    switch (line.type) {
+      case "verdict": {
+        const v = line.verdict;
+        const reproduction = v.stage === "prove" && (v.test_path || v.scenario) ? {
+          ...f.reproduction,
+          ...v.test_path ? { test_path: v.test_path } : {},
+          ...v.scenario ? { scenario: v.scenario } : {}
+        } : f.reproduction;
+        findings.set(f.id, {
+          ...f,
+          reproduction,
+          verdicts: [...f.verdicts, v],
+          updated_at: line.at
+        });
+        break;
+      }
+      case "status":
+        findings.set(f.id, {
+          ...f,
+          status: line.status,
+          ...line.status === "confirmed" ? { confidence: "confirmed" } : {},
+          updated_at: line.at
+        });
+        break;
+      case "link":
+        findings.set(f.id, { ...f, links: mergeLinks(f.links, line.links), updated_at: line.at });
+        break;
+      case "seen":
+        findings.set(f.id, {
+          ...f,
+          last_seen_run: line.run_id,
+          head_sha: line.head_sha,
+          updated_at: line.at
+        });
+        break;
+    }
+  }
+  return { findings, byFingerprint, conflicts };
+}
+function lastHumanVerdict(f) {
+  return [...f.verdicts].reverse().find((v) => v.stage === "human");
+}
+function closedByHuman(f) {
+  if (f.status === "wont-fix") return true;
+  return f.status === "rejected" && lastHumanVerdict(f)?.ruling === "reject";
+}
+function planRecord(state, claims, ctx) {
+  const lines = [];
+  const results = [];
+  const taken = /* @__PURE__ */ new Map();
+  for (const [id, f] of state.findings) taken.set(id, f.fingerprint);
+  for (const c of state.conflicts) taken.set(c.id, c.kept);
+  const seenThisCall = /* @__PURE__ */ new Map();
+  for (const claim of claims) {
+    const fingerprint = fingerprintClaim(claim);
+    const existingId = state.byFingerprint.get(fingerprint) ?? seenThisCall.get(fingerprint);
+    if (existingId) {
+      const existing = state.findings.get(existingId);
+      const status2 = existing?.status ?? "candidate";
+      if (existing && closedByHuman(existing)) {
+        results.push({ outcome: "suppressed", id: existingId, fingerprint, status: status2 });
+        continue;
+      }
+      if (existing) {
+        lines.push({
+          v: 1,
+          type: "seen",
+          at: ctx.now,
+          id: existingId,
+          run_id: ctx.runId,
+          head_sha: ctx.headSha
+        });
+      }
+      if (existing && status2 === "fixed") {
+        lines.push({
+          v: 1,
+          type: "status",
+          at: ctx.now,
+          id: existingId,
+          status: "regressed",
+          reason: `seen again in run ${ctx.runId} after it was marked fixed`,
+          run_id: ctx.runId
+        });
+        results.push({ outcome: "regressed", id: existingId, fingerprint });
+      } else if (status2 === "rejected") {
+        results.push({
+          outcome: "duplicate",
+          id: existingId,
+          fingerprint,
+          status: status2,
+          note: "rejected by an agent, seen again; a person can reopen it with a human confirm"
+        });
+      } else {
+        results.push({ outcome: "duplicate", id: existingId, fingerprint, status: status2 });
+      }
+      continue;
+    }
+    const id = idForFingerprint(fingerprint, taken);
+    taken.set(id, fingerprint);
+    seenThisCall.set(fingerprint, id);
+    const finding = {
+      ...claim,
+      id,
+      fingerprint,
+      status: "candidate",
+      verdicts: [],
+      first_seen_run: ctx.runId,
+      last_seen_run: ctx.runId,
+      head_sha: ctx.headSha,
+      created_at: ctx.now,
+      updated_at: ctx.now
+    };
+    lines.push({ v: 1, type: "finding", at: ctx.now, finding });
+    results.push(
+      claim.confidence === "low" ? { outcome: "new", id, fingerprint, note: "low confidence: logged, never reported" } : { outcome: "new", id, fingerprint }
+    );
+  }
+  return { lines, results };
+}
+var PROOF_CLASSES = /* @__PURE__ */ new Set(["bug", "perf", "spec-drift"]);
+var RULE_CLASSES = /* @__PURE__ */ new Set(["ux-issue", "design-deviation", "a11y"]);
+var SETTLED_FOR_AGENTS = [
+  "confirmed",
+  "rejected",
+  "wont-fix",
+  "fixed",
+  "deferred",
+  "ticketed"
+];
+function huntStatusLine(id, status2, reason, now, runId) {
+  return { v: 1, type: "status", at: now, id, status: status2, reason, ...runId ? { run_id: runId } : {} };
+}
+function hasProofArtefact(f, v) {
+  return [f.reproduction.test_path, f.reproduction.scenario, v.test_path, v.scenario].some(
+    (x) => x !== void 0
+  );
+}
+function ruleEvidenceGap(f) {
+  if (!f.rule) return "it names no heuristic, WCAG criterion, token or component rule (VER-07)";
+  if (!f.evidence.some((e) => e.kind === "screenshot" || e.kind === "recording")) {
+    return "it carries no screenshot or recording (VER-07)";
+  }
+  return null;
+}
+function planVerdict(f, verdict, now) {
+  if (verdict.stage !== "human" && verdict.by.trim() === f.producer.trim()) {
+    return { ok: false, reason: `${verdict.by} produced ${f.id} and cannot rule on it (VER-01).` };
+  }
+  const allowed = {
+    skeptic: ["upheld", "dismissed"],
+    referee: ["upheld", "dismissed"],
+    prove: ["red", "green", "flaky"],
+    human: ["confirm", "reject", "wont-fix"]
+  };
+  if (!allowed[verdict.stage].includes(verdict.ruling)) {
+    return {
+      ok: false,
+      reason: `a ${verdict.stage} ruling is one of ${allowed[verdict.stage].join(", ")}, not ${verdict.ruling}.`
+    };
+  }
+  if (verdict.stage === "prove") {
+    if (!PROOF_CLASSES.has(f.class)) {
+      return {
+        ok: false,
+        reason: `${f.class} findings are proven by a rule, not a test (VER-07).`
+      };
+    }
+    const upheld = f.verdicts.some((x) => x.stage === "referee" && x.ruling === "upheld");
+    if (!upheld) {
+      return {
+        ok: false,
+        reason: `${f.id} has no referee ruling that upheld it; the referee rules before a test proves (VER-02, VER-03).`
+      };
+    }
+    if (verdict.ruling === "red" && !hasProofArtefact(f, verdict)) {
+      return {
+        ok: false,
+        reason: `${f.id} has no reproducing test or scenario; pass test_path (or scenario) with the red ruling (VER-03).`
+      };
+    }
+  }
+  const v = { v: 1, type: "verdict", at: now, id: f.id, verdict };
+  const keep = (note) => ({ ok: true, lines: [v], status: f.status, note });
+  const move = (status2, note) => ({
+    ok: true,
+    lines: [v, huntStatusLine(f.id, status2, note, now, verdict.run_id)],
+    status: status2,
+    note
+  });
+  if (verdict.stage !== "human") {
+    const human = lastHumanVerdict(f);
+    if (human) {
+      return keep(
+        `recorded as evidence; a person already ruled ${human.ruling}, so the status stays ${f.status}`
+      );
+    }
+    if (SETTLED_FOR_AGENTS.includes(f.status)) {
+      return keep(
+        `recorded as evidence; ${f.id} is ${f.status}, which an agent ruling no longer moves`
+      );
+    }
+  }
+  switch (verdict.stage) {
+    case "skeptic":
+      return keep("recorded; the referee rules on contested claims");
+    case "referee":
+      if (verdict.ruling === "dismissed") return move("rejected", "referee dismissed the claim");
+      if (RULE_CLASSES.has(f.class)) {
+        const gap = ruleEvidenceGap(f);
+        if (gap) return { ok: false, reason: `${f.id} cannot be confirmed: ${gap}.` };
+        return move("confirmed", "referee upheld a rule-backed finding with visual evidence");
+      }
+      if (PROOF_CLASSES.has(f.class)) {
+        return keep("upheld; a reproducing test must rule before it is confirmed (VER-03)");
+      }
+      return move("suspected", "referee upheld a risk with no reproducing artefact");
+    case "prove":
+      if (verdict.ruling === "green") {
+        return move("rejected", "the reproducing test passed, which invalidates the hypothesis");
+      }
+      if (verdict.ruling === "flaky")
+        return move("flaky", "reproduction mixes passes and failures (VER-04)");
+      if (verdict.failure_kind !== "real-defect") {
+        return keep(
+          `red recorded, but classified ${verdict.failure_kind ?? "unclassified"}: only a real-defect failure confirms (VER-05)`
+        );
+      }
+      return move("confirmed", "a reproducing test fails for the stated reason");
+    case "human":
+      if (verdict.ruling === "reject") return move("rejected", "rejected by a person");
+      if (verdict.ruling === "wont-fix") return move("wont-fix", "closed by a person as won't fix");
+      return move("confirmed", "confirmed by a person");
+  }
+}
+var SETTABLE_STATUSES = ["deferred", "ticketed", "fixed", "suspected"];
+var SET_STATUS_FROM = {
+  ticketed: ["confirmed", "regressed"],
+  suspected: ["candidate", "flaky"],
+  deferred: ["candidate", "confirmed", "suspected", "flaky", "regressed", "ticketed"],
+  fixed: ["confirmed", "ticketed", "regressed", "candidate", "suspected", "flaky", "deferred"]
+};
+function planSetStatus(f, status2) {
+  const from = SET_STATUS_FROM[status2];
+  if (from.includes(f.status)) return { ok: true };
+  return {
+    ok: false,
+    reason: `${f.id} is ${f.status}; ${status2} is set only from ${from.join(", ")}.`
+  };
+}
+var SEVERITY_ORDER3 = HuntSeverity.options;
+var CONFIDENCE_ORDER = ["confirmed", "high", "medium", "low"];
+var PRIORITY_ORDER = ["core", "secondary", "edge"];
+var OPEN_STATUSES = [
+  "candidate",
+  "confirmed",
+  "suspected",
+  "flaky",
+  "regressed",
+  "ticketed"
+];
+function huntJourneyPriority(f, flows) {
+  if (!flows || !f.location.flow) return PRIORITY_ORDER.length;
+  const j = flows.journeys.find(
+    (x) => x.id === f.location.flow || x.steps.includes(f.location.flow ?? "")
+  );
+  return j ? PRIORITY_ORDER.indexOf(j.priority) : PRIORITY_ORDER.length;
+}
+function huntBlastRadius(f) {
+  return (/* @__PURE__ */ new Set([...f.location.files.map((x) => x.path), ...f.occurrences.map((x) => x.path)])).size;
+}
+function rankFindings(findings, flows) {
+  return [...findings].sort(
+    (a, b) => SEVERITY_ORDER3.indexOf(a.severity) - SEVERITY_ORDER3.indexOf(b.severity) || CONFIDENCE_ORDER.indexOf(a.confidence) - CONFIDENCE_ORDER.indexOf(b.confidence) || huntJourneyPriority(a, flows) - huntJourneyPriority(b, flows) || huntBlastRadius(b) - huntBlastRadius(a) || a.id.localeCompare(b.id)
+  );
+}
+function atOrAbove(sev, floor) {
+  return SEVERITY_ORDER3.indexOf(sev) <= SEVERITY_ORDER3.indexOf(floor);
+}
+function titleSlug2(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+function huntGroupsOf(findings, key) {
+  const m = /* @__PURE__ */ new Map();
+  for (const f of findings) {
+    const k = key(f);
+    m.set(k, [...m.get(k) ?? [], f.id]);
+  }
+  return [...m.values()].filter((ids) => ids.length > 1).map((ids) => ids.sort());
+}
+function triageGroups(findings, flows, changedSince) {
+  const open = rankFindings(
+    findings.filter((f) => OPEN_STATUSES.includes(f.status) && f.confidence !== "low"),
+    flows
+  );
+  return {
+    open,
+    possibleDuplicates: huntGroupsOf(
+      open,
+      (f) => `${f.category}\0${f.location.files[0]?.path ?? f.location.route ?? ""}`
+    ),
+    systemic: huntGroupsOf(open, (f) => `${f.category}\0${titleSlug2(f.title)}`).filter((ids) => {
+      const paths2 = new Set(
+        ids.map((id) => open.find((f) => f.id === id)?.location.files[0]?.path)
+      );
+      return paths2.size > 1;
+    }),
+    stale: open.filter(changedSince).map((f) => f.id)
+  };
+}
+function locationText(f) {
+  const file = f.location.files[0];
+  if (file) return `\`${file.path}${file.line ? `:${file.line}` : ""}\``;
+  if (f.location.route) return `route \`${f.location.route}\``;
+  return f.location.component ? `\`${f.location.component}\`` : "\u2014";
+}
+function reportRow(f) {
+  const cell = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  return `| ${f.id} | ${f.severity} | ${f.status} | ${cell(f.title)} | ${locationText(f)} | ${f.category} |`;
+}
+function reportTable(findings) {
+  if (findings.length === 0) return "_None._";
+  return [
+    "| ID | Severity | Status | Finding | Where | Category |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...findings.map(reportRow)
+  ].join("\n");
+}
+function reportSection(f) {
+  if (f.status === "confirmed" || f.status === "regressed" || f.status === "ticketed")
+    return "main";
+  if ((f.status === "candidate" || f.status === "suspected" || f.status === "flaky") && f.confidence !== "low") {
+    return "suspected";
+  }
+  return "none";
+}
+function summaryParagraph(findings, flows) {
+  const main = rankFindings(
+    findings.filter((f) => reportSection(f) === "main"),
+    flows
+  );
+  const suspected = findings.filter((f) => reportSection(f) === "suspected").length;
+  if (main.length === 0) {
+    return `No confirmed findings. ${suspected} suspected finding(s) await proof or a ruling. Evidence lives under .marvin/hunt/evidence/.`;
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const f of main)
+    counts.set(`${f.class}/${f.severity}`, (counts.get(`${f.class}/${f.severity}`) ?? 0) + 1);
+  const byKind = [...counts.entries()].map(([k, n]) => `${n} ${k}`).join(", ");
+  const top = main.slice(0, 3).map((f) => `${f.id} ${f.title} (${f.severity})`).join("; ");
+  return `${main.length} confirmed finding(s): ${byKind}. Top: ${top}. ${suspected} suspected. Evidence lives under .marvin/hunt/evidence/.`;
+}
+function renderReport2(input) {
+  const { findings, flows } = input;
+  const ranked = rankFindings(findings, flows);
+  const main = ranked.filter((f) => reportSection(f) === "main");
+  const suspected = ranked.filter((f) => reportSection(f) === "suspected");
+  const bugs = main.filter(
+    (f) => f.class === "bug" || f.class === "perf" || f.class === "spec-drift" || f.class === "risk"
+  );
+  const ux = main.filter((f) => f.class === "ux-issue" || f.class === "a11y");
+  const design = main.filter((f) => f.class === "design-deviation");
+  const systemic = main.filter((f) => f.occurrences.length > 0);
+  const closed = findings.filter((f) => reportSection(f) === "none");
+  const out = [
+    `# ${input.title}`,
+    "",
+    `Generated ${input.generatedAt}${input.run ? ` \xB7 run \`${input.run.id}\` (${input.run.check}) at \`${input.run.head_sha?.slice(0, 12) ?? "no commit"}\`` : ""}.`,
+    "",
+    "## Summary",
+    "",
+    summaryParagraph(findings, flows),
+    "",
+    "## Bugs by severity",
+    "",
+    reportTable(bugs),
+    "",
+    "## UX and accessibility",
+    "",
+    reportTable(ux),
+    "",
+    "## Design deviations",
+    "",
+    reportTable(design),
+    "",
+    "## Systemic patterns",
+    "",
+    systemic.length === 0 ? "_None._" : systemic.map(
+      (f) => `- **${f.id}** ${f.title}: ${f.occurrences.length + f.location.files.length} occurrence(s)`
+    ).join("\n"),
+    "",
+    "## Flow-map gaps",
+    "",
+    !flows || flows.anomalies.length === 0 ? "_None recorded._" : flows.anomalies.map((a) => `- ${a}`).join("\n"),
+    "",
+    "## Suspected",
+    "",
+    "Medium or high confidence, not yet proven. Not counted as confirmed.",
+    "",
+    reportTable(suspected),
+    "",
+    "## Coverage",
+    "",
+    input.coverage ? `${input.coverage.audited} of ${input.coverage.files} file(s) in scope have been audited at least once.` : "_Not computed for this report._",
+    "",
+    "## Run cost",
+    "",
+    input.run ? `Started ${input.run.started_at}${input.run.finished_at ? `, finished ${input.run.finished_at}` : ""}; ${input.run.hotspots.length} hotspot(s) ranked, ${input.run.recorded.length} claim(s) recorded. Token cost is not visible to the tool and is reported by the session.` : "_Ledger-wide report; no single run._",
+    "",
+    `_${closed.length} closed finding(s) (rejected, fixed, deferred, won't fix, or low confidence) are in the ledger and not listed._`,
+    ""
+  ];
+  return out.join("\n");
+}
+
+// src/lib/hunt-flows.ts
+function keepPinned(next, prev) {
+  const ids = new Set(next.map((x) => x.id));
+  const carried = prev.filter((x) => x.pinned && !ids.has(x.id));
+  const pinnedById = new Map(prev.filter((x) => x.pinned).map((x) => [x.id, x]));
+  return [...next.map((x) => pinnedById.get(x.id) ?? x), ...carried].sort(
+    (a, b) => a.id.localeCompare(b.id)
+  );
+}
+function mergeFlows(next, prev) {
+  if (!prev) {
+    return {
+      ...next,
+      nodes: [...next.nodes].sort((a, b) => a.id.localeCompare(b.id)),
+      transitions: [...next.transitions].sort((a, b) => a.id.localeCompare(b.id)),
+      journeys: [...next.journeys].sort((a, b) => a.id.localeCompare(b.id))
+    };
+  }
+  return {
+    ...next,
+    nodes: keepPinned(next.nodes, prev.nodes),
+    transitions: keepPinned(next.transitions, prev.transitions),
+    journeys: keepPinned(next.journeys, prev.journeys)
+  };
+}
+function diffIds(next, prev) {
+  const a = new Set(next.map((x) => x.id));
+  const b = new Set(prev.map((x) => x.id));
+  return {
+    added: [...a].filter((id) => !b.has(id)).sort(),
+    removed: [...b].filter((id) => !a.has(id)).sort()
+  };
+}
+function diffFlows(next, prev) {
+  const empty = { nodes: [], transitions: [], journeys: []};
+  const p = prev ?? empty;
+  return {
+    nodes: diffIds(next.nodes, p.nodes),
+    transitions: diffIds(next.transitions, p.transitions),
+    journeys: diffIds(next.journeys, p.journeys)
+  };
+}
+function danglingRefs(map) {
+  const nodes = new Set(map.nodes.map((n) => n.id));
+  const transitions = new Set(map.transitions.map((t) => t.id));
+  const out = [];
+  for (const t of map.transitions) {
+    if (!nodes.has(t.from)) out.push(`transition ${t.id}: from "${t.from}" is not a node`);
+    if (t.to !== void 0 && !nodes.has(t.to))
+      out.push(`transition ${t.id}: to "${t.to}" is not a node`);
+  }
+  for (const j of map.journeys) {
+    for (const s of j.steps) {
+      if (!transitions.has(s) && !nodes.has(s))
+        out.push(`journey ${j.id}: step "${s}" is neither a node nor a transition`);
+    }
+  }
+  return out;
+}
+var SOURCE_EXT = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|py|go|rs|rb|java|kt|kts|swift|php|cs|scala|sql|ex|exs|dart|c|cc|cpp|h|hpp)$/i;
+var DEFAULT_EXCLUDES = [
+  "**/node_modules/**",
+  "**/vendor/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/out/**",
+  "**/coverage/**",
+  "**/.next/**",
+  "**/.nuxt/**",
+  "**/.svelte-kit/**",
+  "**/__generated__/**",
+  "**/generated/**",
+  "**/*.generated.*",
+  "**/*.gen.*",
+  "**/*.d.ts",
+  "**/*.min.*",
+  "**/__tests__/**",
+  "**/__mocks__/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/*.stories.*",
+  "**/test/**",
+  "**/tests/**",
+  "**/e2e/**",
+  "**/fixtures/**",
+  ".marvin/**",
+  ".github/**"
+];
+var TEST_FILE2 = /(^|\/)(__tests__\/|tests?\/|e2e\/)|\.(test|spec)\.[^/]+$/;
+function globToRegExp2(pattern) {
+  const p = normalizeScopePath(pattern).replace(/\/$/, "");
+  if (!/[*?]/.test(p)) {
+    const esc2 = p.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^${esc2}(?:/.*)?$`);
+  }
+  let re = "";
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === "*") {
+      if (p[i + 1] === "*") {
+        const slash = p[i + 2] === "/";
+        re += slash ? "(?:.*/)?" : ".*";
+        i += slash ? 2 : 1;
+      } else {
+        re += "[^/]*";
+      }
+    } else if (c === "?") {
+      re += "[^/]";
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${re}$`);
+}
+function matchesAny(path, patterns) {
+  return patterns.some((p) => globToRegExp2(p).test(path));
+}
+function filterScope(files, paths2, exclude) {
+  const excludes = [...DEFAULT_EXCLUDES, ...exclude];
+  return [...new Set(files.map(normalizeScopePath))].filter((f) => f && SOURCE_EXT.test(f)).filter((f) => paths2.length === 0 || matchesAny(f, paths2)).filter((f) => !matchesAny(f, excludes)).sort();
+}
+function resolveScope(projectRoot, req, config2) {
+  const paths2 = req.paths && req.paths.length > 0 ? req.paths : config2.scope.paths;
+  if (req.since || req.diff) {
+    const changed = changedFilesForScope(projectRoot, req.diff ? void 0 : req.since);
+    return {
+      kind: "diff",
+      paths: paths2,
+      ...req.since ? { base: req.since } : {},
+      // A deletion is a change with nothing left to read or hash: it leaves the scope here
+      // rather than reaching `hash-object`, whose one failure would null every blob.
+      files: filterScope(changed, paths2, config2.scope.exclude).filter(
+        (f) => existsSync(join(projectRoot, f))
+      )
+    };
+  }
+  const tracked = git(["ls-files", "-z"], projectRoot, { maxBuffer: 256 * 1024 * 1024 });
+  if (!tracked.ok) throw new Error(`git ls-files failed: ${tracked.stderr}`);
+  const files = tracked.value.split("\0").filter(Boolean);
+  return {
+    kind: paths2.length > 0 ? "paths" : "repo",
+    paths: paths2,
+    files: filterScope(files, paths2, config2.scope.exclude)
+  };
+}
+var RISK_TERMS = [
+  "auth",
+  "authentication",
+  "authorization",
+  "oauth",
+  "login",
+  "session",
+  "token",
+  "password",
+  "secret",
+  "permission",
+  "role",
+  "admin",
+  "tenant",
+  "payment",
+  "checkout",
+  "billing",
+  "invoice",
+  "refund",
+  "webhook",
+  "delete",
+  "migration",
+  "transaction",
+  "mutex",
+  "lock",
+  "queue",
+  "cron",
+  "upload",
+  "email",
+  "phone"
+];
+var MAX_READ = 256 * 1024;
+function identifierSegments(text) {
+  const out = /* @__PURE__ */ new Set();
+  const spaced = text.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  for (const seg of spaced.split(/[^A-Za-z]+/)) if (seg) out.add(seg.toLowerCase());
+  return out;
+}
+function matchRiskTerms(text, terms) {
+  const segs = identifierSegments(text);
+  const lowered = [...new Set(terms.map((t) => t.toLowerCase()))];
+  return lowered.filter((t) => segs.has(t) || segs.has(`${t}s`) || segs.has(`${t}es`)).sort();
+}
+function headTimeMs(projectRoot) {
+  const r = git(["show", "-s", "--format=%ct", "HEAD"], projectRoot);
+  if (!r.ok) return null;
+  const sec = Number(r.value.trim());
+  return Number.isFinite(sec) && sec > 0 ? sec * 1e3 : null;
+}
+function windowStart(nowMs, months) {
+  const d = new Date(nowMs);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString();
+}
+function hashExisting(files, projectRoot) {
+  const present = files.filter((f) => existsSync(join(projectRoot, f)));
+  const ids = hashObjects(present, projectRoot);
+  const byPath = new Map(present.map((f, i) => [f, ids?.[i] ?? null]));
+  return new Map(files.map((f) => [f, byPath.get(f) ?? null]));
+}
+var FIX_SUBJECT = /^(fix|hotfix|bugfix|revert)(\(|:|!|\s)|\bfix(e[sd])?\b/i;
+function readHistory(projectRoot, months, files, nowMs) {
+  const history = {
+    churn: /* @__PURE__ */ new Map(),
+    authors: /* @__PURE__ */ new Map(),
+    fixes: /* @__PURE__ */ new Map(),
+    last: /* @__PURE__ */ new Map()
+  };
+  if (files.length === 0) return history;
+  const wanted = new Set(files);
+  const r = git(
+    [
+      "log",
+      `--since=${windowStart(nowMs, months)}`,
+      `--until=${new Date(nowMs).toISOString()}`,
+      "--no-merges",
+      "--format=%x1e%an%x1f%ct%x1f%s",
+      "--name-only"
+    ],
+    projectRoot,
+    { maxBuffer: 256 * 1024 * 1024 }
+  );
+  if (!r.ok) return history;
+  for (const record2 of r.value.split("")) {
+    if (!record2.trim()) continue;
+    const [head, ...names] = record2.split("\n");
+    const [author = "", ct = "0", subject = ""] = (head ?? "").split("");
+    const isFix = FIX_SUBJECT.test(subject);
+    for (const raw of names) {
+      const f = normalizeScopePath(raw);
+      if (!wanted.has(f)) continue;
+      history.churn.set(f, (history.churn.get(f) ?? 0) + 1);
+      history.authors.set(f, (history.authors.get(f) ?? /* @__PURE__ */ new Set()).add(author));
+      if (isFix) history.fixes.set(f, (history.fixes.get(f) ?? 0) + 1);
+      history.last.set(f, Math.max(history.last.get(f) ?? 0, Number(ct)));
+    }
+  }
+  return history;
+}
+var STALE_DAYS = 90;
+function auditState(entry, blob, nowMs) {
+  if (!entry) return "never";
+  if (blob !== null && entry.blob !== null && entry.blob !== blob) return "changed";
+  const age = (nowMs - Date.parse(entry.last_audited_at)) / 864e5;
+  return age > STALE_DAYS ? "stale" : "fresh";
+}
+function stem(path) {
+  const base = path.split("/").pop() ?? path;
+  return base.replace(/\.[^.]+$/, "");
+}
+function collectSignals(projectRoot, files, months, coverage, allTracked, nowMs, riskTerms = RISK_TERMS) {
+  const history = readHistory(projectRoot, months, files, nowMs);
+  const blobs = hashExisting(files, projectRoot);
+  const byPath = new Map(coverage.files.map((e) => [e.path, e]));
+  const testStems = new Set(
+    allTracked.filter((f) => TEST_FILE2.test(f)).map((f) => stem(f).replace(/\.(test|spec)$/, ""))
+  );
+  const signals = files.map((path) => {
+    let text = "";
+    let lines = 0;
+    try {
+      const abs = join(projectRoot, path);
+      if (statSync(abs).size <= 4 * 1024 * 1024) {
+        text = readFileSync(abs, "utf8");
+        lines = text.split("\n").length;
+      }
+    } catch {
+    }
+    const terms = matchRiskTerms(`${path}
+${text.slice(0, MAX_READ)}`, riskTerms);
+    const last2 = history.last.get(path);
+    return {
+      path,
+      churn: history.churn.get(path) ?? 0,
+      authors: history.authors.get(path)?.size ?? 0,
+      fixCommits: history.fixes.get(path) ?? 0,
+      lines,
+      daysSinceChange: last2 ? Math.max(0, Math.floor((nowMs / 1e3 - last2) / 86400)) : null,
+      riskTerms: terms,
+      audit: auditState(byPath.get(path), blobs.get(path) ?? null, nowMs),
+      hasTest: testStems.has(stem(path))
+    };
+  });
+  return { signals, blobs };
+}
+var round2 = (n) => Math.round(n * 100) / 100;
+function scoreSignals(s) {
+  const parts = [
+    [Math.log2(1 + s.churn), `${s.churn} commit(s) in the window`],
+    [Math.log2(1 + s.authors) * 0.75, `${s.authors} author(s)`],
+    [Math.min(s.fixCommits, 5) * 0.75, `${s.fixCommits} fix commit(s)`],
+    [Math.log2(1 + s.lines / 50), `${s.lines} line(s)`],
+    [
+      s.daysSinceChange === null ? 0 : s.daysSinceChange <= 30 ? 1.5 : s.daysSinceChange <= 90 ? 0.75 : 0,
+      s.daysSinceChange === null ? "no change in the window" : `changed ${s.daysSinceChange} day(s) ago`
+    ],
+    [Math.min(s.riskTerms.length, 4) * 1.25, `risk terms: ${s.riskTerms.join(", ") || "none"}`],
+    [
+      { never: 1.5, changed: 1, stale: 0.5, fresh: -2 }[s.audit],
+      {
+        never: "never audited",
+        changed: "changed since its last audit",
+        stale: "audit is stale",
+        fresh: "audited recently"
+      }[s.audit]
+    ],
+    [s.hasTest ? 0 : 1, s.hasTest ? "has a test file" : "no matching test file"]
+  ];
+  const score = round2(parts.reduce((sum2, [v]) => sum2 + v, 0));
+  const why = parts.filter(([v]) => v > 0).sort((a, b) => b[0] - a[0]).slice(0, 4).map(([, w]) => w);
+  return { score, why };
+}
+function rankHotspots(signals, max, batchSize) {
+  return signals.map((s) => ({ s, ...scoreSignals(s) })).sort((a, b) => b.score - a.score || a.s.path.localeCompare(b.s.path)).slice(0, max).map(({ s, score, why }, i) => ({
+    path: s.path,
+    rank: i + 1,
+    score,
+    signals: {
+      churn: s.churn,
+      authors: s.authors,
+      fix_commits: s.fixCommits,
+      lines: s.lines,
+      days_since_change: s.daysSinceChange,
+      risk_terms: s.riskTerms,
+      audit: s.audit,
+      has_test: s.hasTest
+    },
+    why,
+    batch: Math.floor(i / batchSize) + 1
+  }));
+}
+var LEDGER_FILE = "findings.jsonl";
+var FLOWS_FILE = "flows.json";
+var COVERAGE_FILE = "coverage.json";
+var RUNS_DIR = "runs";
+var REPORTS_DIR2 = "reports";
+var EVIDENCE_DIR = "evidence";
+var HuntStateError = class extends Error {
+};
+var GITIGNORE = [
+  "# Written by marvin's hunt tool (ADR-0054). The ledger, flow map, coverage and reports are",
+  "# shared records; run state and raw evidence stay on this machine.",
+  `${RUNS_DIR}/`,
+  `${EVIDENCE_DIR}/`,
+  ""
+].join("\n");
+var GITATTRIBUTES = [
+  "# Written by marvin's hunt tool (ADR-0054). The ledger is append-only: keep both sides' lines.",
+  `${LEDGER_FILE} merge=union`,
+  ""
+].join("\n");
+function ensureHuntDir(huntDir) {
+  mkdirSync(huntDir, { recursive: true });
+  const ignore = join(huntDir, ".gitignore");
+  if (!existsSync(ignore)) writeFileSync(ignore, GITIGNORE, "utf8");
+  const attributes = join(huntDir, ".gitattributes");
+  if (!existsSync(attributes)) writeFileSync(attributes, GITATTRIBUTES, "utf8");
+}
+function huntAtomicWrite(path, text) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, text, "utf8");
+  renameSync(tmp, path);
+}
+function huntVersionOf(json) {
+  if (typeof json === "object" && json !== null && "version" in json) {
+    const v = json.version;
+    return typeof v === "number" ? v : null;
+  }
+  if (typeof json === "object" && json !== null && "v" in json) {
+    const v = json.v;
+    return typeof v === "number" ? v : null;
+  }
+  return null;
+}
+function huntRefuseNewer(json, label) {
+  const v = huntVersionOf(json);
+  if (v !== null && v > HUNT_STATE_VERSION) {
+    throw new HuntStateError(
+      `${label} was written by a newer marvin (state version ${v}, this one reads ${HUNT_STATE_VERSION}). Upgrade the plugin before running a hunt here; nothing was changed.`
+    );
+  }
+}
+function readHuntJson(path, label) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (err3) {
+    throw new HuntStateError(`${label} could not be read: ${err3.message}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err3) {
+    throw new HuntStateError(`${label} is not valid JSON: ${err3.message}`);
+  }
+}
+function huntIssues(err3) {
+  return err3.issues.slice(0, 5).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+}
+function readHuntConfig(configPath) {
+  if (!existsSync(configPath)) return { config: HuntConfig.parse({}), present: false };
+  const json = readHuntJson(configPath, ".marvin/config.json");
+  const raw = typeof json === "object" && json !== null ? json.hunt : void 0;
+  if (raw === void 0) return { config: HuntConfig.parse({}), present: false };
+  huntRefuseNewer(raw, "The `hunt` block of .marvin/config.json");
+  const parsed = HuntConfig.safeParse(raw);
+  if (!parsed.success) {
+    throw new HuntStateError(
+      `The \`hunt\` block of .marvin/config.json is invalid: ${huntIssues(parsed.error)}. Fix it, or rerun /marvin:hunt-init.`
+    );
+  }
+  return { config: parsed.data, present: true };
+}
+function writeHuntConfig(configPath, config2) {
+  const validated = HuntConfig.parse(config2);
+  let json = {};
+  if (existsSync(configPath)) {
+    const current = readHuntJson(configPath, ".marvin/config.json");
+    if (typeof current !== "object" || current === null || Array.isArray(current)) {
+      throw new HuntStateError(".marvin/config.json is not a JSON object; refusing to edit it.");
+    }
+    json = current;
+  }
+  json.hunt = validated;
+  huntAtomicWrite(configPath, `${JSON.stringify(json, null, 2)}
+`);
+}
+var CONFLICT_MARKER = /^(<{7}|={7}|>{7}|\|{7})( |$)/;
+function readLedger(huntDir) {
+  const path = join(huntDir, LEDGER_FILE);
+  if (!existsSync(path)) return { lines: [], malformed: [], conflictMarkers: [] };
+  const text = readFileSync(path, "utf8");
+  const lines = [];
+  const malformed = [];
+  const conflictMarkers = [];
+  text.split("\n").forEach((raw, i) => {
+    if (raw.trim() === "") return;
+    if (CONFLICT_MARKER.test(raw)) {
+      conflictMarkers.push(i + 1);
+      return;
+    }
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      malformed.push({ line: i + 1, reason: "not JSON" });
+      return;
+    }
+    huntRefuseNewer(json, `.marvin/hunt/${LEDGER_FILE} line ${i + 1}`);
+    const parsed = LedgerLine.safeParse(json);
+    if (parsed.success) lines.push(parsed.data);
+    else malformed.push({ line: i + 1, reason: huntIssues(parsed.error) });
+  });
+  return { lines, malformed, conflictMarkers };
+}
+function appendLedger(huntDir, lines) {
+  if (lines.length === 0) return;
+  const text = lines.map((l) => {
+    const parsed = LedgerLine.safeParse(l);
+    if (!parsed.success) {
+      throw new HuntStateError(
+        `refusing to write an invalid ledger line: ${huntIssues(parsed.error)}`
+      );
+    }
+    return JSON.stringify(parsed.data);
+  }).join("\n");
+  ensureHuntDir(huntDir);
+  appendFileSync(join(huntDir, LEDGER_FILE), `${text}
+`, "utf8");
+}
+function readFlows(huntDir) {
+  const path = join(huntDir, FLOWS_FILE);
+  if (!existsSync(path)) return null;
+  const json = readHuntJson(path, `.marvin/hunt/${FLOWS_FILE}`);
+  huntRefuseNewer(json, `.marvin/hunt/${FLOWS_FILE}`);
+  const parsed = FlowMap.safeParse(json);
+  if (!parsed.success) {
+    throw new HuntStateError(`.marvin/hunt/${FLOWS_FILE} is invalid: ${huntIssues(parsed.error)}`);
+  }
+  return parsed.data;
+}
+function writeFlows(path, map) {
+  huntAtomicWrite(path, `${JSON.stringify(FlowMap.parse(map), null, 2)}
+`);
+}
+function readCoverage(huntDir) {
+  const path = join(huntDir, COVERAGE_FILE);
+  if (!existsSync(path)) return { version: HUNT_STATE_VERSION, files: [] };
+  const json = readHuntJson(path, `.marvin/hunt/${COVERAGE_FILE}`);
+  huntRefuseNewer(json, `.marvin/hunt/${COVERAGE_FILE}`);
+  const parsed = Coverage.safeParse(json);
+  if (!parsed.success) {
+    throw new HuntStateError(
+      `.marvin/hunt/${COVERAGE_FILE} is invalid: ${huntIssues(parsed.error)}`
+    );
+  }
+  return parsed.data;
+}
+function writeCoverage(huntDir, coverage) {
+  const sorted = {
+    ...coverage,
+    files: [...coverage.files].sort((a, b) => a.path.localeCompare(b.path))
+  };
+  huntAtomicWrite(
+    join(huntDir, COVERAGE_FILE),
+    `${JSON.stringify(Coverage.parse(sorted), null, 2)}
+`
+  );
+}
+var RUN_ID = /^\d{8}-\d{6}-[a-z-]+$/;
+function runDir(huntDir, runId) {
+  if (!RUN_ID.test(runId)) throw new HuntStateError(`"${runId}" is not a hunt run id.`);
+  return join(huntDir, RUNS_DIR, runId);
+}
+function readRun(huntDir, runId) {
+  const path = join(runDir(huntDir, runId), "run.json");
+  if (!existsSync(path)) throw new HuntStateError(`No hunt run ${runId} under .marvin/hunt/runs/.`);
+  const json = readHuntJson(path, `run ${runId}`);
+  huntRefuseNewer(json, `run ${runId}`);
+  const parsed = HuntRun.safeParse(json);
+  if (!parsed.success)
+    throw new HuntStateError(`run ${runId} is invalid: ${huntIssues(parsed.error)}`);
+  return parsed.data;
+}
+function writeRun(huntDir, run3) {
+  ensureHuntDir(huntDir);
+  huntAtomicWrite(
+    join(runDir(huntDir, run3.id), "run.json"),
+    `${JSON.stringify(HuntRun.parse(run3), null, 2)}
+`
+  );
+}
+function listRunIds(huntDir) {
+  const dir = join(huntDir, RUNS_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && RUN_ID.test(d.name)).map((d) => d.name).sort().reverse();
+}
+function writeReport(huntDir, name, markdown) {
+  const dir = join(huntDir, REPORTS_DIR2);
+  huntAtomicWrite(join(dir, `${name}.md`), markdown);
+  huntAtomicWrite(join(dir, "latest.md"), markdown);
+  return [`${REPORTS_DIR2}/${name}.md`, `${REPORTS_DIR2}/latest.md`];
+}
+
+// src/tools/hunt.ts
+var HUNT_ACTIONS = [
+  "init",
+  "preflight",
+  "baseline",
+  "hotspots",
+  "checkpoint",
+  "flows",
+  "record",
+  "verdict",
+  "set-status",
+  "link",
+  "triage",
+  "finalize",
+  "report",
+  "status"
+];
+var HuntInput = strictInput(
+  external_exports.object({
+    action: external_exports.enum(HUNT_ACTIONS).describe("What to do; see the tool description."),
+    run_id: external_exports.string().optional().describe(
+      "The run this call belongs to (from preflight). Required by baseline, hotspots, checkpoint, record, finalize."
+    ),
+    check: HuntCheck.optional().describe("preflight: which check this run is. Default code."),
+    paths: external_exports.array(external_exports.string().min(1)).optional().describe("preflight: path prefixes or globs; overrides hunt.scope.paths."),
+    since: external_exports.string().min(1).optional().describe("preflight: hunt only files changed since the merge base with this ref."),
+    diff: external_exports.boolean().optional().describe("preflight: hunt only the uncommitted diff."),
+    config: external_exports.record(external_exports.unknown()).optional().describe("init: the hunt settings to merge over the current ones."),
+    findings: external_exports.array(external_exports.unknown()).optional().describe("record: finding claims (finding.schema.json)."),
+    flows: external_exports.unknown().optional().describe(
+      "flows: the regenerated flow map (flows.schema.json). Omit to read the current one."
+    ),
+    id: external_exports.string().optional().describe("verdict / set-status / link: the finding id, e.g. BH-3f9a01c2."),
+    verdict: external_exports.unknown().optional().describe(
+      "verdict: { stage, ruling, by, reasoning, failure_kind?, test_path?, scenario? }. A prove red needs test_path or scenario, and the file must exist."
+    ),
+    status: external_exports.string().optional().describe(`set-status: one of ${SETTABLE_STATUSES.join(", ")}.`),
+    reason: external_exports.string().optional().describe("set-status: why."),
+    links: external_exports.unknown().optional().describe("link: { task?, root_cause?, duplicate_of?, related?, commit?, adr?, spec? }."),
+    step: external_exports.string().optional().describe("checkpoint: the step just completed, e.g. map, hunt, challenge, rule, prove."),
+    note: external_exports.string().optional().describe("checkpoint: a short note. finalize: the summary to store."),
+    round: external_exports.number().int().min(1).optional().describe("checkpoint: convergence round."),
+    batch: external_exports.number().int().min(1).optional().describe("checkpoint: hotspot batch just finished.")
+  }),
+  (keys) => `hunt does not take ${keyList(keys)}.`
+);
+function buildHuntTool(server, env2) {
+  return defineTool({
+    name: "hunt",
+    description: "The bug-hunter's state under .marvin/hunt/ (ADR-0053/0054), driven by the hunt-* commands. init writes the `hunt` settings; preflight opens a run and resolves its scope; baseline attaches the latest verify result; hotspots ranks the scope deterministically; checkpoint saves progress; flows writes or reads the flow map; record appends finding claims to the ledger (deduplicated by fingerprint); verdict applies a skeptic, referee, reproducing-test or human ruling under the verification protocol; set-status and link annotate a finding; triage ranks the open findings and lists duplicates, systemic patterns and stale ones; finalize closes a run, updates coverage and writes its report; report renders the ledger; status summarises. Never edits source, commits or pushes.",
+    inputSchema: HuntInput,
+    handler: (input) => input.action === "verdict" ? huntVerdict(server, env2, input) : Promise.resolve(huntRun(env2, input))
+  });
+}
+function huntReply(body, structured) {
+  return {
+    content: [{ type: "text", text: body }],
+    ...structured ? { structuredContent: structured } : {}
+  };
+}
+function huntFail(message) {
+  return { content: [{ type: "text", text: message }], isError: true };
+}
+function huntZodIssues(err3) {
+  return err3.issues.slice(0, 6).map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+}
+function huntNowIso() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function huntRunIdFor(check2, d = /* @__PURE__ */ new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}-${check2}`;
+}
+function huntRequireRun(env2, input) {
+  if (!input.run_id) throw new HuntStateError(`${input.action} needs run_id (from preflight).`);
+  const r = readRun(env2.huntDir, input.run_id);
+  if (r.state !== "running" && input.action !== "finalize") {
+    throw new HuntStateError(`run ${r.id} is ${r.state}; open a new one with preflight.`);
+  }
+  return r;
+}
+function huntRun(env2, input) {
+  try {
+    switch (input.action) {
+      case "init":
+        return huntInit(env2, input);
+      case "preflight":
+        return huntPreflight(env2, input);
+      case "baseline":
+        return huntBaseline(env2, input);
+      case "hotspots":
+        return huntHotspots(env2, input);
+      case "checkpoint":
+        return huntCheckpoint(env2, input);
+      case "flows":
+        return huntFlows(env2, input);
+      case "record":
+        return huntRecord(env2, input);
+      case "verdict":
+        return huntFail("verdict is handled asynchronously; this path is unreachable.");
+      case "set-status":
+        return huntSetStatus(env2, input);
+      case "link":
+        return huntLink(env2, input);
+      case "triage":
+        return huntTriage(env2);
+      case "finalize":
+        return huntFinalize(env2, input);
+      case "report":
+        return huntReport(env2);
+      case "status":
+        return huntStatus(env2);
+    }
+  } catch (err3) {
+    if (err3 instanceof HuntStateError) return huntFail(err3.message);
+    throw err3;
+  }
+}
+function huntInit(env2, input) {
+  const current = readHuntConfig(env2.configPath);
+  const merged = huntDeepMerge(
+    current.config,
+    input.config ?? {}
+  );
+  const parsed = HuntConfig.safeParse(merged);
+  if (!parsed.success)
+    return huntFail(
+      `The hunt settings are invalid: ${huntZodIssues(parsed.error)}. Nothing was written.`
+    );
+  writeHuntConfig(env2.configPath, parsed.data);
+  ensureHuntDir(env2.huntDir);
+  const rel = huntRelToProject(env2, env2.huntDir);
+  const ignored = inGitRepo(env2.projectDir) ? isIgnored(join(rel, "findings.jsonl"), env2.projectDir) : null;
+  const lines = [
+    `# Hunt settings ${current.present ? "updated" : "created"}`,
+    "",
+    "```json",
+    JSON.stringify(parsed.data, null, 2),
+    "```",
+    "",
+    `State directory: \`${rel}/\` (run state and evidence stay local through its own .gitignore).`
+  ];
+  if (ignored === true) {
+    lines.push(
+      "",
+      `\u26A0 git ignores \`${rel}/findings.jsonl\`. The ledger, flow map and coverage are meant to be committed so verdicts survive the machine: add \`!${rel}/\` after the rule that ignores \`.marvin/\`.`
+    );
+  }
+  return huntReply(lines.join("\n"), { config: parsed.data, ignored });
+}
+function huntDeepMerge(base, patch) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    const b = out[k];
+    out[k] = v && typeof v === "object" && !Array.isArray(v) && b && typeof b === "object" && !Array.isArray(b) ? huntDeepMerge(b, v) : v;
+  }
+  return out;
+}
+function huntRelToProject(env2, abs) {
+  return abs.startsWith(env2.projectDir) ? abs.slice(env2.projectDir.length).replace(/^[\\/]/, "") || "." : abs;
+}
+function huntPreflight(env2, input) {
+  if (!inGitRepo(env2.projectDir))
+    return huntFail("A hunt needs a git repository: scope, hotspots and provenance all read git.");
+  const { config: config2 } = readHuntConfig(env2.configPath);
+  const check2 = input.check ?? "code";
+  const scope = resolveScope(
+    env2.projectDir,
+    { paths: input.paths, since: input.since, diff: input.diff },
+    config2
+  );
+  const id = huntRunIdFor(check2);
+  if (existsSync(join(runDir(env2.huntDir, id), "run.json"))) {
+    return huntFail(`A run ${id} already exists; wait a second and retry.`);
+  }
+  const record2 = {
+    version: HUNT_STATE_VERSION,
+    id,
+    check: check2,
+    state: "running",
+    started_at: huntNowIso(),
+    branch: currentBranch(env2.projectDir),
+    head_sha: headSha(env2.projectDir),
+    dirty: hasUncommittedChanges(env2.projectDir),
+    scope,
+    authority: config2.authority.mode,
+    hotspots: [],
+    steps: [{ step: "preflight", at: huntNowIso() }],
+    recorded: []
+  };
+  writeRun(env2.huntDir, record2);
+  const floor = config2.severity_floor[check2];
+  const body = [
+    `# Hunt run \`${id}\` (${check2})`,
+    "",
+    `- Branch \`${record2.branch ?? "detached"}\` at \`${record2.head_sha?.slice(0, 12) ?? "no commit"}\`${record2.dirty ? " \xB7 working tree has uncommitted changes" : ""}`,
+    `- Scope: ${scope.kind}${scope.base ? ` since \`${scope.base}\`` : ""}${scope.paths.length ? ` \xB7 ${scope.paths.join(", ")}` : ""} \u2192 **${scope.files.length} file(s)**`,
+    `- Authority: ${config2.authority.mode} \xB7 severity floor ${floor} \xB7 budget ${config2.budgets.max_minutes} min, ${config2.budgets.max_rounds} round(s)`,
+    "",
+    scope.files.length === 0 ? "Nothing in scope: widen `paths` or check `hunt.scope.exclude`." : 'Next: `verify` (standalone), then `hunt action: "baseline"`, then `hunt action: "hotspots"`.'
+  ];
+  return huntReply(body.join("\n"), { run_id: id, run: record2, config: config2 });
+}
+function huntBaseline(env2, input) {
+  const r = huntRequireRun(env2, input);
+  const path = join(env2.projectDir, ".marvin", "task", "verification.md");
+  if (!existsSync(path)) {
+    return huntFail(
+      "No .marvin/task/verification.md. Run the `verify` tool (action run, no specSlug) first, then call baseline again."
+    );
+  }
+  const parsed = parseVerifyBlock(readFileSync(path, "utf8"));
+  if (parsed.kind !== "ok") {
+    return huntFail(
+      `verification.md carries no readable verify-result block (${parsed.kind === "invalid" ? parsed.reason : "none"}). Rerun verify.`
+    );
+  }
+  const res = parsed.result;
+  const recordedSha = res.provenance?.head_sha ?? null;
+  const stale = recordedSha !== r.head_sha;
+  const updated = {
+    ...r,
+    baseline: {
+      verdict: res.verdict ?? "UNKNOWN",
+      head_sha: recordedSha,
+      gates: res.gates.map((g) => ({ name: g.name, status: g.status ?? "unknown" })),
+      stale
+    },
+    steps: [...r.steps, { step: "baseline", at: huntNowIso() }]
+  };
+  writeRun(env2.huntDir, updated);
+  const gates = updated.baseline.gates.map((g) => `${g.name}=${g.status}`).join(", ") || "none";
+  return huntReply(
+    [
+      `Baseline for \`${r.id}\`: **${updated.baseline.verdict}** (${gates}).`,
+      stale ? `\u26A0 The verification ran at \`${recordedSha?.slice(0, 12) ?? "unknown"}\`, not at this run's \`${r.head_sha?.slice(0, 12) ?? "unknown"}\`; rerun verify for a baseline of this commit.` : "Recorded at this run's commit.",
+      "A red baseline is not a finding: reproducing tests are judged against it, so note which gates were already failing."
+    ].join("\n"),
+    { baseline: updated.baseline }
+  );
+}
+function huntHotspots(env2, input) {
+  const r = huntRequireRun(env2, input);
+  const { config: config2 } = readHuntConfig(env2.configPath);
+  const coverage = readCoverage(env2.huntDir);
+  const tracked = git(["ls-files", "-z"], env2.projectDir, { maxBuffer: 256 * 1024 * 1024 });
+  const all = tracked.ok ? tracked.value.split("\0").filter(Boolean) : [];
+  const { signals } = collectSignals(
+    env2.projectDir,
+    r.scope.files,
+    config2.history_months,
+    coverage,
+    all,
+    headTimeMs(env2.projectDir) ?? Date.now(),
+    config2.risk_terms ?? RISK_TERMS
+  );
+  const ranked = rankHotspots(signals, config2.budgets.max_hotspots, config2.budgets.batch_size);
+  writeRun(env2.huntDir, {
+    ...r,
+    hotspots: ranked,
+    steps: [...r.steps, { step: "hotspots", at: huntNowIso() }]
+  });
+  const batches = ranked.length === 0 ? 0 : ranked[ranked.length - 1].batch;
+  const lines = [
+    `# Hotspots for \`${r.id}\` \u2014 ${ranked.length} of ${r.scope.files.length} file(s), ${batches} batch(es)`,
+    "",
+    "| # | Batch | Score | File | Why |",
+    "| --- | --- | --- | --- | --- |",
+    ...ranked.map(
+      (h) => `| ${h.rank} | ${h.batch} | ${h.score} | \`${h.path}\` | ${h.why.join("; ")} |`
+    )
+  ];
+  return huntReply(lines.join("\n"), { hotspots: ranked, batches });
+}
+function huntCheckpoint(env2, input) {
+  const r = huntRequireRun(env2, input);
+  if (!input.step) return huntFail("checkpoint needs step.");
+  const step = {
+    step: input.step,
+    at: huntNowIso(),
+    ...input.note ? { note: input.note } : {},
+    ...input.round ? { round: input.round } : {},
+    ...input.batch ? { batch: input.batch } : {}
+  };
+  writeRun(env2.huntDir, { ...r, steps: [...r.steps, step] });
+  return huntReply(
+    `Saved \`${input.step}\`${input.batch ? ` (batch ${input.batch})` : ""} for \`${r.id}\`.`
+  );
+}
+function huntFlows(env2, input) {
+  const prev = readFlows(env2.huntDir);
+  if (input.flows === void 0) {
+    if (!prev)
+      return huntReply("No flow map yet. `/marvin:hunt-code` builds one.", { flows: null });
+    return huntReply(
+      `Flow map: ${prev.nodes.length} node(s), ${prev.transitions.length} transition(s), ${prev.journeys.length} journey(s), ${prev.anomalies.length} anomaly(ies). File: \`.marvin/hunt/${FLOWS_FILE}\`.`,
+      { flows: prev }
+    );
+  }
+  const parsed = FlowMap.safeParse(input.flows);
+  if (!parsed.success)
+    return huntFail(
+      `The flow map is invalid: ${huntZodIssues(parsed.error)}. Nothing was written.`
+    );
+  const r = input.run_id ? huntRequireRun(env2, input) : null;
+  const next = mergeFlows(
+    {
+      ...parsed.data,
+      generated_at: huntNowIso(),
+      ...r ? { run_id: r.id, head_sha: r.head_sha } : {}
+    },
+    prev
+  );
+  const dangling = danglingRefs(next);
+  if (dangling.length > 0) {
+    return huntFail(
+      `The flow map references things it does not define: ${dangling.slice(0, 8).join("; ")}. Nothing was written.`
+    );
+  }
+  ensureHuntDir(env2.huntDir);
+  writeFlows(join(env2.huntDir, FLOWS_FILE), next);
+  if (r) {
+    writeFlows(join(runDir(env2.huntDir, r.id), FLOWS_FILE), next);
+    writeRun(env2.huntDir, { ...r, steps: [...r.steps, { step: "flows", at: huntNowIso() }] });
+  }
+  const d = diffFlows(next, prev);
+  const changes = ["nodes", "transitions", "journeys"].map((k) => `${k}: +${d[k].added.length} \u2212${d[k].removed.length}`).join(" \xB7 ");
+  return huntReply(
+    [
+      `Flow map written: ${next.nodes.length} node(s), ${next.transitions.length} transition(s), ${next.journeys.length} journey(s).`,
+      prev ? `Since the previous map \u2014 ${changes}.` : "First map for this project.",
+      ...d.nodes.removed.length ? [`Disappeared: ${d.nodes.removed.join(", ")}.`] : []
+    ].join("\n"),
+    { diff: d }
+  );
+}
+function huntRecord(env2, input) {
+  const r = huntRequireRun(env2, input);
+  const raw = input.findings ?? [];
+  if (raw.length === 0)
+    return huntFail("record needs findings: an array of claims (finding.schema.json).");
+  const claims = [];
+  const errors = [];
+  raw.forEach((c, i) => {
+    const p = FindingClaim.safeParse(c);
+    if (p.success) claims.push(p.data);
+    else errors.push(`findings[${i}]: ${huntZodIssues(p.error)}`);
+  });
+  if (errors.length > 0)
+    return huntFail(`Nothing was recorded; fix these claims first:
+${errors.join("\n")}`);
+  const { lines } = readLedger(env2.huntDir);
+  const state = foldLedger(lines);
+  const plan = planRecord(state, claims, { runId: r.id, headSha: r.head_sha, now: huntNowIso() });
+  appendLedger(env2.huntDir, plan.lines);
+  const newIds = plan.results.filter((x) => x.outcome === "new").map((x) => x.id);
+  writeRun(env2.huntDir, { ...r, recorded: [...r.recorded, ...plan.results.map((x) => x.id)] });
+  const body = plan.results.map((x, i) => {
+    const t = claims[i].title;
+    switch (x.outcome) {
+      case "new":
+        return `- **${x.id}** new \xB7 ${t}${x.note ? ` (${x.note})` : ""}`;
+      case "duplicate":
+        return `- ${x.id} already in the ledger (${x.status}${x.note ? `; ${x.note}` : ""}) \xB7 ${t}`;
+      case "suppressed":
+        return `- ${x.id} suppressed: a person closed it as ${x.status}; not reported again without new evidence \xB7 ${t}`;
+      case "regressed":
+        return `- **${x.id} REGRESSED**: marked fixed and seen again. Escalate (ORC-06) \xB7 ${t}`;
+    }
+  });
+  return huntReply(
+    [
+      `Recorded ${newIds.length} new of ${claims.length} claim(s) in run \`${r.id}\`:`,
+      ...body
+    ].join("\n"),
+    { results: plan.results }
+  );
+}
+function huntFindingOr(env2, id) {
+  if (!id) return { error: huntFail("This action needs id (e.g. BH-3f9a01c2).") };
+  const state = foldLedger(readLedger(env2.huntDir).lines);
+  const f = state.findings.get(id);
+  return f ? { f } : { error: huntFail(`No finding ${id} in the ledger.`) };
+}
+var HumanAttestation = external_exports.object({
+  confirm: external_exports.boolean().describe("Yes, I am the person making this ruling.")
+});
+async function huntAttest(server, f, ruling) {
+  if (!canElicit(server)) return { attested: false };
+  const answer = await elicit(
+    server,
+    `Record a final human ruling "${ruling}" on ${f.id} (${f.title})? Only the person reviewing the finding should confirm.`,
+    HumanAttestation
+  );
+  if (!answer?.confirm) {
+    return {
+      error: huntFail(`Refused: the person did not confirm the ${ruling} ruling on ${f.id}.`)
+    };
+  }
+  return { attested: true };
+}
+async function huntVerdict(server, env2, input) {
+  try {
+    const got = huntFindingOr(env2, input.id);
+    if ("error" in got) return got.error;
+    const raw = typeof input.verdict === "object" && input.verdict !== null ? input.verdict : {};
+    const { attested: _ignored, ...rest } = raw;
+    const parsed = VerdictEntry.safeParse({
+      ...rest,
+      at: huntNowIso(),
+      ...input.run_id ? { run_id: input.run_id } : {}
+    });
+    if (!parsed.success) return huntFail(`The verdict is invalid: ${huntZodIssues(parsed.error)}.`);
+    let verdict = parsed.data;
+    const plan = planVerdict(got.f, verdict, huntNowIso());
+    if (!plan.ok) return huntFail(`Refused: ${plan.reason}`);
+    for (const rel of [verdict.test_path, verdict.scenario]) {
+      if (rel !== void 0 && !existsSync(join(env2.projectDir, rel))) {
+        return huntFail(
+          `Refused: ${rel} does not exist. Write the reproducing test, run it, then record the ruling (VER-03).`
+        );
+      }
+    }
+    if (verdict.stage === "human") {
+      const att = await huntAttest(server, got.f, verdict.ruling);
+      if ("error" in att) return att.error;
+      verdict = { ...verdict, attested: att.attested };
+      const replanned = planVerdict(got.f, verdict, huntNowIso());
+      if (!replanned.ok) return huntFail(`Refused: ${replanned.reason}`);
+      plan.lines = replanned.lines;
+    }
+    appendLedger(env2.huntDir, plan.lines);
+    const unattested = verdict.stage === "human" && verdict.attested === false ? " Recorded unattested: this client cannot ask the person, so the ruling rests on the caller's word." : "";
+    return huntReply(
+      `${got.f.id}: ${verdict.stage} ${verdict.ruling} \u2192 **${plan.status}** (${plan.note}).${unattested}`,
+      {
+        id: got.f.id,
+        status: plan.status,
+        ...verdict.stage === "human" ? { attested: verdict.attested } : {}
+      }
+    );
+  } catch (err3) {
+    if (err3 instanceof HuntStateError) return huntFail(err3.message);
+    throw err3;
+  }
+}
+function huntSetStatus(env2, input) {
+  const got = huntFindingOr(env2, input.id);
+  if ("error" in got) return got.error;
+  const s = input.status;
+  if (!s || !SETTABLE_STATUSES.includes(s)) {
+    return huntFail(
+      `set-status takes one of ${SETTABLE_STATUSES.join(", ")}. confirmed, rejected and wont-fix come only from a verdict; regressed only from a sighting.`
+    );
+  }
+  if (!input.reason) return huntFail("set-status needs a reason.");
+  const allowed = planSetStatus(got.f, s);
+  if (!allowed.ok) {
+    return huntFail(
+      `Refused: ${allowed.reason} A rejected or won't-fix finding is reopened by a human verdict, a fixed one by a sighting.`
+    );
+  }
+  const line = {
+    v: 1,
+    type: "status",
+    at: huntNowIso(),
+    id: got.f.id,
+    status: s,
+    reason: input.reason,
+    ...input.run_id ? { run_id: input.run_id } : {}
+  };
+  appendLedger(env2.huntDir, [line]);
+  return huntReply(`${got.f.id}: ${got.f.status} \u2192 **${s}** (${input.reason}).`, {
+    id: got.f.id,
+    status: s
+  });
+}
+function huntLink(env2, input) {
+  const got = huntFindingOr(env2, input.id);
+  if ("error" in got) return got.error;
+  const parsed = FindingLinks.partial().strict().safeParse(input.links ?? {});
+  if (!parsed.success) return huntFail(`The links are invalid: ${huntZodIssues(parsed.error)}.`);
+  if (Object.keys(parsed.data).length === 0)
+    return huntFail(
+      "link needs at least one of task, root_cause, duplicate_of, related, commit, adr, spec."
+    );
+  const state = foldLedger(readLedger(env2.huntDir).lines);
+  for (const ref of [
+    parsed.data.root_cause,
+    parsed.data.duplicate_of,
+    ...parsed.data.related ?? []
+  ]) {
+    if (ref && !state.findings.has(ref)) return huntFail(`${ref} is not a finding in the ledger.`);
+    if (ref === got.f.id) return huntFail(`${got.f.id} cannot link to itself.`);
+  }
+  appendLedger(env2.huntDir, [
+    { v: 1, type: "link", at: huntNowIso(), id: got.f.id, links: parsed.data }
+  ]);
+  return huntReply(`${got.f.id}: linked ${Object.keys(parsed.data).join(", ")}.`, {
+    id: got.f.id,
+    links: parsed.data
+  });
+}
+function huntChangedSinceFn(env2) {
+  const head = headSha(env2.projectDir);
+  return (f) => {
+    if (!f.head_sha || !head || f.head_sha === head) return false;
+    const paths2 = f.location.files.map((x) => x.path);
+    if (paths2.length === 0) return false;
+    const d = git(["diff", "--name-only", f.head_sha, head, "--", ...paths2], env2.projectDir);
+    return !d.ok || d.value.trim().length > 0;
+  };
+}
+function huntLedgerWarnings(read, state) {
+  const out = [];
+  if (read.malformed.length)
+    out.push(
+      `\u26A0 ${read.malformed.length} unreadable ledger line(s) skipped: ${read.malformed.map((m) => m.line).join(", ")}`
+    );
+  if (read.conflictMarkers.length)
+    out.push(
+      `\u26A0 git conflict markers at ledger line(s) ${read.conflictMarkers.join(", ")}: the ledger was merged without \`merge=union\`. Delete the marker lines (keep both sides) and check .marvin/hunt/.gitattributes.`
+    );
+  for (const c of state.conflicts)
+    out.push(
+      `\u26A0 ${c.id} is claimed by two different findings (fingerprints ${c.kept} and ${c.dropped}); the second is not folded. Re-record it to give it a longer id.`
+    );
+  return out;
+}
+function huntUnattested(all) {
+  return all.filter((f) => f.verdicts.some((v) => v.stage === "human" && v.attested === false)).map((f) => f.id);
+}
+function huntTriage(env2) {
+  const read = readLedger(env2.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
+  const flowsMap = readFlows(env2.huntDir);
+  const g = triageGroups(all, flowsMap, huntChangedSinceFn(env2));
+  const { config: config2 } = readHuntConfig(env2.configPath);
+  const body = [
+    `# Triage \u2014 ${g.open.length} open finding(s)`,
+    "",
+    "| Rank | ID | Check | Class | Severity | Status | Floor | Title |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...g.open.map(
+      (f, i) => `| ${i + 1} | ${f.id} | ${f.check} | ${f.class} | ${f.severity} | ${f.status} | ${atOrAbove(f.severity, config2.severity_floor[f.check]) ? "at/above" : "below"} | ${f.title.replace(/\|/g, "\\|")} |`
+    ),
+    "",
+    `Possible duplicates (same category and file): ${g.possibleDuplicates.map((x) => x.join(" + ")).join("; ") || "none"}`,
+    `Systemic candidates (same rule, several files): ${g.systemic.map((x) => x.join(" + ")).join("; ") || "none"}`,
+    `Re-verify before reporting (code changed since last seen): ${g.stale.join(", ") || "none"}`,
+    `Human rulings recorded without the client asking the person: ${unattested.join(", ") || "none"}`,
+    ...huntLedgerWarnings(read, state)
+  ];
+  return huntReply(body.join("\n"), {
+    open: g.open.map((f) => f.id),
+    possible_duplicates: g.possibleDuplicates,
+    systemic: g.systemic,
+    stale: g.stale,
+    unattested_human: unattested,
+    id_conflicts: state.conflicts,
+    conflict_markers: read.conflictMarkers
+  });
+}
+function huntFinalize(env2, input) {
+  const r = huntRequireRun(env2, input);
+  if (r.state !== "running") return huntFail(`run ${r.id} is already ${r.state}.`);
+  const all = [...foldLedger(readLedger(env2.huntDir).lines).findings.values()];
+  const inRun = new Set(r.recorded);
+  const runFindings = all.filter((f) => inRun.has(f.id));
+  const doneBatches = new Set(r.steps.filter((s) => s.batch !== void 0).map((s) => s.batch));
+  const audited = r.hotspots.filter((h) => doneBatches.has(h.batch)).map((h) => h.path);
+  const coverage = readCoverage(env2.huntDir);
+  const byPath = new Map(coverage.files.map((e) => [e.path, e]));
+  const now = huntNowIso();
+  const blobs = hashExisting(audited, env2.projectDir);
+  audited.forEach((path) => {
+    const prev = byPath.get(path);
+    const hits = runFindings.filter((f) => f.location.files.some((x) => x.path === path)).length;
+    byPath.set(path, {
+      path,
+      last_audited_at: now,
+      last_run: r.id,
+      blob: blobs.get(path) ?? null,
+      audits: (prev?.audits ?? 0) + 1,
+      findings: (prev?.findings ?? 0) + hits
+    });
+  });
+  if (audited.length > 0)
+    writeCoverage(env2.huntDir, { version: HUNT_STATE_VERSION, files: [...byPath.values()] });
+  const flowsMap = readFlows(env2.huntDir);
+  const closed = {
+    ...r,
+    state: "finished",
+    finished_at: now,
+    steps: [...r.steps, { step: "finalize", at: now }],
+    summary: input.note ?? summaryParagraph(runFindings, flowsMap)
+  };
+  writeRun(env2.huntDir, closed);
+  const md = renderReport2({
+    title: `Hunt report \u2014 ${r.check}`,
+    generatedAt: now,
+    findings: runFindings,
+    flows: flowsMap,
+    run: closed,
+    coverage: {
+      files: r.scope.files.length,
+      audited: r.scope.files.filter((p) => byPath.has(p)).length
+    }
+  });
+  const written = writeReport(env2.huntDir, r.id, md);
+  return huntReply(
+    [
+      `Run \`${r.id}\` finished. ${summaryParagraph(runFindings, flowsMap)}`,
+      `Coverage updated for ${audited.length} file(s). Report: ${written.map((w) => `\`.marvin/hunt/${w}\``).join(", ")}.`
+    ].join("\n"),
+    { run: closed, report: written }
+  );
+}
+function huntReport(env2) {
+  const all = [...foldLedger(readLedger(env2.huntDir).lines).findings.values()];
+  const flowsMap = readFlows(env2.huntDir);
+  const now = huntNowIso();
+  const md = renderReport2({
+    title: "Hunt report \u2014 ledger",
+    generatedAt: now,
+    findings: all,
+    flows: flowsMap
+  });
+  const name = `${now.slice(0, 19).replace(/[-:]/g, "").replace("T", "-")}-triage`;
+  ensureHuntDir(env2.huntDir);
+  const written = writeReport(env2.huntDir, name, md);
+  return huntReply(
+    `${summaryParagraph(all, flowsMap)}
+Report: ${written.map((w) => `\`.marvin/hunt/${w}\``).join(", ")}.`,
+    {
+      report: written
+    }
+  );
+}
+function huntStatus(env2) {
+  const read = readLedger(env2.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
+  const open = rankFindings(
+    all.filter((f) => OPEN_STATUSES.includes(f.status) && f.confidence !== "low"),
+    readFlows(env2.huntDir)
+  );
+  const counts = /* @__PURE__ */ new Map();
+  for (const f of open) counts.set(f.status, (counts.get(f.status) ?? 0) + 1);
+  const runs = listRunIds(env2.huntDir).slice(0, 5).map((id) => {
+    try {
+      const r = readRun(env2.huntDir, id);
+      return `- \`${r.id}\` ${r.check} \xB7 ${r.state} \xB7 ${r.scope.files.length} file(s) \xB7 ${r.recorded.length} claim(s)`;
+    } catch (err3) {
+      return `- \`${id}\` unreadable: ${err3.message}`;
+    }
+  });
+  const coverage = readCoverage(env2.huntDir);
+  const main = open.filter((f) => reportSection(f) === "main");
+  const closed = all.filter((f) => !OPEN_STATUSES.includes(f.status)).length;
+  const lowOpen = all.length - open.length - closed;
+  const body = [
+    "# Hunt status",
+    "",
+    all.length === 0 ? "_The ledger is empty. Start with `/marvin:hunt-init`, then `/marvin:hunt-code`._" : `${open.length} open finding(s): ${[...counts.entries()].map(([k, n]) => `${n} ${k}`).join(", ") || "none"}. ${closed} closed${lowOpen ? `, ${lowOpen} low-confidence logged only` : ""}.`,
+    ...main.length ? [
+      "",
+      "Top confirmed:",
+      ...main.slice(0, 5).map((f) => `- **${f.id}** ${f.severity} ${f.class} \xB7 ${f.title}`)
+    ] : [],
+    "",
+    "Recent runs:",
+    ...runs.length ? runs : ["- none"],
+    "",
+    `Coverage: ${coverage.files.length} file(s) audited at least once.`,
+    ...unattested.length ? [`Human rulings recorded unattested (the client could not ask): ${unattested.join(", ")}.`] : [],
+    ...huntLedgerWarnings(read, state)
+  ];
+  return huntReply(body.join("\n"), {
+    open: open.length,
+    by_status: Object.fromEntries(counts),
+    closed,
+    low_confidence: lowOpen,
+    audited_files: coverage.files.length,
+    unattested_human: unattested.length,
+    id_conflicts: state.conflicts.length
+  });
+}
+
 // src/server.ts
 var VERSION = "0.38.0";
 var env = loadEnv();
@@ -41072,7 +44110,9 @@ await runPackServer({
         buildPipelineTool(packRoot),
         // One autopilot status report as a card (ADR-0051): written by marvin-pipe await,
         // read back here, rendered by the autopilot-status widget or as Markdown.
-        buildAutopilotReportTool()
+        buildAutopilotReportTool(),
+        // The bug hunter's state (ADR-0053/0054): ledger, flow map, coverage, runs, reports.
+        buildHuntTool(server, env)
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under
