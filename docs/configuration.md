@@ -382,7 +382,8 @@ field has a default, so `"hunt": {}` is a complete configuration.
     "authority": { "mode": "detect-only", "tickets": false, "fixes": false },
     "budgets": { "max_minutes": 30, "max_rounds": 3, "max_findings_per_round": 25, "max_hotspots": 40, "batch_size": 8, "max_fixes": 0 },
     "history_months": 12,
-    "constraints": ["never call the payments sandbox"]
+    "risk_terms": ["auth", "session", "payment", "stripe", "webhook", "delete"],
+    "constraints": { "frozen_paths": ["src/legacy/**"], "no_public_api_breaks": true }
   }
 }
 ```
@@ -396,7 +397,13 @@ field has a default, so `"hunt": {}` is a complete configuration.
   product code, commits or pushes.
 - `budgets` bound one run's time, convergence rounds, new claims per round, ranked hotspots and
   the batch size the hotspots are cut into.
-- `history_months` is the git history window the hotspot ranking reads.
+- `history_months` is the git history window the hotspot ranking reads, counted back from the
+  HEAD commit's time so one commit always ranks the same way.
+- `risk_terms` replaces the generic list of words that raise a file's hotspot score. A term
+  matches a whole identifier segment (`getAuthToken` holds `auth` and `token`; `author` holds
+  neither), and a plain plural counts. Vendor names belong here, not in the default.
+- `constraints.frozen_paths` lists paths the hunt must not touch, reproducing tests included;
+  `constraints.no_public_api_breaks` states that it never proposes a public API change.
 
 The JSON Schema of this block is `plugins/marvin/skills/hunt-code/references/schemas/config.schema.json`.
 

@@ -35,23 +35,35 @@ export function fingerprintClaim(claim: FindingClaim): string {
   });
 }
 
-/** `BH-<year>-<NNNN>`, one past the highest number used that year. */
-export function nextId(existing: Iterable<string>, year: number): string {
-  let max = 0;
-  const prefix = `BH-${year}-`;
-  for (const id of existing) {
-    if (!id.startsWith(prefix)) continue;
-    const n = Number(id.slice(prefix.length));
-    if (Number.isInteger(n) && n > max) max = n;
+/**
+ * `BH-` plus the first eight hex digits of the fingerprint. Derived, never allocated: a counter
+ * would let two branches each mint the next number for different findings, and after the merge
+ * the fold would keep only one of them. Should two fingerprints in one ledger share eight digits,
+ * the id grows two digits at a time until it is unique.
+ */
+export function idForFingerprint(fingerprint: string, taken?: Map<string, string>): string {
+  for (let n = 8; n <= fingerprint.length; n += 2) {
+    const id = `BH-${fingerprint.slice(0, n)}`;
+    const owner = taken?.get(id);
+    if (owner === undefined || owner === fingerprint) return id;
   }
-  return `${prefix}${String(max + 1).padStart(4, "0")}`;
+  return `BH-${fingerprint}`;
 }
 
 // ── fold ──────────────────────────────────────────────────────────────────
 
+/** Two `finding` lines that claim one id for different fingerprints (a merged ledger, TRI-01). */
+export interface IdConflict {
+  id: string;
+  kept: string;
+  dropped: string;
+}
+
 export interface LedgerState {
   findings: Map<string, HuntFinding>;
   byFingerprint: Map<string, string>;
+  /** Never resolved silently: the first line keeps the id and the conflict is reported. */
+  conflicts: IdConflict[];
 }
 
 function mergeLinks(base: FindingLinks, patch: Partial<FindingLinks>): FindingLinks {
@@ -59,14 +71,43 @@ function mergeLinks(base: FindingLinks, patch: Partial<FindingLinks>): FindingLi
   return { ...base, ...patch, related };
 }
 
-/** Apply the ledger lines in order. An event for an unknown id is ignored, never invented. */
+/**
+ * Apply the ledger lines in order. An event for an unknown id is ignored, never invented.
+ *
+ * A merged ledger can hold the same finding twice, when two branches each recorded it: the same
+ * id and the same fingerprint. The second line is then a sighting of the first, not a new
+ * finding. A second line with the same id and a DIFFERENT fingerprint never overwrites; it is
+ * reported in `conflicts`.
+ */
 export function foldLedger(lines: LedgerLine[]): LedgerState {
   const findings = new Map<string, HuntFinding>();
   const byFingerprint = new Map<string, string>();
+  const conflicts: IdConflict[] = [];
   for (const line of lines) {
     if (line.type === "finding") {
-      findings.set(line.finding.id, line.finding);
-      byFingerprint.set(line.finding.fingerprint, line.finding.id);
+      const incoming = line.finding;
+      const prior = findings.get(incoming.id);
+      if (prior && prior.fingerprint !== incoming.fingerprint) {
+        conflicts.push({
+          id: incoming.id,
+          kept: prior.fingerprint,
+          dropped: incoming.fingerprint,
+        });
+        continue;
+      }
+      if (prior) {
+        findings.set(prior.id, {
+          ...prior,
+          last_seen_run: incoming.last_seen_run,
+          head_sha: incoming.head_sha,
+          updated_at: line.at,
+        });
+        continue;
+      }
+      findings.set(incoming.id, incoming);
+      if (!byFingerprint.has(incoming.fingerprint)) {
+        byFingerprint.set(incoming.fingerprint, incoming.id);
+      }
       continue;
     }
     const f = findings.get(line.id);
@@ -111,14 +152,14 @@ export function foldLedger(lines: LedgerLine[]): LedgerState {
         break;
     }
   }
-  return { findings, byFingerprint };
+  return { findings, byFingerprint, conflicts };
 }
 
 // ── record ────────────────────────────────────────────────────────────────
 
 export type RecordOutcome =
   | { outcome: "new"; id: string; fingerprint: string; note?: string }
-  | { outcome: "duplicate"; id: string; fingerprint: string; status: FindingStatus }
+  | { outcome: "duplicate"; id: string; fingerprint: string; status: FindingStatus; note?: string }
   | { outcome: "suppressed"; id: string; fingerprint: string; status: FindingStatus }
   | { outcome: "regressed"; id: string; fingerprint: string };
 
@@ -128,8 +169,20 @@ export interface RecordContext {
   now: string;
 }
 
-/** Statuses a human closed; the same finding is not reported again without new evidence (NFR-08). */
-const HUMAN_CLOSED: FindingStatus[] = ["rejected", "wont-fix"];
+/** The last `human` ruling on a finding, if a person has ruled. */
+export function lastHumanVerdict(f: HuntFinding): VerdictEntry | undefined {
+  return [...f.verdicts].reverse().find((v) => v.stage === "human");
+}
+
+/**
+ * Whether a PERSON closed the finding, so a sighting is suppressed (NFR-08, ADR-0054 §3):
+ * `wont-fix`, or `rejected` by a human `reject`. A rejection by the referee or by a green test
+ * is an agent's call; a later sighting is recorded and a person can still reopen it.
+ */
+export function closedByHuman(f: HuntFinding): boolean {
+  if (f.status === "wont-fix") return true;
+  return f.status === "rejected" && lastHumanVerdict(f)?.ruling === "reject";
+}
 
 /**
  * Turn claims into ledger lines. A claim whose fingerprint is already in the ledger is not a new
@@ -143,16 +196,17 @@ export function planRecord(
 ): { lines: LedgerLine[]; results: RecordOutcome[] } {
   const lines: LedgerLine[] = [];
   const results: RecordOutcome[] = [];
-  const ids = new Set(state.findings.keys());
+  const taken = new Map<string, string>();
+  for (const [id, f] of state.findings) taken.set(id, f.fingerprint);
+  for (const c of state.conflicts) taken.set(c.id, c.kept);
   const seenThisCall = new Map<string, string>();
-  const year = Number(ctx.now.slice(0, 4));
   for (const claim of claims) {
     const fingerprint = fingerprintClaim(claim);
     const existingId = state.byFingerprint.get(fingerprint) ?? seenThisCall.get(fingerprint);
     if (existingId) {
       const existing = state.findings.get(existingId);
       const status = existing?.status ?? "candidate";
-      if (existing && HUMAN_CLOSED.includes(status)) {
+      if (existing && closedByHuman(existing)) {
         results.push({ outcome: "suppressed", id: existingId, fingerprint, status });
         continue;
       }
@@ -177,13 +231,21 @@ export function planRecord(
           run_id: ctx.runId,
         });
         results.push({ outcome: "regressed", id: existingId, fingerprint });
+      } else if (status === "rejected") {
+        results.push({
+          outcome: "duplicate",
+          id: existingId,
+          fingerprint,
+          status,
+          note: "rejected by an agent, seen again; a person can reopen it with a human confirm",
+        });
       } else {
         results.push({ outcome: "duplicate", id: existingId, fingerprint, status });
       }
       continue;
     }
-    const id = nextId(ids, year);
-    ids.add(id);
+    const id = idForFingerprint(fingerprint, taken);
+    taken.set(id, fingerprint);
     seenThisCall.set(fingerprint, id);
     const finding: HuntFinding = {
       ...claim,
@@ -214,6 +276,20 @@ const PROOF_CLASSES = new Set(["bug", "perf", "spec-drift"]);
 /** Classes confirmed by a named rule and visual evidence instead (VER-07). */
 const RULE_CLASSES = new Set(["ux-issue", "design-deviation", "a11y"]);
 
+/**
+ * Statuses an agent's ruling no longer moves: the protocol has concluded, or a person has taken
+ * the finding over. The ruling is still recorded, as evidence; only a `human` ruling, or a
+ * sighting of a fixed finding, changes the status from here.
+ */
+const SETTLED_FOR_AGENTS: FindingStatus[] = [
+  "confirmed",
+  "rejected",
+  "wont-fix",
+  "fixed",
+  "deferred",
+  "ticketed",
+];
+
 export type VerdictPlan =
   | { ok: true; lines: LedgerLine[]; status: FindingStatus; note: string }
   | { ok: false; reason: string };
@@ -228,6 +304,10 @@ function huntStatusLine(
   return { v: 1, type: "status", at: now, id, status, reason, ...(runId ? { run_id: runId } : {}) };
 }
 
+/**
+ * VER-03's artefact: a test or scenario a `prove` ruling RAN, on this verdict or an earlier one.
+ * A path the producer only proposed (`reproduction.proposed_test_path`) never counts.
+ */
 function hasProofArtefact(f: HuntFinding, v: VerdictEntry): boolean {
   return [f.reproduction.test_path, f.reproduction.scenario, v.test_path, v.scenario].some(
     (x) => x !== undefined,
@@ -246,12 +326,15 @@ function ruleEvidenceGap(f: HuntFinding): string | null {
  * Apply one ruling. The tool, not the agent, decides what a ruling does to the status:
  *
  * - no ruling by the finding's own producer (VER-01);
+ * - once a person has ruled, or the finding is settled (confirmed, rejected, won't fix, fixed,
+ *   deferred, ticketed), an agent's ruling is recorded and changes nothing;
  * - a skeptic's ruling is recorded and changes nothing — the referee decides (VER-02/03);
  * - a referee's `dismissed` rejects; `upheld` confirms a rule-class finding that meets VER-07
  *   and leaves a proof-class finding a candidate until a reproducing test rules;
- * - `prove` `red` confirms a proof-class finding, but only with a reproducing artefact on the
- *   claim and a failure classified `real-defect` (VER-03, VER-05); `green` rejects it — a passing
- *   test invalidates the hypothesis (step 9 of the code check); `flaky` parks it (VER-04);
+ * - `prove` is accepted only after a referee upheld the claim; `red` confirms a proof-class
+ *   finding, but only with a reproducing artefact the ruling ran and a failure classified
+ *   `real-defect` (VER-03, VER-05); `green` rejects it — a passing test invalidates the
+ *   hypothesis (step 9 of the code check); `flaky` parks it (VER-04);
  * - a human's `confirm`, `reject` and `wont-fix` are final (VER-08, TRI-11).
  */
 export function planVerdict(f: HuntFinding, verdict: VerdictEntry, now: string): VerdictPlan {
@@ -270,6 +353,27 @@ export function planVerdict(f: HuntFinding, verdict: VerdictEntry, now: string):
       reason: `a ${verdict.stage} ruling is one of ${allowed[verdict.stage].join(", ")}, not ${verdict.ruling}.`,
     };
   }
+  if (verdict.stage === "prove") {
+    if (!PROOF_CLASSES.has(f.class)) {
+      return {
+        ok: false,
+        reason: `${f.class} findings are proven by a rule, not a test (VER-07).`,
+      };
+    }
+    const upheld = f.verdicts.some((x) => x.stage === "referee" && x.ruling === "upheld");
+    if (!upheld) {
+      return {
+        ok: false,
+        reason: `${f.id} has no referee ruling that upheld it; the referee rules before a test proves (VER-02, VER-03).`,
+      };
+    }
+    if (verdict.ruling === "red" && !hasProofArtefact(f, verdict)) {
+      return {
+        ok: false,
+        reason: `${f.id} has no reproducing test or scenario; pass test_path (or scenario) with the red ruling (VER-03).`,
+      };
+    }
+  }
   const v: LedgerLine = { v: 1, type: "verdict", at: now, id: f.id, verdict };
   const keep = (note: string): VerdictPlan => ({ ok: true, lines: [v], status: f.status, note });
   const move = (status: FindingStatus, note: string): VerdictPlan => ({
@@ -278,6 +382,20 @@ export function planVerdict(f: HuntFinding, verdict: VerdictEntry, now: string):
     status,
     note,
   });
+
+  if (verdict.stage !== "human") {
+    const human = lastHumanVerdict(f);
+    if (human) {
+      return keep(
+        `recorded as evidence; a person already ruled ${human.ruling}, so the status stays ${f.status}`,
+      );
+    }
+    if (SETTLED_FOR_AGENTS.includes(f.status)) {
+      return keep(
+        `recorded as evidence; ${f.id} is ${f.status}, which an agent ruling no longer moves`,
+      );
+    }
+  }
 
   switch (verdict.stage) {
     case "skeptic":
@@ -294,23 +412,11 @@ export function planVerdict(f: HuntFinding, verdict: VerdictEntry, now: string):
       }
       return move("suspected", "referee upheld a risk with no reproducing artefact");
     case "prove":
-      if (!PROOF_CLASSES.has(f.class)) {
-        return {
-          ok: false,
-          reason: `${f.class} findings are proven by a rule, not a test (VER-07).`,
-        };
-      }
       if (verdict.ruling === "green") {
         return move("rejected", "the reproducing test passed, which invalidates the hypothesis");
       }
       if (verdict.ruling === "flaky")
         return move("flaky", "reproduction mixes passes and failures (VER-04)");
-      if (!hasProofArtefact(f, verdict)) {
-        return {
-          ok: false,
-          reason: `${f.id} has no reproducing test or scenario; pass test_path (or scenario) with the red ruling (VER-03).`,
-        };
-      }
       if (verdict.failure_kind !== "real-defect") {
         return keep(
           `red recorded, but classified ${verdict.failure_kind ?? "unclassified"}: only a real-defect failure confirms (VER-05)`,
@@ -325,7 +431,33 @@ export function planVerdict(f: HuntFinding, verdict: VerdictEntry, now: string):
 }
 
 /** Statuses `set-status` may set directly; the rest come only from rulings or sightings. */
-export const SETTABLE_STATUSES: FindingStatus[] = ["deferred", "ticketed", "fixed", "suspected"];
+export const SETTABLE_STATUSES = ["deferred", "ticketed", "fixed", "suspected"] as const;
+export type SettableStatus = (typeof SETTABLE_STATUSES)[number];
+
+/**
+ * Where each settable status may be set FROM. Nothing leaves `rejected`, `wont-fix` or `fixed`
+ * through `set-status`: a human ruling reopens a closed finding, a sighting reopens a fixed one.
+ * `suspected` is never a downgrade of a confirmed finding, and `ticketed` needs a confirmed one.
+ * `fixed` is allowed from an unproven status too, for a defect that is gone before it was proven.
+ */
+export const SET_STATUS_FROM: Record<SettableStatus, FindingStatus[]> = {
+  ticketed: ["confirmed", "regressed"],
+  suspected: ["candidate", "flaky"],
+  deferred: ["candidate", "confirmed", "suspected", "flaky", "regressed", "ticketed"],
+  fixed: ["confirmed", "ticketed", "regressed", "candidate", "suspected", "flaky", "deferred"],
+};
+
+export function planSetStatus(
+  f: HuntFinding,
+  status: SettableStatus,
+): { ok: true } | { ok: false; reason: string } {
+  const from = SET_STATUS_FROM[status];
+  if (from.includes(f.status)) return { ok: true };
+  return {
+    ok: false,
+    reason: `${f.id} is ${f.status}; ${status} is set only from ${from.join(", ")}.`,
+  };
+}
 
 // ── ranking and triage (TRI-*) ────────────────────────────────────────────
 

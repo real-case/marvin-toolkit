@@ -1,7 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { defineTool, type AnyToolDef, type ToolResult } from "@marvin-toolkit/mcp-shared";
+import {
+  canElicit,
+  defineTool,
+  elicit,
+  type AnyToolDef,
+  type ToolResult,
+} from "@marvin-toolkit/mcp-shared";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   FindingClaim,
   FindingLinks,
@@ -30,6 +37,8 @@ import {
   SETTABLE_STATUSES,
   atOrAbove,
   foldLedger,
+  planSetStatus,
+  type LedgerState,
   planRecord,
   planVerdict,
   rankFindings,
@@ -39,7 +48,14 @@ import {
   triageGroups,
 } from "../lib/hunt-ledger.js";
 import { danglingRefs, diffFlows, mergeFlows } from "../lib/hunt-flows.js";
-import { collectSignals, rankHotspots, resolveScope } from "../lib/hunt-scope.js";
+import {
+  RISK_TERMS,
+  collectSignals,
+  hashExisting,
+  headTimeMs,
+  rankHotspots,
+  resolveScope,
+} from "../lib/hunt-scope.js";
 import {
   FLOWS_FILE,
   HuntStateError,
@@ -121,11 +137,13 @@ const HuntInput = strictInput(
     id: z
       .string()
       .optional()
-      .describe("verdict / set-status / link: the finding id, e.g. BH-2026-0007."),
+      .describe("verdict / set-status / link: the finding id, e.g. BH-3f9a01c2."),
     verdict: z
       .unknown()
       .optional()
-      .describe("verdict: { stage, ruling, by, reasoning, failure_kind? }."),
+      .describe(
+        "verdict: { stage, ruling, by, reasoning, failure_kind?, test_path?, scenario? }. A prove red needs test_path or scenario, and the file must exist.",
+      ),
     status: z
       .string()
       .optional()
@@ -150,7 +168,7 @@ const HuntInput = strictInput(
 );
 type Input = z.infer<typeof HuntInput>;
 
-export function buildHuntTool(env: ServerEnv): AnyToolDef {
+export function buildHuntTool(server: McpServer, env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "hunt",
     description:
@@ -164,7 +182,10 @@ export function buildHuntTool(env: ServerEnv): AnyToolDef {
       "finalize closes a run, updates coverage and writes its report; report renders the ledger; " +
       "status summarises. Never edits source, commits or pushes.",
     inputSchema: HuntInput,
-    handler: (input) => Promise.resolve(huntRun(env, input)),
+    handler: (input) =>
+      input.action === "verdict"
+        ? huntVerdict(server, env, input)
+        : Promise.resolve(huntRun(env, input)),
   });
 }
 
@@ -222,7 +243,7 @@ function huntRun(env: ServerEnv, input: Input): ToolResult {
       case "record":
         return huntRecord(env, input);
       case "verdict":
-        return huntVerdict(env, input);
+        return huntFail("verdict is handled asynchronously; this path is unreachable.");
       case "set-status":
         return huntSetStatus(env, input);
       case "link":
@@ -405,7 +426,8 @@ function huntHotspots(env: ServerEnv, input: Input): ToolResult {
     config.history_months,
     coverage,
     all,
-    Date.now(),
+    headTimeMs(env.projectDir) ?? Date.now(),
+    config.risk_terms ?? RISK_TERMS,
   );
   const ranked = rankHotspots(signals, config.budgets.max_hotspots, config.budgets.batch_size);
   writeRun(env.huntDir, {
@@ -522,7 +544,7 @@ function huntRecord(env: ServerEnv, input: Input): ToolResult {
       case "new":
         return `- **${x.id}** new · ${t}${x.note ? ` (${x.note})` : ""}`;
       case "duplicate":
-        return `- ${x.id} already in the ledger (${x.status}) · ${t}`;
+        return `- ${x.id} already in the ledger (${x.status}${x.note ? `; ${x.note}` : ""}) · ${t}`;
       case "suppressed":
         return `- ${x.id} suppressed: a person closed it as ${x.status}; not reported again without new evidence · ${t}`;
       case "regressed":
@@ -542,34 +564,91 @@ function huntFindingOr(
   env: ServerEnv,
   id: string | undefined,
 ): { f: HuntFinding } | { error: ToolResult } {
-  if (!id) return { error: huntFail("This action needs id (e.g. BH-2026-0007).") };
+  if (!id) return { error: huntFail("This action needs id (e.g. BH-3f9a01c2).") };
   const state = foldLedger(readLedger(env.huntDir).lines);
   const f = state.findings.get(id);
   return f ? { f } : { error: huntFail(`No finding ${id} in the ledger.`) };
 }
 
-function huntVerdict(env: ServerEnv, input: Input): ToolResult {
-  const got = huntFindingOr(env, input.id);
-  if ("error" in got) return got.error;
-  const raw = (
-    typeof input.verdict === "object" && input.verdict !== null ? input.verdict : {}
-  ) as Record<string, unknown>;
-  const parsed = VerdictEntry.safeParse({
-    ...raw,
-    at: huntNowIso(),
-    ...(input.run_id ? { run_id: input.run_id } : {}),
-  });
-  if (!parsed.success) return huntFail(`The verdict is invalid: ${huntZodIssues(parsed.error)}.`);
-  const plan = planVerdict(got.f, parsed.data, huntNowIso());
-  if (!plan.ok) return huntFail(`Refused: ${plan.reason}`);
-  appendLedger(env.huntDir, plan.lines);
-  return huntReply(
-    `${got.f.id}: ${parsed.data.stage} ${parsed.data.ruling} → **${plan.status}** (${plan.note}).`,
-    {
-      id: got.f.id,
-      status: plan.status,
-    },
+const HumanAttestation = z.object({
+  confirm: z.boolean().describe("Yes, I am the person making this ruling."),
+});
+
+/**
+ * A `human` ruling is final (VER-08), so the tool asks the person through the client when it
+ * can: a model calling the tool cannot answer an elicitation on the person's behalf. A decline
+ * refuses the ruling. A client that cannot elicit gets the ruling recorded with
+ * `attested: false`, which status and triage count, so an unattested ruling stays visible.
+ */
+async function huntAttest(
+  server: McpServer,
+  f: HuntFinding,
+  ruling: string,
+): Promise<{ attested: boolean } | { error: ToolResult }> {
+  if (!canElicit(server)) return { attested: false };
+  const answer = await elicit(
+    server,
+    `Record a final human ruling "${ruling}" on ${f.id} (${f.title})? Only the person reviewing the finding should confirm.`,
+    HumanAttestation,
   );
+  if (!answer?.confirm) {
+    return {
+      error: huntFail(`Refused: the person did not confirm the ${ruling} ruling on ${f.id}.`),
+    };
+  }
+  return { attested: true };
+}
+
+async function huntVerdict(server: McpServer, env: ServerEnv, input: Input): Promise<ToolResult> {
+  try {
+    const got = huntFindingOr(env, input.id);
+    if ("error" in got) return got.error;
+    const raw = (
+      typeof input.verdict === "object" && input.verdict !== null ? input.verdict : {}
+    ) as Record<string, unknown>;
+    const { attested: _ignored, ...rest } = raw;
+    const parsed = VerdictEntry.safeParse({
+      ...rest,
+      at: huntNowIso(),
+      ...(input.run_id ? { run_id: input.run_id } : {}),
+    });
+    if (!parsed.success) return huntFail(`The verdict is invalid: ${huntZodIssues(parsed.error)}.`);
+    let verdict = parsed.data;
+    const plan = planVerdict(got.f, verdict, huntNowIso());
+    if (!plan.ok) return huntFail(`Refused: ${plan.reason}`);
+    // VER-03: the artefact a red ruling names must exist; a path is not a proof.
+    for (const rel of [verdict.test_path, verdict.scenario]) {
+      if (rel !== undefined && !existsSync(join(env.projectDir, rel))) {
+        return huntFail(
+          `Refused: ${rel} does not exist. Write the reproducing test, run it, then record the ruling (VER-03).`,
+        );
+      }
+    }
+    if (verdict.stage === "human") {
+      const att = await huntAttest(server, got.f, verdict.ruling);
+      if ("error" in att) return att.error;
+      verdict = { ...verdict, attested: att.attested };
+      const replanned = planVerdict(got.f, verdict, huntNowIso());
+      if (!replanned.ok) return huntFail(`Refused: ${replanned.reason}`);
+      plan.lines = replanned.lines;
+    }
+    appendLedger(env.huntDir, plan.lines);
+    const unattested =
+      verdict.stage === "human" && verdict.attested === false
+        ? " Recorded unattested: this client cannot ask the person, so the ruling rests on the caller's word."
+        : "";
+    return huntReply(
+      `${got.f.id}: ${verdict.stage} ${verdict.ruling} → **${plan.status}** (${plan.note}).${unattested}`,
+      {
+        id: got.f.id,
+        status: plan.status,
+        ...(verdict.stage === "human" ? { attested: verdict.attested } : {}),
+      },
+    );
+  } catch (err) {
+    if (err instanceof HuntStateError) return huntFail(err.message);
+    throw err;
+  }
 }
 
 function huntSetStatus(env: ServerEnv, input: Input): ToolResult {
@@ -582,9 +661,10 @@ function huntSetStatus(env: ServerEnv, input: Input): ToolResult {
     );
   }
   if (!input.reason) return huntFail("set-status needs a reason.");
-  if (s === "fixed" && !["confirmed", "ticketed", "regressed"].includes(got.f.status)) {
+  const allowed = planSetStatus(got.f, s);
+  if (!allowed.ok) {
     return huntFail(
-      `${got.f.id} is ${got.f.status}; only a confirmed, ticketed or regressed finding can be fixed.`,
+      `Refused: ${allowed.reason} A rejected or won't-fix finding is reopened by a human verdict, a fixed one by a sighting.`,
     );
   }
   const line: LedgerLine = {
@@ -645,9 +725,38 @@ function huntChangedSinceFn(env: ServerEnv): (f: HuntFinding) => boolean {
   };
 }
 
+/** Lines the person must look at before trusting a read of the ledger. */
+function huntLedgerWarnings(
+  read: { malformed: { line: number }[]; conflictMarkers: number[] },
+  state: LedgerState,
+): string[] {
+  const out: string[] = [];
+  if (read.malformed.length)
+    out.push(
+      `⚠ ${read.malformed.length} unreadable ledger line(s) skipped: ${read.malformed.map((m) => m.line).join(", ")}`,
+    );
+  if (read.conflictMarkers.length)
+    out.push(
+      `⚠ git conflict markers at ledger line(s) ${read.conflictMarkers.join(", ")}: the ledger was merged without \`merge=union\`. Delete the marker lines (keep both sides) and check .marvin/hunt/.gitattributes.`,
+    );
+  for (const c of state.conflicts)
+    out.push(
+      `⚠ ${c.id} is claimed by two different findings (fingerprints ${c.kept} and ${c.dropped}); the second is not folded. Re-record it to give it a longer id.`,
+    );
+  return out;
+}
+
+function huntUnattested(all: HuntFinding[]): string[] {
+  return all
+    .filter((f) => f.verdicts.some((v) => v.stage === "human" && v.attested === false))
+    .map((f) => f.id);
+}
+
 function huntTriage(env: ServerEnv): ToolResult {
-  const { lines, malformed } = readLedger(env.huntDir);
-  const all = [...foldLedger(lines).findings.values()];
+  const read = readLedger(env.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
   const flowsMap = readFlows(env.huntDir);
   const g = triageGroups(all, flowsMap, huntChangedSinceFn(env));
   const { config } = readHuntConfig(env.configPath);
@@ -664,17 +773,17 @@ function huntTriage(env: ServerEnv): ToolResult {
     `Possible duplicates (same category and file): ${g.possibleDuplicates.map((x) => x.join(" + ")).join("; ") || "none"}`,
     `Systemic candidates (same rule, several files): ${g.systemic.map((x) => x.join(" + ")).join("; ") || "none"}`,
     `Re-verify before reporting (code changed since last seen): ${g.stale.join(", ") || "none"}`,
-    ...(malformed.length
-      ? [
-          `⚠ ${malformed.length} unreadable ledger line(s) skipped: ${malformed.map((m) => m.line).join(", ")}`,
-        ]
-      : []),
+    `Human rulings recorded without the client asking the person: ${unattested.join(", ") || "none"}`,
+    ...huntLedgerWarnings(read, state),
   ];
   return huntReply(body.join("\n"), {
     open: g.open.map((f) => f.id),
     possible_duplicates: g.possibleDuplicates,
     systemic: g.systemic,
     stale: g.stale,
+    unattested_human: unattested,
+    id_conflicts: state.conflicts,
+    conflict_markers: read.conflictMarkers,
   });
 }
 
@@ -690,18 +799,15 @@ function huntFinalize(env: ServerEnv, input: Input): ToolResult {
   const coverage = readCoverage(env.huntDir);
   const byPath = new Map(coverage.files.map((e) => [e.path, e]));
   const now = huntNowIso();
-  const blobs = git(["hash-object", "--stdin-paths"], env.projectDir, {
-    input: audited.length ? `${audited.join("\n")}\n` : "",
-  });
-  const blobList = blobs.ok ? blobs.value.split("\n") : [];
-  audited.forEach((path, i) => {
+  const blobs = hashExisting(audited, env.projectDir);
+  audited.forEach((path) => {
     const prev = byPath.get(path);
     const hits = runFindings.filter((f) => f.location.files.some((x) => x.path === path)).length;
     byPath.set(path, {
       path,
       last_audited_at: now,
       last_run: r.id,
-      blob: blobList[i]?.trim() || null,
+      blob: blobs.get(path) ?? null,
       audits: (prev?.audits ?? 0) + 1,
       findings: (prev?.findings ?? 0) + hits,
     });
@@ -760,8 +866,10 @@ function huntReport(env: ServerEnv): ToolResult {
 }
 
 function huntStatus(env: ServerEnv): ToolResult {
-  const { lines, malformed } = readLedger(env.huntDir);
-  const all = [...foldLedger(lines).findings.values()];
+  const read = readLedger(env.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
   const open = rankFindings(
     all.filter((f) => OPEN_STATUSES.includes(f.status) && f.confidence !== "low"),
     readFlows(env.huntDir),
@@ -800,7 +908,10 @@ function huntStatus(env: ServerEnv): ToolResult {
     ...(runs.length ? runs : ["- none"]),
     "",
     `Coverage: ${coverage.files.length} file(s) audited at least once.`,
-    ...(malformed.length ? [`⚠ ${malformed.length} unreadable ledger line(s).`] : []),
+    ...(unattested.length
+      ? [`Human rulings recorded unattested (the client could not ask): ${unattested.join(", ")}.`]
+      : []),
+    ...huntLedgerWarnings(read, state),
   ];
   return huntReply(body.join("\n"), {
     open: open.length,
@@ -808,5 +919,7 @@ function huntStatus(env: ServerEnv): ToolResult {
     closed,
     low_confidence: lowOpen,
     audited_files: coverage.files.length,
+    unattested_human: unattested.length,
+    id_conflicts: state.conflicts.length,
   });
 }

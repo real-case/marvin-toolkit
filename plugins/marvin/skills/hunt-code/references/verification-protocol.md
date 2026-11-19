@@ -12,6 +12,14 @@ the authority if the two ever disagree.
   the reproducing test and a person rule.
 - The skeptic and the referee are separate dispatches with separate context. The referee sees
   the claim and the skeptic's argument, never the hunter's working notes.
+- **Once a person has ruled, agents only add evidence.** After any `human` ruling, and once a
+  finding is `confirmed`, `rejected`, `wont-fix`, `fixed`, `deferred` or `ticketed`, a skeptic,
+  referee or prove ruling is recorded and leaves the status alone. Only another `human` ruling,
+  or a sighting of a fixed finding, moves it.
+- **A human ruling is asked of the person.** When the client supports elicitation the tool asks
+  the person to confirm a `human` ruling, and a decline refuses it. When it cannot ask, the
+  ruling is recorded with `attested: false`, and `status` and `triage` list it, because `by` is
+  then only the caller's word.
 
 ## What each ruling does
 
@@ -20,7 +28,8 @@ the authority if the two ever disagree.
 | skeptic | upheld / dismissed | recorded, status unchanged | recorded, status unchanged | recorded, status unchanged |
 | referee | dismissed | → rejected | → rejected | → rejected |
 | referee | upheld | stays candidate until a test rules | → confirmed, only with `rule` and a screenshot or recording (VER-07) | → suspected |
-| prove | red + `failure_kind: real-defect` | → confirmed, only with `reproduction.test_path` or `scenario` (VER-03) | refused | refused |
+| prove | any, before a referee upheld the claim | refused | refused | refused |
+| prove | red + `failure_kind: real-defect` | → confirmed, only with a `test_path` or `scenario` on the ruling that exists on disk (VER-03) | refused | refused |
 | prove | red + any other `failure_kind` | recorded, stays candidate (VER-05) | refused | refused |
 | prove | green | → rejected: the hypothesis was wrong | refused | refused |
 | prove | flaky | → flaky (VER-04) | refused | refused |
@@ -56,5 +65,17 @@ the person decides whether they become part of the suite.
 
 `hunt action: "verdict"` with `stage: "human"` confirms, rejects or closes as won't-fix any
 finding, whatever its status. A human `reject` or `wont-fix` suppresses the same fingerprint
-in later runs (NFR-08); `hunt action: "set-status"` with `fixed` marks a confirmed finding
-fixed, and a later sighting reopens it as `regressed`.
+in later runs (NFR-08). A rejection by the referee or by a green test does not: a later sighting
+is recorded and reported as seen again, so a person can still reopen it.
+
+`hunt action: "set-status"` moves a finding only along this table; everything else is refused:
+
+| To | From |
+| --- | --- |
+| `ticketed` | confirmed, regressed |
+| `suspected` | candidate, flaky |
+| `deferred` | candidate, confirmed, suspected, flaky, regressed, ticketed |
+| `fixed` | confirmed, ticketed, regressed, and candidate, suspected, flaky or deferred when the defect is gone |
+
+Nothing leaves `rejected`, `wont-fix` or `fixed` through `set-status`: a human verdict reopens a
+closed finding, and a later sighting reopens a fixed one as `regressed`.

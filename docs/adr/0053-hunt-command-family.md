@@ -40,12 +40,22 @@ on what a finding *is* across time, or the same defect is reported again each we
    decision does to the shared state and refuses what the protocol forbids.
 3. **The verification protocol is enforced by the tool.** No ruling by a finding's own producer.
    A skeptic's ruling is recorded and changes nothing; the referee decides. A `bug`, `perf` or
-   `spec-drift` finding is confirmed only by a reproducing test that fails with
-   `failure_kind: real-defect` and names its test path; a passing test rejects the hypothesis; a
-   mixed result is `flaky`. A `ux-issue`, `design-deviation` or `a11y` finding is confirmed by the
-   referee only with a named rule and a screenshot or recording. Only a person's ruling confirms,
-   rejects or closes anything outright. The table is in
+   `spec-drift` finding is confirmed only by a reproducing test, run after the referee upheld the
+   claim, that fails with `failure_kind: real-defect` and names a test path that exists on disk;
+   the path a hunter proposes never counts. A passing test rejects the hypothesis; a mixed result
+   is `flaky`. A `ux-issue`, `design-deviation` or `a11y` finding is confirmed by the referee only
+   with a named rule and a screenshot or recording. Once a person has ruled, or the finding is
+   settled, an agent's ruling is recorded as evidence and moves nothing; only a person's ruling
+   confirms, rejects or closes anything outright. The table is in
    `skills/hunt-code/references/verification-protocol.md` and in `planVerdict`.
+
+   The tool cannot see who is calling it, so `by` is the caller's word, and a model could call a
+   `human` stage itself. Where the client supports MCP elicitation, a `human` ruling is put to the
+   person through the client and a decline refuses it. Where it does not, the ruling is recorded
+   with `attested: false`, and `status` and `triage` list every finding that carries one, so an
+   unattested ruling is visible rather than indistinguishable from a person's. VER-01 has the
+   same limit: it refuses a `by` equal to the producer, which stops an honest mistake, not a
+   caller that lies about its name.
 4. **Four read-only agents, each on `opus`** (ADR-0006): `marvin-hunt-cartographer` (flow map),
    `marvin-hunt-hunter` (claims for one hotspot batch), `marvin-hunt-skeptic` (tries to disprove
    one claim) and `marvin-hunt-referee` (rules between them). Each pins `tools: Read, Glob, Grep,

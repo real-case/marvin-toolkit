@@ -42043,14 +42043,18 @@ var Evidence = external_exports.object({
 }).strict().refine((e) => e.path !== void 0 || e.excerpt !== void 0, {
   message: "evidence needs a path or an excerpt"
 });
-var Reproduction = external_exports.object({
+var ClaimReproduction = external_exports.object({
   steps: external_exports.array(external_exports.string().min(1)).default([]),
-  /** The reproducing test, at the caller's boundary (CODE-E01). */
-  test_path: RelPath.optional(),
-  /** A replayable e2e scenario (user-behavior). */
-  scenario: RelPath.optional(),
+  /** Where the hunter suggests the reproducing test should live (CODE-E01). Never proof. */
+  proposed_test_path: RelPath.optional(),
   /** CODE-E04: the input or state sequence that reaches the defect, and why guards do not stop it. */
   path_feasibility: external_exports.string().min(1).optional()
+}).strict();
+var Reproduction = ClaimReproduction.extend({
+  /** The reproducing test a `prove` verdict ran and found on disk (CODE-E01, VER-03). */
+  test_path: RelPath.optional(),
+  /** A replayable e2e scenario (user-behavior), likewise only from a `prove` verdict. */
+  scenario: RelPath.optional()
 }).strict();
 var VerdictEntry = external_exports.object({
   stage: VerdictStage,
@@ -42065,6 +42069,11 @@ var VerdictEntry = external_exports.object({
    */
   test_path: RelPath.optional(),
   scenario: RelPath.optional(),
+  /**
+   * `human` only: whether the person was asked through the client and confirmed. `false` means
+   * the client could not elicit, so `by` is the caller's word alone; status and triage count it.
+   */
+  attested: external_exports.boolean().optional(),
   at: external_exports.string().min(1),
   run_id: external_exports.string().min(1).optional()
 }).strict();
@@ -42089,10 +42098,11 @@ var FindingClaim = external_exports.object({
   location: FindingLocation,
   expected: external_exports.string().min(1),
   actual: external_exports.string().min(1),
-  reproduction: Reproduction.default({}),
+  reproduction: ClaimReproduction.default({}),
   evidence: external_exports.array(Evidence).default([]),
   severity: HuntSeverity,
-  confidence: HuntConfidence,
+  /** `confirmed` is the tool's to give, through the verification protocol, never a producer's. */
+  confidence: HuntConfidence.exclude(["confirmed"]),
   /** The named heuristic, WCAG criterion, token or component rule (VER-07). */
   rule: external_exports.string().min(1).optional(),
   /** VER-06: guarding code checked, framework behaviour checked, similar patterns searched. */
@@ -42105,7 +42115,13 @@ var FindingClaim = external_exports.object({
   links: FindingLinks.default({})
 }).strict();
 var HuntFinding = FindingClaim.extend({
-  id: external_exports.string().regex(/^BH-\d{4}-\d{4,}$/),
+  /**
+   * `BH-` plus the first eight hex digits of the fingerprint: derived, never allocated, so two
+   * branches that each record a different finding cannot mint the same id.
+   */
+  id: external_exports.string().regex(/^BH-[0-9a-f]{8,16}$/),
+  reproduction: Reproduction.default({}),
+  confidence: HuntConfidence,
   fingerprint: external_exports.string().regex(/^[0-9a-f]{16}$/),
   status: FindingStatus,
   verdicts: external_exports.array(VerdictEntry).default([]),
@@ -42277,6 +42293,11 @@ var HuntConfig = external_exports.object({
     frozen_paths: external_exports.array(external_exports.string().min(1)).default([]),
     no_public_api_breaks: external_exports.boolean().default(true)
   }).strict().default({}),
+  /**
+   * Words that raise a file's hotspot score (CODE-P01). Matched against whole identifier
+   * segments, never substrings. Absent means the generic default list; vendor names belong here.
+   */
+  risk_terms: external_exports.array(external_exports.string().min(1)).optional(),
   /** Hotspot ranking window in months (CODE-P01). */
   history_months: external_exports.number().int().min(1).max(120).default(12),
   /**
@@ -42353,15 +42374,13 @@ function fingerprintClaim(claim) {
     title: claim.title
   });
 }
-function nextId(existing, year) {
-  let max = 0;
-  const prefix = `BH-${year}-`;
-  for (const id of existing) {
-    if (!id.startsWith(prefix)) continue;
-    const n = Number(id.slice(prefix.length));
-    if (Number.isInteger(n) && n > max) max = n;
+function idForFingerprint(fingerprint, taken) {
+  for (let n = 8; n <= fingerprint.length; n += 2) {
+    const id = `BH-${fingerprint.slice(0, n)}`;
+    const owner = taken?.get(id);
+    if (owner === void 0 || owner === fingerprint) return id;
   }
-  return `${prefix}${String(max + 1).padStart(4, "0")}`;
+  return `BH-${fingerprint}`;
 }
 function mergeLinks(base, patch) {
   const related = patch.related ? [.../* @__PURE__ */ new Set([...base.related, ...patch.related])] : base.related;
@@ -42370,10 +42389,32 @@ function mergeLinks(base, patch) {
 function foldLedger(lines) {
   const findings = /* @__PURE__ */ new Map();
   const byFingerprint = /* @__PURE__ */ new Map();
+  const conflicts = [];
   for (const line of lines) {
     if (line.type === "finding") {
-      findings.set(line.finding.id, line.finding);
-      byFingerprint.set(line.finding.fingerprint, line.finding.id);
+      const incoming = line.finding;
+      const prior = findings.get(incoming.id);
+      if (prior && prior.fingerprint !== incoming.fingerprint) {
+        conflicts.push({
+          id: incoming.id,
+          kept: prior.fingerprint,
+          dropped: incoming.fingerprint
+        });
+        continue;
+      }
+      if (prior) {
+        findings.set(prior.id, {
+          ...prior,
+          last_seen_run: incoming.last_seen_run,
+          head_sha: incoming.head_sha,
+          updated_at: line.at
+        });
+        continue;
+      }
+      findings.set(incoming.id, incoming);
+      if (!byFingerprint.has(incoming.fingerprint)) {
+        byFingerprint.set(incoming.fingerprint, incoming.id);
+      }
       continue;
     }
     const f = findings.get(line.id);
@@ -42415,22 +42456,29 @@ function foldLedger(lines) {
         break;
     }
   }
-  return { findings, byFingerprint };
+  return { findings, byFingerprint, conflicts };
 }
-var HUMAN_CLOSED = ["rejected", "wont-fix"];
+function lastHumanVerdict(f) {
+  return [...f.verdicts].reverse().find((v) => v.stage === "human");
+}
+function closedByHuman(f) {
+  if (f.status === "wont-fix") return true;
+  return f.status === "rejected" && lastHumanVerdict(f)?.ruling === "reject";
+}
 function planRecord(state, claims, ctx) {
   const lines = [];
   const results = [];
-  const ids = new Set(state.findings.keys());
+  const taken = /* @__PURE__ */ new Map();
+  for (const [id, f] of state.findings) taken.set(id, f.fingerprint);
+  for (const c of state.conflicts) taken.set(c.id, c.kept);
   const seenThisCall = /* @__PURE__ */ new Map();
-  const year = Number(ctx.now.slice(0, 4));
   for (const claim of claims) {
     const fingerprint = fingerprintClaim(claim);
     const existingId = state.byFingerprint.get(fingerprint) ?? seenThisCall.get(fingerprint);
     if (existingId) {
       const existing = state.findings.get(existingId);
       const status2 = existing?.status ?? "candidate";
-      if (existing && HUMAN_CLOSED.includes(status2)) {
+      if (existing && closedByHuman(existing)) {
         results.push({ outcome: "suppressed", id: existingId, fingerprint, status: status2 });
         continue;
       }
@@ -42455,13 +42503,21 @@ function planRecord(state, claims, ctx) {
           run_id: ctx.runId
         });
         results.push({ outcome: "regressed", id: existingId, fingerprint });
+      } else if (status2 === "rejected") {
+        results.push({
+          outcome: "duplicate",
+          id: existingId,
+          fingerprint,
+          status: status2,
+          note: "rejected by an agent, seen again; a person can reopen it with a human confirm"
+        });
       } else {
         results.push({ outcome: "duplicate", id: existingId, fingerprint, status: status2 });
       }
       continue;
     }
-    const id = nextId(ids, year);
-    ids.add(id);
+    const id = idForFingerprint(fingerprint, taken);
+    taken.set(id, fingerprint);
     seenThisCall.set(fingerprint, id);
     const finding = {
       ...claim,
@@ -42484,6 +42540,14 @@ function planRecord(state, claims, ctx) {
 }
 var PROOF_CLASSES = /* @__PURE__ */ new Set(["bug", "perf", "spec-drift"]);
 var RULE_CLASSES = /* @__PURE__ */ new Set(["ux-issue", "design-deviation", "a11y"]);
+var SETTLED_FOR_AGENTS = [
+  "confirmed",
+  "rejected",
+  "wont-fix",
+  "fixed",
+  "deferred",
+  "ticketed"
+];
 function huntStatusLine(id, status2, reason, now, runId) {
   return { v: 1, type: "status", at: now, id, status: status2, reason, ...runId ? { run_id: runId } : {} };
 }
@@ -42515,6 +42579,27 @@ function planVerdict(f, verdict, now) {
       reason: `a ${verdict.stage} ruling is one of ${allowed[verdict.stage].join(", ")}, not ${verdict.ruling}.`
     };
   }
+  if (verdict.stage === "prove") {
+    if (!PROOF_CLASSES.has(f.class)) {
+      return {
+        ok: false,
+        reason: `${f.class} findings are proven by a rule, not a test (VER-07).`
+      };
+    }
+    const upheld = f.verdicts.some((x) => x.stage === "referee" && x.ruling === "upheld");
+    if (!upheld) {
+      return {
+        ok: false,
+        reason: `${f.id} has no referee ruling that upheld it; the referee rules before a test proves (VER-02, VER-03).`
+      };
+    }
+    if (verdict.ruling === "red" && !hasProofArtefact(f, verdict)) {
+      return {
+        ok: false,
+        reason: `${f.id} has no reproducing test or scenario; pass test_path (or scenario) with the red ruling (VER-03).`
+      };
+    }
+  }
   const v = { v: 1, type: "verdict", at: now, id: f.id, verdict };
   const keep = (note) => ({ ok: true, lines: [v], status: f.status, note });
   const move = (status2, note) => ({
@@ -42523,6 +42608,19 @@ function planVerdict(f, verdict, now) {
     status: status2,
     note
   });
+  if (verdict.stage !== "human") {
+    const human = lastHumanVerdict(f);
+    if (human) {
+      return keep(
+        `recorded as evidence; a person already ruled ${human.ruling}, so the status stays ${f.status}`
+      );
+    }
+    if (SETTLED_FOR_AGENTS.includes(f.status)) {
+      return keep(
+        `recorded as evidence; ${f.id} is ${f.status}, which an agent ruling no longer moves`
+      );
+    }
+  }
   switch (verdict.stage) {
     case "skeptic":
       return keep("recorded; the referee rules on contested claims");
@@ -42538,23 +42636,11 @@ function planVerdict(f, verdict, now) {
       }
       return move("suspected", "referee upheld a risk with no reproducing artefact");
     case "prove":
-      if (!PROOF_CLASSES.has(f.class)) {
-        return {
-          ok: false,
-          reason: `${f.class} findings are proven by a rule, not a test (VER-07).`
-        };
-      }
       if (verdict.ruling === "green") {
         return move("rejected", "the reproducing test passed, which invalidates the hypothesis");
       }
       if (verdict.ruling === "flaky")
         return move("flaky", "reproduction mixes passes and failures (VER-04)");
-      if (!hasProofArtefact(f, verdict)) {
-        return {
-          ok: false,
-          reason: `${f.id} has no reproducing test or scenario; pass test_path (or scenario) with the red ruling (VER-03).`
-        };
-      }
       if (verdict.failure_kind !== "real-defect") {
         return keep(
           `red recorded, but classified ${verdict.failure_kind ?? "unclassified"}: only a real-defect failure confirms (VER-05)`
@@ -42568,6 +42654,20 @@ function planVerdict(f, verdict, now) {
   }
 }
 var SETTABLE_STATUSES = ["deferred", "ticketed", "fixed", "suspected"];
+var SET_STATUS_FROM = {
+  ticketed: ["confirmed", "regressed"],
+  suspected: ["candidate", "flaky"],
+  deferred: ["candidate", "confirmed", "suspected", "flaky", "regressed", "ticketed"],
+  fixed: ["confirmed", "ticketed", "regressed", "candidate", "suspected", "flaky", "deferred"]
+};
+function planSetStatus(f, status2) {
+  const from = SET_STATUS_FROM[status2];
+  if (from.includes(f.status)) return { ok: true };
+  return {
+    ok: false,
+    reason: `${f.id} is ${f.status}; ${status2} is set only from ${from.join(", ")}.`
+  };
+}
 var SEVERITY_ORDER3 = HuntSeverity.options;
 var CONFIDENCE_ORDER = ["confirmed", "high", "medium", "low"];
 var PRIORITY_ORDER = ["core", "secondary", "edge"];
@@ -42862,7 +42962,11 @@ function resolveScope(projectRoot, req, config2) {
       kind: "diff",
       paths: paths2,
       ...req.since ? { base: req.since } : {},
-      files: filterScope(changed, paths2, config2.scope.exclude)
+      // A deletion is a change with nothing left to read or hash: it leaves the scope here
+      // rather than reaching `hash-object`, whose one failure would null every blob.
+      files: filterScope(changed, paths2, config2.scope.exclude).filter(
+        (f) => existsSync(join(projectRoot, f))
+      )
     };
   }
   const tracked = git(["ls-files", "-z"], projectRoot, { maxBuffer: 256 * 1024 * 1024 });
@@ -42876,39 +42980,66 @@ function resolveScope(projectRoot, req, config2) {
 }
 var RISK_TERMS = [
   "auth",
+  "authentication",
+  "authorization",
+  "oauth",
   "login",
   "session",
   "token",
   "password",
+  "secret",
   "permission",
   "role",
   "admin",
   "tenant",
   "payment",
-  "stripe",
   "checkout",
   "billing",
   "invoice",
   "refund",
   "webhook",
-  "twilio",
-  "retell",
-  "supabase",
-  "rls",
   "delete",
   "migration",
   "transaction",
   "mutex",
+  "lock",
   "queue",
   "cron",
   "upload",
   "email",
   "phone"
 ];
-var RISK_RE = new RegExp(`(${RISK_TERMS.join("|")})`, "gi");
 var MAX_READ = 256 * 1024;
+function identifierSegments(text) {
+  const out = /* @__PURE__ */ new Set();
+  const spaced = text.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  for (const seg of spaced.split(/[^A-Za-z]+/)) if (seg) out.add(seg.toLowerCase());
+  return out;
+}
+function matchRiskTerms(text, terms) {
+  const segs = identifierSegments(text);
+  const lowered = [...new Set(terms.map((t) => t.toLowerCase()))];
+  return lowered.filter((t) => segs.has(t) || segs.has(`${t}s`) || segs.has(`${t}es`)).sort();
+}
+function headTimeMs(projectRoot) {
+  const r = git(["show", "-s", "--format=%ct", "HEAD"], projectRoot);
+  if (!r.ok) return null;
+  const sec = Number(r.value.trim());
+  return Number.isFinite(sec) && sec > 0 ? sec * 1e3 : null;
+}
+function windowStart(nowMs, months) {
+  const d = new Date(nowMs);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString();
+}
+function hashExisting(files, projectRoot) {
+  const present = files.filter((f) => existsSync(join(projectRoot, f)));
+  const ids = hashObjects(present, projectRoot);
+  const byPath = new Map(present.map((f, i) => [f, ids?.[i] ?? null]));
+  return new Map(files.map((f) => [f, byPath.get(f) ?? null]));
+}
 var FIX_SUBJECT = /^(fix|hotfix|bugfix|revert)(\(|:|!|\s)|\bfix(e[sd])?\b/i;
-function readHistory(projectRoot, months, files) {
+function readHistory(projectRoot, months, files, nowMs) {
   const history = {
     churn: /* @__PURE__ */ new Map(),
     authors: /* @__PURE__ */ new Map(),
@@ -42920,7 +43051,8 @@ function readHistory(projectRoot, months, files) {
   const r = git(
     [
       "log",
-      `--since=${months} months ago`,
+      `--since=${windowStart(nowMs, months)}`,
+      `--until=${new Date(nowMs).toISOString()}`,
       "--no-merges",
       "--format=%x1e%an%x1f%ct%x1f%s",
       "--name-only"
@@ -42956,10 +43088,9 @@ function stem(path) {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.[^.]+$/, "");
 }
-function collectSignals(projectRoot, files, months, coverage, allTracked, nowMs) {
-  const history = readHistory(projectRoot, months, files);
-  const blobList = hashObjects(files, projectRoot);
-  const blobs = new Map(files.map((f, i) => [f, blobList?.[i] ?? null]));
+function collectSignals(projectRoot, files, months, coverage, allTracked, nowMs, riskTerms = RISK_TERMS) {
+  const history = readHistory(projectRoot, months, files, nowMs);
+  const blobs = hashExisting(files, projectRoot);
   const byPath = new Map(coverage.files.map((e) => [e.path, e]));
   const testStems = new Set(
     allTracked.filter((f) => TEST_FILE2.test(f)).map((f) => stem(f).replace(/\.(test|spec)$/, ""))
@@ -42975,10 +43106,8 @@ function collectSignals(projectRoot, files, months, coverage, allTracked, nowMs)
       }
     } catch {
     }
-    const terms = /* @__PURE__ */ new Set();
-    for (const m of `${path}
-${text.slice(0, MAX_READ)}`.matchAll(RISK_RE))
-      terms.add(m[1].toLowerCase());
+    const terms = matchRiskTerms(`${path}
+${text.slice(0, MAX_READ)}`, riskTerms);
     const last2 = history.last.get(path);
     return {
       path,
@@ -42987,7 +43116,7 @@ ${text.slice(0, MAX_READ)}`.matchAll(RISK_RE))
       fixCommits: history.fixes.get(path) ?? 0,
       lines,
       daysSinceChange: last2 ? Math.max(0, Math.floor((nowMs / 1e3 - last2) / 86400)) : null,
-      riskTerms: [...terms].sort(),
+      riskTerms: terms,
       audit: auditState(byPath.get(path), blobs.get(path) ?? null, nowMs),
       hasTest: testStems.has(stem(path))
     };
@@ -43055,10 +43184,17 @@ var GITIGNORE = [
   `${EVIDENCE_DIR}/`,
   ""
 ].join("\n");
+var GITATTRIBUTES = [
+  "# Written by marvin's hunt tool (ADR-0054). The ledger is append-only: keep both sides' lines.",
+  `${LEDGER_FILE} merge=union`,
+  ""
+].join("\n");
 function ensureHuntDir(huntDir) {
   mkdirSync(huntDir, { recursive: true });
   const ignore = join(huntDir, ".gitignore");
   if (!existsSync(ignore)) writeFileSync(ignore, GITIGNORE, "utf8");
+  const attributes = join(huntDir, ".gitattributes");
+  if (!existsSync(attributes)) writeFileSync(attributes, GITATTRIBUTES, "utf8");
 }
 function huntAtomicWrite(path, text) {
   mkdirSync(dirname(path), { recursive: true });
@@ -43129,14 +43265,20 @@ function writeHuntConfig(configPath, config2) {
   huntAtomicWrite(configPath, `${JSON.stringify(json, null, 2)}
 `);
 }
+var CONFLICT_MARKER = /^(<{7}|={7}|>{7}|\|{7})( |$)/;
 function readLedger(huntDir) {
   const path = join(huntDir, LEDGER_FILE);
-  if (!existsSync(path)) return { lines: [], malformed: [] };
+  if (!existsSync(path)) return { lines: [], malformed: [], conflictMarkers: [] };
   const text = readFileSync(path, "utf8");
   const lines = [];
   const malformed = [];
+  const conflictMarkers = [];
   text.split("\n").forEach((raw, i) => {
     if (raw.trim() === "") return;
+    if (CONFLICT_MARKER.test(raw)) {
+      conflictMarkers.push(i + 1);
+      return;
+    }
     let json;
     try {
       json = JSON.parse(raw);
@@ -43149,7 +43291,7 @@ function readLedger(huntDir) {
     if (parsed.success) lines.push(parsed.data);
     else malformed.push({ line: i + 1, reason: huntIssues(parsed.error) });
   });
-  return { lines, malformed };
+  return { lines, malformed, conflictMarkers };
 }
 function appendLedger(huntDir, lines) {
   if (lines.length === 0) return;
@@ -43272,8 +43414,10 @@ var HuntInput = strictInput(
     flows: external_exports.unknown().optional().describe(
       "flows: the regenerated flow map (flows.schema.json). Omit to read the current one."
     ),
-    id: external_exports.string().optional().describe("verdict / set-status / link: the finding id, e.g. BH-2026-0007."),
-    verdict: external_exports.unknown().optional().describe("verdict: { stage, ruling, by, reasoning, failure_kind? }."),
+    id: external_exports.string().optional().describe("verdict / set-status / link: the finding id, e.g. BH-3f9a01c2."),
+    verdict: external_exports.unknown().optional().describe(
+      "verdict: { stage, ruling, by, reasoning, failure_kind?, test_path?, scenario? }. A prove red needs test_path or scenario, and the file must exist."
+    ),
     status: external_exports.string().optional().describe(`set-status: one of ${SETTABLE_STATUSES.join(", ")}.`),
     reason: external_exports.string().optional().describe("set-status: why."),
     links: external_exports.unknown().optional().describe("link: { task?, root_cause?, duplicate_of?, related?, commit?, adr?, spec? }."),
@@ -43284,12 +43428,12 @@ var HuntInput = strictInput(
   }),
   (keys) => `hunt does not take ${keyList(keys)}.`
 );
-function buildHuntTool(env2) {
+function buildHuntTool(server, env2) {
   return defineTool({
     name: "hunt",
     description: "The bug-hunter's state under .marvin/hunt/ (ADR-0053/0054), driven by the hunt-* commands. init writes the `hunt` settings; preflight opens a run and resolves its scope; baseline attaches the latest verify result; hotspots ranks the scope deterministically; checkpoint saves progress; flows writes or reads the flow map; record appends finding claims to the ledger (deduplicated by fingerprint); verdict applies a skeptic, referee, reproducing-test or human ruling under the verification protocol; set-status and link annotate a finding; triage ranks the open findings and lists duplicates, systemic patterns and stale ones; finalize closes a run, updates coverage and writes its report; report renders the ledger; status summarises. Never edits source, commits or pushes.",
     inputSchema: HuntInput,
-    handler: (input) => Promise.resolve(huntRun(env2, input))
+    handler: (input) => input.action === "verdict" ? huntVerdict(server, env2, input) : Promise.resolve(huntRun(env2, input))
   });
 }
 function huntReply(body, structured) {
@@ -43337,7 +43481,7 @@ function huntRun(env2, input) {
       case "record":
         return huntRecord(env2, input);
       case "verdict":
-        return huntVerdict(env2, input);
+        return huntFail("verdict is handled asynchronously; this path is unreachable.");
       case "set-status":
         return huntSetStatus(env2, input);
       case "link":
@@ -43491,7 +43635,8 @@ function huntHotspots(env2, input) {
     config2.history_months,
     coverage,
     all,
-    Date.now()
+    headTimeMs(env2.projectDir) ?? Date.now(),
+    config2.risk_terms ?? RISK_TERMS
   );
   const ranked = rankHotspots(signals, config2.budgets.max_hotspots, config2.budgets.batch_size);
   writeRun(env2.huntDir, {
@@ -43600,7 +43745,7 @@ ${errors.join("\n")}`);
       case "new":
         return `- **${x.id}** new \xB7 ${t}${x.note ? ` (${x.note})` : ""}`;
       case "duplicate":
-        return `- ${x.id} already in the ledger (${x.status}) \xB7 ${t}`;
+        return `- ${x.id} already in the ledger (${x.status}${x.note ? `; ${x.note}` : ""}) \xB7 ${t}`;
       case "suppressed":
         return `- ${x.id} suppressed: a person closed it as ${x.status}; not reported again without new evidence \xB7 ${t}`;
       case "regressed":
@@ -43616,31 +43761,72 @@ ${errors.join("\n")}`);
   );
 }
 function huntFindingOr(env2, id) {
-  if (!id) return { error: huntFail("This action needs id (e.g. BH-2026-0007).") };
+  if (!id) return { error: huntFail("This action needs id (e.g. BH-3f9a01c2).") };
   const state = foldLedger(readLedger(env2.huntDir).lines);
   const f = state.findings.get(id);
   return f ? { f } : { error: huntFail(`No finding ${id} in the ledger.`) };
 }
-function huntVerdict(env2, input) {
-  const got = huntFindingOr(env2, input.id);
-  if ("error" in got) return got.error;
-  const raw = typeof input.verdict === "object" && input.verdict !== null ? input.verdict : {};
-  const parsed = VerdictEntry.safeParse({
-    ...raw,
-    at: huntNowIso(),
-    ...input.run_id ? { run_id: input.run_id } : {}
-  });
-  if (!parsed.success) return huntFail(`The verdict is invalid: ${huntZodIssues(parsed.error)}.`);
-  const plan = planVerdict(got.f, parsed.data, huntNowIso());
-  if (!plan.ok) return huntFail(`Refused: ${plan.reason}`);
-  appendLedger(env2.huntDir, plan.lines);
-  return huntReply(
-    `${got.f.id}: ${parsed.data.stage} ${parsed.data.ruling} \u2192 **${plan.status}** (${plan.note}).`,
-    {
-      id: got.f.id,
-      status: plan.status
-    }
+var HumanAttestation = external_exports.object({
+  confirm: external_exports.boolean().describe("Yes, I am the person making this ruling.")
+});
+async function huntAttest(server, f, ruling) {
+  if (!canElicit(server)) return { attested: false };
+  const answer = await elicit(
+    server,
+    `Record a final human ruling "${ruling}" on ${f.id} (${f.title})? Only the person reviewing the finding should confirm.`,
+    HumanAttestation
   );
+  if (!answer?.confirm) {
+    return {
+      error: huntFail(`Refused: the person did not confirm the ${ruling} ruling on ${f.id}.`)
+    };
+  }
+  return { attested: true };
+}
+async function huntVerdict(server, env2, input) {
+  try {
+    const got = huntFindingOr(env2, input.id);
+    if ("error" in got) return got.error;
+    const raw = typeof input.verdict === "object" && input.verdict !== null ? input.verdict : {};
+    const { attested: _ignored, ...rest } = raw;
+    const parsed = VerdictEntry.safeParse({
+      ...rest,
+      at: huntNowIso(),
+      ...input.run_id ? { run_id: input.run_id } : {}
+    });
+    if (!parsed.success) return huntFail(`The verdict is invalid: ${huntZodIssues(parsed.error)}.`);
+    let verdict = parsed.data;
+    const plan = planVerdict(got.f, verdict, huntNowIso());
+    if (!plan.ok) return huntFail(`Refused: ${plan.reason}`);
+    for (const rel of [verdict.test_path, verdict.scenario]) {
+      if (rel !== void 0 && !existsSync(join(env2.projectDir, rel))) {
+        return huntFail(
+          `Refused: ${rel} does not exist. Write the reproducing test, run it, then record the ruling (VER-03).`
+        );
+      }
+    }
+    if (verdict.stage === "human") {
+      const att = await huntAttest(server, got.f, verdict.ruling);
+      if ("error" in att) return att.error;
+      verdict = { ...verdict, attested: att.attested };
+      const replanned = planVerdict(got.f, verdict, huntNowIso());
+      if (!replanned.ok) return huntFail(`Refused: ${replanned.reason}`);
+      plan.lines = replanned.lines;
+    }
+    appendLedger(env2.huntDir, plan.lines);
+    const unattested = verdict.stage === "human" && verdict.attested === false ? " Recorded unattested: this client cannot ask the person, so the ruling rests on the caller's word." : "";
+    return huntReply(
+      `${got.f.id}: ${verdict.stage} ${verdict.ruling} \u2192 **${plan.status}** (${plan.note}).${unattested}`,
+      {
+        id: got.f.id,
+        status: plan.status,
+        ...verdict.stage === "human" ? { attested: verdict.attested } : {}
+      }
+    );
+  } catch (err3) {
+    if (err3 instanceof HuntStateError) return huntFail(err3.message);
+    throw err3;
+  }
 }
 function huntSetStatus(env2, input) {
   const got = huntFindingOr(env2, input.id);
@@ -43652,9 +43838,10 @@ function huntSetStatus(env2, input) {
     );
   }
   if (!input.reason) return huntFail("set-status needs a reason.");
-  if (s === "fixed" && !["confirmed", "ticketed", "regressed"].includes(got.f.status)) {
+  const allowed = planSetStatus(got.f, s);
+  if (!allowed.ok) {
     return huntFail(
-      `${got.f.id} is ${got.f.status}; only a confirmed, ticketed or regressed finding can be fixed.`
+      `Refused: ${allowed.reason} A rejected or won't-fix finding is reopened by a human verdict, a fixed one by a sighting.`
     );
   }
   const line = {
@@ -43708,9 +43895,30 @@ function huntChangedSinceFn(env2) {
     return !d.ok || d.value.trim().length > 0;
   };
 }
+function huntLedgerWarnings(read, state) {
+  const out = [];
+  if (read.malformed.length)
+    out.push(
+      `\u26A0 ${read.malformed.length} unreadable ledger line(s) skipped: ${read.malformed.map((m) => m.line).join(", ")}`
+    );
+  if (read.conflictMarkers.length)
+    out.push(
+      `\u26A0 git conflict markers at ledger line(s) ${read.conflictMarkers.join(", ")}: the ledger was merged without \`merge=union\`. Delete the marker lines (keep both sides) and check .marvin/hunt/.gitattributes.`
+    );
+  for (const c of state.conflicts)
+    out.push(
+      `\u26A0 ${c.id} is claimed by two different findings (fingerprints ${c.kept} and ${c.dropped}); the second is not folded. Re-record it to give it a longer id.`
+    );
+  return out;
+}
+function huntUnattested(all) {
+  return all.filter((f) => f.verdicts.some((v) => v.stage === "human" && v.attested === false)).map((f) => f.id);
+}
 function huntTriage(env2) {
-  const { lines, malformed } = readLedger(env2.huntDir);
-  const all = [...foldLedger(lines).findings.values()];
+  const read = readLedger(env2.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
   const flowsMap = readFlows(env2.huntDir);
   const g = triageGroups(all, flowsMap, huntChangedSinceFn(env2));
   const { config: config2 } = readHuntConfig(env2.configPath);
@@ -43726,15 +43934,17 @@ function huntTriage(env2) {
     `Possible duplicates (same category and file): ${g.possibleDuplicates.map((x) => x.join(" + ")).join("; ") || "none"}`,
     `Systemic candidates (same rule, several files): ${g.systemic.map((x) => x.join(" + ")).join("; ") || "none"}`,
     `Re-verify before reporting (code changed since last seen): ${g.stale.join(", ") || "none"}`,
-    ...malformed.length ? [
-      `\u26A0 ${malformed.length} unreadable ledger line(s) skipped: ${malformed.map((m) => m.line).join(", ")}`
-    ] : []
+    `Human rulings recorded without the client asking the person: ${unattested.join(", ") || "none"}`,
+    ...huntLedgerWarnings(read, state)
   ];
   return huntReply(body.join("\n"), {
     open: g.open.map((f) => f.id),
     possible_duplicates: g.possibleDuplicates,
     systemic: g.systemic,
-    stale: g.stale
+    stale: g.stale,
+    unattested_human: unattested,
+    id_conflicts: state.conflicts,
+    conflict_markers: read.conflictMarkers
   });
 }
 function huntFinalize(env2, input) {
@@ -43748,19 +43958,15 @@ function huntFinalize(env2, input) {
   const coverage = readCoverage(env2.huntDir);
   const byPath = new Map(coverage.files.map((e) => [e.path, e]));
   const now = huntNowIso();
-  const blobs = git(["hash-object", "--stdin-paths"], env2.projectDir, {
-    input: audited.length ? `${audited.join("\n")}
-` : ""
-  });
-  const blobList = blobs.ok ? blobs.value.split("\n") : [];
-  audited.forEach((path, i) => {
+  const blobs = hashExisting(audited, env2.projectDir);
+  audited.forEach((path) => {
     const prev = byPath.get(path);
     const hits = runFindings.filter((f) => f.location.files.some((x) => x.path === path)).length;
     byPath.set(path, {
       path,
       last_audited_at: now,
       last_run: r.id,
-      blob: blobList[i]?.trim() || null,
+      blob: blobs.get(path) ?? null,
       audits: (prev?.audits ?? 0) + 1,
       findings: (prev?.findings ?? 0) + hits
     });
@@ -43818,8 +44024,10 @@ Report: ${written.map((w) => `\`.marvin/hunt/${w}\``).join(", ")}.`,
   );
 }
 function huntStatus(env2) {
-  const { lines, malformed } = readLedger(env2.huntDir);
-  const all = [...foldLedger(lines).findings.values()];
+  const read = readLedger(env2.huntDir);
+  const state = foldLedger(read.lines);
+  const all = [...state.findings.values()];
+  const unattested = huntUnattested(all);
   const open = rankFindings(
     all.filter((f) => OPEN_STATUSES.includes(f.status) && f.confidence !== "low"),
     readFlows(env2.huntDir)
@@ -43852,14 +44060,17 @@ function huntStatus(env2) {
     ...runs.length ? runs : ["- none"],
     "",
     `Coverage: ${coverage.files.length} file(s) audited at least once.`,
-    ...malformed.length ? [`\u26A0 ${malformed.length} unreadable ledger line(s).`] : []
+    ...unattested.length ? [`Human rulings recorded unattested (the client could not ask): ${unattested.join(", ")}.`] : [],
+    ...huntLedgerWarnings(read, state)
   ];
   return huntReply(body.join("\n"), {
     open: open.length,
     by_status: Object.fromEntries(counts),
     closed,
     low_confidence: lowOpen,
-    audited_files: coverage.files.length
+    audited_files: coverage.files.length,
+    unattested_human: unattested.length,
+    id_conflicts: state.conflicts.length
   });
 }
 
@@ -43901,7 +44112,7 @@ await runPackServer({
         // read back here, rendered by the autopilot-status widget or as Markdown.
         buildAutopilotReportTool(),
         // The bug hunter's state (ADR-0053/0054): ledger, flow map, coverage, runs, reports.
-        buildHuntTool(env)
+        buildHuntTool(server, env)
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

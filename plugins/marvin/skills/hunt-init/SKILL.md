@@ -45,10 +45,11 @@ Show one block and ask the person to confirm or change it:
 | `budgets` | 30 minutes, 3 rounds, 25 findings per round, 40 hotspots, batches of 8 | the repository is very large or very small |
 | `authority.mode` | `detect-only` | never change it in this release: fixing is not implemented, and the tool would only record the setting |
 | `history_months` | 12 | the history is short or the project was recently rewritten |
-| `constraints` | none | there are things the hunt must never do (call a paid API, touch a database, run e2e against production) |
+| `risk_terms` | a generic list (auth, session, token, payment, billing, delete, migration, webhook, …) | the product has its own risky names: a payment provider, a telephony API, a database policy feature. The list replaces the default, so include the generic words you still want |
+| `constraints.frozen_paths` | empty | some paths must never get a reproducing test or be touched at all |
+| `constraints.no_public_api_breaks` | `true` | rarely; it states that the hunt never proposes a public API change |
 
-Record the stack you detected in `constraints` only when it constrains the hunt; the stack
-itself is re-read on every run.
+The stack you detected is not a setting: it is re-read on every run.
 
 ### 4. Write
 
@@ -56,7 +57,10 @@ Call `hunt` with `action: "init"` and `config` holding only the keys the person 
 confirmed; the tool merges them over the defaults. If the answer warns that git ignores the
 ledger, show the one-line `.gitignore` change it gives: the ledger, flow map and coverage are
 shared records meant to be committed, while `runs/` and `evidence/` stay local through the
-`.gitignore` the tool wrote inside `.marvin/hunt/`.
+`.gitignore` the tool wrote inside `.marvin/hunt/`. The tool also writes
+`.marvin/hunt/.gitattributes` with `findings.jsonl merge=union`, so two branches that both
+hunted merge their ledgers without a conflict; mention it, and tell the person to keep it if
+they edit attributes.
 
 ### 5. Hand over
 

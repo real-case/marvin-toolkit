@@ -40,11 +40,27 @@ copy.
 ### 4. Re-verify stale findings (TRI-06)
 
 For each stale finding, read the cited lines at HEAD. If the defect is gone, tell the person
-and offer `action: "set-status"`, `status: "fixed"` for a confirmed one, or a human `reject`
-for a candidate. If it is still there, leave it. Do not rerun reproducing tests unless the
-person asks; that is `/marvin:hunt-code`'s job.
+and offer `action: "set-status"`, `status: "fixed"`, with the reason. That works for a
+candidate, suspected or flaky finding too, and keeps the finding open to a `regressed`
+sighting, where a `reject` would say the claim was wrong. If it is still there, leave it. Do
+not rerun reproducing tests unless the person asks; that is `/marvin:hunt-code`'s job.
 
-### 5. Report
+### 5. One task per root cause (MAR-01)
+
+For each confirmed finding at or above the floor that has no `links.task`, and for each root of
+a systemic group, propose one board task to the person: the finding id, its one line, the
+location and the reproducing test. Never one task per copy of a systemic pattern. For each one
+the person accepts:
+
+1. `task` `action: "create"` (the board tool from the `marvin` server), with the title and a
+   body that names the finding id and the test;
+2. `hunt` `action: "link"`, `id`, `links: { task: <the new task id> }`;
+3. `hunt` `action: "set-status"`, `status: "ticketed"`, `reason: "task <id>"`.
+
+Create nothing without the person's yes in this conversation, and nothing when
+`hunt.authority.tickets` is false unless the person asks for it directly.
+
+### 6. Report
 
 Call `hunt` with `action: "report"`. It writes `.marvin/hunt/reports/<stamp>-triage.md` and
 `latest.md` with the summary, bugs by severity, UX and accessibility, design deviations,
@@ -52,13 +68,17 @@ systemic patterns, flow-map gaps, suspected findings and coverage. Then give the
 
 - the top five open confirmed findings, each with id, severity, one line and where it is;
 - what you linked or proposed to close, and what needs their decision;
-- the counts of suspected and candidate findings still waiting for proof.
+- the counts of suspected and candidate findings still waiting for proof;
+- any warning the triage answer carried: unattested human rulings, two findings claiming one
+  id, or git conflict markers in the ledger.
 
 ## What needs the person
 
 A human ruling (`stage: "human"`: confirm, reject, wont-fix) records a decision as the
-person's. Propose them; record one only when the person said so in this conversation. Links
-and the report are yours to write.
+person's. Propose them; record one only when the person said so in this conversation. Where the
+client can ask, the tool asks the person to confirm the ruling itself; where it cannot, the
+ruling is recorded unattested and the triage answer lists it. Links and the report are yours
+to write.
 
 ## Rules
 

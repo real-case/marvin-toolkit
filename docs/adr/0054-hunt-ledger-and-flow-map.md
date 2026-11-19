@@ -34,14 +34,25 @@ same twenty findings every week, and what lets a person's "won't fix" stick.
 2. **The ledger is append-only.** Each line is a `LedgerLine` with `v: 1` and one of five
    types: `finding` (written once, with the id, fingerprint and everything the tool owns),
    `verdict`, `status`, `link` and `seen` (a sighting in a later run). The current state of a
-   finding is the fold of its lines in order. No line is ever rewritten, so two branches that
-   both hunted merge by concatenation, and the history of every ruling is the file itself.
+   finding is the fold of its lines in order. No line is ever rewritten, and the history of
+   every ruling is the file itself. Two branches that both hunted append to the same last line,
+   which git's default text merge calls a conflict, so the tool writes
+   `.marvin/hunt/.gitattributes` with `findings.jsonl merge=union` (never overwriting one that
+   exists): a union merge keeps both sides' lines, which is the correct resolution for
+   independent events. A ledger merged without it is read anyway; its conflict-marker lines are
+   reported by line number, and the lines between them still fold.
 3. **Identity is ADR-0038's fingerprint.** `sha256` over `hunt:<check>:<class>`, the primary
    location (first file, else route, else component), the taxonomy category and the title slug,
    first 16 hex characters. Line numbers are excluded for ADR-0038's reason. A claim whose
    fingerprint is already in the ledger is a `seen` event for an open finding, is suppressed for
-   one a person rejected or closed as won't-fix, and reopens a fixed one as `regressed`. Ids are
-   `BH-<year>-<NNNN>`, one past the highest that year.
+   one a PERSON rejected (a `human` `reject`) or closed as won't-fix, and reopens a fixed one as
+   `regressed`. A rejection by the referee or by a green test is an agent's call and does not
+   suppress: the sighting is recorded and reported, and a person can reopen it. Ids are
+   `BH-` plus the first eight hex digits of the fingerprint, derived rather than allocated, so
+   two branches cannot mint one id for two findings. Should two fingerprints share eight digits,
+   the later id grows two digits at a time. In a merged ledger a second `finding` line with the
+   same id and fingerprint folds as a sighting; one with the same id and a different fingerprint
+   never overwrites the first and is reported as an id conflict by `status` and `triage`.
 4. **Every artefact has a zod contract and a version.** `contracts/hunt.ts` in the shared
    library holds `FindingClaim`, `HuntFinding`, `LedgerLine`, `FlowMap`, `Coverage`,
    `HuntConfig` and `HuntRun`. Every read validates; every write validates before it touches the

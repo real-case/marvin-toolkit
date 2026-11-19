@@ -29,10 +29,14 @@ test("the fingerprint ignores line numbers and wording of the summary, not the t
   assert.match(a, /^[0-9a-f]{16}$/);
 });
 
-test("ids count per year and never reuse a number", () => {
-  assert.equal(L.nextId([], 2026), "BH-2026-0001");
-  assert.equal(L.nextId(["BH-2026-0001", "BH-2026-0009", "BH-2025-0040"], 2026), "BH-2026-0010");
-  assert.equal(L.nextId(["BH-2025-0040"], 2026), "BH-2026-0001");
+test("an id is derived from the fingerprint and grows only on a collision", () => {
+  const fp = "3f9a01c2deadbeef";
+  assert.equal(L.idForFingerprint(fp), "BH-3f9a01c2");
+  assert.equal(L.idForFingerprint(fp, new Map([["BH-3f9a01c2", fp]])), "BH-3f9a01c2");
+  assert.equal(
+    L.idForFingerprint(fp, new Map([["BH-3f9a01c2", "3f9a01c2ffffffff"]])),
+    "BH-3f9a01c2de",
+  );
 });
 
 test("one call that names the same defect twice records it once", () => {
@@ -87,7 +91,7 @@ test("the fold applies events in order: verdicts, statuses, links and sightings"
 test("ranking: severity, then confidence, then blast radius, then id", () => {
   const make = (over, n) => ({
     ...parsed(over),
-    id: `BH-2026-000${n}`,
+    id: `BH-0000000${n}`,
     fingerprint: "0".repeat(16),
     status: "confirmed",
     verdicts: [],
@@ -108,7 +112,7 @@ test("ranking: severity, then confidence, then blast radius, then id", () => {
   );
   assert.deepEqual(
     ranked.map((f) => f.id),
-    ["BH-2026-0004", "BH-2026-0003", "BH-2026-0002", "BH-2026-0001"],
+    ["BH-00000004", "BH-00000003", "BH-00000002", "BH-00000001"],
   );
   assert.equal(L.atOrAbove("critical", "high"), true);
   assert.equal(L.atOrAbove("medium", "high"), false);
@@ -157,14 +161,27 @@ test("a skeptic ruling changes nothing and a ruling outside its stage is refused
     ctx.now,
   );
   assert.equal(wrong.ok, false);
+  const upheld = {
+    ...f,
+    verdicts: [
+      {
+        stage: "referee",
+        ruling: "upheld",
+        by: "marvin-hunt-referee",
+        reasoning: "ok",
+        at: ctx.now,
+      },
+    ],
+  };
   const drift = L.planVerdict(
-    f,
+    upheld,
     {
       stage: "prove",
       ruling: "red",
       by: "hunt-code",
       reasoning: "x",
       failure_kind: "test-drift",
+      test_path: "t.test.ts",
       at: ctx.now,
     },
     ctx.now,

@@ -36,6 +36,7 @@ import {
  *   evidence/<id>/        screenshots, traces, test output    — local, git-ignored
  *   reports/              <stamp>.md + latest.md
  *   .gitignore            written by `ensureHuntDir`: `runs/` and `evidence/`
+ *   .gitattributes        written by `ensureHuntDir`: `findings.jsonl merge=union`
  */
 
 export const LEDGER_FILE = "findings.jsonl";
@@ -56,11 +57,28 @@ const GITIGNORE = [
   "",
 ].join("\n");
 
-/** Create `.marvin/hunt/` and its `.gitignore` if absent. Never overwrites an edited `.gitignore`. */
+/**
+ * Two branches that each append to the ledger touch its last line, which git's default text
+ * merge reports as a conflict. Every line is an independent event and the fold tolerates any
+ * interleaving (an id is derived from the fingerprint, and a repeated finding line folds as a
+ * sighting), so a union merge — keep both sides' lines — is the correct resolution.
+ */
+const GITATTRIBUTES = [
+  "# Written by marvin's hunt tool (ADR-0054). The ledger is append-only: keep both sides' lines.",
+  `${LEDGER_FILE} merge=union`,
+  "",
+].join("\n");
+
+/**
+ * Create `.marvin/hunt/` with its `.gitignore` and `.gitattributes` if absent. Never overwrites
+ * either file once it exists, so an edited one survives.
+ */
 export function ensureHuntDir(huntDir: string): void {
   mkdirSync(huntDir, { recursive: true });
   const ignore = join(huntDir, ".gitignore");
   if (!existsSync(ignore)) writeFileSync(ignore, GITIGNORE, "utf8");
+  const attributes = join(huntDir, ".gitattributes");
+  if (!existsSync(attributes)) writeFileSync(attributes, GITATTRIBUTES, "utf8");
 }
 
 function huntAtomicWrite(path: string, text: string): void {
@@ -168,16 +186,28 @@ export interface LedgerRead {
   lines: LedgerLineType[];
   /** One entry per line that did not parse; the fold skips them and the tool reports them. */
   malformed: { line: number; reason: string }[];
+  /**
+   * Line numbers of git conflict markers: the ledger was merged without `merge=union`. The
+   * lines between the markers still parse and are folded; the markers themselves are reported.
+   */
+  conflictMarkers: number[];
 }
+
+const CONFLICT_MARKER = /^(<{7}|={7}|>{7}|\|{7})( |$)/;
 
 export function readLedger(huntDir: string): LedgerRead {
   const path = join(huntDir, LEDGER_FILE);
-  if (!existsSync(path)) return { lines: [], malformed: [] };
+  if (!existsSync(path)) return { lines: [], malformed: [], conflictMarkers: [] };
   const text = readFileSync(path, "utf8");
   const lines: LedgerLineType[] = [];
   const malformed: { line: number; reason: string }[] = [];
+  const conflictMarkers: number[] = [];
   text.split("\n").forEach((raw, i) => {
     if (raw.trim() === "") return;
+    if (CONFLICT_MARKER.test(raw)) {
+      conflictMarkers.push(i + 1);
+      return;
+    }
     let json: unknown;
     try {
       json = JSON.parse(raw);
@@ -190,7 +220,7 @@ export function readLedger(huntDir: string): LedgerRead {
     if (parsed.success) lines.push(parsed.data);
     else malformed.push({ line: i + 1, reason: huntIssues(parsed.error) });
   });
-  return { lines, malformed };
+  return { lines, malformed, conflictMarkers };
 }
 
 /** Append lines to the ledger after validating every one; nothing is written if one is invalid. */

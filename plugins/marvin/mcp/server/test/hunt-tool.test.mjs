@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { importTs } from "./_tsload.mjs";
-import { claim, huntEnv, huntRepo, textOf } from "./_hunt-fixture.mjs";
+import { NO_ELICIT, claim, huntEnv, huntRepo, textOf, writeRepoFile } from "./_hunt-fixture.mjs";
 
 /**
  * The `hunt` tool (ADR-0053/0054) driven through its handler against a real git repository:
@@ -16,7 +16,7 @@ const { buildHuntTool, HUNT_ACTIONS } = await importTs("src/tools/hunt.ts");
 const withRepo = (fn) => async () => {
   const repo = huntRepo();
   try {
-    await fn(repo, buildHuntTool(huntEnv(repo.root)), huntEnv(repo.root));
+    await fn(repo, buildHuntTool(NO_ELICIT, huntEnv(repo.root)), huntEnv(repo.root));
   } finally {
     rmSync(repo.root, { recursive: true, force: true });
   }
@@ -29,7 +29,7 @@ const ledgerLines = (env) =>
     .map((l) => JSON.parse(l));
 
 test("the tool is named hunt and its input is strict", () => {
-  const tool = buildHuntTool({
+  const tool = buildHuntTool(NO_ELICIT, {
     projectDir: "/nope",
     configPath: "/nope/c.json",
     huntDir: "/nope/h",
@@ -68,7 +68,7 @@ test(
 
 test(
   "a run: preflight, hotspots, record, verdicts, finalize, report",
-  withRepo(async (_repo, tool, env) => {
+  withRepo(async ({ root }, tool, env) => {
     const pre = await tool.handler({ action: "preflight", check: "code" });
     assert.notEqual(pre.isError, true, textOf(pre));
     const runId = pre.structuredContent.run_id;
@@ -93,7 +93,7 @@ test(
     assert.notEqual(rec.isError, true, textOf(rec));
     const [first] = rec.structuredContent.results;
     assert.equal(first.outcome, "new");
-    assert.match(first.id, /^BH-\d{4}-0001$/);
+    assert.match(first.id, /^BH-[0-9a-f]{8}$/, "the id is derived from the fingerprint");
 
     const again = await tool.handler({
       action: "record",
@@ -130,6 +130,7 @@ test(
     });
     assert.equal(ref.structuredContent.status, "candidate", "a bug waits for a reproducing test");
 
+    writeRepoFile(root, "src/auth/session.repro.test.ts");
     const red = await tool.handler({
       action: "verdict",
       id: first.id,
@@ -140,6 +141,7 @@ test(
         by: "hunt-code",
         reasoning: "fails on '   '",
         failure_kind: "real-defect",
+        test_path: "src/auth/session.repro.test.ts",
       },
     });
     assert.equal(red.structuredContent.status, "confirmed");
@@ -176,14 +178,14 @@ test(
 );
 
 test(
-  "the protocol refuses a red without a reproduction and a rule-class confirmation without evidence",
-  withRepo(async (_repo, tool) => {
+  "the protocol refuses a red without a test that exists and a rule-class confirmation without evidence",
+  withRepo(async ({ root }, tool) => {
     const runId = (await tool.handler({ action: "preflight" })).structuredContent.run_id;
     const rec = await tool.handler({
       action: "record",
       run_id: runId,
       findings: [
-        claim({ reproduction: { steps: ["read it"] } }),
+        claim(),
         claim({
           class: "a11y",
           category: "UX-A11Y",
@@ -193,32 +195,42 @@ test(
       ],
     });
     const [bug, a11y] = rec.structuredContent.results.map((x) => x.id);
-    const red = await tool.handler({
-      action: "verdict",
-      id: bug,
-      verdict: {
-        stage: "prove",
-        ruling: "red",
-        by: "hunt-code",
-        reasoning: "x",
-        failure_kind: "real-defect",
-      },
-    });
-    assert.equal(red.isError, true);
-    assert.match(textOf(red), /VER-03/);
+    const proveRed = (extra = {}) =>
+      tool.handler({
+        action: "verdict",
+        id: bug,
+        verdict: {
+          stage: "prove",
+          ruling: "red",
+          by: "hunt-code",
+          reasoning: "x",
+          failure_kind: "real-defect",
+          ...extra,
+        },
+      });
 
-    // The ruling may carry the test it ran; the fold writes it onto the finding.
-    const withTest = await tool.handler({
+    const early = await proveRed({ test_path: "src/auth/session.repro.test.ts" });
+    assert.equal(early.isError, true, "a test does not rule before the referee");
+    assert.match(textOf(early), /referee/);
+
+    await tool.handler({
       action: "verdict",
       id: bug,
-      verdict: {
-        stage: "prove",
-        ruling: "red",
-        by: "hunt-code",
-        reasoning: "x",
-        failure_kind: "test-drift",
-        test_path: "src/auth/session.bh.test.ts",
-      },
+      verdict: { stage: "referee", ruling: "upheld", by: "marvin-hunt-referee", reasoning: "ok" },
+    });
+
+    const proposedOnly = await proveRed();
+    assert.equal(proposedOnly.isError, true, "the hunter's proposed path is not a proof");
+    assert.match(textOf(proposedOnly), /VER-03/);
+
+    const missing = await proveRed({ test_path: "src/auth/session.repro.test.ts" });
+    assert.equal(missing.isError, true, "a test path that does not exist is not a proof");
+    assert.match(textOf(missing), /does not exist/);
+
+    writeRepoFile(root, "src/auth/session.bh.test.ts");
+    const withTest = await proveRed({
+      failure_kind: "test-drift",
+      test_path: "src/auth/session.bh.test.ts",
     });
     assert.equal(withTest.structuredContent.status, "candidate", "test-drift does not confirm");
 
@@ -241,13 +253,6 @@ test(
     assert.equal(up.isError, true);
     assert.match(textOf(up), /VER-07/);
 
-    const fixed = await tool.handler({
-      action: "set-status",
-      id: a11y,
-      status: "fixed",
-      reason: "done",
-    });
-    assert.equal(fixed.isError, true, "a candidate cannot be marked fixed");
     const conf = await tool.handler({
       action: "set-status",
       id: a11y,
@@ -393,7 +398,7 @@ test("preflight outside a git repository fails with a reason", async () => {
   const { tmpdir } = await import("node:os");
   const dir = mkdtempSync(join(tmpdir(), "marvin-hunt-nogit-"));
   try {
-    const r = await buildHuntTool(huntEnv(dir)).handler({ action: "preflight" });
+    const r = await buildHuntTool(NO_ELICIT, huntEnv(dir)).handler({ action: "preflight" });
     assert.equal(r.isError, true);
     assert.match(textOf(r), /git repository/);
   } finally {

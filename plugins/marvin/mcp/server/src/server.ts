@@ -80,7 +80,7 @@ await runPackServer({
         // read back here, rendered by the autopilot-status widget or as Markdown.
         buildAutopilotReportTool(),
         // The bug hunter's state (ADR-0053/0054): ledger, flow map, coverage, runs, reports.
-        buildHuntTool(env),
+        buildHuntTool(server, env),
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

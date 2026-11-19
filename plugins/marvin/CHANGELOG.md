@@ -19,7 +19,11 @@ follows semver independently of the surrounding marketplace.
   This release is detect-only: nothing edits product code, and the reproducing tests stay
   uncommitted. A seventeenth tool, `hunt`, enforces the verification protocol rather than the
   prose, and four read-only agents (`marvin-hunt-cartographer`, `-hunter`, `-skeptic`,
-  `-referee`) do the reading. The runtime, UX and design checks are later phases.
+  `-referee`) do the reading. A person's ruling is final: a later agent ruling is kept as
+  evidence and changes nothing, and where the client can ask, the person confirms the ruling
+  themselves. Finding ids are derived from the fingerprint and the ledger merges with
+  `merge=union`, so two branches that both hunted merge cleanly. The runtime, UX and design
+  checks are later phases.
 - **The delivery gate checks a spec's declared names against the code** (ADR-0052). Until now
   `contract.signature` was checked once, for being non-empty, and nothing compared it with what
   was delivered: a renamed or missing entry point passed every gate. The `deliver-gate` block now

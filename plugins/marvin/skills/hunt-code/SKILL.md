@@ -88,11 +88,12 @@ each, per `skills/hunt-code/references/verification-protocol.md`:
 2. **Referee.** Dispatch `marvin-hunt-referee` with the claim and the skeptic's argument.
    Record its ruling the same way with `stage: "referee"`. A dismissal rejects the claim and
    ends here.
-3. **Prove.** For an upheld `bug`, `perf` or `spec-drift` claim, write the reproducing test
-   at the caller's boundary, run it three times, classify the failure and record `stage:
-   "prove"` with `ruling` `red`, `green` or `flaky`, `failure_kind`, `test_path` (the test you
-   wrote, repository-relative) and `by: "hunt-code"`. A `red` without a test path on either the
-   claim or the verdict is refused. Copy the test output into `.marvin/hunt/evidence/<id>/` and
+3. **Prove.** For a `bug`, `perf` or `spec-drift` claim the referee upheld, write the
+   reproducing test at the caller's boundary (the hunter's `proposed_test_path` is a
+   suggestion), run it three times, classify the failure and record `stage: "prove"` with
+   `ruling` `red`, `green` or `flaky`, `failure_kind`, `test_path` (the test you wrote,
+   repository-relative) and `by: "hunt-code"`. The tool refuses a prove ruling before a referee
+   upheld the claim, and a `red` whose `test_path` is missing or does not exist. Copy the test output into `.marvin/hunt/evidence/<id>/` and
    mark the test as an expected failure.
 
 Batch dispatches to save time; never let one agent rule on a claim it produced.

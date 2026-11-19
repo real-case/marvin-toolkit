@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
   Coverage,
@@ -116,7 +116,11 @@ export function resolveScope(
       kind: "diff",
       paths,
       ...(req.since ? { base: req.since } : {}),
-      files: filterScope(changed, paths, config.scope.exclude),
+      // A deletion is a change with nothing left to read or hash: it leaves the scope here
+      // rather than reaching `hash-object`, whose one failure would null every blob.
+      files: filterScope(changed, paths, config.scope.exclude).filter((f) =>
+        existsSync(join(projectRoot, f)),
+      ),
     };
   }
   const tracked = git(["ls-files", "-z"], projectRoot, { maxBuffer: 256 * 1024 * 1024 });
@@ -131,32 +135,36 @@ export function resolveScope(
 
 // ── signals ───────────────────────────────────────────────────────────────
 
-/** CODE-P03: code touching money, auth, permissions, PII, deletion, concurrency or integrations. */
+/**
+ * CODE-P03: code touching money, auth, permissions, PII, deletion, concurrency or integrations.
+ * The generic default; vendor names (a payment provider, a telephony API, a database's policy
+ * feature) are project knowledge and belong in `hunt.risk_terms`, which replaces this list.
+ */
 export const RISK_TERMS = [
   "auth",
+  "authentication",
+  "authorization",
+  "oauth",
   "login",
   "session",
   "token",
   "password",
+  "secret",
   "permission",
   "role",
   "admin",
   "tenant",
   "payment",
-  "stripe",
   "checkout",
   "billing",
   "invoice",
   "refund",
   "webhook",
-  "twilio",
-  "retell",
-  "supabase",
-  "rls",
   "delete",
   "migration",
   "transaction",
   "mutex",
+  "lock",
   "queue",
   "cron",
   "upload",
@@ -164,8 +172,57 @@ export const RISK_TERMS = [
   "phone",
 ] as const;
 
-const RISK_RE = new RegExp(`(${RISK_TERMS.join("|")})`, "gi");
 const MAX_READ = 256 * 1024;
+
+/**
+ * Identifier segments of a text, lowercased: identifiers split on camelCase, digits, `_`, `-`,
+ * `/` and `.`. `getAuthToken` gives `get`, `auth`, `token`; `author` and `urls` stay whole, so a
+ * term matches a segment exactly and never a substring of an unrelated word.
+ */
+export function identifierSegments(text: string): Set<string> {
+  const out = new Set<string>();
+  const spaced = text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  for (const seg of spaced.split(/[^A-Za-z]+/)) if (seg) out.add(seg.toLowerCase());
+  return out;
+}
+
+/** The risk terms a text contains, as whole segments; a plain plural (`payments`) counts. */
+export function matchRiskTerms(text: string, terms: readonly string[]): string[] {
+  const segs = identifierSegments(text);
+  const lowered = [...new Set(terms.map((t) => t.toLowerCase()))];
+  return lowered.filter((t) => segs.has(t) || segs.has(`${t}s`) || segs.has(`${t}es`)).sort();
+}
+
+/**
+ * The time the ranking is judged at: the HEAD commit's committer time, so the same commit gives
+ * the same order on any day (NFR-04). Null outside a repository with a commit.
+ */
+export function headTimeMs(projectRoot: string): number | null {
+  const r = git(["show", "-s", "--format=%ct", "HEAD"], projectRoot);
+  if (!r.ok) return null;
+  const sec = Number(r.value.trim());
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : null;
+}
+
+/** `months` calendar months before `nowMs`, as an ISO timestamp for `git log --since`. */
+export function windowStart(nowMs: number, months: number): string {
+  const d = new Date(nowMs);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString();
+}
+
+/**
+ * Blob ids for the files that exist; null for one that does not. `hash-object --stdin-paths`
+ * fails the whole list on one missing path, so a deleted file is never handed to it.
+ */
+export function hashExisting(files: string[], projectRoot: string): Map<string, string | null> {
+  const present = files.filter((f) => existsSync(join(projectRoot, f)));
+  const ids = hashObjects(present, projectRoot);
+  const byPath = new Map(present.map((f, i) => [f, ids?.[i] ?? null]));
+  return new Map(files.map((f) => [f, byPath.get(f) ?? null]));
+}
 
 export interface RawSignals {
   path: string;
@@ -189,7 +246,12 @@ interface History {
 const FIX_SUBJECT = /^(fix|hotfix|bugfix|revert)(\(|:|!|\s)|\bfix(e[sd])?\b/i;
 
 /** One `git log` over the window, folded per file. */
-export function readHistory(projectRoot: string, months: number, files: string[]): History {
+export function readHistory(
+  projectRoot: string,
+  months: number,
+  files: string[],
+  nowMs: number,
+): History {
   const history: History = {
     churn: new Map(),
     authors: new Map(),
@@ -201,7 +263,8 @@ export function readHistory(projectRoot: string, months: number, files: string[]
   const r = git(
     [
       "log",
-      `--since=${months} months ago`,
+      `--since=${windowStart(nowMs, months)}`,
+      `--until=${new Date(nowMs).toISOString()}`,
       "--no-merges",
       "--format=%x1e%an%x1f%ct%x1f%s",
       "--name-only",
@@ -253,10 +316,10 @@ export function collectSignals(
   coverage: Coverage,
   allTracked: string[],
   nowMs: number,
+  riskTerms: readonly string[] = RISK_TERMS,
 ): { signals: RawSignals[]; blobs: Map<string, string | null> } {
-  const history = readHistory(projectRoot, months, files);
-  const blobList = hashObjects(files, projectRoot);
-  const blobs = new Map(files.map((f, i) => [f, blobList?.[i] ?? null]));
+  const history = readHistory(projectRoot, months, files, nowMs);
+  const blobs = hashExisting(files, projectRoot);
   const byPath = new Map(coverage.files.map((e) => [e.path, e]));
   const testStems = new Set(
     allTracked.filter((f) => TEST_FILE.test(f)).map((f) => stem(f).replace(/\.(test|spec)$/, "")),
@@ -273,9 +336,7 @@ export function collectSignals(
     } catch {
       // A file deleted in the working tree has no lines and no content signals.
     }
-    const terms = new Set<string>();
-    for (const m of `${path}\n${text.slice(0, MAX_READ)}`.matchAll(RISK_RE))
-      terms.add(m[1]!.toLowerCase());
+    const terms = matchRiskTerms(`${path}\n${text.slice(0, MAX_READ)}`, riskTerms);
     const last = history.last.get(path);
     return {
       path,
@@ -284,7 +345,7 @@ export function collectSignals(
       fixCommits: history.fixes.get(path) ?? 0,
       lines,
       daysSinceChange: last ? Math.max(0, Math.floor((nowMs / 1000 - last) / 86_400)) : null,
-      riskTerms: [...terms].sort(),
+      riskTerms: terms,
       audit: auditState(byPath.get(path), blobs.get(path) ?? null, nowMs),
       hasTest: testStems.has(stem(path)),
     };

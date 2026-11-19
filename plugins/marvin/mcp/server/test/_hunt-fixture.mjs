@@ -63,10 +63,33 @@ export function claim(over = {}) {
     location: { files: [{ path: "src/auth/session.ts", line: 2 }] },
     expected: "a whitespace-only token is refused",
     actual: "it is accepted",
-    reproduction: { steps: ["call login('   ')"], test_path: "src/auth/session.repro.test.ts" },
+    reproduction: {
+      steps: ["call login('   ')"],
+      proposed_test_path: "src/auth/session.repro.test.ts",
+    },
     severity: "high",
     confidence: "high",
     producer: "marvin-hunt-hunter",
     ...over,
   };
+}
+
+/** A server stub whose client cannot elicit, so a human ruling is recorded unattested. */
+export const NO_ELICIT = { server: { getClientCapabilities: () => ({}) } };
+
+/** A server stub whose client answers every elicitation with `answer` (accept + content). */
+export function elicitingServer(answer) {
+  return {
+    server: {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: async () =>
+        answer === null ? { action: "decline" } : { action: "accept", content: answer },
+    },
+  };
+}
+
+/** Write a file into the fixture repository (a reproducing test, say). */
+export function writeRepoFile(root, rel, body = "// repro\n") {
+  mkdirSync(dirname(join(root, rel)), { recursive: true });
+  writeFileSync(join(root, rel), body);
 }

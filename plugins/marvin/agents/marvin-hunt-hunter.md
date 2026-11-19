@@ -36,8 +36,9 @@ input reaches it. For each suspected defect:
    `occurrences` of one `CODE-D25` claim, not in separate claims.
 4. Say what the existing tests cover in `test_coverage` (`covered`, `partial`,
    `wrong-assertion`, `none`) after looking for them.
-5. Propose `reproduction.test_path` where a test for it would live under the project's
-   conventions, and the steps it would take.
+5. Propose `reproduction.proposed_test_path` where a test for it would live under the
+   project's conventions, and the steps it would take. It is a suggestion: the session writes
+   and runs the test, and only the test it ran counts as proof.
 6. Set `severity` from the impact on a user and `confidence` from how much of the path you
    traced. Never `confirmed`: only a reproducing test confirms.
 

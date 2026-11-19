@@ -142,17 +142,30 @@ export const Evidence = z
   });
 export type Evidence = z.infer<typeof Evidence>;
 
-export const Reproduction = z
+/**
+ * What a producer may say about reproducing its claim. A producer can only PROPOSE a test path:
+ * the test does not exist yet when the claim is recorded, and a proposal must never satisfy
+ * VER-03. The proven `test_path`/`scenario` live on {@link Reproduction} and are written only by
+ * the fold, from a `prove` verdict.
+ */
+export const ClaimReproduction = z
   .object({
     steps: z.array(z.string().min(1)).default([]),
-    /** The reproducing test, at the caller's boundary (CODE-E01). */
-    test_path: RelPath.optional(),
-    /** A replayable e2e scenario (user-behavior). */
-    scenario: RelPath.optional(),
+    /** Where the hunter suggests the reproducing test should live (CODE-E01). Never proof. */
+    proposed_test_path: RelPath.optional(),
     /** CODE-E04: the input or state sequence that reaches the defect, and why guards do not stop it. */
     path_feasibility: z.string().min(1).optional(),
   })
   .strict();
+export type ClaimReproduction = z.infer<typeof ClaimReproduction>;
+
+/** A finding's reproduction: the claim's proposal plus what a `prove` verdict actually ran. */
+export const Reproduction = ClaimReproduction.extend({
+  /** The reproducing test a `prove` verdict ran and found on disk (CODE-E01, VER-03). */
+  test_path: RelPath.optional(),
+  /** A replayable e2e scenario (user-behavior), likewise only from a `prove` verdict. */
+  scenario: RelPath.optional(),
+}).strict();
 export type Reproduction = z.infer<typeof Reproduction>;
 
 export const VerdictEntry = z
@@ -169,6 +182,11 @@ export const VerdictEntry = z
      */
     test_path: RelPath.optional(),
     scenario: RelPath.optional(),
+    /**
+     * `human` only: whether the person was asked through the client and confirmed. `false` means
+     * the client could not elicit, so `by` is the caller's word alone; status and triage count it.
+     */
+    attested: z.boolean().optional(),
     at: z.string().min(1),
     run_id: z.string().min(1).optional(),
   })
@@ -205,10 +223,11 @@ export const FindingClaim = z
     location: FindingLocation,
     expected: z.string().min(1),
     actual: z.string().min(1),
-    reproduction: Reproduction.default({}),
+    reproduction: ClaimReproduction.default({}),
     evidence: z.array(Evidence).default([]),
     severity: HuntSeverity,
-    confidence: HuntConfidence,
+    /** `confirmed` is the tool's to give, through the verification protocol, never a producer's. */
+    confidence: HuntConfidence.exclude(["confirmed"]),
     /** The named heuristic, WCAG criterion, token or component rule (VER-07). */
     rule: z.string().min(1).optional(),
     /** VER-06: guarding code checked, framework behaviour checked, similar patterns searched. */
@@ -225,7 +244,13 @@ export type FindingClaim = z.infer<typeof FindingClaim>;
 
 /** A finding as the ledger folds it: the claim plus everything the tool owns. */
 export const HuntFinding = FindingClaim.extend({
-  id: z.string().regex(/^BH-\d{4}-\d{4,}$/),
+  /**
+   * `BH-` plus the first eight hex digits of the fingerprint: derived, never allocated, so two
+   * branches that each record a different finding cannot mint the same id.
+   */
+  id: z.string().regex(/^BH-[0-9a-f]{8,16}$/),
+  reproduction: Reproduction.default({}),
+  confidence: HuntConfidence,
   fingerprint: z.string().regex(/^[0-9a-f]{16}$/),
   status: FindingStatus,
   verdicts: z.array(VerdictEntry).default([]),
@@ -472,6 +497,11 @@ export const HuntConfig = z
       })
       .strict()
       .default({}),
+    /**
+     * Words that raise a file's hotspot score (CODE-P01). Matched against whole identifier
+     * segments, never substrings. Absent means the generic default list; vendor names belong here.
+     */
+    risk_terms: z.array(z.string().min(1)).optional(),
     /** Hotspot ranking window in months (CODE-P01). */
     history_months: z.number().int().min(1).max(120).default(12),
     /**

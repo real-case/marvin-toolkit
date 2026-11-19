@@ -112,11 +112,7 @@
               },
               "default": []
             },
-            "test_path": {
-              "type": "string",
-              "minLength": 1
-            },
-            "scenario": {
+            "proposed_test_path": {
               "type": "string",
               "minLength": 1
             },
@@ -174,7 +170,6 @@
         "confidence": {
           "type": "string",
           "enum": [
-            "confirmed",
             "high",
             "medium",
             "low"
