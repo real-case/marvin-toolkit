@@ -65,14 +65,51 @@ const ContractObj = z.object({
   signature: z.string().optional(),
 });
 
+/**
+ * The no-oracle declaration (ADR-0053): the contract states that none of its
+ * criteria is something a test can execute — a documentation or configuration
+ * task — and says why. The reason is required and must say something: a bare
+ * `no_oracle: true` fails the schema, so a declaration is never silent.
+ *
+ * It lives INSIDE the sealed block on purpose. The autopilot's delivery gate
+ * accepts it in place of a proven red→green pair, so it has to be as immutable
+ * as the criteria it describes; a declaration added after the seal reads as a
+ * tampered contract. Adding the key needs no seal migration, for the reason
+ * `Oracle.run` gives above.
+ */
+const NoOracle = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(1, "no_oracle needs a reason: say why no criterion is something a test can execute"),
+  })
+  .strict();
+
 export const SpecContract = z.object({
   files: z.array(FileRow).min(1),
   build_order: z.array(z.union([z.string(), z.number()])).optional(),
   contract: ContractObj.optional(),
   criteria: z.array(Criterion).min(1),
   depends_on: z.array(z.string()).optional(),
+  no_oracle: NoOracle.optional(),
 });
 export type SpecContract = z.infer<typeof SpecContract>;
+
+/**
+ * The criteria that contradict a `no_oracle` declaration: every one a test can
+ * execute, which is a `kind: test` oracle, and every `regression: true` one,
+ * which is a red→green obligation by definition (ADR-0036). A `command` oracle
+ * does not contradict it: a docs task's `grep` over a planned file is a check,
+ * and the DoR gate's one-real-proof rule asks for one.
+ *
+ * One home, two readers: the DoR gate FAILs a contradicted declaration, and the
+ * delivery gate BLOCKs one, so the two cannot disagree about what "executable"
+ * means.
+ */
+export function noOracleContradictions(criteria: readonly Criterion[]): string[] {
+  return criteria.filter((c) => c.oracle.kind === "test" || c.regression === true).map((c) => c.id);
+}
 
 /**
  * Discovered, host-specific bindings (ADR-0005 Contract B). Optional and

@@ -546,6 +546,70 @@ test("a bugfix without a regression criterion blocks", async () => {
   assert.equal(find(parsed, "ac-regression").status, "fail");
 });
 
+// ── no-oracle declaration (ADR-0053) ─────────────────────────────────────────
+
+/**
+ * The sample feature with no criterion a test can execute: AC1's `kind: test`
+ * becomes a command over the planned doc, and the contract declares it.
+ */
+const NO_ORACLE_REASON = "a documentation change, so no criterion is something a test can execute";
+const DOCS_FEATURE = VALID_FEATURE.replace(
+  "      kind: test\n      ref: test/sample.test.mjs::exists",
+  "      kind: command\n      ref: test -f docs/sample-new.md",
+).replace(
+  "contract:\n  kind: none\n",
+  `contract:\n  kind: none\nno_oracle:\n  reason: ${NO_ORACLE_REASON}\n`,
+);
+const withNoOracle = (spec, decl) =>
+  spec.replace("contract:\n  kind: none\n", `contract:\n  kind: none\nno_oracle:${decl}\n`);
+
+test("a no-oracle declaration the contract bears out passes", async () => {
+  assert.notEqual(DOCS_FEATURE, VALID_FEATURE, "the fixture rewrite applied");
+  const { parsed } = await callSpec({ specContent: DOCS_FEATURE, projectRoot: repoRoot });
+  assert.notEqual(parsed.verdict, "FAIL", JSON.stringify(parsed.checks));
+  const check = find(parsed, "no-oracle");
+  assert.equal(check?.status, "pass");
+  assert.match(check.detail, /documentation change/, "the reason is quoted back");
+});
+
+test("a no-oracle declaration contradicted by an executable criterion fails", async () => {
+  // VALID_FEATURE keeps AC1 as `kind: test`: a criterion a test can execute.
+  const content = withNoOracle(VALID_FEATURE, `\n  reason: ${NO_ORACLE_REASON}`);
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  const check = find(parsed, "no-oracle");
+  assert.equal(check?.status, "fail");
+  assert.match(check.detail, /AC1/);
+  assert.doesNotMatch(check.detail, /AC2/, "a command oracle does not contradict it");
+});
+
+test("a no-oracle declaration on a bugfix fails on its regression criterion", async () => {
+  const content = VALID_BUGFIX.replace(
+    "criteria:\n",
+    `no_oracle:\n  reason: ${NO_ORACLE_REASON}\ncriteria:\n`,
+  );
+  assert.notEqual(content, VALID_BUGFIX);
+  const { parsed } = await callSpec({ specContent: content, projectRoot: repoRoot });
+  assert.equal(parsed.verdict, "FAIL");
+  assert.equal(find(parsed, "no-oracle")?.status, "fail");
+});
+
+test("a no-oracle declaration without a reason fails the schema", async () => {
+  for (const decl of [" true", "\n  reason: ''", "\n  reason: '   '", " {}"]) {
+    const { parsed } = await callSpec({
+      specContent: withNoOracle(DOCS_FEATURE.replace(/no_oracle:\n {2}reason: .*\n/, ""), decl),
+      projectRoot: repoRoot,
+    });
+    assert.equal(parsed.verdict, "FAIL", decl);
+    assert.match(find(parsed, "spec-contract").detail, /no_oracle/, decl);
+  }
+});
+
+test("a spec that declares nothing carries no no-oracle check", async () => {
+  const { parsed } = await callSpec({ specContent: VALID_FEATURE, projectRoot: repoRoot });
+  assert.equal(find(parsed, "no-oracle"), undefined);
+});
+
 // ── off-ramp + frontmatter ───────────────────────────────────────────────────
 
 test("spike_required: true blocks dispatch", async () => {

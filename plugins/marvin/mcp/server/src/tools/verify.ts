@@ -41,6 +41,7 @@ import { recordVerifyRun, type VerifyRunEntry } from "../storage/verify-runs.js"
 import {
   contractHash,
   extractContractBlock,
+  noOracleContradictions,
   resolveSpecBySlug,
   specSearchDirs,
   type Criterion,
@@ -163,7 +164,7 @@ export function buildVerifyTool(env: ServerEnv): AnyToolDef {
   return defineTool({
     name: "verify",
     description:
-      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
+      'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed — the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale), and, under the autopilot (MARVIN_PIPELINE=1), a delivery with no proven red→green pair unless the sealed contract declares no_oracle with a reason. Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env),
   });
@@ -1034,8 +1035,9 @@ async function runOracles(
 }
 
 /**
- * Advisory red-green status for the delivery gate, over one of two criterion
- * sets at a readable seal:
+ * Red-green status for the delivery gate, over one of two criterion sets at a
+ * readable seal. Advisory in an interactive session; required under the
+ * autopilot, unless the contract declares `no_oracle` (ADR-0053):
  *
  * - a **bugfix** proves EVERY `regression: true` criterion (ADR-0036);
  * - a **feature** proves ONE criterion whose oracle is `kind: test` — any one
@@ -1052,37 +1054,81 @@ function redGreenStatus(
   projectRoot: string,
   specSlug: string | undefined,
   specConfig?: SpecConfig,
-): { status: RedGreen; unproven: string[] } {
-  const none = { status: "unknown" as const, unproven: [] as string[] };
+): { status: RedGreen; unproven: string[]; why: string } {
+  // `why` says what made the answer `unknown`. It is quoted only by the autopilot's BLOCK
+  // (ADR-0053), where "no proof" has to name what was missing to be acted on.
+  const none = (why: string) => ({ status: "unknown" as const, unproven: [] as string[], why });
   const { slug } = resolveRunSlug(specSlug);
-  if (!slug) return none;
+  if (!slug) return none("the gate call passed no resolvable `specSlug`, so no spec was read");
   const spec = readSealedSpec(slug, projectRoot, specConfig);
   // A tampered or unreadable contract is `unknown` here rather than an error:
   // this field is advisory, and the gate's own refusals are the ones that block.
-  if ("error" in spec) return none;
+  if ("error" in spec) return none(spec.error);
   if (spec.type === "feature") {
     const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
-    if (tests.length === 0) return none;
+    if (tests.length === 0) return none("the feature spec has no `kind: test` criterion");
     const runs = readOracleRuns(runsDirOf(projectRoot), slug);
     const proven = tests.some((c) => redGreenProof(runs, spec.contractSha, c.id) === "proven");
     return proven
-      ? { status: "proven", unproven: [] }
-      : { status: "missing", unproven: [tests[0]!.id] };
+      ? { status: "proven", unproven: [], why: "" }
+      : { status: "missing", unproven: [tests[0]!.id], why: "" };
   }
-  if (spec.type !== "bugfix") return none;
+  if (spec.type !== "bugfix") return none(`the spec's type \`${spec.type}\` is not feature|bugfix`);
   const regression = spec.criteria.filter((c) => c.regression === true);
-  if (regression.length === 0) return none;
+  if (regression.length === 0) return none("the bugfix spec has no `regression: true` criterion");
 
   const runs = readOracleRuns(runsDirOf(projectRoot), slug);
   const unproven = regression
     .filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing")
     .map((c) => c.id);
-  return { status: unproven.length ? "missing" : "proven", unproven };
+  return { status: unproven.length ? "missing" : "proven", unproven, why: "" };
+}
+
+/**
+ * The spec's `no_oracle` declaration (ADR-0053), checked against its own criteria:
+ *
+ * - `declared` — the contract declares it and no criterion contradicts it;
+ * - `contradicted` — it is declared, and a criterion a test can execute exists
+ *   (`noOracleContradictions`, the DoR gate's own judgement);
+ * - `absent` — the sealed contract declares nothing;
+ * - `unknown` — no slug, or a contract that is missing, unsealed or tampered, so
+ *   there is no declaration this gate may trust.
+ */
+type NoOracleStatus = "declared" | "contradicted" | "absent" | "unknown";
+
+function noOracleStatus(
+  projectRoot: string,
+  specSlug: string | undefined,
+  specConfig?: SpecConfig,
+): { status: NoOracleStatus; reason: string; contradicting: string[] } {
+  const none = { status: "unknown" as const, reason: "", contradicting: [] as string[] };
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none;
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  if ("error" in spec) return none;
+  const declaration = spec.contract.no_oracle;
+  if (!declaration) return { status: "absent", reason: "", contradicting: [] };
+  const contradicting = noOracleContradictions(spec.criteria);
+  return {
+    status: contradicting.length ? "contradicted" : "declared",
+    reason: declaration.reason,
+    contradicting,
+  };
+}
+
+/**
+ * Whether this delivery must carry a proof (ADR-0053): true in the autopilot's executor, whose
+ * `claude -p` session the engine starts with `MARVIN_PIPELINE=1` and whose MCP server inherits
+ * that environment. Nobody is present there to weigh an unproven delivery, so `red_green` stops
+ * being advisory. An interactive session never sets the variable and keeps the ADR-0036 warning.
+ */
+function redGreenRequired(): boolean {
+  return process.env.MARVIN_PIPELINE === "1";
 }
 
 /**
  * Whether the names `contract.signature` declares occur in the contract's implementation files
- * (ADR-0052), judged by `checkContractSurface`. Advisory exactly as `red_green` is, and `unknown`
+ * (ADR-0052), judged by `checkContractSurface`. Advisory in every session, and `unknown`
  * for the same inputs: no slug, and a spec whose contract is missing, unsealed or tampered.
  */
 function contractSurfaceStatus(
@@ -1202,20 +1248,25 @@ function deliverGate(
   const { slug, rejected } = resolveRunSlug(opts.specSlug);
   const runPath = slug ? join(projectRoot, ".marvin", "task", "runs", `${slug}.md`) : null;
   const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
-  // Advisory, and computed regardless of the verdict so the field is always
-  // present on the block. It never reaches `decision` (ADR-0036): the resolver's
-  // success rate has never been measured on a real project, so a blocking veto
-  // would refuse delivery for the resolver's silence rather than for a missing
-  // proof, and the first response would be to disable it.
+  // Computed regardless of the verdict so the field is always present on the
+  // block. In an interactive session it never reaches `decision` (ADR-0036): a
+  // person is there to weigh a missing proof. In the autopilot it does
+  // (ADR-0053): 51 of 95 autopilot ALLOWs measured in one host shipped with no
+  // proof, and nobody was there to weigh them.
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   // Advisory for the same reason (ADR-0052): the signature is free text, and a name the reader
   // cannot see in it is a gap in the reader, not a defect in the code.
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
+  // ADR-0053: the declaration that stands in for a red→green pair, and whether one is required.
+  const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const required = redGreenRequired();
   const extras: GateExtras = {
     artifactPath,
     allowStale,
     redGreen: redGreen.status,
     surface: surface.status,
+    noOracle: noOracle.status,
+    redGreenRequired: required,
   };
 
   // A rejected slug decides WHICH artifact this gate judged, so it belongs on
@@ -1248,6 +1299,8 @@ function deliverGate(
         staleness: extra.staleness ?? "unknown",
         allowStale: extra.allowStale,
         red_green: extra.redGreen ?? "unknown",
+        no_oracle: extra.noOracle ?? "unknown",
+        red_green_required: extra.redGreenRequired ?? false,
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/"),
       });
     }
@@ -1352,9 +1405,47 @@ function deliverGate(
         ? ` · STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\`` +
           ` on \`${recorded?.branch ?? "unknown"}\`)`
         : " · freshness not checked (this run recorded no provenance)";
+  const fresh = { ...extras, staleness };
+
+  // ADR-0053. A declaration the sealed contract itself contradicts is refused in every session:
+  // it is a false statement about the criteria, and the DoR gate FAILs the same spec.
+  if (noOracle.status === "contradicted") {
+    return decide(
+      "BLOCK",
+      verdict,
+      `the spec declares \`no_oracle\` ("${noOracle.reason}"), but ` +
+        `${noOracle.contradicting.join(", ")} can be executed by a test (\`kind: test\` or ` +
+        `\`regression: true\`). Remove the declaration and prove that criterion red→green, or ` +
+        `rewrite the criterion as a \`command\` or \`prose-review\` oracle, then re-seal the spec.`,
+      fresh,
+    );
+  }
+  // In the autopilot a proof is required: `proven`, or a declaration the contract bears out.
+  let declaredNote = "";
+  if (required && redGreen.status !== "proven") {
+    if (noOracle.status !== "declared") {
+      const what =
+        redGreen.status === "missing"
+          ? `no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}`
+          : `no red→green proof can be read for this delivery: ${redGreen.why}`;
+      return decide(
+        "BLOCK",
+        verdict,
+        `${what}. The autopilot (MARVIN_PIPELINE=1) delivers only a proven red→green pair: ` +
+          `record the red with \`verify action: "oracles"\` and \`expect: "fail"\` before the ` +
+          `implementation, and the green after it. For a task no test can execute, such as a ` +
+          `documentation or configuration change, the sealed contract declares ` +
+          `\`no_oracle: { reason: "<why>" }\` instead.`,
+        fresh,
+      );
+    }
+    declaredNote =
+      ` · no red→green pair required: the contract declares no oracle a test can execute ` +
+      `("${noOracle.reason}"), and none of its criteria contradicts that`;
+  }
   // A WARNING, not a veto: it lengthens the reason and leaves the decision alone.
   const redGreenNote =
-    redGreen.status === "missing"
+    !required && redGreen.status === "missing"
       ? ` · no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}` +
         ` — record one with \`verify action: "oracles"\` (this does not block delivery)`
       : "";
@@ -1364,10 +1455,12 @@ function deliverGate(
         `found in none of the contract's implementation files — correct the code or the ` +
         `signature, and say which in the pull request (this does not block delivery)`
       : "";
-  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}${surfaceNote}`, {
-    ...extras,
-    staleness,
-  });
+  return decide(
+    "ALLOW",
+    verdict,
+    `${base}${freshness}${notRun}${declaredNote}${redGreenNote}${surfaceNote}`,
+    fresh,
+  );
 }
 
 /**
@@ -1416,6 +1509,8 @@ interface GateExtras {
   staleness?: Staleness;
   redGreen?: RedGreen;
   surface?: SurfaceStatus;
+  noOracle?: NoOracleStatus;
+  redGreenRequired?: boolean;
 }
 
 /** Render an ALLOW/BLOCK delivery decision with a machine-readable block. */
@@ -1430,12 +1525,16 @@ function gateResult(
   const staleness: Staleness = extras.staleness ?? "unknown";
   const redGreen: RedGreen = extras.redGreen ?? "unknown";
   const surface: SurfaceStatus = extras.surface ?? "unknown";
+  const noOracle: NoOracleStatus = extras.noOracle ?? "unknown";
+  const required = extras.redGreenRequired ?? false;
   const machine = JSON.stringify({
     decision,
     verdict,
     reason,
     staleness,
     red_green: redGreen,
+    red_green_required: required,
+    no_oracle: noOracle,
     contract_surface: surface,
     artifactPath: extras.artifactPath,
     allowStale: extras.allowStale,
@@ -1446,7 +1545,8 @@ function gateResult(
     `**Decision:** ${decision}`,
     `**Verdict:** ${verdict ?? "—"}`,
     `**Freshness:** ${staleness}`,
-    `**Red-green:** ${redGreen}`,
+    `**Red-green:** ${redGreen}${required ? " (required)" : ""}`,
+    `**No-oracle:** ${noOracle}`,
     `**Contract surface:** ${surface}`,
     `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,

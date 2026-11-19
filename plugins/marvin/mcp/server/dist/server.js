@@ -33140,13 +33140,20 @@ var ContractObj = external_exports.object({
   kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
   signature: external_exports.string().optional()
 });
+var NoOracle = external_exports.object({
+  reason: external_exports.string().trim().min(1, "no_oracle needs a reason: say why no criterion is something a test can execute")
+}).strict();
 var SpecContract = external_exports.object({
   files: external_exports.array(FileRow).min(1),
   build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
   contract: ContractObj.optional(),
   criteria: external_exports.array(Criterion).min(1),
-  depends_on: external_exports.array(external_exports.string()).optional()
+  depends_on: external_exports.array(external_exports.string()).optional(),
+  no_oracle: NoOracle.optional()
 });
+function noOracleContradictions(criteria) {
+  return criteria.filter((c) => c.oracle.kind === "test" || c.regression === true).map((c) => c.id);
+}
 var HostBindings = external_exports.object({
   spec_location: external_exports.string().optional(),
   decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
@@ -36015,6 +36022,13 @@ var GateEntrySchema = external_exports.object({
   staleness: external_exports.enum(["fresh", "stale", "unknown"]),
   allowStale: external_exports.boolean(),
   red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /**
+   * The spec's `no_oracle` declaration as the gate judged it, and whether this decision required
+   * a proof at all (ADR-0053). Optional: entries journalled before the declaration existed carry
+   * neither, and still parse.
+   */
+  no_oracle: external_exports.enum(["declared", "contradicted", "absent", "unknown"]).optional(),
+  red_green_required: external_exports.boolean().optional(),
   /** The artifact the gate judged, project-relative. */
   artifact: external_exports.string().min(1)
 });
@@ -36682,7 +36696,7 @@ var VerifyInput = external_exports.object({
 function buildVerifyTool(env2) {
   return defineTool({
     name: "verify",
-    description: 'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale). Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
+    description: 'Run project quality gates (test/lint/type-check/build) concurrently with stack auto-detection, reduce to one verdict at a single merge point, and write verification.md. A gate whose binary is absent is recorded "not-run" (a warning, not a failure) rather than failing. Use for /marvin:task-verify and as the executor\'s self-test. Pass action: "gate" to instead read the written verdict and decide whether delivery is allowed \u2014 the delivery gate for /marvin:task-deliver, which also refuses a run with no test evidence and one whose recorded provenance no longer describes the working tree (waivable with allowStale), and, under the autopilot (MARVIN_PIPELINE=1), a delivery with no proven red\u2192green pair unless the sealed contract declares no_oracle with a reason. Pass specSlug on both actions so the run is written to, and the gate reads, .marvin/task/runs/<slug>.md. `gates.extra` in .marvin/config.json adds project gates that run after the four standard ones, one at a time; `only` and explicit `gates` leave them out.',
     inputSchema: VerifyInput,
     handler: (input) => runVerify(input, env2)
   });
@@ -37185,24 +37199,42 @@ ${machine}
   };
 }
 function redGreenStatus(projectRoot, specSlug, specConfig) {
-  const none = { status: "unknown", unproven: [] };
+  const none = (why) => ({ status: "unknown", unproven: [], why });
+  const { slug } = resolveRunSlug(specSlug);
+  if (!slug) return none("the gate call passed no resolvable `specSlug`, so no spec was read");
+  const spec = readSealedSpec(slug, projectRoot, specConfig);
+  if ("error" in spec) return none(spec.error);
+  if (spec.type === "feature") {
+    const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
+    if (tests.length === 0) return none("the feature spec has no `kind: test` criterion");
+    const runs2 = readOracleRuns(runsDirOf(projectRoot), slug);
+    const proven = tests.some((c) => redGreenProof(runs2, spec.contractSha, c.id) === "proven");
+    return proven ? { status: "proven", unproven: [], why: "" } : { status: "missing", unproven: [tests[0].id], why: "" };
+  }
+  if (spec.type !== "bugfix") return none(`the spec's type \`${spec.type}\` is not feature|bugfix`);
+  const regression = spec.criteria.filter((c) => c.regression === true);
+  if (regression.length === 0) return none("the bugfix spec has no `regression: true` criterion");
+  const runs = readOracleRuns(runsDirOf(projectRoot), slug);
+  const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
+  return { status: unproven.length ? "missing" : "proven", unproven, why: "" };
+}
+function noOracleStatus(projectRoot, specSlug, specConfig) {
+  const none = { status: "unknown", reason: "", contradicting: [] };
   const { slug } = resolveRunSlug(specSlug);
   if (!slug) return none;
   const spec = readSealedSpec(slug, projectRoot, specConfig);
   if ("error" in spec) return none;
-  if (spec.type === "feature") {
-    const tests = spec.criteria.filter((c) => c.oracle.kind === "test");
-    if (tests.length === 0) return none;
-    const runs2 = readOracleRuns(runsDirOf(projectRoot), slug);
-    const proven = tests.some((c) => redGreenProof(runs2, spec.contractSha, c.id) === "proven");
-    return proven ? { status: "proven", unproven: [] } : { status: "missing", unproven: [tests[0].id] };
-  }
-  if (spec.type !== "bugfix") return none;
-  const regression = spec.criteria.filter((c) => c.regression === true);
-  if (regression.length === 0) return none;
-  const runs = readOracleRuns(runsDirOf(projectRoot), slug);
-  const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
-  return { status: unproven.length ? "missing" : "proven", unproven };
+  const declaration = spec.contract.no_oracle;
+  if (!declaration) return { status: "absent", reason: "", contradicting: [] };
+  const contradicting = noOracleContradictions(spec.criteria);
+  return {
+    status: contradicting.length ? "contradicted" : "declared",
+    reason: declaration.reason,
+    contradicting
+  };
+}
+function redGreenRequired() {
+  return process.env.MARVIN_PIPELINE === "1";
 }
 function contractSurfaceStatus(projectRoot, specSlug, specConfig) {
   const none = { status: "unknown", missing: [], reason: "no resolved spec slug" };
@@ -37279,11 +37311,15 @@ function deliverGate(projectRoot, opts) {
   const artifactPath = runPath && existsSync(runPath) ? runPath : globalPath;
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
+  const required2 = redGreenRequired();
   const extras = {
     artifactPath,
     allowStale,
     redGreen: redGreen.status,
-    surface: surface.status
+    surface: surface.status,
+    noOracle: noOracle.status,
+    redGreenRequired: required2
   };
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
   const decide = (decision, verdict2, reason, extra = extras) => {
@@ -37298,6 +37334,8 @@ function deliverGate(projectRoot, opts) {
         staleness: extra.staleness ?? "unknown",
         allowStale: extra.allowStale,
         red_green: extra.redGreen ?? "unknown",
+        no_oracle: extra.noOracle ?? "unknown",
+        red_green_required: extra.redGreenRequired ?? false,
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
       });
     }
@@ -37365,12 +37403,36 @@ function deliverGate(projectRoot, opts) {
     );
   }
   const freshness = staleness === "fresh" ? " \xB7 the evidence matches this working tree" : staleness === "stale" ? ` \xB7 STALE evidence accepted via allowStale (verified at \`${recorded?.head_sha ?? "unknown"}\` on \`${recorded?.branch ?? "unknown"}\`)` : " \xB7 freshness not checked (this run recorded no provenance)";
-  const redGreenNote = redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
+  const fresh = { ...extras, staleness };
+  if (noOracle.status === "contradicted") {
+    return decide(
+      "BLOCK",
+      verdict,
+      `the spec declares \`no_oracle\` ("${noOracle.reason}"), but ${noOracle.contradicting.join(", ")} can be executed by a test (\`kind: test\` or \`regression: true\`). Remove the declaration and prove that criterion red\u2192green, or rewrite the criterion as a \`command\` or \`prose-review\` oracle, then re-seal the spec.`,
+      fresh
+    );
+  }
+  let declaredNote = "";
+  if (required2 && redGreen.status !== "proven") {
+    if (noOracle.status !== "declared") {
+      const what = redGreen.status === "missing" ? `no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")}` : `no red\u2192green proof can be read for this delivery: ${redGreen.why}`;
+      return decide(
+        "BLOCK",
+        verdict,
+        `${what}. The autopilot (MARVIN_PIPELINE=1) delivers only a proven red\u2192green pair: record the red with \`verify action: "oracles"\` and \`expect: "fail"\` before the implementation, and the green after it. For a task no test can execute, such as a documentation or configuration change, the sealed contract declares \`no_oracle: { reason: "<why>" }\` instead.`,
+        fresh
+      );
+    }
+    declaredNote = ` \xB7 no red\u2192green pair required: the contract declares no oracle a test can execute ("${noOracle.reason}"), and none of its criteria contradicts that`;
+  }
+  const redGreenNote = !required2 && redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
   const surfaceNote = surface.status === "missing" ? ` \xB7 contract.signature declares ${surface.missing.map((n) => `\`${n}\``).join(", ")}, found in none of the contract's implementation files \u2014 correct the code or the signature, and say which in the pull request (this does not block delivery)` : "";
-  return decide("ALLOW", verdict, `${base}${freshness}${notRun}${redGreenNote}${surfaceNote}`, {
-    ...extras,
-    staleness
-  });
+  return decide(
+    "ALLOW",
+    verdict,
+    `${base}${freshness}${notRun}${declaredNote}${redGreenNote}${surfaceNote}`,
+    fresh
+  );
 }
 function noEvidenceRefusal(gates, warnings) {
   const gap = evidenceGap(gates.map((g) => ({ name: g.name, ran: g.status !== "not-run" })));
@@ -37389,12 +37451,16 @@ function gateResult(decision, verdict, reason, extras) {
   const staleness = extras.staleness ?? "unknown";
   const redGreen = extras.redGreen ?? "unknown";
   const surface = extras.surface ?? "unknown";
+  const noOracle = extras.noOracle ?? "unknown";
+  const required2 = extras.redGreenRequired ?? false;
   const machine = JSON.stringify({
     decision,
     verdict,
     reason,
     staleness,
     red_green: redGreen,
+    red_green_required: required2,
+    no_oracle: noOracle,
     contract_surface: surface,
     artifactPath: extras.artifactPath,
     allowStale: extras.allowStale
@@ -37405,7 +37471,8 @@ function gateResult(decision, verdict, reason, extras) {
     `**Decision:** ${decision}`,
     `**Verdict:** ${verdict ?? "\u2014"}`,
     `**Freshness:** ${staleness}`,
-    `**Red-green:** ${redGreen}`,
+    `**Red-green:** ${redGreen}${required2 ? " (required)" : ""}`,
+    `**No-oracle:** ${noOracle}`,
     `**Contract surface:** ${surface}`,
     `**Artifact:** \`${extras.artifactPath}\``,
     `**Reason:** ${reason}`,
@@ -38285,6 +38352,8 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   ];
   checks.push(...checkFiles(c, projectRoot));
   checks.push(...checkCriteria(c, type));
+  const noOracle = checkNoOracle(c);
+  if (noOracle) checks.push(noOracle);
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
   checks.push(...checkOracles(c, projectRoot));
@@ -38417,6 +38486,22 @@ function checkCriteria(c, type) {
     );
   }
   return checks;
+}
+function checkNoOracle(c) {
+  if (!c.no_oracle) return null;
+  const contradicting = noOracleContradictions(c.criteria);
+  if (contradicting.length > 0) {
+    return fail(
+      "no-oracle",
+      "Acceptance Criteria",
+      `no_oracle is declared, but ${contradicting.join(", ")} can be executed by a test (\`kind: test\` or \`regression: true\`) \u2014 prove that criterion red\u2192green instead, or rewrite it as a \`command\` or \`prose-review\` oracle if no test can execute it`
+    );
+  }
+  return pass(
+    "no-oracle",
+    "Acceptance Criteria",
+    `no oracle a test can execute, declared: "${c.no_oracle.reason}"`
+  );
 }
 function checkContractField(c) {
   if (!c.contract || c.contract.kind === "none") {
@@ -41037,7 +41122,7 @@ ${text}` }],
 }
 
 // src/server.ts
-var VERSION = "0.38.0";
+var VERSION = "0.39.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

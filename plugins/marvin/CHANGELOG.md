@@ -6,8 +6,28 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-11-19
+
+### Changed
+
+- **The autopilot's delivery gate requires a proof** (ADR-0053). In one host project, 51 of 95
+  autopilot ALLOW decisions went out with `red_green` `missing` or `unknown`, so nothing showed
+  that a test had failed for the change before it passed. When the server runs under the autopilot
+  (`MARVIN_PIPELINE=1`), `verify action: "gate"` now allows a delivery only when `red_green` is
+  `proven`, or when the sealed contract declares a no-oracle mode that its criteria bear out.
+  Otherwise it BLOCKs, and the reason names the criterion that lacks its red, or what made the
+  proof unreadable. It also names the declaration that would answer it. Interactive sessions keep
+  the ADR-0036 warning.
+
 ### Added
 
+- **`no_oracle: { reason }` in the `spec-contract` block** (ADR-0053), for a task no test can
+  execute, such as a documentation or configuration change. The reason is required. A `kind: test`
+  or `regression: true` criterion contradicts the declaration: the `spec` DoR gate reports this as
+  a FAIL on its new `no-oracle` check, and the delivery gate BLOCKs it in every session. The
+  `deliver-gate` block and the verification-run journal's `gate` entry gain `no_oracle`
+  (`declared`, `contradicted`, `absent`, `unknown`) and `red_green_required`. The key is inside
+  the sealed block, so it cannot be added after the seal, and existing seals stay valid.
 - **The delivery gate checks a spec's declared names against the code** (ADR-0052). Until now
   `contract.signature` was checked once, for being non-empty, and nothing compared it with what
   was delivered: a renamed or missing entry point passed every gate. The `deliver-gate` block now

@@ -18517,13 +18517,20 @@ var ContractObj = external_exports.object({
   kind: external_exports.enum(["function", "route", "schema", "cli", "event", "none"]),
   signature: external_exports.string().optional()
 });
+var NoOracle = external_exports.object({
+  reason: external_exports.string().trim().min(1, "no_oracle needs a reason: say why no criterion is something a test can execute")
+}).strict();
 var SpecContract = external_exports.object({
   files: external_exports.array(FileRow).min(1),
   build_order: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])).optional(),
   contract: ContractObj.optional(),
   criteria: external_exports.array(Criterion).min(1),
-  depends_on: external_exports.array(external_exports.string()).optional()
+  depends_on: external_exports.array(external_exports.string()).optional(),
+  no_oracle: NoOracle.optional()
 });
+function noOracleContradictions(criteria) {
+  return criteria.filter((c) => c.oracle.kind === "test" || c.regression === true).map((c) => c.id);
+}
 var HostBindings = external_exports.object({
   spec_location: external_exports.string().optional(),
   decision_record: external_exports.object({ style: external_exports.string().optional(), path: external_exports.string().optional() }).optional(),
@@ -19807,6 +19814,13 @@ var GateEntrySchema = external_exports.object({
   staleness: external_exports.enum(["fresh", "stale", "unknown"]),
   allowStale: external_exports.boolean(),
   red_green: external_exports.enum(["proven", "missing", "unknown"]),
+  /**
+   * The spec's `no_oracle` declaration as the gate judged it, and whether this decision required
+   * a proof at all (ADR-0053). Optional: entries journalled before the declaration existed carry
+   * neither, and still parse.
+   */
+  no_oracle: external_exports.enum(["declared", "contradicted", "absent", "unknown"]).optional(),
+  red_green_required: external_exports.boolean().optional(),
   /** The artifact the gate judged, project-relative. */
   artifact: external_exports.string().min(1)
 });
@@ -32788,6 +32802,8 @@ function checkContractBlock(body, type, projectRoot, specLocation, specConfig) {
   ];
   checks.push(...checkFiles(c, projectRoot));
   checks.push(...checkCriteria(c, type));
+  const noOracle = checkNoOracle(c);
+  if (noOracle) checks.push(noOracle);
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
   checks.push(...checkOracles(c, projectRoot));
@@ -32920,6 +32936,22 @@ function checkCriteria(c, type) {
     );
   }
   return checks;
+}
+function checkNoOracle(c) {
+  if (!c.no_oracle) return null;
+  const contradicting = noOracleContradictions(c.criteria);
+  if (contradicting.length > 0) {
+    return fail(
+      "no-oracle",
+      "Acceptance Criteria",
+      `no_oracle is declared, but ${contradicting.join(", ")} can be executed by a test (\`kind: test\` or \`regression: true\`) \u2014 prove that criterion red\u2192green instead, or rewrite it as a \`command\` or \`prose-review\` oracle if no test can execute it`
+    );
+  }
+  return pass(
+    "no-oracle",
+    "Acceptance Criteria",
+    `no oracle a test can execute, declared: "${c.no_oracle.reason}"`
+  );
 }
 function checkContractField(c) {
   if (!c.contract || c.contract.kind === "none") {

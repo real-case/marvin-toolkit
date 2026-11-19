@@ -72,6 +72,8 @@ files:
     intent: <covers AC1 and AC2; name any non-obvious fixture>
 build_order: [F1, F2, F3]   # optional
 depends_on: []              # sibling spec slugs; each MUST be status: shipped
+# no_oracle:                # only when NO criterion is something a test can execute (docs, config)
+#   reason: <why no test can fail first for this task>
 contract:
   kind: function            # function | route | schema | cli | event | none
   signature: |
@@ -98,6 +100,13 @@ criteria:
       kind: prose-review    # at least one criterion must carry a non-prose-review oracle
     failure: <a wrong implementation a reviewer would catch>
 ```
+
+`no_oracle` (ADR-0053) is for a task where no test can fail before the change and pass after it,
+such as a documentation or configuration change: every criterion is a `command` or `prose-review`
+oracle. The `reason` is required. The gate FAILs a declaration that a `kind: test` or
+`regression: true` criterion contradicts. Under the autopilot the delivery gate allows a delivery
+only with a proven red→green pair or this declaration, so a task with no `kind: test` criterion
+that declares nothing is refused at delivery.
 
 ## Chosen Approach
 Only what the contract cannot carry.

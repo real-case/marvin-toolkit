@@ -16,6 +16,7 @@ import {
   extractHostBindings,
   formatSpecId,
   nextSpecNumber,
+  noOracleContradictions,
   readSpecCorpus,
   resolveSpecBySlug,
   resolveSpecDir,
@@ -1577,6 +1578,8 @@ function checkContractBlock(
   ];
   checks.push(...checkFiles(c, projectRoot));
   checks.push(...checkCriteria(c, type));
+  const noOracle = checkNoOracle(c);
+  if (noOracle) checks.push(noOracle);
   checks.push(checkContractField(c));
   checks.push(...checkGraph(c));
   checks.push(...checkOracles(c, projectRoot));
@@ -1756,6 +1759,31 @@ function checkCriteria(c: SpecContract, type: string): Check[] {
     );
   }
   return checks;
+}
+
+/**
+ * A `no_oracle` declaration (ADR-0053) checked against the criteria it speaks
+ * for. No check at all for a contract that declares nothing, so every existing
+ * spec's check list is unchanged. A contradicted declaration FAILs here, before
+ * the seal, rather than only at the autopilot's delivery gate, after the work.
+ */
+function checkNoOracle(c: SpecContract): Check | null {
+  if (!c.no_oracle) return null;
+  const contradicting = noOracleContradictions(c.criteria);
+  if (contradicting.length > 0) {
+    return fail(
+      "no-oracle",
+      "Acceptance Criteria",
+      `no_oracle is declared, but ${contradicting.join(", ")} can be executed by a test ` +
+        "(`kind: test` or `regression: true`) — prove that criterion red→green instead, or " +
+        "rewrite it as a `command` or `prose-review` oracle if no test can execute it",
+    );
+  }
+  return pass(
+    "no-oracle",
+    "Acceptance Criteria",
+    `no oracle a test can execute, declared: "${c.no_oracle.reason}"`,
+  );
 }
 
 /** The interface contract is a typed field now. kind "none" means no callable
