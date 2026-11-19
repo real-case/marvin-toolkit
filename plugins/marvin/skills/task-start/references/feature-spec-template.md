@@ -101,7 +101,7 @@ criteria:
     failure: <a wrong implementation a reviewer would catch>
 ```
 
-`no_oracle` (ADR-0053) is for a task where no test can fail before the change and pass after it,
+`no_oracle` (ADR-0055) is for a task where no test can fail before the change and pass after it,
 such as a documentation or configuration change: every criterion is a `command` or `prose-review`
 oracle. The `reason` is required. The gate FAILs a declaration that a `kind: test` or
 `regression: true` criterion contradicts. Under the autopilot the delivery gate allows a delivery

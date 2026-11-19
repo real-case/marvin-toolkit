@@ -28,6 +28,7 @@
     "help:preview": "node scripts/help-preview.mjs",
     "dev:widget-host": "node scripts/dev-widget-host.mjs",
     "lint:docs": "node scripts/check-docs-drift.mjs",
+    "gen:hunt-schemas": "node scripts/gen-hunt-schemas.mjs",
     "usage:surface": "node scripts/usage-surface.mjs",
     "eval:self-test": "node evals/trigger/self-test.mjs",
     "eval:trigger": "node evals/trigger/run.mjs --skill all --decider mock",
@@ -59,7 +60,8 @@
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.71.1",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod-to-json-schema": "^3.25.2"
   },
   "optionalDependencies": {
     "@rollup/rollup-darwin-arm64": "4.64.5",

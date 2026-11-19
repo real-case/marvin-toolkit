@@ -546,7 +546,7 @@ test("a bugfix without a regression criterion blocks", async () => {
   assert.equal(find(parsed, "ac-regression").status, "fail");
 });
 
-// ── no-oracle declaration (ADR-0053) ─────────────────────────────────────────
+// ── no-oracle declaration (ADR-0055) ─────────────────────────────────────────
 
 /**
  * The sample feature with no criterion a test can execute: AC1's `kind: test`

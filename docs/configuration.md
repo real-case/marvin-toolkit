@@ -23,6 +23,7 @@ makes them easy to include in or exclude from version control as a unit.
 | `.marvin/memory/` | The `lessons` tool | The team lessons-learned store and its index. |
 | `.marvin/handoff/` | The `handoff` tool | Session-continuation documents. |
 | `.marvin/critique/` | The calling session, at the four pipeline critic call sites | Critic receipts: the critic's report verbatim plus a typed verdict block with a compliance and a quality axis. Read back by `/marvin:reports` and `/marvin:task-summary`; they never change a delivery decision. |
+| `.marvin/hunt/` | The `hunt` tool, driven by the `hunt-*` commands | The bug hunter's state ([ADR-0054](./adr/0054-hunt-ledger-and-flow-map.md)): the append-only findings ledger `findings.jsonl`, the flow map `flows.json`, per-file `coverage.json` and `reports/`, all meant to be committed, plus `runs/` and `evidence/`, which its own `.gitignore` keeps local. |
 | `.marvin/research-results/` | The `marvin-researcher` agent | Dated library research notes, written once and never read back. |
 | `.marvin/usage/` | The usage-log middleware | A local, never-committed telemetry log. |
 | `.marvin/report/` | The `report` tool's `triage` action | The triage baseline — which finding identities were last recorded as seen. Local and self-ignoring, never committed. Despite the name it is not a report group: it holds the tool's own state, not generated reports, and the viewer never lists it. Created only when a `snapshot` is asked for. |
@@ -366,6 +367,46 @@ Marvin's own repository commits a complete example: `.marvin/config.json` and `.
 at its root, which `plugins/marvin/mcp/server/test/project-config.test.mjs` loads through the
 engine's own loaders and fails on a stripped key, a reset subtree or an ignored pattern.
 
+### `hunt`
+
+The bug hunter's settings ([ADR-0053](./adr/0053-hunt-command-family.md)), written by
+`/marvin:hunt-init` and read by every `hunt-*` command. The block is validated on its own: an
+invalid `hunt` key is an error for the hunt tool and changes nothing for any other tool. Every
+field has a default, so `"hunt": {}` is a complete configuration.
+
+```json
+{
+  "hunt": {
+    "scope": { "paths": ["src"], "exclude": ["src/generated/**"] },
+    "severity_floor": { "code": "high", "user-behavior": "high", "ux": "medium", "design": "medium" },
+    "authority": { "mode": "detect-only", "tickets": false, "fixes": false },
+    "budgets": { "max_minutes": 30, "max_rounds": 3, "max_findings_per_round": 25, "max_hotspots": 40, "batch_size": 8, "max_fixes": 0 },
+    "history_months": 12,
+    "risk_terms": ["auth", "session", "payment", "stripe", "webhook", "delete"],
+    "constraints": { "frozen_paths": ["src/legacy/**"], "no_public_api_breaks": true }
+  }
+}
+```
+
+- `scope.paths` limits a hunt to path prefixes or globs; empty means the whole repository.
+  Tests, build output, vendored and generated code, `.marvin/` and `.github/` are excluded
+  always; `scope.exclude` adds to that list.
+- `severity_floor` is the lowest severity, per check, that is challenged, proven and reported.
+  Claims below it are still recorded so a later run recognises them.
+- `authority.mode` has one value in this release, `detect-only`: no `hunt-*` command edits
+  product code, commits or pushes.
+- `budgets` bound one run's time, convergence rounds, new claims per round, ranked hotspots and
+  the batch size the hotspots are cut into.
+- `history_months` is the git history window the hotspot ranking reads, counted back from the
+  HEAD commit's time so one commit always ranks the same way.
+- `risk_terms` replaces the generic list of words that raise a file's hotspot score. A term
+  matches a whole identifier segment (`getAuthToken` holds `auth` and `token`; `author` holds
+  neither), and a plain plural counts. Vendor names belong here, not in the default.
+- `constraints.frozen_paths` lists paths the hunt must not touch, reproducing tests included;
+  `constraints.no_public_api_breaks` states that it never proposes a public API change.
+
+The JSON Schema of this block is `plugins/marvin/skills/hunt-code/references/schemas/config.schema.json`.
+
 ## Environment variables
 
 The `MARVIN_*` variables repoint where the server reads and writes, and you set them in
@@ -384,6 +425,7 @@ the rest exist mainly for test isolation, and each defaults to a subdirectory of
 | `MARVIN_USAGE_DIR` | `.marvin/usage` | The local usage log. |
 | `MARVIN_REPORT_DIR` | `.marvin/report` | The triage baseline — local and self-ignoring, written only on a `snapshot`. |
 | `MARVIN_METRICS_DIR` | `.marvin/metrics` | The task-metrics records, one per spec. |
+| `MARVIN_HUNT_DIR` | `.marvin/hunt` | The bug hunter's ledger, flow map, coverage, runs and reports. |
 | `MARVIN_HOOKS_DISABLED` | unset | Set to exactly `1` to disable both blocking hooks. Read by the hooks, not by the server. |
 
 `MARVIN_HOOKS_DISABLED` is the one variable in this table whose scope is a **session**
@@ -586,6 +628,7 @@ Whether to version the `.marvin/` directory depends on how you use each part of 
 
 - **Commit it for a team.** For a shared board, commit `.marvin/track/` and `.marvin/config.json` together so the tasks and their status vocabulary travel with the repository. Specs in `.marvin/task/` and lessons in `.marvin/memory/` are likewise team assets worth committing.
 - **Ignore the point-in-time artifacts.** Security reports in `.marvin/security/` and session handoffs in `.marvin/handoff/` are moments in time that most teams gitignore.
+- **Commit the hunt ledger.** `.marvin/hunt/` holds the findings ledger, the flow map and coverage, which are what keep a person's verdict from being re-raised by the next run. Negate it after a blanket exclusion the same way (`!.marvin/hunt/`); its own `.gitignore` keeps `runs/` and `evidence/` local. `/marvin:hunt-init` warns when git ignores the ledger.
 - **Leave the usage log alone.** `.marvin/usage/` ignores itself, so it stays local regardless.
 - **Commit the metrics series.** `.marvin/metrics/` holds one record per delivered task and earns its value by accumulating, so it has to reach a clone; the pipeline runs in a worktree that is removed once the branch merges, and an ignored record disappears with it. Negate it after the blanket exclusion, and mind the pattern: `.marvin/*` followed by `!.marvin/metrics/`. A blanket `.marvin/` does not work — git does not descend into an excluded directory, so a negation beneath it is unreachable and silently does nothing. Keep Markdown out of your formatter as well (`**/*.md` in `.prettierignore`): a reflowed record is a rewritten record. The `rollup` answer reports the record as ignored until the negation is in place.
 

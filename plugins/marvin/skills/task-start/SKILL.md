@@ -444,7 +444,7 @@ Fill the sections the draft keeps:
   - `contract` — the exact callable surface as `kind` (function/route/schema/cli/event) + a literal `signature` the implementer copies; `kind: none` if there is no callable surface.
   - `build_order` (optional) — the order the executor applies the files.
   - `depends_on` (optional) — sibling spec slugs this task depends on; the gate **fails** unless each is `status: shipped`.
-  - `no_oracle` (optional, ADR-0053) — `{ reason: <text> }`, declared only when no criterion is something a test can execute (a documentation or configuration task): no `kind: test` oracle and no `regression: true`. The gate FAILs a declaration a criterion contradicts, and a blank reason. The autopilot's delivery gate accepts it in place of a proven red→green pair, and refuses a delivery that has neither.
+  - `no_oracle` (optional, ADR-0055) — `{ reason: <text> }`, declared only when no criterion is something a test can execute (a documentation or configuration task): no `kind: test` oracle and no `regression: true`. The gate FAILs a declaration a criterion contradicts, and a blank reason. The autopilot's delivery gate accepts it in place of a proven red→green pair, and refuses a delivery that has neither.
 - **Chosen Approach** — the rules above
 - **Non-goals** — explicit scope boundaries discussed during dialogue, as a short list
 - **Assumptions** — defaults taken instead of asking, limited to those the contract does not show

@@ -1762,7 +1762,7 @@ function checkCriteria(c: SpecContract, type: string): Check[] {
 }
 
 /**
- * A `no_oracle` declaration (ADR-0053) checked against the criteria it speaks
+ * A `no_oracle` declaration (ADR-0055) checked against the criteria it speaks
  * for. No check at all for a contract that declares nothing, so every existing
  * spec's check list is unchanged. A contradicted declaration FAILs here, before
  * the seal, rather than only at the autopilot's delivery gate, after the work.

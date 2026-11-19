@@ -66,7 +66,7 @@ const ContractObj = z.object({
 });
 
 /**
- * The no-oracle declaration (ADR-0053): the contract states that none of its
+ * The no-oracle declaration (ADR-0055): the contract states that none of its
  * criteria is something a test can execute — a documentation or configuration
  * task — and says why. The reason is required and must say something: a bare
  * `no_oracle: true` fails the schema, so a declaration is never silent.

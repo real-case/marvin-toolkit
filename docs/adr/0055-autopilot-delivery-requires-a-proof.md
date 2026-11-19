@@ -1,4 +1,4 @@
-# ADR 0053 — The autopilot's delivery gate requires a red→green proof or a declared reason why none exists
+# ADR 0055 — The autopilot's delivery gate requires a red→green proof or a declared reason why none exists
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |

@@ -197,6 +197,23 @@ The command surface is three; the twenty-two audits are data files under
 | `/marvin:audit-run` | Run one audit end to end — resolve which was asked for, collect evidence under a declared sampling budget, rank findings on the S0–S4 scale, and release the report as `.md` plus `.pdf` with the ids verified identical across prose, register and PDF. | `marvin аудит зависимостей`, `run audit A-14`, `audit the data model` |
 | `/marvin:audit-summary` | Consolidate the finished reports (A-99): deduplicate findings several audits reached, resolve severity conflicts by a stated rule, rank on risk against cost of fixing against cost of inaction, order the work by finding dependencies, and produce a top five with numbers. Reads reports, never code. | `marvin сведи результаты аудитов`, `consolidate the audit reports`, `what do we fix first?` |
 
+## Bug hunter — `hunt-*`
+
+The bug hunter looks for defects a user would hit and records them in a shared ledger under
+`.marvin/hunt/` ([ADR-0053](./adr/0053-hunt-command-family.md),
+[ADR-0054](./adr/0054-hunt-ledger-and-flow-map.md)). A claim counts only after an independent
+skeptic and referee have ruled on it and, for a bug, a reproducing test fails for the stated
+reason; the `hunt` tool enforces those rules rather than the prose. This release is
+detect-only: nothing edits product code, and the reproducing tests stay uncommitted for you to
+keep or delete. The runtime, UX and design checks are later phases.
+
+| Command | What it does | Say it in chat |
+|---------|--------------|----------------|
+| `/marvin:hunt-init` | Detect the stack and write the hunter's settings — scope, severity floors, budgets, detect-only authority — as the `hunt` key of `.marvin/config.json`, creating `.marvin/hunt/`. | `настрой охотника за багами`, `set up the bug hunter`, `configure hunt for this repo` |
+| `/marvin:hunt-code` | Map the flows, rank hotspots from git history, hunt each batch against a 25-category taxonomy, challenge every claim, and prove bugs with a reproducing test. Takes a path, `since <ref>`, or `diff`. | `найди баги в коде`, `hunt for bugs in src/billing`, `find real defects and prove them with tests` |
+| `/marvin:hunt-triage` | Merge duplicates, fold repeated defects into one systemic finding, re-verify findings whose code changed, rank what is open, and write one report. | `разбери найденные баги`, `triage the hunt findings`, `which bugs are worth fixing first?` |
+| `/marvin:hunt-status` | Open findings by status, the top confirmed ones, recent runs and coverage. | `что нашёл охотник?`, `hunt status` |
+
 ## Task tracker — `track-*`
 
 These commands drive a lightweight per-project board with interactive forms, giving
@@ -250,7 +267,7 @@ The panel is additive, so a text-only host shows the same information as text.
 
 ## Deterministic MCP tools
 
-Where determinism matters, the prompts delegate to sixteen typed MCP tools, each declaring
+Where determinism matters, the prompts delegate to seventeen typed MCP tools, each declaring
 a zod input schema. The commands above invoke them, and the model can call them directly,
 but they are not typed as slash commands.
 
@@ -272,10 +289,11 @@ but they are not typed as slash commands.
 | `report` | The unified report list scanned from `.marvin/` — security, refactor, task, handoff, critique — plus the `triage` action that reconciles findings against the stored baseline. |
 | `pipeline` | The autopilot pipeline's read-only door — `paths` locates the `marvin-pipe` CLI and its assets, `status` reads one run back. Runs are driven by the CLI, never by this tool. |
 | `autopilot-report` | One periodic status report of an autopilot run as a card, written by `marvin-pipe await --report-min` ([ADR-0051](./adr/0051-periodic-autopilot-status-card.md)). |
+| `hunt` | The bug hunter's state under `.marvin/hunt/` — runs, hotspots, flow map, the append-only findings ledger, the verification protocol, coverage, triage and reports. Never edits source, commits or pushes. |
 
 ## Agents
 
-Ten Claude Code subagents load on install and are invoked through the Task tool or by the
+Fourteen Claude Code subagents load on install and are invoked through the Task tool or by the
 pipeline.
 
 | Agent | Role |
@@ -290,6 +308,10 @@ pipeline.
 | `marvin-tm-executor` | Headless spec execution in a worktree. |
 | `marvin-tm-diff-critic` | Red-team review of a branch or staged diff, read-only. |
 | `marvin-tm-review-fixer` | Autonomous resolution of PR review comments. |
+| `marvin-hunt-cartographer` | Builds the bug hunter's flow map from code, read-only. |
+| `marvin-hunt-hunter` | Hunts one hotspot batch for defects and returns claims, read-only. |
+| `marvin-hunt-skeptic` | Tries to disprove one claim, read-only. |
+| `marvin-hunt-referee` | Rules between a claim and its rebuttal, read-only. |
 
 For the install steps and the lifecycle overview, see the [README](../README.md), and for
 the contributor reference, see [CLAUDE.md](../CLAUDE.md).

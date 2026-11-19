@@ -1322,7 +1322,7 @@ test("a signal-killed or unlaunchable oracle is not-run and never a proven red",
   }
 });
 
-// ── the autopilot's delivery gate requires a proof (ADR-0053) ────────────────
+// ── the autopilot's delivery gate requires a proof (ADR-0055) ────────────────
 //
 // Under `MARVIN_PIPELINE=1` nobody is present to weigh an unproven delivery, so
 // `red_green` stops being advisory: ALLOW needs `proven`, or a `no_oracle`

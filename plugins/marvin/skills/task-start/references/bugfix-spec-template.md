@@ -87,7 +87,7 @@ before the fix and once with `expect: "pass"` after it, and the delivery gate re
 journal — a red and a green at the same `contract_sha` over an unchanged test file — as
 `red_green: "proven"`. Anything else, including a pair that was run by hand, reads as `missing`.
 In an interactive session that is a warning on the gate's reason line and does not block
-delivery. Under the autopilot (`MARVIN_PIPELINE=1`) it is a BLOCK (ADR-0053). A bugfix cannot
+delivery. Under the autopilot (`MARVIN_PIPELINE=1`) it is a BLOCK (ADR-0055). A bugfix cannot
 declare `no_oracle`: its regression criterion contradicts the declaration.
 
 ## Fix Approach

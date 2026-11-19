@@ -63,6 +63,14 @@ export interface ServerEnv {
    * directory. `MARVIN_METRICS_DIR` overrides it, chiefly for test isolation.
    */
   metricsDir: string;
+  /**
+   * Directory holding the bug-hunter state (default `.marvin/hunt`, ADR-0053/0054) — the
+   * findings ledger, the flow map, the coverage history, run state and reports, written only by
+   * the `hunt` tool. The ledger, map and coverage are shared records meant to be committed; the
+   * tool writes a `.gitignore` inside the directory that keeps `runs/` and `evidence/` local.
+   * `MARVIN_HUNT_DIR` overrides it, chiefly for test isolation.
+   */
+  huntDir: string;
 }
 
 /**
@@ -114,6 +122,7 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const usageDir = env.MARVIN_USAGE_DIR ?? join(projectDir, ".marvin", "usage");
   const reportDir = env.MARVIN_REPORT_DIR ?? join(projectDir, ".marvin", "report");
   const metricsDir = env.MARVIN_METRICS_DIR ?? join(projectDir, ".marvin", "metrics");
+  const huntDir = env.MARVIN_HUNT_DIR ?? join(projectDir, ".marvin", "hunt");
   return {
     projectDir,
     tasksDir,
@@ -125,5 +134,6 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
     usageDir,
     reportDir,
     metricsDir,
+    huntDir,
   };
 }

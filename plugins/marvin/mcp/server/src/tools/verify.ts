@@ -1037,7 +1037,7 @@ async function runOracles(
 /**
  * Red-green status for the delivery gate, over one of two criterion sets at a
  * readable seal. Advisory in an interactive session; required under the
- * autopilot, unless the contract declares `no_oracle` (ADR-0053):
+ * autopilot, unless the contract declares `no_oracle` (ADR-0055):
  *
  * - a **bugfix** proves EVERY `regression: true` criterion (ADR-0036);
  * - a **feature** proves ONE criterion whose oracle is `kind: test` — any one
@@ -1056,7 +1056,7 @@ function redGreenStatus(
   specConfig?: SpecConfig,
 ): { status: RedGreen; unproven: string[]; why: string } {
   // `why` says what made the answer `unknown`. It is quoted only by the autopilot's BLOCK
-  // (ADR-0053), where "no proof" has to name what was missing to be acted on.
+  // (ADR-0055), where "no proof" has to name what was missing to be acted on.
   const none = (why: string) => ({ status: "unknown" as const, unproven: [] as string[], why });
   const { slug } = resolveRunSlug(specSlug);
   if (!slug) return none("the gate call passed no resolvable `specSlug`, so no spec was read");
@@ -1085,7 +1085,7 @@ function redGreenStatus(
 }
 
 /**
- * The spec's `no_oracle` declaration (ADR-0053), checked against its own criteria:
+ * The spec's `no_oracle` declaration (ADR-0055), checked against its own criteria:
  *
  * - `declared` — the contract declares it and no criterion contradicts it;
  * - `contradicted` — it is declared, and a criterion a test can execute exists
@@ -1117,7 +1117,7 @@ function noOracleStatus(
 }
 
 /**
- * Whether this delivery must carry a proof (ADR-0053): true in the autopilot's executor, whose
+ * Whether this delivery must carry a proof (ADR-0055): true in the autopilot's executor, whose
  * `claude -p` session the engine starts with `MARVIN_PIPELINE=1` and whose MCP server inherits
  * that environment. Nobody is present there to weigh an unproven delivery, so `red_green` stops
  * being advisory. An interactive session never sets the variable and keeps the ADR-0036 warning.
@@ -1251,13 +1251,13 @@ function deliverGate(
   // Computed regardless of the verdict so the field is always present on the
   // block. In an interactive session it never reaches `decision` (ADR-0036): a
   // person is there to weigh a missing proof. In the autopilot it does
-  // (ADR-0053): 51 of 95 autopilot ALLOWs measured in one host shipped with no
+  // (ADR-0055): 51 of 95 autopilot ALLOWs measured in one host shipped with no
   // proof, and nobody was there to weigh them.
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   // Advisory for the same reason (ADR-0052): the signature is free text, and a name the reader
   // cannot see in it is a gap in the reader, not a defect in the code.
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
-  // ADR-0053: the declaration that stands in for a red→green pair, and whether one is required.
+  // ADR-0055: the declaration that stands in for a red→green pair, and whether one is required.
   const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
   const required = redGreenRequired();
   const extras: GateExtras = {
@@ -1407,7 +1407,7 @@ function deliverGate(
         : " · freshness not checked (this run recorded no provenance)";
   const fresh = { ...extras, staleness };
 
-  // ADR-0053. A declaration the sealed contract itself contradicts is refused in every session:
+  // ADR-0055. A declaration the sealed contract itself contradicts is refused in every session:
   // it is a false statement about the criteria, and the DoR gate FAILs the same spec.
   if (noOracle.status === "contradicted") {
     return decide(

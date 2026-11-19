@@ -19816,7 +19816,7 @@ var GateEntrySchema = external_exports.object({
   red_green: external_exports.enum(["proven", "missing", "unknown"]),
   /**
    * The spec's `no_oracle` declaration as the gate judged it, and whether this decision required
-   * a proof at all (ADR-0053). Optional: entries journalled before the declaration existed carry
+   * a proof at all (ADR-0055). Optional: entries journalled before the declaration existed carry
    * neither, and still parse.
    */
   no_oracle: external_exports.enum(["declared", "contradicted", "absent", "unknown"]).optional(),

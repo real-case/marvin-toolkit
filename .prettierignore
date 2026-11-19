@@ -66,3 +66,7 @@ evals/autopilot/results/*.json
 packages/site/.astro/
 packages/site/test-results/
 packages/site/playwright-report/
+# The hunt JSON Schemas (ADR-0054), emitted by scripts/gen-hunt-schemas.mjs as
+# JSON.stringify(…,2)+"\n" from the zod contracts and byte-guarded by test/hunt-schemas.test.mjs
+# — excluded for the same reason catalog.json is.
+plugins/marvin/skills/hunt-code/references/schemas/
