@@ -1,0 +1,199 @@
+{
+  "skill": "hunt-triage",
+  "target": "hunt-triage",
+  "note": "mock_rate encodes the IDEAL outcome. hunt-triage works on findings ALREADY in the .marvin/hunt/ ledger: dedupe, group, re-verify, rank, report. Near-misses are hunt-code (finding new defects), audit-summary (consolidating A-XX audit reports), report (viewing other .marvin reports) and sec-report.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "triage the hunt findings",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "разбери найденные баги",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "which of the bugs the hunter found should we fix first?",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "dedupe the bug hunter ledger and write a report",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "re-check whether the old hunt findings are still there after the refactor",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "give me the hunt report for the team",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "group the repeated hunt findings into systemic ones",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "rank the open bugs from the last three hunts",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "clean up the hunt ledger",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "what are the top five confirmed bugs from the hunts?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "find new bugs in src/auth",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "finding new defects → hunt-code"
+    },
+    {
+      "id": "neg-2",
+      "text": "consolidate the audit reports A-01 to A-22 into one register",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "formal audit programme → audit-summary"
+    },
+    {
+      "id": "neg-3",
+      "text": "list the security scan reports",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "security reports → sec-report"
+    },
+    {
+      "id": "neg-4",
+      "text": "set up the bug hunter",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "configuration → hunt-init"
+    },
+    {
+      "id": "neg-5",
+      "text": "show all the reports marvin generated",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "unified viewer → reports"
+    },
+    {
+      "id": "neg-6",
+      "text": "prioritise the refactoring findings into a plan",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "refactor findings → refactor-plan"
+    },
+    {
+      "id": "neg-7",
+      "text": "triage this GitHub issue",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "not the hunt ledger → general help"
+    },
+    {
+      "id": "neg-8",
+      "text": "summarise what this task delivered",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "delivery digest → task-summary"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "prioritise the bugs the hunter recorded last week",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "hunt-triage",
+      "mock_rate": 1,
+      "note": "existing hunt findings → beats hunt-code"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "make one report of everything the bug hunter found",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "hunt-triage",
+      "mock_rate": 1,
+      "note": "a ledger-wide report → beats reports"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "hunt for bugs in the files changed since dev",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "hunt-code",
+      "mock_rate": 0,
+      "note": "new hunting → hunt-code wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "consolidate the finished audit reports and give me the top five",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "audit-summary",
+      "mock_rate": 0,
+      "note": "A-XX audits, not the hunt ledger → audit-summary wins"
+    }
+  ]
+}

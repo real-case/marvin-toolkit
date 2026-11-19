@@ -23,6 +23,7 @@ import { buildAuditTool } from "./tools/audit.js";
 import { buildReportTool } from "./tools/report.js";
 import { buildPipelineTool } from "./tools/pipeline.js";
 import { buildAutopilotReportTool } from "./tools/autopilot-report.js";
+import { buildHuntTool } from "./tools/hunt.js";
 import { buildWidgetResources } from "./resources/widgets.js";
 
 // Injected at build time from this server's package.json (see tsup.config.ts) so the
@@ -78,6 +79,8 @@ await runPackServer({
         // One autopilot status report as a card (ADR-0051): written by marvin-pipe await,
         // read back here, rendered by the autopilot-status widget or as Markdown.
         buildAutopilotReportTool(),
+        // The bug hunter's state (ADR-0053/0054): ledger, flow map, coverage, runs, reports.
+        buildHuntTool(env),
       ],
       // MCP Apps `ui://` widget documents (ADR-0024). Registering these advertises
       // the `resources` capability; each is served from the committed HTML under

@@ -3,9 +3,9 @@
 Marvin is a Claude Code plugin that packages the whole development lifecycle as
 **one plugin, one MCP server, and one slash prefix** — `/marvin:`. It covers core
 developer tools, an Architecture Decision Record lifecycle, a spec-driven task
-pipeline, security scanners, a code-health refactoring family, and a lightweight
-task tracker, and it ships **60 prompts, 16 MCP tools, 10 agents, and 10 interactive
-widgets** across seven command groups.
+pipeline, security scanners, a code-health refactoring family, a bug hunter, and a
+lightweight task tracker, and it ships **64 prompts, 17 MCP tools, 14 agents, and 10
+interactive widgets** across nine command groups.
 
 This page is the conceptual tour of how those pieces fit together and why the project
 is built the way it is. For the decision history behind each choice, read the
@@ -65,7 +65,7 @@ flowchart TB
 ## Command groups
 
 Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The
-60 prompts divide into eight groups. The [command reference](./commands.md) lists every
+64 prompts divide into nine groups. The [command reference](./commands.md) lists every
 entry with a synopsis and the phrases that invoke it from chat.
 
 | Group | Purpose | Count |
@@ -76,6 +76,8 @@ entry with a synopsis and the phrases that invoke it from chat.
 | `task-*` | Spec-driven task pipeline | 7 |
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
+| `audit-*` | Formal project audit (plan, run one, consolidate) | 3 |
+| `hunt-*` | Bug hunter (find, challenge, prove, triage) | 4 |
 | `track-*` | Lightweight task tracker | 7 |
 
 The `task-*` pipeline and the `track-*` tracker are deliberately separate domains. Reach
@@ -132,7 +134,7 @@ all tools precisely because their behavior must not vary with phrasing.
 
 ## Deterministic tools
 
-Sixteen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
+Seventeen MCP tools sit behind the prompts, each declaring a zod input schema. They group by
 the job they do.
 
 | Tool | Group | Role |
@@ -153,10 +155,11 @@ the job they do.
 | `adr` | Decision lifecycle | ADR numbering, corpus parsing, the accept gate, and the managed index. |
 | `pipeline` | Autopilot | Read-only: where the `marvin-pipe` CLI and the pipeline's shipped assets are (`paths`), and one run read back (`status`). Runs are driven by the CLI, never by this tool. |
 | `autopilot-report` | Autopilot | One periodic status report of a run, written by `marvin-pipe await --report-min`, shown as a card: the widget on a rich host, the same card in Markdown elsewhere ([ADR-0051](./adr/0051-periodic-autopilot-status-card.md)). |
+| `hunt` | Bug hunter | The state under `.marvin/hunt/`: runs and their scope, the deterministic hotspot order, the flow map, the append-only findings ledger with fingerprint deduplication, the verification protocol's transitions, coverage, triage and reports ([ADR-0053](./adr/0053-hunt-command-family.md), [ADR-0054](./adr/0054-hunt-ledger-and-flow-map.md)). Never edits source, commits or pushes. |
 
 ## Agents
 
-Ten subagents handle work that benefits from a fresh context or a constrained toolset.
+Fourteen subagents handle work that benefits from a fresh context or a constrained toolset.
 The read-only and read-mostly agents pin their access with a `tools:` allowlist, which is
 what actually enforces their contract, because a subagent that omits `tools:` inherits
 every tool.
@@ -173,6 +176,10 @@ every tool.
 | `marvin-tm-executor` | Headless spec execution in a worktree. |
 | `marvin-tm-diff-critic` | Red-team review of a branch or staged diff, read-only. |
 | `marvin-tm-review-fixer` | Autonomous resolution of PR review comments. |
+| `marvin-hunt-cartographer` | Builds the bug hunter's flow map from code, read-only. |
+| `marvin-hunt-hunter` | Hunts one hotspot batch for defects and returns claims, read-only. |
+| `marvin-hunt-skeptic` | Tries to disprove one claim, read-only. |
+| `marvin-hunt-referee` | Rules between a claim and its rebuttal, read-only. |
 
 ## The task pipeline
 
@@ -207,7 +214,7 @@ change. The `marvin-tm-review-fixer` agent is the autonomous twin of `pr-resolve
 
 Rich MCP hosts can render a tool's structured output in a sandboxed `ui://` iframe, and
 Marvin ships ten such widgets ([ADR-0024](./adr/0024-mcp-apps-widget-architecture.md)).
-Ten of the sixteen tools bind a widget, so on a capable host the same command that prints
+Ten of the seventeen tools bind a widget, so on a capable host the same command that prints
 a text report also renders an interactive panel.
 
 ```mermaid

@@ -85,6 +85,11 @@ const REQUIRED_PROMPTS = [
   "refactor-smells",
   "refactor-plan",
   "refactor-apply",
+  // hunt-*
+  "hunt-init",
+  "hunt-code",
+  "hunt-triage",
+  "hunt-status",
   // track-*
   "track-menu",
   "track-new",
@@ -112,6 +117,7 @@ const REQUIRED_TOOLS = [
   "report",
   "pipeline",
   "autopilot-report",
+  "hunt",
 ];
 
 /**

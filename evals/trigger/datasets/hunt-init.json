@@ -1,0 +1,199 @@
+{
+  "skill": "hunt-init",
+  "target": "hunt-init",
+  "note": "mock_rate encodes the IDEAL outcome. hunt-init writes the bug hunter's settings and creates .marvin/hunt/; near-misses are hunt-code (actually hunting), track-config (board settings), onboard (project orientation) and task-verify gates.",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "set up the bug hunter",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "настрой охотника за багами",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "configure hunt for this repository",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "init the bug hunt settings with only src in scope",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "change the hunt severity floor to medium",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "prepare this project for marvin hunt",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin hunt init",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "set the bug hunter budget to 15 minutes",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "exclude the generated client from the bug hunter",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "create the .marvin/hunt directory and settings",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "hunt for bugs in src",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "hunting → hunt-code"
+    },
+    {
+      "id": "neg-2",
+      "text": "change the board statuses",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "board config → track-config"
+    },
+    {
+      "id": "neg-3",
+      "text": "onboard me to this codebase",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "orientation → onboard"
+    },
+    {
+      "id": "neg-4",
+      "text": "configure the verify gates",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "verify gates → track-config"
+    },
+    {
+      "id": "neg-5",
+      "text": "triage the hunt findings",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ranking → hunt-triage"
+    },
+    {
+      "id": "neg-6",
+      "text": "set up a pre-commit secret scan",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "secrets → sec-secrets"
+    },
+    {
+      "id": "neg-7",
+      "text": "write a CLAUDE.md for this repo",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "project docs → general"
+    },
+    {
+      "id": "neg-8",
+      "text": "install the marvin plugin",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "installation → guide"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "before hunting, set up the bug hunter's scope and budgets",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "hunt-init",
+      "mock_rate": 1,
+      "note": "configuration first → beats hunt-code"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "configure what the hunt is allowed to do here",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "hunt-init",
+      "mock_rate": 1,
+      "note": "authority and constraints → hunt-init"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "set up the hunter and then find bugs in src/billing",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "hunt-code",
+      "mock_rate": 0,
+      "note": "the deliverable is findings; hunt-code runs on defaults and points at hunt-init"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "give me an orientation tour of this codebase before I configure anything",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "onboard",
+      "mock_rate": 0,
+      "note": "orientation, not hunt settings → onboard wins"
+    }
+  ]
+}
