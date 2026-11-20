@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-11-08 |
+| Status        | **Accepted** |
+| Date          | 2026-11-20 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0004](0004-traceable-spec-contract.md) (the contract and its `signature`), [ADR-0012](0012-tool-backed-delivery-gate.md) (the delivery gate this extends), [ADR-0036](0036-oracle-execution-and-red-green.md) (the advisory `red_green` field this mirrors) |

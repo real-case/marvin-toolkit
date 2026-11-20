@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-11-19 |
+| Status        | **Accepted** |
+| Date          | 2026-11-20 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0001](0001-single-plugin-consolidation.md) (one plugin, one server), [ADR-0006](0006-all-subagents-opus.md) (every subagent on opus), [ADR-0029](0029-refactoring-command-family.md) (read → plan → apply), [ADR-0038](0038-finding-identity-and-triage.md) (finding fingerprints), [ADR-0054](0054-hunt-ledger-and-flow-map.md) (the state this family writes) |

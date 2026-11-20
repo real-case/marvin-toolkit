@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-11-19 |
+| Status        | **Accepted** |
+| Date          | 2026-11-20 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0012](0012-tool-backed-delivery-gate.md) (the delivery gate this extends), [ADR-0036](0036-oracle-execution-and-red-green.md) (the advisory `red_green` field this makes blocking in the autopilot), [ADR-0047](0047-feature-red-phase.md) (the feature red phase) |
