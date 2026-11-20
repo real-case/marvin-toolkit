@@ -21,6 +21,8 @@ test("quickstart renders the header, prereq, and four numbered install steps in 
   await expect(page.locator(".eyebrow").first()).toHaveText("get started");
   await expect(page.locator("h1")).toHaveText("Quickstart.");
   await expect(page.locator(".prereq")).toContainText("Before you start");
+  // The runtime floor the bundled server needs (root package.json engines, docs/getting-started.md).
+  await expect(page.locator(".prereq")).toContainText("Node.js 20 or later");
 
   // The four step headings, in document order — scoped to `.qbody h3` so the agentbox's own
   // <h3> ("Working with an agent?") is excluded (it is the fifth h3 on the page).
@@ -42,6 +44,14 @@ test("quickstart renders the header, prereq, and four numbered install steps in 
     "/marvin:help",
     "/marvin:task-start",
   ]);
+
+  // onboard, widget-preview and autopilot are named in prose <code>, never as extra command rows
+  // (which would break the four-row pin above); the hooks disclosure is a static note.
+  const body = page.locator(".qbody");
+  await expect(body.locator("code", { hasText: "/marvin:onboard" })).toHaveCount(1);
+  await expect(body.locator("code", { hasText: "/marvin:widget-preview help" })).toHaveCount(1);
+  await expect(body.locator("code", { hasText: "/marvin:autopilot" })).toHaveCount(1);
+  await expect(page.locator(".qbody .snote")).toContainText("two guards");
 });
 
 test("quickstart renders the onward next-cards with catalog-driven counts and the agent box", async ({
@@ -54,6 +64,7 @@ test("quickstart renders the onward next-cards with catalog-driven counts and th
 
   // Onward links: the GitHub repo (the FR-19 "link onward to the docs"), then /commands, /toolbox.
   await expect(cards.nth(0)).toHaveAttribute("href", /^https:\/\/github\.com\/real-case/);
+  await expect(cards.nth(0)).toHaveAttribute("href", /\/docs\/usage\.md$/);
   await expect(cards.nth(1)).toHaveAttribute("href", "/commands");
   await expect(cards.nth(2)).toHaveAttribute("href", "/toolbox");
 

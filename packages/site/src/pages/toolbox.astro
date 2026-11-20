@@ -100,10 +100,10 @@ const MINIS = [
     kind: "rows" as const,
     step: "steer",
     rows: [
-      { name: "backlog", badge: "6", badgeClass: "b-acc" },
-      { name: "in progress", badge: "2", badgeClass: "b-blu" },
-      { name: "done", badge: "14", badgeClass: "b-grn" },
+      { name: "MAR-41 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
+      { name: "MAR-44 widget", dot: "dota", badge: "review", badgeClass: "b-amb" },
     ],
+    note: "Board tasks linked to your tracker, each opening its item.",
   },
   {
     widget: "task-detail",
@@ -113,7 +113,7 @@ const MINIS = [
     step: "steer",
     rows: [
       { name: "#12 spec gate", dot: "dotb", badge: "doing", badgeClass: "b-blu" },
-      { name: "acceptance", badge: "4/4", badgeClass: "b-grn" },
+      { name: "PR", badge: "#214", badgeClass: "b-blu" },
       { name: "branch", badge: "feat/spec", badgeClass: "b-acc" },
     ],
     note: "The whole task, body and links, in one pane.",
@@ -127,9 +127,9 @@ const MINIS = [
     rows: [
       { name: "sec-scan", dot: "dotg", badge: "fresh", badgeClass: "b-grn" },
       { name: "refactor-audit", dot: "dota", badge: "3d", badgeClass: "b-amb" },
-      { name: "task 001 summary", dot: "dotv", badge: "sealed", badgeClass: "b-acc" },
+      { name: "critique 007", dot: "dotv", badge: "PASS", badgeClass: "b-grn" },
     ],
-    exports: ["Export PDF", "Export MD"],
+    note: "Security, refactor, task, handoff and critique reports, each with its freshness. Export any of them with /marvin:report-export.",
   },
   {
     widget: "audit",
@@ -138,10 +138,11 @@ const MINIS = [
     kind: "rows" as const,
     step: "review",
     rows: [
-      { name: "critical", badge: "0", badgeClass: "b-red" },
-      { name: "high", badge: "2", badgeClass: "b-amb" },
-      { name: "audit", badge: "task-summary", badgeClass: "b-acc" },
+      { name: "high", badge: "2", badgeClass: "b-red" },
+      { name: "medium", badge: "3", badgeClass: "b-amb" },
+      { name: "low", badge: "1", badgeClass: "b-blu" },
     ],
+    note: "Typed sec-* findings in one list, critical first, with severity filters.",
   },
   {
     widget: "task-summary",
@@ -189,8 +190,8 @@ const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · $
         <p class="eyebrow">visual toolbox</p>
         <h1>The toolbox.</h1>
         <p class="lead">
-          Fully set up on install. In MCP Apps hosts every tool renders live, interactive UI —
-          <b>and the same commands answer in plain text in any terminal</b>.
+          Fully set up on install. In MCP Apps hosts the widget-bound tools render live, interactive
+          UI — <b>and every command answers in plain text in any terminal</b>.
         </p>
         <span class="chip">{widgetCount} widgets</span>
       </header>
@@ -300,13 +301,6 @@ const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · $
                       <span class={`badge ${row.badgeClass}`}>{row.badge}</span>
                     </div>
                   ))}
-                  {mini.exports && (
-                    <div class="rexport">
-                      {mini.exports.map((e) => (
-                        <span class="badge b-acc">{e}</span>
-                      ))}
-                    </div>
-                  )}
                   {mini.note && <p class="wnote">{mini.note}</p>}
                 </div>
               </div>
@@ -323,7 +317,11 @@ const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · $
 
       <p class="parline">
         Interactive in MCP Apps hosts · plain text in any terminal — same data, your choice of
-        glass.
+        glass. The Claude Code terminal draws no widgets: <code
+          >/marvin:widget-preview dashboard</code
+        >
+        renders one with your project's data into a self-contained file under
+        <code>.marvin/preview/</code>.
       </p>
     </div>
   </div>
@@ -572,11 +570,6 @@ const canvasWidgets = MINIS.map((m) => ({ key: m.widget, label: `${m.label} · $
   }
   .dotv {
     background: var(--ac);
-  }
-  .rexport {
-    display: flex;
-    gap: 6px;
-    margin-top: 11px;
   }
 
   .parity-mini {

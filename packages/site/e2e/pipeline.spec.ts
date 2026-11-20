@@ -54,7 +54,7 @@ test("pipeline renders the header, rail, and four stage cards in order", async (
   }
 });
 
-test("pipeline renders the lessons loop, under-the-hood trio, and quickstart cta", async ({
+test("pipeline renders the lessons loop, under-the-hood tools, and quickstart cta", async ({
   page,
 }) => {
   await page.goto("/pipeline");
@@ -66,19 +66,39 @@ test("pipeline renders the lessons loop, under-the-hood trio, and quickstart cta
   expect(loop).toEqual([
     "captured at deliver / debug",
     ".marvin/memory/",
-    "recalled at the next task-start",
+    "recalled at task-start and implement",
   ]);
 
-  // The under-the-hood section: its accent eyebrow and the three tool cards, whose bare
-  // <code> titles are spec / verify / lessons (NOT the .code primitive — see the spec).
+  // The under-the-hood section: its accent eyebrow and the four tool cards, whose bare
+  // <code> titles are spec / verify / lessons / metrics (NOT the .code primitive — see the spec).
   await expect(page.locator(".eyebrow", { hasText: "under the hood" })).toHaveCount(1);
   const tools = (await page.locator(".uthc .t code").allTextContents()).map((t) => t.trim());
-  expect(tools).toEqual(["spec", "verify", "lessons"]);
+  expect(tools).toEqual(["spec", "verify", "lessons", "metrics"]);
 
   // The closing call to action links to /quickstart.
   const cta = page.locator("a.btn--accent", { hasText: "Quickstart" });
   await expect(cta).toHaveText("Quickstart →");
   await expect(cta).toHaveAttribute("href", "/quickstart");
+});
+
+test("pipeline renders the autopilot section as a bare card outside the four stages", async ({
+  page,
+}) => {
+  await page.goto("/pipeline");
+
+  // The in-depth home of the autopilot, which Home links to as /pipeline#autopilot.
+  const autopilot = page.locator("#autopilot");
+  await expect(autopilot).toBeVisible();
+  await expect(autopilot).toContainText("/marvin:autopilot");
+  await expect(autopilot.getByRole("heading", { name: "Or let it run." })).toBeVisible();
+  await expect(autopilot.locator(".command .code")).toHaveText(
+    "/marvin:autopilot add a tag filter to the chat list",
+  );
+
+  // A bare .stagecard: it must not join the four stages, and it adds no eyebrow and no recording.
+  await expect(autopilot.locator(".stage")).toHaveCount(0);
+  await expect(autopilot.locator(".eyebrow")).toHaveCount(0);
+  await expect(autopilot.locator(".cast")).toHaveCount(0);
 });
 
 test("pipeline holds both themes and responds from 360 to 1440 with a player mounted", async ({
@@ -96,8 +116,9 @@ test("pipeline holds both themes and responds from 360 to 1440 with a player mou
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "dark"); // persisted across reload
 
-  // Responsive: no horizontal overflow at the supported widths — the .stage (1fr/1fr) and
-  // .uth (3-col) grids collapse, the rail wraps, and the terminal contains.
+  // Responsive: no horizontal overflow at the supported widths — the .stage (1fr/1fr) grid
+  // collapses, the .uth (2×2) and #autopilot card grids drop to one column below 768px, the rail
+  // and the seven autopilot chips wrap, and the terminal contains.
   for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/pipeline");

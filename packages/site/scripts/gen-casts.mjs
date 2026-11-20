@@ -123,15 +123,17 @@ export const STAGES = [
     command: "/marvin:task-start",
     caption: "dialogue → spec…",
     // PROVENANCE — reconstructed from:
-    //   skills/task-start/SKILL.md steps 1.3–1.4 (intake, codebase context, dimension sweep) and
-    //   step 8 (the tool-backed DoR gate);
+    //   skills/task-start/SKILL.md steps 1.3–1.4 (intake, codebase context, dimension sweep),
+    //   step 7F (the tool-backed DoR gate, run BEFORE the critic), step 8F (the spec critic, whose
+    //   dispatch budget is two — lib/critic-budget.ts) and step 9F (flip status draft → ready,
+    //   re-run the gate on the written file and stamp contract_sha), in that order;
     //   the `spec` tool's real report renderer, plugins/marvin/mcp/server/src/tools/spec.ts:930-950
     //   (the "Spec Readiness Report" heading, Verdict line, "## Checks" list and ✅ icon) with the
     //   check labels taken verbatim from its pass()/fail() call sites — Frontmatter, Spec contract,
     //   Traceability, File paths, Open Questions;
     //   the `lessons` tool's real search renderer, tools/lessons.ts:260 ("# Relevant lessons (N)");
     //   and a real run in this repo, whose gate returned PASS over 14 files and 7 criteria and wrote
-    //   .marvin/task/012-website-terminal-recordings.md.
+    //   .marvin/task/012-website-terminal-recordings.md. The sealed hash is the one stage 2 checks.
     lines: [
       { text: dim("Intake · type: feature · stack: typescript, astro"), delay: 0.7 },
       { text: "", delay: 0.35 },
@@ -141,7 +143,6 @@ export const STAGES = [
       { text: dim("  · generated output needs a .prettierignore entry"), delay: 0.15 },
       { text: "", delay: 0.5 },
       { text: `Dimension sweep ${dim("→")} 7 acceptance criteria`, delay: 0.9 },
-      { text: dim("Sealing the spec contract…"), delay: 0.6 },
       { text: "", delay: 0.9 },
       { text: `${bold("Spec Readiness Report")}   Verdict: ${okGreen("PASS")}`, delay: 0.5 },
       { text: `  ${OK} Frontmatter     ${dim("slug · type · status · risk")}`, delay: 0.25 },
@@ -149,6 +150,8 @@ export const STAGES = [
       { text: `  ${OK} Traceability    ${dim("every AC → files → oracle")}`, delay: 0.2 },
       { text: `  ${OK} File paths      ${dim("14 resolve on disk")}`, delay: 0.2 },
       { text: "", delay: 0.4 },
+      { text: `Spec critic ${dim("· dispatch 1 of 2")}   ${okGreen("PASS")}`, delay: 1.1 },
+      { text: dim("Sealing · contract_sha d80af627a6f82eb6 · status ready"), delay: 0.6 },
       { text: cyan("→ .marvin/task/012-website-terminal-recordings.md"), delay: 0.3 },
     ],
   },
@@ -159,8 +162,11 @@ export const STAGES = [
     // PROVENANCE — reconstructed from:
     //   skills/task-implement/SKILL.md step 1 (resolve the spec), step 2 (the tool-backed
     //   immutability check and the status → in-progress carve-out), step 5F (build order and the
-    //   contract file allowlist) and step 6F (the `spec` tool's scope gate, then diff-critic ‖
-    //   verify run concurrently);
+    //   contract file allowlist, plus the ADR-0047 red phase: the first `kind: test` criterion's
+    //   test is recorded failing before any code) and step 6F, whose order is deterministic first —
+    //   the `spec` tool's scope gate, lint, verify, the acceptance oracles — and then ONE
+    //   `marvin-tm-diff-critic` dispatch on a tree that is already green (the old concurrent
+    //   critic ‖ verify was reversed by P2 of the task-workflow latency proposal);
     //   a real run of THIS spec in this repo — the seal hash d80af627a6f82eb6 below is the value the
     //   `spec` tool actually returned for 012-website-terminal-recordings, and the five listed paths
     //   are five of its fourteen contract files.
@@ -169,6 +175,7 @@ export const STAGES = [
       { text: `Contract seal: ${okGreen("intact")} ${dim("(d80af627a6f82eb6)")}`, delay: 0.5 },
       { text: dim("Status → in-progress"), delay: 0.3 },
       { text: "", delay: 0.5 },
+      { text: `Red phase ${dim("· AC1 test recorded failing")}`, delay: 0.7 },
       { text: `Implementing ${dim("— 14 files, build order pinned")}`, delay: 0.7 },
       { text: `  ${green("+")} scripts/gen-casts.mjs`, delay: 0.6 },
       { text: `  ${green("+")} src/data/casts.json`, delay: 0.45 },
@@ -177,7 +184,8 @@ export const STAGES = [
       { text: `  ${green("+")} test/casts.test.mjs`, delay: 0.5 },
       { text: "", delay: 0.5 },
       { text: `Scope gate: ${dim("git diff ⊆ contract allowlist")}  ${OK}`, delay: 0.8 },
-      { text: dim("Self-review ‖ verify — running concurrently…"), delay: 0.4 },
+      { text: `Lint ${OK} · verify ${OK} · oracles ${dim("7/7")} ${OK}`, delay: 0.9 },
+      { text: dim("Diff critic — one dispatch, green tree…"), delay: 0.4 },
     ],
   },
   {
@@ -214,16 +222,20 @@ export const STAGES = [
     command: "/marvin:task-deliver",
     caption: "commit → pull request…",
     // PROVENANCE — reconstructed from:
-    //   skills/task-deliver/SKILL.md step 1 (the tool-backed delivery gate reading verification.md
-    //   and returning ALLOW / BLOCK), step 2 (commit via the /marvin:commit workflow), step 3
-    //   (PR via /marvin:pr-create) and step 5 (capture a lesson into .marvin/memory/);
+    //   skills/task-deliver/SKILL.md step 1 (the tool-backed delivery gate, which reads the per-spec
+    //   run .marvin/task/runs/<slug>.md, checks it still describes the tree, and returns ALLOW /
+    //   BLOCK), step 1.5 (on ALLOW the gate has already appended the task's metrics record), step 2
+    //   (commit via the /marvin:commit workflow), step 3 (PR via /marvin:pr-create), step 4 (the
+    //   spec's status → shipped) and step 5 (capture a lesson into .marvin/memory/);
     //   the repo's Conventional Commits convention (CLAUDE.md) and the real branch/base pair this
     //   task used — feat/website-terminal-recordings onto dev, which is the ADR-0019 branching
     //   model. Commit hash and PR number are illustrative; the shapes are this repo's real ones.
     lines: [
-      { text: `Delivery gate: ${dim("verification.md →")} ${okGreen("PASS")}  ${OK}`, delay: 0.8 },
+      { text: `Delivery gate: ${okGreen("ALLOW")}  ${OK}`, delay: 0.8 },
+      { text: dim("  runs/website-terminal-recordings.md · fresh at HEAD"), delay: 0.3 },
+      { text: dim("  metrics → .marvin/metrics/012-website-terminal-recordings.md"), delay: 0.3 },
       { text: "", delay: 0.4 },
-      { text: dim("Staging 14 files…"), delay: 0.5 },
+      { text: dim("Staging 15 files…"), delay: 0.5 },
       { text: `${dim("[feat/website-terminal-recordings 8dca29e]")}`, delay: 0.7 },
       { text: "  feat(site): terminal recordings on the pipeline tour", delay: 0.2 },
       { text: "", delay: 0.5 },
@@ -233,6 +245,7 @@ export const STAGES = [
       { text: `  ${bold("#145")}  feat(site): terminal recordings`, delay: 0.3 },
       { text: `  ${dim("base: dev ← feat/website-terminal-recordings")}`, delay: 0.2 },
       { text: "", delay: 0.4 },
+      { text: dim("Spec status → shipped"), delay: 0.4 },
       { text: `Lesson captured ${dim("→ .marvin/memory/")}  ${OK}`, delay: 0.5 },
     ],
   },
