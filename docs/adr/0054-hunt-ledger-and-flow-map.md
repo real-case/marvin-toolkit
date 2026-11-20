@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-11-19 |
+| Status        | **Accepted** |
+| Date          | 2026-11-20 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0007](0007-marvin-working-directory.md) (the `.marvin/` directory), [ADR-0024](0024-mcp-apps-widget-architecture.md) (shared zod contracts), [ADR-0038](0038-finding-identity-and-triage.md) (fingerprints), [ADR-0053](0053-hunt-command-family.md) (the commands that write it) |
