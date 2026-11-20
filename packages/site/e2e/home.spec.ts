@@ -27,6 +27,11 @@ test("home renders the five-claim narrative in document order", async ({ page })
   // The workflow stepper closes on the learn loop.
   await expect(page.locator(".step.loop")).toContainText("learn ↺");
 
+  // The workflow section's autopilot line hands off to the in-depth section on /pipeline.
+  const autopilot = page.locator(".stepcap.autocap");
+  await expect(autopilot).toContainText("autopilot");
+  await expect(autopilot.locator('a[href="/pipeline#autopilot"]')).toBeVisible();
+
   // The install-band closes.
   await expect(page.getByText("Two commands. About a minute.")).toBeVisible();
 

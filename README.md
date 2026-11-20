@@ -146,6 +146,7 @@ These separate the human decisions in a spec from the automated execution that f
 | `/marvin:task-verify` | Run the quality gates with stack auto-detection. |
 | `/marvin:task-deliver` | Commit and open a PR, gated on verification passing. |
 | `/marvin:task-summary` | Aggregate a finished task into one delivery summary. |
+| `/marvin:task-metrics` | Aggregate the per-task metrics series — time, quality and rework — or show one task's record in full. |
 | `/marvin:task-audit` | Lint the spec corpus for consistency; read-only, with remediation notes. |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,

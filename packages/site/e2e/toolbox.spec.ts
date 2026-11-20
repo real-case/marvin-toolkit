@@ -91,6 +91,14 @@ test("toolbox renders the demo-canvas shell, the parity line, and the catalog-dr
 
   // The closing terminal-parity line.
   await expect(page.locator(".parline")).toContainText("Interactive in MCP Apps hosts");
+  // The terminal route to a rendered widget is named, since the Claude Code CLI draws none.
+  await expect(page.locator(".parline")).toContainText("/marvin:widget-preview");
+
+  // The reports mini shows no export control (the widget has none) and points at the command
+  // that does export.
+  const reportsMini = page.locator('.journey .wmini[data-widget="reports"]');
+  await expect(reportsMini).toContainText("/marvin:report-export");
+  await expect(reportsMini.locator(".rexport")).toHaveCount(0);
 });
 
 test("toolbox screenshot side renders the static mini and mounts no iframe", async ({ page }) => {

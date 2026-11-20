@@ -4,7 +4,7 @@
     "command": "/marvin:task-start",
     "caption": "dialogue → spec…",
     "file": "/casts/task-start.cast",
-    "duration": 8.86,
+    "duration": 9.96,
     "poster": "npt:0:02"
   },
   {
@@ -12,7 +12,7 @@
     "command": "/marvin:task-implement",
     "caption": "writing code + tests…",
     "file": "/casts/task-implement.cast",
-    "duration": 8.64,
+    "duration": 10.24,
     "poster": "npt:0:02"
   },
   {
@@ -28,7 +28,7 @@
     "command": "/marvin:task-deliver",
     "caption": "commit → pull request…",
     "file": "/casts/task-deliver.cast",
-    "duration": 7.95,
+    "duration": 8.95,
     "poster": "npt:0:02"
   },
   {
