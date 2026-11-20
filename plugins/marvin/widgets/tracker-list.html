@@ -95,6 +95,9 @@ container holding the app. Specify either width or maxWidth, and either height o
 }
 .mvroot[data-theme="light"]{${Ia}}
 .mvroot[data-theme="dark"]{${za}}
+:root{color-scheme:light dark}
+:root:has(.mvroot[data-theme="light"]){color-scheme:light}
+:root:has(.mvroot[data-theme="dark"]){color-scheme:dark}
 .mvroot,.mvroot *{box-sizing:border-box}
 .mvroot *{transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 @media (prefers-reduced-motion: reduce){
