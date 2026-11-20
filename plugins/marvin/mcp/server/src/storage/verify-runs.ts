@@ -81,6 +81,13 @@ const GateEntrySchema = z.object({
   staleness: z.enum(["fresh", "stale", "unknown"]),
   allowStale: z.boolean(),
   red_green: z.enum(["proven", "missing", "unknown"]),
+  /**
+   * The spec's `no_oracle` declaration as the gate judged it, and whether this decision required
+   * a proof at all (ADR-0055). Optional: entries journalled before the declaration existed carry
+   * neither, and still parse.
+   */
+  no_oracle: z.enum(["declared", "contradicted", "absent", "unknown"]).optional(),
+  red_green_required: z.boolean().optional(),
   /** The artifact the gate judged, project-relative. */
   artifact: z.string().min(1),
 });

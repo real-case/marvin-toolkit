@@ -144,8 +144,10 @@ test file at one `contract_sha` as `red_green: "proven"`. One criterion is enoug
 - **`status: "not-run"`** — neither a red nor a green. Fix the cause the `reason` names (usually a
   missing `gates.test_one` or `oracle.run`) and record the red again.
 
-`red_green` stays advisory: a missing pair adds a warning to the delivery gate's reason and never
-changes its decision.
+In an interactive session `red_green` stays advisory: a missing pair adds a warning to the delivery
+gate's reason and never changes its decision. Under the autopilot (`MARVIN_PIPELINE=1`) the gate
+allows a delivery only with `red_green: "proven"` or a `no_oracle` declaration in the sealed contract
+(ADR-0055), so this red is the one step of the pipeline that cannot be made up afterwards.
 
 **And record each one durably.** As each acceptance criterion is completed, call the `spec` tool with
 `action: "progress"`, `kind: "criterion"`, the criterion id, and the resolved `specPath`. These are

@@ -6,8 +6,28 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-11-19
+
+### Changed
+
+- **The autopilot's delivery gate requires a proof** (ADR-0055). In one host project, 51 of 95
+  autopilot ALLOW decisions went out with `red_green` `missing` or `unknown`, so nothing showed
+  that a test had failed for the change before it passed. When the server runs under the autopilot
+  (`MARVIN_PIPELINE=1`), `verify action: "gate"` now allows a delivery only when `red_green` is
+  `proven`, or when the sealed contract declares a no-oracle mode that its criteria bear out.
+  Otherwise it BLOCKs, and the reason names the criterion that lacks its red, or what made the
+  proof unreadable. It also names the declaration that would answer it. Interactive sessions keep
+  the ADR-0036 warning.
+
 ### Added
 
+- **`no_oracle: { reason }` in the `spec-contract` block** (ADR-0055), for a task no test can
+  execute, such as a documentation or configuration change. The reason is required. A `kind: test`
+  or `regression: true` criterion contradicts the declaration: the `spec` DoR gate reports this as
+  a FAIL on its new `no-oracle` check, and the delivery gate BLOCKs it in every session. The
+  `deliver-gate` block and the verification-run journal's `gate` entry gain `no_oracle`
+  (`declared`, `contradicted`, `absent`, `unknown`) and `red_green_required`. The key is inside
+  the sealed block, so it cannot be added after the seal, and existing seals stay valid.
 - **A bug hunter: the `hunt-*` command group** (ADR-0053, ADR-0054). `/marvin:hunt-code` maps
   the user flows, ranks hotspots from git history, hunts each batch against a 25-category defect
   taxonomy, has every claim challenged by an independent skeptic and referee, and counts a bug
