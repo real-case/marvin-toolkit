@@ -61,7 +61,12 @@ const DARK_TOKEN_DECLARATIONS = `
  * The stylesheet MvRoot injects once per document. Beyond the token blocks it
  * carries only what cannot live inline: the base typography on the root, the
  * border-box model, the 150ms color transitions (with the reduced-motion kill),
- * and the accent focus-visible outline (pseudo-classes need a stylesheet).
+ * the accent focus-visible outline (pseudo-classes need a stylesheet), and the
+ * document's `color-scheme`. That last one is not cosmetic: a widget runs in an
+ * iframe, and when the iframe's color scheme differs from the embedding page's
+ * the browser paints the iframe canvas opaque in its own scheme. Without a
+ * declaration the document is light-only, so a dark host showed a white frame
+ * around every dark widget. The `:has` rules follow a pinned `data-theme`.
  * Everything else — surfaces, badges, rows, states — is widget-inline styling
  * over `var(--…)` references.
  */
@@ -75,6 +80,9 @@ export const MV_THEME_CSS = `
 }
 .mvroot[data-theme="light"]{${LIGHT_TOKEN_DECLARATIONS}}
 .mvroot[data-theme="dark"]{${DARK_TOKEN_DECLARATIONS}}
+:root{color-scheme:light dark}
+:root:has(.mvroot[data-theme="light"]){color-scheme:light}
+:root:has(.mvroot[data-theme="dark"]){color-scheme:dark}
 .mvroot,.mvroot *{box-sizing:border-box}
 .mvroot *{transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 @media (prefers-reduced-motion: reduce){
