@@ -21,8 +21,8 @@ import { callTool, listTools } from "./_driver.mjs";
  * tool's text output. Gates are passed explicitly (fake sleep commands) so the
  * concurrency behaviour is tested deterministically without any toolchain.
  */
-async function callVerify(args, blockTag = "verify-result") {
-  const result = await callTool("verify", args);
+async function callVerify(args, blockTag = "verify-result", opts = {}) {
+  const result = await callTool("verify", args, opts);
   const text = result.content.map((c) => c.text).join("\n");
   const m = text.match(new RegExp("```json " + blockTag + "\\n([\\s\\S]*?)\\n```"));
   assert.ok(m, `no ${blockTag} block in output:\n${text}`);
@@ -1322,6 +1322,174 @@ test("a signal-killed or unlaunchable oracle is not-run and never a proven red",
   }
 });
 
+// ── the autopilot's delivery gate requires a proof (ADR-0055) ────────────────
+//
+// Under `MARVIN_PIPELINE=1` nobody is present to weigh an unproven delivery, so
+// `red_green` stops being advisory: ALLOW needs `proven`, or a `no_oracle`
+// declaration in the sealed contract that the contract bears out. The driver is
+// hermetic and strips every `MARVIN_*` name, so the variable is passed here
+// explicitly, and every test above it still sees an interactive gate.
+
+const PIPELINE = { env: { MARVIN_PIPELINE: "1" } };
+const DECLARED_REASON = "a documentation change, so no criterion is something a test can execute";
+
+/** A docs-shaped feature: a command oracle, a prose-review one, and nothing a test executes. */
+const DOCS_BLOCK = [
+  "files:",
+  "  - id: F1",
+  "    path: guide.md",
+  "    action: edit",
+  "    satisfies: [AC1, AC2]",
+  "criteria:",
+  "  - id: AC1",
+  "    statement: the guide names the new flag",
+  "    implemented_by: [F1]",
+  "    oracle:",
+  "      kind: command",
+  "      ref: grep -q flag guide.md",
+  "  - id: AC2",
+  "    statement: the guide reads well",
+  "    implemented_by: [F1]",
+  "    oracle:",
+  "      kind: prose-review",
+].join("\n");
+const declare = (block) => `${block}\nno_oracle:\n  reason: ${DECLARED_REASON}`;
+
+/** Stage a feature spec and a PASS verification for it. */
+function featureFixture(dir, slug, block) {
+  writeSpec(dir, { slug, type: "feature", block });
+  writeFileSync(join(dir, "guide.md"), "the flag\n");
+  writeFileSync(join(dir, "thing.test.sh"), "exit 0\n");
+  writeVerification(dir, "PASS");
+  return slug;
+}
+
+const gateCall = (dir, slug) =>
+  callVerify(
+    { action: "gate", projectRoot: dir, ...(slug ? { specSlug: slug } : {}) },
+    "deliver-gate",
+    PIPELINE,
+  );
+
+test("pipeline gate: a proven red→green pair ALLOWs", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-pipeline-proven-"));
+  try {
+    const slug = bugfixFixture(dir);
+    const base = { action: "oracles", projectRoot: dir, specSlug: slug };
+    const red = runsOf(await callVerify({ ...base, expect: "fail" }, "oracle-result"))[0];
+    assert.equal(red.status, "fail");
+    writeFileSync(join(dir, "impl.txt"), "fixed\n");
+    await callVerify(base, "oracle-result");
+
+    const gate = await gateCall(dir, slug);
+    assert.equal(gate.parsed.red_green, "proven");
+    assert.equal(gate.parsed.red_green_required, true);
+    assert.equal(gate.parsed.no_oracle, "absent");
+    assert.equal(gate.parsed.decision, "ALLOW", gate.parsed.reason);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pipeline gate: a missing pair without a declaration BLOCKs with the reason", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-pipeline-missing-"));
+  try {
+    const slug = bugfixFixture(dir);
+    // A green with no red before it.
+    writeFileSync(join(dir, "impl.txt"), "fixed\n");
+    await callVerify({ action: "oracles", projectRoot: dir, specSlug: slug }, "oracle-result");
+
+    const gate = await gateCall(dir, slug);
+    assert.equal(gate.parsed.red_green, "missing");
+    assert.equal(gate.parsed.decision, "BLOCK");
+    assert.equal(gate.isError, true);
+    assert.match(gate.parsed.reason, /red→green/);
+    assert.match(gate.parsed.reason, /AC1/, "names the criterion that lacks its red");
+    assert.match(gate.parsed.reason, /no_oracle/, "names the declaration that would answer it");
+    assert.doesNotMatch(gate.parsed.reason, /does not block delivery/);
+
+    // The same evidence in an interactive session is still the ADR-0036 warning.
+    const interactive = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: slug },
+      "deliver-gate",
+    );
+    assert.equal(interactive.parsed.decision, "ALLOW");
+    assert.equal(interactive.parsed.red_green_required, false);
+    assert.match(interactive.parsed.reason, /does not block delivery/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pipeline gate: an unknown proof without a declaration BLOCKs with the reason", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-pipeline-unknown-"));
+  try {
+    // No criterion a test can execute, and nothing declared: `unknown`.
+    const slug = featureFixture(dir, "docs-undeclared", DOCS_BLOCK);
+    const gate = await gateCall(dir, slug);
+    assert.equal(gate.parsed.red_green, "unknown");
+    assert.equal(gate.parsed.no_oracle, "absent");
+    assert.equal(gate.parsed.decision, "BLOCK");
+    assert.match(gate.parsed.reason, /no `kind: test` criterion/);
+    assert.match(gate.parsed.reason, /no_oracle/);
+
+    // A pipeline gate call with no slug has no spec to read a proof from at all.
+    const slugless = await gateCall(dir, undefined);
+    assert.equal(slugless.parsed.red_green, "unknown");
+    assert.equal(slugless.parsed.decision, "BLOCK");
+    assert.match(slugless.parsed.reason, /specSlug/);
+
+    // Interactive: unchanged, an ALLOW.
+    const interactive = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: slug },
+      "deliver-gate",
+    );
+    assert.equal(interactive.parsed.decision, "ALLOW");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pipeline gate: a declared no-oracle mode the contract bears out ALLOWs", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-pipeline-declared-"));
+  try {
+    const slug = featureFixture(dir, "docs-declared", declare(DOCS_BLOCK));
+    const gate = await gateCall(dir, slug);
+    assert.equal(gate.parsed.red_green, "unknown");
+    assert.equal(gate.parsed.no_oracle, "declared");
+    assert.equal(gate.parsed.decision, "ALLOW", gate.parsed.reason);
+    assert.ok(gate.parsed.reason.includes(DECLARED_REASON), "the declared reason is quoted");
+
+    // The journal records which way the delivery was allowed.
+    const entries = readJournal(dir, slug);
+    assert.equal(entries.at(-1).no_oracle, "declared");
+    assert.equal(entries.at(-1).red_green_required, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("gate: a no-oracle declaration the contract contradicts BLOCKs, in both modes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-pipeline-contradicted-"));
+  try {
+    // FEATURE_BLOCK's AC1 is `kind: test`: a criterion a test can execute.
+    const slug = featureFixture(dir, "contradicted", declare(FEATURE_BLOCK));
+    for (const opts of [PIPELINE, {}]) {
+      const gate = await callVerify(
+        { action: "gate", projectRoot: dir, specSlug: slug },
+        "deliver-gate",
+        opts,
+      );
+      assert.equal(gate.parsed.no_oracle, "contradicted");
+      assert.equal(gate.parsed.decision, "BLOCK", JSON.stringify(opts));
+      assert.match(gate.parsed.reason, /AC1/);
+      assert.doesNotMatch(gate.parsed.reason, /AC2/, "a command oracle is not a contradiction");
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("deliver gate reports a missing red-green pair and still allows delivery", async () => {
   const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-missing-"));
   try {
@@ -1347,6 +1515,103 @@ test("deliver gate reports a missing red-green pair and still allows delivery", 
     assert.equal(slugless.parsed.red_green, "unknown");
     assert.equal(slugless.parsed.decision, "ALLOW");
     assert.doesNotMatch(slugless.parsed.reason, /red→green/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── contract surface (ADR-0052) ──────────────────────────────────────────────
+
+/** A feature contract whose signature declares `makeWidget` and `Widget` in `src/widget.ts`. */
+const SURFACE_BLOCK = [
+  "files:",
+  "  - id: F1",
+  "    path: src/widget.ts",
+  "    action: new",
+  "  - id: F2",
+  "    path: widget.test.sh",
+  "    action: new",
+  "contract:",
+  "  kind: function",
+  "  signature: |",
+  "    // src/widget.ts",
+  "    export function makeWidget(name: string): Widget",
+  "    export interface Widget {",
+  "      name: string;",
+  "    }",
+  "criteria:",
+  "  - id: AC1",
+  "    statement: a widget is made",
+  "    implemented_by: [F1, F2]",
+  "    oracle:",
+  "      kind: test",
+  "      ref: widget.test.sh::a widget is made",
+  "      run: sh widget.test.sh",
+].join("\n");
+
+const widgetSource = (fn) =>
+  `export interface Widget { name: string }\nexport function ${fn}(name: string): Widget { return { name }; }\n`;
+
+test("deliver gate reports the contract surface beside its decision, never inside it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-surface-"));
+  try {
+    writeSpec(dir, { slug: "demo-surface", type: "feature", block: SURFACE_BLOCK });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    // The test names the function too, so a name found only there must not count.
+    writeFileSync(join(dir, "widget.test.sh"), "grep -q makeWidget src/widget.ts\n");
+    writeFileSync(join(dir, "src", "widget.ts"), widgetSource("makeWidget"));
+    writeVerification(dir, "PASS");
+    const call = { action: "gate", projectRoot: dir, specSlug: "demo-surface" };
+
+    const matched = await callVerify(call, "deliver-gate");
+    assert.equal(matched.parsed.contract_surface, "matched");
+    assert.equal(matched.parsed.decision, "ALLOW");
+    assert.doesNotMatch(matched.parsed.reason, /contract\.signature/);
+    assert.match(matched.text, /\*\*Contract surface:\*\* matched/);
+
+    // Rename the entry point. Every recorded gate is still green; only this field notices.
+    writeFileSync(join(dir, "src", "widget.ts"), widgetSource("buildWidget"));
+    const missing = await callVerify(call, "deliver-gate");
+    assert.equal(missing.parsed.contract_surface, "missing");
+    assert.equal(missing.parsed.decision, "ALLOW", "a warning contributes a reason, never a veto");
+    assert.match(missing.parsed.reason, /contract\.signature declares `makeWidget`/);
+    assert.doesNotMatch(missing.parsed.reason, /`Widget`/, "the interface is still there");
+
+    // A refused delivery carries the field too, and its reason stays about the refusal.
+    writeVerification(dir, "FAIL");
+    const blocked = await callVerify(call, "deliver-gate");
+    assert.equal(blocked.parsed.decision, "BLOCK");
+    assert.equal(blocked.parsed.contract_surface, "missing");
+    assert.doesNotMatch(blocked.parsed.reason, /contract\.signature/);
+
+    // With no slug the field is `unknown` and the reason is silent: additive for every caller.
+    writeVerification(dir, "PASS");
+    const slugless = await callVerify({ action: "gate", projectRoot: dir }, "deliver-gate");
+    assert.equal(slugless.parsed.contract_surface, "unknown");
+    assert.doesNotMatch(slugless.parsed.reason, /contract\.signature/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deliver gate reads the contract surface of a tampered spec as unknown", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "marvin-surface-tampered-"));
+  try {
+    writeSpec(dir, {
+      slug: "demo-surface",
+      type: "feature",
+      block: SURFACE_BLOCK,
+      seal: "deadbeefdeadbeef",
+    });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "widget.ts"), widgetSource("buildWidget"));
+    writeVerification(dir, "PASS");
+    const gate = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: "demo-surface" },
+      "deliver-gate",
+    );
+    assert.equal(gate.parsed.contract_surface, "unknown", "an edited contract is not judged");
+    assert.equal(gate.parsed.decision, "ALLOW");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1790,14 +2055,18 @@ test("verify-run journal — every delivery-gate decision for a slug appends a `
     assert.equal(last.red_green, allow.parsed.red_green);
     assert.equal(last.artifact, ".marvin/task/runs/demo-slug.md", "the per-spec run it judged");
 
-    // The deliver-gate block itself carries exactly the fields it always did —
-    // the journal is written beside the answer, never into it.
+    // The deliver-gate block itself carries exactly its own fields — the journal
+    // is written beside the answer, never into it. `contract_surface` is the
+    // gate's own advisory field (ADR-0052), not a journal key.
     assert.deepEqual(Object.keys(allow.parsed).sort(), [
       "allowStale",
       "artifactPath",
+      "contract_surface",
       "decision",
+      "no_oracle",
       "reason",
       "red_green",
+      "red_green_required",
       "staleness",
       "verdict",
     ]);

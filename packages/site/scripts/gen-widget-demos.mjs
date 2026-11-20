@@ -15,7 +15,7 @@
 //
 // The fixtures are read with the gen-catalog mechanism: transpile the `.ts` in memory and import
 // the result as a `data:` URL — no build step, no dependency on the widgets workspace being built.
-// Eight of the nine fixtures import only a TYPE (erased by transpile), so they are self-contained.
+// Nine of the ten fixtures import only a TYPE (erased by transpile), so they are self-contained.
 // `help/fixture.ts` alone has a runtime import of `@marvin-toolkit/mcp-shared/help-content`; its
 // specifier is rewritten to a nested `data:` URL of that module, transpiled the same way.
 //
@@ -44,7 +44,7 @@ const OUT_DIR = join(here, "..", "public", "widget-demos");
  */
 export const PRIMARY_FIXTURE = {
   audit: "auditListFixture",
-  "autopilot-status": "runningFixture",
+  "autopilot-status": "runningEnglishFixture",
   dashboard: "dashboardFixture",
   handoffs: "handoffsFixture",
   help: "helpFixture",

@@ -73,6 +73,10 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0049](./adr/0049-whole-file-reading-of-test-one.md) | The seal stage reads `test_one` for a whole file instead of refusing its per-test parts | Accepted |
 | [0050](./adr/0050-per-run-calibration-files.md) | One calibration file per finished run, not one appended log | Accepted |
 | [0051](./adr/0051-periodic-autopilot-status-card.md) | The autopilot reports at least every five minutes, as one status card | Accepted |
+| [0052](./adr/0052-contract-surface-at-delivery.md) | The delivery gate checks the contract's declared names against the code | Accepted |
+| [0053](./adr/0053-hunt-command-family.md) | The bug hunter is a `hunt-*` command family over one deterministic tool | Accepted |
+| [0054](./adr/0054-hunt-ledger-and-flow-map.md) | The hunt state is an append-only ledger, a flow map and per-file coverage under `.marvin/hunt/` | Accepted |
+| [0055](./adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Accepted |
 
 ## Work in progress
 

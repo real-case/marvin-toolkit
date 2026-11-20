@@ -137,6 +137,16 @@ describe("MV_THEME_CSS base rules", () => {
     );
   });
 
+  it("declares the document color-scheme so a dark host gets no light iframe canvas", () => {
+    expect(ruleBody(MV_THEME_CSS, ":root{")).toContain("color-scheme:light dark");
+    expect(ruleBody(MV_THEME_CSS, ':root:has(.mvroot[data-theme="light"])')).toContain(
+      "color-scheme:light",
+    );
+    expect(ruleBody(MV_THEME_CSS, ':root:has(.mvroot[data-theme="dark"])')).toContain(
+      "color-scheme:dark",
+    );
+  });
+
   it("outlines keyboard focus with the accent", () => {
     expect(ruleBody(MV_THEME_CSS, ".mvroot :focus-visible")).toContain(
       "outline:2px solid var(--ac)",

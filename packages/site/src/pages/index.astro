@@ -36,9 +36,10 @@ const commandCount = commands.length; // the same generated total, not a literal
           <span class="np">Without panic.</span>
         </p>
         <p class="thesis">
-          One install gives your project lightweight spec-driven development: rerunnable specs,
-          fail-closed quality gates, security scans, and decision records — deterministic where it
-          matters, in your repo always.
+          One install gives your project lightweight spec-driven development: sealed specs,
+          fail-closed quality gates, security scans, and decision records — and an autopilot that
+          carries a task to a merge-ready pull request on its own. Deterministic where it matters,
+          in your repo always.
         </p>
         <div class="herocmds">
           <CodeCommand
@@ -54,7 +55,7 @@ const commandCount = commands.length; // the same generated total, not a literal
       </div>
       <div class="parity">
         <CastPlayer client:visible cast={heroCast} />
-        <div class="parity-lbl">⇄ the same command in Claude Desktop</div>
+        <div class="parity-lbl">⇄ what the spec gate checked</div>
         <div class="wcard">
           <div class="wt">
             <span>spec — Definition of Ready</span><span class="mono">.mvroot</span>
@@ -93,7 +94,9 @@ const commandCount = commands.length; // the same generated total, not a literal
       <p class="lead">
         Marvin structures the whole lifecycle — from a requirement to a merged pull request.
         <b>The critical steps are deterministic tools, not free-form prompting</b>: the spec gate
-        refuses an incomplete contract, the verify gate refuses a red build.
+        refuses an incomplete contract, the verify gate refuses a red build, and two hooks shipped
+        with the plugin refuse any commit Claude runs that skips its checks or carries a secret,
+        with no prompt involved.
       </p>
       <div class="steps">
         <span class="step">spec</span><span class="arr">→</span>
@@ -105,11 +108,23 @@ const commandCount = commands.length; // the same generated total, not a literal
       <p class="stepcap">
         The loop closes: lessons captured at delivery are recalled at the next spec.
       </p>
+      <p class="stepcap autocap">
+        Or hand it off. The autopilot runs the same pipeline on its own: a planner writes the spec,
+        sealed tests come first, an executor implements, the engine runs the gates, a read-only
+        verifier reviews the result, and you approve the spec and answer only the questions nothing
+        else can settle. <a href="/pipeline#autopilot">How it runs →</a>
+      </p>
+      <div class="autocmd">
+        <CodeCommand command="/marvin:autopilot add a tag filter to the chat list" />
+      </div>
       <div class="groups">
         <span class="gchip">commit &amp; pr-*</span>
+        <span class="gchip">task-*</span>
         <span class="gchip">sec-*</span>
         <span class="gchip">adr-*</span>
         <span class="gchip">refactor-*</span>
+        <span class="gchip">audit-*</span>
+        <span class="gchip">hunt-*</span>
         <span class="gchip">track-*</span>
         <span class="grow"></span>
         <a class="cta" href="/pipeline">Tour the pipeline →</a>
@@ -149,7 +164,8 @@ const commandCount = commands.length; // the same generated total, not a literal
       <p class="eyebrow">artifacts</p>
       <h2 class="h">Your project keeps the receipts.</h2>
       <p class="lead">
-        Everything marvin produces lives in one hidden directory, versioned with your code.
+        Everything your team needs from marvin lives in one hidden directory, versioned with your
+        code.
         <b>No SaaS, no accounts, nothing to sync</b> — clone the repo, get the whole history of specs,
         reports, and decisions.
       </p>
@@ -158,13 +174,22 @@ const commandCount = commands.length; // the same generated total, not a literal
           <h3 class="treehead">.marvin/ — one directory, the whole story</h3>
           <pre
             class="tree"><b>.marvin/</b>
-├─ task/       <span class="tdim">specs + verification</span>
+├─ task/       <span class="tdim">specs + verification runs</span>
 ├─ track/      <span class="tdim">board tasks</span>
+├─ critique/   <span class="tdim">critic receipts</span>
+├─ metrics/    <span class="tdim">time, quality, rework per task</span>
 ├─ security/   <span class="tdim">scan reports</span>
 ├─ refactor/   <span class="tdim">findings + plans</span>
+├─ audit/      <span class="tdim">formal audit reports + PDFs</span>
+├─ hunt/       <span class="tdim">bug-hunter ledger + triage</span>
 ├─ memory/     <span class="tdim">team lessons</span>
 ├─ handoff/    <span class="tdim">session handoffs</span>
+├─ pipeline/   <span class="tdim">autopilot rubric + calibration</span>
 └─ config.json</pre>
+          <p class="foot-note">
+            Autopilot run logs and local usage telemetry stay out of git, under your user state
+            directory and self-ignoring folders.
+          </p>
         </div>
         <div class="card">
           <span class="ck">memory</span>
@@ -194,8 +219,9 @@ const commandCount = commands.length; // the same generated total, not a literal
       <p class="eyebrow">visual toolbox</p>
       <h2 class="h">The visual toolbox.</h2>
       <p class="lead">
-        Fully set up on install. In MCP Apps hosts like Claude Desktop every tool renders live,
-        interactive UI — <b>and the same commands answer in plain text in any terminal</b>.
+        Fully set up on install. In MCP Apps hosts the widget-bound tools render live, interactive
+        UI — <b>and the same commands answer in plain text in any terminal</b>. From the terminal,
+        <code>/marvin:widget-preview</code> opens any widget with your own data.
       </p>
       <!-- The two teasers are live widget demos (spec 011, F7 — FR-9). Each island mounts its
            frame only once scrolled into view, so a visitor who never reaches this section
@@ -532,6 +558,13 @@ const commandCount = commands.length; // the same generated total, not a literal
   .stepcap {
     font-size: 13px;
     color: var(--t3);
+    margin: 0 0 20px;
+  }
+  .autocap a {
+    color: var(--act);
+    font-weight: 600;
+  }
+  .autocmd {
     margin: 0 0 20px;
   }
   .groups {

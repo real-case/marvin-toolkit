@@ -479,6 +479,23 @@ test("the gate stage's default protected list is the one the boundary hook enfor
   assert.ok(protectedDefaults.length > 0);
 });
 
+test("the planner's prompt names every default protected path", () => {
+  // The planner keeps them out of a contract; a pattern added to the list and not to the prompt
+  // would reach the engine's check only after a whole planning turn.
+  const line = readFileSync(join(pipelineDir, "roles", "planner.md"), "utf8")
+    .split("\n")
+    .find((l) => l.includes("protected path"));
+  assert.ok(line, "planner.md has a protected-path rule");
+  const named = [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+  for (const pattern of protectedDefaults) {
+    const literal = pattern.replace(/^\^/, "").replace(/\\(.)/g, "$1").split(/[[($]/)[0];
+    assert.ok(
+      named.some((n) => literal.startsWith(n)),
+      `${pattern} (${literal}) is not named`,
+    );
+  }
+});
+
 test("the boundary hook denies every edit when the shared protected list is unusable", async () => {
   const plugin = realpathSync(mkdtempSync(join(tmpdir(), "pipe-plugin-")));
   const pluginSrc = join(pipelineDir, "..");

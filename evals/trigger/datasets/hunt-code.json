@@ -1,0 +1,199 @@
+{
+  "skill": "hunt-code",
+  "target": "hunt-code",
+  "note": "mock_rate encodes the IDEAL outcome so `--decider mock` demonstrates the pipeline; real deciders ignore it and measure the description. hunt-code finds and PROVES behavioural defects; the near-misses are refactor-smells (structure and style, not defects), sec-scan (security posture), debug (one failure the user already has) and hunt-triage (ranking what was already found).",
+  "queries": [
+    {
+      "id": "pos-1",
+      "text": "hunt for bugs in this repo",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-2",
+      "text": "найди баги в коде",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-3",
+      "text": "look for real defects in src/billing and prove them with failing tests",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-4",
+      "text": "what's actually broken in this codebase? I want bugs, not style nits",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-5",
+      "text": "run a bug hunt on the files that changed since dev",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-6",
+      "text": "find edge cases that would crash the checkout flow",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-7",
+      "text": "marvin hunt code please",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-8",
+      "text": "go through the auth module and find bugs a user could hit",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-9",
+      "text": "bug hunt on my uncommitted diff before I push",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "pos-10",
+      "text": "are there null-pointer or race-condition bugs in the session handling?",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "positive",
+      "mock_rate": 1
+    },
+    {
+      "id": "neg-1",
+      "text": "scan src/api for code smells and naming issues",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "structure and style → refactor-smells"
+    },
+    {
+      "id": "neg-2",
+      "text": "my test for parseDate fails with a TypeError, help me find the root cause",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "one known failure → debug"
+    },
+    {
+      "id": "neg-3",
+      "text": "check our dependencies for known CVEs",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "advisories → sec-deps"
+    },
+    {
+      "id": "neg-4",
+      "text": "rank the bugs we already found and write a report",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "ranking existing findings → hunt-triage"
+    },
+    {
+      "id": "neg-5",
+      "text": "set up the bug hunter for this project",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "configuration → hunt-init"
+    },
+    {
+      "id": "neg-6",
+      "text": "review this pull request",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "PR review → pr-review"
+    },
+    {
+      "id": "neg-7",
+      "text": "how many open findings does the hunt have?",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "status read → hunt-status prompt"
+    },
+    {
+      "id": "neg-8",
+      "text": "do a security threat model of the payment service",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "negative",
+      "mock_rate": 0,
+      "note": "threat modelling → sec-threat-model"
+    },
+    {
+      "id": "cmp-win-1",
+      "text": "find the bugs in the billing module and show me which are real",
+      "should_trigger": true,
+      "split": "train",
+      "kind": "competition",
+      "winner": "hunt-code",
+      "mock_rate": 1,
+      "note": "finding and proving new defects beats hunt-triage's ranking of old ones"
+    },
+    {
+      "id": "cmp-win-2",
+      "text": "audit src/payments for defects that would lose money",
+      "should_trigger": true,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "hunt-code",
+      "mock_rate": 1,
+      "note": "'audit' vocabulary, but the ask is behavioural defects → beats refactor-audit"
+    },
+    {
+      "id": "cmp-lose-1",
+      "text": "find code smells and duplicated logic in src/payments",
+      "should_trigger": false,
+      "split": "train",
+      "kind": "competition",
+      "winner": "refactor-smells",
+      "mock_rate": 0,
+      "note": "structural smells, not defects → refactor-smells wins"
+    },
+    {
+      "id": "cmp-lose-2",
+      "text": "dedupe and prioritise the hunt findings from last week",
+      "should_trigger": false,
+      "split": "validation",
+      "kind": "competition",
+      "winner": "hunt-triage",
+      "mock_rate": 0,
+      "note": "existing ledger → hunt-triage wins"
+    }
+  ]
+}

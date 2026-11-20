@@ -391,3 +391,47 @@ export const readyEnglishFixture: AutopilotReportPayload = {
     },
   },
 };
+
+/**
+ * The running card in English: the same interval as `runningFixture` (stage executing,
+ * iteration 2, $4.12) with every text the orchestrator would have translated in English. The
+ * website's live demo shows this one; no story or test imports it.
+ */
+export const runningEnglishFixture: AutopilotReportPayload = {
+  ...runningFixture,
+  earlier: [
+    ev("14:14", "Started: tier standard, base branch dev.", "stage"),
+    ev("14:16", "Planner: a plan with 6 acceptance criteria."),
+    ev("14:21", "Plan accepted, contract sealed.", "stage"),
+    ev("14:22", "Test author: 6 acceptance tests."),
+    ev("14:29", "Tests red on the current code, as expected."),
+    ev("14:30", "Stage: executing, iteration 1.", "stage"),
+    ev("14:38", "Executor #1: AC-1 and AC-2 done.", "report"),
+    ev("14:41", "Gates: 2 blocking scope findings.", "rejection"),
+    ev("14:42", "Iteration 2, rung 1.", "stage"),
+    ev("14:45", "Executor #2 started."),
+  ],
+  report: {
+    ...runningFixture.report,
+    lang: "en",
+    task: "Report the autopilot at least every five minutes",
+    sessionName: "Autopilot report every five minutes",
+    events: [
+      {
+        at: "2026-10-25T14:48:00.000Z",
+        kind: "report",
+        text: "Executor #2: criterion AC-3 done, its test is green.",
+      },
+      {
+        at: "2026-10-25T14:50:00.000Z",
+        kind: "note",
+        text: "Executor #2: 2 commits, 6 files, all inside the contract.",
+      },
+      {
+        at: "2026-10-25T14:52:00.000Z",
+        kind: "note",
+        text: "Executor #2 continues with AC-4.",
+      },
+    ],
+  },
+};

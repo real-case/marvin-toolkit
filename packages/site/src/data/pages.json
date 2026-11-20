@@ -10,7 +10,7 @@
   {
     "path": "/quickstart",
     "title": "Quickstart — Marvin",
-    "description": "From zero to your first marvin command in about a minute: two commands to install, then spec your first task.",
+    "description": "From zero to your first marvin command in about a minute: two commands to install, a guided first session, then spec your first task.",
     "summary": "Install marvin and run your first command, in four numbered steps.",
     "card": "From zero to your first command in about a minute.",
     "priority": 0.9
@@ -26,7 +26,7 @@
   {
     "path": "/pipeline",
     "title": "Pipeline — Marvin",
-    "description": "A guided tour of marvin's spec-driven pipeline: spec, implement, verify, deliver, then learn.",
+    "description": "A guided tour of marvin's spec-driven pipeline: spec, implement, verify, deliver, then learn — by hand, or handed to the autopilot, which runs every stage to a merge-ready pull request.",
     "summary": "How the spec-driven task pipeline works, stage by stage.",
     "card": "Spec, implement, verify, deliver — then learn.",
     "priority": 0.7
@@ -34,7 +34,7 @@
   {
     "path": "/toolbox",
     "title": "Toolbox — Marvin",
-    "description": "The visual layer: marvin's nine MCP Apps widgets as a user journey — interactive in MCP Apps hosts, plain text in any terminal.",
+    "description": "The visual layer: marvin's MCP Apps widgets as a user journey — interactive in MCP Apps hosts, plain text in any terminal.",
     "summary": "The MCP Apps widgets, with live demos.",
     "card": "Interactive widgets. Plain text in any terminal.",
     "priority": 0.6

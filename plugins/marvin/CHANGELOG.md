@@ -4,6 +4,76 @@ All notable changes to the **marvin** plugin are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the plugin
 follows semver independently of the surrounding marketplace.
 
+## [Unreleased]
+
+## [0.39.0] — 2026-11-19
+
+### Changed
+
+- **The autopilot's delivery gate requires a proof** (ADR-0055). In one host project, 51 of 95
+  autopilot ALLOW decisions went out with `red_green` `missing` or `unknown`, so nothing showed
+  that a test had failed for the change before it passed. When the server runs under the autopilot
+  (`MARVIN_PIPELINE=1`), `verify action: "gate"` now allows a delivery only when `red_green` is
+  `proven`, or when the sealed contract declares a no-oracle mode that its criteria bear out.
+  Otherwise it BLOCKs, and the reason names the criterion that lacks its red, or what made the
+  proof unreadable. It also names the declaration that would answer it. Interactive sessions keep
+  the ADR-0036 warning.
+
+### Added
+
+- **`no_oracle: { reason }` in the `spec-contract` block** (ADR-0055), for a task no test can
+  execute, such as a documentation or configuration change. The reason is required. A `kind: test`
+  or `regression: true` criterion contradicts the declaration: the `spec` DoR gate reports this as
+  a FAIL on its new `no-oracle` check, and the delivery gate BLOCKs it in every session. The
+  `deliver-gate` block and the verification-run journal's `gate` entry gain `no_oracle`
+  (`declared`, `contradicted`, `absent`, `unknown`) and `red_green_required`. The key is inside
+  the sealed block, so it cannot be added after the seal, and existing seals stay valid.
+- **A bug hunter: the `hunt-*` command group** (ADR-0053, ADR-0054). `/marvin:hunt-code` maps
+  the user flows, ranks hotspots from git history, hunts each batch against a 25-category defect
+  taxonomy, has every claim challenged by an independent skeptic and referee, and counts a bug
+  only when a reproducing test fails for the stated reason. Findings go to an append-only ledger
+  under `.marvin/hunt/`, deduplicated by fingerprint, so a defect a person closed is not raised
+  again and a fixed one that reappears is flagged as regressed. `/marvin:hunt-triage` merges
+  duplicates, groups systemic patterns, re-verifies findings whose code changed and writes one
+  ranked report; `/marvin:hunt-init` writes the settings and `/marvin:hunt-status` summarises.
+  This release is detect-only: nothing edits product code, and the reproducing tests stay
+  uncommitted. A seventeenth tool, `hunt`, enforces the verification protocol rather than the
+  prose, and four read-only agents (`marvin-hunt-cartographer`, `-hunter`, `-skeptic`,
+  `-referee`) do the reading. A person's ruling is final: a later agent ruling is kept as
+  evidence and changes nothing, and where the client can ask, the person confirms the ruling
+  themselves. Finding ids are derived from the fingerprint and the ledger merges with
+  `merge=union`, so two branches that both hunted merge cleanly. The runtime, UX and design
+  checks are later phases.
+- **The delivery gate checks a spec's declared names against the code** (ADR-0052). Until now
+  `contract.signature` was checked once, for being non-empty, and nothing compared it with what
+  was delivered: a renamed or missing entry point passed every gate. The `deliver-gate` block now
+  carries `contract_surface` (`matched`, `missing` or `unknown`): the names the signature declares
+  at column 0 are looked for in the contract's implementation files, which exclude tests,
+  documentation and deleted files. A `missing` answer names the absent names in the ALLOW reason
+  and, like `red_green`, never changes the decision. Measured on 110 specs from five projects:
+  no false warnings on marvin's own specs, and every `missing` answer elsewhere was real drift.
+
+### Fixed
+
+- **An autopilot run that cannot install its dependencies stops before any child.** A run
+  worktree has no `node_modules`, and with no `pipeline.bootstrap` a project with dependencies
+  could run no gate: five runs in two repositories (2026-10-20/21) found that out at their first
+  gate, after the planner had run. `prepare` now refuses such a run and names the install
+  its lockfile calls for (`bun install --frozen-lockfile`, `pnpm install --frozen-lockfile`,
+  `yarn install --immutable` or `npm ci`). A bun, pnpm or yarn lockfile with no matching
+  `pipeline.allowed_commands` prefix is told to the orchestrator: the writing roles could not run
+  the project's scripts.
+- **A spec whose contract names a protected path goes back to the planner before approval.** No
+  child may change `.claude/`, `.husky/`, `.mcp.json`, `.git`, `.marvin/config.json` or
+  `.marvin/pipeline/`, and the gate rejects them in any diff, so such a spec could only end at the
+  rejection cap: a 2026-10-28 run spent three iterations that way. The engine now sends it
+  back as a Definition-of-Ready failure, with nothing written, asking for those files to move to
+  "Deferred slices". The planner's prompt names the protected paths, and a test keeps that list in
+  step with `protected.default.json`.
+- **The engine's own spec and seal commits carry the `Co-Authored-By` trailer**, as its merge and
+  finalize commits already did. A host that checks attribution on every commit failed a run on
+  them alone.
+
 ## [0.38.0] — 2026-11-02
 
 ### Changed

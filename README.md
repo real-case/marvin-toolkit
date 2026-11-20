@@ -10,8 +10,8 @@ Marvin is a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin
 packages the whole development lifecycle as **one plugin, one MCP server, and one slash
 prefix** — `/marvin:`. Install it and you get structured, repeatable workflows for
 committing, reviewing, securing, documenting, and shipping code, all inside Claude Code.
-Under the hood it ships **60 prompts, 16 MCP tools, 10 agents, and 10 interactive widgets**
-across seven command groups, built on a TypeScript MCP server that runs on Node.js 20 or
+Under the hood it ships **64 prompts, 17 MCP tools, 14 agents, and 10 interactive widgets**
+across nine command groups, built on a TypeScript MCP server that runs on Node.js 20 or
 later.
 
 ## Call it your way
@@ -60,8 +60,8 @@ them off, set `"hooks": { "enabled": false }` in `.marvin/config.json`, or expor
 
 ## The command groups
 
-Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 60
-prompts divide into eight groups:
+Commands follow the pattern `/marvin:<group>-<command>`, and singletons stay bare. The 64
+prompts divide into nine groups:
 
 | Group | Purpose | Count |
 |-------|---------|-------|
@@ -72,6 +72,7 @@ prompts divide into eight groups:
 | `sec-*` | Security scanners | 11 |
 | `refactor-*` | Code-health family (read, plan, apply) | 4 |
 | `audit-*` | Formal project audit (plan, run one, consolidate) | 3 |
+| `hunt-*` | Bug hunter (find, challenge, prove, triage) | 4 |
 | `track-*` | Lightweight task tracker | 7 |
 
 The tables below give a one-line synopsis per command. The
@@ -145,6 +146,7 @@ These separate the human decisions in a spec from the automated execution that f
 | `/marvin:task-verify` | Run the quality gates with stack auto-detection. |
 | `/marvin:task-deliver` | Commit and open a PR, gated on verification passing. |
 | `/marvin:task-summary` | Aggregate a finished task into one delivery summary. |
+| `/marvin:task-metrics` | Aggregate the per-task metrics series — time, quality and rework — or show one task's record in full. |
 | `/marvin:task-audit` | Lint the spec corpus for consistency; read-only, with remediation notes. |
 
 The `marvin-tm-writer`, `marvin-tm-executor`, `marvin-tm-spec-critic`,
@@ -183,6 +185,24 @@ split by mutation into read, plan, and apply.
 | `/marvin:refactor-apply` | Execute one behavior-preserving step behind the verify gate. |
 
 The `marvin-refactor-auditor` agent supports these commands.
+
+### Bug hunter — `hunt-*`
+
+The bug hunter finds defects a user would hit, challenges each claim with independent
+reviewers, and proves bugs with a reproducing test before they count
+([ADR-0053](./docs/adr/0053-hunt-command-family.md)). This release is detect-only: it records
+findings in a ledger under `.marvin/hunt/` and never fixes them
+([ADR-0054](./docs/adr/0054-hunt-ledger-and-flow-map.md)).
+
+| Command | Description |
+|---------|-------------|
+| `/marvin:hunt-init` | Set up the hunter: scope, severity floors, budgets, detect-only authority. |
+| `/marvin:hunt-code` | Hunt defects in code, challenge each claim, prove bugs with a failing test. |
+| `/marvin:hunt-triage` | Deduplicate and rank the ledger, re-verify stale findings, write a report. |
+| `/marvin:hunt-status` | Open findings by status, recent runs, and file coverage. |
+
+The `marvin-hunt-cartographer`, `marvin-hunt-hunter`, `marvin-hunt-skeptic`, and
+`marvin-hunt-referee` agents support these commands.
 
 ### Task tracker — `track-*`
 
@@ -305,6 +325,10 @@ rationale is folded into 0001, 0013, and 0018.
 | [0049](./docs/adr/0049-whole-file-reading-of-test-one.md) | The seal stage reads `test_one` for a whole file instead of refusing its per-test parts | Accepted |
 | [0050](./docs/adr/0050-per-run-calibration-files.md) | One calibration file per finished run, not one appended log | Accepted |
 | [0051](./docs/adr/0051-periodic-autopilot-status-card.md) | The autopilot reports at least every five minutes, as one status card | Accepted |
+| [0052](./docs/adr/0052-contract-surface-at-delivery.md) | The delivery gate checks the contract's declared names against the code | Proposed |
+| [0053](./docs/adr/0053-hunt-command-family.md) | The bug hunter is a `hunt-*` command family over one deterministic tool | Proposed |
+| [0054](./docs/adr/0054-hunt-ledger-and-flow-map.md) | The hunt state is an append-only ledger, a flow map and per-file coverage under `.marvin/hunt/` | Proposed |
+| [0055](./docs/adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Proposed |
 
 ## Contributing
 

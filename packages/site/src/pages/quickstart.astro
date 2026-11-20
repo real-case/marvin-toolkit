@@ -33,7 +33,10 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
       </header>
 
       <div class="prereq">
-        <b>Before you start:</b> Claude Code is installed and you are signed in.
+        <b>Before you start:</b> Claude Code is installed and you are signed in, Node.js 20 or later is
+        on your PATH, and your project is a git checkout. Sign in to the GitHub CLI (<span
+          class="mono">gh</span
+        >) for the pull-request and autopilot workflows.
       </div>
 
       <!-- the four numbered install steps — rail connector on 1–3, none on 4 -->
@@ -52,6 +55,14 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
         <div class="qbody">
           <h3>Install the plugin</h3>
           <CodeCommand command="/plugin install marvin@marvin-toolkit" vaEvent="install_copy" />
+          <!-- static disclosure of the shipped-by-default hooks (ADR-0040), not a command row -->
+          <p class="snote">
+            Installing also arms two guards on the shell commands Claude runs; a command you type in
+            your own terminal is not checked. They refuse <code>--no-verify</code> on a git commit or
+            merge, a force-push or deletion aimed at a protected branch, and a commit whose added lines
+            carry a credential-shaped string. To turn them off, set
+            <code>"hooks": {"{"} "enabled": false {"}"}</code> in <code>.marvin/config.json</code>.
+          </p>
         </div>
       </div>
       <div class="qstep">
@@ -60,10 +71,13 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
           <h3>Confirm it works</h3>
           <CodeCommand command="/marvin:help" />
           <p>
-            In Claude Desktop this renders as the help widget; in a terminal, the same content as
-            text.
+            In a plugin install the help panel prints as text, in the terminal and in the desktop
+            app alike. To see it rendered with your project's data, run
+            <code>/marvin:widget-preview help</code>. For a guided first session that reads your
+            repo and proposes real starter tasks, with every write behind a yes, run
+            <code>/marvin:onboard</code>.
           </p>
-          <div class="screenshot">screenshot: /marvin:help widget</div>
+          <div class="screenshot">screenshot: /marvin:help, rendered via widget-preview</div>
         </div>
       </div>
       <div class="qstep">
@@ -72,17 +86,30 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
           <h3>Spec your first task</h3>
           <CodeCommand command="/marvin:task-start" />
           <p>
-            Formalize a requirement into a rerunnable spec in your repo — the pipeline takes it from
-            there.
+            Formalize a requirement into a sealed, testable spec in your repo; the pipeline takes it
+            from there.
+          </p>
+          <p>
+            Or hand the whole task over: <code>/marvin:autopilot &lt;task&gt;</code> plans, tests, implements
+            and verifies in a separate worktree, asks you to approve the spec, and stops at a merge-ready
+            pull request. <a href="/pipeline#autopilot">How it runs →</a>
           </p>
         </div>
       </div>
 
+      <p class="trouble">
+        Nothing appears when you type <code>/marvin:</code>? Open <code>/plugin</code>, check that
+        <code>marvin@marvin-toolkit</code> is listed and enabled, then restart the session.
+      </p>
+
       <!-- onward -->
       <div class="nexts">
-        <a class="nextc" href={REPO} rel="noopener">
+        <a class="nextc" href={`${REPO}/blob/dev/docs/usage.md`} rel="noopener">
           <p class="t">Usage guide ↗</p>
-          <p>Worked walkthroughs on GitHub — commit, PR, security, refactor.</p>
+          <p>
+            Worked walkthroughs: commit and PR, the task pipeline, the autopilot, the board,
+            security, refactoring, ADRs.
+          </p>
         </a>
         <a class="nextc" href="/commands">
           <p class="t">Browse commands →</p>
@@ -101,13 +128,15 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
         <p>
           Point it at <a href="/llms.txt"><code>llms.txt</code></a> — an agent-readable summary, the two
           install commands above, and the docs map, all in one fetch. An agent can read that and install
-          marvin for you rather than being walked through the steps. Marvin is an MCP server; talking
-          to agents is the point.
+          marvin for you rather than being walked through the steps. Marvin is a Claude Code plugin built
+          on one MCP server; talking to agents is the point.
         </p>
       </div>
 
       <p class="marvinnote">
-        Marvin keeps its working files in <span class="mono">.marvin/</span> — the configuration reference
+        Marvin keeps its working files in <span class="mono">.marvin/</span> — the
+        <a href={`${REPO}/blob/dev/docs/configuration.md`} rel="noopener">configuration reference</a
+        >
         lives in the GitHub docs.
       </p>
     </div>
@@ -215,6 +244,25 @@ const widgetCount = counts.widgets; // generated, never a literal (FR-20)
     font-size: 13px;
     color: var(--t2);
     margin: 8px 0 0;
+  }
+  .qbody p code,
+  .trouble code {
+    font-family: var(--font-mono);
+    color: var(--act);
+    font-size: 12px;
+  }
+  /* static side note under a step (the hooks disclosure) — mirrors Pipeline's .snote */
+  .qbody .snote {
+    font-size: 12.5px;
+    color: var(--t3);
+  }
+  .prereq .mono {
+    font-family: var(--font-mono);
+  }
+  .trouble {
+    font-size: 12.5px;
+    color: var(--t3);
+    margin: 18px 0 0 60px;
   }
   .screenshot {
     margin-top: 10px;

@@ -14,8 +14,13 @@
 // The poster styling moved to CastPlayer.css because
 // Astro's scoped <style> cannot reach Preact-rendered DOM. Still poster-first and never autoplaying:
 // nothing but the poster ships until a visitor presses play.
+//
+// The #autopilot section is the same four stages run unattended. It is a bare .stagecard (no
+// .stage, no .snum inside one, no .eyebrow) and adds no recording, so the four-stage pins in
+// pipeline.spec.ts, the eyebrow order and the poster count all stay as they were.
 import Base from "../layouts/Base.astro";
 import CastPlayer from "../components/CastPlayer";
+import CodeCommand from "../components/CodeCommand.astro";
 import { casts } from "../data/casts";
 
 const byKey = new Map(casts.map((cast) => [cast.key, cast]));
@@ -64,15 +69,24 @@ function stageCast(key: string) {
             <span class="snum">STAGE 1 · task-start</span>
             <h3>Formalize the requirement</h3>
             <p>
-              A structured dialogue turns a vague ask into an immutable, testable spec — with
-              relevant lessons recalled at intake.
+              Not every ask needs a spec: task-start sends a finished change to commit, an idea to
+              the board and a symptom to debug. Where a spec is warranted, a structured dialogue
+              turns the ask into a testable contract, with relevant lessons recalled at intake. A
+              mechanical gate checks its shape, a red-team critic checks its substance, and the
+              contract is sealed with a hash. Edit it later and every gate refuses it.
             </p>
             <div class="achips">
               <span class="achip">.marvin/task/001-slug.md</span>
               <span class="achip">spec-contract ✓</span>
+              <span class="achip">critic receipt</span>
+              <span class="achip">contract_sha sealed</span>
               <span class="achip">lessons recalled ↺</span>
             </div>
-            <p class="snote">A durable artifact — leave it, return, run it later.</p>
+            <p class="snote">
+              Four sections are required: Goal, Chosen Approach, Non-goals, Open Questions.
+              Project-wide merge rules are asked once and kept in .marvin/config.json. An
+              interrupted intake resumes where it stopped.
+            </p>
           </div>
           <CastPlayer client:visible cast={stageCast("task-start")} />
         </div>
@@ -83,10 +97,18 @@ function stageCast(key: string) {
             <span class="snum">STAGE 2 · task-implement</span>
             <h3>Build it against the spec</h3>
             <p>
-              The chosen approach is implemented and self-tested, staying inside the spec's file
-              allowlist.
+              One test is recorded failing before the code exists, then each criterion's own oracle
+              is run and journalled: a red and a green over one unchanged test is the proof. The
+              scope gate fails on any changed file outside the contract, and by-products you declare
+              in scope.exempt are listed rather than counted. A read-only diff critic then reviews
+              the change once, after the deterministic checks have run.
             </p>
-            <div class="achips"><span class="achip">code + tests</span></div>
+            <div class="achips">
+              <span class="achip">code + tests</span>
+              <span class="achip">red → green</span>
+              <span class="achip">scope gate ✓</span>
+              <span class="achip">runs/&lt;slug&gt;.oracles.md</span>
+            </div>
           </div>
         </div>
 
@@ -95,8 +117,10 @@ function stageCast(key: string) {
             <span class="snum">STAGE 3 · task-verify</span>
             <h3>Prove it green</h3>
             <p>
-              Tests, lint, type-check, and build run concurrently through one merge point. A red
-              gate blocks delivery — fail-closed.
+              Tests, lint, type-check, and build run concurrently through one merge point, and each
+              run records the commit it proved. Delivery refuses a red gate, evidence older than the
+              tree, and a run in which no test actually ran. A missing tool is recorded as not-run,
+              never as a pass.
             </p>
             <div class="achips">
               <span class="achip">tests</span>
@@ -104,6 +128,7 @@ function stageCast(key: string) {
               <span class="achip">types</span>
               <span class="achip">build</span>
               <span class="achip">verification.md</span>
+              <span class="achip">runs/&lt;slug&gt;.md</span>
             </div>
           </div>
           <CastPlayer client:visible cast={stageCast("task-verify")} />
@@ -121,8 +146,15 @@ function stageCast(key: string) {
             <div class="achips">
               <span class="achip">conventional commit</span>
               <span class="achip">pull request</span>
+              <span class="achip">critic receipts</span>
+              <span class="achip">metrics record</span>
               <span class="achip">lesson captured</span>
             </div>
+            <p class="snote">
+              A blocker the diff critic still holds opens the PR as a draft. The spec records its PR
+              and reads shipped. /marvin:task-summary shows what it delivered, /marvin:task-metrics
+              aggregates time and rework across tasks, and /marvin:task-audit lints the spec corpus.
+            </p>
           </div>
         </div>
       </section>
@@ -135,16 +167,83 @@ function stageCast(key: string) {
           <div class="looprow">
             <span class="c">captured at deliver / debug</span><span class="a">→</span>
             <span class="c">.marvin/memory/</span><span class="a">→</span>
-            <span class="c">recalled at the next task-start</span><span class="a">↺</span>
+            <span class="c">recalled at task-start and implement</span><span class="a">↺</span>
           </div>
           <p class="loopnote">
             Lessons are files in the repo, so they travel through git — one developer's fix becomes
-            the whole team's default.
+            the whole team's default. Under the autopilot, the run's retro does the capturing.
           </p>
         </div>
       </section>
 
-      <!-- under the hood — the three deterministic tools + the quickstart CTA -->
+      <!-- the autopilot — a bare stagecard, NOT inside a .stage, and with no .eyebrow, so the
+           four-stage .snum pin and the page's eyebrow order are unchanged -->
+      <section class="s" id="autopilot">
+        <div class="stagecard autocard">
+          <span class="snum">HANDS OFF · /marvin:autopilot</span>
+          <h3>Or let it run.</h3>
+          <p>
+            The autopilot hands the task to a detached engine. Headless sessions plan the spec,
+            write the acceptance tests that are then sealed, implement, and review read-only; the
+            engine runs every gate and waits for CI itself, and a retro closes the run, all in one
+            worktree outside your checkout. You approve the spec, your session answers what the
+            engine cannot settle and asks you only what nothing else can. The result is a
+            merge-ready pull request.
+          </p>
+          <div class="achips autorail">
+            <span class="achip">plan</span>
+            <span class="achip">sealed tests</span>
+            <span class="achip">execute</span>
+            <span class="achip">gates</span>
+            <span class="achip">verify</span>
+            <span class="achip">CI</span>
+            <span class="achip">retro</span>
+          </div>
+          <CodeCommand command="/marvin:autopilot add a tag filter to the chat list" />
+          <div class="autogrid">
+            <div class="autoc">
+              <p class="t">Status card</p>
+              <p>
+                One report at least every five minutes, with the stage, cost, iterations and what it
+                waits on, in your language.
+              </p>
+            </div>
+            <div class="autoc">
+              <p class="t">Final report</p>
+              <p>
+                Time per stage, tokens by role, the PR and its checks, and each criterion with its
+                red-to-green proof.
+              </p>
+            </div>
+            <div class="autoc">
+              <p class="t">Rails</p>
+              <p>
+                Children cannot edit the sealed tests or protected paths, and git stays on the run's
+                branch. Usage limits are waited out, stalls and failed launches are retried, and an
+                unrunnable run is refused before it spends anything.
+              </p>
+            </div>
+            <div class="autoc">
+              <p class="t">Anywhere</p>
+              <p>
+                GitHub is reached through REST, so a run works inside a Claude Code cloud session
+                too. There, marking the PR ready is left to you.
+              </p>
+            </div>
+            <div class="autoc">
+              <p class="t">Learns</p>
+              <p>
+                The retro adds checks and lessons, and each finished run commits a calibration
+                record under .marvin/pipeline/. The cost estimate shown at spec approval comes from
+                that history.
+              </p>
+            </div>
+          </div>
+          <p class="autolink"><a href="/toolbox">See the status card live →</a></p>
+        </div>
+      </section>
+
+      <!-- under the hood — four deterministic tools (a 2×2 grid from 768px) + the quickstart CTA -->
       <section class="s">
         <p class="eyebrow uth-eyebrow">under the hood</p>
         <div class="uth">
@@ -165,8 +264,15 @@ function stageCast(key: string) {
           <div class="uthc">
             <p class="t"><code>lessons</code> — team memory</p>
             <p>
-              Typed lessons in .marvin/memory/: add at delivery and debugging, search at intake.
-              Near-duplicate guarded.
+              Typed lessons in .marvin/memory/: added at delivery and debugging, searched at intake
+              and before implementing. Near-duplicate guarded.
+            </p>
+          </div>
+          <div class="uthc">
+            <p class="t"><code>metrics</code> — the task record</p>
+            <p>
+              Seal creates it, delivery closes it, the PR carries it: time, rework and quality per
+              task. Null means unmeasured, never zero.
             </p>
           </div>
         </div>
@@ -278,7 +384,8 @@ function stageCast(key: string) {
   /* Let grid tracks shrink below their content's intrinsic width (the min-width:auto trap),
      so nothing forces the track — and the page — wider than the viewport at 360px. */
   .stage > *,
-  .uth > * {
+  .uth > *,
+  .autogrid > * {
     min-width: 0;
   }
   .stagecard {
@@ -358,13 +465,53 @@ function stageCast(key: string) {
     margin: 0;
   }
 
+  /* ---------- autopilot ---------- */
+  .autocard {
+    margin-top: 16px;
+  }
+  .autorail {
+    margin: 0 0 14px;
+  }
+  /* One column on a phone; two from 768px; three from 1100px (five cards read 3 + 2). */
+  .autogrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .autoc {
+    border: 1px solid var(--bd);
+    border-radius: 9px;
+    background: var(--srf2);
+    padding: 12px 14px;
+  }
+  .autoc .t {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--t1);
+    margin: 0 0 3px;
+  }
+  .autoc p {
+    font-size: 12.5px;
+    margin: 0;
+  }
+  .autocard .autolink {
+    margin: 14px 0 0;
+  }
+  .autolink a {
+    color: var(--act);
+    font-weight: 600;
+  }
+
   /* ---------- under the hood ---------- */
   .uth-eyebrow {
     margin-top: 24px;
   }
+  /* One column below 768px, then 2×2: four cards never fit four-across in the 1200px
+     container without squeezing the prose, and a 3 + 1 row would orphan the last card. */
   .uth {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
     gap: 14px;
     margin-top: 20px;
   }
@@ -412,9 +559,19 @@ function stageCast(key: string) {
 
   /* ---------- responsive (mockup breakpoint) ---------- */
   @media (max-width: 860px) {
-    .stage,
-    .uth {
+    .stage {
       grid-template-columns: 1fr;
+    }
+  }
+  @media (min-width: 768px) {
+    .uth,
+    .autogrid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 1100px) {
+    .autogrid {
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 </style>
