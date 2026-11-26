@@ -4,7 +4,7 @@
 | ------------- | ----------------------------------------------------------- |
 | Status        | **Proposed** |
 | Date          | 2026-11-26 |
-| Supersedes    | —                                                           |
+| Supersedes    | [ADR-0006](0006-all-subagents-opus.md) |
 | Superseded by | —                                                           |
 | Related       | [ADR-0006](0006-all-subagents-opus.md) (the all-Opus policy this replaces), [ADR-0002](0002-tool-backed-verification.md) and [ADR-0003](0003-tool-backed-dor.md) (the deterministic gates that check a cheaper agent's output), [ADR-0053](0053-hunt-command-family.md) (the hunt agents) |
 
