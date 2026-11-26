@@ -26,6 +26,21 @@ follows semver independently of the surrounding marketplace.
   changed a handful. `base_branch` itself is unchanged and stays a branch name for checkout, the
   PR base and the shipped-spec lookup. Records already written are not recomputed.
 
+## [0.39.2] — 2026-11-26
+
+### Changed
+
+- **Eight subagents run on Sonnet** (ADR-0057, superseding ADR-0006). The six agents
+  whose judgment is the last check stay on Opus: both critics, the hunt referee and hunter, the
+  debugger and the security auditor. Eight agents now pin `model: sonnet`: `marvin-tm-executor`
+  and `marvin-tm-review-fixer`, whose code sealed tests, the `verify` gates, the diff critic and CI
+  check; `marvin-hunt-skeptic`, whose ruling the referee reviews; and `marvin-hunt-cartographer`,
+  `marvin-refactor-auditor`, `marvin-researcher`, `marvin-tm-writer` and `marvin-guide`, which
+  gather, map or explain. At Opus 5.5's 2x price over Sonnet 5.5 this halves their token cost. A
+  host cannot lower a pinned model through `CLAUDE_CODE_SUBAGENT_MODEL`, so the plugin's pin is
+  what every host gets. The autopilot's role children are unaffected: they take their model from
+  the rubric.
+
 ## [0.39.1] — 2026-11-26
 
 ### Changed

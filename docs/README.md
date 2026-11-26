@@ -27,7 +27,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0003](./adr/0003-tool-backed-dor.md) | Tool-backed Definition-of-Ready gate | Accepted |
 | [0004](./adr/0004-traceable-spec-contract.md) | Traceable spec contract and gate reordering | Accepted |
 | [0005](./adr/0005-portable-spec-contract.md) | Portable, host-adaptive spec contract | Accepted |
-| [0006](./adr/0006-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | Accepted |
+| [0006](./adr/0006-all-subagents-opus.md) | All subagents on Opus; economy via deterministic tools | Superseded by 0057 |
 | [0007](./adr/0007-marvin-working-directory.md) | Unified `.marvin/` working directory | Accepted |
 | [0008](./adr/0008-mcp-door-resource-resolution.md) | MCP-door plugin-resource resolution | Accepted |
 | [0009](./adr/0009-config-first-gate-resolution.md) | Config-first gate resolution for `verify` | Accepted |
@@ -78,6 +78,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0054](./adr/0054-hunt-ledger-and-flow-map.md) | The hunt state is an append-only ledger, a flow map and per-file coverage under `.marvin/hunt/` | Accepted |
 | [0055](./adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Accepted |
 | [0056](./adr/0056-oracle-red-for-the-right-reason.md) | An oracle run is classified, and only "ran and failed" counts as a red | Proposed |
+| [0057](./adr/0057-subagent-model-tiers.md) | Subagents run on Opus only where their judgment is the last check | Accepted |
 
 ## Work in progress
 
