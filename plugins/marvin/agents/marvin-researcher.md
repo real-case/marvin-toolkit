@@ -1,7 +1,7 @@
 ---
 name: marvin-researcher
 description: Look up current, version-specific technical documentation for a library, framework, or API using Context7, GitMCP, and web search
-model: opus
+model: sonnet
 color: blue
 ---
 

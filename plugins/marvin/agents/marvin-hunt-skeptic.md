@@ -2,7 +2,7 @@
 name: marvin-hunt-skeptic
 description: Read-only adversarial reviewer for the bug hunter — given one finding claim and the code it cites, tries to disprove it by finding the guard, type, schema, framework behaviour or caller contract that makes it impossible, and returns an upheld or dismissed ruling with its argument. Invoked by /marvin:hunt-code for every claim at or above the severity floor; never sees the hunter's notes.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: sonnet
 color: yellow
 ---
 

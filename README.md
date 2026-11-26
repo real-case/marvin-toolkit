@@ -329,6 +329,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0053](./docs/adr/0053-hunt-command-family.md) | The bug hunter is a `hunt-*` command family over one deterministic tool | Proposed |
 | [0054](./docs/adr/0054-hunt-ledger-and-flow-map.md) | The hunt state is an append-only ledger, a flow map and per-file coverage under `.marvin/hunt/` | Proposed |
 | [0055](./docs/adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Proposed |
+| [0056](./docs/adr/0056-subagent-model-tiers.md) | Subagents run on Opus only where their judgment is the last check | Proposed |
 
 ## Contributing
 

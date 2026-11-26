@@ -1,7 +1,7 @@
 ---
 name: marvin-tm-executor
 description: Headless execution agent for batch Phase 2 — implements specs autonomously in isolated worktrees, creates PRs. Designed to be invoked by future batch-dispatch tooling that feeds a spec into a `claude -p` session.
-model: opus
+model: sonnet
 color: orange
 ---
 
