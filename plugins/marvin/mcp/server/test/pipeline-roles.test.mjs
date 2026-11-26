@@ -691,9 +691,9 @@ const SPAWNING = [
     answer("unverified", { kind: "retry" }),
   ],
   [
-    "CI green",
+    "delivery gate ALLOW after CI green",
     at("ci_wait", { iteration: 1, prUrl: PR, ciSince: NOW.toISOString() }),
-    { kind: "ci", state: "green", failing: [] },
+    { kind: "delivery", decision: "ALLOW", reason: "verification passed" },
   ],
   [
     "halt cancelled",

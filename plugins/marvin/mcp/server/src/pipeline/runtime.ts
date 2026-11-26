@@ -51,6 +51,7 @@ import {
   type ProtectedSnapshot,
   protectedChanges,
   reportFindings,
+  type GateReport,
   type GateRunner,
   runGateStage,
   type Runner,
@@ -78,6 +79,7 @@ import {
   readCalibrationRecords,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
+import { runDeliveryGate } from "./delivery.js";
 import { physicalProblem } from "./plain-path.js";
 import { pendingToolCall, readLogTail, statusLine } from "./child-activity.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
@@ -2181,6 +2183,62 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  // ---------------------------------------------------------------------- delivery gate
+
+  /**
+   * The delivery gate, run by the engine once CI is green (ADR-0059): the decision `verify`
+   * `action: "gate"` makes, with the autopilot's red→green rule, on the commit the gate stage
+   * approved. An ALLOW appends the terminal metrics block unless this delivery already has one,
+   * and finalize commits it with the rest of the record. A replay writes the same run file and,
+   * finding its own block, appends nothing.
+   */
+  const deliverWork = (run: Run) => {
+    const wt = worktreeRecord(run);
+    const gated = readJson(at("gated-head.json"), GatedHead);
+    const refuse = (reason: string) => ({
+      run,
+      obs: { kind: "delivery", decision: "BLOCK", reason } satisfies Observation,
+    });
+    if (!gated?.passed || !FULL_SHA.test(gated.head)) {
+      return refuse("no commit a passing gate approved is recorded");
+    }
+    if (run.gateReport === null) return refuse("the run holds no gate report for the gated commit");
+    const head = git(wt.path, "rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (head !== gated.head) {
+      return refuse(
+        `the worktree is at ${head.slice(0, 12)}, not the gated ${gated.head.slice(0, 12)}`,
+      );
+    }
+    const executor = run.children.filter((c) => c.role === "executor").at(-1);
+    const result = runDeliveryGate({
+      worktree: wt.path,
+      slug: specIdentity(run).slug,
+      config: configFor(run),
+      report: run.gateReport as unknown as GateReport,
+      head,
+      executorSince: executor?.startedAt ?? null,
+    });
+    const metrics = result.alreadyRolledUp
+      ? "; the record already holds this delivery's terminal block"
+      : result.metricsNote
+        ? `; ${result.metricsNote.replace(/\*\*/g, "")}`
+        : "";
+    note(`delivery gate ${result.decision} on ${head.slice(0, 12)}${metrics}`, {
+      notify: true,
+      decision: result.decision,
+      reason: result.reason,
+      artifact: result.artifact,
+    });
+    return {
+      run,
+      obs: {
+        kind: "delivery",
+        decision: result.decision,
+        reason: result.reason,
+      } satisfies Observation,
+    };
+  };
+
   // ---------------------------------------------------------------------- finalize, ready
 
   /**
@@ -2340,6 +2398,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       }
       case "ci":
         return ciWork(run);
+      case "deliver":
+        return deliverWork(run);
       case "finalize":
         return finalizeWork(run, data);
       case "mark_ready":

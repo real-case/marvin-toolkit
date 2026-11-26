@@ -166,6 +166,7 @@ const WORK_OBSERVATION = {
     sealed: [{ path: "a.test.ts", sha256: "h", criteria: ["AC1"] }],
   },
   ci: { kind: "ci", state: "green", failing: [] },
+  deliver: { kind: "delivery", decision: "ALLOW", reason: "verification passed" },
   finalize: { kind: "finalized" },
 };
 
@@ -754,6 +755,7 @@ test("the engine drives a standard run from intake to ready with scripted childr
     "gate",
     "snapshot",
     "ci",
+    "deliver",
     "finalize",
     "ci",
     "mark_ready",

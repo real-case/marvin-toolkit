@@ -36936,7 +36936,7 @@ async function runVerify(input, env2) {
       specConfig: config2.spec,
       env: env2,
       config: config2
-    });
+    }).answer;
   }
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
   const resolved = resolveGatePlan({
@@ -37552,7 +37552,7 @@ function deliverGate(projectRoot, opts) {
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
   const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
-  const required2 = redGreenRequired();
+  const required2 = opts.redGreenRequired ?? redGreenRequired();
   const extras = {
     artifactPath,
     allowStale,
@@ -37564,6 +37564,13 @@ function deliverGate(projectRoot, opts) {
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
   const decide = (decision, verdict2, reason, extra = extras) => {
     const answer = gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+    const outcome = (a, metricsNote) => ({
+      answer: a,
+      decision,
+      verdict: verdict2,
+      reason: `${reason}${slugNote}`,
+      metricsNote
+    });
     if (slug) {
       journalVerifyEntry(projectRoot, {
         slug,
@@ -37579,11 +37586,11 @@ function deliverGate(projectRoot, opts) {
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
       });
     }
-    if (slug && decision === "ALLOW") {
+    if (slug && decision === "ALLOW" && opts.rollUp !== false) {
       const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
-      if (note) return withNote(answer, note);
+      if (note) return outcome(withNote(answer, note), note);
     }
-    return answer;
+    return outcome(answer, null);
   };
   if (!existsSync(artifactPath)) {
     return decide(
@@ -44338,7 +44345,7 @@ function huntStatus(env2) {
 }
 
 // src/server.ts
-var VERSION = "0.40.0";
+var VERSION = "0.41.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

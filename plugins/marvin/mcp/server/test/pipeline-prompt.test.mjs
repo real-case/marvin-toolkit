@@ -114,7 +114,8 @@ function engineContexts() {
         prUrl: "https://github.com/o/r/pull/1",
         ciSince: NOW.toISOString(),
       }),
-      { kind: "ci", state: "green", failing: [] },
+      // CI green runs the delivery gate first (ADR-0059); its ALLOW spawns the retro.
+      { kind: "delivery", decision: "ALLOW", reason: "verification passed" },
       rubric,
       NOW,
     ),

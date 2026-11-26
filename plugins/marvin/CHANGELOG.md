@@ -8,6 +8,15 @@ follows semver independently of the surrounding marketplace.
 
 ### Added
 
+- **The autopilot engine runs the delivery gate itself** (ADR-0059). Once CI is green, the engine
+  calls the same `deliverGate` the `verify` tool's `action: "gate"` calls, on the commit its gate
+  approved, with the ADR-0055 red→green rule passed explicitly and its own gate report written as
+  the spec's per-spec run. Only an ALLOW reaches the retro, finalize and `ready`; a BLOCK raises a
+  `halt` judgment with the gate's reason, where `retry` starts an executor on it. An ALLOW appends
+  the terminal `task-metrics` block unless this delivery already has one, and finalize commits it.
+  The executor no longer needs to call the gate or `metrics action: "rollup"` for the record; its
+  gate call in `task-deliver`'s pipeline mode remains a self-check.
+
 - **The autopilot gate recognises failures the base already has** (ADR-0058). When a project
   gate fails, the engine runs each failing test file alone through `gates.test_one`, on HEAD and
   on the commit the run is diffed from, in a throwaway worktree. A gate whose every failure

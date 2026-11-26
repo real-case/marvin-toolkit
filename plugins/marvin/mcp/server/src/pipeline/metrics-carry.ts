@@ -16,8 +16,8 @@ import { assertNotHardLinked, isCanonicalPath, physicalProblem } from "./plain-p
 /**
  * The run's metrics record, carried by the engine (ADR-0043/0044).
  *
- * Under the autopilot the executor commits its work and then calls the delivery gate, which on
- * ALLOW appends the terminal `task-metrics` block to the record. That block carries the
+ * Under the autopilot the delivery gate, called by the executor and since ADR-0059 by the engine
+ * itself once CI is green, appends the terminal `task-metrics` block on ALLOW. That block carries the
  * delivered commit's `head_sha`, so by construction it cannot be inside the commit it describes:
  * the append always lands after the executor's last commit, and before this module the engine's
  * own gate counted it as uncommitted work and spent a whole executor iteration on committing it.
