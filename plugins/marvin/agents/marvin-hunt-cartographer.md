@@ -2,7 +2,7 @@
 name: marvin-hunt-cartographer
 description: Read-only flow mapper for the bug hunter — reads the router, guards, loaders and handlers of a project and returns its flow map (screens, transitions, user journeys, anomalies such as orphan routes and links to nowhere) as JSON matching flows.schema.json. Invoked by /marvin:hunt-code before hunting; never writes files.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: sonnet
 color: cyan
 ---
 

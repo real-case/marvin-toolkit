@@ -2,7 +2,7 @@
 name: marvin-refactor-auditor
 description: Read-only structural auditor for the refactoring family — maps module structure, gathers hotspot evidence (git churn × file size), traces dependency tangles, flags dead-code candidates, and verifies code smells with file:line evidence. Invoked by /marvin:refactor-audit for the heavy whole-project reading and by /marvin:refactor-smells for large scopes; also useful standalone for "where is the tech debt?" questions.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: sonnet
 color: pink
 ---
 

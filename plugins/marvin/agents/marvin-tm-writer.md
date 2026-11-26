@@ -2,7 +2,7 @@
 name: marvin-tm-writer
 description: Conversational exploration of requirements — helps identify missing requirements, define acceptance criteria, and set scope boundaries
 tools: Read, Glob, Grep
-model: opus
+model: sonnet
 color: purple
 ---
 
