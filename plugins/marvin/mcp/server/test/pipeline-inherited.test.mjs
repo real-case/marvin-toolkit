@@ -99,6 +99,31 @@ test("failing files come from failure lines and node's test-at lines, tracked te
   ]);
 });
 
+test("TAP output names a failing file only through the location line of a not-ok block", () => {
+  const out = [
+    "TAP version 13",
+    "# Subtest: fine",
+    "ok 1 - fine",
+    "  ---",
+    "  duration_ms: 0.26",
+    "  location: '/w/tree/test/passing.test.mjs:1:1'",
+    "  ...",
+    "# Subtest: broken two",
+    "not ok 2 - broken two",
+    "  ---",
+    "  duration_ms: 0.28",
+    "  location: '/w/tree/test/a.test.mjs:2:27'",
+    "  error: '1 == 2'",
+    "  ...",
+    "# fail 1",
+  ].join("\n");
+  assert.deepEqual(
+    inh.failingFiles(out, "/w/tree", TEST_PATHS, () => true),
+    ["test/a.test.mjs"],
+  );
+  assert.deepEqual(inh.failureLines(out, "/w/tree"), ["not ok - broken two"]);
+});
+
 test("a gate failing only on a test the base already fails passes, with a recorded finding", async () => {
   const w = redBase();
   w.write("src/other.mjs", "export const other = 2;\n");
@@ -119,6 +144,21 @@ test("a gate failing only on a test the base already fails passes, with a record
   assert.match(finding.claim, /test\/a\.test\.mjs/);
   assert.match(finding.evidence, /base is already red/);
   assert.equal(g.reportFindings(report).filter((f) => f.severity !== "minor").length, 0);
+});
+
+test("the TAP reporter classifies the same inherited failure", async () => {
+  const w = redBase();
+  w.write("src/other.mjs", "export const other = 2;\n");
+  w.commit();
+  const tap = `${NODE} --test-reporter=tap`;
+  const { baseCheck } = baseCheckFor(w, { testOne: `${tap} {file}` });
+  const report = await gateStage(w, {
+    gates: [{ name: "test", command: `${tap} test/*.test.mjs` }],
+    contractFiles: ["src/other.mjs"],
+    baseCheck,
+  });
+  assert.equal(report.gates[0].result, "inherited", report.gates[0].baseCheck);
+  assert.deepEqual(report.gates[0].inherited.files, ["test/a.test.mjs"]);
 });
 
 test("a failure the run caused still fails the gate, beside an inherited one", async () => {

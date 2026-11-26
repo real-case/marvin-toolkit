@@ -1,5 +1,6 @@
 import { posix, relative, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import type { GateRunner } from "./gate.js";
 import { isolatedGit } from "./gate.js";
 import { formatTestOne } from "./seal.js";
@@ -78,7 +79,9 @@ const NOT_A_TEST = /^(?:✖ failing tests:?$|FAIL\s*$|●\s*$)/u;
  * ordinals and `:line:col` positions dropped. Summary counts are not failure lines at all.
  */
 export function failureLines(output: string, root: string): string[] {
-  const roots = [root, `file://${root}`].sort((a, b) => b.length - a.length);
+  const roots = [...new Set([root, realOrSelf(root)])]
+    .flatMap((r) => [r, `file://${r}`])
+    .sort((a, b) => b.length - a.length);
   const out = new Set<string>();
   for (const raw of output.split("\n")) {
     // eslint-disable-next-line no-control-regex
@@ -104,7 +107,7 @@ const PATH_TOKEN = /(?:file:\/\/)?[\w@.\-/]+\.[A-Za-z0-9]+(?::\d+(?::\d+)?)?/g;
 
 /**
  * The test files a runner's output names as failing: path tokens on its failure lines and on
- * node's `test at <file>:<line>:<col>` lines, made relative to `root`, kept when they look like a
+ * node's `test at <file>:<line>:<col>` lines and TAP's `location:` line of a `not ok` block, made relative to `root`, kept when they look like a
  * test file and git tracks them at HEAD. Sorted, each once.
  */
 export function failingFiles(
@@ -114,16 +117,25 @@ export function failingFiles(
   tracked: (path: string) => boolean,
 ): string[] {
   const looksLikeTest = new RegExp(testPathPattern);
+  const roots = [...new Set([root, realOrSelf(root)])];
   const out = new Set<string>();
+  // TAP (node's default reporter off a terminal before v23) names a failed test's file only in
+  // the `location:` line of the YAML block after its `not ok`; a passing test's block is skipped.
+  let inFailedBlock = false;
   for (const raw of output.split("\n")) {
     // eslint-disable-next-line no-control-regex
     const line = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
-    if (!FAILURE_LINE.test(line) && !line.startsWith("test at ")) continue;
+    if (/^(?:not )?ok\b/.test(line)) inFailedBlock = line.startsWith("not ok");
+    else if (line === "...") inFailedBlock = false;
+    const location = inFailedBlock && line.startsWith("location:");
+    if (!FAILURE_LINE.test(line) && !line.startsWith("test at ") && !location) continue;
     for (const token of line.match(PATH_TOKEN) ?? []) {
       let path = token.replace(/^file:\/\//, "").replace(/(?::\d+){1,2}$/, "");
       if (isAbsolute(path)) {
-        const rel = relative(root, path);
-        if (rel.startsWith("..") || isAbsolute(rel)) continue;
+        const rel = roots
+          .map((r) => relative(r, path))
+          .find((x) => !x.startsWith("..") && !isAbsolute(x));
+        if (rel === undefined) continue;
         path = rel.split("\\").join("/");
       }
       path = posix.normalize(path).replace(/^\.\//, "");
@@ -133,6 +145,14 @@ export function failingFiles(
   }
   return [...out].sort();
 }
+
+const realOrSelf = (path: string): string => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
 
 const sameSet = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((x, i) => x === b[i]);

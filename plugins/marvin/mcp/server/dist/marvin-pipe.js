@@ -33708,7 +33708,7 @@ var cacheKey = (baseSha, command) => createHash("sha256").update(`${baseSha}\0${
 var FAILURE_LINE = /^(?:✖|×|✗|❯|FAIL\b|not ok\b|●)/u;
 var NOT_A_TEST = /^(?:✖ failing tests:?$|FAIL\s*$|●\s*$)/u;
 function failureLines(output, root) {
-  const roots = [root, `file://${root}`].sort((a, b) => b.length - a.length);
+  const roots = [.../* @__PURE__ */ new Set([root, realOrSelf(root)])].flatMap((r) => [r, `file://${r}`]).sort((a, b) => b.length - a.length);
   const out = /* @__PURE__ */ new Set();
   for (const raw of output.split("\n")) {
     let line = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
@@ -33723,15 +33723,20 @@ var COMPILER_ERROR = /\berror TS\d{3,}\b/;
 var PATH_TOKEN = /(?:file:\/\/)?[\w@.\-/]+\.[A-Za-z0-9]+(?::\d+(?::\d+)?)?/g;
 function failingFiles(output, root, testPathPattern, tracked) {
   const looksLikeTest = new RegExp(testPathPattern);
+  const roots = [.../* @__PURE__ */ new Set([root, realOrSelf(root)])];
   const out = /* @__PURE__ */ new Set();
+  let inFailedBlock = false;
   for (const raw of output.split("\n")) {
     const line = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
-    if (!FAILURE_LINE.test(line) && !line.startsWith("test at ")) continue;
+    if (/^(?:not )?ok\b/.test(line)) inFailedBlock = line.startsWith("not ok");
+    else if (line === "...") inFailedBlock = false;
+    const location = inFailedBlock && line.startsWith("location:");
+    if (!FAILURE_LINE.test(line) && !line.startsWith("test at ") && !location) continue;
     for (const token of line.match(PATH_TOKEN) ?? []) {
       let path = token.replace(/^file:\/\//, "").replace(/(?::\d+){1,2}$/, "");
       if (isAbsolute(path)) {
-        const rel = relative(root, path);
-        if (rel.startsWith("..") || isAbsolute(rel)) continue;
+        const rel = roots.map((r) => relative(r, path)).find((x) => !x.startsWith("..") && !isAbsolute(x));
+        if (rel === void 0) continue;
         path = rel.split("\\").join("/");
       }
       path = posix.normalize(path).replace(/^\.\//, "");
@@ -33741,6 +33746,13 @@ function failingFiles(output, root, testPathPattern, tracked) {
   }
   return [...out].sort();
 }
+var realOrSelf = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
 var sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 async function checkInherited(o) {
   try {
