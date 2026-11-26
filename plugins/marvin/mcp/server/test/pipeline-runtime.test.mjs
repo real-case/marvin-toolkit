@@ -1872,6 +1872,32 @@ test("rename_branch names the branch from the spec, tolerates a replay, and step
   assert.equal(none.run.branch, "feature/SANDBOX--tag-filter");
 });
 
+test("rename_branch folds a tracker a ref cannot hold into one token, and `none` stays no tracker", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  const s = await prepared({
+    config: { pipeline: { branch_template: "feature/{tracker}--{slug}" } },
+  });
+  write(s.wt, spec, specText({ tracker: "COD-11 F4" }));
+  const spaced = await s.deps.work(
+    { ...s.run, stage: "test_authoring", specPath: spec },
+    "rename_branch",
+    undefined,
+    step("spaced"),
+  );
+  assert.equal(spaced.run.branch, "feature/COD-11-F4--tag-filter");
+  assert.equal(sh(s.wt, "branch", "--show-current"), "feature/COD-11-F4--tag-filter");
+
+  const u = await prepared({ config: { pipeline: { tracker_default: "SANDBOX" } } });
+  write(u.wt, spec, specText({ tracker: " none " }));
+  const none = await u.deps.work(
+    { ...u.run, specPath: spec },
+    "rename_branch",
+    undefined,
+    step("none"),
+  );
+  assert.equal(none.run.branch, "feature/SANDBOX--tag-filter");
+});
+
 test("ci reads MARVIN_PIPELINE_FAKE_CI, and mark_ready leaves a fake PR alone", async () => {
   const s = await prepared();
   const run = {
