@@ -19,7 +19,7 @@ follows semver independently of the surrounding marketplace.
 
 ### Changed
 
-- **Eight subagents run on Sonnet** (ADR-0057, proposed to supersede ADR-0006). The six agents
+- **Eight subagents run on Sonnet** (ADR-0057, superseding ADR-0006). The six agents
   whose judgment is the last check stay on Opus: both critics, the hunt referee and hunter, the
   debugger and the security auditor. Eight agents now pin `model: sonnet`: `marvin-tm-executor`
   and `marvin-tm-review-fixer`, whose code sealed tests, the `verify` gates, the diff critic and CI

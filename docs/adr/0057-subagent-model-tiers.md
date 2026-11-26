@@ -2,7 +2,7 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
+| Status        | **Accepted** |
 | Date          | 2026-11-26 |
 | Supersedes    | [ADR-0006](0006-all-subagents-opus.md) |
 | Superseded by | —                                                           |
