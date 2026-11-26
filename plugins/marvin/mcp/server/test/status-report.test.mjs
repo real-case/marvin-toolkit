@@ -567,6 +567,7 @@ test("final facts: criteria from the shipped spec, proven by the seal or the ora
     command: "node --test",
     source: null,
     code: status === "pass" ? 0 : 1,
+    outcome: status === "pass" ? "passed" : "failed",
     signal: null,
     test_file: "test/a.test.mjs",
     test_sha: "abc",
