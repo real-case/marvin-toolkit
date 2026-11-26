@@ -6,11 +6,20 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+### Changed
+
+- **A red must have run** (ADR-0056, fleet plan item F6b). `oracle-run` records gain the
+  factory's classification (`outcome`: `failed`, `did_not_run`, `passed`, `unknown`; `marks`;
+  `runner`). Only "ran and failed" counts as the red of a red→green proof. A load or collection
+  error, no tests found, a crash or a missing binary no longer proves a red. pytest and vitest
+  are detected; any other runner's non-zero exit is `unknown`. Records without the field still
+  parse and count as unclassified, so a journal recorded earlier needs its red re-run.
+
 ## [0.39.2] — 2026-11-26
 
 ### Changed
 
-- **Eight subagents run on Sonnet** (ADR-0056, proposed to supersede ADR-0006). The six agents
+- **Eight subagents run on Sonnet** (ADR-0057, proposed to supersede ADR-0006). The six agents
   whose judgment is the last check stay on Opus: both critics, the hunt referee and hunter, the
   debugger and the security auditor. Eight agents now pin `model: sonnet`: `marvin-tm-executor`
   and `marvin-tm-review-fixer`, whose code sealed tests, the `verify` gates, the diff critic and CI

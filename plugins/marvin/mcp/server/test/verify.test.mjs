@@ -1149,7 +1149,13 @@ const BUGFIX_BLOCK = [
 /** Stage the bugfix fixture; `impl.txt` is the code, `regress.test.sh` the test. */
 function bugfixFixture(dir, { slug = "demo-bug", seal } = {}) {
   writeSpec(dir, { slug, type: "bugfix", block: BUGFIX_BLOCK, seal });
-  writeFileSync(join(dir, "regress.test.sh"), "grep -q fixed impl.txt\n");
+  // Prints pytest's summary shape: F6b classifies a red by what the runner says it ran.
+  writeFileSync(
+    join(dir, "regress.test.sh"),
+    "if grep -q fixed impl.txt; then echo '== 1 passed in 0.01s =='; " +
+      "else echo '== test session starts =='; echo 'FAILED t - assert 0'; " +
+      "echo '== 1 failed in 0.01s =='; exit 1; fi\n",
+  );
   writeFileSync(join(dir, "impl.txt"), "broken\n");
   writeVerification(dir, "PASS");
   return slug;
@@ -1298,16 +1304,29 @@ test("a signal-killed or unlaunchable oracle is not-run and never a proven red",
     );
     assert.equal(afterNotRuns.parsed.red_green, "missing", "a not-run is not a red");
 
-    // The contrast that makes that verdict mean something: a MISSING BINARY
-    // exits 127 CLEANLY, and 127 is a real red. A copy of the trichotomy that
-    // lumped "non-zero or null" together would have read all three of these
-    // alike — and this last pair proves the gate is not simply refusing
-    // everything, because with a genuine red in front of it, it says proven.
-    const real = runsOf(
+    // F6b: a MISSING BINARY exits 127 cleanly, so status is `fail` and the old
+    // gate read it as a red. It is not one: nothing ran. It classifies `unknown`.
+    const missingBinary = runsOf(
       await callVerify({ ...base, command: "definitely-not-a-real-binary-xyz" }, "oracle-result"),
     )[0];
-    assert.equal(real.status, "fail");
-    assert.equal(real.code, 127);
+    assert.equal(missingBinary.status, "fail");
+    assert.equal(missingBinary.code, 127);
+    assert.equal(missingBinary.outcome, "unknown");
+    await callVerify({ action: "oracles", projectRoot: dir, specSlug: slug }, "oracle-result");
+    const afterMissing = await callVerify(
+      { action: "gate", projectRoot: dir, specSlug: slug },
+      "deliver-gate",
+    );
+    assert.equal(afterMissing.parsed.red_green, "missing", "exit 127 is not a ran-and-failed red");
+    assert.match(afterMissing.parsed.reason, /not `failed`|unknown/);
+
+    // The contrast: a genuine red (the runner ran a test and it failed), then a green.
+    writeFileSync(join(dir, "impl.txt"), "broken\n");
+    const real = runsOf(
+      await callVerify({ ...base, command: "sh regress.test.sh" }, "oracle-result"),
+    )[0];
+    assert.equal(real.outcome, "failed");
+    writeFileSync(join(dir, "impl.txt"), "fixed\n");
     const second = runsOf(
       await callVerify({ action: "oracles", projectRoot: dir, specSlug: slug }, "oracle-result"),
     )[0];
@@ -1663,7 +1682,11 @@ test("deliver gate reads a feature's red-green from its kind: test criterion (AD
   const dir = mkdtempSync(join(tmpdir(), "marvin-redgreen-feature-"));
   try {
     writeSpec(dir, { slug: "demo-feature", type: "feature", block: FEATURE_BLOCK });
-    writeFileSync(join(dir, "thing.test.sh"), "grep -q done thing.txt\n");
+    writeFileSync(
+      join(dir, "thing.test.sh"),
+      "if grep -q done thing.txt; then echo '== 1 passed in 0.01s =='; " +
+        "else echo '== test session starts =='; echo '== 1 failed in 0.01s =='; exit 1; fi\n",
+    );
     writeFileSync(join(dir, "thing.txt"), "todo\n");
     writeVerification(dir, "PASS");
     const gate = () =>

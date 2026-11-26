@@ -1,4 +1,4 @@
-# ADR 0056 — Subagents run on Opus only where their judgment is the last check
+# ADR 0057 — Subagents run on Opus only where their judgment is the last check
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
