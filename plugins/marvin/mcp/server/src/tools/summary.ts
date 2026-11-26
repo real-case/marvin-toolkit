@@ -28,7 +28,7 @@ import { findTaskByBranch, readAllTasks } from "../storage/tasks.js";
 import { searchLessons } from "../storage/lessons.js";
 import { loadConfig, trackerUrl } from "../storage/config.js";
 import type { Config, SpecConfig } from "../storage/schema.js";
-import { currentBranch, git, inGitRepo } from "../lib/git.js";
+import { currentBranch, git, inGitRepo, resolveBaseRef } from "../lib/git.js";
 import {
   parseCritiqueBlock,
   parseVerifyBlock,
@@ -389,11 +389,23 @@ function toGateOutcome(g: VerifyGate): GateOutcome {
   };
 }
 
-/** Commits on the current branch not in the base branch (newest first). */
-function readCommits(projectRoot: string, base: string): CommitRef[] {
+/**
+ * Commits on the current branch not in the base branch (newest first). The base
+ * is resolved to its remote-tracking ref when one exists (`resolveBaseRef`), so
+ * a stale local base branch does not pour its missing commits into the list.
+ * Exported for the unit test.
+ */
+export function readCommits(projectRoot: string, base: string): CommitRef[] {
   if (!inGitRepo(projectRoot)) return [];
   const r = git(
-    ["log", `${base}..HEAD`, "--no-merges", "--format=%h%x09%s", "-n", "30"],
+    [
+      "log",
+      `${resolveBaseRef(base, projectRoot)}..HEAD`,
+      "--no-merges",
+      "--format=%h%x09%s",
+      "-n",
+      "30",
+    ],
     projectRoot,
   );
   if (!r.ok || !r.value.trim()) return [];

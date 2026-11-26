@@ -15,6 +15,17 @@ follows semver independently of the surrounding marketplace.
   are detected; any other runner's non-zero exit is `unknown`. Records without the field still
   parse and count as unclassified, so a journal recorded earlier needs its red re-run.
 
+### Fixed
+
+- **Scope drift is measured from the remote base, not a stale local branch.** The fork point a
+  task's diff is taken from (`changedFilesForScope`, shared by the `spec` scope gate and the
+  metrics roll-up's `scope_drift`) and the commit list of `/marvin:task-summary` now resolve
+  `base_branch` to `origin/<base>` when that remote-tracking ref exists, and fall back to the
+  local branch otherwise. A local base branch is not updated in a worktree: on one host it lagged
+  `origin/staging` by 8,779 commits, and the roll-up counted 17,209 changed files for a task that
+  changed a handful. `base_branch` itself is unchanged and stays a branch name for checkout, the
+  PR base and the shipped-spec lookup. Records already written are not recomputed.
+
 ## [0.39.1] — 2026-11-26
 
 ### Changed
