@@ -19794,6 +19794,171 @@ function formatVerifyBlock(result) {
 }
 
 // src/lib/oracle-classify.ts
+var MISSING_NAME = /cannot import name|has no attribute|is not defined|is not a function|of undefined|NameError/;
+var MISSING_FILE = /FileNotFoundError|ENOENT/;
+var SNAPSHOT = /Snapshot `[^`]*` mismatched|snapshot .*(?:does not exist|not written|missing)|Snapshot '[^']*' does not exist|obsolete snapshot|toMatch(?:Inline|File)?Snapshot/i;
+function failureMarks(message) {
+  const marks = [];
+  if (MISSING_NAME.test(message)) marks.push("missing_name");
+  if (MISSING_FILE.test(message)) marks.push("missing_file");
+  if (SNAPSHOT.test(message)) marks.push("snapshot");
+  return marks;
+}
+var ANSI = /\u001b\[[0-9;]*m/g;
+var PYTEST_SUMMARY = /^=*\s*((?:\d+ [a-z]+(?:, )?)+) in [\d.]+s(?: \([^)]*\))?\s*=*$/;
+var VITEST_TESTS = /^\s*Tests\s+(.+?)\s*\(\d+\)\s*$/;
+var VITEST_FILES = /^\s*Test Files\s+(.+?)\s*\(\d+\)\s*$/;
+function counts(text2) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, n, word] of text2.matchAll(/(\d+) ([a-z]+)/g)) {
+    out.set(word, (out.get(word) ?? 0) + Number(n));
+  }
+  return out;
+}
+function pytest(lines, text2, code) {
+  const summaryLine2 = lines.map((l) => PYTEST_SUMMARY.exec(l.trim())).filter((m) => m).pop();
+  const noTests = lines.some((l) => /\bno tests ran\b|collected 0 items/.test(l));
+  const session = /=+ test session starts =+/.test(text2) || /^collected \d+ items?/m.test(text2);
+  if (!summaryLine2 && !noTests && !session) return null;
+  const c = summaryLine2 ? counts(summaryLine2[1]) : /* @__PURE__ */ new Map();
+  const failed = c.get("failed") ?? 0;
+  const errors = (c.get("error") ?? 0) + (c.get("errors") ?? 0);
+  const base = { runner: "pytest" };
+  if (/errors? during collection|ERROR collecting|Interrupted:/.test(text2)) {
+    return { ...base, outcome: "did_not_run", marks: [], detail: "pytest: collection error" };
+  }
+  if (noTests && !summaryLine2?.[1]?.includes("passed") && failed === 0) {
+    return { ...base, outcome: "did_not_run", marks: [], detail: "pytest: no tests ran" };
+  }
+  if (failed > 0 && errors === 0) {
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text2),
+      detail: `pytest: ${failed} failed`
+    };
+  }
+  if (errors > 0) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: `pytest: ${errors} setup/collection error(s)`
+    };
+  }
+  if (code === 0) {
+    return (c.get("passed") ?? 0) > 0 ? { ...base, outcome: "passed", marks: [], detail: "pytest: passed" } : { ...base, outcome: "did_not_run", marks: [], detail: "pytest: no test passed (skipped)" };
+  }
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: `pytest: exit ${code} with no failed test`
+  };
+}
+function vitest(lines, text2, code) {
+  const tests = lines.map((l) => VITEST_TESTS.exec(l)).filter((m) => m).pop();
+  const files = lines.map((l) => VITEST_FILES.exec(l)).filter((m) => m).pop();
+  const noFiles = /No test files found/.test(text2);
+  if (!tests && !files && !noFiles) return null;
+  const base = { runner: "vitest" };
+  if (noFiles)
+    return { ...base, outcome: "did_not_run", marks: [], detail: "vitest: no test files found" };
+  const t = tests ? counts(tests[1]) : /* @__PURE__ */ new Map();
+  const failed = t.get("failed") ?? 0;
+  if (failed > 0) {
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text2),
+      detail: `vitest: ${failed} failed`
+    };
+  }
+  if (!tests) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: "vitest: suite failed with no test results"
+    };
+  }
+  if (code === 0 && (t.get("passed") ?? 0) > 0)
+    return { ...base, outcome: "passed", marks: [], detail: "vitest: passed" };
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: "vitest: no test ran and failed (skipped/todo)"
+  };
+}
+var NODE_COUNT = (word) => new RegExp(`^(?:\u2139|#) ${word} (\\d+)\\s*$`, "m");
+var NODE_FILE_FAILURE = /^\s*(?:error: )?'test failed'\s*$/m;
+function nodeTest(text2, code) {
+  const read = (word) => {
+    const m = NODE_COUNT(word).exec(text2);
+    return m ? Number(m[1]) : null;
+  };
+  const tests = read("tests");
+  const fail2 = read("fail");
+  if (tests === null || fail2 === null) return null;
+  const pass2 = read("pass") ?? 0;
+  const cancelled = read("cancelled") ?? 0;
+  const base = { runner: "node" };
+  if (fail2 > 0) {
+    if (NODE_FILE_FAILURE.test(text2)) {
+      return {
+        ...base,
+        outcome: "did_not_run",
+        marks: [],
+        detail: "node:test: a test file failed outside any test (load, import or top-level error)"
+      };
+    }
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text2),
+      detail: `node:test: ${fail2} failed`
+    };
+  }
+  if (cancelled > 0) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: `node:test: ${cancelled} cancelled`
+    };
+  }
+  if (code === 0 && pass2 > 0) {
+    return { ...base, outcome: "passed", marks: [], detail: "node:test: passed" };
+  }
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: "node:test: no test ran and failed (skipped/todo)"
+  };
+}
+function classifyOracleRun(run2) {
+  if (run2.launchError || run2.code === null || run2.signal !== null) {
+    return {
+      outcome: "did_not_run",
+      marks: [],
+      runner: null,
+      detail: "runner crashed, was killed or never launched"
+    };
+  }
+  const text2 = run2.output.replace(ANSI, "");
+  const lines = text2.split(/\r?\n/);
+  const detected = pytest(lines, text2, run2.code) ?? vitest(lines, text2, run2.code) ?? nodeTest(text2, run2.code);
+  if (detected) return detected;
+  if (run2.code === 0) return { outcome: "passed", marks: [], runner: null, detail: "exit 0" };
+  return {
+    outcome: "unknown",
+    marks: [],
+    runner: null,
+    detail: `exit ${run2.code}: no per-runner detection for this command, so the red is not shown to have run`
+  };
+}
 function isRedForRightReason(c) {
   return c.outcome === "failed" && !(c.marks ?? []).includes("snapshot");
 }
@@ -19936,15 +20101,30 @@ var OracleRunSchema = external_exports.object({
    * record written before it existed — that is "unclassified", never `failed`. */
   outcome: external_exports.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
   marks: external_exports.array(external_exports.enum(["missing_name", "missing_file", "snapshot"])).optional(),
-  runner: external_exports.enum(["pytest", "vitest"]).nullable().optional(),
+  runner: external_exports.enum(["pytest", "vitest", "node"]).nullable().optional(),
   outcome_detail: external_exports.string().optional(),
   ran_at: external_exports.string()
 });
-function oracleJournalPath(runsDir, slug) {
-  return join(runsDir, `${slug}.oracles.md`);
+function oracleJournalPath(runsDir2, slug) {
+  return join(runsDir2, `${slug}.oracles.md`);
 }
-function readOracleRuns(runsDir, slug) {
-  const path = oracleJournalPath(runsDir, slug);
+function recordOracleRun(runsDir2, entry) {
+  mkdirSync(runsDir2, { recursive: true });
+  const path = oracleJournalPath(runsDir2, entry.slug);
+  const header = existsSync(path) ? "" : `# Oracle runs \u2014 ${entry.slug}
+
+Append-only. One \`${ORACLE_RUN_TAG}\` block per run.
+
+`;
+  const block = `\`\`\`json ${ORACLE_RUN_TAG}
+${JSON.stringify(entry)}
+\`\`\`
+
+`;
+  appendFileSync(path, `${header}${block}`, "utf8");
+}
+function readOracleRuns(runsDir2, slug) {
+  const path = oracleJournalPath(runsDir2, slug);
   if (!existsSync(path)) return [];
   let raw;
   try {
@@ -20026,11 +20206,11 @@ var ProgressEntrySchema = external_exports.object({
   /** ISO 8601. */
   at: external_exports.string()
 });
-function progressJournalPath(runsDir, slug) {
-  return join(runsDir, `${slug}.progress.md`);
+function progressJournalPath(runsDir2, slug) {
+  return join(runsDir2, `${slug}.progress.md`);
 }
-function readProgress(runsDir, slug) {
-  const path = progressJournalPath(runsDir, slug);
+function readProgress(runsDir2, slug) {
+  const path = progressJournalPath(runsDir2, slug);
   if (!existsSync(path)) return [];
   let raw;
   try {
@@ -20097,12 +20277,12 @@ var GateEntrySchema = external_exports.object({
   artifact: external_exports.string().min(1)
 });
 var VerifyRunEntrySchema = external_exports.discriminatedUnion("kind", [RunEntrySchema, GateEntrySchema]);
-function verifyJournalPath(runsDir, slug) {
-  return join(runsDir, `${slug}.verify.md`);
+function verifyJournalPath(runsDir2, slug) {
+  return join(runsDir2, `${slug}.verify.md`);
 }
-function recordVerifyRun(runsDir, entry) {
-  mkdirSync(runsDir, { recursive: true });
-  const path = verifyJournalPath(runsDir, entry.slug);
+function recordVerifyRun(runsDir2, entry) {
+  mkdirSync(runsDir2, { recursive: true });
+  const path = verifyJournalPath(runsDir2, entry.slug);
   const header = existsSync(path) ? "" : `# Verification runs \u2014 ${entry.slug}
 
 Append-only. One \`${VERIFY_RUN_TAG}\` block per run or delivery-gate decision.
@@ -20115,8 +20295,8 @@ ${JSON.stringify(entry)}
 `;
   appendFileSync(path, `${header}${block}`, "utf8");
 }
-function readVerifyRuns(runsDir, slug) {
-  const path = verifyJournalPath(runsDir, slug);
+function readVerifyRuns(runsDir2, slug) {
+  const path = verifyJournalPath(runsDir2, slug);
   if (!existsSync(path)) return [];
   let raw;
   try {
@@ -22449,7 +22629,7 @@ function nodeFoundNothing(output, namesCandidate) {
     return quoted !== void 0 && namesCandidate(quoted);
   });
 }
-var ANSI = (
+var ANSI2 = (
   // eslint-disable-next-line no-control-regex -- the escape character is exactly what is stripped
   /\u001b(?:\[[0-?]*[ -/]*[@-~]|[\]PX^_][^\u0007\u001b\n]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g
 );
@@ -22469,7 +22649,7 @@ function reportedFileCount(output) {
 }
 function redProblem(result, namesCandidate) {
   const { code } = result;
-  const output = typeof result.output === "string" ? result.output.replace(ANSI, "") : "";
+  const output = typeof result.output === "string" ? result.output.replace(ANSI2, "") : "";
   if (code === 0) return "passes before implementation, so it proves nothing";
   if (!Number.isInteger(code) || code < 0 || NOT_RUN_CODES.has(code) || TIMED_OUT.test(output)) {
     return `test command did not run (exit ${String(code)})`;
@@ -22837,11 +23017,12 @@ function sealAuthoredTests(o) {
     }
     candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
   }
-  const verdict = (sealed) => reasons.length > 0 ? { ok: false, reasons, sealed: [] } : { ok: true, reasons: [], sealed };
+  const verdict = (sealed, reds = []) => reasons.length > 0 ? { ok: false, reasons, sealed: [], reds: [] } : { ok: true, reasons: [], sealed, reds };
   const changed = (path) => `${path}: changed while its red run executed, so what ran is not what is sealed`;
   const redRuns = (red) => {
     const copied = red !== worktree;
     const failed = /* @__PURE__ */ new Set();
+    const ran = /* @__PURE__ */ new Map();
     if (copied) {
       for (const c of candidates) {
         const problem = placeCopy(red.root, c.path, c.bytes);
@@ -22866,10 +23047,15 @@ function sealAuthoredTests(o) {
       let problem;
       try {
         const namesCandidate = (quoted) => [red.root, red.realRoot].some((root) => resolve(root, quoted) === resolve(root, c.path));
-        problem = redProblem(
-          o.run(formatTestOne(o.testOne, c.path), red.root, o.timeoutMs),
-          namesCandidate
-        );
+        const command = formatTestOne(o.testOne, c.path);
+        const result = o.run(command, red.root, o.timeoutMs);
+        ran.set(c.path, {
+          command,
+          code: result.code,
+          output: typeof result.output === "string" ? result.output : "",
+          ms: result.ms
+        });
+        problem = redProblem(result, namesCandidate);
       } catch (error2) {
         problem = `test command did not run (${errorText(error2)})`;
       }
@@ -22882,6 +23068,7 @@ function sealAuthoredTests(o) {
     const walkedAfter = candidates.length > 0 ? walkTestFiles(red.root, red.realRoot, isTest) : void 0;
     if (walkedAfter !== void 0) for (const c of candidates) outsideLinks(walkedAfter, c.path);
     const sealed = [];
+    const reds = [];
     for (const c of candidates) {
       if (failed.has(c.path)) continue;
       const problem = fileProblem(c.abs, realRoot, c.path);
@@ -22924,8 +23111,10 @@ function sealAuthoredTests(o) {
         continue;
       }
       sealed.push({ path: c.path, criteria: c.criteria, sha256: after });
+      const r = ran.get(c.path);
+      if (r !== void 0) reds.push({ path: c.path, criteria: c.criteria, sha256: after, ...r });
     }
-    return verdict(sealed);
+    return verdict(sealed, reds);
   };
   if (base === void 0) return redRuns(worktree);
   if (candidates.length === 0) return verdict([]);
@@ -35378,6 +35567,76 @@ function runDeliveryGate(input) {
     artifact: `.marvin/task/runs/${slug}.md`
   };
 }
+var runsDir = (worktree) => join(worktree, ".marvin", "task", "runs");
+var shortSha = (sha256) => sha256.slice(0, 16);
+function journalSealReds(spec, reds, headSha2, now = /* @__PURE__ */ new Date()) {
+  const entries = [];
+  for (const red of reds) {
+    const ran = Number.isInteger(red.code) && red.code >= 0;
+    const c = classifyOracleRun({ code: ran ? red.code : null, signal: null, output: red.output });
+    for (const criterion of red.criteria) {
+      entries.push({
+        slug: spec.slug,
+        contract_sha: spec.contractSha,
+        criterion,
+        expect: "fail",
+        status: !ran ? "not-run" : red.code === 0 ? "pass" : "fail",
+        command: red.command,
+        source: "engine seal",
+        reason: ran ? null : `exit ${String(red.code)}`,
+        code: ran ? red.code : null,
+        signal: null,
+        test_file: red.path,
+        test_sha: shortSha(red.sha256),
+        head_sha: headSha2,
+        durationMs: red.ms,
+        outcome: c.outcome,
+        marks: c.marks,
+        runner: c.runner,
+        outcome_detail: c.detail,
+        ran_at: now.toISOString()
+      });
+    }
+  }
+  for (const e of entries) recordOracleRun(runsDir(spec.worktree), e);
+  return entries;
+}
+function journalGateGreens(spec, report, sealed, oracles, head, now = /* @__PURE__ */ new Date()) {
+  if (!report.passed) return [];
+  const intact = new Set(report.sealed.filter((s) => s.ok).map((s) => s.path));
+  const moved = new Set(report.blockers.flatMap((b) => b.file ? [b.file] : []));
+  const entries = [];
+  for (const file of sealed) {
+    if (!intact.has(file.path) || moved.has(file.path)) continue;
+    for (const criterion of file.criteria) {
+      const gate = report.gates.find((g) => g.name === `oracle:${criterion}`);
+      if (gate?.result !== "pass") continue;
+      entries.push({
+        slug: spec.slug,
+        contract_sha: spec.contractSha,
+        criterion,
+        expect: "pass",
+        status: "pass",
+        command: oracles.find((o) => o.criterion === criterion)?.command ?? null,
+        source: "engine gate",
+        reason: null,
+        code: 0,
+        signal: null,
+        test_file: file.path,
+        test_sha: shortSha(file.sha256),
+        head_sha: head,
+        durationMs: gate.ms,
+        outcome: "passed",
+        marks: [],
+        runner: null,
+        outcome_detail: "the engine's gate stage ran this oracle on the gated commit",
+        ran_at: now.toISOString()
+      });
+    }
+  }
+  for (const e of entries) recordOracleRun(runsDir(spec.worktree), e);
+  return entries;
+}
 var RUNTIME_VARS = {
   planner: ["orchestrator", "child", "lessons", "plugin"],
   "test-author": ["orchestrator", "child", "lessons", "test_path_pattern"],
@@ -36588,6 +36847,15 @@ ${planted.join("\n")}`
       }
     }
     const passed = report.passed && findings.length === 0;
+    if (passed) {
+      const proof = proofSpec(run2, wt, spec.text);
+      if (proof !== null) {
+        journal(
+          "gate's green run",
+          () => journalGateGreens(proof, report, run2.sealed, oracles, head)
+        );
+      }
+    }
     writeAtomic2(
       at("gated-head.json"),
       `${JSON.stringify({ head, iteration: run2.iteration, passed })}
@@ -36606,6 +36874,19 @@ ${planted.join("\n")}`
     const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
     const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
+  };
+  const proofSpec = (run2, wt, text2) => {
+    if (text2 === null) return null;
+    const fm = parseFrontmatter(text2.replace(/\r\n?/g, "\n")).frontmatter;
+    const contractSha = (fm.contract_sha ?? "").trim();
+    return contractSha ? { worktree: wt.path, slug: specIdentity(run2).slug, contractSha } : null;
+  };
+  const journal = (what, write) => {
+    try {
+      write();
+    } catch (error2) {
+      note(`the ${what} was not journalled: ${errorText3(error2)}`);
+    }
   };
   const mergeSealed2 = (old, fresh) => {
     const byPath = new Map(old.map((s) => [s.path, s]));
@@ -36672,6 +36953,11 @@ ${planted.join("\n")}`
       if (!verdict.ok) {
         const obs2 = { kind: "seal", ok: false, reasons: verdict.reasons, sealed: [] };
         return { run: run2, obs: obs2 };
+      }
+      const proof = proofSpec(run2, wt, specOnDisk(run2));
+      if (proof !== null) {
+        const redHead = isReseal(run2) ? wt.baseSha : headBefore;
+        journal("seal's red run", () => journalSealReds(proof, verdict.reds, redHead));
       }
       marker = { phase: "sealed", headBefore, sealed: verdict.sealed };
       writeAtomic2(path, `${JSON.stringify(marker)}

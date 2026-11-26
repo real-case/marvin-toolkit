@@ -57,15 +57,38 @@ child choosing to call it is not enforced.
    mode now say the engine runs the gate and appends the block, and that the executor never calls
    `rollup`. The executor's own gate call before the pull request is kept: a refusal found there
    costs no CI round. The interactive path is unchanged.
+7. **The engine journals its own proof.** The seal stage already runs every authored test before
+   the implementation and refuses one that passes; the gate stage runs every oracle on the gated
+   commit with the sealed hashes checked around it. Neither was recorded where the gate reads a
+   proof, so the gate could not see either. Both are now appended to
+   `.marvin/task/runs/<slug>.oracles.md` through `recordOracleRun`, in the journal's `oracle-run`
+   shape, keyed by the spec's `contract_sha` and by the sealed file's hash in `verify`'s form
+   (`pipeline/proof-journal.ts`). The gate's `red_green` reader is unchanged and does not know
+   the engine wrote them, and an engine red pairs with a green the executor records through
+   `verify`, and the other way round.
+   - The **red** is each sealed file's red run as the runner reported it, journalled with the
+     class `classifyOracleRun` gives it (ADR-0056). A run that did not run, crashed or exited
+     from a runner marvin cannot read is recorded as what it was and is not a red.
+   - The **green** is journalled only for a gate stage that passed, for the gated commit, for a
+     sealed file whose hash held before and after its oracle, and for a criterion whose
+     `oracle:<id>` gate passed.
+   - A journal write that fails is noted and costs the proof, not the run: the gate then BLOCKs.
+8. **`node --test` gets a detector.** ADR-0056 left `node --test` `unknown`, so no Node project,
+   this repository included, could record a proven red, and the engine's journalled red would
+   have changed nothing for them. `lib/oracle-classify.ts` now reads its summary in the spec and
+   TAP reporters. A failure inside a test body is `failed`. A file that failed outside any test,
+   which the runner reports with the bare error `'test failed'` (an import, resolution or syntax
+   error, a top-level throw), is `did_not_run`, as are cancelled and skipped-only runs. This is
+   the "one function" ADR-0056 names for adding a runner.
 
 ## Consequences
 
 - Every autopilot run that reaches the retro has passed the ADR-0055 rule and carries a terminal
   metrics block for the commit it delivers, whatever its executor did.
-- Runs whose executor skipped the red phase now stop at the delivery gate instead of shipping
-  unproven. The engine's seal stage proves a red on the base commit, but it does not journal that
-  proof, so the gate cannot read it. Recording the seal's red in the oracle journal is a separate
-  change.
+- A run whose sealed tests failed for the right reason before the implementation, and passed on
+  the gated commit, carries its proof whatever its executor did. A run whose red is not a
+  classified `failed`, such as a test that cannot load before the implementation exists or a runner
+  marvin cannot read, stops at the delivery gate, with the red's class in the reason.
 - The per-spec run file is overwritten by the engine at delivery. It means "the latest run for
   this spec", and the engine's gate is the latest run. The verification-run journal gains a
   `gate` entry for every engine call, and no `run` entry, because the engine's gate stage is not

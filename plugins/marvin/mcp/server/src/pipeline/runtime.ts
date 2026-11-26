@@ -80,6 +80,7 @@ import {
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
 import { runDeliveryGate } from "./delivery.js";
+import { journalGateGreens, journalSealReds, type ProofSpec } from "./proof-journal.js";
 import { physicalProblem } from "./plain-path.js";
 import { pendingToolCall, readLogTail, statusLine } from "./child-activity.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
@@ -1785,6 +1786,14 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
     // Finalize builds on exactly the commit the last passing gate judged.
     const passed = report.passed && findings.length === 0;
+    if (passed) {
+      const proof = proofSpec(run, wt, spec.text);
+      if (proof !== null) {
+        journal("gate's green run", () =>
+          journalGateGreens(proof, report, run.sealed as SealedFile[], oracles, head),
+        );
+      }
+    }
     writeAtomic(
       at("gated-head.json"),
       `${JSON.stringify({ head, iteration: run.iteration, passed })}\n`,
@@ -1807,6 +1816,27 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
     const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
+  };
+
+  /**
+   * Where the engine journals its red→green proof (ADR-0059): the spec's slug and its stamped
+   * `contract_sha`, read from `text`. Null when the spec carries no stamp, so nothing is keyed
+   * to a contract that does not exist.
+   */
+  const proofSpec = (run: Run, wt: WorktreeRecord, text: string | null): ProofSpec | null => {
+    if (text === null) return null;
+    const fm = parseFrontmatter(text.replace(/\r\n?/g, "\n")).frontmatter;
+    const contractSha = (fm.contract_sha ?? "").trim();
+    return contractSha ? { worktree: wt.path, slug: specIdentity(run).slug, contractSha } : null;
+  };
+
+  /** A journal write that fails costs the proof, never the run: the delivery gate then BLOCKs. */
+  const journal = (what: string, write: () => unknown) => {
+    try {
+      write();
+    } catch (error) {
+      note(`the ${what} was not journalled: ${errorText(error)}`);
+    }
   };
 
   /** A re-seal replaces the entries it names; every other seal stays (as `decide` merges them). */
@@ -1901,6 +1931,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (!verdict.ok) {
         const obs: Observation = { kind: "seal", ok: false, reasons: verdict.reasons, sealed: [] };
         return { run, obs };
+      }
+      const proof = proofSpec(run, wt, specOnDisk(run));
+      if (proof !== null) {
+        const redHead = isReseal(run) ? wt.baseSha : headBefore;
+        journal("seal's red run", () => journalSealReds(proof, verdict.reds, redHead));
       }
       marker = { phase: "sealed", headBefore, sealed: verdict.sealed };
       writeAtomic(path, `${JSON.stringify(marker)}\n`);
