@@ -3,6 +3,12 @@ tiers:
   light: { max_files: 5, risk: [low] }
   heavy: { min_files: 16, risk: [high] }
 # "<model>/<effort>"; only the test-author may be "skip"
+#
+# No role runs above effort high. Over 106 runs (2026-10-13 to 2026-11-23) xhigh was 48% of the
+# spend, a heavy planner on xhigh cost 2.8x and took 3x as long as one on high with more rejections
+# downstream, not fewer, and an executor raised to sonnet/xhigh had 2 of 17 fixes accepted against
+# 6 of 16 on opus. Past high the lever is the model, so the ladder switches model and never raises
+# effort; in heavy, where the executor already runs on opus, its second step is a plain retry.
 assignments:
   light:
     planner: opus/medium
@@ -17,12 +23,12 @@ assignments:
     verifier: opus/high
     retro: opus/medium
   heavy:
-    planner: opus/xhigh
-    test-author: opus/high
+    planner: opus/high
+    test-author: opus/medium
     executor: opus/high
-    verifier: opus/xhigh
+    verifier: opus/high
     retro: opus/medium
-escalation: [effort+1, model:opus, halt]
+escalation: [model:opus, model:opus, halt]
 caps:
   rejections: 3
   planner_questions: 8

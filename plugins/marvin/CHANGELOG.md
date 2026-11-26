@@ -6,6 +6,26 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+## [0.39.1] — 2026-11-26
+
+### Changed
+
+- **The autopilot's default rubric runs no role above effort `high`.** Over 106 runs between
+  2026-10-13 and 2026-11-23, effort `xhigh` was 48% of the spend. A heavy planner on `xhigh` cost
+  2.8 times as much and took three times as long as one on `high`, with more rejections downstream
+  rather than fewer. In heavy, the planner and the verifier now run on `opus/high` (were
+  `opus/xhigh`). The test-author runs on `opus/medium` (was `opus/high`): at the same number of
+  criteria it took two to three times as long on `high`, with no difference in how often its tests
+  were sent back.
+- **The executor's escalation ladder switches model instead of raising effort.** It is now
+  `[model:opus, model:opus, halt]` (was `[effort+1, model:opus, halt]`). A fix attempt raised to
+  `sonnet/xhigh` was accepted 2 times in 17, one switched to `opus` 6 times in 16, and most
+  rejections were scope and gate findings, which more effort does not fix. Standard now escalates
+  `sonnet/high` to `opus/high`, light `sonnet/medium` to `opus/medium`, and heavy retries on
+  `opus/high`. Because the verifier is never weaker than its executor, it no longer reaches `xhigh`
+  either. A host's `.marvin/pipeline/rubric.yaml` that names its own `assignments` or `escalation`
+  is unaffected, and `effort+1` remains a valid ladder step.
+
 ## [0.39.0] — 2026-11-19
 
 ### Changed

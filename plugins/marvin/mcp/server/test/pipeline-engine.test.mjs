@@ -369,7 +369,10 @@ test("executor done goes to the gate; a failed gate escalates the next executor"
     findings: [finding({ severity: "blocker", category: "gate" })],
   });
   assert.equal(rej.run.stage, "executing");
-  assert.deepEqual([spawnOf(rej).iteration, spawnOf(rej).assignment.effort], [2, "xhigh"]);
+  assert.deepEqual(
+    [spawnOf(rej).iteration, spawnOf(rej).assignment],
+    [2, { model: "opus", effort: "high" }],
+  );
 });
 
 test("a gate that finds the spec unsealed halts instead of handing the executor a seal to forge", () => {
@@ -1338,7 +1341,7 @@ test("a retry after a rejection halt re-enters executing with the findings that 
   assert.equal(retried.run.haltRole, null);
   assert.deepEqual([spawnOf(retried).role, spawnOf(retried).iteration], ["executor", 4]);
   assert.match(spawnOf(retried).context.findings, /b is broken/);
-  assert.deepEqual(spawnOf(retried).assignment, { model: "opus", effort: "xhigh" });
+  assert.deepEqual(spawnOf(retried).assignment, { model: "opus", effort: "high" });
   assert.equal(retried.run.rung, 2);
   const again = go(retried.run, child("executor", executorDone()));
   assert.equal(again.run.stage, "gating");
