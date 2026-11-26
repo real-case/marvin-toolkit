@@ -29758,8 +29758,16 @@ function changedFilesForScope(projectRoot, base) {
 }
 function forkPoint(ref, cwd) {
   if (ref === "HEAD") return ref;
-  const mb = git(["merge-base", ref, "HEAD"], cwd);
-  return mb.ok && mb.value ? mb.value : ref;
+  const base = resolveBaseRef(ref, cwd);
+  const mb = git(["merge-base", base, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : base;
+}
+function resolveBaseRef(base, cwd) {
+  if (base === "HEAD" || base.startsWith("refs/")) return base;
+  const has = (ref) => git(["show-ref", "--verify", "--quiet", ref], cwd).ok;
+  if (has(`refs/remotes/${base}`)) return base;
+  if (has(`refs/remotes/origin/${base}`)) return `origin/${base}`;
+  return base;
 }
 function normalizeScopePath(p) {
   return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
@@ -40140,7 +40148,14 @@ function toGateOutcome(g) {
 function readCommits(projectRoot, base) {
   if (!inGitRepo(projectRoot)) return [];
   const r = git(
-    ["log", `${base}..HEAD`, "--no-merges", "--format=%h%x09%s", "-n", "30"],
+    [
+      "log",
+      `${resolveBaseRef(base, projectRoot)}..HEAD`,
+      "--no-merges",
+      "--format=%h%x09%s",
+      "-n",
+      "30"
+    ],
     projectRoot
   );
   if (!r.ok || !r.value.trim()) return [];
