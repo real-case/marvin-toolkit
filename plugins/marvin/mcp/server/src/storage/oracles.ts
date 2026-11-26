@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isRedForRightReason } from "../lib/oracle-classify.js";
 import { z } from "zod";
 import { fillShellTemplate } from "../lib/shell-quote.js";
 import type { Criterion } from "./spec.js";
@@ -231,6 +232,12 @@ const OracleRunSchema = z.object({
   test_sha: z.string().nullable(),
   head_sha: z.string().nullable(),
   durationMs: z.number().optional(),
+  /** F6b (ADR-0056): the factory's "red for the right reason" class. ABSENT on a
+   * record written before it existed — that is "unclassified", never `failed`. */
+  outcome: z.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
+  marks: z.array(z.enum(["missing_name", "missing_file", "snapshot"])).optional(),
+  runner: z.enum(["pytest", "vitest"]).nullable().optional(),
+  outcome_detail: z.string().optional(),
   ran_at: z.string(),
 });
 export type OracleRun = z.infer<typeof OracleRunSchema>;
@@ -286,7 +293,14 @@ export function readOracleRuns(runsDir: string, slug: string): OracleRun[] {
  * file it names present and hashed. A signal kill or a launch failure is not one. */
 function isRed(r: OracleRun): boolean {
   return (
-    r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha
+    r.expect === "fail" &&
+    r.status === "fail" &&
+    r.code !== null &&
+    r.code !== 0 &&
+    !!r.test_sha &&
+    // F6b: only "ran and failed" is a red. A record without `outcome` predates the
+    // classification and is unclassified — not proof.
+    isRedForRightReason(r)
   );
 }
 
@@ -326,4 +340,27 @@ export function redGreenProof(
     }
   }
   return "missing";
+}
+
+/**
+ * Why a criterion's red attempts were not accepted, for the delivery gate's reason
+ * (F6b). Empty when no red-phase run exists at all, or when one was accepted. Reports
+ * the LATEST red-phase run at `contractSha`: its class, or "unclassified" for a record
+ * written before the classification existed.
+ */
+export function redRejection(runs: OracleRun[], contractSha: string, criterionId: string): string {
+  const reds = runs.filter(
+    (r) => r.contract_sha === contractSha && r.criterion === criterionId && r.expect === "fail",
+  );
+  const last = reds[reds.length - 1];
+  if (!last || isRed(last)) return "";
+  if (last.outcome === undefined) {
+    return `${criterionId}: the red run carries no classification (recorded before F6b); re-run the red phase`;
+  }
+  if (last.outcome === "failed")
+    return `${criterionId}: the red run failed on a snapshot, which is not proof`;
+  return (
+    `${criterionId}: the red run was \`${last.outcome}\`` +
+    `, not \`failed\`${last.outcome_detail ? ` (${last.outcome_detail})` : ""}`
+  );
 }

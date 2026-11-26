@@ -292,7 +292,10 @@ test("a journal entry at another contract_sha is not readable as a proof", () =>
     // A complete red→green pair, recorded under a contract that has since been
     // superseded. Reading it as a proof is the exact silent-pass this filter
     // exists to remove.
-    recordOracleRun(runsDir, entry({ contract_sha: OLD, expect: "fail", status: "fail", code: 1 }));
+    recordOracleRun(
+      runsDir,
+      entry({ contract_sha: OLD, expect: "fail", status: "fail", code: 1, outcome: "failed" }),
+    );
     recordOracleRun(runsDir, entry({ contract_sha: OLD }));
     assert.equal(redGreenProof(readOracleRuns(runsDir, "demo"), SHA, "AC1"), "missing");
     assert.equal(
@@ -319,7 +322,7 @@ test("a proof is a red then a green at one contract_sha over one unchanged test 
   withTmp((dir) => {
     const runsDir = join(dir, "runs");
     const SHA = "aaaaaaaaaaaaaaaa";
-    const red = entry({ expect: "fail", status: "fail", code: 1 });
+    const red = entry({ expect: "fail", status: "fail", code: 1, outcome: "failed" });
     const green = entry();
 
     // the positive case, asserted so a `() => "missing"` stub cannot ship
