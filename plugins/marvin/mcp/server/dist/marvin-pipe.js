@@ -19582,6 +19582,11 @@ external_exports.object({
   provenance: ProvenanceSchema.optional().catch(void 0)
 });
 
+// src/lib/oracle-classify.ts
+function isRedForRightReason(c) {
+  return c.outcome === "failed" && !(c.marks ?? []).includes("snapshot");
+}
+
 // src/lib/shell-quote.ts
 var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
 function encodeForContext(value, context) {
@@ -19710,6 +19715,12 @@ var OracleRunSchema = external_exports.object({
   test_sha: external_exports.string().nullable(),
   head_sha: external_exports.string().nullable(),
   durationMs: external_exports.number().optional(),
+  /** F6b (ADR-0056): the factory's "red for the right reason" class. ABSENT on a
+   * record written before it existed — that is "unclassified", never `failed`. */
+  outcome: external_exports.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
+  marks: external_exports.array(external_exports.enum(["missing_name", "missing_file", "snapshot"])).optional(),
+  runner: external_exports.enum(["pytest", "vitest"]).nullable().optional(),
+  outcome_detail: external_exports.string().optional(),
   ran_at: external_exports.string()
 });
 function oracleJournalPath(runsDir, slug) {
@@ -19738,7 +19749,9 @@ function readOracleRuns(runsDir, slug) {
   return out;
 }
 function isRed(r) {
-  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha;
+  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha && // F6b: only "ran and failed" is a red. A record without `outcome` predates the
+  // classification and is unclassified — not proof.
+  isRedForRightReason(r);
 }
 function isGreen(r) {
   return r.expect === "pass" && r.status === "pass" && r.code === 0 && !!r.test_sha;
