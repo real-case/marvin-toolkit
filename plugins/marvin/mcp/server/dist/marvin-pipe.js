@@ -27333,7 +27333,12 @@ async function awaitAnswer(runDir, id, kind, deps) {
   if (refusals(runDir, id) === 0 && !existsSync(answerPath(runDir, id))) {
     answerFromFixture(runDir, id, kind, deps);
   }
+  const deadline = deps.answerDeadlineMs;
+  const until = deadline === void 0 ? Number.POSITIVE_INFINITY : Date.now() + deadline;
   for (; ; ) {
+    if (Date.now() > until) {
+      throw new Error(`no answer to the ${kind} judgment ${id} within ${deadline} ms`);
+    }
     try {
       const answer = readAnswer(runDir, id);
       if (answer) return answer;
@@ -37067,6 +37072,7 @@ ${planted.join("\n")}`
     judge: fixtures ? "fixtures" : "files",
     ...fixtures && process.env.MARVIN_PIPELINE_FIXTURES ? { fixturesDir: process.env.MARVIN_PIPELINE_FIXTURES } : {},
     ...o.signal ? { signal: o.signal } : {},
+    ...o.answerDeadlineMs !== void 0 ? { answerDeadlineMs: o.answerDeadlineMs } : {},
     prepare,
     spawnChild,
     waitChild,

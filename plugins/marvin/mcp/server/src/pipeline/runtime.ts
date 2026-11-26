@@ -249,6 +249,8 @@ export interface RuntimeOptions {
    * syntax would not reach them.
    */
   signal?: AbortSignal;
+  /** Bounds every wait for an answer; for tests and harnesses only (`EngineDeps.answerDeadlineMs`). */
+  answerDeadlineMs?: number;
   /** How long a wait sleeps between looks, for an answer and for a child. Default 1000 ms. */
   pollMs?: number;
   /** How long one `waitChild` waits before it reports the child still running. Default 110 min. */
@@ -2423,6 +2425,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       ? { fixturesDir: process.env.MARVIN_PIPELINE_FIXTURES }
       : {}),
     ...(o.signal ? { signal: o.signal } : {}),
+    ...(o.answerDeadlineMs !== undefined ? { answerDeadlineMs: o.answerDeadlineMs } : {}),
     prepare,
     spawnChild,
     waitChild,

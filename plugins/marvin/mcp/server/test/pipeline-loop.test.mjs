@@ -192,6 +192,7 @@ function scripted({
     judge,
     fixturesDir,
     signal,
+    answerDeadlineMs: 20_000,
     prepare: async (run) => {
       log.prepared += 1;
       if (crash.prepare) throw new Error("engine killed preparing the run");
@@ -1229,4 +1230,15 @@ test("the fixtures judge needs a fixtures directory", async () => {
   const { deps } = scripted({ judge: "fixtures" });
   await assert.rejects(loop.runEngine(dir, deps), /fixtures directory/);
   assert.equal(loop.engineAlive(dir), false);
+});
+
+test("a judgment no fixture answers fails the run past answerDeadlineMs, instead of waiting forever", async () => {
+  const dir = newRun();
+  const fixturesDir = mkdtempSync(join(tmpdir(), "pipe-nofix-"));
+  const { deps } = scripted({ fixturesDir });
+  deps.answerDeadlineMs = 50;
+  await assert.rejects(
+    loop.runEngine(dir, deps),
+    /no answer to the spec_approval judgment .* 50 ms/,
+  );
 });

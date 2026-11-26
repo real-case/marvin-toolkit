@@ -81,8 +81,10 @@ function specText({
   files = ["src/a.mjs"],
   tracker,
   tamper,
+  noOracle,
 } = {}) {
   const block = [
+    ...(noOracle ? ["no_oracle:", `  reason: ${noOracle}`] : []),
     "files:",
     ...files.map((p, i) => `  - { id: F${i + 1}, path: ${p}, action: new, satisfies: [AC1] }`),
     "criteria:",
@@ -144,6 +146,8 @@ function setup({
     rubric,
     ...(loadConfig ? {} : { config: Config.parse(config) }),
     pollMs: 20,
+    // A judgment no fixture answers fails the test instead of hanging it.
+    answerDeadlineMs: 30_000,
     ...options,
   });
   return { repo, home, runDir, run, deps };
@@ -2517,7 +2521,9 @@ test("the engine drives a light run to ready on this runtime, with fake children
   process.env.MARVIN_PIPELINE_FIXTURES = fixtures;
   let s;
   try {
-    s = setup({ files: { [spec]: specText() }, config: { gates: { test: "true" } } });
+    // The only oracle is a command, so the delivery gate ALLOWs on the declaration (ADR-0055/0059).
+    const noOracle = "the module's existence is checked by a command, not a test";
+    s = setup({ files: { [spec]: specText({ noOracle }) }, config: { gates: { test: "true" } } });
   } finally {
     delete process.env.MARVIN_PIPELINE_JUDGE;
     delete process.env.MARVIN_PIPELINE_FIXTURES;
