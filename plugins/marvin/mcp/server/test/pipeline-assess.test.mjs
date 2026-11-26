@@ -50,11 +50,11 @@ test("the tier boundaries sit at 5 and 16 contract files", () => {
   assert.equal(tierOf(spec("medium", files(2))), "standard");
 });
 
-test("the executor ladder raises effort, then switches to opus, then halts", () => {
+test("the executor ladder switches to opus, retries on opus, then halts, never raising effort", () => {
   const at = (rung) => a.assignmentFor("standard", "executor", rung, rubric);
   assert.deepEqual(at(0), { model: "sonnet", effort: "high" });
-  assert.deepEqual(at(1), { model: "sonnet", effort: "xhigh" });
-  assert.deepEqual(at(2), { model: "opus", effort: "xhigh" });
+  assert.deepEqual(at(1), { model: "opus", effort: "high" });
+  assert.deepEqual(at(2), { model: "opus", effort: "high" });
   assert.throws(() => at(3), /halt/);
   assert.throws(() => at(4), /halt/);
 });
@@ -78,7 +78,10 @@ test("only the executor climbs the ladder", () => {
 });
 
 test("effort never goes past max", () => {
-  const r = a.loadRubric(DEFAULT, "assignments: { standard: { executor: sonnet/max } }\n");
+  const r = a.loadRubric(
+    DEFAULT,
+    "assignments: { standard: { executor: sonnet/max } }\nescalation: [effort+1]\n",
+  );
   assert.deepEqual(a.assignmentFor("standard", "executor", 1, r), {
     model: "sonnet",
     effort: "max",
@@ -97,10 +100,10 @@ test("the default rubric assigns every tier and role as designed", () => {
   assert.deepEqual(cell("standard", "executor"), { model: "sonnet", effort: "high" });
   assert.deepEqual(cell("standard", "verifier"), { model: "opus", effort: "high" });
   assert.deepEqual(cell("standard", "retro"), { model: "opus", effort: "medium" });
-  assert.deepEqual(cell("heavy", "planner"), { model: "opus", effort: "xhigh" });
-  assert.deepEqual(cell("heavy", "test-author"), { model: "opus", effort: "high" });
+  assert.deepEqual(cell("heavy", "planner"), { model: "opus", effort: "high" });
+  assert.deepEqual(cell("heavy", "test-author"), { model: "opus", effort: "medium" });
   assert.deepEqual(cell("heavy", "executor"), { model: "opus", effort: "high" });
-  assert.deepEqual(cell("heavy", "verifier"), { model: "opus", effort: "xhigh" });
+  assert.deepEqual(cell("heavy", "verifier"), { model: "opus", effort: "high" });
   assert.deepEqual(cell("heavy", "retro"), { model: "opus", effort: "medium" });
 });
 
@@ -406,10 +409,10 @@ test("the spec critic gets one pass on the light tier and two elsewhere", () => 
 
 test("the approval preview shows every role for the run's tier, falling back to stage A", () => {
   assert.deepEqual(a.previewAssignments(run("heavy", "light"), rubric), {
-    planner: "opus/xhigh",
-    "test-author": "opus/high",
+    planner: "opus/high",
+    "test-author": "opus/medium",
     executor: "opus/high",
-    verifier: "opus/xhigh",
+    verifier: "opus/high",
     retro: "opus/medium",
   });
   assert.deepEqual(a.previewAssignments(run(null, "light"), rubric), {
