@@ -61,6 +61,7 @@ import {
   shellRunnerAsync,
   snapshotProtected,
 } from "./gate.js";
+import { type BaseRun, type BaseRunCache, cacheKey, checkInherited } from "./inherited.js";
 import { launchDetached } from "./launch.js";
 import { benchSettings, effectiveAssignment, sandboxChildEnv, sandboxSettings } from "./sandbox.js";
 import {
@@ -1614,6 +1615,31 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     return { text, findings };
   };
 
+  /**
+   * The base check's results (`inherited.ts`), one file per run, keyed by base SHA and command: a
+   * base commit does not change, so a later iteration on the same base runs none of it again.
+   */
+  const baseRunCache = (): BaseRunCache => {
+    const file = at("base-checks.json");
+    const Shape = z.record(z.string(), z.object({ code: z.number(), lines: z.array(z.string()) }));
+    const load = (): Record<string, BaseRun> => {
+      try {
+        return readJson(file, Shape) ?? {};
+      } catch {
+        return {};
+      }
+    };
+    return {
+      get: (baseSha, command) => load()[cacheKey(baseSha, command)],
+      set: (baseSha, command, value) => {
+        writeAtomic(
+          file,
+          `${JSON.stringify({ ...load(), [cacheKey(baseSha, command)]: value }, null, 2)}\n`,
+        );
+      },
+    };
+  };
+
   const gateWork = async (run: Run): Promise<{ run: Run; obs: Observation }> => {
     const config = configFor(run);
     const wt = worktreeRecord(run);
@@ -1725,8 +1751,34 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
           : null,
       run: gateRunner,
       timeoutMs,
+      baseCheck: ({ output, baseSha, changed }) =>
+        checkInherited({
+          worktree: wt.path,
+          gitDir: wt.gitDir,
+          baseSha,
+          changed,
+          testOne: config.gates?.test_one,
+          testPathPattern: config.pipeline.test_path_pattern,
+          output,
+          run: gateRunner,
+          timeoutMs,
+          cache: baseRunCache(),
+          ...(deps.signal ? { signal: deps.signal } : {}),
+        }),
       ...(deps.signal ? { signal: deps.signal } : {}),
     });
+    for (const g of report.gates) {
+      if (g.result === "inherited" && g.inherited !== undefined) {
+        noteOnce(
+          `inherited:${run.iteration}:${head}:${g.name}`,
+          `gate ${g.name} fails only on tests that also fail on the base ${g.inherited.base.slice(0, 12)}, so it does not reject iteration ${run.iteration}: ${g.inherited.files.join(", ")}`,
+        );
+      } else if (g.result === "fail" && g.baseCheck !== undefined) {
+        note(`gate ${g.name}: base check ${g.baseCheck}`, {
+          ref: `base-check:${run.iteration}:${head}:${g.name}`,
+        });
+      }
+    }
     // Finalize builds on exactly the commit the last passing gate judged.
     const passed = report.passed && findings.length === 0;
     writeAtomic(

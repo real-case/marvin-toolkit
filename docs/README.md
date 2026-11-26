@@ -79,6 +79,7 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0055](./adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Accepted |
 | [0056](./adr/0056-oracle-red-for-the-right-reason.md) | An oracle run is classified, and only "ran and failed" counts as a red | Proposed |
 | [0057](./adr/0057-subagent-model-tiers.md) | Subagents run on Opus only where their judgment is the last check | Accepted |
+| [0058](./adr/0058-autopilot-inherited-gate-failures.md) | The autopilot gate does not charge a run with failures its base already has | Proposed |
 
 ## Work in progress
 

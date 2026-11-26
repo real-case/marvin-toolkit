@@ -6,6 +6,17 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+### Added
+
+- **The autopilot gate recognises failures the base already has** (ADR-0058). When a project
+  gate fails, the engine runs each failing test file alone through `gates.test_one`, on HEAD and
+  on the commit the run is diffed from, in a throwaway worktree. A gate whose every failure
+  reproduces identically on the base is `inherited`: it no longer rejects the iteration, and it
+  is reported as a minor `G-<gate>-inherited` finding and a notify event. A failure the base does
+  not have, a test the run changed, or a check that cannot run leaves the gate failed as before,
+  with the reason in the finding's evidence. Base-side results are cached per base SHA in the run
+  directory. Oracles and prepare steps are never checked this way.
+
 ### Changed
 
 - **A red must have run** (ADR-0056, fleet plan item F6b). `oracle-run` records gain the

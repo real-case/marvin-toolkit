@@ -339,6 +339,38 @@ export function withBaseWorktree<T>(
   o: { worktree: string; gitDir: string; commit: string },
   fn: (tree: string) => T,
 ): T {
+  const opened = openBaseWorktree(o);
+  try {
+    opened.ready();
+    return fn(opened.tree);
+  } finally {
+    opened.close();
+  }
+}
+
+/**
+ * `withBaseWorktree` for an `fn` that answers later: the tree is removed once its promise settles.
+ * The gate stage's base check (`inherited.ts`) runs its commands through the asynchronous gate
+ * runner, so that a stop request can end them, and needs the tree to outlive the first `await`.
+ */
+export async function withBaseWorktreeAsync<T>(
+  o: { worktree: string; gitDir: string; commit: string },
+  fn: (tree: string) => Promise<T>,
+): Promise<T> {
+  const opened = openBaseWorktree(o);
+  try {
+    opened.ready();
+    return await fn(opened.tree);
+  } finally {
+    opened.close();
+  }
+}
+
+function openBaseWorktree(o: { worktree: string; gitDir: string; commit: string }): {
+  tree: string;
+  ready: () => void;
+  close: () => void;
+} {
   if (typeof o.commit !== "string" || !FULL_SHA.test(o.commit)) {
     throw new Error("the base commit must be a 40-hex commit SHA");
   }
@@ -355,19 +387,22 @@ export function withBaseWorktree<T>(
     throw new BaseTreeError(`${dir} cannot hold a base tree (${errorCode(error)})`);
   }
   let record: string | null = null;
-  try {
-    git.text("worktree", "add", "--detach", tree, o.commit);
-    record = recordOf(tree);
-    linkNodeModules(git, o.worktree, tree);
-    return fn(tree);
-  } finally {
-    removeTemporaryWorktree(git, tree, record);
-    try {
-      rmdirSync(dir);
-    } catch {
-      // something stayed in it, for the next call to clear
-    }
-  }
+  return {
+    tree,
+    ready: () => {
+      git.text("worktree", "add", "--detach", tree, o.commit);
+      record = recordOf(tree);
+      linkNodeModules(git, o.worktree, tree);
+    },
+    close: () => {
+      removeTemporaryWorktree(git, tree, record);
+      try {
+        rmdirSync(dir);
+      } catch {
+        // something stayed in it, for the next call to clear
+      }
+    },
+  };
 }
 
 interface SnapshotEntry {
