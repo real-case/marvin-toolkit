@@ -15,6 +15,17 @@ follows semver independently of the surrounding marketplace.
   are detected; any other runner's non-zero exit is `unknown`. Records without the field still
   parse and count as unclassified, so a journal recorded earlier needs its red re-run.
 
+## [0.39.3] — 2026-11-26
+
+### Fixed
+
+- **An autopilot run branch survives a tracker with spaces.** The run's branch takes its
+  `{tracker}` from the spec frontmatter, and a tracker such as `COD-11 F4` carries characters a
+  git ref cannot hold, so `rename_branch` produced an invalid name. Every run of characters
+  outside `A-Z a-z 0-9 . _ -` now folds into one `-`, and leading or trailing `-`/`.` are
+  dropped, so `COD-11 F4` becomes `COD-11-F4`. `none` still means no tracker, and
+  `tracker_default` stands in for it.
+
 ## [0.39.2] — 2026-11-26
 
 ### Changed

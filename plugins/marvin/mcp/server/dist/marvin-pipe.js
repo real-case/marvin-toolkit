@@ -34871,7 +34871,7 @@ ${planted.join("\n")}`
     const fm = text2 === null ? {} : parseFrontmatter(text2.replace(/\r\n?/g, "\n")).frontmatter;
     const fromName = run2.specPath ? basename(run2.specPath, ".md").replace(/^\d+-/, "") : void 0;
     const slug = [fm.slug, fromName].find((s) => s !== void 0 && PLAIN_TOKEN2.test(s)) ?? "spec";
-    const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
+    const raw = (fm.tracker ?? fm.tracker_id ?? "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
     const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
   };

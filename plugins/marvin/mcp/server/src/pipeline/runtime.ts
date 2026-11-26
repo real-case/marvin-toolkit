@@ -1748,7 +1748,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const slug = [fm.slug, fromName].find((s) => s !== undefined && PLAIN_TOKEN.test(s)) ?? "spec";
     // `none` is how task-start writes "no tracker"; pr-create's pipeline mode then uses
     // `tracker_default`, and the branch must agree (a live run was named `feature/none--…`).
-    const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
+    // A tracker such as "COD-11 F4" carries characters a ref cannot; keep it as one token.
+    const raw = (fm.tracker ?? fm.tracker_id ?? "")
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^[-.]+|[-.]+$/g, "");
     const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
   };
