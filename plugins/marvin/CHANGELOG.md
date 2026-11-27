@@ -26,6 +26,18 @@ follows semver independently of the surrounding marketplace.
   skipped is `did_not_run`. Both the spec and the TAP reporter are read. Before this, every
   `node --test` failure was `unknown` and no Node project could record a proven red.
 
+## [0.40.0] — 2026-11-27
+
+### Upgrade note
+
+- **Behaviour change: a red must have run** (ADR-0056). A red→green proof now counts only an
+  oracle run that ran and failed. A load or collection error, no tests found, a crash or a
+  missing binary is no longer a red. Journal records written before this release carry no
+  classification, so under the autopilot (`MARVIN_PIPELINE=1`) a task whose only red predates
+  0.40.0 is BLOCKed at delivery until that red is re-run. Interactive sessions keep the warning.
+
+### Added
+
 - **The autopilot gate recognises failures the base already has** (ADR-0058). When a project
   gate fails, the engine runs each failing test file alone through `gates.test_one`, on HEAD and
   on the commit the run is diffed from, in a throwaway worktree. A gate whose every failure

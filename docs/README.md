@@ -77,9 +77,9 @@ still-relevant rationale is folded into ADR-0001, ADR-0013, and ADR-0018.
 | [0053](./adr/0053-hunt-command-family.md) | The bug hunter is a `hunt-*` command family over one deterministic tool | Accepted |
 | [0054](./adr/0054-hunt-ledger-and-flow-map.md) | The hunt state is an append-only ledger, a flow map and per-file coverage under `.marvin/hunt/` | Accepted |
 | [0055](./adr/0055-autopilot-delivery-requires-a-proof.md) | The autopilot's delivery gate requires a red→green proof or a declared reason why none exists | Accepted |
-| [0056](./adr/0056-oracle-red-for-the-right-reason.md) | An oracle run is classified, and only "ran and failed" counts as a red | Proposed |
+| [0056](./adr/0056-oracle-red-for-the-right-reason.md) | An oracle run is classified, and only "ran and failed" counts as a red | Accepted |
 | [0057](./adr/0057-subagent-model-tiers.md) | Subagents run on Opus only where their judgment is the last check | Accepted |
-| [0058](./adr/0058-autopilot-inherited-gate-failures.md) | The autopilot gate does not charge a run with failures its base already has | Proposed |
+| [0058](./adr/0058-autopilot-inherited-gate-failures.md) | The autopilot gate does not charge a run with failures its base already has | Accepted |
 | [0059](./adr/0059-autopilot-engine-runs-the-delivery-gate.md) | The autopilot engine runs the delivery gate itself | Proposed |
 
 ## Work in progress
