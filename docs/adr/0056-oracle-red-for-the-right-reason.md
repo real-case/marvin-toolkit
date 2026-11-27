@@ -2,8 +2,8 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Proposed** |
-| Date          | 2026-11-26 |
+| Status        | **Accepted** |
+| Date          | 2026-11-27 |
 | Supersedes    | —                                                           |
 | Superseded by | —                                                           |
 | Related       | [ADR-0036](0036-oracle-execution-and-red-green.md) (the journal and the red→green proof), [ADR-0055](0055-autopilot-delivery-requires-a-proof.md) (the proof the autopilot requires) |
