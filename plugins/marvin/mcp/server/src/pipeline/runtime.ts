@@ -51,6 +51,7 @@ import {
   type ProtectedSnapshot,
   protectedChanges,
   reportFindings,
+  type GateReport,
   type GateRunner,
   runGateStage,
   type Runner,
@@ -78,6 +79,8 @@ import {
   readCalibrationRecords,
 } from "./learning.js";
 import { type RunRecord, runRecord, runRecordPath } from "./metrics-carry.js";
+import { runDeliveryGate } from "./delivery.js";
+import { journalGateGreens, journalSealReds, type ProofSpec } from "./proof-journal.js";
 import { physicalProblem } from "./plain-path.js";
 import { pendingToolCall, readLogTail, statusLine } from "./child-activity.js";
 import type { EngineDeps, StepInfo, WorkKind } from "./loop.js";
@@ -247,6 +250,8 @@ export interface RuntimeOptions {
    * syntax would not reach them.
    */
   signal?: AbortSignal;
+  /** Bounds every wait for an answer; for tests and harnesses only (`EngineDeps.answerDeadlineMs`). */
+  answerDeadlineMs?: number;
   /** How long a wait sleeps between looks, for an answer and for a child. Default 1000 ms. */
   pollMs?: number;
   /** How long one `waitChild` waits before it reports the child still running. Default 110 min. */
@@ -1781,6 +1786,14 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
     // Finalize builds on exactly the commit the last passing gate judged.
     const passed = report.passed && findings.length === 0;
+    if (passed) {
+      const proof = proofSpec(run, wt, spec.text);
+      if (proof !== null) {
+        journal("gate's green run", () =>
+          journalGateGreens(proof, report, run.sealed as SealedFile[], oracles, head),
+        );
+      }
+    }
     writeAtomic(
       at("gated-head.json"),
       `${JSON.stringify({ head, iteration: run.iteration, passed })}\n`,
@@ -1803,6 +1816,27 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     const raw = (fm.tracker ?? fm.tracker_id ?? "").trim();
     const tracker = raw === "" || raw.toLowerCase() === "none" ? null : raw;
     return { slug, tracker };
+  };
+
+  /**
+   * Where the engine journals its red→green proof (ADR-0059): the spec's slug and its stamped
+   * `contract_sha`, read from `text`. Null when the spec carries no stamp, so nothing is keyed
+   * to a contract that does not exist.
+   */
+  const proofSpec = (run: Run, wt: WorktreeRecord, text: string | null): ProofSpec | null => {
+    if (text === null) return null;
+    const fm = parseFrontmatter(text.replace(/\r\n?/g, "\n")).frontmatter;
+    const contractSha = (fm.contract_sha ?? "").trim();
+    return contractSha ? { worktree: wt.path, slug: specIdentity(run).slug, contractSha } : null;
+  };
+
+  /** A journal write that fails costs the proof, never the run: the delivery gate then BLOCKs. */
+  const journal = (what: string, write: () => unknown) => {
+    try {
+      write();
+    } catch (error) {
+      note(`the ${what} was not journalled: ${errorText(error)}`);
+    }
   };
 
   /** A re-seal replaces the entries it names; every other seal stays (as `decide` merges them). */
@@ -1897,6 +1931,11 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       if (!verdict.ok) {
         const obs: Observation = { kind: "seal", ok: false, reasons: verdict.reasons, sealed: [] };
         return { run, obs };
+      }
+      const proof = proofSpec(run, wt, specOnDisk(run));
+      if (proof !== null) {
+        const redHead = isReseal(run) ? wt.baseSha : headBefore;
+        journal("seal's red run", () => journalSealReds(proof, verdict.reds, redHead));
       }
       marker = { phase: "sealed", headBefore, sealed: verdict.sealed };
       writeAtomic(path, `${JSON.stringify(marker)}\n`);
@@ -2181,6 +2220,62 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
     }
   };
 
+  // ---------------------------------------------------------------------- delivery gate
+
+  /**
+   * The delivery gate, run by the engine once CI is green (ADR-0059): the decision `verify`
+   * `action: "gate"` makes, with the autopilot's red→green rule, on the commit the gate stage
+   * approved. An ALLOW appends the terminal metrics block unless this delivery already has one,
+   * and finalize commits it with the rest of the record. A replay writes the same run file and,
+   * finding its own block, appends nothing.
+   */
+  const deliverWork = (run: Run) => {
+    const wt = worktreeRecord(run);
+    const gated = readJson(at("gated-head.json"), GatedHead);
+    const refuse = (reason: string) => ({
+      run,
+      obs: { kind: "delivery", decision: "BLOCK", reason } satisfies Observation,
+    });
+    if (!gated?.passed || !FULL_SHA.test(gated.head)) {
+      return refuse("no commit a passing gate approved is recorded");
+    }
+    if (run.gateReport === null) return refuse("the run holds no gate report for the gated commit");
+    const head = git(wt.path, "rev-parse", "--verify", "HEAD^{commit}").trim();
+    if (head !== gated.head) {
+      return refuse(
+        `the worktree is at ${head.slice(0, 12)}, not the gated ${gated.head.slice(0, 12)}`,
+      );
+    }
+    const executor = run.children.filter((c) => c.role === "executor").at(-1);
+    const result = runDeliveryGate({
+      worktree: wt.path,
+      slug: specIdentity(run).slug,
+      config: configFor(run),
+      report: run.gateReport as unknown as GateReport,
+      head,
+      executorSince: executor?.startedAt ?? null,
+    });
+    const metrics = result.alreadyRolledUp
+      ? "; the record already holds this delivery's terminal block"
+      : result.metricsNote
+        ? `; ${result.metricsNote.replace(/\*\*/g, "")}`
+        : "";
+    note(`delivery gate ${result.decision} on ${head.slice(0, 12)}${metrics}`, {
+      notify: true,
+      decision: result.decision,
+      reason: result.reason,
+      artifact: result.artifact,
+    });
+    return {
+      run,
+      obs: {
+        kind: "delivery",
+        decision: result.decision,
+        reason: result.reason,
+      } satisfies Observation,
+    };
+  };
+
   // ---------------------------------------------------------------------- finalize, ready
 
   /**
@@ -2340,6 +2435,8 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       }
       case "ci":
         return ciWork(run);
+      case "deliver":
+        return deliverWork(run);
       case "finalize":
         return finalizeWork(run, data);
       case "mark_ready":
@@ -2363,6 +2460,7 @@ export function createRuntime(o: RuntimeOptions): EngineDeps {
       ? { fixturesDir: process.env.MARVIN_PIPELINE_FIXTURES }
       : {}),
     ...(o.signal ? { signal: o.signal } : {}),
+    ...(o.answerDeadlineMs !== undefined ? { answerDeadlineMs: o.answerDeadlineMs } : {}),
     prepare,
     spawnChild,
     waitChild,

@@ -332,6 +332,7 @@ rationale is folded into 0001, 0013, and 0018.
 | [0056](./docs/adr/0056-oracle-red-for-the-right-reason.md) | An oracle run is classified, and only "ran and failed" counts as a red | Accepted |
 | [0057](./docs/adr/0057-subagent-model-tiers.md) | Subagents run on Opus only where their judgment is the last check | Accepted |
 | [0058](./docs/adr/0058-autopilot-inherited-gate-failures.md) | The autopilot gate does not charge a run with failures its base already has | Accepted |
+| [0059](./docs/adr/0059-autopilot-engine-runs-the-delivery-gate.md) | The autopilot engine runs the delivery gate itself | Proposed |
 
 ## Contributing
 

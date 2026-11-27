@@ -35696,6 +35696,53 @@ function vitest(lines, text, code2) {
     detail: "vitest: no test ran and failed (skipped/todo)"
   };
 }
+var NODE_COUNT = (word) => new RegExp(`^(?:\u2139|#) ${word} (\\d+)\\s*$`, "m");
+var NODE_FILE_FAILURE = /^\s*(?:error: )?'test failed'\s*$/m;
+function nodeTest(text, code2) {
+  const read = (word) => {
+    const m = NODE_COUNT(word).exec(text);
+    return m ? Number(m[1]) : null;
+  };
+  const tests = read("tests");
+  const fail2 = read("fail");
+  if (tests === null || fail2 === null) return null;
+  const pass2 = read("pass") ?? 0;
+  const cancelled2 = read("cancelled") ?? 0;
+  const base = { runner: "node" };
+  if (fail2 > 0) {
+    if (NODE_FILE_FAILURE.test(text)) {
+      return {
+        ...base,
+        outcome: "did_not_run",
+        marks: [],
+        detail: "node:test: a test file failed outside any test (load, import or top-level error)"
+      };
+    }
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text),
+      detail: `node:test: ${fail2} failed`
+    };
+  }
+  if (cancelled2 > 0) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: `node:test: ${cancelled2} cancelled`
+    };
+  }
+  if (code2 === 0 && pass2 > 0) {
+    return { ...base, outcome: "passed", marks: [], detail: "node:test: passed" };
+  }
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: "node:test: no test ran and failed (skipped/todo)"
+  };
+}
 function classifyOracleRun(run3) {
   if (run3.launchError || run3.code === null || run3.signal !== null) {
     return {
@@ -35707,7 +35754,7 @@ function classifyOracleRun(run3) {
   }
   const text = run3.output.replace(ANSI, "");
   const lines = text.split(/\r?\n/);
-  const detected = pytest(lines, text, run3.code) ?? vitest(lines, text, run3.code);
+  const detected = pytest(lines, text, run3.code) ?? vitest(lines, text, run3.code) ?? nodeTest(text, run3.code);
   if (detected) return detected;
   if (run3.code === 0) return { outcome: "passed", marks: [], runner: null, detail: "exit 0" };
   return {
@@ -35859,7 +35906,7 @@ var OracleRunSchema = external_exports.object({
    * record written before it existed — that is "unclassified", never `failed`. */
   outcome: external_exports.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
   marks: external_exports.array(external_exports.enum(["missing_name", "missing_file", "snapshot"])).optional(),
-  runner: external_exports.enum(["pytest", "vitest"]).nullable().optional(),
+  runner: external_exports.enum(["pytest", "vitest", "node"]).nullable().optional(),
   outcome_detail: external_exports.string().optional(),
   ran_at: external_exports.string()
 });
@@ -36936,7 +36983,7 @@ async function runVerify(input, env2) {
       specConfig: config2.spec,
       env: env2,
       config: config2
-    });
+    }).answer;
   }
   if (input.action === "oracles") return runOracles(projectRoot, input, config2);
   const resolved = resolveGatePlan({
@@ -37552,7 +37599,7 @@ function deliverGate(projectRoot, opts) {
   const redGreen = redGreenStatus(projectRoot, opts.specSlug, opts.specConfig);
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
   const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
-  const required2 = redGreenRequired();
+  const required2 = opts.redGreenRequired ?? redGreenRequired();
   const extras = {
     artifactPath,
     allowStale,
@@ -37564,6 +37611,13 @@ function deliverGate(projectRoot, opts) {
   const slugNote = rejected ? ` \xB7 ${slugRejection(rejected, "judged the global `.marvin/task/verification.md`, not a per-spec run")}` : "";
   const decide = (decision, verdict2, reason, extra = extras) => {
     const answer = gateResult(decision, verdict2, `${reason}${slugNote}`, extra);
+    const outcome = (a, metricsNote) => ({
+      answer: a,
+      decision,
+      verdict: verdict2,
+      reason: `${reason}${slugNote}`,
+      metricsNote
+    });
     if (slug) {
       journalVerifyEntry(projectRoot, {
         slug,
@@ -37579,11 +37633,11 @@ function deliverGate(projectRoot, opts) {
         artifact: relative(projectRoot, extra.artifactPath).replaceAll("\\", "/")
       });
     }
-    if (slug && decision === "ALLOW") {
+    if (slug && decision === "ALLOW" && opts.rollUp !== false) {
       const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
-      if (note) return withNote(answer, note);
+      if (note) return outcome(withNote(answer, note), note);
     }
-    return answer;
+    return outcome(answer, null);
   };
   if (!existsSync(artifactPath)) {
     return decide(
@@ -44338,7 +44392,7 @@ function huntStatus(env2) {
 }
 
 // src/server.ts
-var VERSION = "0.40.0";
+var VERSION = "0.41.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({

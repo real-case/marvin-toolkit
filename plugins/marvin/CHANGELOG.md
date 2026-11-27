@@ -6,6 +6,26 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+### Added
+
+- **The autopilot engine runs the delivery gate itself** (ADR-0059). Once CI is green, the engine
+  calls the same `deliverGate` the `verify` tool's `action: "gate"` calls, on the commit its gate
+  approved, with the ADR-0055 red→green rule passed explicitly and its own gate report written as
+  the spec's per-spec run. Only an ALLOW reaches the retro, finalize and `ready`; a BLOCK raises a
+  `halt` judgment with the gate's reason, where `retry` starts an executor on it. An ALLOW appends
+  the terminal `task-metrics` block unless this delivery already has one, and finalize commits it.
+  The executor no longer needs to call the gate or `metrics action: "rollup"` for the record; its
+  gate call in `task-deliver`'s pipeline mode remains a self-check.
+  The engine also journals its own red→green proof in the oracle journal: the seal stage's red run
+  of each sealed test, classified per ADR-0056, and the gate stage's passing oracle on the gated
+  commit, after the sealed-hash check. Both use the `oracle-run` shape keyed by `contract_sha`,
+  so the gate's existing `red_green` reader pairs them.
+
+- **`node --test` output is classified** (ADR-0056's runner list). A failure inside a test body is
+  `failed`, and so a red; a file that did not load, threw at top level, was cancelled or only
+  skipped is `did_not_run`. Both the spec and the TAP reporter are read. Before this, every
+  `node --test` failure was `unknown` and no Node project could record a proven red.
+
 ## [0.40.0] — 2026-11-27
 
 ### Upgrade note

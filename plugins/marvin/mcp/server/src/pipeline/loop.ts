@@ -457,6 +457,13 @@ export interface EngineDeps {
   /** Stops the engine at its next step or wait; the run stays as it was, ready to resume. */
   signal?: AbortSignal;
   /**
+   * Fails a wait for an answer that has not come within this many ms, naming the judgment. A
+   * real run never sets it: a judgment waits for the orchestrator as long as it takes. Tests and
+   * harnesses set it, so a run that reaches a judgment no fixture answers is a failure rather
+   * than a hang.
+   */
+  answerDeadlineMs?: number;
+  /**
    * Sets up the run and returns it with `worktree` set. It is called for a run at `intake` whose
    * `worktree` is still null, so once its result is recorded no engine calls it again. An engine
    * that dies inside it records nothing, and the next one calls it again for the same run: it
@@ -687,7 +694,12 @@ async function awaitAnswer(
   if (refusals(runDir, id) === 0 && !existsSync(answerPath(runDir, id))) {
     answerFromFixture(runDir, id, kind, deps);
   }
+  const deadline = deps.answerDeadlineMs;
+  const until = deadline === undefined ? Number.POSITIVE_INFINITY : Date.now() + deadline;
   for (;;) {
+    if (Date.now() > until) {
+      throw new Error(`no answer to the ${kind} judgment ${id} within ${deadline} ms`);
+    }
     try {
       const answer = readAnswer(runDir, id);
       if (answer) return answer;

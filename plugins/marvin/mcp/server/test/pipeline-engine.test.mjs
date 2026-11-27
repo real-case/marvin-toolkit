@@ -108,6 +108,9 @@ const works = (d) => d.actions.filter((a) => a.kind === "work").map((a) => a.wor
 const judgmentOf = (d) => d.actions.find((a) => a.kind === "judgment")?.judgment;
 const payloadOf = (d) => d.actions.find((a) => a.kind === "judgment")?.payload;
 const go = (run, obs, r = rubric) => decide(run, obs, r, NOW);
+const ALLOW = { kind: "delivery", decision: "ALLOW", reason: "verification passed" };
+/** The engine's delivery gate ALLOWs the decision's run (ADR-0059). */
+const delivered = (d, r = rubric) => go(d.run, ALLOW, r);
 const SPEC_COMMIT = "c".repeat(40);
 const specCommitted = (commit = SPEC_COMMIT) => ({
   kind: "spec_commit",
@@ -506,8 +509,53 @@ test("CI: conflict sends the executor to merge the base; green starts the retro"
   assert.equal(conflict.run.stage, "executing");
   assert.match(spawnOf(conflict).context.findings, /merge origin\/dev/);
   const green = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] });
-  assert.deepEqual([green.run.stage, spawnOf(green).role], ["retro", "retro"]);
+  assert.deepEqual([green.run.stage, works(green)], ["ci_wait", ["deliver"]]);
+  const allowed = delivered(green);
+  assert.deepEqual([allowed.run.stage, spawnOf(allowed).role], ["retro", "retro"]);
   assert.equal(judgmentOf(go(at("ci_wait"), { kind: "ci", state: "no_ci", failing: [] })), "no_ci");
+});
+
+test("ADR-0059: CI green runs the delivery gate; only its ALLOW reaches the retro, finalize and ready", () => {
+  const green = go(at("ci_wait", { prUrl: PR }), { kind: "ci", state: "green", failing: [] });
+  assert.deepEqual(
+    [green.run.stage, works(green), spawnOf(green)],
+    ["ci_wait", ["deliver"], undefined],
+  );
+  const retro = delivered(green);
+  assert.equal(retro.run.stage, "retro");
+  const out = { status: "done", summary: "s", checks: [], proposals: [], lessons: [], prune: [] };
+  const fin = go(retro.run, child("retro", out));
+  assert.deepEqual([fin.run.stage, works(fin)], ["finalizing", ["finalize"]]);
+  const waiting = go(fin.run, { kind: "finalized" });
+  const ready = go(waiting.run, { kind: "ci", state: "green", failing: [] });
+  assert.deepEqual([ready.run.stage, works(ready)], ["ready", ["mark_ready"]]);
+});
+
+test("ADR-0059: a delivery-gate BLOCK stops before the retro and asks the orchestrator", () => {
+  const reason = "no recorded red→green pair at this contract_sha for AC1";
+  const green = go(at("ci_wait", { prUrl: PR, iteration: 2, rung: 1 }), {
+    kind: "ci",
+    state: "green",
+    failing: [],
+  });
+  const blocked = go(green.run, { kind: "delivery", decision: "BLOCK", reason });
+  assert.equal(blocked.run.stage, "ci_wait");
+  assert.equal(judgmentOf(blocked), "halt");
+  assert.equal(spawnOf(blocked), undefined, "no retro and no executor without an answer");
+  assert.match(payloadOf(blocked).reason, /delivery gate refused: no recorded red→green pair/);
+  assert.equal(payloadOf(blocked).findings[0].id, "DELIVERY-gate");
+  assert.equal(blocked.run.haltRole, "executor");
+  // A retry starts an executor on the gate's reason; a cancel closes the run through the retro.
+  const retried = go(blocked.run, answer("halt", { kind: "retry" }));
+  assert.deepEqual([retried.run.stage, spawnOf(retried).role], ["executing", "executor"]);
+  assert.equal(retried.run.iteration, 3);
+  assert.match(spawnOf(retried).context.findings, /delivery gate refused the gated commit/);
+  const cancelled = go(blocked.run, answer("halt", { kind: "cancel", reason: "unproven" }));
+  assert.deepEqual([cancelled.run.stage, cancelled.run.haltReason], ["retro", "unproven"]);
+  // A halted run never ships, so its finalize closes it without the ready step.
+  const closing = go(cancelled.run, child("retro", null, "crashed"));
+  const skipped = go(closing.run, child("retro", null, "crashed"));
+  assert.equal(go(skipped.run, { kind: "finalized" }).run.stage, "done");
 });
 
 test("finalize waits for CI again, then marks the PR ready", () => {
@@ -941,7 +989,7 @@ test("a repeated protected path the executor committed, or a changed set, still 
 });
 
 test("a retro that fails twice, or hits a usage limit, still finalizes without a retro", () => {
-  const retro = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run;
+  const retro = delivered(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] })).run;
   const first = go(retro, child("retro", null, "crashed"));
   assert.equal(spawnOf(first).role, "retro");
   const second = go(first.run, child("retro", null, "crashed"));
@@ -956,7 +1004,7 @@ test("a retro that fails twice, or hits a usage limit, still finalizes without a
 
 test("a retro whose output finalize would refuse costs a retry, then finalizes without one", () => {
   // Validated where it arrives, like every other role's output, rather than thrown at finalize.
-  const retro = go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run;
+  const retro = delivered(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] })).run;
   const bad = child("retro", { status: "done", summary: "s", lessons: [] });
   const first = go(retro, bad);
   assert.equal(spawnOf(first).role, "retro");
@@ -972,7 +1020,7 @@ test("every spawn action decide emits is recorded as the run's last spawn for it
     approve(at("awaiting_approval")),
     approve(at("awaiting_approval", { tier: "light" })),
     go(at("gating", { iteration: 1 }), { kind: "gate", report: report(true), findings: [] }),
-    go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }),
+    delivered(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] })),
     go(at("ci_wait", { iteration: 1 }), { kind: "ci", state: "conflict", failing: [] }),
     go(
       at("planning", { questionsAnswered: 8 }),
@@ -1266,7 +1314,9 @@ test("CI: red names the failing jobs, pending polls again, closed halts", () => 
 test("no_ci answers: wait polls again, proceed starts the retro, cancel halts", () => {
   const ask = at("ci_wait");
   assert.deepEqual(works(go(ask, answer("no_ci", { kind: "wait" }))), ["ci"]);
-  assert.equal(go(ask, answer("no_ci", { kind: "proceed" })).run.stage, "retro");
+  const proceeded = go(ask, answer("no_ci", { kind: "proceed" }));
+  assert.deepEqual([proceeded.run.stage, works(proceeded)], ["ci_wait", ["deliver"]]);
+  assert.equal(delivered(proceeded).run.stage, "retro");
   const cancelled = go(ask, answer("no_ci", { kind: "cancel", reason: "no CI here" }));
   assert.deepEqual([cancelled.run.stage, cancelled.run.haltReason], ["retro", "no CI here"]);
   assert.throws(() => go(ask, answer("no_ci", { kind: "retry" })), /no_ci/);
@@ -1302,10 +1352,13 @@ test("cancelling a halt after finalize closes the run; the retro is not run twic
 test("cancelling a halt during the retro skips the retro instead of starting another", () => {
   // A stalled or limited retro no longer halts (it is retried, then skipped), so the halt here
   // is one no retry budget covers: a retro that wrote outside its worktree.
-  const stalled = go(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] }).run, {
-    ...child("retro", null, "stalled"),
-    leaked: ["?? notes.txt"],
-  });
+  const stalled = go(
+    delivered(go(at("ci_wait"), { kind: "ci", state: "green", failing: [] })).run,
+    {
+      ...child("retro", null, "stalled"),
+      leaked: ["?? notes.txt"],
+    },
+  );
   assert.equal(judgmentOf(stalled), "halt");
   const d = go(stalled.run, answer("halt", { kind: "cancel", reason: "stop" }));
   assert.deepEqual([d.run.stage, d.run.haltReason], ["finalizing", "stop"]);
@@ -1757,7 +1810,9 @@ test("fix 2: the CI wait starts its clock when it is entered and stops it when i
   assert.equal(entered.run.stage, "ci_wait");
   assert.equal(entered.run.ciSince, NOW.toISOString());
   assert.deepEqual(works(entered), ["ci"]);
-  assert.equal(go(entered.run, { kind: "ci", state: "green", failing: [] }).run.ciSince, null);
+  const green = go(entered.run, { kind: "ci", state: "green", failing: [] });
+  assert.equal(green.run.ciSince, entered.run.ciSince, "the delivery gate runs inside the wait");
+  assert.equal(delivered(green).run.ciSince, null);
   assert.equal(go(entered.run, { kind: "ci", state: "red", failing: ["b"] }).run.ciSince, null);
   assert.equal(go(entered.run, { kind: "ci", state: "conflict", failing: [] }).run.ciSince, null);
   const cancelled = go(entered.run, answer("no_ci", { kind: "cancel", reason: "stop" }));
@@ -1795,7 +1850,7 @@ test("fix 2: the wait answer restarts the clock, proceed starts the retro, cance
   assert.equal(judgmentOf(goAt(waited.run, pendingCi, soon)), undefined);
   const again = new Date(later.getTime() + 61 * MINUTE);
   assert.equal(judgmentOf(goAt(waited.run, pendingCi, again)), "no_ci");
-  assert.equal(go(asked.run, answer("no_ci", { kind: "proceed" })).run.stage, "retro");
+  assert.equal(delivered(go(asked.run, answer("no_ci", { kind: "proceed" }))).run.stage, "retro");
   assert.equal(go(asked.run, answer("no_ci", { kind: "cancel", reason: "x" })).run.stage, "retro");
 });
 
@@ -2239,7 +2294,7 @@ test("ruling: only a green CI result after finalize reaches ready; wait and canc
   const cancelled = go(finalized, answer("no_ci", { kind: "cancel", reason: "stop" }));
   assert.deepEqual([cancelled.run.stage, cancelled.run.haltReason], ["done", "stop"]);
   for (const stage of ["ci_wait"]) {
-    const before = go(at(stage), answer("no_ci", { kind: "proceed" }));
+    const before = delivered(go(at(stage), answer("no_ci", { kind: "proceed" })));
     assert.deepEqual(
       [before.run.stage, spawnOf(before)?.role, works(before)],
       ["retro", "retro", []],

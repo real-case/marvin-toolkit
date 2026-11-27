@@ -236,7 +236,7 @@ const OracleRunSchema = z.object({
    * record written before it existed — that is "unclassified", never `failed`. */
   outcome: z.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
   marks: z.array(z.enum(["missing_name", "missing_file", "snapshot"])).optional(),
-  runner: z.enum(["pytest", "vitest"]).nullable().optional(),
+  runner: z.enum(["pytest", "vitest", "node"]).nullable().optional(),
   outcome_detail: z.string().optional(),
   ran_at: z.string(),
 });

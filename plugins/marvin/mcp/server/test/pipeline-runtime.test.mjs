@@ -81,8 +81,10 @@ function specText({
   files = ["src/a.mjs"],
   tracker,
   tamper,
+  noOracle,
 } = {}) {
   const block = [
+    ...(noOracle ? ["no_oracle:", `  reason: ${noOracle}`] : []),
     "files:",
     ...files.map((p, i) => `  - { id: F${i + 1}, path: ${p}, action: new, satisfies: [AC1] }`),
     "criteria:",
@@ -144,6 +146,8 @@ function setup({
     rubric,
     ...(loadConfig ? {} : { config: Config.parse(config) }),
     pollMs: 20,
+    // A judgment no fixture answers fails the test instead of hanging it.
+    answerDeadlineMs: 30_000,
     ...options,
   });
   return { repo, home, runDir, run, deps };
@@ -596,9 +600,10 @@ function engineContexts(run) {
       rubric,
       now,
     ),
+    // CI green runs the delivery gate (ADR-0059); its ALLOW starts the retro.
     decide(
       at("ci_wait", { iteration: 1, prUrl: PR, ciSince: now.toISOString() }),
-      { kind: "ci", state: "green", failing: [] },
+      { kind: "delivery", decision: "ALLOW", reason: "verification passed" },
       rubric,
       now,
     ),
@@ -2004,6 +2009,55 @@ test("finalize merges a base that moved before it writes, and says so", async ()
   );
 });
 
+test("ADR-0059: the deliver work runs the delivery gate on the gated commit and refuses any other", async () => {
+  const spec = ".marvin/task/001-tag-filter.md";
+  const s = await prepared({ files: { [spec]: specText() } });
+  const gated = sh(s.wt, "rev-parse", "HEAD");
+  const report = {
+    passed: true,
+    gates: [{ name: "test", result: "pass", ms: 1, tail: "" }],
+    undeclared: [],
+    protected: [],
+    protectedSources: {},
+    protectedPatterns: [],
+    checks: [],
+    sealed: [],
+    blockers: [],
+  };
+  const run = {
+    ...s.run,
+    stage: "ci_wait",
+    iteration: 1,
+    specPath: spec,
+    prUrl: PR,
+    gateReport: report,
+  };
+  const none = await s.deps.work(run, "deliver", undefined, step("deliver-none"));
+  assert.deepEqual(none.obs, {
+    kind: "delivery",
+    decision: "BLOCK",
+    reason: "no commit a passing gate approved is recorded",
+  });
+  writeFileSync(
+    join(s.runDir, "gated-head.json"),
+    `${JSON.stringify({ head: gated, iteration: 1, passed: true })}\n`,
+  );
+  // A feature whose only oracle is a command, with no `no_oracle` declaration: no proof (ADR-0055).
+  const { obs } = await s.deps.work(run, "deliver", undefined, step("deliver"));
+  assert.equal(obs.kind, "delivery");
+  assert.equal(obs.decision, "BLOCK");
+  assert.match(obs.reason, /no red→green proof can be read/);
+  const written = readFileSync(join(s.wt, ".marvin/task/runs/tag-filter.md"), "utf8");
+  assert.match(written, /"verdict":"PASS"/);
+  assert.ok(events(s.runDir).some((e) => /^delivery gate BLOCK on [0-9a-f]{12}/.test(e.text)));
+  writeFileSync(
+    join(s.runDir, "gated-head.json"),
+    `${JSON.stringify({ head: "f".repeat(40), iteration: 1, passed: true })}\n`,
+  );
+  const moved = await s.deps.work(run, "deliver", undefined, step("deliver-moved"));
+  assert.match(moved.obs.reason, /^the worktree is at [0-9a-f]{12}, not the gated f{12}$/);
+});
+
 test("a relative run dir is made absolute before any child is told where its files are", async () => {
   const s = await prepared();
   // The children run in the worktree, so a relative path would resolve there, not here; the
@@ -2467,7 +2521,9 @@ test("the engine drives a light run to ready on this runtime, with fake children
   process.env.MARVIN_PIPELINE_FIXTURES = fixtures;
   let s;
   try {
-    s = setup({ files: { [spec]: specText() }, config: { gates: { test: "true" } } });
+    // The only oracle is a command, so the delivery gate ALLOWs on the declaration (ADR-0055/0059).
+    const noOracle = "the module's existence is checked by a command, not a test";
+    s = setup({ files: { [spec]: specText({ noOracle }) }, config: { gates: { test: "true" } } });
   } finally {
     delete process.env.MARVIN_PIPELINE_JUDGE;
     delete process.env.MARVIN_PIPELINE_FIXTURES;

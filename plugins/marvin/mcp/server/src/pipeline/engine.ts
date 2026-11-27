@@ -64,6 +64,11 @@ export type Observation =
   /** The engine's commit of the approved spec, or why it refused to make one. */
   | { kind: "spec_commit"; ok: boolean; commit: string | null; reason: string | null }
   | { kind: "ci"; state: CiState; failing: string[] }
+  /**
+   * The delivery gate the engine ran itself once CI was green (ADR-0059): `verify`'s own
+   * decision on the gated commit, with the autopilot's red→green rule. `reason` is the gate's.
+   */
+  | { kind: "delivery"; decision: "ALLOW" | "BLOCK"; reason: string }
   | { kind: "finalized" };
 export interface SpawnAction {
   kind: "spawn";
@@ -89,6 +94,7 @@ export type Action =
         | "gate"
         | "seal"
         | "ci"
+        | "deliver"
         | "finalize"
         | "mark_ready"
         | "rename_branch"
@@ -529,6 +535,14 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
     }
     return { run: r, actions: [{ kind: "work", work: "ci" }] };
   };
+  /**
+   * CI is green: before the retro, the engine runs the delivery gate itself (ADR-0059). Only an
+   * ALLOW reaches the retro, and so finalize and `ready`; the run stays in `ci_wait` meanwhile.
+   */
+  const toDelivery = (r: Run): Decision => ({
+    run: r,
+    actions: [{ kind: "work", work: "deliver" }],
+  });
   const toRetro = (r: Run): Decision => {
     const retro = go(r, "retro");
     return {
@@ -1202,15 +1216,34 @@ function step(run: Run, obs: Observation, rubric: Rubric, now: Date): Decision {
         if (obs.judgment !== "no_ci") break;
         const a = obs.answer;
         if (a.kind === "cancel") return cancel(run, a.reason);
-        if (a.kind === "proceed") return toRetro(run);
+        if (a.kind === "proceed") return toDelivery(run);
         if (a.kind === "wait") {
           return { run: startClock(run), actions: [{ kind: "work", work: "ci" }] };
         }
         break;
       }
+      if (obs.kind === "delivery") {
+        if (obs.decision === "ALLOW") return toRetro(run);
+        // A refusal goes to the orchestrator, never straight to another iteration: what the
+        // gate most often asks for, a red recorded before the implementation, no executor can
+        // supply afterwards. A retry starts one on the gate's reason; a cancel closes the run.
+        const refused: Finding = {
+          id: "DELIVERY-gate",
+          severity: "blocker",
+          category: "gate",
+          claim: `the delivery gate refused the gated commit: ${obs.reason}`,
+          evidence: 'verify action: "gate", run by the engine with the autopilot red→green rule',
+          expected: "a delivery the gate ALLOWs",
+        };
+        return ask(
+          { ...run, haltRole: "executor", previousFindings: asRecords([refused]) },
+          "halt",
+          { reason: `the delivery gate refused: ${obs.reason}`, findings: [refused] },
+        );
+      }
       if (obs.kind !== "ci") break;
       if (obs.state === "pending") return pollCi(run);
-      if (obs.state === "green" && obs.failing.length === 0) return toRetro(run);
+      if (obs.state === "green" && obs.failing.length === 0) return toDelivery(run);
       if (obs.state === "no_ci") return ask(run, "no_ci", {});
       if (obs.state === "closed")
         return ask({ ...run, haltRole: null }, "halt", { reason: "PR was closed" });

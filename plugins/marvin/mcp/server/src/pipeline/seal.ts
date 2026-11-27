@@ -30,6 +30,22 @@ export interface SealVerdict {
   ok: boolean;
   reasons: string[];
   sealed: SealedFile[];
+  /**
+   * The red run of each sealed file, as the runner reported it: what the engine journals as the
+   * red half of the red→green proof (ADR-0059). Empty when the seal is refused.
+   */
+  reds: SealRed[];
+}
+
+/** One sealed file's red run: the command, its exit and output, and the bytes that ran. */
+export interface SealRed {
+  path: string;
+  criteria: string[];
+  sha256: string;
+  command: string;
+  code: number;
+  output: string;
+  ms: number;
 }
 
 /**
@@ -1015,8 +1031,10 @@ export function sealAuthoredTests(o: {
     }
     candidates.push({ ...a, before: sha256Bytes(bytes), bytes });
   }
-  const verdict = (sealed: SealedFile[]): SealVerdict =>
-    reasons.length > 0 ? { ok: false, reasons, sealed: [] } : { ok: true, reasons: [], sealed };
+  const verdict = (sealed: SealedFile[], reds: SealRed[] = []): SealVerdict =>
+    reasons.length > 0
+      ? { ok: false, reasons, sealed: [], reds: [] }
+      : { ok: true, reasons: [], sealed, reds };
   const changed = (path: string) =>
     `${path}: changed while its red run executed, so what ran is not what is sealed`;
 
@@ -1028,6 +1046,7 @@ export function sealAuthoredTests(o: {
   const redRuns = (red: Tree): SealVerdict => {
     const copied = red !== worktree;
     const failed = new Set<string>();
+    const ran = new Map<string, { command: string; code: number; output: string; ms: number }>();
     if (copied) {
       for (const c of candidates) {
         const problem = placeCopy(red.root, c.path, c.bytes);
@@ -1054,10 +1073,15 @@ export function sealAuthoredTests(o: {
       try {
         const namesCandidate = (quoted: string): boolean =>
           [red.root, red.realRoot].some((root) => resolve(root, quoted) === resolve(root, c.path));
-        problem = redProblem(
-          o.run(formatTestOne(o.testOne, c.path), red.root, o.timeoutMs),
-          namesCandidate,
-        );
+        const command = formatTestOne(o.testOne, c.path);
+        const result = o.run(command, red.root, o.timeoutMs);
+        ran.set(c.path, {
+          command,
+          code: result.code,
+          output: typeof result.output === "string" ? result.output : "",
+          ms: result.ms,
+        });
+        problem = redProblem(result, namesCandidate);
       } catch (error) {
         problem = `test command did not run (${errorText(error)})`;
       }
@@ -1072,6 +1096,7 @@ export function sealAuthoredTests(o: {
       candidates.length > 0 ? walkTestFiles(red.root, red.realRoot, isTest) : undefined;
     if (walkedAfter !== undefined) for (const c of candidates) outsideLinks(walkedAfter, c.path);
     const sealed: SealedFile[] = [];
+    const reds: SealRed[] = [];
     for (const c of candidates) {
       if (failed.has(c.path)) continue;
       const problem = fileProblem(c.abs, realRoot, c.path);
@@ -1114,8 +1139,10 @@ export function sealAuthoredTests(o: {
         continue;
       }
       sealed.push({ path: c.path, criteria: c.criteria, sha256: after });
+      const r = ran.get(c.path);
+      if (r !== undefined) reds.push({ path: c.path, criteria: c.criteria, sha256: after, ...r });
     }
-    return verdict(sealed);
+    return verdict(sealed, reds);
   };
 
   if (base === undefined) return redRuns(worktree);

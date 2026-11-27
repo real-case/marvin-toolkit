@@ -12,7 +12,7 @@
  *                   runner crash or a kill. NOT evidence about the code.
  * - `passed`      — ran and passed.
  * - `unknown`     — a non-zero exit from a command marvin has no per-runner detection
- *                   for (jest, `node --test`, go, cargo, plain commands). Never "ran and failed":
+ *                   for (jest, go, cargo, plain commands). Never "ran and failed":
  *                   the factory refuses to fall back to the exit code, and so does this.
  *
  * Marks refine `failed` by the failure message alone (the factory's regexes, verbatim):
@@ -25,7 +25,7 @@
 
 export type OracleOutcome = "passed" | "failed" | "did_not_run" | "unknown";
 export type FailureMark = "missing_name" | "missing_file" | "snapshot";
-export type OracleRunner = "pytest" | "vitest" | null;
+export type OracleRunner = "pytest" | "vitest" | "node" | null;
 
 export interface OracleClassification {
   outcome: OracleOutcome;
@@ -155,6 +155,62 @@ function vitest(lines: string[], text: string, code: number | null): OracleClass
   };
 }
 
+/** `node --test`'s summary, in either reporter: `ℹ fail 1` (spec) or `# fail 1` (TAP). */
+const NODE_COUNT = (word: string) => new RegExp(`^(?:ℹ|#) ${word} (\\d+)\\s*$`, "m");
+/**
+ * A failure outside any test body: a file that did not load (an import, resolution or syntax
+ * error) or threw at top level. The runner reports it as one failing test named after the file,
+ * with the bare error `'test failed'`: on its own line in the spec reporter, as `error:` in TAP.
+ * An assertion failing inside a test carries its own message instead.
+ */
+const NODE_FILE_FAILURE = /^\s*(?:error: )?'test failed'\s*$/m;
+
+function nodeTest(text: string, code: number | null): OracleClassification | null {
+  const read = (word: string) => {
+    const m = NODE_COUNT(word).exec(text);
+    return m ? Number(m[1]) : null;
+  };
+  const tests = read("tests");
+  const fail = read("fail");
+  if (tests === null || fail === null) return null;
+  const pass = read("pass") ?? 0;
+  const cancelled = read("cancelled") ?? 0;
+  const base = { runner: "node" as const };
+  if (fail > 0) {
+    if (NODE_FILE_FAILURE.test(text)) {
+      return {
+        ...base,
+        outcome: "did_not_run",
+        marks: [],
+        detail: "node:test: a test file failed outside any test (load, import or top-level error)",
+      };
+    }
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text),
+      detail: `node:test: ${fail} failed`,
+    };
+  }
+  if (cancelled > 0) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: `node:test: ${cancelled} cancelled`,
+    };
+  }
+  if (code === 0 && pass > 0) {
+    return { ...base, outcome: "passed", marks: [], detail: "node:test: passed" };
+  }
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: "node:test: no test ran and failed (skipped/todo)",
+  };
+}
+
 /** Classify one oracle run from its exit and captured output. */
 export function classifyOracleRun(run: {
   code: number | null;
@@ -172,7 +228,8 @@ export function classifyOracleRun(run: {
   }
   const text = run.output.replace(ANSI, "");
   const lines = text.split(/\r?\n/);
-  const detected = pytest(lines, text, run.code) ?? vitest(lines, text, run.code);
+  const detected =
+    pytest(lines, text, run.code) ?? vitest(lines, text, run.code) ?? nodeTest(text, run.code);
   if (detected) return detected;
   if (run.code === 0) return { outcome: "passed", marks: [], runner: null, detail: "exit 0" };
   return {

@@ -194,7 +194,7 @@ async function runVerify(input: VerifyInput, env: ServerEnv): Promise<ToolResult
       specConfig: config.spec,
       env,
       config,
-    });
+    }).answer;
   }
 
   // Acceptance oracles: run a sealed spec's criteria, not the project's gates.
@@ -435,7 +435,7 @@ function notRunWarning(gate: string, token: string | undefined): string {
 }
 
 /** The prefix `deliverGate` filters on to quote these warnings back. */
-const NOT_RUN_WARNING_PREFIX = "gate not run:";
+export const NOT_RUN_WARNING_PREFIX = "gate not run:";
 
 // ── the single child-process site (ADR-0015, ADR-0036) ──────────────────────
 
@@ -1254,7 +1254,7 @@ function renderMarkdown(o: {
  * (`lib/reports.ts`), so the delivery decision cannot drift from what verify
  * recorded, and the model never eyeballs a prose verdict.
  */
-function deliverGate(
+export function deliverGate(
   projectRoot: string,
   opts: {
     specSlug?: string;
@@ -1263,8 +1263,19 @@ function deliverGate(
     /** ADR-0044: the delivery gate is the terminal block's writer. */
     env: ServerEnv;
     config: Config;
+    /**
+     * Whether ALLOW needs a red→green proof (ADR-0055). The tool leaves it to the session's
+     * `MARVIN_PIPELINE`; the autopilot engine, which calls this function itself (ADR-0059),
+     * passes true whatever its own environment says.
+     */
+    redGreenRequired?: boolean;
+    /**
+     * Whether an ALLOW appends the terminal metrics block. False only for the engine's call
+     * when the record already holds a terminal block for the delivered commit (ADR-0059).
+     */
+    rollUp?: boolean;
   },
-): ToolResult {
+): DeliveryOutcome {
   const { allowStale } = opts;
   // The gate must judge THIS task's proof: prefer the per-spec run when a valid
   // slug names one that exists, and fall back to the global artifact otherwise,
@@ -1284,7 +1295,7 @@ function deliverGate(
   const surface = contractSurfaceStatus(projectRoot, opts.specSlug, opts.specConfig);
   // ADR-0055: the declaration that stands in for a red→green pair, and whether one is required.
   const noOracle = noOracleStatus(projectRoot, opts.specSlug, opts.specConfig);
-  const required = redGreenRequired();
+  const required = opts.redGreenRequired ?? redGreenRequired();
   const extras: GateExtras = {
     artifactPath,
     allowStale,
@@ -1307,8 +1318,15 @@ function deliverGate(
     verdict: string | null,
     reason: string,
     extra: GateExtras = extras,
-  ) => {
+  ): DeliveryOutcome => {
     const answer = gateResult(decision, verdict, `${reason}${slugNote}`, extra);
+    const outcome = (a: ToolResult, metricsNote: string | null): DeliveryOutcome => ({
+      answer: a,
+      decision,
+      verdict,
+      reason: `${reason}${slugNote}`,
+      metricsNote,
+    });
     // Every decision for a resolved slug is journalled (ADR-0043 §3), a BLOCK for
     // a missing artifact included: `verify-result` never carries `allowStale`, so
     // this entry is the only source for a freshness waiver. Fail-open, and written
@@ -1338,11 +1356,11 @@ function deliverGate(
     // the markdown and never through `reason`, which `gateResult` serialises
     // into the `deliver-gate` block: routing it there would look like the
     // obvious implementation and would break the block's byte-stability.
-    if (slug && decision === "ALLOW") {
+    if (slug && decision === "ALLOW" && opts.rollUp !== false) {
       const note = rollUpForDelivery(projectRoot, slug, opts.env, opts.config);
-      if (note) return withNote(answer, note);
+      if (note) return outcome(withNote(answer, note), note);
     }
-    return answer;
+    return outcome(answer, null);
   };
 
   if (!existsSync(artifactPath)) {
@@ -1527,6 +1545,19 @@ function noEvidenceRefusal(gates: VerifyGate[], warnings: string[]): string | nu
 function quoteNotRunWarnings(warnings: string[]): string {
   const relevant = warnings.filter((w) => w.startsWith(NOT_RUN_WARNING_PREFIX));
   return relevant.length ? ` — ${relevant.join("; ")}` : "";
+}
+
+/**
+ * A delivery decision as its callers read it: the tool returns `answer`, and the autopilot
+ * engine (ADR-0059) routes on `decision` and quotes `reason`. `metricsNote` is the answer's
+ * `**Metrics:**` line, null when no terminal block was appended.
+ */
+export interface DeliveryOutcome {
+  answer: ToolResult;
+  decision: "ALLOW" | "BLOCK";
+  verdict: string | null;
+  reason: string;
+  metricsNote: string | null;
 }
 
 /** The context every delivery decision carries beside its reason. */

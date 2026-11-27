@@ -117,11 +117,46 @@ test("plain exit codes: non-zero with no detectable runner is unknown, never fai
   assert.equal(run(0, "ok").outcome, "passed");
 });
 
-test("runners the factory does not cover (jest, node --test, go) are unknown, never failed", () => {
+test("runners the factory does not cover (jest, go) are unknown, never failed", () => {
   const jest = "Tests:       1 failed, 1 total\nTest Suites: 1 failed, 1 total";
-  const node = "# tests 1\n# pass 0\n# fail 1";
   const go = "--- FAIL: TestX (0.00s)\nFAIL\texample.com/x\t0.003s";
-  for (const out of [jest, node, go]) assert.equal(run(1, out).outcome, "unknown");
+  for (const out of [jest, go]) assert.equal(run(1, out).outcome, "unknown");
+});
+
+// `node --test` output as Node 24 (spec reporter) and Node 22 (TAP, no TTY) print it, trimmed.
+const nodeSummary = (mark, fail, pass = 0, skipped = 0) =>
+  [
+    `${mark} tests 1`,
+    `${mark} pass ${pass}`,
+    `${mark} fail ${fail}`,
+    `${mark} cancelled 0`,
+    `${mark} skipped ${skipped}`,
+  ].join("\n");
+const NODE_BODY_SPEC = `✖ x (0.25ms)\n${nodeSummary("ℹ", 1)}\n\n✖ failing tests:\n\ntest at body.test.mjs:2:1\n✖ x (0.25ms)\n  TypeError: m.clamp is not a function`;
+const NODE_BODY_TAP = `TAP version 13\nnot ok 1 - x\n  ---\n  failureType: 'testCodeFailure'\n  error: 'm.clamp is not a function'\n  code: 'ERR_TEST_FAILURE'\n  name: 'TypeError'\n  ...\n1..1\n${nodeSummary("#", 1)}`;
+const NODE_IMPORT_SPEC = `Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'nope.mjs'\n✖ imp.test.mjs (27ms)\n${nodeSummary("ℹ", 1)}\n\n✖ failing tests:\n\ntest at imp.test.mjs:1:1\n✖ imp.test.mjs (27ms)\n  'test failed'`;
+const NODE_IMPORT_TAP = `TAP version 13\n# Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'nope.mjs'\nnot ok 1 - imp.test.mjs\n  ---\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n${nodeSummary("#", 1)}`;
+
+test("node --test: a failure inside a test body is a red, in the spec and the TAP reporter", () => {
+  for (const out of [NODE_BODY_SPEC, NODE_BODY_TAP]) {
+    const c = run(1, out);
+    assert.equal(c.outcome, "failed");
+    assert.equal(c.runner, "node");
+    assert.ok(isRedForRightReason(c));
+  }
+});
+
+test("node --test: a file that did not load or threw at top level did not run", () => {
+  for (const out of [NODE_IMPORT_SPEC, NODE_IMPORT_TAP]) {
+    const c = run(1, out);
+    assert.equal(c.outcome, "did_not_run", out);
+    assert.equal(isRedForRightReason(c), false);
+  }
+});
+
+test("node --test: a pass is passed, and skipped-only did not run", () => {
+  assert.equal(run(0, nodeSummary("ℹ", 0, 1)).outcome, "passed");
+  assert.equal(run(0, nodeSummary("#", 0, 0, 1)).outcome, "did_not_run");
 });
 
 test("a crash, a kill or a launch failure did not run", () => {
