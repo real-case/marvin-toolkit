@@ -6,6 +6,16 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-11-27
+
+### Upgrade note
+
+- **Behaviour change: a red must have run** (ADR-0056). A red→green proof now counts only an
+  oracle run that ran and failed. A load or collection error, no tests found, a crash or a
+  missing binary is no longer a red. Journal records written before this release carry no
+  classification, so under the autopilot (`MARVIN_PIPELINE=1`) a task whose only red predates
+  0.40.0 is BLOCKed at delivery until that red is re-run. Interactive sessions keep the warning.
+
 ### Added
 
 - **The autopilot gate recognises failures the base already has** (ADR-0058). When a project
