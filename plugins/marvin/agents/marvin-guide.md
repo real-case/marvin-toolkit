@@ -2,7 +2,7 @@
 name: marvin-guide
 description: Helps new developers navigate and understand the codebase
 tools: Read, Glob, Grep
-model: opus
+model: sonnet
 color: green
 ---
 

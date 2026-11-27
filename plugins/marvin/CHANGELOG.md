@@ -6,6 +6,82 @@ follows semver independently of the surrounding marketplace.
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-11-27
+
+### Upgrade note
+
+- **Behaviour change: a red must have run** (ADR-0056). A red→green proof now counts only an
+  oracle run that ran and failed. A load or collection error, no tests found, a crash or a
+  missing binary is no longer a red. Journal records written before this release carry no
+  classification, so under the autopilot (`MARVIN_PIPELINE=1`) a task whose only red predates
+  0.40.0 is BLOCKed at delivery until that red is re-run. Interactive sessions keep the warning.
+
+### Added
+
+- **The autopilot gate recognises failures the base already has** (ADR-0058). When a project
+  gate fails, the engine runs each failing test file alone through `gates.test_one`, on HEAD and
+  on the commit the run is diffed from, in a throwaway worktree. A gate whose every failure
+  reproduces identically on the base is `inherited`: it no longer rejects the iteration, and it
+  is reported as a minor `G-<gate>-inherited` finding and a notify event. A failure the base does
+  not have, a test the run changed, or a check that cannot run leaves the gate failed as before,
+  with the reason in the finding's evidence. Base-side results are cached per base SHA in the run
+  directory. Oracles and prepare steps are never checked this way.
+
+### Changed
+
+- **A red must have run** (ADR-0056, fleet plan item F6b). `oracle-run` records gain the
+  factory's classification (`outcome`: `failed`, `did_not_run`, `passed`, `unknown`; `marks`;
+  `runner`). Only "ran and failed" counts as the red of a red→green proof. A load or collection
+  error, no tests found, a crash or a missing binary no longer proves a red. pytest and vitest
+  are detected; any other runner's non-zero exit is `unknown`. Records without the field still
+  parse and count as unclassified, so a journal recorded earlier needs its red re-run.
+
+### Fixed
+
+- **Scope drift is measured from the remote base, not a stale local branch.** The fork point a
+  task's diff is taken from (`changedFilesForScope`, shared by the `spec` scope gate and the
+  metrics roll-up's `scope_drift`) and the commit list of `/marvin:task-summary` now resolve
+  `base_branch` to `origin/<base>` when that remote-tracking ref exists, and fall back to the
+  local branch otherwise. A local base branch is not updated in a worktree: on one host it lagged
+  `origin/staging` by 8,779 commits, and the roll-up counted 17,209 changed files for a task that
+  changed a handful. `base_branch` itself is unchanged and stays a branch name for checkout, the
+  PR base and the shipped-spec lookup. Records already written are not recomputed.
+
+## [0.39.2] — 2026-11-26
+
+### Changed
+
+- **Eight subagents run on Sonnet** (ADR-0057, superseding ADR-0006). The six agents
+  whose judgment is the last check stay on Opus: both critics, the hunt referee and hunter, the
+  debugger and the security auditor. Eight agents now pin `model: sonnet`: `marvin-tm-executor`
+  and `marvin-tm-review-fixer`, whose code sealed tests, the `verify` gates, the diff critic and CI
+  check; `marvin-hunt-skeptic`, whose ruling the referee reviews; and `marvin-hunt-cartographer`,
+  `marvin-refactor-auditor`, `marvin-researcher`, `marvin-tm-writer` and `marvin-guide`, which
+  gather, map or explain. At Opus 5.5's 2x price over Sonnet 5.5 this halves their token cost. A
+  host cannot lower a pinned model through `CLAUDE_CODE_SUBAGENT_MODEL`, so the plugin's pin is
+  what every host gets. The autopilot's role children are unaffected: they take their model from
+  the rubric.
+
+## [0.39.1] — 2026-11-26
+
+### Changed
+
+- **The autopilot's default rubric runs no role above effort `high`.** Over 106 runs between
+  2026-10-13 and 2026-11-23, effort `xhigh` was 48% of the spend. A heavy planner on `xhigh` cost
+  2.8 times as much and took three times as long as one on `high`, with more rejections downstream
+  rather than fewer. In heavy, the planner and the verifier now run on `opus/high` (were
+  `opus/xhigh`). The test-author runs on `opus/medium` (was `opus/high`): at the same number of
+  criteria it took two to three times as long on `high`, with no difference in how often its tests
+  were sent back.
+- **The executor's escalation ladder switches model instead of raising effort.** It is now
+  `[model:opus, model:opus, halt]` (was `[effort+1, model:opus, halt]`). A fix attempt raised to
+  `sonnet/xhigh` was accepted 2 times in 17, one switched to `opus` 6 times in 16, and most
+  rejections were scope and gate findings, which more effort does not fix. Standard now escalates
+  `sonnet/high` to `opus/high`, light `sonnet/medium` to `opus/medium`, and heavy retries on
+  `opus/high`. Because the verifier is never weaker than its executor, it no longer reaches `xhigh`
+  either. A host's `.marvin/pipeline/rubric.yaml` that names its own `assignments` or `escalation`
+  is unaffected, and `effort+1` remains a valid ladder step.
+
 ## [0.39.0] — 2026-11-19
 
 ### Changed

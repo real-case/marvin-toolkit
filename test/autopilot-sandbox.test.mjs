@@ -228,7 +228,7 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
     assert.ok(command.fake, `${name} was not a fake`);
   }
 
-  // The verifier's rejection moved the second executor to rung 1: effort+1 on the same model.
+  // The verifier's rejection moved the second executor to rung 1: the same effort on opus.
   assert.equal(run.rung, 1);
   assert.deepEqual(
     run.rejections.map((r) => [r.iteration, r.source]),
@@ -236,7 +236,7 @@ test("a standard sandbox run with one verifier rejection reaches ready", async (
   );
   const [first, second] = run.children.filter((c) => c.role === "executor");
   assert.deepEqual(first.assignment, { model: "sonnet", effort: "high" });
-  assert.deepEqual(second.assignment, { model: "sonnet", effort: "xhigh" });
+  assert.deepEqual(second.assignment, { model: "opus", effort: "high" });
   assert.ok(
     log.some((e) => e.text.includes(`executor ${second.iteration} started on rung 1`)),
     trail,

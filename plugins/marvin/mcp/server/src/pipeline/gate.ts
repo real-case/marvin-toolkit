@@ -30,9 +30,17 @@ export interface CheckRule {
 }
 export interface GateResult {
   name: string;
-  result: "pass" | "fail" | "flaky" | "not-run";
+  /**
+   * `inherited`: the gate failed, and the base check (`inherited.ts`, ADR-0058) proved every
+   * failure is one the base commit already has. It passes the stage and is reported as a finding.
+   */
+  result: "pass" | "fail" | "flaky" | "not-run" | "inherited";
   ms: number;
   tail: string;
+  /** For an `inherited` gate: the base it was compared with and the failing test files. */
+  inherited?: { base: string; files: string[]; lines: string[] };
+  /** For a `fail` the base check looked at: why it is not inherited. */
+  baseCheck?: string;
   /**
    * The gate whose single run this result repeats: several criteria resolving to one command
    * (one test file proving them all) run it once, and every one of them reports its outcome.
@@ -282,6 +290,8 @@ export async function runGates(
   run: GateRunner,
   timeoutMs: number,
   signal?: AbortSignal,
+  /** Receives each failed gate's whole output by name, for the base check. */
+  failedOutput?: Map<string, string>,
 ): Promise<GateResult[]> {
   const once = async (command: string) => {
     signal?.throwIfAborted();
@@ -297,10 +307,12 @@ export async function runGates(
       continue;
     }
     if (!retry) {
+      failedOutput?.set(name, first.output);
       results.push({ name, result: "fail", ms: first.ms, tail: relevantTail(first.output) });
       continue;
     }
     const second = await once(command);
+    if (second.code !== 0) failedOutput?.set(name, second.output);
     results.push(
       second.code === 0
         ? { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) }
@@ -793,7 +805,9 @@ export function addedLineMismatches(lines: readonly AddedLine[], numstat: string
 
 export function buildReport(parts: Omit<GateReport, "passed">): GateReport {
   const passed =
-    parts.gates.every((g) => g.result === "pass" || g.result === "flaky") &&
+    parts.gates.every(
+      (g) => g.result === "pass" || g.result === "flaky" || g.result === "inherited",
+    ) &&
     parts.undeclared.length === 0 &&
     parts.protected.length === 0 &&
     parts.checks.every((c) => c.severity === "minor") &&
@@ -833,8 +847,18 @@ export function reportFindings(r: GateReport): Finding[] {
         severity: "blocker",
         category: "gate",
         claim: `${g.name} fails`,
-        evidence: g.tail,
+        evidence: g.baseCheck === undefined ? g.tail : `${g.tail}\nbase check: ${g.baseCheck}`,
         expected: `${g.name} passes`,
+      });
+    }
+    if (g.result === "inherited" && g.inherited !== undefined) {
+      out.push({
+        id: `G-${g.name}-inherited`,
+        severity: "minor",
+        category: "gate",
+        claim: `${g.name} fails only on tests that fail identically on the base ${g.inherited.base.slice(0, 12)}: ${g.inherited.files.join(", ")}`,
+        evidence: g.inherited.lines.join("\n"),
+        expected: "the base branch's own failing tests fixed on the base",
       });
     }
     if (g.result === "flaky") {
@@ -973,12 +997,28 @@ export interface GateStageOptions {
   run: GateRunner;
   timeoutMs: number;
   /**
+   * Asked for each ordinary gate that failed (never a prepare step or an oracle, which judge the
+   * run's own criteria): whether every failure is inherited from `baseSha` (`inherited.ts`). An
+   * `inherited` answer turns the gate into an `inherited` result; any other answer, or a throw,
+   * leaves it failed with the reason attached. Absent: no gate is ever inherited.
+   */
+  baseCheck?: (failed: {
+    name: string;
+    output: string;
+    baseSha: string;
+    changed: readonly string[];
+  }) => Promise<BaseCheckAnswer>;
+  /**
    * A stop request: the command running when it aborts is ended through `run`, and the stage
    * rejects with its reason instead of reporting, so a stopped gate leaves no verdict and the
    * engine that resumes the run runs the whole stage again.
    */
   signal?: AbortSignal;
 }
+
+export type BaseCheckAnswer =
+  | { kind: "inherited"; base: string; files: string[]; lines: string[] }
+  | { kind: "new" | "unavailable"; reason: string };
 
 const MAX_UNCOMMITTED_FINDINGS = 100;
 
@@ -1303,11 +1343,37 @@ export async function runGateStage(o: GateStageOptions): Promise<GateReport> {
       });
     }
   }
-  const gates = [
-    ...prepareGates,
-    ...oracleGates,
-    ...(await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal)),
-  ];
+  const failedOutput = new Map<string, string>();
+  const ordinary = await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal, failedOutput);
+  // Before the checks below, so that whatever the base check's runs on HEAD touch is judged too.
+  if (o.baseCheck !== undefined) {
+    for (const [i, g] of ordinary.entries()) {
+      const output = failedOutput.get(g.name);
+      if (g.result !== "fail" || output === undefined) continue;
+      let answer: BaseCheckAnswer;
+      try {
+        answer = await o.baseCheck({ name: g.name, output, baseSha: o.baseSha, changed });
+      } catch (error) {
+        if (o.signal?.aborted) throw o.signal.reason;
+        answer = {
+          kind: "unavailable",
+          reason: `the base check failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+      ordinary[i] =
+        answer.kind === "inherited"
+          ? {
+              ...g,
+              result: "inherited",
+              inherited: { base: answer.base, files: answer.files, lines: answer.lines },
+            }
+          : {
+              ...g,
+              baseCheck: `${answer.kind === "new" ? "not inherited" : "unavailable"}: ${answer.reason}`,
+            };
+    }
+  }
+  const gates = [...prepareGates, ...oracleGates, ...ordinary];
 
   const headAfter = git.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha) {

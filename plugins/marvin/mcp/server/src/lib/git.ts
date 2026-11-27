@@ -198,6 +198,8 @@ export function hashObjects(paths: string[], cwd?: string): string[] | null {
  * the fork as a change of this task, which is what filled a host's roll-up with
  * hundreds of undeclared paths. When the merge base cannot be computed (an
  * unrelated history, a shallow clone) the base ref itself is used, as before.
+ * The base is first resolved by `resolveBaseRef`, so a host whose local base
+ * branch lags its remote is diffed from where the task was really cut.
  *
  * Two callers share it and must see the same set (ADR-0043): the scope gate in
  * `tools/spec.ts` (is the change inside the contract allowlist?) and the metrics
@@ -218,8 +220,34 @@ export function changedFilesForScope(projectRoot: string, base: string | undefin
 /** The merge base of `ref` and `HEAD`, or `ref` itself when there is none to compute. */
 function forkPoint(ref: string, cwd: string): string {
   if (ref === "HEAD") return ref;
-  const mb = git(["merge-base", ref, "HEAD"], cwd);
-  return mb.ok && mb.value ? mb.value : ref;
+  const base = resolveBaseRef(ref, cwd);
+  const mb = git(["merge-base", base, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : base;
+}
+
+/**
+ * The ref a task's diff and commit list are measured against, for a configured
+ * base branch name. `config.base_branch` stays a branch NAME (it is checked out,
+ * used as the PR base, and prefixed with `origin/` by `specFilenamesOnBase`);
+ * only the two read paths — the scope diff's fork point and the summary's
+ * `<base>..HEAD` log — go through this.
+ *
+ * A local base branch is not updated in a worktree, so its merge base with
+ * `HEAD` drifts back by as many commits as the remote gained, and every file
+ * those commits touched was counted as an undeclared change of the task (a host
+ * measured 17,209 against 2 real ones). The remote-tracking ref is what a task
+ * branch is cut from, so it wins when it exists:
+ *
+ * - `<base>` that already names a remote-tracking ref (`origin/staging`) → as is;
+ * - `refs/remotes/origin/<base>` exists → `origin/<base>`;
+ * - otherwise (no remote, an unpushed base, a sha, `HEAD`) → `<base>` unchanged.
+ */
+export function resolveBaseRef(base: string, cwd?: string): string {
+  if (base === "HEAD" || base.startsWith("refs/")) return base;
+  const has = (ref: string) => git(["show-ref", "--verify", "--quiet", ref], cwd).ok;
+  if (has(`refs/remotes/${base}`)) return base;
+  if (has(`refs/remotes/origin/${base}`)) return `origin/${base}`;
+  return base;
 }
 
 /** Normalise a path for scope comparison: POSIX separators, no leading `./`, trimmed. */

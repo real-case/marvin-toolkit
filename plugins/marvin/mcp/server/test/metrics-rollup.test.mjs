@@ -686,6 +686,7 @@ test("Q3 red-green completeness is derived for a bugfix from a red then green pa
       expect: "fail",
       status: "fail",
       code: 1,
+      outcome: "failed",
       test_sha: "t1",
       ran_at: T("11:00:10"),
     }),

@@ -11125,49 +11125,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative9, options, skipNormalization) {
+    function resolveComponent(base, relative10, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse5(serialize(base, options), options);
-        relative9 = parse5(serialize(relative9, options), options);
+        relative10 = parse5(serialize(relative10, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative9.scheme) {
-        target.scheme = relative9.scheme;
-        target.userinfo = relative9.userinfo;
-        target.host = relative9.host;
-        target.port = relative9.port;
-        target.path = removeDotSegments(relative9.path || "");
-        target.query = relative9.query;
+      if (!options.tolerant && relative10.scheme) {
+        target.scheme = relative10.scheme;
+        target.userinfo = relative10.userinfo;
+        target.host = relative10.host;
+        target.port = relative10.port;
+        target.path = removeDotSegments(relative10.path || "");
+        target.query = relative10.query;
       } else {
-        if (relative9.userinfo !== void 0 || relative9.host !== void 0 || relative9.port !== void 0) {
-          target.userinfo = relative9.userinfo;
-          target.host = relative9.host;
-          target.port = relative9.port;
-          target.path = removeDotSegments(relative9.path || "");
-          target.query = relative9.query;
+        if (relative10.userinfo !== void 0 || relative10.host !== void 0 || relative10.port !== void 0) {
+          target.userinfo = relative10.userinfo;
+          target.host = relative10.host;
+          target.port = relative10.port;
+          target.path = removeDotSegments(relative10.path || "");
+          target.query = relative10.query;
         } else {
-          if (!relative9.path) {
+          if (!relative10.path) {
             target.path = base.path;
-            if (relative9.query !== void 0) {
-              target.query = relative9.query;
+            if (relative10.query !== void 0) {
+              target.query = relative10.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative9.path[0] === "/") {
-              target.path = removeDotSegments(relative9.path);
+            if (relative10.path[0] === "/") {
+              target.path = removeDotSegments(relative10.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative9.path;
+                target.path = "/" + relative10.path;
               } else if (!base.path) {
-                target.path = relative9.path;
+                target.path = relative10.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative9.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative10.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative9.query;
+            target.query = relative10.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -11175,7 +11175,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative9.fragment;
+      target.fragment = relative10.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -11797,8 +11797,8 @@ var require_core = __commonJS({
             return this;
           }
           case "object": {
-            const cacheKey = schemaKeyRef;
-            this._cache.delete(cacheKey);
+            const cacheKey2 = schemaKeyRef;
+            this._cache.delete(cacheKey2);
             let id = schemaKeyRef[this.opts.schemaId];
             if (id) {
               id = (0, resolve_1.normalizeId)(id);
@@ -19582,6 +19582,11 @@ external_exports.object({
   provenance: ProvenanceSchema.optional().catch(void 0)
 });
 
+// src/lib/oracle-classify.ts
+function isRedForRightReason(c) {
+  return c.outcome === "failed" && !(c.marks ?? []).includes("snapshot");
+}
+
 // src/lib/shell-quote.ts
 var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
 function encodeForContext(value, context) {
@@ -19710,6 +19715,12 @@ var OracleRunSchema = external_exports.object({
   test_sha: external_exports.string().nullable(),
   head_sha: external_exports.string().nullable(),
   durationMs: external_exports.number().optional(),
+  /** F6b (ADR-0056): the factory's "red for the right reason" class. ABSENT on a
+   * record written before it existed — that is "unclassified", never `failed`. */
+  outcome: external_exports.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
+  marks: external_exports.array(external_exports.enum(["missing_name", "missing_file", "snapshot"])).optional(),
+  runner: external_exports.enum(["pytest", "vitest"]).nullable().optional(),
+  outcome_detail: external_exports.string().optional(),
   ran_at: external_exports.string()
 });
 function oracleJournalPath(runsDir, slug) {
@@ -19738,7 +19749,9 @@ function readOracleRuns(runsDir, slug) {
   return out;
 }
 function isRed(r) {
-  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha;
+  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha && // F6b: only "ran and failed" is a red. A record without `outcome` predates the
+  // classification and is unclassified — not proof.
+  isRedForRightReason(r);
 }
 function isGreen(r) {
   return r.expect === "pass" && r.status === "pass" && r.code === 0 && !!r.test_sha;
@@ -20146,7 +20159,7 @@ var relevantTail = (s) => {
   const errors = lines.filter((l) => /\berror\b|\bfail(ed|ure)?\b|✗|×/i.test(l)).slice(-20);
   return (errors.length ? errors : lines.slice(-40)).join("\n");
 };
-async function runGates(commands, cwd, run2, timeoutMs, signal) {
+async function runGates(commands, cwd, run2, timeoutMs, signal, failedOutput) {
   const once = async (command) => {
     signal?.throwIfAborted();
     const result = await run2(command, cwd, timeoutMs, signal);
@@ -20161,10 +20174,12 @@ async function runGates(commands, cwd, run2, timeoutMs, signal) {
       continue;
     }
     if (!retry2) {
+      failedOutput?.set(name, first.output);
       results.push({ name, result: "fail", ms: first.ms, tail: relevantTail(first.output) });
       continue;
     }
     const second = await once(command);
+    if (second.code !== 0) failedOutput?.set(name, second.output);
     results.push(
       second.code === 0 ? { name, result: "flaky", ms: first.ms + second.ms, tail: relevantTail(first.output) } : { name, result: "fail", ms: first.ms + second.ms, tail: relevantTail(second.output) }
     );
@@ -20461,7 +20476,9 @@ function addedLineMismatches(lines, numstat) {
   return [...paths].filter((f) => !binary.has(f) && (parsed.get(f) ?? 0) !== (counted.get(f) ?? 0)).sort();
 }
 function buildReport(parts) {
-  const passed = parts.gates.every((g) => g.result === "pass" || g.result === "flaky") && parts.undeclared.length === 0 && parts.protected.length === 0 && parts.checks.every((c) => c.severity === "minor") && parts.sealed.every((s) => s.ok) && parts.blockers.length === 0;
+  const passed = parts.gates.every(
+    (g) => g.result === "pass" || g.result === "flaky" || g.result === "inherited"
+  ) && parts.undeclared.length === 0 && parts.protected.length === 0 && parts.checks.every((c) => c.severity === "minor") && parts.sealed.every((s) => s.ok) && parts.blockers.length === 0;
   return { ...parts, passed };
 }
 var outsideCommittedDiff = (f) => /^P-\d+$/.test(f.id) && f.category === "scope" && f.file !== void 0 && !f.evidence.split(", ").includes("committed diff");
@@ -20484,8 +20501,19 @@ function reportFindings(r) {
         severity: "blocker",
         category: "gate",
         claim: `${g.name} fails`,
-        evidence: g.tail,
+        evidence: g.baseCheck === void 0 ? g.tail : `${g.tail}
+base check: ${g.baseCheck}`,
         expected: `${g.name} passes`
+      });
+    }
+    if (g.result === "inherited" && g.inherited !== void 0) {
+      out.push({
+        id: `G-${g.name}-inherited`,
+        severity: "minor",
+        category: "gate",
+        claim: `${g.name} fails only on tests that fail identically on the base ${g.inherited.base.slice(0, 12)}: ${g.inherited.files.join(", ")}`,
+        evidence: g.inherited.lines.join("\n"),
+        expected: "the base branch's own failing tests fixed on the base"
       });
     }
     if (g.result === "flaky") {
@@ -20834,11 +20862,33 @@ async function runGateStage(o) {
       });
     }
   }
-  const gates = [
-    ...prepareGates,
-    ...oracleGates,
-    ...await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal)
-  ];
+  const failedOutput = /* @__PURE__ */ new Map();
+  const ordinary = await runGates(o.gates, o.worktree, o.run, o.timeoutMs, o.signal, failedOutput);
+  if (o.baseCheck !== void 0) {
+    for (const [i, g] of ordinary.entries()) {
+      const output = failedOutput.get(g.name);
+      if (g.result !== "fail" || output === void 0) continue;
+      let answer;
+      try {
+        answer = await o.baseCheck({ name: g.name, output, baseSha: o.baseSha, changed });
+      } catch (error2) {
+        if (o.signal?.aborted) throw o.signal.reason;
+        answer = {
+          kind: "unavailable",
+          reason: `the base check failed: ${error2 instanceof Error ? error2.message : String(error2)}`
+        };
+      }
+      ordinary[i] = answer.kind === "inherited" ? {
+        ...g,
+        result: "inherited",
+        inherited: { base: answer.base, files: answer.files, lines: answer.lines }
+      } : {
+        ...g,
+        baseCheck: `${answer.kind === "new" ? "not inherited" : "unavailable"}: ${answer.reason}`
+      };
+    }
+  }
+  const gates = [...prepareGates, ...oracleGates, ...ordinary];
   const headAfter = git4.text("rev-parse", "--verify", "HEAD^{commit}").trim();
   if (headAfter !== headSha2) {
     blockers.push({
@@ -21204,6 +21254,24 @@ function clearLeftovers(git4, dir) {
   }
 }
 function withBaseWorktree(o, fn) {
+  const opened = openBaseWorktree(o);
+  try {
+    opened.ready();
+    return fn(opened.tree);
+  } finally {
+    opened.close();
+  }
+}
+async function withBaseWorktreeAsync(o, fn) {
+  const opened = openBaseWorktree(o);
+  try {
+    opened.ready();
+    return await fn(opened.tree);
+  } finally {
+    opened.close();
+  }
+}
+function openBaseWorktree(o) {
   if (typeof o.commit !== "string" || !FULL_SHA.test(o.commit)) {
     throw new Error("the base commit must be a 40-hex commit SHA");
   }
@@ -21220,18 +21288,21 @@ function withBaseWorktree(o, fn) {
     throw new BaseTreeError(`${dir} cannot hold a base tree (${errorCode(error2)})`);
   }
   let record2 = null;
-  try {
-    git4.text("worktree", "add", "--detach", tree, o.commit);
-    record2 = recordOf(tree);
-    linkNodeModules(git4, o.worktree, tree);
-    return fn(tree);
-  } finally {
-    removeTemporaryWorktree(git4, tree, record2);
-    try {
-      rmdirSync(dir);
-    } catch {
+  return {
+    tree,
+    ready: () => {
+      git4.text("worktree", "add", "--detach", tree, o.commit);
+      record2 = recordOf(tree);
+      linkNodeModules(git4, o.worktree, tree);
+    },
+    close: () => {
+      removeTemporaryWorktree(git4, tree, record2);
+      try {
+        rmdirSync(dir);
+      } catch {
+      }
     }
-  }
+  };
 }
 function snapshotTreeImpl(worktree) {
   const head = git2(worktree, "rev-parse", "HEAD");
@@ -24632,7 +24703,7 @@ function step(run2, obs, rubric, now) {
     }
     return { run: reopened, actions: [action] };
   };
-  const sameSet = (a, b) => {
+  const sameSet2 = (a, b) => {
     const key = (x) => [...new Set(x)].sort().join("\0");
     return key(a) === key(b);
   };
@@ -24667,7 +24738,7 @@ function step(run2, obs, rubric, now) {
     const counted = next.rejections.filter((x) => x.bookkeeping !== true).length;
     const stepNow = rubric.escalation[rung - 1];
     const lastRejection = r.rejections.at(-1);
-    if (!bookkeeping && source === "gate" && lastRejection?.source === "gate" && fs.every(outsideCommittedDiff) && sameSet(prints, lastRejection.fingerprints)) {
+    if (!bookkeeping && source === "gate" && lastRejection?.source === "gate" && fs.every(outsideCommittedDiff) && sameSet2(prints, lastRejection.fingerprints)) {
       return halted(
         `the same ${fs.length} protected ${fs.length === 1 ? "path" : "paths"} changed outside the committed diff in 2 gates in a row, which no executor can fix: if the project's own hooks or gate scripts write them and git ignores them, declare them in pipeline.protected_volatile`
       );
@@ -33632,6 +33703,172 @@ function runnerGap(worktree, allowed) {
   if (allowed.some(covers)) return null;
   return `the project's lockfile is ${manager.runner}'s, and pipeline.allowed_commands has no \`${manager.runner}\` prefix, so the planner, test-author and executor cannot run its scripts: add \`${manager.runner} run\``;
 }
+var MAX_INHERITED_FILES = 10;
+var cacheKey = (baseSha, command) => createHash("sha256").update(`${baseSha}\0${command}`).digest("hex").slice(0, 32);
+var FAILURE_LINE = /^(?:✖|×|✗|❯|FAIL\b|not ok\b|●)/u;
+var NOT_A_TEST = /^(?:✖ failing tests:?$|FAIL\s*$|●\s*$)/u;
+function failureLines(output, root) {
+  const roots = [.../* @__PURE__ */ new Set([root, realOrSelf(root)])].flatMap((r) => [r, `file://${r}`]).sort((a, b) => b.length - a.length);
+  const out = /* @__PURE__ */ new Set();
+  for (const raw of output.split("\n")) {
+    let line = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
+    if (!FAILURE_LINE.test(line) || NOT_A_TEST.test(line)) continue;
+    for (const r of roots) line = line.split(`${r}/`).join("<root>/");
+    line = line.replace(/\s*\(\d+(?:\.\d+)?\s*m?s\)/g, "").replace(/\s+\d+(?:\.\d+)?\s*m?s$/, "").replace(/^not ok \d+/, "not ok").replace(/:\d+(?::\d+)?\b/g, "").replace(/\s+/g, " ").trim();
+    if (line !== "") out.add(line);
+  }
+  return [...out].sort();
+}
+var COMPILER_ERROR = /\berror TS\d{3,}\b/;
+var PATH_TOKEN = /(?:file:\/\/)?[\w@.\-/]+\.[A-Za-z0-9]+(?::\d+(?::\d+)?)?/g;
+function failingFiles(output, root, testPathPattern, tracked) {
+  const looksLikeTest = new RegExp(testPathPattern);
+  const roots = [.../* @__PURE__ */ new Set([root, realOrSelf(root)])];
+  const out = /* @__PURE__ */ new Set();
+  let inFailedBlock = false;
+  for (const raw of output.split("\n")) {
+    const line = raw.replace(/\u001b\[[0-9;]*m/g, "").trim();
+    if (/^(?:not )?ok\b/.test(line)) inFailedBlock = line.startsWith("not ok");
+    else if (line === "...") inFailedBlock = false;
+    const location = inFailedBlock && line.startsWith("location:");
+    if (!FAILURE_LINE.test(line) && !line.startsWith("test at ") && !location) continue;
+    for (const token of line.match(PATH_TOKEN) ?? []) {
+      let path = token.replace(/^file:\/\//, "").replace(/(?::\d+){1,2}$/, "");
+      if (isAbsolute(path)) {
+        const rel = roots.map((r) => relative(r, path)).find((x) => !x.startsWith("..") && !isAbsolute(x));
+        if (rel === void 0) continue;
+        path = rel.split("\\").join("/");
+      }
+      path = posix.normalize(path).replace(/^\.\//, "");
+      if (path.startsWith("../") || !looksLikeTest.test(path)) continue;
+      if (tracked(path)) out.add(path);
+    }
+  }
+  return [...out].sort();
+}
+var realOrSelf = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
+var sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+async function checkInherited(o) {
+  try {
+    return await decideInherited(o);
+  } catch (error2) {
+    if (o.signal?.aborted) throw o.signal.reason;
+    return {
+      kind: "unavailable",
+      reason: `the base check failed: ${error2 instanceof Error ? error2.message : String(error2)}`.split(
+        "\n"
+      )[0]
+    };
+  }
+}
+async function decideInherited(o) {
+  if (!o.testOne) return { kind: "unavailable", reason: "no gates.test_one to run a single file" };
+  const gateLines = failureLines(o.output, o.worktree);
+  if (gateLines.length === 0) {
+    return { kind: "unavailable", reason: "the output names no failed test" };
+  }
+  if (COMPILER_ERROR.test(o.output)) {
+    return { kind: "unavailable", reason: "the output carries a compiler error besides its tests" };
+  }
+  const git4 = isolatedGit(o.worktree, o.gitDir);
+  const atHead = (path) => {
+    try {
+      git4.text("cat-file", "-e", `HEAD:${path}`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const files = failingFiles(o.output, o.worktree, o.testPathPattern, atHead);
+  if (files.length === 0) {
+    return { kind: "unavailable", reason: "the output names no failing test file" };
+  }
+  if (files.length > MAX_INHERITED_FILES) {
+    return {
+      kind: "unavailable",
+      reason: `${files.length} failing test files, more than the ${MAX_INHERITED_FILES} the base check runs`
+    };
+  }
+  const changed = new Set(o.changed);
+  for (const f of files) {
+    if (changed.has(f)) return { kind: "new", reason: `the run changed the failing test ${f}` };
+    try {
+      git4.text("cat-file", "-e", `${o.baseSha}:${f}`);
+    } catch {
+      return { kind: "new", reason: `the failing test ${f} does not exist on the base` };
+    }
+  }
+  const commands = new Map(files.map((f) => [f, formatTestOne(o.testOne, f)]));
+  const run2 = async (command, cwd) => {
+    o.signal?.throwIfAborted();
+    const r = await o.run(command, cwd, o.timeoutMs, o.signal);
+    o.signal?.throwIfAborted();
+    return { code: r.code, lines: failureLines(r.output, cwd) };
+  };
+  const head = /* @__PURE__ */ new Map();
+  for (const [f, command] of commands) {
+    const r = await run2(command, o.worktree);
+    if (r.code === 0) {
+      return {
+        kind: "unavailable",
+        reason: `${f} passes when run alone on HEAD, so its failure in the gate is not attributable to it`
+      };
+    }
+    if (r.lines.length === 0) {
+      return { kind: "unavailable", reason: `${f} fails on HEAD without naming a failed test` };
+    }
+    head.set(f, r);
+  }
+  const covered = new Set([...head.values()].flatMap((r) => r.lines));
+  const unaccounted = gateLines.filter((l) => !covered.has(l));
+  if (unaccounted.length > 0) {
+    return {
+      kind: "unavailable",
+      reason: `the gate fails on lines no single-file run reproduces: ${unaccounted.slice(0, 3).join(" | ")}`
+    };
+  }
+  const base = /* @__PURE__ */ new Map();
+  let cached2 = 0;
+  for (const [f, command] of commands) {
+    const hit = o.cache.get(o.baseSha, command);
+    if (hit !== void 0) {
+      base.set(f, hit);
+      cached2 += 1;
+    }
+  }
+  const missing = [...commands].filter(([f]) => !base.has(f));
+  if (missing.length > 0) {
+    await withBaseWorktreeAsync(
+      { worktree: o.worktree, gitDir: o.gitDir, commit: o.baseSha },
+      async (tree) => {
+        for (const [f, command] of missing) {
+          const r = await run2(command, tree);
+          o.cache.set(o.baseSha, command, r);
+          base.set(f, r);
+        }
+      }
+    );
+  }
+  for (const f of files) {
+    const b = base.get(f);
+    const h = head.get(f);
+    if (b.code === 0) return { kind: "new", reason: `${f} passes on the base` };
+    if (!sameSet(h.lines, b.lines)) {
+      const added = h.lines.filter((l) => !b.lines.includes(l));
+      return {
+        kind: added.length > 0 ? "new" : "unavailable",
+        reason: added.length > 0 ? `${f} fails on HEAD where the base does not: ${added.slice(0, 3).join(" | ")}` : `${f} fails differently on the base`
+      };
+    }
+  }
+  return { kind: "inherited", base: o.baseSha, files, lines: gateLines, cached: cached2 };
+}
 var WRAPPER = [
   'out="$1"; err="$2"; exitf="$3"; shift 3',
   '"$@" < /dev/null > "$out" 2> "$err" &',
@@ -34747,6 +34984,27 @@ ${planted.join("\n")}`
     }
     return { text: text2, findings };
   };
+  const baseRunCache = () => {
+    const file = at("base-checks.json");
+    const Shape = external_exports.record(external_exports.string(), external_exports.object({ code: external_exports.number(), lines: external_exports.array(external_exports.string()) }));
+    const load = () => {
+      try {
+        return readJson(file, Shape) ?? {};
+      } catch {
+        return {};
+      }
+    };
+    return {
+      get: (baseSha, command) => load()[cacheKey(baseSha, command)],
+      set: (baseSha, command, value) => {
+        writeAtomic2(
+          file,
+          `${JSON.stringify({ ...load(), [cacheKey(baseSha, command)]: value }, null, 2)}
+`
+        );
+      }
+    };
+  };
   const gateWork = async (run2) => {
     const config2 = configFor(run2);
     const wt = worktreeRecord(run2);
@@ -34840,8 +35098,33 @@ ${planted.join("\n")}`
       runArtifacts: run2.specPath !== null && isCanonicalPath(run2.specPath) ? { specPath: run2.specPath, slug: specIdentity(run2).slug } : null,
       run: gateRunner,
       timeoutMs,
+      baseCheck: ({ output, baseSha, changed }) => checkInherited({
+        worktree: wt.path,
+        gitDir: wt.gitDir,
+        baseSha,
+        changed,
+        testOne: config2.gates?.test_one,
+        testPathPattern: config2.pipeline.test_path_pattern,
+        output,
+        run: gateRunner,
+        timeoutMs,
+        cache: baseRunCache(),
+        ...deps.signal ? { signal: deps.signal } : {}
+      }),
       ...deps.signal ? { signal: deps.signal } : {}
     });
+    for (const g of report.gates) {
+      if (g.result === "inherited" && g.inherited !== void 0) {
+        noteOnce(
+          `inherited:${run2.iteration}:${head}:${g.name}`,
+          `gate ${g.name} fails only on tests that also fail on the base ${g.inherited.base.slice(0, 12)}, so it does not reject iteration ${run2.iteration}: ${g.inherited.files.join(", ")}`
+        );
+      } else if (g.result === "fail" && g.baseCheck !== void 0) {
+        note(`gate ${g.name}: base check ${g.baseCheck}`, {
+          ref: `base-check:${run2.iteration}:${head}:${g.name}`
+        });
+      }
+    }
     const passed = report.passed && findings.length === 0;
     writeAtomic2(
       at("gated-head.json"),

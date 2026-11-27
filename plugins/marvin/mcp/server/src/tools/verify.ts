@@ -22,6 +22,7 @@ import {
   type SurfaceCheck,
   type SurfaceStatus,
 } from "../lib/contract-surface.js";
+import { classifyOracleRun, type OracleClassification } from "../lib/oracle-classify.js";
 import { parseContract, resolveCriteria } from "../lib/oracles.js";
 import { classifyStaleness, collectProvenance, type Staleness } from "../lib/provenance.js";
 import { formatVerifyBlock, parseVerifyBlock, type VerifyGate } from "../lib/reports.js";
@@ -33,6 +34,7 @@ import {
   oracleTestFile,
   readOracleRuns,
   recordOracleRun,
+  redRejection,
   redGreenProof,
   type OracleRun,
 } from "../storage/oracles.js";
@@ -897,6 +899,10 @@ function unambiguousStack(input: VerifyInput, projectRoot: string): string | und
   return unambiguousStackId(projectRoot);
 }
 
+function classifiedFields(c: OracleClassification) {
+  return { outcome: c.outcome, marks: c.marks, runner: c.runner, outcome_detail: c.detail };
+}
+
 /**
  * Run a sealed spec's acceptance oracles and append each outcome to its journal.
  *
@@ -965,6 +971,8 @@ async function runOracles(
     if (resolved.command === null) {
       entries.push({
         ...base,
+        outcome: "did_not_run",
+        outcome_detail: "no command resolved",
         status: "not-run",
         command: null,
         source: null,
@@ -981,6 +989,14 @@ async function runOracles(
       command: resolved.command,
       source: resolved.source,
       durationMs: out.durationMs,
+      ...classifiedFields(
+        classifyOracleRun({
+          code: out.code,
+          signal: out.signal,
+          output: `${out.stdout}\n${out.stderr}`,
+          launchError: !!out.error,
+        }),
+      ),
     };
     if (out.error) {
       entries.push({
@@ -1015,6 +1031,7 @@ async function runOracles(
       (e) =>
         `- ${icon(e.status)} **${e.criterion}** — ${e.status}` +
         (e.command ? ` · \`${e.command}\` (${e.source})` : "") +
+        (e.outcome ? ` · ${e.outcome}${e.outcome_detail ? ` (${e.outcome_detail})` : ""}` : "") +
         (e.reason ? ` · ${e.reason}` : ""),
     ),
     ...(entries.length ? [] : ["_no runnable criterion selected_"]),
@@ -1071,7 +1088,11 @@ function redGreenStatus(
     const proven = tests.some((c) => redGreenProof(runs, spec.contractSha, c.id) === "proven");
     return proven
       ? { status: "proven", unproven: [], why: "" }
-      : { status: "missing", unproven: [tests[0]!.id], why: "" };
+      : {
+          status: "missing",
+          unproven: [tests[0]!.id],
+          why: redRejection(runs, spec.contractSha, tests[0]!.id),
+        };
   }
   if (spec.type !== "bugfix") return none(`the spec's type \`${spec.type}\` is not feature|bugfix`);
   const regression = spec.criteria.filter((c) => c.regression === true);
@@ -1081,7 +1102,11 @@ function redGreenStatus(
   const unproven = regression
     .filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing")
     .map((c) => c.id);
-  return { status: unproven.length ? "missing" : "proven", unproven, why: "" };
+  const why = unproven
+    .map((id) => redRejection(runs, spec.contractSha, id))
+    .filter(Boolean)
+    .join("; ");
+  return { status: unproven.length ? "missing" : "proven", unproven, why };
 }
 
 /**
@@ -1426,7 +1451,8 @@ function deliverGate(
     if (noOracle.status !== "declared") {
       const what =
         redGreen.status === "missing"
-          ? `no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}`
+          ? `no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}` +
+            (redGreen.why ? ` — ${redGreen.why}` : "")
           : `no red→green proof can be read for this delivery: ${redGreen.why}`;
       return decide(
         "BLOCK",
@@ -1447,6 +1473,7 @@ function deliverGate(
   const redGreenNote =
     !required && redGreen.status === "missing"
       ? ` · no recorded red→green pair at this contract_sha for ${redGreen.unproven.join(", ")}` +
+        (redGreen.why ? ` (${redGreen.why})` : "") +
         ` — record one with \`verify action: "oracles"\` (this does not block delivery)`
       : "";
   const surfaceNote =

@@ -2,10 +2,10 @@
 
 | Field         | Value                                                       |
 | ------------- | ----------------------------------------------------------- |
-| Status        | **Accepted** (solo maintainer sign-off)                     |
+| Status        | **Superseded** by [ADR-0057](0057-subagent-model-tiers.md) |
 | Date          | 2026-06-14                                                  |
 | Supersedes    | —                                                       |
-| Superseded by | —                                                           |
+| Superseded by | [ADR-0057](0057-subagent-model-tiers.md) |
 | Related       | `plugins/marvin/agents/*.md`, [ADR-0002](0002-tool-backed-verification.md), [ADR-0003](0003-tool-backed-dor.md), [ADR-0004](0004-traceable-spec-contract.md) (gate ordering), [ADR-0005](0005-portable-spec-contract.md) |
 
 ## Context

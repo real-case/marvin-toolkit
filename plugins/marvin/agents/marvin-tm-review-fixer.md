@@ -1,7 +1,7 @@
 ---
 name: marvin-tm-review-fixer
 description: Phase 3 autonomous agent — reads PR review comments, classifies them, applies minimal fixes, answers questions, and pushes a single review-response commit. Invoked when a PR has received reviewer feedback that needs to be addressed without pulling the original implementation context into the main conversation.
-model: opus
+model: sonnet
 color: cyan
 ---
 

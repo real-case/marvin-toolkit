@@ -29758,8 +29758,16 @@ function changedFilesForScope(projectRoot, base) {
 }
 function forkPoint(ref, cwd) {
   if (ref === "HEAD") return ref;
-  const mb = git(["merge-base", ref, "HEAD"], cwd);
-  return mb.ok && mb.value ? mb.value : ref;
+  const base = resolveBaseRef(ref, cwd);
+  const mb = git(["merge-base", base, "HEAD"], cwd);
+  return mb.ok && mb.value ? mb.value : base;
+}
+function resolveBaseRef(base, cwd) {
+  if (base === "HEAD" || base.startsWith("refs/")) return base;
+  const has = (ref) => git(["show-ref", "--verify", "--quiet", ref], cwd).ok;
+  if (has(`refs/remotes/${base}`)) return base;
+  if (has(`refs/remotes/origin/${base}`)) return `origin/${base}`;
+  return base;
 }
 function normalizeScopePath(p) {
   return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
@@ -30736,10 +30744,10 @@ function collectFindings(ctx) {
       path: m.number === null ? null : `${ctx.dir.rel}/${m.filename}`
     });
   }
-  const counts = /* @__PURE__ */ new Map();
-  for (const r of records) push(counts, r.number, r.filename);
-  for (const m of malformed) if (m.number !== null) push(counts, m.number, m.filename);
-  for (const [number3, files] of [...counts].sort((a, b) => a[0] - b[0])) {
+  const counts2 = /* @__PURE__ */ new Map();
+  for (const r of records) push(counts2, r.number, r.filename);
+  for (const m of malformed) if (m.number !== null) push(counts2, m.number, m.filename);
+  for (const [number3, files] of [...counts2].sort((a, b) => a[0] - b[0])) {
     if (files.length > 1) {
       findings.push({
         kind: "duplicate-number",
@@ -30750,7 +30758,7 @@ function collectFindings(ctx) {
       });
     }
   }
-  const numbers = [...counts.keys()].sort((a, b) => a - b);
+  const numbers = [...counts2.keys()].sort((a, b) => a - b);
   for (let i = 1; i < numbers.length; i++) {
     const prev = numbers[i - 1];
     const cur = numbers[i];
@@ -31029,12 +31037,12 @@ function toPayloadRecord(r) {
   };
 }
 function buildListPayload(ctx) {
-  const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
-  for (const r of ctx.corpus.records) counts[r.status] += 1;
+  const counts2 = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
+  for (const r of ctx.corpus.records) counts2[r.status] += 1;
   return {
     dir: ctx.dir.rel,
     records: ctx.corpus.records.map(toPayloadRecord),
-    counts,
+    counts: counts2,
     malformed: ctx.corpus.malformed.map((m) => ({
       filename: m.filename,
       number: m.number,
@@ -31576,11 +31584,11 @@ function slugTitle(filename) {
   return filename.replace(/\.md$/, "").replace(/^\d+-/, "");
 }
 function findingCounts(findings) {
-  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  const counts2 = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of findings) {
-    if (f.severity !== "info") counts[f.severity] += 1;
+    if (f.severity !== "info") counts2[f.severity] += 1;
   }
-  return counts;
+  return counts2;
 }
 function checksSummary(checks) {
   return {
@@ -32488,8 +32496,8 @@ ${body}${warning}${footer}` }],
   };
 }
 function buildTaskListPayload(tasks, config2) {
-  const counts = {};
-  for (const s of config2.statuses) counts[s.key] = 0;
+  const counts2 = {};
+  for (const s of config2.statuses) counts2[s.key] = 0;
   const role_counts = {
     todo: 0,
     wip: 0,
@@ -32499,11 +32507,11 @@ function buildTaskListPayload(tasks, config2) {
   };
   const cards = tasks.map((t) => {
     const card = buildTaskCard(t, config2);
-    counts[card.status.key] = (counts[card.status.key] ?? 0) + 1;
+    counts2[card.status.key] = (counts2[card.status.key] ?? 0) + 1;
     role_counts[card.status.role] += 1;
     return card;
   });
-  return { tasks: cards, counts, role_counts };
+  return { tasks: cards, counts: counts2, role_counts };
 }
 function runStatus(_server, env2, config2) {
   const { tasks } = readAllTasks(env2.tasksDir, config2);
@@ -33348,8 +33356,8 @@ function formatSpecId(n, width) {
 // src/lib/state.ts
 function boardCounts(env2, config2) {
   const { tasks, malformed } = readAllTasks(env2.tasksDir, config2);
-  const counts = {};
-  for (const s of config2.statuses) counts[s.key] = 0;
+  const counts2 = {};
+  for (const s of config2.statuses) counts2[s.key] = 0;
   const roleCounts = {
     todo: 0,
     wip: 0,
@@ -33358,10 +33366,10 @@ function boardCounts(env2, config2) {
     blocked: 0
   };
   for (const t of tasks) {
-    counts[t.frontmatter.status] = (counts[t.frontmatter.status] ?? 0) + 1;
+    counts2[t.frontmatter.status] = (counts2[t.frontmatter.status] ?? 0) + 1;
     roleCounts[roleOfStatus(config2, t.frontmatter.status)] += 1;
   }
-  return { counts, roleCounts, malformed: malformed.length };
+  return { counts: counts2, roleCounts, malformed: malformed.length };
 }
 function gitState(projectDir) {
   return {
@@ -34117,7 +34125,7 @@ function buildHelpTool(env2, version2, packRoot2) {
   });
 }
 function renderHelp(env2, config2, version2, humanRun, section) {
-  const { counts, malformed } = boardCounts(env2, config2);
+  const { counts: counts2, malformed } = boardCounts(env2, config2);
   const git2 = gitState(env2.projectDir);
   const art = artifactCounts(env2, resolveSpecDir(env2.projectDir, config2.spec));
   const servers = projectMcpServers(env2.projectDir);
@@ -34129,7 +34137,7 @@ function renderHelp(env2, config2, version2, humanRun, section) {
     "",
     "---",
     "",
-    ...renderSummary(project, config2, git2, counts, malformed, art),
+    ...renderSummary(project, config2, git2, counts2, malformed, art),
     "",
     ...renderMcpServers(servers),
     "",
@@ -34151,7 +34159,7 @@ function renderHelp(env2, config2, version2, humanRun, section) {
     statuses: config2.statuses.map((s) => ({
       key: s.key,
       role: s.role,
-      count: counts[s.key] ?? 0
+      count: counts2[s.key] ?? 0
     })),
     artifacts: {
       specs: art.specs,
@@ -34195,10 +34203,10 @@ function renderHelp(env2, config2, version2, humanRun, section) {
 function renderBanner(version2) {
   return ["# >_ MARVIN", "", SLOGAN, `_v${version2}_`];
 }
-function renderSummary(project, config2, git2, counts, malformed, art) {
+function renderSummary(project, config2, git2, counts2, malformed, art) {
   const gitVal = git2.branch ? `\`${git2.branch}\` \xB7 base \`${config2.base_branch}\`` : "not in a git repo";
   const board = config2.statuses.map((s) => {
-    const n = counts[s.key] ?? 0;
+    const n = counts2[s.key] ?? 0;
     return `${s.key} ${n > 0 ? `**${n}**` : "0"}`;
   }).join(" \xB7 ");
   const artifacts = `specs ${art.specs} \xB7 handoffs ${art.handoffs} \xB7 audits ${art.audits} \xB7 lessons ${art.lessons}`;
@@ -35227,12 +35235,12 @@ function fileAgeDays(path) {
   }
 }
 function adrSummary(rel, corpus) {
-  const counts = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
-  for (const r of corpus.records) counts[r.status] += 1;
+  const counts2 = Object.fromEntries(ADR_STATUSES.map((s) => [s, 0]));
+  for (const r of corpus.records) counts2[r.status] += 1;
   return {
     dir: rel,
     total: corpus.records.length,
-    counts,
+    counts: counts2,
     malformed: corpus.malformed.length
   };
 }
@@ -35336,8 +35344,8 @@ function renderUsage(usage) {
   }
   return lines;
 }
-function nonZero(counts) {
-  return Object.entries(counts).filter(([, n]) => n > 0).map(([k, n]) => `${k}: ${n}`);
+function nonZero(counts2) {
+  return Object.entries(counts2).filter(([, n]) => n > 0).map(([k, n]) => `${k}: ${n}`);
 }
 function days(n) {
   return `${n} day(s)`;
@@ -35590,6 +35598,129 @@ function detectMakefile(projectRoot) {
   return gates.length ? { stacks: ["Makefile"], gates } : { stacks: [], gates: [] };
 }
 
+// src/lib/oracle-classify.ts
+var MISSING_NAME = /cannot import name|has no attribute|is not defined|is not a function|of undefined|NameError/;
+var MISSING_FILE = /FileNotFoundError|ENOENT/;
+var SNAPSHOT = /Snapshot `[^`]*` mismatched|snapshot .*(?:does not exist|not written|missing)|Snapshot '[^']*' does not exist|obsolete snapshot|toMatch(?:Inline|File)?Snapshot/i;
+function failureMarks(message) {
+  const marks = [];
+  if (MISSING_NAME.test(message)) marks.push("missing_name");
+  if (MISSING_FILE.test(message)) marks.push("missing_file");
+  if (SNAPSHOT.test(message)) marks.push("snapshot");
+  return marks;
+}
+var ANSI = /\u001b\[[0-9;]*m/g;
+var PYTEST_SUMMARY = /^=*\s*((?:\d+ [a-z]+(?:, )?)+) in [\d.]+s(?: \([^)]*\))?\s*=*$/;
+var VITEST_TESTS = /^\s*Tests\s+(.+?)\s*\(\d+\)\s*$/;
+var VITEST_FILES = /^\s*Test Files\s+(.+?)\s*\(\d+\)\s*$/;
+function counts(text) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, n, word] of text.matchAll(/(\d+) ([a-z]+)/g)) {
+    out.set(word, (out.get(word) ?? 0) + Number(n));
+  }
+  return out;
+}
+function pytest(lines, text, code2) {
+  const summaryLine = lines.map((l) => PYTEST_SUMMARY.exec(l.trim())).filter((m) => m).pop();
+  const noTests = lines.some((l) => /\bno tests ran\b|collected 0 items/.test(l));
+  const session = /=+ test session starts =+/.test(text) || /^collected \d+ items?/m.test(text);
+  if (!summaryLine && !noTests && !session) return null;
+  const c = summaryLine ? counts(summaryLine[1]) : /* @__PURE__ */ new Map();
+  const failed = c.get("failed") ?? 0;
+  const errors = (c.get("error") ?? 0) + (c.get("errors") ?? 0);
+  const base = { runner: "pytest" };
+  if (/errors? during collection|ERROR collecting|Interrupted:/.test(text)) {
+    return { ...base, outcome: "did_not_run", marks: [], detail: "pytest: collection error" };
+  }
+  if (noTests && !summaryLine?.[1]?.includes("passed") && failed === 0) {
+    return { ...base, outcome: "did_not_run", marks: [], detail: "pytest: no tests ran" };
+  }
+  if (failed > 0 && errors === 0) {
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text),
+      detail: `pytest: ${failed} failed`
+    };
+  }
+  if (errors > 0) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: `pytest: ${errors} setup/collection error(s)`
+    };
+  }
+  if (code2 === 0) {
+    return (c.get("passed") ?? 0) > 0 ? { ...base, outcome: "passed", marks: [], detail: "pytest: passed" } : { ...base, outcome: "did_not_run", marks: [], detail: "pytest: no test passed (skipped)" };
+  }
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: `pytest: exit ${code2} with no failed test`
+  };
+}
+function vitest(lines, text, code2) {
+  const tests = lines.map((l) => VITEST_TESTS.exec(l)).filter((m) => m).pop();
+  const files = lines.map((l) => VITEST_FILES.exec(l)).filter((m) => m).pop();
+  const noFiles = /No test files found/.test(text);
+  if (!tests && !files && !noFiles) return null;
+  const base = { runner: "vitest" };
+  if (noFiles)
+    return { ...base, outcome: "did_not_run", marks: [], detail: "vitest: no test files found" };
+  const t = tests ? counts(tests[1]) : /* @__PURE__ */ new Map();
+  const failed = t.get("failed") ?? 0;
+  if (failed > 0) {
+    return {
+      ...base,
+      outcome: "failed",
+      marks: failureMarks(text),
+      detail: `vitest: ${failed} failed`
+    };
+  }
+  if (!tests) {
+    return {
+      ...base,
+      outcome: "did_not_run",
+      marks: [],
+      detail: "vitest: suite failed with no test results"
+    };
+  }
+  if (code2 === 0 && (t.get("passed") ?? 0) > 0)
+    return { ...base, outcome: "passed", marks: [], detail: "vitest: passed" };
+  return {
+    ...base,
+    outcome: "did_not_run",
+    marks: [],
+    detail: "vitest: no test ran and failed (skipped/todo)"
+  };
+}
+function classifyOracleRun(run3) {
+  if (run3.launchError || run3.code === null || run3.signal !== null) {
+    return {
+      outcome: "did_not_run",
+      marks: [],
+      runner: null,
+      detail: "runner crashed, was killed or never launched"
+    };
+  }
+  const text = run3.output.replace(ANSI, "");
+  const lines = text.split(/\r?\n/);
+  const detected = pytest(lines, text, run3.code) ?? vitest(lines, text, run3.code);
+  if (detected) return detected;
+  if (run3.code === 0) return { outcome: "passed", marks: [], runner: null, detail: "exit 0" };
+  return {
+    outcome: "unknown",
+    marks: [],
+    runner: null,
+    detail: `exit ${run3.code}: no per-runner detection for this command, so the red is not shown to have run`
+  };
+}
+function isRedForRightReason(c) {
+  return c.outcome === "failed" && !(c.marks ?? []).includes("snapshot");
+}
+
 // src/lib/shell-quote.ts
 var shellQuote = (word) => `'${word.replaceAll("'", "'\\''")}'`;
 function encodeForContext(value, context) {
@@ -35724,6 +35855,12 @@ var OracleRunSchema = external_exports.object({
   test_sha: external_exports.string().nullable(),
   head_sha: external_exports.string().nullable(),
   durationMs: external_exports.number().optional(),
+  /** F6b (ADR-0056): the factory's "red for the right reason" class. ABSENT on a
+   * record written before it existed — that is "unclassified", never `failed`. */
+  outcome: external_exports.enum(["passed", "failed", "did_not_run", "unknown"]).optional(),
+  marks: external_exports.array(external_exports.enum(["missing_name", "missing_file", "snapshot"])).optional(),
+  runner: external_exports.enum(["pytest", "vitest"]).nullable().optional(),
+  outcome_detail: external_exports.string().optional(),
   ran_at: external_exports.string()
 });
 function oracleJournalPath(runsDir, slug) {
@@ -35767,7 +35904,9 @@ function readOracleRuns(runsDir, slug) {
   return out;
 }
 function isRed(r) {
-  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha;
+  return r.expect === "fail" && r.status === "fail" && r.code !== null && r.code !== 0 && !!r.test_sha && // F6b: only "ran and failed" is a red. A record without `outcome` predates the
+  // classification and is unclassified — not proof.
+  isRedForRightReason(r);
 }
 function isGreen(r) {
   return r.expect === "pass" && r.status === "pass" && r.code === 0 && !!r.test_sha;
@@ -35786,6 +35925,19 @@ function redGreenProof(runs, contractSha, criterionId) {
     }
   }
   return "missing";
+}
+function redRejection(runs, contractSha, criterionId) {
+  const reds = runs.filter(
+    (r) => r.contract_sha === contractSha && r.criterion === criterionId && r.expect === "fail"
+  );
+  const last2 = reds[reds.length - 1];
+  if (!last2 || isRed(last2)) return "";
+  if (last2.outcome === void 0) {
+    return `${criterionId}: the red run carries no classification (recorded before F6b); re-run the red phase`;
+  }
+  if (last2.outcome === "failed")
+    return `${criterionId}: the red run failed on a snapshot, which is not proof`;
+  return `${criterionId}: the red run was \`${last2.outcome}\`, not \`failed\`${last2.outcome_detail ? ` (${last2.outcome_detail})` : ""}`;
 }
 
 // src/lib/contract-surface.ts
@@ -37161,6 +37313,9 @@ function unambiguousStack(input, projectRoot) {
   if (input.stack) return input.stack;
   return unambiguousStackId(projectRoot);
 }
+function classifiedFields(c) {
+  return { outcome: c.outcome, marks: c.marks, runner: c.runner, outcome_detail: c.detail };
+}
 async function runOracles(projectRoot, input, config2) {
   const { slug, rejected } = resolveRunSlug(input.specSlug);
   if (!slug) {
@@ -37203,6 +37358,8 @@ async function runOracles(projectRoot, input, config2) {
     if (resolved.command === null) {
       entries.push({
         ...base,
+        outcome: "did_not_run",
+        outcome_detail: "no command resolved",
         status: "not-run",
         command: null,
         source: null,
@@ -37217,7 +37374,16 @@ async function runOracles(projectRoot, input, config2) {
       ...base,
       command: resolved.command,
       source: resolved.source,
-      durationMs: out.durationMs
+      durationMs: out.durationMs,
+      ...classifiedFields(
+        classifyOracleRun({
+          code: out.code,
+          signal: out.signal,
+          output: `${out.stdout}
+${out.stderr}`,
+          launchError: !!out.error
+        })
+      )
     };
     if (out.error) {
       entries.push({
@@ -37247,7 +37413,7 @@ async function runOracles(projectRoot, input, config2) {
     `**Contract:** \`${spec.contractSha}\` \xB7 **Phase:** expect ${input.expect} \xB7 **Journal:** \`${journal}\``,
     ``,
     ...entries.map(
-      (e) => `- ${icon(e.status)} **${e.criterion}** \u2014 ${e.status}` + (e.command ? ` \xB7 \`${e.command}\` (${e.source})` : "") + (e.reason ? ` \xB7 ${e.reason}` : "")
+      (e) => `- ${icon(e.status)} **${e.criterion}** \u2014 ${e.status}` + (e.command ? ` \xB7 \`${e.command}\` (${e.source})` : "") + (e.outcome ? ` \xB7 ${e.outcome}${e.outcome_detail ? ` (${e.outcome_detail})` : ""}` : "") + (e.reason ? ` \xB7 ${e.reason}` : "")
     ),
     ...entries.length ? [] : ["_no runnable criterion selected_"],
     ...skipped.length ? ["", `Skipped (prose-review): ${skipped.join(", ")}.`] : [],
@@ -37268,7 +37434,7 @@ ${machine}
   };
 }
 function redGreenStatus(projectRoot, specSlug, specConfig) {
-  const none = (why) => ({ status: "unknown", unproven: [], why });
+  const none = (why2) => ({ status: "unknown", unproven: [], why: why2 });
   const { slug } = resolveRunSlug(specSlug);
   if (!slug) return none("the gate call passed no resolvable `specSlug`, so no spec was read");
   const spec = readSealedSpec(slug, projectRoot, specConfig);
@@ -37278,14 +37444,19 @@ function redGreenStatus(projectRoot, specSlug, specConfig) {
     if (tests.length === 0) return none("the feature spec has no `kind: test` criterion");
     const runs2 = readOracleRuns(runsDirOf(projectRoot), slug);
     const proven = tests.some((c) => redGreenProof(runs2, spec.contractSha, c.id) === "proven");
-    return proven ? { status: "proven", unproven: [], why: "" } : { status: "missing", unproven: [tests[0].id], why: "" };
+    return proven ? { status: "proven", unproven: [], why: "" } : {
+      status: "missing",
+      unproven: [tests[0].id],
+      why: redRejection(runs2, spec.contractSha, tests[0].id)
+    };
   }
   if (spec.type !== "bugfix") return none(`the spec's type \`${spec.type}\` is not feature|bugfix`);
   const regression = spec.criteria.filter((c) => c.regression === true);
   if (regression.length === 0) return none("the bugfix spec has no `regression: true` criterion");
   const runs = readOracleRuns(runsDirOf(projectRoot), slug);
   const unproven = regression.filter((c) => redGreenProof(runs, spec.contractSha, c.id) === "missing").map((c) => c.id);
-  return { status: unproven.length ? "missing" : "proven", unproven, why: "" };
+  const why = unproven.map((id) => redRejection(runs, spec.contractSha, id)).filter(Boolean).join("; ");
+  return { status: unproven.length ? "missing" : "proven", unproven, why };
 }
 function noOracleStatus(projectRoot, specSlug, specConfig) {
   const none = { status: "unknown", reason: "", contradicting: [] };
@@ -37484,7 +37655,7 @@ function deliverGate(projectRoot, opts) {
   let declaredNote = "";
   if (required2 && redGreen.status !== "proven") {
     if (noOracle.status !== "declared") {
-      const what = redGreen.status === "missing" ? `no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")}` : `no red\u2192green proof can be read for this delivery: ${redGreen.why}`;
+      const what = redGreen.status === "missing" ? `no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")}` + (redGreen.why ? ` \u2014 ${redGreen.why}` : "") : `no red\u2192green proof can be read for this delivery: ${redGreen.why}`;
       return decide(
         "BLOCK",
         verdict,
@@ -37494,7 +37665,7 @@ function deliverGate(projectRoot, opts) {
     }
     declaredNote = ` \xB7 no red\u2192green pair required: the contract declares no oracle a test can execute ("${noOracle.reason}"), and none of its criteria contradicts that`;
   }
-  const redGreenNote = !required2 && redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")} \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
+  const redGreenNote = !required2 && redGreen.status === "missing" ? ` \xB7 no recorded red\u2192green pair at this contract_sha for ${redGreen.unproven.join(", ")}` + (redGreen.why ? ` (${redGreen.why})` : "") + ` \u2014 record one with \`verify action: "oracles"\` (this does not block delivery)` : "";
   const surfaceNote = surface.status === "missing" ? ` \xB7 contract.signature declares ${surface.missing.map((n) => `\`${n}\``).join(", ")}, found in none of the contract's implementation files \u2014 correct the code or the signature, and say which in the pull request (this does not block delivery)` : "";
   return decide(
     "ALLOW",
@@ -39977,7 +40148,14 @@ function toGateOutcome(g) {
 function readCommits(projectRoot, base) {
   if (!inGitRepo(projectRoot)) return [];
   const r = git(
-    ["log", `${base}..HEAD`, "--no-merges", "--format=%h%x09%s", "-n", "30"],
+    [
+      "log",
+      `${resolveBaseRef(base, projectRoot)}..HEAD`,
+      "--no-merges",
+      "--format=%h%x09%s",
+      "-n",
+      "30"
+    ],
     projectRoot
   );
   if (!r.ok || !r.value.trim()) return [];
@@ -40183,8 +40361,8 @@ function formatReportLine2(r) {
   const breakdown = SEVERITY_ORDER2.filter((s) => (r.summary[s] ?? 0) > 0).map((s) => `${s} ${r.summary[s]}`).join(", ");
   const when = r.scanned_at.slice(0, 10);
   const target = r.target ? ` \`${r.target}\`` : "";
-  const counts = breakdown ? ` \u2014 ${breakdown}` : "";
-  return `- **${r.kind}**${target} \xB7 ${total} finding(s)${counts} \xB7 ${when}`;
+  const counts2 = breakdown ? ` \u2014 ${breakdown}` : "";
+  return `- **${r.kind}**${target} \xB7 ${total} finding(s)${counts2} \xB7 ${when}`;
 }
 function buildPayload(reports) {
   return { reports };
@@ -40506,14 +40684,14 @@ function renderStatus(s) {
   ];
   const c = s.children;
   if (c.total === 0) return [...head, "", "_No children launched yet._"].join("\n");
-  const counts = Object.entries(c.byStatus).map(([status2, n]) => `${status2} ${n}`).join(", ");
+  const counts2 = Object.entries(c.byStatus).map(([status2, n]) => `${status2} ${n}`).join(", ");
   const rows = c.rows.map(
     (r) => `| ${r.name} | ${r.role} | ${r.iteration} | ${r.status} | ${r.model}/${r.effort} | ${usd(r.costUsd)} |`
   );
   return [
     ...head,
     "",
-    `## Children (${c.total}) \u2014 ${counts} \xB7 cost ${usd(c.costUsd)}`,
+    `## Children (${c.total}) \u2014 ${counts2} \xB7 cost ${usd(c.costUsd)}`,
     "",
     "| Child | Role | Iteration | Status | Model/effort | Cost |",
     "|---|---|---|---|---|---|",
@@ -42848,10 +43026,10 @@ function summaryParagraph(findings, flows) {
   if (main.length === 0) {
     return `No confirmed findings. ${suspected} suspected finding(s) await proof or a ruling. Evidence lives under .marvin/hunt/evidence/.`;
   }
-  const counts = /* @__PURE__ */ new Map();
+  const counts2 = /* @__PURE__ */ new Map();
   for (const f of main)
-    counts.set(`${f.class}/${f.severity}`, (counts.get(`${f.class}/${f.severity}`) ?? 0) + 1);
-  const byKind = [...counts.entries()].map(([k, n]) => `${n} ${k}`).join(", ");
+    counts2.set(`${f.class}/${f.severity}`, (counts2.get(`${f.class}/${f.severity}`) ?? 0) + 1);
+  const byKind = [...counts2.entries()].map(([k, n]) => `${n} ${k}`).join(", ");
   const top = main.slice(0, 3).map((f) => `${f.id} ${f.title} (${f.severity})`).join("; ");
   return `${main.length} confirmed finding(s): ${byKind}. Top: ${top}. ${suspected} suspected. Evidence lives under .marvin/hunt/evidence/.`;
 }
@@ -44117,8 +44295,8 @@ function huntStatus(env2) {
     all.filter((f) => OPEN_STATUSES.includes(f.status) && f.confidence !== "low"),
     readFlows(env2.huntDir)
   );
-  const counts = /* @__PURE__ */ new Map();
-  for (const f of open) counts.set(f.status, (counts.get(f.status) ?? 0) + 1);
+  const counts2 = /* @__PURE__ */ new Map();
+  for (const f of open) counts2.set(f.status, (counts2.get(f.status) ?? 0) + 1);
   const runs = listRunIds(env2.huntDir).slice(0, 5).map((id) => {
     try {
       const r = readRun(env2.huntDir, id);
@@ -44134,7 +44312,7 @@ function huntStatus(env2) {
   const body = [
     "# Hunt status",
     "",
-    all.length === 0 ? "_The ledger is empty. Start with `/marvin:hunt-init`, then `/marvin:hunt-code`._" : `${open.length} open finding(s): ${[...counts.entries()].map(([k, n]) => `${n} ${k}`).join(", ") || "none"}. ${closed} closed${lowOpen ? `, ${lowOpen} low-confidence logged only` : ""}.`,
+    all.length === 0 ? "_The ledger is empty. Start with `/marvin:hunt-init`, then `/marvin:hunt-code`._" : `${open.length} open finding(s): ${[...counts2.entries()].map(([k, n]) => `${n} ${k}`).join(", ") || "none"}. ${closed} closed${lowOpen ? `, ${lowOpen} low-confidence logged only` : ""}.`,
     ...main.length ? [
       "",
       "Top confirmed:",
@@ -44150,7 +44328,7 @@ function huntStatus(env2) {
   ];
   return huntReply(body.join("\n"), {
     open: open.length,
-    by_status: Object.fromEntries(counts),
+    by_status: Object.fromEntries(counts2),
     closed,
     low_confidence: lowOpen,
     audited_files: coverage.files.length,
@@ -44160,7 +44338,7 @@ function huntStatus(env2) {
 }
 
 // src/server.ts
-var VERSION = "0.39.0";
+var VERSION = "0.40.0";
 var env = loadEnv();
 var packRoot = packRootFromMeta(import.meta.url);
 await runPackServer({
